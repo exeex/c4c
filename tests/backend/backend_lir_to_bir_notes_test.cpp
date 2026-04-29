@@ -68,6 +68,7 @@ int expect_link_name_id_symbol_identity_survives_drifted_display_names();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_pointer_initializer_symbol_names_carry_link_name_id();
 int expect_bir_verifier_rejects_known_link_name_mismatches();
+int expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -278,6 +279,127 @@ int expect_link_name_id_symbol_identity_survives_drifted_display_names() {
   if (load == nullptr || load->global_name != "semantic_global" ||
       load->global_name_id != global_id) {
     return fail("BIR global load should carry LinkNameId identity for semantic global refs");
+  }
+  return 0;
+}
+
+int expect_string_pool_direct_call_bridge_prefers_function_link_name_id() {
+  LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::LinkNameId sink_id = module.link_names.intern("semantic_sink");
+  const c4c::LinkNameId user_id = module.link_names.intern("semantic_user");
+
+  module.string_pool.push_back(c4c::codegen::lir::LirStringConst{
+      .pool_name = "@.str.good",
+      .raw_bytes = "good\0",
+      .byte_length = 5,
+  });
+  module.string_pool.push_back(c4c::codegen::lir::LirStringConst{
+      .pool_name = "@.str.bad",
+      .raw_bytes = "bad\0",
+      .byte_length = 4,
+  });
+
+  c4c::codegen::lir::LirExternDecl sink;
+  sink.name = "drifted_sink_display";
+  sink.link_name_id = sink_id;
+  sink.return_type_str = "void";
+  sink.return_type = c4c::codegen::lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(sink));
+
+  LirFunction raw_name_decoy;
+  raw_name_decoy.name = "semantic_user";
+  raw_name_decoy.signature_text = "define void @semantic_user()";
+  LirBlock decoy_entry;
+  decoy_entry.label = "entry";
+  decoy_entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%bad_ptr"),
+      .element_type = c4c::codegen::lir::LirTypeRef("[4 x i8]"),
+      .ptr = LirOperand("@.str.bad"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 0"},
+  });
+  decoy_entry.insts.push_back(LirCallOp{
+      .return_type = c4c::codegen::lir::LirTypeRef("void"),
+      .callee = LirOperand("@semantic_sink"),
+      .direct_callee_link_name_id = sink_id,
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr %bad_ptr",
+  });
+  decoy_entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  raw_name_decoy.blocks.push_back(std::move(decoy_entry));
+  module.functions.push_back(std::move(raw_name_decoy));
+
+  LirFunction semantic_user;
+  semantic_user.name = "drifted_user_display";
+  semantic_user.link_name_id = user_id;
+  semantic_user.signature_text = "define void @semantic_user()";
+  LirBlock user_entry;
+  user_entry.label = "entry";
+  user_entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%good_ptr"),
+      .element_type = c4c::codegen::lir::LirTypeRef("[5 x i8]"),
+      .ptr = LirOperand("@.str.good"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 0"},
+  });
+  user_entry.insts.push_back(LirCallOp{
+      .return_type = c4c::codegen::lir::LirTypeRef("void"),
+      .callee = LirOperand("@stale_sink_display"),
+      .direct_callee_link_name_id = sink_id,
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr %good_ptr",
+  });
+  user_entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  semantic_user.blocks.push_back(std::move(user_entry));
+  module.functions.push_back(std::move(semantic_user));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("string-pool direct-call LinkNameId bridge fixture should lower to BIR");
+  }
+
+  const c4c::backend::bir::Function* lowered_user = nullptr;
+  for (const auto& function : result.module->functions) {
+    if (function.link_name_id == user_id) {
+      lowered_user = &function;
+      break;
+    }
+  }
+  if (lowered_user == nullptr || lowered_user->name != "semantic_user") {
+    return fail("semantic user function should lower with LinkNameId identity");
+  }
+
+  bool saw_good_string_arg = false;
+  bool saw_bad_string_arg = false;
+  for (const auto& block : lowered_user->blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr || call->args.empty()) {
+        continue;
+      }
+      saw_good_string_arg =
+          saw_good_string_arg ||
+          call->args.front() == c4c::backend::bir::Value::named(TypeKind::Ptr, "@.str.good");
+      saw_bad_string_arg =
+          saw_bad_string_arg ||
+          call->args.front() == c4c::backend::bir::Value::named(TypeKind::Ptr, "@.str.bad");
+    }
+  }
+  if (!saw_good_string_arg) {
+    return fail("string-pool direct-call bridge should choose the LIR function by LinkNameId");
+  }
+  if (saw_bad_string_arg) {
+    return fail("string-pool direct-call bridge should not use raw-name decoy aliases");
   }
   return 0;
 }
@@ -2762,6 +2884,12 @@ int main() {
           expect_link_name_id_symbol_identity_survives_drifted_display_names();
       link_name_identity_status != 0) {
     return link_name_identity_status;
+  }
+
+  if (const int string_pool_link_name_status =
+          expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
+      string_pool_link_name_status != 0) {
+    return string_pool_link_name_status;
   }
 
   if (const int link_name_mismatch_status =

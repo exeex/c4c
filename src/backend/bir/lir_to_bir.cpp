@@ -10,23 +10,6 @@ namespace c4c::backend {
 
 namespace {
 
-std::string_view resolve_link_name(const c4c::LinkNameTable& link_names,
-                                   c4c::LinkNameId id) {
-  if (id == c4c::kInvalidLinkName) return {};
-  const std::string_view spelling = link_names.spelling(id);
-  return spelling.empty() ? std::string_view{} : spelling;
-}
-
-std::string resolved_lir_function_name(const c4c::codegen::lir::LirModule& module,
-                                       const c4c::codegen::lir::LirFunction& function) {
-  const std::string_view resolved_name = resolve_link_name(module.link_names,
-                                                           function.link_name_id);
-  if (!resolved_name.empty()) {
-    return std::string(resolved_name);
-  }
-  return function.name;
-}
-
 std::string strip_global_sig(std::string_view name) {
   if (!name.empty() && name.front() == '@') {
     name.remove_prefix(1);
@@ -226,6 +209,37 @@ std::vector<bir::CallInst*> collect_direct_bir_calls(bir::Function* function) {
   return calls;
 }
 
+struct LirFunctionIdentityLookup {
+  std::unordered_map<c4c::LinkNameId, const c4c::codegen::lir::LirFunction*> by_link_name_id;
+  std::unordered_map<std::string, const c4c::codegen::lir::LirFunction*> fallback_by_name;
+};
+
+LirFunctionIdentityLookup build_lir_function_identity_lookup(
+    const c4c::codegen::lir::LirModule& lir_module) {
+  LirFunctionIdentityLookup lookup;
+  lookup.by_link_name_id.reserve(lir_module.functions.size());
+  lookup.fallback_by_name.reserve(lir_module.functions.size());
+  for (const auto& function : lir_module.functions) {
+    if (function.link_name_id != c4c::kInvalidLinkName) {
+      lookup.by_link_name_id.emplace(function.link_name_id, &function);
+      continue;
+    }
+    lookup.fallback_by_name.emplace(function.name, &function);
+  }
+  return lookup;
+}
+
+const c4c::codegen::lir::LirFunction* find_lir_function_for_lowered_function(
+    const LirFunctionIdentityLookup& lookup,
+    const bir::Function& lowered_function) {
+  if (lowered_function.link_name_id != c4c::kInvalidLinkName) {
+    const auto semantic_it = lookup.by_link_name_id.find(lowered_function.link_name_id);
+    return semantic_it == lookup.by_link_name_id.end() ? nullptr : semantic_it->second;
+  }
+  const auto fallback_it = lookup.fallback_by_name.find(lowered_function.name);
+  return fallback_it == lookup.fallback_by_name.end() ? nullptr : fallback_it->second;
+}
+
 void rewrite_direct_call_string_pointer_args(
     const c4c::codegen::lir::LirModule& lir_module,
     const LoweredStringConstantMetadata& string_constants,
@@ -239,29 +253,26 @@ void rewrite_direct_call_string_pointer_args(
     return;
   }
 
-  std::unordered_map<std::string, const c4c::codegen::lir::LirFunction*> lir_functions_by_name;
-  lir_functions_by_name.reserve(lir_module.functions.size());
-  for (const auto& function : lir_module.functions) {
-    lir_functions_by_name.emplace(resolved_lir_function_name(lir_module, function), &function);
-  }
+  const auto lir_functions = build_lir_function_identity_lookup(lir_module);
 
   for (auto& lowered_function : lowered_module->functions) {
     if (lowered_function.is_declaration) {
       continue;
     }
 
-    const auto lir_function_it = lir_functions_by_name.find(lowered_function.name);
-    if (lir_function_it == lir_functions_by_name.end()) {
+    const auto* lir_function = find_lir_function_for_lowered_function(
+        lir_functions, lowered_function);
+    if (lir_function == nullptr) {
       continue;
     }
 
     const auto string_aliases =
-        collect_string_pointer_aliases(*lir_function_it->second, string_constants);
+        collect_string_pointer_aliases(*lir_function, string_constants);
     if (string_aliases.empty()) {
       continue;
     }
 
-    const auto lir_calls = collect_direct_lir_calls(*lir_function_it->second);
+    const auto lir_calls = collect_direct_lir_calls(*lir_function);
     auto lowered_calls = collect_direct_bir_calls(&lowered_function);
     if (lir_calls.size() != lowered_calls.size()) {
       continue;
