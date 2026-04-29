@@ -8,23 +8,21 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 nested `operator_arrow` and range-for `operator_deref`
-method return lookup demotion packet. `Lowerer::lower_member_expr()` now uses
-`Module::resolve_operator_callee()` for nested `operator_arrow` return
-metadata after constructing the `DeclRef` with its `link_name_id`, and
-`Lowerer::lower_range_for_stmt()` now uses
-`Module::resolve_range_for_method_callee()` for iterator `operator_deref`
-return metadata instead of calling `find_function_by_name_legacy()` directly.
-The focused HIR lookup test now pins that stale rendered names cannot override
-resolver-authoritative return metadata while preserving explicit rendered-name
+Completed Step 3 range-for `begin()` return-type lookup demotion packet.
+`Lowerer::lower_range_for_stmt()` now constructs a `DeclRef` for the resolved
+`begin()` method with its `link_name_id` and asks
+`Module::resolve_range_for_method_callee()` for return metadata instead of
+calling `find_function_by_name_legacy()` directly. The existing focused
+range-for method resolver test already pins that stale rendered names cannot
+override `LinkNameId` authority while preserving explicit rendered-name
 fallback.
 
 ## Suggested Next
 
 Next coherent Step 3 packet: inspect the remaining `find_function_by_name_legacy()`
-callers and decide whether the range-for `begin()` return-type lookup has
-enough declaration metadata for resolver demotion or should remain classified
-as a compatibility fallback.
+callers in `hir_functions.cpp`, `builtin.cpp`, `scalar_control.cpp`, and
+`hir_types.cpp`, then route each through resolver authority where a
+`DeclRef`/`LinkNameId` carrier exists or classify the exact metadata gap.
 
 ## Watchouts
 
@@ -73,12 +71,11 @@ Step 1 inventory classification:
   compatibility/fallback surfaces for missing or incomplete structured
   declaration metadata. The direct-call packet removed direct-call uses of the
   function legacy helper in `call.cpp`; this packet demoted the main
-  overloaded-operator helper and bool-conversion helper in `operator.cpp`, and
-  the range-for prefix-increment method return lookup in `range_for.cpp`; the
-  nested `operator_arrow` helper in `operator.cpp` and range-for dereference
-  method helper in `range_for.cpp` are now also routed through resolver
-  authority. The range-for `begin()` return-type lookup still calls the legacy
-  helper and needs separate classification before demotion.
+  overloaded-operator helper and bool-conversion helper in `operator.cpp`, the
+  range-for prefix-increment, dereference, and `begin()` method return lookups
+  in `range_for.cpp`, and the nested `operator_arrow` helper in `operator.cpp`
+  through resolver authority. Remaining direct function legacy helper callers
+  are outside `range_for.cpp` and need separate carrier-metadata inspection.
 - Direct-call link-carrier discovery now records declaration lookup hits through
   the shared resolver. The hit/mismatch recorders deduplicate exact repeats, but
   future packets should keep an eye on noisy lookup telemetry if more call-site
