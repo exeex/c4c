@@ -1,7 +1,8 @@
 # Parser Namespace Visible Name Compatibility Spelling Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
 - [129_parser_intermediate_carrier_boundary_labeling.md](/workspaces/c4c/ideas/open/129_parser_intermediate_carrier_boundary_labeling.md)
@@ -51,3 +52,17 @@ Suspicious paths:
   fallback-only and cannot silently decide semantic resolution.
 - Tests cover using aliases, qualified namespaces, and visible-name lookup where
   rendered spelling could previously mask identity mismatches.
+
+## Closure Note
+
+Closed after active runbook Step 5 validation. Using-value aliases, namespace
+context lookup, visible-name lookup, string overloads, and AST projection
+bridges were made structured-primary or quarantined as explicit display,
+projection, or fallback paths.
+
+Final validation built `c4cll` and `frontend_parser_tests`, then ran full
+`ctest --test-dir build -j --output-on-failure`: 3089/3089 executed tests
+passed, with the same 12 disabled tests not run. Close-time regression guard
+against `test_baseline.log` passed in non-decreasing mode with before=3089/0
+and after=3089/0. The Step 4 repair review
+`review/idea133_step4_repair_review.md` reported no blocking findings.
