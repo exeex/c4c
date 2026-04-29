@@ -944,12 +944,16 @@ bool Parser::are_types_compatible(const TypeSpec& lhs,
 
 bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
     ts = resolve_struct_like_typedef_type(ts);
-    if (ts.base == TB_TYPEDEF && ts.tag &&
-        (definition_state_.defined_struct_tags.count(ts.tag) > 0 ||
-         has_template_struct_primary(ts.tag))) {
+    if (resolve_record_type_spec(ts, &definition_state_.struct_tag_def_map)) {
         return true;
     }
-    return ts.base == TB_STRUCT || ts.base == TB_UNION;
+    if (ts.base == TB_STRUCT || ts.base == TB_UNION) return true;
+    if (ts.base != TB_TYPEDEF || !ts.tag || !ts.tag[0]) return false;
+    // Compatibility fallback for TextId-less or tag-only paths that have not
+    // carried structured record identity through the parser yet.
+    return definition_state_.defined_struct_tags.count(ts.tag) > 0 ||
+           definition_state_.struct_tag_def_map.count(ts.tag) > 0 ||
+           has_template_struct_primary(ts.tag);
 }
 
 bool Parser::is_user_typedef_name(const std::string& name) const {

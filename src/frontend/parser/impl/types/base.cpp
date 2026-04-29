@@ -764,9 +764,10 @@ TypeSpec Parser::parse_base_type() {
             [&](const TypeSpec& owner_ts, const std::string& member,
                 TypeSpec* out) -> bool {
                 const std::string tag = owner_ts.tag ? owner_ts.tag : "";
-                if (tag.empty() || member.empty() || !out) return false;
+                if (member.empty() || !out) return false;
                 auto lookup_typedef_for_name =
                     [&](std::string_view name) -> const TypeSpec* {
+                        if (name.empty()) return nullptr;
                         return name.find("::") == std::string_view::npos
                                    ? find_visible_typedef_type(name)
                                    : find_typedef_type(name);
@@ -971,6 +972,9 @@ TypeSpec Parser::parse_base_type() {
                         resolved_tag = resolved.tag;
                 }
                 if (!sdef) {
+                    if (resolved_tag.empty()) return false;
+                    // Rendered-tag map lookup is a compatibility fallback for
+                    // tag-only paths after structured record identity failed.
                     auto def_it =
                         definition_state_.struct_tag_def_map.find(resolved_tag);
                     if (def_it == definition_state_.struct_tag_def_map.end() ||
@@ -982,10 +986,11 @@ TypeSpec Parser::parse_base_type() {
                     return true;
                 if (try_node_member_typedefs(sdef))
                     return true;
-                if (try_lookup(resolved_tag + "::" + member)) return true;
+                if (!resolved_tag.empty() &&
+                    try_lookup(resolved_tag + "::" + member))
+                    return true;
                 for (int bi = 0; bi < sdef->n_bases; ++bi) {
                     TypeSpec base_ts = resolve_struct_like(sdef->base_types[bi]);
-                    if (!base_ts.tag || !base_ts.tag[0]) continue;
                     if (lookup_struct_member_typedef_recursive_for_type(
                             base_ts, member, out))
                         return true;
