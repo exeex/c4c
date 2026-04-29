@@ -89,18 +89,48 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       std::string struct_tag = qname.substr(0, scope_pos);
       std::string member = qname.substr(scope_pos + 2);
       const bool has_template_args = n->has_template_args || n->n_template_args > 0;
+      auto resolve_static_owner_tag = [&]() -> std::optional<std::string> {
+        TypeSpec owner_ts{};
+        owner_ts.base = TB_STRUCT;
+        owner_ts.array_size = -1;
+        owner_ts.inner_rank = -1;
+        owner_ts.tag = struct_tag.c_str();
+        auto sdit = struct_def_nodes_.find(struct_tag);
+        if (sdit != struct_def_nodes_.end() && sdit->second) {
+          owner_ts.record_def = const_cast<Node*>(sdit->second);
+        }
+        const Node* primary_tpl = nullptr;
+        if (has_template_args) {
+          primary_tpl = find_template_struct_primary(struct_tag);
+          if (primary_tpl) {
+            owner_ts.tpl_struct_origin = struct_tag.c_str();
+            assign_template_arg_refs_from_ast_args(
+                &owner_ts, n, primary_tpl, ctx, n, PendingTemplateTypeKind::OwnerStruct,
+                "nameref-static-owner-arg");
+          }
+        }
+        if (!owner_ts.record_def && !owner_ts.tpl_struct_origin) return std::nullopt;
+        const std::string* current_struct_tag =
+            (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+        return resolve_member_lookup_owner_tag(
+            owner_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
+            ctx ? &ctx->nttp_bindings : nullptr, current_struct_tag, n,
+            std::string("nameref-static-member:") + member);
+      };
+      const std::optional<std::string> structured_owner_tag = resolve_static_owner_tag();
+      const std::string lookup_struct_tag =
+          structured_owner_tag.value_or(struct_tag);
       if (has_template_args) {
         if (auto v = try_eval_template_static_member_const(ctx, struct_tag, n, member)) {
           TypeSpec ts{};
-          if (const Node* decl = find_struct_static_member_decl(struct_tag, member)) {
+          if (const Node* decl = find_struct_static_member_decl(lookup_struct_tag, member)) {
             ts = decl->type;
           }
           if (ts.base == TB_VOID) ts.base = TB_INT;
           return append_expr(n, IntLiteral{*v, false}, ts);
         }
       }
-      if (!find_struct_static_member_decl(struct_tag, member) && has_template_args &&
-          find_template_struct_primary(struct_tag)) {
+      if (!structured_owner_tag && has_template_args && find_template_struct_primary(struct_tag)) {
         TypeSpec pending_ts{};
         pending_ts.base = TB_STRUCT;
         pending_ts.array_size = -1;
@@ -118,15 +148,17 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
             PendingTemplateTypeKind::OwnerStruct, "nameref-scope-tpl", primary_tpl);
         if (pending_ts.tag && pending_ts.tag[0]) struct_tag = pending_ts.tag;
       }
-      if (auto v = find_struct_static_member_const_value(struct_tag, member)) {
+      const std::string final_lookup_struct_tag =
+          structured_owner_tag.value_or(struct_tag);
+      if (auto v = find_struct_static_member_const_value(final_lookup_struct_tag, member)) {
         TypeSpec ts{};
-        if (const Node* decl = find_struct_static_member_decl(struct_tag, member)) {
+        if (const Node* decl = find_struct_static_member_decl(final_lookup_struct_tag, member)) {
           ts = decl->type;
         }
         if (ts.base == TB_VOID) ts.base = TB_INT;
         return append_expr(n, IntLiteral{*v, false}, ts);
       }
-      if (const Node* decl = find_struct_static_member_decl(struct_tag, member)) {
+      if (const Node* decl = find_struct_static_member_decl(final_lookup_struct_tag, member)) {
         if (decl->init) {
           long long v = static_eval_int(decl->init, enum_consts_);
           TypeSpec ts = decl->type;

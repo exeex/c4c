@@ -9,34 +9,29 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with generated defaulted-method and member-destructor-call member-symbol ingress
-in `stmt.cpp`. Defaulted copy/move generated member expressions and generated
-member destructor-call expressions now build an owner `TypeSpec` from the
-current struct and available `struct_def_nodes_` `record_def`, resolve the
-owner through `resolve_member_lookup_owner_tag`, and prefer
-`find_struct_member_symbol_id` for the structured owner before falling back to
-the legacy field-stored member symbol.
+with scoped static member lookup in `scalar_control.cpp`. `Owner::member`
+lowering now builds an owner `TypeSpec` from AST template arguments and
+available `struct_def_nodes_` `record_def`, resolves that through
+`resolve_member_lookup_owner_tag`, and uses the structured owner tag for static
+member decl/value lookup before falling back to rendered owner spelling.
 
-Added focused HIR coverage proving stale rendered owner tags cannot select the
-wrong member symbol for a defaulted copy generated member access or a generated
-member-destructor access when structured `record_def` owner identity is
-available.
+Added focused HIR coverage proving a stale rendered scoped owner cannot select
+the wrong static member const value when structured `record_def` owner identity
+is available.
 
 ## Suggested Next
 
-Continue Step 4 by auditing any remaining rendered-tag member-symbol ingress
-outside the completed declaration, compound-literal aggregate-init, defaulted
-copy/move, and member-destructor generated-body paths. Keep static member
-lookup, constructor overload routing, and previously completed
-method/member-expression routes separate unless delegated.
+Continue Step 4 by auditing constructor overload routing or any remaining
+rendered-tag member-symbol ingress outside the completed declaration,
+compound-literal aggregate-init, generated-body, and scoped static member
+lookup paths.
 
 ## Watchouts
 
-Both touched `stmt.cpp` sites intentionally keep the rendered `struct_tag` and
-old field-stored member-symbol fallback when structured owner resolution has no
-usable owner, so legacy generated bodies remain supported. This packet did not
-touch static member lookup, constructor overload routing, or other expression
-member routes.
+Scoped static member lookup intentionally keeps the legacy rendered fallback
+when no structured owner can be resolved. Template trait fast-path evaluation
+still uses the parsed template primary spelling for the value computation, but
+its resulting type lookup now consults the structured owner tag when available.
 
 ## Proof
 

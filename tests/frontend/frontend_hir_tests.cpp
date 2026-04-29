@@ -1974,6 +1974,64 @@ void test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_ke
               "static member decl lookup should preserve rendered fallback when no owner key exists");
 }
 
+void test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node real_record{};
+  real_record.kind = c4c::NK_STRUCT_DEF;
+  real_record.name = "RealStaticOwner";
+  real_record.unqualified_name = "RealStaticOwner";
+  real_record.namespace_context_id = 4;
+
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(&real_record);
+  expect_true(owner_key.has_value(),
+              "fixture real static owner should have structured owner identity");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealStaticOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealStaticOwner");
+  real_def.ns_qual.context_id = real_record.namespace_context_id;
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  c4c::Node stale_decl{};
+  stale_decl.kind = c4c::NK_DECL;
+  stale_decl.name = "value";
+  stale_decl.type = int_ts;
+  c4c::Node real_decl{};
+  real_decl.kind = c4c::NK_DECL;
+  real_decl.name = "value";
+  real_decl.type = int_ts;
+
+  lowerer.struct_def_nodes_["StaleRenderedStaticOwner"] = &real_record;
+  lowerer.struct_static_member_decls_["StaleRenderedStaticOwner"]["value"] =
+      &stale_decl;
+  lowerer.struct_static_member_const_values_["StaleRenderedStaticOwner"]["value"] =
+      11;
+  lowerer.register_struct_static_member_owner_lookup(*owner_key, &real_decl, 23);
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "StaleRenderedStaticOwner::value";
+  ref.type = int_ts;
+
+  const c4c::hir::ExprId value_id = lowerer.lower_var_expr(nullptr, &ref);
+  const auto* literal =
+      std::get_if<c4c::hir::IntLiteral>(&module.expr_pool[value_id.value].payload);
+  expect_true(literal != nullptr,
+              "scoped static member lookup should lower to a constexpr literal");
+  expect_eq_int(static_cast<int>(literal->value), 23,
+                "scoped static member lowering should prefer record_def owner over stale rendered tag");
+}
+
 void test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -3737,6 +3795,7 @@ int main() {
   test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag();
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_range_for_method_owner_prefers_record_def_over_stale_tag();
