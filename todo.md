@@ -1,62 +1,50 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/127_typed_parser_record_identity_bridge.md
+Source Idea Path: ideas/open/123_parser_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 6
-Current Step Title: Reprove And Return To Parser Cleanup
+Current Step ID: Step 1
+Current Step Title: Re-Inventory Parser String Lookup After Record Bridge
 
 ## Just Finished
 
-Step 6 reproof completed for the typed parser record identity bridge.
+Lifecycle returned from the typed parser record identity bridge.
 
-Focused parser/frontend proof passed against a matching refreshed baseline:
+Idea 127 closed after Step 6 reproof. The full-suite close gate compared the
+accepted baseline against the latest full-suite proof and passed: 3088 enabled
+tests before, 3088 enabled tests after, no new failures. The disabled-test set
+remained the existing backend CLI trace/dump tests 27, 28, and 41-50.
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests|frontend_cxx_)' > test_after.log 2>&1`
-
-Regression guard against matching focused `test_before.log` passed:
-3 passed before, 3 passed after, no new failures.
-
-Full-suite reproof passed against the accepted full-suite baseline:
-3088 enabled tests passed before, 3088 enabled tests passed after, no new
-failures. The disabled-test set remained the existing backend CLI trace/dump
-tests 27, 28, and 41-50.
-
-Supervisor overfit review found no supported-test downgrades, unsupported
-expectation rewrites, or testcase-shaped shortcuts. The added coverage asserts
-that stale rendered map state cannot override typed `TypeSpec::record_def`
-authority in the converted paths.
+The bridge established `TypeSpec::record_def` as parser semantic record
+identity where available, while `TypeSpec::tag` and
+`DefinitionState::struct_tag_def_map` remain spelling, compatibility, testing
+hook, and final-rendering support.
 
 ## Suggested Next
 
-Ask the plan owner to close or park idea 127 and resume or regenerate parent
-parser cleanup idea 123 with `struct_tag_def_map` classified as a
-compatibility/final-spelling mirror.
+Execute Step 1 of the regenerated parent parser cleanup runbook: inventory
+remaining parser `std::string` lookup maps and helper fallbacks after the
+record bridge, classify each remaining use, and identify the next smallest
+conversion packet that does not depend on `struct_tag_def_map` semantic
+authority.
 
 ## Watchouts
 
-Do not delete `struct_tag_def_map` or remove rendered template compatibility
-keys as part of this bridge. The retained map still supports tag-only fallback,
-testing hooks, rendered instantiation keys, and final spelling compatibility.
+Do not reopen idea 127 unless a real regression in the typed record bridge is
+found. Treat `struct_tag_def_map` as a compatibility/final-spelling mirror, not
+as the next semantic conversion target.
 
-Preserve `TypeSpec::tag` as spelling, diagnostics, emitted text, and
-compatibility payload; semantic record lookup should continue to flow through
-`TypeSpec::record_def` where available.
+Preserve strings that serve source spelling, diagnostics, compatibility input,
+testing hooks, or final emitted text.
 
-Step 6 should be validation and lifecycle routing, not another semantic
-conversion packet, unless reproof exposes a real covered-path gap.
+If a remaining semantic lookup family requires a separate bridge, create a new
+idea under `ideas/open/` and ask for lifecycle routing instead of silently
+expanding the parent parser cleanup route.
 
 ## Proof
 
-Supervisor validation:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests|frontend_cxx_)' > test_after.log 2>&1`
-
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-
-`ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`
+Close-time regression guard run by plan owner:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_baseline.log --after test_after.log --allow-non-decreasing-passed`
 
-Result: focused proof, full-suite proof, and both regression-guard comparisons
-passed.
+Result: passed; 3088 passed before, 3088 passed after, no new failures.

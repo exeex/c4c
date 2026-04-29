@@ -98,5 +98,17 @@ parser-owned files because the lookup input crosses through `TypeSpec`, and
 `struct_tag_def_map` to another string-like key would still leave rendered tag
 spelling as semantic authority.
 
-Follow-up bridge initiative:
-`ideas/open/127_typed_parser_record_identity_bridge.md`.
+Follow-up bridge initiative, now closed:
+`ideas/closed/127_typed_parser_record_identity_bridge.md`.
+
+## Lifecycle Note: 2026-04-29 Return From Bridge
+
+The typed parser record identity bridge is complete and closed at
+`ideas/closed/127_typed_parser_record_identity_bridge.md`.
+
+The parent parser cleanup can resume with `TypeSpec::record_def` carrying
+parser semantic record identity where available. `TypeSpec::tag` remains
+spelling, diagnostics, emitted text, and compatibility payload.
+`DefinitionState::struct_tag_def_map` should now be treated as a
+compatibility/final-spelling mirror, testing hook, and tag-only fallback rather
+than the primary semantic record authority for converted parser paths.

@@ -1,225 +1,193 @@
-# Typed Parser Record Identity Bridge Runbook
+# Parser Legacy String Lookup Removal Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/127_typed_parser_record_identity_bridge.md
-Activated From: ideas/open/127_typed_parser_record_identity_bridge.md
-Supersedes Active Runbook: ideas/open/123_parser_legacy_string_lookup_removal_convergence.md parked on 2026-04-29
+Source Idea: ideas/open/123_parser_legacy_string_lookup_removal_convergence.md
+Activated From: ideas/open/123_parser_legacy_string_lookup_removal_convergence.md
+Returned From: ideas/closed/127_typed_parser_record_identity_bridge.md on 2026-04-29
 
 ## Purpose
 
-Introduce typed parser record identity through `TypeSpec` so record semantic
-lookup does not depend on rendered tag spelling.
+Converge `src/frontend/parser` away from legacy rendered-string lookup
+authority while preserving strings that are still needed for spelling,
+diagnostics, compatibility, or final emitted text.
 
 ## Goal
 
-Let struct and union `TypeSpec` values carry a real record identity alongside
-`TypeSpec::tag`, then convert parser record lookup users to prefer that typed
-identity before compatibility spelling lookup.
+Convert parser-owned pure text lookup to `TextId` where interned text is
+available, and keep parser semantic lookup on typed/domain identity rather than
+rendered `std::string` keys.
 
 ## Core Rule
 
-Do not replace one rendered-string authority path with another. Preserve
-`TypeSpec::tag` as spelling, diagnostics, emitted text, and compatibility
-payload while moving semantic record lookup to typed identity.
+Do not replace one rendered-string semantic authority path with another.
+Classify each remaining string lookup before converting it: text lookup,
+semantic lookup, compatibility fallback, diagnostic/source spelling, or final
+rendering.
 
 ## Read First
 
-- `ideas/open/127_typed_parser_record_identity_bridge.md`
 - `ideas/open/123_parser_legacy_string_lookup_removal_convergence.md`
-- `todo.md` blocker notes for `DefinitionState::struct_tag_def_map`
-- `TypeSpec` definition and all struct/union `TypeSpec::tag` producers.
-- Parser layout, `offsetof`, incomplete object, template instantiation, member
-  typedef, and direct template emission paths.
-- Parser/frontend tests around record layout, `offsetof`, template records, and
-  direct template emission compatibility mirrors.
+- `ideas/closed/127_typed_parser_record_identity_bridge.md`
+- `todo.md`
+- Parser state and helper maps under `src/frontend/parser/impl/`
+- Parser tests that assert stale rendered spelling behavior
 
 ## Current Targets
 
-- `TypeSpec` struct/union record identity payload and propagation.
-- `DefinitionState::struct_tag_def_map` users that currently recover semantic
-  record identity from rendered spelling.
-- Parser support paths for `sizeof`, `alignof`, `offsetof`, incomplete record
-  checks, const-eval layout, template-instantiated records, and member typedef
-  lookup.
-- Compatibility tests that mutate or assert `struct_tag_def_map`.
+- Parser-owned `std::unordered_map<std::string, ...>` maps and helper fallback
+  paths.
+- Pure text lookup surfaces where the parser already has `TextId` or can
+  cheaply intern the lookup text.
+- Semantic lookup surfaces that should use parser-domain identity instead of
+  rendered strings.
+- Compatibility mirrors and final-spelling maps that should remain explicit.
 
 ## Non-Goals
 
-- Do not perform broad HIR, LIR, or BIR legacy lookup migration.
-- Do not remove `TypeSpec::tag`.
-- Do not make `TextId` the semantic record identity.
-- Do not redesign unrelated type identity.
-- Do not downgrade supported tests or replace semantic checks with
-  string-shaped shortcuts.
+- Do not revisit the typed parser record identity bridge except to preserve its
+  contract.
+- Do not remove `TypeSpec::tag` or `DefinitionState::struct_tag_def_map`
+  compatibility/final-spelling behavior.
+- Do not change HIR, LIR, or BIR lookup authority in this runbook.
+- Do not remove strings used only for diagnostics, source spelling, user-facing
+  messages, or final emitted text.
+- Do not downgrade supported tests or mark covered behavior unsupported.
 
 ## Working Model
 
-- `TypeSpec::tag` remains spelling and compatibility output.
-- Typed record identity is separate from spelling and may be represented by an
-  existing record `Node*`, a stable parser record id, or another existing
-  parser-domain key chosen during inventory.
-- Parser semantic record lookup must prefer typed identity when present.
-- `DefinitionState::struct_tag_def_map` remains a compatibility/final-spelling
-  mirror until all converted users have typed identity.
+- `TextId` is parser text identity, not semantic authority by itself.
+- Parser semantic lookup should use a domain key, typed payload, record/node
+  identity, or explicit semantic table.
+- Legacy strings may remain as compatibility input, display data, diagnostics,
+  source spelling, testing hooks, or final rendered keys.
+- The closed typed record bridge established that `TypeSpec::record_def` is the
+  parser semantic record identity when available, while
+  `struct_tag_def_map` is a compatibility/final-spelling mirror.
 
 ## Execution Rules
 
-- Start with inventory before changing the `TypeSpec` contract.
-- Keep each packet bounded to one propagation or consumer family.
-- Prefer existing parser records and AST nodes over new broad abstractions.
-- Add fallback compatibility only where needed to preserve current behavior.
-- Update tests only when they prove semantic identity beats stale rendered
-  spelling, not to weaken supported behavior.
-- Pair code-changing packets with fresh build or focused parser test proof
+- Start by re-inventorying remaining parser string maps after the record bridge.
+- Keep each packet bounded to one map family or helper family.
+- Prefer existing parser `TextTable`, `TextId`, typed AST payloads, and domain
+  tables over new broad abstractions.
+- Add or update tests only when they prove rendered-string authority no longer
+  wins for the converted path.
+- Preserve compatibility fallbacks explicitly where external or final-spelling
+  behavior still depends on rendered strings.
+- Pair code-changing packets with fresh build or focused parser/frontend proof
   selected by the supervisor.
 
 ## Ordered Steps
 
-### Step 1: Inventory Record Identity Through TypeSpec
+### Step 1: Re-Inventory Parser String Lookup After Record Bridge
 
-Goal: map every record-identity producer, carrier, and consumer currently
-crossing through `TypeSpec::tag`.
-
-Primary targets:
-- `TypeSpec` definition and struct/union construction helpers.
-- `DefinitionState::struct_tag_def_map` reads and writes.
-- Parser support, declarations, expressions, struct, declarator, base, and
-  template code named in the Step 3 blocker.
-- Tests that rely on `struct_tag_def_map` compatibility mirrors.
-
-Concrete actions:
-- Inventory each `TypeSpec::tag` producer for struct/union types and whether a
-  record `Node*`, tag declaration, or stable parser record key is available.
-- Inventory each consumer that treats `TypeSpec::tag` as semantic record
-  identity.
-- Choose the smallest viable typed identity representation and record why it is
-  stable enough for parser use.
-- Identify the first propagation packet and focused proof command in `todo.md`.
-
-Completion check:
-- `todo.md` names the selected typed identity representation, the first bounded
-  propagation or consumer packet, retained `TypeSpec::tag` categories, and the
-  focused proof command.
-
-### Step 2: Add TypeSpec Record Identity Payload
-
-Goal: let struct and union `TypeSpec` values carry typed record identity
-without changing their final spelling behavior.
+Goal: classify the remaining parser string lookup surfaces with
+`struct_tag_def_map` treated as a compatibility/final-spelling mirror.
 
 Primary targets:
-- `TypeSpec` storage and constructors/helpers.
-- Parser record definition and tag parsing paths.
+- Parser-owned `std::unordered_map<std::string, ...>` declarations.
+- String-keyed helper lookups under `src/frontend/parser/impl/`.
+- Tests that still assert rendered spelling as lookup authority.
+- `DefinitionState::struct_tag_def_map` sites only as compatibility context.
 
 Concrete actions:
-- Add the chosen typed identity field or wrapper with behavior-preserving
-  defaults.
-- Populate it when a parser path already has the record definition or stable
-  record key.
-- Preserve `TypeSpec::tag` exactly for spelling, diagnostics, and emitted text.
-- Add focused proof that existing tag-only compatibility still works.
+- Inventory each remaining string map as pure text lookup, semantic lookup,
+  compatibility fallback, diagnostic/source spelling, final rendering, or
+  unresolved downstream boundary.
+- Identify the next smallest conversion packet that does not depend on
+  `struct_tag_def_map` semantic authority.
+- Record any separate downstream bridge as a new open idea instead of widening
+  this runbook.
 
 Completion check:
-- Struct/union `TypeSpec` values can carry typed record identity, legacy
-  tag-only paths still compile and pass focused tests, and `TypeSpec::tag`
-  output remains unchanged.
+- `todo.md` names the remaining classified map families, the first bounded
+  conversion packet, retained compatibility categories, and the focused proof
+  command.
 
-### Step 3: Convert Parser Record Consumers To Typed Identity
+### Step 2: Convert Pure Parser Text Lookup To TextId
 
-Goal: make parser record semantic users prefer typed identity before
-`struct_tag_def_map` spelling lookup.
+Goal: move parser-owned text lookup maps to `TextId` keys where the parser
+already has interned text or can intern at the boundary.
 
 Primary targets:
-- `support.cpp` layout and `offsetof` helpers.
-- `declarations.cpp` incomplete object checks and constexpr evaluation bridge.
-- `expressions.cpp` `NK_OFFSETOF` constant folding.
-- `types/declarator.cpp` and `types/base.cpp` record lookup consumers outside
-  template propagation.
+- Local parser maps keyed by source spelling or identifier text.
+- Helpers that receive parser-owned text and immediately perform string map
+  lookup.
 
 Concrete actions:
-- Convert one consumer family at a time to use typed identity when present.
-- Keep `struct_tag_def_map` fallback explicit for tag-only compatibility.
-- Add tests where a stale rendered tag would previously select the wrong record
-  but typed identity now wins.
-- Do not delete compatibility mirrors while unconverted consumers remain.
+- Convert one pure text map family at a time.
+- Intern lookup text at the boundary where needed.
+- Keep rendered strings as spelling/diagnostic payloads, not map authority.
+- Add focused tests or update existing assertions to prove equivalent lookup
+  behavior.
 
 Completion check:
-- Covered parser consumers resolve record semantics through typed identity
-  before spelling fallback, with focused tests proving drifted rendered tags do
-  not override the typed record.
+- Converted pure text lookup maps use `TextId` keys, retained strings are
+  spelling or diagnostics, and focused parser tests pass.
 
-### Step 4: Propagate Typed Record Identity Through Template Records
+### Step 3: Split Remaining Parser Semantic Lookup From Text Spelling
 
-Goal: carry `TypeSpec::record_def` through template-instantiated records and
-template-only lookup paths before demoting rendered tag mirrors.
+Goal: remove rendered-string authority from remaining parser-owned semantic
+lookup paths.
 
 Primary targets:
-- `types/template.cpp` template struct instantiation and specialization reuse.
-- Injected template instantiation fallback and template base `TypeSpec`
-  construction.
-- Deferred member typedef propagation and template static-member base
-  recursion.
-- Direct template emission record map population where it currently preserves
-  rendered compatibility entries.
+- String-keyed maps whose values represent semantic declarations, records,
+  overload sets, typedef ownership, template entities, or domain objects.
+- Helper overloads that hide a semantic lookup behind a `std::string` key.
 
 Concrete actions:
-- Inventory the template producers that create or forward struct/union
-  `TypeSpec` values without `record_def`.
-- Populate or preserve `record_def` when the instantiated record `Node*` is
-  known, without changing rendered instantiation keys or dedup behavior.
-- Convert template-only lookup users to prefer typed record identity before
-  rendered `struct_tag_def_map` fallback.
-- Add focused tests where a stale rendered template record tag cannot override
-  the instantiated record identity.
-- Keep compatibility map writes that are required for final spelling, emitted
-  text, and direct template emission.
+- For each semantic family, choose an existing typed/domain identity or add the
+  smallest parser-local table that represents meaning directly.
+- Preserve rendered-string fallback only where compatibility or final spelling
+  requires it.
+- Add stale-rendered-spelling tests for converted semantic paths.
+- If a family needs a separate bridge, create a focused idea under
+  `ideas/open/` and request lifecycle routing.
 
 Completion check:
-- Template-instantiated record paths and template-only member/static lookup
-  prefer typed record identity when available, rendered-template compatibility
-  keys still work, and focused tests cover stale rendered tag resistance.
+- Covered semantic lookup paths no longer use rendered strings as primary
+  authority, and tests prove stale rendered strings cannot override the typed
+  or domain identity.
 
-### Step 5: Demote struct_tag_def_map To Compatibility Mirror
+### Step 4: Demote Compatibility String Helpers And Tests
 
-Goal: make remaining rendered-tag map use visibly compatibility or final
-spelling data.
+Goal: make retained string paths visibly compatibility, diagnostic, or final
+rendering support rather than ordinary parser lookup authority.
 
 Primary targets:
-- `DefinitionState::struct_tag_def_map` writers and remaining readers.
-- Direct template emission and testing compatibility hooks.
-- Comments or helper names near retained spelling fallback paths.
+- Helper names, comments, and tests around retained string fallbacks.
+- Parser tests that previously treated legacy rendered strings as primary
+  authority.
 
 Concrete actions:
-- Rename, narrow, or document retained rendered-tag helpers if needed.
-- Keep direct-emission compatibility tests but assert they are fallback mirrors,
-  not primary semantic authority.
-- Record any remaining unconverted cross-module boundary as a separate open
-  idea if it cannot be handled in this bridge.
+- Rename, narrow, or document retained helpers where the current name hides
+  compatibility/final-spelling behavior.
+- Keep compatibility coverage but assert fallback behavior explicitly.
+- Avoid deleting strings that still serve diagnostics, source spelling, or
+  final emitted text.
 
 Completion check:
-- Remaining `struct_tag_def_map` use is discoverably classified as
-  compatibility/final spelling, and tests distinguish retained spelling from
-  typed record authority.
+- Remaining parser string lookup sites are discoverably classified, and tests
+  distinguish compatibility fallback from typed or `TextId` authority.
 
-### Step 6: Reprove And Return To Parser Cleanup
+### Step 5: Reprove Parser Cleanup And Decide Closure Or Split
 
-Goal: validate the bridge and decide whether the parent parser cleanup can
-resume.
+Goal: validate the parser cleanup route and decide whether source idea 123 is
+complete or should split remaining work.
 
 Primary targets:
-- Focused parser/frontend tests changed during this bridge.
-- Parser-adjacent frontend validation selected by the supervisor.
-- Parent parser cleanup idea 123.
+- Focused parser/frontend tests changed during this runbook.
+- Broader parser-adjacent validation selected by the supervisor.
+- Any unresolved cross-module boundary found during execution.
 
 Concrete actions:
-- Re-run focused proofs for typed record identity and compatibility fallback.
-- Run broader frontend validation appropriate for `TypeSpec` contract changes.
-- Review expectation updates to ensure no supported behavior was weakened.
-- Record any remaining downstream bridge work before asking for lifecycle
-  closure.
-- Ask the supervisor to return to or regenerate the parent parser cleanup plan
-  once `struct_tag_def_map` is no longer semantic authority.
+- Run focused proofs for converted parser lookup families.
+- Run broader frontend validation appropriate for parser lookup changes.
+- Review expectation updates for unsupported downgrades or testcase-shaped
+  shortcuts.
+- Close idea 123 only if all acceptance criteria are satisfied; otherwise park
+  or split remaining durable work into `ideas/open/`.
 
 Completion check:
-- Focused and broader proof are recorded in `todo.md`, overfit risk is
-  reviewed, retained `TypeSpec::tag` boundaries are documented, and the plan
-  owner can decide whether to close this bridge and reactivate idea 123.
+- Regression guard passes for the selected scope, no overfit or downgrade is
+  present, and lifecycle state clearly records closure, parking, or split.

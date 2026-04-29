@@ -1,7 +1,8 @@
 # Typed Parser Record Identity Bridge
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
 - [123_parser_legacy_string_lookup_removal_convergence.md](/workspaces/c4c/ideas/open/123_parser_legacy_string_lookup_removal_convergence.md)
@@ -69,3 +70,20 @@ than replacing it with semantic record identity.
 - The original parser cleanup idea can resume with `struct_tag_def_map`
   classified as compatibility/final-spelling mirror instead of semantic
   authority.
+
+## Completion Note: 2026-04-29
+
+Closed after Step 6 reproof. The implementation added `TypeSpec::record_def`
+and propagated it through parser record construction, layout and `offsetof`
+helpers, incomplete object checks, dependent typename/member typedef lookup,
+template-instantiated records, static member lookup, and direct template
+base/type substitution paths.
+
+The bridge retains `TypeSpec::tag` as spelling, diagnostics, emitted text, and
+compatibility payload. `DefinitionState::struct_tag_def_map` is now classified
+as a compatibility/final-spelling mirror rather than primary semantic record
+authority for the converted parser paths.
+
+Close gate passed against the accepted full-suite baseline: 3088 enabled tests
+before, 3088 enabled tests after, no new failures. No supported-test downgrade
+or testcase-shaped shortcut was found during supervisor review.
