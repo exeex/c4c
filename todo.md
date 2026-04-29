@@ -9,32 +9,31 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with direct HIR member-symbol lookup ingress in `expr/object.cpp`,
-`expr/scalar_control.cpp`, and `stmt/stmt.cpp`. Initializer-list temporary
-member writes, implicit `this.member` lowering, and constructor member
-initializers now resolve the member owner from the available `TypeSpec` or
-current-struct carrier through structured owner identity before falling back to
-rendered tags for `find_struct_member_symbol_id`.
-
-Added focused HIR coverage for stale rendered owner tags in initializer-list
-member materialization, implicit `this` field access, and constructor member
-initializers. Each test proves the lowered `MemberExpr` keeps the structured
-owner tag and selects the real owner member symbol instead of the stale rendered
+with statement-declaration aggregate-init member-symbol ingress in
+`stmt/decl.cpp`. Local declaration aggregate field lowering now resolves the
+member owner from the available `TypeSpec` carrier through structured owner
+identity before falling back to rendered tags or the legacy field-stored member
 symbol.
+
+Added focused HIR coverage proving a local declaration whose `TypeSpec` carries
+a real `record_def` but a stale rendered tag lowers the `MemberExpr` with the
+structured owner tag and selects the real owner member symbol instead of the
+stale rendered symbol.
 
 ## Suggested Next
 
-Continue Step 4 by auditing remaining rendered-tag member-symbol ingress in
-files outside this packet, especially statement declaration paths, while keeping
-static member lookup and constructor overload routing separate unless delegated.
+Continue Step 4 by auditing any remaining rendered-tag member-symbol ingress
+outside this packet. Keep static member lookup, constructor overload routing,
+and previously completed method/member-expression routes separate unless
+delegated.
 
 ## Watchouts
 
-The new current-struct member-symbol paths construct a `TypeSpec` carrier from
-the rendered struct tag plus the existing `struct_def_nodes_` entry when one is
-available, so legacy rendered fallback remains active. Constructor overload
-routing, static member lookup, and previously completed method lookup routing
-were left untouched by this packet.
+The declaration helper intentionally keeps the old field-stored member-symbol
+fallback when structured owner resolution or rendered lookup has no usable
+symbol, so legacy aggregate initialization remains supported. This packet only
+touched `stmt/decl.cpp`; constructor overload routing, static member lookup,
+and earlier expression/statement member routes were left untouched.
 
 ## Proof
 

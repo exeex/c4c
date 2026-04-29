@@ -108,6 +108,25 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   const bool use_array_init_fast_path =
       is_array_with_init_list && !d.type.spec.is_vector &&
       can_fast_path_scalar_array_init(n->init);
+  auto resolve_decl_member_symbol =
+      [&](const TypeSpec& owner_ts, const std::string& member,
+          MemberSymbolId fallback_id) -> std::pair<std::string, MemberSymbolId> {
+    const std::string* current_struct_tag =
+        !ctx.method_struct_tag.empty() ? &ctx.method_struct_tag : nullptr;
+    const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
+        owner_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings, current_struct_tag,
+        n, std::string("decl-init-member-owner:") + member);
+    std::string resolved_tag =
+        owner_tag.value_or(owner_ts.tag ? std::string(owner_ts.tag) : std::string{});
+    MemberSymbolId member_symbol_id = kInvalidMemberSymbol;
+    if (!resolved_tag.empty()) {
+      member_symbol_id = find_struct_member_symbol_id(resolved_tag, member);
+    }
+    if (member_symbol_id == kInvalidMemberSymbol) {
+      member_symbol_id = fallback_id;
+    }
+    return {std::move(resolved_tag), member_symbol_id};
+  };
   // C++ copy initialization: T var = expr; where T has a copy/move constructor.
   // Detect this early so we can skip setting d.init (the ctor call is emitted
   // after the decl, similar to the is_ctor_init path).
@@ -601,8 +620,10 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             me.field = fld.name;
             me.field_text_id = make_text_id(
                 me.field, module_ ? module_->link_name_texts.get() : nullptr);
-            if (elem_ts.tag && elem_ts.tag[0]) me.resolved_owner_tag = elem_ts.tag;
-            me.member_symbol_id = fld.member_symbol_id;
+            auto [owner_tag, member_symbol_id] =
+                resolve_decl_member_symbol(elem_ts, me.field, fld.member_symbol_id);
+            me.resolved_owner_tag = std::move(owner_tag);
+            me.member_symbol_id = member_symbol_id;
             me.is_arrow = false;
             ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
             ExprId val_id = lower_expr(&ctx, scalar_node);
@@ -844,8 +865,10 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
               me.field = fld.name;
               me.field_text_id = make_text_id(
                   me.field, module_ ? module_->link_name_texts.get() : nullptr);
-              if (cur_ts.tag && cur_ts.tag[0]) me.resolved_owner_tag = cur_ts.tag;
-              me.member_symbol_id = fld.member_symbol_id;
+              auto [owner_tag, member_symbol_id] =
+                  resolve_decl_member_symbol(cur_ts, me.field, fld.member_symbol_id);
+              me.resolved_owner_tag = std::move(owner_tag);
+              me.member_symbol_id = member_symbol_id;
               me.is_arrow = false;
               ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
 
