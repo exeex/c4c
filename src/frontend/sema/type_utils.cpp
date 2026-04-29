@@ -451,8 +451,9 @@ bool same_template_arg_ref_list(const TemplateArgRefList& lhs,
 
 bool same_template_arg_ref(const TemplateArgRef& lhs, const TemplateArgRef& rhs) {
   if (lhs.kind != rhs.kind) return false;
-  if (lhs.value != rhs.value) return false;
-  if (!same_optional_cstr(lhs.debug_text, rhs.debug_text)) return false;
+  if (lhs.kind == TemplateArgKind::Value) {
+    return lhs.value == rhs.value;
+  }
   return type_binding_values_equivalent(lhs.type, rhs.type);
 }
 

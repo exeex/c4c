@@ -2,6 +2,7 @@
 #include "impl/parser_impl.hpp"
 #include "impl/types/types_helpers.hpp"
 #include "parser.hpp"
+#include "sema/type_utils.hpp"
 
 #include <cstdlib>
 #include <exception>
@@ -4339,6 +4340,30 @@ void test_parser_alias_template_substitution_does_not_require_param_name_spellin
               "alias-template substitution should use structured parameter metadata without rendered param_names");
 }
 
+void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches() {
+  c4c::Arena arena;
+
+  c4c::TypeSpec lhs{};
+  lhs.array_size = -1;
+  lhs.inner_rank = -1;
+  lhs.base = c4c::TB_STRUCT;
+  lhs.tag = arena.strdup("Box");
+  lhs.tpl_struct_args.size = 1;
+  lhs.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  lhs.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+  lhs.tpl_struct_args.data[0].value = 7;
+  lhs.tpl_struct_args.data[0].debug_text = arena.strdup("N");
+
+  c4c::TypeSpec rhs = lhs;
+  rhs.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  rhs.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+  rhs.tpl_struct_args.data[0].value = 7;
+  rhs.tpl_struct_args.data[0].debug_text = arena.strdup("DifferentRenderedName");
+
+  expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
+              "template argument equivalence should prefer structured kind/value payload over debug_text");
+}
+
 void test_parser_typename_template_parameter_probe_uses_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4491,6 +4516,7 @@ int main() {
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_alias_template_substitution_prefers_param_text_id();
   test_parser_alias_template_substitution_does_not_require_param_name_spelling();
+  test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
   test_parser_qualified_declarator_name_uses_token_spelling();
