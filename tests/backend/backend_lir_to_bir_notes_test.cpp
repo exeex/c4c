@@ -242,14 +242,20 @@ int expect_link_name_id_symbol_identity_survives_drifted_display_names() {
   }
 
   if (result.module->globals.empty() ||
-      result.module->globals.front().name != "drifted_global_display" ||
+      result.module->globals.front().name != "semantic_global" ||
       result.module->globals.front().link_name_id != global_id) {
-    return fail("BIR global should preserve drifted display spelling beside LinkNameId");
+    return fail("BIR global should use LinkNameId spelling as semantic identity");
+  }
+  if (result.module->globals.front().name == "drifted_global_display") {
+    return fail("BIR global should not keep drifted legacy display spelling as identity");
   }
   const auto& lowered_function = result.module->functions.back();
-  if (lowered_function.name != "drifted_user_display" ||
+  if (lowered_function.name != "semantic_user" ||
       lowered_function.link_name_id != user_id) {
-    return fail("BIR function should preserve drifted display spelling beside LinkNameId");
+    return fail("BIR function should use LinkNameId spelling as semantic identity");
+  }
+  if (lowered_function.name == "drifted_user_display") {
+    return fail("BIR function should not keep drifted legacy display spelling as identity");
   }
 
   const auto* store =
@@ -260,9 +266,12 @@ int expect_link_name_id_symbol_identity_survives_drifted_display_names() {
   }
   const auto* call =
       std::get_if<c4c::backend::bir::CallInst>(&lowered_function.blocks.front().insts[1]);
-  if (call == nullptr || call->callee != "stale_callee_display" ||
+  if (call == nullptr || call->callee != "semantic_callee" ||
       call->callee_link_name_id != callee_id) {
-    return fail("BIR direct call should carry LinkNameId identity despite stale callee spelling");
+    return fail("BIR direct call should use LinkNameId spelling as semantic callee identity");
+  }
+  if (call->callee == "stale_callee_display") {
+    return fail("BIR direct call should not keep stale legacy callee spelling as identity");
   }
   const auto* load =
       std::get_if<c4c::backend::bir::LoadGlobalInst>(&lowered_function.blocks.front().insts[2]);
@@ -370,14 +379,14 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
     return nullptr;
   };
 
-  const auto* lowered_ptr_to_global = find_global("drifted_ptr_to_global_display");
+  const auto* lowered_ptr_to_global = find_global("semantic_ptr_to_global");
   if (lowered_ptr_to_global == nullptr ||
       lowered_ptr_to_global->initializer_symbol_name != "semantic_target" ||
       lowered_ptr_to_global->initializer_symbol_name_id != target_id) {
     return fail("pointer initializer to a known global should carry the target LinkNameId");
   }
 
-  const auto* lowered_ptr_to_function = find_global("drifted_ptr_to_function_display");
+  const auto* lowered_ptr_to_function = find_global("semantic_ptr_to_function");
   if (lowered_ptr_to_function == nullptr ||
       lowered_ptr_to_function->initializer_symbol_name != "semantic_callee" ||
       lowered_ptr_to_function->initializer_symbol_name_id != callee_id) {

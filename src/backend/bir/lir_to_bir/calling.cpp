@@ -23,6 +23,24 @@ std::string function_name_for_reporting(const c4c::codegen::lir::LirModule& modu
   return function.name;
 }
 
+std::string function_name_for_identity(const c4c::LinkNameTable& link_names,
+                                       const c4c::codegen::lir::LirFunction& function) {
+  const std::string_view resolved_name = resolve_link_name(link_names, function.link_name_id);
+  if (!resolved_name.empty()) {
+    return std::string(resolved_name);
+  }
+  return function.name;
+}
+
+std::string extern_decl_name_for_identity(const c4c::LinkNameTable& link_names,
+                                          const c4c::codegen::lir::LirExternDecl& decl) {
+  const std::string_view resolved_name = resolve_link_name(link_names, decl.link_name_id);
+  if (!resolved_name.empty()) {
+    return std::string(resolved_name);
+  }
+  return decl.name;
+}
+
 std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) {
   constexpr std::string_view kPrefix = "ptr byval(";
 
@@ -331,6 +349,7 @@ BirFunctionLowerer::parse_direct_global_typed_call(const c4c::codegen::lir::LirC
 }
 std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
     const c4c::codegen::lir::LirExternDecl& decl,
+    const c4c::LinkNameTable& link_names,
     const c4c::TargetProfile& target_profile,
     const TypeDeclMap& type_decls,
     const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
@@ -345,7 +364,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
   }
 
   bir::Function lowered;
-  lowered.name = decl.name;
+  lowered.name = extern_decl_name_for_identity(link_names, decl);
   lowered.link_name_id = decl.link_name_id;
   lowered.return_type = return_info->type;
   lowered.return_size_bytes = return_info->size_bytes;
@@ -595,7 +614,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         returned_pointer_address = maybe_resolve_direct_calloc_pointer_address(
             semantic_direct_callee, parsed_call->typed_call);
       }
-      callee_name = std::string(parsed_call->symbol_name);
+      callee_name = semantic_direct_callee;
       is_variadic_call = parsed_call->is_variadic;
       lowered_args.reserve(parsed_call->typed_call.args.size());
       lowered_arg_types.reserve(parsed_call->typed_call.param_types.size());
@@ -659,7 +678,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             *compute_call_arg_abi(context_.target_profile, *arg_type));
       }
     } else if (c4c::codegen::lir::trim_lir_arg_text(call.args_str).empty()) {
-      callee_name = std::string(*direct_callee);
+      callee_name = resolved_direct_callee_name(*direct_callee);
     } else {
       return fail_call_family(call_family);
     }
@@ -1139,11 +1158,12 @@ void BirFunctionLowerer::note_runtime_intrinsic_family_failure(std::string_view 
 
 std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
     const c4c::codegen::lir::LirFunction& function,
+    const c4c::LinkNameTable& link_names,
     const c4c::TargetProfile& target_profile,
     const TypeDeclMap& type_decls,
     const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
   bir::Function lowered;
-  lowered.name = function.name;
+  lowered.name = function_name_for_identity(link_names, function);
   lowered.link_name_id = function.link_name_id;
   auto return_info = lower_signature_return_info(
       function.signature_text, type_decls, target_profile, &structured_layouts);

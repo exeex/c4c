@@ -356,6 +356,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
 
   bir::Global aggregate;
   aggregate.name = global.name;
+  aggregate.link_name_id = global.link_name_id;
   aggregate.type = bir::TypeKind::I8;
   aggregate.is_extern = global.is_extern_decl;
   aggregate.is_constant = global.is_const;

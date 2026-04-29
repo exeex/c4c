@@ -368,7 +368,7 @@ std::optional<bir::Function> BirFunctionLowerer::try_lower_canonical_select_func
   }
 
   bir::Function lowered;
-  lowered.name = function_.name;
+  lowered.name = function_name_for_reporting(context_.lir_module, function_);
   lowered.link_name_id = function_.link_name_id;
   lowered.return_type = return_info->type;
   lowered.return_size_bytes = return_info->size_bytes;
@@ -759,7 +759,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower() {
     return std::nullopt;
   }
 
-  lowered_function_.name = function_.name;
+  lowered_function_.name = function_name_for_reporting(context_.lir_module, function_);
   lowered_function_.link_name_id = function_.link_name_id;
   lowered_function_.return_type = return_info_->type;
   lowered_function_.return_size_bytes = return_info_->size_bytes;
@@ -859,7 +859,9 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       return std::nullopt;
     }
     info.link_name_id = global.link_name_id;
-    global_types.emplace(global_name_for_identity(context.lir_module, global), info);
+    const std::string global_name = global_name_for_identity(context.lir_module, global);
+    lowered_global->name = global_name;
+    global_types.emplace(global_name, info);
     module.globals.push_back(std::move(*lowered_global));
   }
 
@@ -972,6 +974,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   for (const auto& decl : context.lir_module.extern_decls) {
     auto lowered_decl = BirFunctionLowerer::lower_extern_decl(
         decl,
+        context.lir_module.link_names,
         context.target_profile,
         type_decls,
         structured_layouts);
@@ -985,7 +988,11 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     if (function.is_declaration) {
       auto lowered_decl =
           BirFunctionLowerer::lower_decl_function(
-              function, context.target_profile, type_decls, structured_layouts);
+              function,
+              context.lir_module.link_names,
+              context.target_profile,
+              type_decls,
+              structured_layouts);
       if (!lowered_decl.has_value()) {
         continue;
       }
