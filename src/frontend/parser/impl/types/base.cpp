@@ -1066,9 +1066,11 @@ TypeSpec Parser::parse_base_type() {
             return true;
         }
         if (check(TokenKind::Identifier)) {
+            const TextId id_text_id = cur().text_id;
             std::string id(token_spelling(cur()));
             consume();
-            if (const TypeSpec* var_type = find_visible_var_type(id)) {
+            if (const TypeSpec* var_type =
+                    find_visible_var_type(id_text_id, id)) {
                 *out = *var_type;
             } else {
                 out->base = TB_INT;  // enum constants and unknowns → int

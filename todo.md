@@ -8,28 +8,28 @@ Current Step Title: Quarantine String Overloads and AST Projection Bridges
 
 ## Just Finished
 
-Plan Step 4 `Quarantine String Overloads and AST Projection Bridges` first
-bounded slice completed. `parse_base_type` no longer calls the raw string-only
-`resolve_visible_type(name)` at simple typedef parsing or deferred alias-member
-owner lookup sites where a token or parser-owned TextId is available. Both
-sites now call the TextId-aware overload and keep `visible_name_spelling` only
-as the final projection spelling.
+Plan Step 4 `Quarantine String Overloads and AST Projection Bridges` continued.
+`parse_base_type` now carries the current identifier token `TextId` into the
+visible value lookup used by the expression/type probe path, replacing
+`find_visible_var_type(id)` with `find_visible_var_type(id_text_id, id)`.
 
-The owned type/template files now have no one-argument `resolve_visible_type`
-calls; remaining `resolve_visible_type` use in the owned files passes TextId
-identity plus fallback spelling.
+Earlier Step 4 work already removed one-argument `resolve_visible_type` calls
+from the owned type/template files. This slice adds another token-backed
+semantic visible lookup conversion without changing final AST spelling.
 
 ## Suggested Next
 
-Continue Step 4 by auditing other raw string typedef/template lookup bridges,
-especially `find_visible_typedef_type(const char*/std::string)` and final AST
-projection paths where a structured key or TextId is already available.
+Continue Step 4 by auditing remaining string-only visible typedef lookups that
+come from tag/ref strings. Convert only call sites where the originating token
+`TextId` or parser-owned semantic key can be carried without confusing final
+AST projection spelling.
 
 ## Watchouts
 
-This slice is intentionally mechanical and semantic-call-site focused; it does
-not remove string overloads globally. Existing frontend parser coverage proved
-the changed type/template paths without adding new test contracts.
+Remaining string-only calls observed in `types/base.cpp` are classified as:
+member typedef recursion over `TypeSpec::tag`, enum/tag projection,
+`ts.tag` combined-specifier resolution, and serialized template arg refs. They
+do not have a clearly correct token `TextId` in this bounded slice.
 
 ## Proof
 
