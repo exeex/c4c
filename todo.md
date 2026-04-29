@@ -16,10 +16,13 @@ letting rendered spelling silently count as authoritative.
 
 ## Suggested Next
 
-Next coherent Step 4 packet: ask for plan review if the remaining Step 4 edge
-paths now look exhausted enough for acceptance routing, or target another
-existing owner-key parity mirror only if the supervisor identifies one still
-missing.
+Next coherent Step 4 packet: extend `frontend_hir_lookup_tests` to cover the
+compile-time registry edge paths that already have structured mirrors. Build
+stale-rendered mismatch tests for `CompileTimeState::find_template_def`,
+`find_template_struct_def`, `find_template_struct_specializations(primary_def,
+rendered_name)`, and `find_consteval_def`, proving declaration-key lookup wins
+over a conflicting rendered-name entry and rendered fallback remains available
+only when declaration metadata is absent.
 
 ## Watchouts
 
