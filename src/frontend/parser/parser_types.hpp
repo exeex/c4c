@@ -18,6 +18,7 @@ class Parser;
 using ParserSymbolId = uint32_t;
 constexpr ParserSymbolId kInvalidParserSymbol = 0;
 
+// Boundary role: parser-local state/table for parser-owned identifier ids.
 struct ParserSymbolTable {
   explicit ParserSymbolTable(TextTable* texts = nullptr) : texts_(texts) {}
 
@@ -59,6 +60,7 @@ struct ParserSymbolTable {
   KeyIdTable<ParserSymbolId, kInvalidParserSymbol, TextId> symbol_ids_;
 };
 
+// Boundary role: parser-local state/table for active parser name bindings.
 struct ParserNameTables {
   ParserSymbolId find_identifier(TextId text_id) const {
     return symbols ? symbols->find_identifier(text_id) : kInvalidParserSymbol;
@@ -96,17 +98,20 @@ struct ParserNameTables {
   std::unordered_map<ParserSymbolId, TypeSpec> var_types;
 };
 
+// Boundary role: parser-local state carrier for tentative token rewriting.
 struct ParserTokenMutation {
   int pos = -1;
   Token token;
 };
 
+// Boundary role: cross-stage durable payload for function-pointer typedefs.
 struct ParserFnPtrTypedefInfo {
   Node** params = nullptr;
   int n_params = 0;
   bool variadic = false;
 };
 
+// Boundary role: parser-local state/table entry for namespace context lookup.
 struct ParserNamespaceContext {
   int id = 0;
   int parent_id = -1;
@@ -116,6 +121,7 @@ struct ParserNamespaceContext {
   const char* canonical_name = nullptr;
 };
 
+// Boundary role: parse-time carrier and AST projection source for names.
 struct ParserQualifiedNameRef {
   bool is_global_qualified = false;
   std::vector<std::string> qualifier_segments;
@@ -142,6 +148,7 @@ struct ParserQualifiedNameRef {
   }
 };
 
+// Boundary role: parse-time carrier and AST projection source for template args.
 struct ParserTemplateArgParseResult {
   bool is_value = false;
   TypeSpec type{};
@@ -150,29 +157,34 @@ struct ParserTemplateArgParseResult {
   Node* expr = nullptr;
 };
 
+// Boundary role: parser-local state tag for template scope tracking.
 enum class ParserTemplateScopeKind {
   EnclosingClass,
   MemberTemplate,
   FreeFunctionTemplate,
 };
 
+// Boundary role: parser-local state and compatibility spelling holder.
 struct ParserTemplateScopeParam {
   TextId name_text_id = kInvalidText;
   const char* name = nullptr;
   bool is_nttp = false;
 };
 
+// Boundary role: parser-local state and compatibility spelling holder.
 struct ParserInjectedTemplateParam {
   TextId name_text_id = kInvalidText;
   const char* name = nullptr;
 };
 
+// Boundary role: parser-local state/table frame for active template scopes.
 struct ParserTemplateScopeFrame {
   ParserTemplateScopeKind kind = ParserTemplateScopeKind::FreeFunctionTemplate;
   std::vector<ParserTemplateScopeParam> params;
   std::string owner_struct_tag;
 };
 
+// Boundary role: AST projection source collected while parsing record bodies.
 struct ParserRecordBodyState {
   std::vector<Node*> fields;
   std::vector<Node*> methods;
@@ -180,6 +192,7 @@ struct ParserRecordBodyState {
   std::vector<TypeSpec> member_typedef_types;
 };
 
+// Boundary role: diagnostics/debug carrier for record-member recovery.
 enum class ParserRecordMemberRecoveryResult {
   Failed,
   SyncedAtSemicolon,
@@ -187,11 +200,13 @@ enum class ParserRecordMemberRecoveryResult {
   StoppedAtRBrace,
 };
 
+// Boundary role: diagnostics/debug carrier for parse stack reporting.
 struct ParserParseContextFrame {
   std::string function_name;
   int token_index = -1;
 };
 
+// Boundary role: diagnostics/debug carrier for best parse-failure reporting.
 struct ParserParseFailure {
   bool active = false;
   bool committed = true;
@@ -206,6 +221,7 @@ struct ParserParseFailure {
   std::vector<std::string> stack_trace;
 };
 
+// Boundary role: diagnostics/debug carrier for parser trace events.
 struct ParserParseDebugEvent {
   std::string kind;
   std::string function_name;
@@ -215,21 +231,25 @@ struct ParserParseDebugEvent {
   int column = 1;
 };
 
+// Boundary role: diagnostics/debug carrier for tentative-parse tracing.
 enum class ParserTentativeParseMode {
   Heavy,
   Lite,
 };
 
+// Boundary role: parser-local state tag for tentative text references.
 enum class ParserTentativeTextRefKind {
   None,
   TextId,
 };
 
+// Boundary role: parse-time carrier for tentative typedef resolution.
 struct ParserTentativeTextRef {
   ParserTentativeTextRefKind kind = ParserTentativeTextRefKind::None;
   TextId text_id = kInvalidText;
 };
 
+// Boundary role: cross-stage durable payload and compatibility spelling holder.
 struct ParserAliasTemplateInfo {
   std::vector<const char*> param_names;
   std::vector<TextId> param_name_text_ids;
@@ -241,7 +261,9 @@ struct ParserAliasTemplateInfo {
   TypeSpec aliased_type;
 };
 
+// Boundary role: parser-local state/table for enum constant bindings.
 using ParserEnumConstTable = std::unordered_map<TextId, long long>;
+// Boundary role: parser-local state/table for constant integer bindings.
 using ParserConstIntBindingTable = std::unordered_map<TextId, long long>;
 
 }  // namespace c4c
