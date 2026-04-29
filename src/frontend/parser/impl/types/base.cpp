@@ -7,6 +7,7 @@
 #include <functional>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "types_helpers.hpp"
@@ -1555,9 +1556,53 @@ TypeSpec Parser::parse_base_type() {
                                     return arg_refs;
                                 };
 
-                            std::unordered_map<std::string, std::string> subst;
+                            std::unordered_map<TextId, std::string> subst;
+                            auto alias_param_text_id =
+                                [&](size_t param_index) -> TextId {
+                                    if (param_index <
+                                            ati->param_name_text_ids.size() &&
+                                        ati->param_name_text_ids[param_index] !=
+                                            kInvalidText) {
+                                        return ati->param_name_text_ids[param_index];
+                                    }
+                                    const char* pname =
+                                        param_index < ati->param_names.size()
+                                            ? ati->param_names[param_index]
+                                            : nullptr;
+                                    return pname && pname[0]
+                                               ? parser_text_id_for_token(
+                                                     kInvalidText, pname)
+                                               : kInvalidText;
+                                };
+                            auto alias_param_ref_text_id =
+                                [&](std::string_view ref) -> TextId {
+                                    if (ref.empty()) return kInvalidText;
+                                    TextId ref_text_id = find_parser_text_id(ref);
+                                    if (ref_text_id != kInvalidText) {
+                                        return ref_text_id;
+                                    }
+                                    for (size_t pi = 0;
+                                         pi < ati->param_names.size(); ++pi) {
+                                        if (pi < ati->param_name_text_ids.size() &&
+                                            ati->param_name_text_ids[pi] !=
+                                                kInvalidText) {
+                                            continue;
+                                        }
+                                        const char* pname = ati->param_names[pi];
+                                        if (pname && ref == pname) {
+                                            return alias_param_text_id(pi);
+                                        }
+                                    }
+                                    return kInvalidText;
+                                };
                             size_t bound_arg_index = 0;
                             for (size_t pi = 0; pi < ati->param_names.size(); ++pi) {
+                                const TextId param_text_id =
+                                    alias_param_text_id(pi);
+                                if (param_text_id == kInvalidText) {
+                                    alias_parse_ok = false;
+                                    break;
+                                }
                                 const bool is_pack =
                                     pi < ati->param_is_pack.size() && ati->param_is_pack[pi];
                                 const bool expects_value =
@@ -1577,7 +1622,7 @@ TypeSpec Parser::parse_base_type() {
                                         ++bound_arg_index;
                                     }
                                     if (!alias_parse_ok) break;
-                                    subst[ati->param_names[pi]] = packed_refs;
+                                    subst[param_text_id] = packed_refs;
                                     continue;
                                 }
                                 if (bound_arg_index >= resolved_alias_args.size()) {
@@ -1589,7 +1634,7 @@ TypeSpec Parser::parse_base_type() {
                                     alias_parse_ok = false;
                                     break;
                                 }
-                                subst[ati->param_names[pi]] =
+                                subst[param_text_id] =
                                     render_template_arg_ref(
                                         resolved_alias_args[bound_arg_index]);
                                 ++bound_arg_index;
@@ -1664,7 +1709,9 @@ TypeSpec Parser::parse_base_type() {
                                         bool first_part = true;
                                         for (const auto& old_part : old_parts) {
                                             std::string substituted = old_part;
-                                            auto s_it = subst.find(old_part);
+                                            const TextId ref_text_id =
+                                                alias_param_ref_text_id(old_part);
+                                            auto s_it = subst.find(ref_text_id);
                                             if (s_it != subst.end())
                                                 substituted = s_it->second;
                                             if (substituted.empty()) continue;
@@ -2214,10 +2261,19 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 if (!resolved_alias_member) {
                                     for (size_t ai = 0;
-                                         ai < resolved_alias_args.size(); ++ai) {
-                                        if (ati->param_is_nttp[ai]) continue;
+                                         ai < resolved_alias_args.size() &&
+                                         ai < ati->param_names.size(); ++ai) {
+                                        if (ai < ati->param_is_nttp.size() &&
+                                            ati->param_is_nttp[ai]) {
+                                            continue;
+                                        }
+                                        const TextId tag_text_id =
+                                            ts.tag ? alias_param_ref_text_id(ts.tag)
+                                                   : kInvalidText;
                                         if (ts.base == TB_TYPEDEF && ts.tag &&
-                                            std::string(ts.tag) == ati->param_names[ai]) {
+                                            tag_text_id != kInvalidText &&
+                                            tag_text_id ==
+                                                alias_param_text_id(ai)) {
                                             const bool outer_lref = ts.is_lvalue_ref;
                                             const bool outer_rref = ts.is_rvalue_ref;
                                             const bool outer_const = ts.is_const;
