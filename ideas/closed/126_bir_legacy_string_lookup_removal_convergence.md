@@ -98,7 +98,7 @@ or unresolved producer-boundary compatibility surfaces rather than silent BIR
 semantic authority.
 
 The unresolved producer-boundary follow-up is tracked separately in
-`ideas/open/127_lir_structured_signature_reference_producer_boundary.md`; it is
+`ideas/open/127_lir_structured_function_signature_metadata_boundary.md`; it is
 not remaining scope for this BIR convergence idea.
 
 Close proof used the accepted full-suite baseline for commit `f4a9465f`:

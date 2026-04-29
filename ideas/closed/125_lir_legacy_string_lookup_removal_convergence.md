@@ -10,7 +10,7 @@ Parent Ideas:
 - [122_bir_string_legacy_path_cleanup.md](/workspaces/c4c/ideas/closed/122_bir_string_legacy_path_cleanup.md)
 
 Follow-up Ideas:
-- [127_lir_structured_signature_reference_producer_boundary.md](/workspaces/c4c/ideas/open/127_lir_structured_signature_reference_producer_boundary.md)
+- [127_lir_structured_function_signature_metadata_boundary.md](/workspaces/c4c/ideas/open/127_lir_structured_function_signature_metadata_boundary.md)
 
 ## Goal
 
