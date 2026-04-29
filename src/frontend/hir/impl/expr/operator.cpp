@@ -116,6 +116,14 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   if (obj_ts.ptr_level != 0 || obj_ts.base != TB_STRUCT || !obj_ts.tag) {
     return ExprId::invalid();
   }
+  const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+  const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+  const std::string* current_struct_tag =
+      (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+  const std::string owner_tag = resolve_struct_method_lookup_owner_tag(
+      obj_ts, false, tpl_bindings, nttp_bindings, current_struct_tag, result_node,
+      std::string("operator-call:") + op_method_name);
+  if (owner_tag.empty()) return ExprId::invalid();
 
   if (std::strcmp(op_method_name, "operator_call") == 0 && arg_nodes.empty()) {
     if (auto value = find_struct_static_member_const_value(obj_ts.tag, "value")) {
@@ -131,11 +139,11 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   }
 
   std::optional<std::string> resolved =
-      find_struct_method_mangled(obj_ts.tag, op_method_name, obj_ts.is_const);
+      find_struct_method_mangled(owner_tag, op_method_name, obj_ts.is_const);
   if (!resolved) return ExprId::invalid();
 
   std::string resolved_mangled = *resolved;
-  std::string base_key = std::string(obj_ts.tag) + "::" + op_method_name;
+  std::string base_key = owner_tag + "::" + op_method_name;
   auto ovit = ref_overload_set_.find(base_key);
   if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
     const auto& overloads = ovit->second;
@@ -189,7 +197,8 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
     fn_ts = callee_fn->return_type.spec;
   }
   if (fn_ts.base == TB_VOID) {
-    if (auto rit = find_struct_method_return_type(obj_ts.tag, op_method_name, obj_ts.is_const)) {
+    if (auto rit = find_struct_method_return_type(
+            owner_tag, op_method_name, obj_ts.is_const)) {
       fn_ts = *rit;
     }
   }
@@ -323,8 +332,16 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         TypeSpec rts = res_expr->type.spec;
         if (rts.ptr_level > 0) break;
         if (rts.base != TB_STRUCT || !rts.tag) break;
+        const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+        const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+        const std::string* current_struct_tag =
+            (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+        const std::string owner_tag = resolve_struct_method_lookup_owner_tag(
+            rts, false, tpl_bindings, nttp_bindings, current_struct_tag, n,
+            "operator-arrow-chain");
+        if (owner_tag.empty()) break;
         auto method = find_struct_method_mangled(
-            rts.tag, "operator_arrow", rts.is_const);
+            owner_tag, "operator_arrow", rts.is_const);
         if (!method) break;
         DeclRef arrow_method_ref{};
         arrow_method_ref.name = *method;
@@ -336,7 +353,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         }
         if (fn_ts.base == TB_VOID) {
           if (auto rit2 = find_struct_method_return_type(
-                  rts.tag, "operator_arrow", false)) {
+                  owner_tag, "operator_arrow", false)) {
             fn_ts = *rit2;
           }
         }
@@ -445,7 +462,15 @@ ExprId Lowerer::maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n)
   if (!expr.valid() || !n) return expr;
   TypeSpec ts = infer_generic_ctrl_type(ctx, n);
   if (ts.ptr_level != 0 || ts.base != TB_STRUCT || !ts.tag) return expr;
-  auto method = find_struct_method_mangled(ts.tag, "operator_bool", false);
+  const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+  const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+  const std::string* current_struct_tag =
+      (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+  const std::string owner_tag = resolve_struct_method_lookup_owner_tag(
+      ts, false, tpl_bindings, nttp_bindings, current_struct_tag, n,
+      "operator-bool-convert");
+  if (owner_tag.empty()) return expr;
+  auto method = find_struct_method_mangled(owner_tag, "operator_bool", false);
   if (!method) return expr;
 
   CallExpr c{};

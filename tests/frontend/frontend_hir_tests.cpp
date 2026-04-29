@@ -2137,6 +2137,162 @@ void test_hir_range_for_method_owner_prefers_record_def_over_stale_tag() {
               "range-for method lookup should use the structured owner before rendered spelling");
 }
 
+void test_hir_operator_call_method_owner_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealOperatorOwner");
+  real_record->unqualified_name = arena.strdup("RealOperatorOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for the real operator owner");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealOperatorOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealOperatorOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleRenderedOperatorOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleRenderedOperatorOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  const c4c::TextId operator_text_id =
+      module.link_name_texts->intern("operator_deref");
+  c4c::hir::HirStructMethodLookupKey method_key;
+  method_key.owner_key = *owner_key;
+  method_key.method_text_id = operator_text_id;
+  method_key.is_const_method = false;
+  lowerer.struct_methods_by_owner_[method_key] = "RealOperatorOwner__deref";
+  lowerer.struct_methods_["StaleRenderedOperatorOwner::operator_deref"] =
+      "StaleOperatorOwner__deref";
+
+  c4c::TypeSpec structured_ret{};
+  structured_ret.base = c4c::TB_LONG;
+  c4c::TypeSpec stale_ret{};
+  stale_ret.base = c4c::TB_INT;
+  lowerer.struct_method_ret_types_by_owner_[method_key] = structured_ret;
+  lowerer.struct_method_ret_types_["StaleRenderedOperatorOwner::operator_deref"] =
+      stale_ret;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleRenderedOperatorOwner");
+  owner_ts.record_def = real_record;
+
+  c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
+  obj->name = arena.strdup("obj");
+  obj->type = owner_ts;
+  c4c::Node* result = parser.make_node(c4c::NK_DEREF, 1);
+  result->left = obj;
+  result->type = structured_ret;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  const c4c::hir::LocalId obj_local{0};
+  ctx.locals["obj"] = obj_local;
+  ctx.local_types.insert(obj_local, owner_ts);
+
+  const std::optional<std::string> stale_rendered_method =
+      lowerer.find_struct_method_mangled(
+          "StaleRenderedOperatorOwner", "operator_deref", false);
+  expect_true(stale_rendered_method.has_value() &&
+                  *stale_rendered_method == "StaleOperatorOwner__deref",
+              "fixture should expose the stale rendered operator fallback before owner repair");
+
+  const c4c::hir::ExprId call_id = lowerer.try_lower_operator_call(
+      &ctx, result, obj, "operator_deref", {});
+  expect_true(call_id.valid(),
+              "operator call lowering should find the structured-owner method");
+  const c4c::hir::Expr* call_expr = module.find_expr(call_id);
+  expect_true(call_expr != nullptr,
+              "operator call lowering should append a call expression");
+  const c4c::hir::CallExpr* call =
+      std::get_if<c4c::hir::CallExpr>(&call_expr->payload);
+  expect_true(call != nullptr,
+              "operator call lowering should produce a CallExpr payload");
+  const c4c::hir::Expr* callee_expr = module.find_expr(call->callee);
+  expect_true(callee_expr != nullptr,
+              "operator call lowering should append a callee expression");
+  const c4c::hir::DeclRef* callee =
+      std::get_if<c4c::hir::DeclRef>(&callee_expr->payload);
+  expect_true(callee != nullptr && callee->name == "RealOperatorOwner__deref",
+              "operator method lookup should use structured record_def owner before stale rendered spelling");
+  expect_true(call_expr->type.spec.base == c4c::TB_LONG,
+              "operator method return-type lookup should use the structured owner");
+}
+
+void test_hir_operator_call_method_owner_keeps_rendered_fallback() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef legacy_def;
+  legacy_def.tag = "LegacyRenderedOperatorOwner";
+  legacy_def.tag_text_id = module.link_name_texts->intern("LegacyRenderedOperatorOwner");
+  legacy_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[legacy_def.tag] = legacy_def;
+  lowerer.struct_methods_["LegacyRenderedOperatorOwner::operator_deref"] =
+      "LegacyOperatorOwner__deref";
+  c4c::TypeSpec legacy_ret{};
+  legacy_ret.base = c4c::TB_INT;
+  lowerer.struct_method_ret_types_["LegacyRenderedOperatorOwner::operator_deref"] =
+      legacy_ret;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("LegacyRenderedOperatorOwner");
+
+  c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
+  obj->name = arena.strdup("obj");
+  obj->type = owner_ts;
+  c4c::Node* result = parser.make_node(c4c::NK_DEREF, 1);
+  result->left = obj;
+  result->type = legacy_ret;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  const c4c::hir::LocalId obj_local{0};
+  ctx.locals["obj"] = obj_local;
+  ctx.local_types.insert(obj_local, owner_ts);
+
+  const c4c::hir::ExprId call_id = lowerer.try_lower_operator_call(
+      &ctx, result, obj, "operator_deref", {});
+  expect_true(call_id.valid(),
+              "operator call lowering should retain rendered fallback when structured owner is absent");
+  const c4c::hir::Expr* call_expr = module.find_expr(call_id);
+  expect_true(call_expr != nullptr,
+              "rendered fallback operator call should append a call expression");
+  const c4c::hir::CallExpr* call =
+      std::get_if<c4c::hir::CallExpr>(&call_expr->payload);
+  expect_true(call != nullptr,
+              "rendered fallback operator call should produce a CallExpr payload");
+  const c4c::hir::Expr* callee_expr = module.find_expr(call->callee);
+  expect_true(callee_expr != nullptr,
+              "rendered fallback operator call should append a callee expression");
+  const c4c::hir::DeclRef* callee =
+      std::get_if<c4c::hir::DeclRef>(&callee_expr->payload);
+  expect_true(callee != nullptr && callee->name == "LegacyOperatorOwner__deref",
+              "operator method lookup should retain rendered fallback without structured owner identity");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -2604,6 +2760,8 @@ int main() {
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_range_for_method_owner_prefers_record_def_over_stale_tag();
+  test_hir_operator_call_method_owner_prefers_record_def_over_stale_tag();
+  test_hir_operator_call_method_owner_keeps_rendered_fallback();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();
