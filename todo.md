@@ -9,30 +9,30 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with the remaining assigned HIR method-lookup caller family in
-`infer_generic_ctrl_type` and `expr/call.cpp`. The generic control-type
-`operator_deref` and `operator_call` return-type probes, template-struct
-`operator_call` lowering, and member-call lowering now resolve structured
-owner identity from the relevant `TypeSpec` carrier before calling the method
-lookup registries, while preserving rendered-tag fallback through the existing
-owner-resolution helper.
+with the remaining assigned `expr/object.cpp` new/delete method-lookup callers.
+Class-specific `operator_new` and `operator_delete` lookup now resolves the
+owner from the relevant `TypeSpec` carrier through structured identity before
+calling the method lookup registry, while preserving rendered-tag fallback
+through the existing owner-resolution helper.
 
-Added focused HIR coverage for generic control-type deref/operator_call
-return-type lookup and member-call lowering where stale rendered tags would
-select the wrong method or return type unless `record_def` structured owner
-identity is used first.
+Added focused HIR coverage for `lower_new_expr` and `lower_delete_expr` where
+stale rendered tags would select the wrong allocator/deallocator method unless
+`record_def` structured owner identity is used first.
 
 ## Suggested Next
 
 Continue Step 4 by auditing the remaining rendered-tag member/method lookup
-ingress outside this packet, with care to keep static member routing separate
-from method lookup routing unless the supervisor delegates that owner family.
+ingress outside the completed call/operator/new/delete object-expression
+families, with care to keep static member routing separate from method lookup
+routing unless the supervisor delegates that owner family.
 
 ## Watchouts
 
 `resolve_struct_method_lookup_owner_tag` still delegates to the member-owner
 resolver and then falls back to `TypeSpec::tag`, so legacy rendered-only method
-lookup remains available. The `operator_call` empty-argument static `value`
+lookup remains available. Constructor routing in `lower_new_expr` still uses
+`struct_constructors_` and was left untouched because this packet only owned
+method lookup callers. The `operator_call` empty-argument static `value`
 shortcut in `try_lower_operator_call` remains a static-member path, not a
 method lookup; it should stay out of method-owner packets unless static member
 owner routing is explicitly delegated.

@@ -635,10 +635,18 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
   bool is_class_specific = false;
   if (!n->is_global_qualified && alloc_ts.base == TB_STRUCT && alloc_ts.tag) {
     const char* method_name = is_array ? "operator_new_array" : "operator_new";
-    if (auto method =
-            find_struct_method_mangled(alloc_ts.tag, method_name, false)) {
-      op_fn = *method;
-      is_class_specific = true;
+    const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+    const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+    const std::string* current_struct_tag =
+        (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+    const std::string owner_tag = resolve_struct_method_lookup_owner_tag(
+        alloc_ts, false, tpl_bindings, nttp_bindings, current_struct_tag, n,
+        "new-expression-operator");
+    if (!owner_tag.empty()) {
+      if (auto method = find_struct_method_mangled(owner_tag, method_name, false)) {
+        op_fn = *method;
+        is_class_specific = true;
+      }
     }
   }
   if (op_fn.empty()) op_fn = is_array ? "operator_new_array" : "operator_new";
@@ -736,10 +744,18 @@ ExprId Lowerer::lower_delete_expr(FunctionCtx* ctx, const Node* n) {
   if (operand_ts.base == TB_STRUCT && operand_ts.tag && operand_ts.ptr_level > 0) {
     const char* method_name =
         is_array ? "operator_delete_array" : "operator_delete";
-    if (auto method =
-            find_struct_method_mangled(operand_ts.tag, method_name, false)) {
-      op_fn = *method;
-      is_class_specific = true;
+    const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+    const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+    const std::string* current_struct_tag =
+        (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+    const std::string owner_tag = resolve_struct_method_lookup_owner_tag(
+        operand_ts, true, tpl_bindings, nttp_bindings, current_struct_tag, n,
+        "delete-expression-operator");
+    if (!owner_tag.empty()) {
+      if (auto method = find_struct_method_mangled(owner_tag, method_name, false)) {
+        op_fn = *method;
+        is_class_specific = true;
+      }
     }
   }
   if (op_fn.empty()) op_fn = is_array ? "operator_delete_array" : "operator_delete";

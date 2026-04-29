@@ -2511,6 +2511,181 @@ void test_hir_member_call_method_owner_prefers_record_def_over_stale_tag() {
               "member call method lookup should use structured record_def owner before stale rendered spelling");
 }
 
+void test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealNewOwner");
+  real_record->unqualified_name = arena.strdup("RealNewOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for new-expression owner");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealNewOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealNewOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleNewOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleNewOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::hir::HirStructMethodLookupKey method_key;
+  method_key.owner_key = *owner_key;
+  method_key.method_text_id = module.link_name_texts->intern("operator_new");
+  method_key.is_const_method = false;
+  lowerer.struct_methods_by_owner_[method_key] = "RealNewOwner__new";
+  lowerer.struct_methods_["StaleNewOwner::operator_new"] = "StaleNewOwner__new";
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleNewOwner");
+  owner_ts.record_def = real_record;
+
+  c4c::Node* new_node = parser.make_node(c4c::NK_NEW_EXPR, 1);
+  new_node->type = owner_ts;
+  new_node->ival = 0;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+
+  const std::string owner_tag = lowerer.resolve_struct_method_lookup_owner_tag(
+      owner_ts, false, nullptr, nullptr, nullptr, new_node,
+      "new-expression-method-owner-test");
+  expect_true(owner_tag == "RealNewOwner",
+              "new-expression owner resolution should prefer record_def over stale rendered spelling");
+  const std::optional<std::string> resolved_method =
+      lowerer.find_struct_method_mangled(owner_tag, "operator_new", false);
+  expect_true(resolved_method.has_value() && *resolved_method == "RealNewOwner__new",
+              "fixture should resolve structured operator_new before lowering new expression");
+
+  const c4c::hir::ExprId new_id = lowerer.lower_new_expr(&ctx, new_node);
+  expect_true(new_id.valid(), "new-expression lowering should produce a typed pointer");
+  const c4c::hir::Expr* cast_expr = module.find_expr(new_id);
+  expect_true(cast_expr != nullptr,
+              "new-expression lowering should append the typed pointer cast");
+  const c4c::hir::CastExpr* cast =
+      std::get_if<c4c::hir::CastExpr>(&cast_expr->payload);
+  expect_true(cast != nullptr,
+              "new-expression lowering should return a CastExpr payload");
+  const c4c::hir::Expr* call_expr = module.find_expr(cast->expr);
+  expect_true(call_expr != nullptr,
+              "new-expression lowering should append an allocator call expression");
+  const c4c::hir::CallExpr* call =
+      std::get_if<c4c::hir::CallExpr>(&call_expr->payload);
+  expect_true(call != nullptr,
+              "new-expression lowering should call an operator_new method");
+  const c4c::hir::Expr* callee_expr = module.find_expr(call->callee);
+  expect_true(callee_expr != nullptr,
+              "new-expression lowering should append an allocator callee");
+  const c4c::hir::DeclRef* callee =
+      std::get_if<c4c::hir::DeclRef>(&callee_expr->payload);
+  expect_true(callee != nullptr && callee->name == "RealNewOwner__new",
+              "new-expression method lookup should use structured record_def owner before stale rendered spelling");
+}
+
+void test_hir_delete_expr_method_owner_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealDeleteOwner");
+  real_record->unqualified_name = arena.strdup("RealDeleteOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for delete-expression owner");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealDeleteOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealDeleteOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleDeleteOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleDeleteOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::hir::HirStructMethodLookupKey method_key;
+  method_key.owner_key = *owner_key;
+  method_key.method_text_id = module.link_name_texts->intern("operator_delete");
+  method_key.is_const_method = false;
+  lowerer.struct_methods_by_owner_[method_key] = "RealDeleteOwner__delete";
+  lowerer.struct_methods_["StaleDeleteOwner::operator_delete"] =
+      "StaleDeleteOwner__delete";
+
+  c4c::TypeSpec pointer_ts{};
+  pointer_ts.array_size = -1;
+  pointer_ts.inner_rank = -1;
+  pointer_ts.base = c4c::TB_STRUCT;
+  pointer_ts.tag = arena.strdup("StaleDeleteOwner");
+  pointer_ts.record_def = real_record;
+  pointer_ts.ptr_level = 1;
+
+  c4c::Node* operand = parser.make_node(c4c::NK_VAR, 1);
+  operand->name = arena.strdup("ptr");
+  operand->type = pointer_ts;
+  c4c::Node* delete_node = parser.make_node(c4c::NK_DELETE_EXPR, 1);
+  delete_node->left = operand;
+  delete_node->ival = 0;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  const c4c::hir::LocalId ptr_local{0};
+  ctx.locals["ptr"] = ptr_local;
+  ctx.local_types.insert(ptr_local, pointer_ts);
+
+  const c4c::hir::ExprId delete_id = lowerer.lower_delete_expr(&ctx, delete_node);
+  expect_true(delete_id.valid(), "delete-expression lowering should complete");
+  expect_true(!fn.blocks.empty() && !fn.blocks.front().stmts.empty(),
+              "delete-expression lowering should append an operator_delete statement");
+  const c4c::hir::ExprStmt* expr_stmt =
+      std::get_if<c4c::hir::ExprStmt>(&fn.blocks.front().stmts.back().payload);
+  expect_true(expr_stmt != nullptr && expr_stmt->expr.has_value(),
+              "delete-expression lowering should append an ExprStmt");
+  const c4c::hir::Expr* call_expr = module.find_expr(*expr_stmt->expr);
+  expect_true(call_expr != nullptr,
+              "delete-expression lowering should append a deleter call expression");
+  const c4c::hir::CallExpr* call =
+      std::get_if<c4c::hir::CallExpr>(&call_expr->payload);
+  expect_true(call != nullptr,
+              "delete-expression lowering should call an operator_delete method");
+  const c4c::hir::Expr* callee_expr = module.find_expr(call->callee);
+  expect_true(callee_expr != nullptr,
+              "delete-expression lowering should append a deleter callee");
+  const c4c::hir::DeclRef* callee =
+      std::get_if<c4c::hir::DeclRef>(&callee_expr->payload);
+  expect_true(callee != nullptr && callee->name == "RealDeleteOwner__delete",
+              "delete-expression method lookup should use structured record_def owner before stale rendered spelling");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -2983,6 +3158,8 @@ int main() {
   test_hir_generic_ctrl_deref_method_owner_prefers_record_def_over_stale_tag();
   test_hir_generic_ctrl_operator_call_method_owner_prefers_record_def_over_stale_tag();
   test_hir_member_call_method_owner_prefers_record_def_over_stale_tag();
+  test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag();
+  test_hir_delete_expr_method_owner_prefers_record_def_over_stale_tag();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();
