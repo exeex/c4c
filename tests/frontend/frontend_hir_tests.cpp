@@ -867,6 +867,83 @@ int call_helper(int value) { return helper(value); }
               "fixture should recover the direct-call spelling from semantic identity");
 }
 
+void test_hir_to_lir_global_initializer_reachability_prefers_structured_function_ids() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+static int semantic_helper(int value) { return value + 1; }
+static int rendered_shadow(int value) { return value - 1; }
+
+int (*global_pick)(int) = semantic_helper;
+int call_pick(int value) { return global_pick(value); }
+)cpp");
+
+  const auto helper_it = hir_module.fn_index.find("semantic_helper");
+  expect_true(helper_it != hir_module.fn_index.end(),
+              "fixture semantic helper should be present in the HIR function index");
+  c4c::hir::Function* helper = hir_module.find_function(helper_it->second);
+  expect_true(helper != nullptr && helper->link_name_id != c4c::kInvalidLinkName,
+              "fixture semantic helper should carry a stable HIR LinkNameId");
+  const c4c::LinkNameId helper_link_name_id = helper->link_name_id;
+
+  const auto shadow_it = hir_module.fn_index.find("rendered_shadow");
+  expect_true(shadow_it != hir_module.fn_index.end(),
+              "fixture rendered-name shadow should be present in the HIR function index");
+  const c4c::hir::Function* shadow = hir_module.find_function(shadow_it->second);
+  expect_true(shadow != nullptr && shadow->link_name_id != c4c::kInvalidLinkName,
+              "fixture rendered-name shadow should carry a stable HIR LinkNameId");
+  const c4c::LinkNameId shadow_link_name_id = shadow->link_name_id;
+
+  const auto global_it = hir_module.global_index.find("global_pick");
+  expect_true(global_it != hir_module.global_index.end(),
+              "fixture global function pointer should be present in the HIR global index");
+  c4c::hir::GlobalVar* global_pick = hir_module.find_global(global_it->second);
+  expect_true(global_pick != nullptr,
+              "fixture global function pointer should resolve through the HIR global lookup");
+  auto* init = std::get_if<c4c::hir::InitScalar>(&global_pick->init);
+  expect_true(init != nullptr,
+              "fixture global function pointer should use a scalar initializer");
+  auto* init_ref =
+      std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[init->expr.value].payload);
+  expect_true(init_ref != nullptr && init_ref->link_name_id == helper_link_name_id,
+              "fixture initializer should carry the semantic helper LinkNameId");
+
+  helper->name = "broken_semantic_helper_definition_name";
+  init_ref->name = "rendered_shadow";
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto lir_global_it = std::find_if(
+      lir_module.globals.begin(), lir_module.globals.end(),
+      [&](const c4c::codegen::lir::LirGlobal& global) {
+        return global.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(global.link_name_id) == "global_pick";
+      });
+  expect_true(lir_global_it != lir_module.globals.end(),
+              "fixture global function pointer should lower into a concrete LIR global");
+  expect_true(std::find(lir_global_it->initializer_function_link_name_ids.begin(),
+                        lir_global_it->initializer_function_link_name_ids.end(),
+                        helper_link_name_id) !=
+                  lir_global_it->initializer_function_link_name_ids.end(),
+              "global initializer lowering should preserve the structured helper identity");
+
+  const auto lir_helper_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id == helper_link_name_id;
+      });
+  expect_true(lir_helper_it != lir_module.functions.end(),
+              "dead-internal elimination should keep the helper reached by global initializer identity");
+  expect_true(lir_helper_it->can_elide_if_unreferenced,
+              "fixture semantic helper should exercise the discardable-function reachability path");
+
+  const auto lir_shadow_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id == shadow_link_name_id;
+      });
+  expect_true(lir_shadow_it == lir_module.functions.end(),
+              "dead-internal elimination should not keep the rendered-name collision");
+}
+
 void test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids() {
   c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int helper(int value) { return value + 1; }
@@ -1952,6 +2029,7 @@ int main() {
   test_hir_global_init_designators_preserve_text_ids_for_field_names();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_dead_internal_reachability_prefers_link_name_ids();
+  test_hir_to_lir_global_initializer_reachability_prefers_structured_function_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_direct_call_lookup_rejects_rendered_name_collision_after_link_name_miss();
   test_hir_to_lir_global_initializer_lookup_prefers_semantic_global_identity();

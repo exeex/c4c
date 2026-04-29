@@ -268,6 +268,90 @@ std::vector<size_t> dedup_functions(const c4c::hir::Module& mod) {
   return result;
 }
 
+std::vector<LinkNameId> collect_global_init_function_link_name_ids(
+    const c4c::hir::Module& mod,
+    const c4c::hir::GlobalInit& init) {
+  std::vector<LinkNameId> refs;
+  std::unordered_set<LinkNameId> seen;
+
+  const auto add = [&](LinkNameId id) {
+    if (id == kInvalidLinkName || seen.count(id) != 0 || mod.find_function(id) == nullptr) {
+      return;
+    }
+    seen.insert(id);
+    refs.push_back(id);
+  };
+
+  std::function<void(c4c::hir::ExprId)> scan_expr = [&](c4c::hir::ExprId id) {
+    if (id.value >= mod.expr_pool.size()) return;
+    const c4c::hir::Expr& expr = mod.expr_pool[id.value];
+    std::visit(
+        [&](const auto& payload) {
+          using T = std::decay_t<decltype(payload)>;
+          if constexpr (std::is_same_v<T, c4c::hir::DeclRef>) {
+            add(payload.link_name_id);
+          } else if constexpr (std::is_same_v<T, c4c::hir::UnaryExpr>) {
+            scan_expr(payload.operand);
+          } else if constexpr (std::is_same_v<T, c4c::hir::BinaryExpr>) {
+            scan_expr(payload.lhs);
+            scan_expr(payload.rhs);
+          } else if constexpr (std::is_same_v<T, c4c::hir::AssignExpr>) {
+            scan_expr(payload.lhs);
+            scan_expr(payload.rhs);
+          } else if constexpr (std::is_same_v<T, c4c::hir::CastExpr>) {
+            scan_expr(payload.expr);
+          } else if constexpr (std::is_same_v<T, c4c::hir::CallExpr>) {
+            scan_expr(payload.callee);
+            for (const auto arg : payload.args) scan_expr(arg);
+          } else if constexpr (std::is_same_v<T, c4c::hir::VaArgExpr>) {
+            scan_expr(payload.ap);
+          } else if constexpr (std::is_same_v<T, c4c::hir::IndexExpr>) {
+            scan_expr(payload.base);
+            scan_expr(payload.index);
+          } else if constexpr (std::is_same_v<T, c4c::hir::MemberExpr>) {
+            scan_expr(payload.base);
+          } else if constexpr (std::is_same_v<T, c4c::hir::TernaryExpr>) {
+            scan_expr(payload.cond);
+            scan_expr(payload.then_expr);
+            scan_expr(payload.else_expr);
+          } else if constexpr (std::is_same_v<T, c4c::hir::SizeofExpr>) {
+            scan_expr(payload.expr);
+          } else if constexpr (std::is_same_v<T, c4c::hir::LabelAddrExpr>) {
+            add(payload.fn_link_name_id);
+          }
+        },
+        expr.payload);
+  };
+
+  std::function<void(const c4c::hir::GlobalInit&)> scan_init =
+      [&](const c4c::hir::GlobalInit& global_init) {
+    std::visit(
+        [&](const auto& payload) {
+          using T = std::decay_t<decltype(payload)>;
+          if constexpr (std::is_same_v<T, c4c::hir::InitScalar>) {
+            scan_expr(payload.expr);
+          } else if constexpr (std::is_same_v<T, c4c::hir::InitList>) {
+            for (const auto& item : payload.items) {
+              std::visit(
+                  [&](const auto& item_value) {
+                    using U = std::decay_t<decltype(item_value)>;
+                    if constexpr (std::is_same_v<U, c4c::hir::InitScalar>) {
+                      scan_expr(item_value.expr);
+                    } else {
+                      scan_init(c4c::hir::GlobalInit(*item_value));
+                    }
+                  },
+                  item.value);
+            }
+          }
+        },
+        global_init);
+  };
+
+  scan_init(init);
+  return refs;
+}
+
 // ── Global variable lowering ─────────────────────────────────────────────────
 // Semantic decisions (linkage, alignment, qualifier, type, init) are computed
 // here in lowering.  The printer assembles LLVM text from the structured fields.
@@ -328,6 +412,8 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
           lg.llvm_type = literal_ty;
           lg.llvm_type_ref = lir_global_type_ref(lg.llvm_type, &module, ts);
           lg.init_text = literal_init;
+          lg.initializer_function_link_name_ids =
+              collect_global_init_function_link_name_ids(mod, gv.init);
           lg.align_bytes = align;
           lg.is_extern_decl = false;
           module.globals.push_back(std::move(lg));
@@ -357,6 +443,8 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
                                       false, gv.linkage.visibility);
     lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
     lg.init_text = const_init.emit_const_init(ts, gv.init);
+    lg.initializer_function_link_name_ids =
+        collect_global_init_function_link_name_ids(mod, gv.init);
     lg.is_extern_decl = false;
   }
 
@@ -1078,6 +1166,9 @@ static void eliminate_dead_internals(LirModule& mod) {
   // Seed from global initializers.
   for (const auto& g : mod.globals) {
     LirGlobalRefs grefs;
+    for (const LinkNameId id : g.initializer_function_link_name_ids) {
+      if (id != kInvalidLinkName) grefs.link_name_ids.insert(id);
+    }
     scan_refs(g.init_text, grefs.names);
     seed(grefs);
   }

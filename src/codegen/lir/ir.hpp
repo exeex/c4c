@@ -540,6 +540,7 @@ struct LirGlobal {
   std::string llvm_type;    // Pre-computed LLVM type string
   std::optional<LirTypeRef> llvm_type_ref;  // Structured mirror when type identity is exact
   std::string init_text;    // LLVM constant init text (empty for extern decls)
+  std::vector<LinkNameId> initializer_function_link_name_ids;
   int align_bytes = 0;      // 0 = no align suffix
   bool is_extern_decl = false;  // extern: no init, type only
 };

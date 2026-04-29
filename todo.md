@@ -8,34 +8,31 @@ Current Step Title: Thread Semantic Identity Through Calls, Externs, And Globals
 
 ## Just Finished
 
-Completed Step 3 conversion for LIR global object reselection in
-`src/codegen/lir/hir_to_lir/core.cpp` and
-`src/codegen/lir/hir_to_lir/const_init_emitter.cpp`. `GlobalId` and
-global `DeclRef` selection now preserve the existing duplicate preference
-while matching by `LinkNameId` first, then `name_text_id`, and using rendered
-raw names only when stable identities are absent. Constant initializer
-global-name emission now uses the resolved `DeclRef` global object for
-global references before considering function or legacy rendered-name paths.
+Completed Step 3 conversion for the remaining LIR global-initializer
+reachability seed in `eliminate_dead_internals`. `LirGlobal` now carries
+structured function `LinkNameId`s referenced by its initializer, and
+dead-internal elimination seeds from those ids before falling back to legacy
+rendered `init_text` scanning.
 
-Added focused coverage in `tests/frontend/frontend_hir_tests.cpp` for a
-global pointer initializer whose semantic array global keeps a concrete
-`GlobalId` while both the HIR global carrier name and initializer decl-ref raw
-name are drifted into an existing rendered-name collision. Lowering must emit
-`@semantic_global` and not redirect the initializer to `@rendered_shadow`.
+Added focused frontend coverage for a global function-pointer initializer whose
+semantic static helper keeps a structured initializer identity while the raw
+initializer name is drifted into a rendered-name collision and the helper's raw
+function carrier name is drifted. The semantic helper stays alive, while the
+rendered-name collision is still eliminated.
 
 ## Suggested Next
 
-Suggested next packet: convert the remaining Step 3 string-only reachability
-surface in `eliminate_dead_internals` so global initializer and signature
-references can seed internal-function retention from structured identities
-where LIR already carries them.
+Suggested next packet: review Step 3 for any remaining string-only signature
+reachability surfaces that lack structured carriers, then either split a
+follow-up carrier packet or hand Step 3 back for route review if no local
+structured identity exists yet.
 
 ## Watchouts
 
-`select_global_object(const std::string&)` remains the compatibility path for
-TextId-less globals and keeps the old rendered-name duplicate preference.
-`eliminate_dead_internals` still treats global initializer text and signature
-text as legacy string-only surfaces.
+Global initializer reachability now has a structured function-id path; rendered
+`init_text` scanning remains as compatibility fallback. Function signature text
+is still a legacy string-scanned surface because this packet did not introduce
+new structured signature reference metadata.
 
 ## Proof
 
@@ -43,5 +40,5 @@ Delegated proof:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests$|frontend_lir_|backend_)'; } 2>&1 | tee test_after.log`
 
 Passed. `test_after.log` contains the delegated proof output; CTest reported
-100% pass for the enabled selected tests, with the configured disabled MIR
-tests not run.
+100% pass for the enabled selected tests: 113 tests passed, 12 configured MIR
+tests were disabled and not run.
