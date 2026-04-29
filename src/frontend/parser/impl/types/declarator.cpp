@@ -753,18 +753,22 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                 ? find_visible_typedef_type(owner_qn.base_text_id,
                                                             owner_tag)
                                 : find_typedef_type(owner_tag);
+                        const Node* owner = nullptr;
                         if (owner_typedef) {
                             TypeSpec owner_ts =
                                 resolve_struct_like_typedef_type(*owner_typedef);
                             if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
+                            owner = resolve_record_type_spec(
+                                owner_ts, &definition_state_.struct_tag_def_map);
                         }
                         auto owner_it =
                             definition_state_.struct_tag_def_map.find(owner_tag);
-                        if (owner_it == definition_state_.struct_tag_def_map.end() ||
-                            !owner_it->second)
+                        if (!owner && owner_it != definition_state_.struct_tag_def_map.end()) {
+                            owner = owner_it->second;
+                        }
+                        if (!owner)
                             continue;
 
-                        const Node* owner = owner_it->second;
                         bool ok = true;
                         for (size_t i = owner_start + 1;
                              i < owner_name.qualifier_segments.size(); ++i) {

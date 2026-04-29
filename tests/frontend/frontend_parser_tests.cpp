@@ -1168,6 +1168,58 @@ void test_parser_dependent_typename_uses_local_visible_owner_alias() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_dependent_typename_owner_alias_prefers_record_definition() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::Node* real_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_owner->name = arena.strdup("RealBox");
+  real_owner->member_typedef_names = arena.alloc_array<const char*>(1);
+  real_owner->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  real_owner->n_member_typedefs = 1;
+  real_owner->member_typedef_names[0] = arena.strdup("type");
+  real_owner->member_typedef_types[0].array_size = -1;
+  real_owner->member_typedef_types[0].inner_rank = -1;
+  real_owner->member_typedef_types[0].base = c4c::TB_INT;
+
+  c4c::Node* stale_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  stale_owner->name = arena.strdup("StaleBox");
+  stale_owner->n_member_typedefs = 0;
+  parser.register_struct_definition_for_testing("StaleBox", stale_owner);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_STRUCT;
+  alias_ts.tag = arena.strdup("StaleBox");
+  alias_ts.record_def = real_owner;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
+  });
+
+  std::string resolved_name;
+  expect_true(parser.parse_dependent_typename_specifier(&resolved_name),
+              "dependent typename owner aliases should use record_def before stale rendered tags");
+
+  expect_eq(resolved_name, "Alias::type",
+            "dependent typename parsing should preserve alias-member spelling");
+  const c4c::TypeSpec* resolved_type = parser.find_typedef_type(resolved_name);
+  expect_true(resolved_type != nullptr && resolved_type->base == c4c::TB_INT,
+              "record_def owner lookup should recover the real member typedef");
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_is_typedef_name_uses_local_visible_scope_lookup() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3534,6 +3586,7 @@ int main() {
   test_parser_local_visible_typedef_cast_uses_scope_lookup();
   test_parser_decode_type_ref_text_uses_local_visible_scope_lookup();
   test_parser_dependent_typename_uses_local_visible_owner_alias();
+  test_parser_dependent_typename_owner_alias_prefers_record_definition();
   test_parser_is_typedef_name_uses_local_visible_scope_lookup();
   test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_lookup();
   test_parser_record_body_context_keeps_visible_template_origin_lookup_local();
