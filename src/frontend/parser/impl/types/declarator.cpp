@@ -753,18 +753,25 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                 ? find_visible_typedef_type(owner_qn.base_text_id,
                                                             owner_tag)
                                 : find_typedef_type(owner_tag);
-                        const Node* owner = nullptr;
+                        const Node* owner =
+                            qualified_type_structured_record_definition(
+                                *this, owner_qn, owner_tag);
                         if (owner_typedef) {
                             TypeSpec owner_ts =
                                 resolve_struct_like_typedef_type(*owner_typedef);
                             if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
-                            owner = resolve_record_type_spec(
-                                owner_ts, &definition_state_.struct_tag_def_map);
+                            if (!owner) {
+                                owner = resolve_record_type_spec(owner_ts, nullptr);
+                            }
                         }
-                        auto owner_it =
-                            definition_state_.struct_tag_def_map.find(owner_tag);
-                        if (!owner && owner_it != definition_state_.struct_tag_def_map.end()) {
-                            owner = owner_it->second;
+                        if (!owner) {
+                            // Rendered-tag map lookup is a compatibility fallback
+                            // for owner paths without structured record identity.
+                            auto owner_it =
+                                definition_state_.struct_tag_def_map.find(owner_tag);
+                            if (owner_it != definition_state_.struct_tag_def_map.end()) {
+                                owner = owner_it->second;
+                            }
                         }
                         if (!owner)
                             continue;
@@ -839,9 +846,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                 break;
                             }
                             const Node* resolved_nested_owner =
-                                resolve_record_type_spec(
-                                    nested_decl->type,
-                                    &definition_state_.struct_tag_def_map);
+                                resolve_record_type_spec(nested_decl->type, nullptr);
                             if (!resolved_nested_owner) {
                                 if (!nested_decl->type.tag ||
                                     !nested_decl->type.tag[0]) {
@@ -850,7 +855,10 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                 }
                                 std::string nested_owner_tag =
                                     nested_decl->type.tag;
-                                owner_it =
+                                // Rendered-tag map lookup is a compatibility
+                                // fallback for nested owner declarations whose
+                                // TypeSpec did not carry record_def.
+                                auto owner_it =
                                     definition_state_.struct_tag_def_map.find(
                                         nested_owner_tag);
                                 if (owner_it ==

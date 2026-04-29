@@ -128,6 +128,58 @@ std::string visible_type_head_name(const Parser& parser,
     return visible_type_head_name(parser, parser.find_parser_text_id(name), name);
 }
 
+Node* type_spec_structured_record_definition(const Parser& parser,
+                                             const TypeSpec* type) {
+    if (!type) return nullptr;
+    TypeSpec resolved = parser.resolve_struct_like_typedef_type(*type);
+    return resolve_record_type_spec(resolved, nullptr);
+}
+
+bool type_spec_has_structured_record_definition(const Parser& parser,
+                                                const TypeSpec* type) {
+    return type_spec_structured_record_definition(parser, type) != nullptr;
+}
+
+bool visible_type_head_has_structured_record_definition(
+    const Parser& parser, TextId name_text_id, std::string_view name) {
+    return type_spec_has_structured_record_definition(
+        parser, parser.find_visible_typedef_type(name_text_id, name));
+}
+
+bool visible_type_result_has_structured_record_definition(
+    const Parser& parser, const Parser::VisibleNameResult& result,
+    std::string_view resolved_name) {
+    if (!result) return false;
+    if (type_spec_has_structured_record_definition(
+            parser, parser.find_structured_typedef_type(result.key))) {
+        return true;
+    }
+    if (resolved_name.empty()) return false;
+    return type_spec_has_structured_record_definition(
+        parser, parser.find_typedef_type(resolved_name));
+}
+
+Node* qualified_type_structured_record_definition(
+    const Parser& parser, const Parser::QualifiedNameRef& qn,
+    std::string_view resolved_name = {}) {
+    const Parser::VisibleNameResult result = parser.resolve_qualified_type(qn);
+    if (Node* def = type_spec_structured_record_definition(
+            parser, parser.find_structured_typedef_type(result.key))) {
+        return def;
+    }
+    if (resolved_name.empty()) {
+        resolved_name = parser.visible_name_spelling(result);
+    }
+    if (resolved_name.empty()) return nullptr;
+    return type_spec_structured_record_definition(
+        parser, parser.find_typedef_type(resolved_name));
+}
+
+bool qualified_type_has_structured_record_definition(
+    const Parser& parser, const Parser::QualifiedNameRef& qn) {
+    return qualified_type_structured_record_definition(parser, qn) != nullptr;
+}
+
 bool qualified_name_from_text(const Parser& parser, std::string_view text,
                               Parser::QualifiedNameRef* out) {
     if (!out || text.empty()) return false;
@@ -370,12 +422,18 @@ bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
     if (parser.has_visible_typedef_type(name_text_id, name)) return true;
     const std::string resolved =
         visible_type_head_name(parser, name_text_id, name);
+    if (visible_type_head_has_structured_record_definition(parser, name_text_id,
+                                                           name)) {
+        return true;
+    }
     return parser.has_template_struct_primary(
                parser.current_namespace_context_id(), name_text_id, name) ||
            (!resolved.empty() &&
             parser.has_template_struct_primary(
                 parser.current_namespace_context_id(),
                 parser.find_parser_text_id(resolved), resolved)) ||
+           // Rendered-name compatibility for direct struct tags that do not
+           // yet carry a TypeSpec::record_def through this type-head probe.
            parser.has_defined_struct_tag(name) ||
            parser.has_defined_struct_tag(resolved);
 }
@@ -525,16 +583,23 @@ std::string resolve_qualified_known_type_name(
             parser.resolve_qualified_type(qn);
         resolved = parser.visible_name_spelling(resolved_type);
         if (!resolved.empty() &&
-            (parser.has_template_struct_primary(qn) ||
+            (visible_type_result_has_structured_record_definition(
+                 parser, resolved_type, resolved) ||
+             parser.has_template_struct_primary(qn) ||
+             // Rendered-name compatibility for qualified direct record tags.
              parser.has_defined_struct_tag(resolved))) {
             return resolved;
         }
     } else {
         resolved = std::string(parser.parser_text(qn.base_text_id, qn.base_name));
         if (!resolved.empty() &&
-            (parser.has_template_struct_primary(
+            (visible_type_head_has_structured_record_definition(
+                 parser, qn.base_text_id,
+                 parser.parser_text(qn.base_text_id, qn.base_name)) ||
+             parser.has_template_struct_primary(
                  parser.current_namespace_context_id(), qn.base_text_id,
                  parser.parser_text(qn.base_text_id, qn.base_name)) ||
+             // Rendered-name compatibility for direct record tags.
              parser.has_defined_struct_tag(resolved))) {
             return resolved;
         }
@@ -547,6 +612,9 @@ std::string resolve_qualified_known_type_name(
     if (parser.has_template_struct_primary(
             parser.current_namespace_context_id(),
             parser.find_parser_text_id(resolved), resolved) ||
+        visible_type_result_has_structured_record_definition(parser, visible_type,
+                                                             resolved) ||
+        // Rendered-name compatibility for visible direct record tags.
         parser.has_defined_struct_tag(resolved)) {
         return resolved;
     }
@@ -567,6 +635,8 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
             parser.current_namespace_context_id(),
             parser.find_parser_text_id(probe.resolved_typedef_name),
             probe.resolved_typedef_name) ||
+        qualified_type_has_structured_record_definition(parser, qn) ||
+        // Rendered-name compatibility for tag-only qualified probes.
         parser.has_defined_struct_tag(probe.resolved_typedef_name)) {
         probe.has_resolved_typedef = true;
         return probe;

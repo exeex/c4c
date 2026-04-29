@@ -1403,7 +1403,12 @@ Node* parse_primary(Parser& parser) {
             }
 
             return parser.has_template_struct_primary(owner_qn) ||
+                   qualified_type_has_structured_record_definition(parser,
+                                                                   owner_qn) ||
                    parser.has_typedef_type(owner_name) ||
+                   // Rendered-name compatibility for owner tags that have not
+                   // carried structured record identity to this expression
+                   // disambiguation path.
                    parser.definition_state_.defined_struct_tags.count(owner_name) > 0;
         };
         if (parser.is_cpp_mode() && (parser.check(TokenKind::Less) || parser.check(TokenKind::LParen))) {

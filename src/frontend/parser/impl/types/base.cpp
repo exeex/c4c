@@ -2826,12 +2826,26 @@ TypeSpec Parser::parse_base_type() {
                                                         tpl_def->line, &base_mangled,
                                                         "template_base_instantiation",
                                                         &inst->base_types[bi])) {
-                                                    auto base_def_it =
-                                                        definition_state_.struct_tag_def_map.find(
-                                                            base_mangled);
+                                                    Node* base_def =
+                                                        resolve_record_type_spec(
+                                                            inst->base_types[bi],
+                                                            nullptr);
+                                                    if (!base_def) {
+                                                        // Rendered-tag map lookup is a
+                                                        // compatibility fallback when
+                                                        // instantiation did not attach
+                                                        // TypeSpec::record_def.
+                                                        auto base_def_it =
+                                                            definition_state_.struct_tag_def_map.find(
+                                                                base_mangled);
+                                                        if (base_def_it !=
+                                                            definition_state_
+                                                                .struct_tag_def_map.end()) {
+                                                            base_def = base_def_it->second;
+                                                        }
+                                                    }
                                                     if (!inst->base_types[bi].tag &&
-                                                        base_def_it != definition_state_
-                                                                           .struct_tag_def_map.end()) {
+                                                        base_def) {
                                                         inst->base_types[bi] = TypeSpec{};
                                                         inst->base_types[bi].array_size = -1;
                                                         inst->base_types[bi].inner_rank = -1;
@@ -2839,7 +2853,7 @@ TypeSpec Parser::parse_base_type() {
                                                         inst->base_types[bi].tag =
                                                             arena_.strdup(base_mangled.c_str());
                                                         inst->base_types[bi].record_def =
-                                                            base_def_it->second;
+                                                            base_def;
                                                     }
                                                     continue;
                                                 }
@@ -3050,12 +3064,24 @@ TypeSpec Parser::parse_base_type() {
                                                 tpl_def->line, &base_mangled,
                                                 "template_base_instantiation",
                                                 &inst->base_types[bi])) {
-                                            auto base_def_it =
-                                                definition_state_.struct_tag_def_map.find(
-                                                    base_mangled);
+                                            Node* base_def =
+                                                resolve_record_type_spec(
+                                                    inst->base_types[bi], nullptr);
+                                            if (!base_def) {
+                                                // Rendered-tag map lookup is a
+                                                // compatibility fallback when
+                                                // instantiation did not attach
+                                                // TypeSpec::record_def.
+                                                auto base_def_it =
+                                                    definition_state_.struct_tag_def_map.find(
+                                                        base_mangled);
+                                                if (base_def_it != definition_state_
+                                                                       .struct_tag_def_map.end()) {
+                                                    base_def = base_def_it->second;
+                                                }
+                                            }
                                             if (!inst->base_types[bi].tag &&
-                                                base_def_it != definition_state_
-                                                                   .struct_tag_def_map.end()) {
+                                                base_def) {
                                                 inst->base_types[bi] = TypeSpec{};
                                                 inst->base_types[bi].array_size = -1;
                                                 inst->base_types[bi].inner_rank = -1;
@@ -3063,13 +3089,17 @@ TypeSpec Parser::parse_base_type() {
                                                 inst->base_types[bi].tag =
                                                     arena_.strdup(base_mangled.c_str());
                                                 inst->base_types[bi].record_def =
-                                                    base_def_it->second;
+                                                    base_def;
                                             }
                                         } else if (auto base_def_it =
                                                        definition_state_.struct_tag_def_map.find(
                                                            base_mangled);
                                                    base_def_it != definition_state_
                                                                       .struct_tag_def_map.end()) {
+                                            // Rendered-tag map lookup is the only
+                                            // compatibility path left when
+                                            // instantiation failed to return a
+                                            // TypeSpec carrier.
                                             inst->base_types[bi] = TypeSpec{};
                                             inst->base_types[bi].array_size = -1;
                                             inst->base_types[bi].inner_rank = -1;
@@ -3378,13 +3408,22 @@ TypeSpec Parser::parse_base_type() {
                         // The resolved typedef's tag might be the template name, not the instantiation.
                         // If the resolved type is the same template origin, use the instantiation tag.
                         if (resolved.base == TB_STRUCT && resolved.tag) {
-                            auto inst_it =
-                                definition_state_.struct_tag_def_map.find(ts.tag);
-                            if (inst_it !=
-                                    definition_state_.struct_tag_def_map.end() &&
-                                inst_it->second &&
-                                inst_it->second->template_origin_name &&
-                                std::string(resolved.tag) == inst_it->second->template_origin_name) {
+                            const Node* inst_def =
+                                resolve_record_type_spec(ts, nullptr);
+                            if (!inst_def && ts.tag) {
+                                // Rendered-tag map lookup is a compatibility
+                                // fallback for instantiated owners without
+                                // TypeSpec::record_def.
+                                auto inst_it =
+                                    definition_state_.struct_tag_def_map.find(ts.tag);
+                                if (inst_it !=
+                                        definition_state_.struct_tag_def_map.end()) {
+                                    inst_def = inst_it->second;
+                                }
+                            }
+                            if (inst_def &&
+                                inst_def->template_origin_name &&
+                                std::string(resolved.tag) == inst_def->template_origin_name) {
                                 resolved.tag = ts.tag;
                             }
                         }
