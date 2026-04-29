@@ -109,7 +109,6 @@ without changing their final spelling behavior.
 Primary targets:
 - `TypeSpec` storage and constructors/helpers.
 - Parser record definition and tag parsing paths.
-- Template-instantiated struct/union `TypeSpec` production.
 
 Concrete actions:
 - Add the chosen typed identity field or wrapper with behavior-preserving
@@ -133,8 +132,8 @@ Primary targets:
 - `support.cpp` layout and `offsetof` helpers.
 - `declarations.cpp` incomplete object checks and constexpr evaluation bridge.
 - `expressions.cpp` `NK_OFFSETOF` constant folding.
-- `types/declarator.cpp`, `types/base.cpp`, and `types/template.cpp` record
-  lookup consumers.
+- `types/declarator.cpp` and `types/base.cpp` record lookup consumers outside
+  template propagation.
 
 Concrete actions:
 - Convert one consumer family at a time to use typed identity when present.
@@ -148,7 +147,38 @@ Completion check:
   before spelling fallback, with focused tests proving drifted rendered tags do
   not override the typed record.
 
-### Step 4: Demote struct_tag_def_map To Compatibility Mirror
+### Step 4: Propagate Typed Record Identity Through Template Records
+
+Goal: carry `TypeSpec::record_def` through template-instantiated records and
+template-only lookup paths before demoting rendered tag mirrors.
+
+Primary targets:
+- `types/template.cpp` template struct instantiation and specialization reuse.
+- Injected template instantiation fallback and template base `TypeSpec`
+  construction.
+- Deferred member typedef propagation and template static-member base
+  recursion.
+- Direct template emission record map population where it currently preserves
+  rendered compatibility entries.
+
+Concrete actions:
+- Inventory the template producers that create or forward struct/union
+  `TypeSpec` values without `record_def`.
+- Populate or preserve `record_def` when the instantiated record `Node*` is
+  known, without changing rendered instantiation keys or dedup behavior.
+- Convert template-only lookup users to prefer typed record identity before
+  rendered `struct_tag_def_map` fallback.
+- Add focused tests where a stale rendered template record tag cannot override
+  the instantiated record identity.
+- Keep compatibility map writes that are required for final spelling, emitted
+  text, and direct template emission.
+
+Completion check:
+- Template-instantiated record paths and template-only member/static lookup
+  prefer typed record identity when available, rendered-template compatibility
+  keys still work, and focused tests cover stale rendered tag resistance.
+
+### Step 5: Demote struct_tag_def_map To Compatibility Mirror
 
 Goal: make remaining rendered-tag map use visibly compatibility or final
 spelling data.
@@ -170,7 +200,7 @@ Completion check:
   compatibility/final spelling, and tests distinguish retained spelling from
   typed record authority.
 
-### Step 5: Reprove And Return To Parser Cleanup
+### Step 6: Reprove And Return To Parser Cleanup
 
 Goal: validate the bridge and decide whether the parent parser cleanup can
 resume.
