@@ -9,31 +9,31 @@ Current Step Title: Quarantine NTTP and Template Argument Debug Text
 ## Just Finished
 
 Plan Step 3 `Quarantine NTTP and Template Argument Debug Text` continued with
-a parser-side canonical key slice. `canonical_template_struct_type_key` in
-`types/types_helpers.hpp` now builds template argument keys from structured
-`TemplateArgRef` payload first: value args use `value`, and type args use the
-nested structured `TypeSpec` key. `debug_text` remains only as an explicit
-fallback when the type argument has no usable structured key.
+parser `types/base.cpp` template-arg ref rendering. The local
+`render_template_arg_ref` nested-argument rendering and `template_arg_refs_text`
+now use structured `TemplateArgRef` payload first: value args render from
+`value`, and type args render from the nested `TypeSpec` tag or mangled type.
+`debug_text` is only an explicit fallback when the structured type payload
+cannot produce a spelling.
 
-Focused coverage now includes a canonical template-struct key case where two
-template argument refs have identical structured `kind/value` payloads but
-different `debug_text`; they produce the same key and the key contains the
-structured `v:7` value.
+Focused coverage now parses `Outer<InnerAlias>` where `InnerAlias` carries a
+nested value `TemplateArgRef` with stale `debug_text`. The rendered template
+arg ref is `@Inner:7`, proving the parser render path uses the structured
+value instead of the stale debug string.
 
 ## Suggested Next
 
-Continue Step 3 with parser `types/base.cpp` template-arg ref rendering or
-the `$expr:` / `template_arg_nttp_names` projection path. Prefer a narrow call
-site where a structured expression node, value, or `TypeSpec` already exists
-and string fallback can be named explicitly.
+Continue Step 3 with the `$expr:` / `template_arg_nttp_names` projection path,
+or stop for supervisor review if the remaining NTTP string authority needs a
+broader parser/HIR boundary packet.
 
 ## Watchouts
 
 `debug_text` is still used as an explicit fallback for structurally unknown
-type arguments in the canonical key helper. This packet intentionally did not
-touch HIR template materialization or parser-side `$expr:` /
-`template_arg_nttp_names` flows. Avoid changing broad `Node::name` or
-`TypeSpec::tag` behavior while continuing Step 3.
+type arguments in parser rendering and the canonical key helper. This packet
+intentionally did not touch HIR template materialization or parser-side
+`$expr:` / `template_arg_nttp_names` flows. Avoid changing broad `Node::name`
+or `TypeSpec::tag` behavior while continuing Step 3.
 
 ## Proof
 

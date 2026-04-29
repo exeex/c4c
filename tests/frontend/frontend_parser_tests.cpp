@@ -4392,6 +4392,58 @@ void test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_t
               "canonical template struct type key should include the structured value argument");
 }
 
+void test_parser_template_arg_ref_rendering_prefers_structured_nested_arg() {
+  c4c::Lexer lexer("Outer<InnerAlias> after", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId outer_text = lexer.text_table().intern("Outer");
+  c4c::Node* outer = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  outer->name = arena.strdup("Outer");
+  outer->unqualified_name = arena.strdup("Outer");
+  outer->unqualified_text_id = outer_text;
+  outer->n_template_params = 1;
+  outer->template_param_names = arena.alloc_array<const char*>(1);
+  outer->template_param_names[0] = arena.strdup("Ts");
+  outer->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  outer->template_param_name_text_ids[0] = lexer.text_table().intern("Ts");
+  outer->template_param_is_nttp = arena.alloc_array<bool>(1);
+  outer->template_param_is_nttp[0] = false;
+  outer->template_param_is_pack = arena.alloc_array<bool>(1);
+  outer->template_param_is_pack[0] = true;
+  parser.register_template_struct_primary(
+      parser.current_namespace_context_id(), outer_text, "Outer", outer);
+
+  c4c::TypeSpec outer_alias{};
+  outer_alias.array_size = -1;
+  outer_alias.inner_rank = -1;
+  outer_alias.base = c4c::TB_STRUCT;
+  outer_alias.tag = arena.strdup("Outer");
+  parser.register_typedef_binding(outer_text, "Outer", outer_alias, true);
+
+  c4c::TypeSpec inner_alias{};
+  inner_alias.array_size = -1;
+  inner_alias.inner_rank = -1;
+  inner_alias.base = c4c::TB_TYPEDEF;
+  inner_alias.tag = arena.strdup("Inner");
+  inner_alias.tpl_struct_origin = arena.strdup("Inner");
+  inner_alias.tpl_struct_args.size = 1;
+  inner_alias.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  inner_alias.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+  inner_alias.tpl_struct_args.data[0].value = 7;
+  inner_alias.tpl_struct_args.data[0].debug_text = arena.strdup("StaleRenderedN");
+  const c4c::TextId inner_alias_text = lexer.text_table().intern("InnerAlias");
+  parser.register_typedef_binding(inner_alias_text, "InnerAlias", inner_alias, true);
+
+  const c4c::TypeSpec parsed = parser.parse_base_type();
+  expect_true(parsed.tpl_struct_args.size == 1 && parsed.tpl_struct_args.data,
+              "pack template parsing should preserve one rendered template arg ref");
+  expect_eq(parsed.tpl_struct_args.data[0].debug_text, "@Inner:7",
+            "parser template arg ref rendering should prefer structured nested value over debug_text");
+}
+
 void test_parser_typename_template_parameter_probe_uses_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4546,6 +4598,7 @@ int main() {
   test_parser_alias_template_substitution_does_not_require_param_name_spelling();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
+  test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
   test_parser_qualified_declarator_name_uses_token_spelling();

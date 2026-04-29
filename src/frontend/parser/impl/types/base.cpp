@@ -680,18 +680,20 @@ TypeSpec Parser::parse_base_type() {
                 for (int i = 0; i < arg.type.tpl_struct_args.size; ++i) {
                     if (i > 0) ref += ",";
                     const TemplateArgRef& nested = arg.type.tpl_struct_args.data[i];
-                    if (nested.debug_text && nested.debug_text[0]) {
-                        ref += nested.debug_text;
-                    } else if (nested.kind == TemplateArgKind::Value) {
+                    if (nested.kind == TemplateArgKind::Value) {
                         ref += std::to_string(nested.value);
                     } else if (nested.kind == TemplateArgKind::Type) {
                         std::string nested_mangled;
                         append_type_mangled_suffix(nested_mangled, nested.type);
                         if (nested_mangled.empty() && nested.type.tag) {
                             ref += nested.type.tag;
-                        } else {
+                        } else if (!nested_mangled.empty()) {
                             ref += nested_mangled;
+                        } else if (nested.debug_text && nested.debug_text[0]) {
+                            ref += nested.debug_text;
                         }
+                    } else if (nested.debug_text && nested.debug_text[0]) {
+                        ref += nested.debug_text;
                     }
                 }
             }
@@ -745,15 +747,16 @@ TypeSpec Parser::parse_base_type() {
         for (int i = 0; i < spec.tpl_struct_args.size; ++i) {
             if (i > 0) refs += ",";
             const TemplateArgRef& arg = spec.tpl_struct_args.data[i];
-            if (arg.debug_text && arg.debug_text[0]) {
-                refs += arg.debug_text;
-            } else if (arg.kind == TemplateArgKind::Value) {
+            if (arg.kind == TemplateArgKind::Value) {
                 refs += std::to_string(arg.value);
             } else if (arg.kind == TemplateArgKind::Type) {
                 std::string mangled;
                 append_type_mangled_suffix(mangled, arg.type);
                 if (mangled.empty() && arg.type.tag) refs += arg.type.tag;
-                else refs += mangled;
+                else if (!mangled.empty()) refs += mangled;
+                else if (arg.debug_text && arg.debug_text[0]) refs += arg.debug_text;
+            } else if (arg.debug_text && arg.debug_text[0]) {
+                refs += arg.debug_text;
             }
         }
         return refs;
