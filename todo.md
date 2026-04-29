@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/133_parser_namespace_visible_name_compatibility_spelling_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Make Using-Value Alias Lookup Structured-Primary
+Current Step ID: 3
+Current Step Title: Tighten Namespace and Visible-Name Context Lookup
 
 # Current Packet
 
@@ -23,10 +23,13 @@ structured target key rather than compatibility spelling.
 
 ## Suggested Next
 
-Execute `plan.md` Step 3 against namespace rendering/projection bridges,
-especially `compatibility_namespace_name_in_context` and
-`bridge_name_in_context`, keeping TextId/structured context as primary
-authority and TextId-less branches as explicit compatibility fallback.
+Execute a bounded `plan.md` Step 3 packet against namespace
+rendering/projection bridges, especially
+`compatibility_namespace_name_in_context`, `bridge_name_in_context`,
+`lookup_*_in_context`, and `resolve_namespace_*`. Keep TextId, namespace
+context ids, `find_named_namespace_child`, and `qualified_key_in_context` as
+primary authority; preserve TextId-less or keyless branches only as explicit,
+tested compatibility fallback.
 
 ## Watchouts
 
@@ -46,3 +49,6 @@ Also ran targeted parse-only selectors:
 `ctest --test-dir build -R 'using_namespace_directive_parse|local_value_shadows_using_alias_assign_expr_parse' --output-on-failure`
 
 Result: passed; both selectors were present in this build.
+
+Supervisor accepted the baseline review for Step 2, so canonical execution is
+advanced to Step 3.
