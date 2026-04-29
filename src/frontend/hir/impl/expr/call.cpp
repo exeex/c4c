@@ -66,14 +66,22 @@ std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
   if (tmp_ts.base != TB_STRUCT || tmp_ts.ptr_level != 0 || !tmp_ts.tag) {
     return tmp_expr;
   }
+  const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+  const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+  const std::string* current_struct_tag =
+      (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+  const std::string owner_tag = resolve_struct_method_lookup_owner_tag(
+      tmp_ts, false, tpl_bindings, nttp_bindings, current_struct_tag, n,
+      "template-struct-call");
+  if (owner_tag.empty()) return tmp_expr;
 
-  auto resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", false);
+  auto resolved = find_struct_method_mangled(owner_tag, "operator_call", false);
   auto resolved_link_name_id =
-      find_struct_method_link_name_id(tmp_ts.tag, "operator_call", false);
+      find_struct_method_link_name_id(owner_tag, "operator_call", false);
   if (!resolved) {
-    resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", true);
+    resolved = find_struct_method_mangled(owner_tag, "operator_call", true);
     resolved_link_name_id =
-        find_struct_method_link_name_id(tmp_ts.tag, "operator_call", true);
+        find_struct_method_link_name_id(owner_tag, "operator_call", true);
   }
   if (!resolved) return tmp_expr;
 
@@ -108,7 +116,7 @@ std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
     fn_ts = fn->return_type.spec;
   }
   if (fn_ts.base == TB_VOID) {
-    if (auto rit = find_struct_method_return_type(tmp_ts.tag, "operator_call", false)) {
+    if (auto rit = find_struct_method_return_type(owner_tag, "operator_call", false)) {
       fn_ts = *rit;
     }
   }
@@ -277,14 +285,22 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
   const Node* base_node = n->left->left;
   const char* method_name = n->left->name;
   TypeSpec base_ts = infer_generic_ctrl_type(ctx, base_node);
+  TypeSpec lookup_base_ts = base_ts;
   if (n->left->is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
-  const char* tag = base_ts.tag;
-  if (!tag) return std::nullopt;
+  const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+  const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+  const std::string* current_struct_tag =
+      (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+  const std::string tag = resolve_struct_method_lookup_owner_tag(
+      lookup_base_ts, n->left->is_arrow, tpl_bindings, nttp_bindings,
+      current_struct_tag, n->left, std::string("member-call:") + method_name);
+  if (tag.empty()) return std::nullopt;
 
-  if (auto resolved_method_opt = find_struct_method_mangled(tag, method_name, base_ts.is_const)) {
+  if (auto resolved_method_opt =
+          find_struct_method_mangled(tag, method_name, base_ts.is_const)) {
     CallExpr call{};
     std::string resolved_method = *resolved_method_opt;
-    const std::string base_key = std::string(tag) + "::" + method_name;
+    const std::string base_key = tag + "::" + method_name;
     auto ovit = ref_overload_set_.find(base_key);
     if (ovit == ref_overload_set_.end()) {
       ovit = ref_overload_set_.find(base_key + "_const");

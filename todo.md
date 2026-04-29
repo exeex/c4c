@@ -9,38 +9,33 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with the operator HIR method-lookup caller family. `try_lower_operator_call`,
-the `operator->` chaining loop in `lower_member_expr`, and
-`maybe_bool_convert` now resolve structured owner identity from the relevant
-`TypeSpec` carrier before calling `find_struct_method_mangled` or
-`find_struct_method_return_type`, while retaining rendered-tag fallback through
-the shared owner-resolution helper when structured identity is absent.
+with the remaining assigned HIR method-lookup caller family in
+`infer_generic_ctrl_type` and `expr/call.cpp`. The generic control-type
+`operator_deref` and `operator_call` return-type probes, template-struct
+`operator_call` lowering, and member-call lowering now resolve structured
+owner identity from the relevant `TypeSpec` carrier before calling the method
+lookup registries, while preserving rendered-tag fallback through the existing
+owner-resolution helper.
 
-Added focused HIR coverage for the direct operator-call path where a stale
-rendered object tag would select the wrong operator method and return type
-unless `record_def` structured owner identity is used first, plus caller-level
-coverage that the rendered fallback still works without structured owner
-identity.
+Added focused HIR coverage for generic control-type deref/operator_call
+return-type lookup and member-call lowering where stale rendered tags would
+select the wrong method or return type unless `record_def` structured owner
+identity is used first.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining HIR method-lookup ingress outside
-`operator.cpp`, starting with `infer_generic_ctrl_type` in `hir_types.cpp` and
-`lower_member_call_expr`/call-object handling in `expr/call.cpp`, so those
-callers also prefer structured `TypeSpec` owner identity before rendered tags
-where available.
+Continue Step 4 by auditing the remaining rendered-tag member/method lookup
+ingress outside this packet, with care to keep static member routing separate
+from method lookup routing unless the supervisor delegates that owner family.
 
 ## Watchouts
 
-`resolve_struct_method_lookup_owner_tag` currently reuses the member-owner
-resolver because both method and member lookup need the same structured record
-owner selection; it still returns `TypeSpec::tag` as the explicit rendered
-fallback. The `operator_call` empty-argument static `value` shortcut in
-`try_lower_operator_call` remains a static-member path, not a method lookup; it
-still uses the rendered tag and should be considered separately if static
-member owner routing becomes the next packet. Other callers in `hir_types.cpp`,
-`expr/call.cpp`, and `expr/object.cpp` still pass rendered tags directly, but
-only the `operator.cpp` method-lookup family was in this packet's slice.
+`resolve_struct_method_lookup_owner_tag` still delegates to the member-owner
+resolver and then falls back to `TypeSpec::tag`, so legacy rendered-only method
+lookup remains available. The `operator_call` empty-argument static `value`
+shortcut in `try_lower_operator_call` remains a static-member path, not a
+method lookup; it should stay out of method-owner packets unless static member
+owner routing is explicitly delegated.
 
 ## Proof
 

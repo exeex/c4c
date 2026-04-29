@@ -2219,8 +2219,15 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
     case NK_DEREF: {
       TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
       if (ts.ptr_level == 0 && ts.base == TB_STRUCT && ts.tag) {
+        const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+        const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+        const std::string* current_struct_tag =
+            (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+        const std::string owner_tag = resolve_struct_method_lookup_owner_tag(
+            ts, false, tpl_bindings, nttp_bindings, current_struct_tag, n,
+            "generic-ctrl-type-deref");
         if (auto ret =
-                find_struct_method_return_type(ts.tag, "operator_deref", false)) {
+                find_struct_method_return_type(owner_tag, "operator_deref", false)) {
           return *ret;
         }
       }
@@ -2340,7 +2347,14 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
         }
         TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
         if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
-          if (auto rit = find_struct_method_return_type(callee_ts.tag, "operator_call",
+          const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+          const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+          const std::string* current_struct_tag =
+              (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+          const std::string owner_tag = resolve_struct_method_lookup_owner_tag(
+              callee_ts, false, tpl_bindings, nttp_bindings, current_struct_tag,
+              n, "generic-ctrl-type-operator-call");
+          if (auto rit = find_struct_method_return_type(owner_tag, "operator_call",
                                                         callee_ts.is_const)) {
             return reference_value_ts(*rit);
           }
