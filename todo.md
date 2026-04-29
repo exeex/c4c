@@ -1,45 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/127_lir_structured_function_signature_metadata_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Drift-Resistance Tests
+Current Step ID: 6
+Current Step Title: Final Audit And Follow-Up Queue
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 5, `Add Drift-Resistance Tests`.
+Completed `plan.md` Step 6, `Final Audit And Follow-Up Queue`, from the
+executor perspective.
 
-Converted the aarch64 direct-LIR fast-path signature gates away from
-`function.signature_text` parsing:
+Re-ran the raw `rg` inventory for `signature_text` reads and signature-parser
+helpers after Steps 2-5. Remaining runtime `src/` uses classify as:
 
-- Return-type checks now use `signature_return_type_ref` before the legacy
-  `return_type` fallback.
-- Fixed-parameter and variadic checks now use `signature_params`,
-  `signature_param_type_refs`, `signature_is_variadic`, and
-  `signature_has_void_param_list` before the legacy `params` fallback.
-- Signature nonminimal-type gating now checks structured signature return and
-  parameter type refs instead of parsing the rendered function header.
-- Added `backend_aarch64_signature_metadata` as a backend drift guard covering
-  return type, fixed-parameter count, variadic status, and nonminimal
-  signature gating.
+- `src/codegen/lir/ir.hpp`: carrier field for final LLVM header spelling.
+- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: producer writes final header
+  text; `collect_fn_refs` scans it only as a compatibility carrier for embedded
+  function references in attributes/metadata, not as signature semantic
+  authority.
+- `src/codegen/lir/lir_printer.cpp`: render path, including link-name
+  replacement in final header spelling.
+- `src/codegen/lir/verify.cpp`: consistency check that a renderable
+  `define`/`declare` header exists; return, parameter, aggregate, variadic, and
+  void-param facts are verified from structured signature metadata.
+- `src/backend/bir/lir_to_bir/call_abi.cpp`: documented fallback parsing only
+  when hand-built legacy LIR lacks `signature_return_type_ref`,
+  `signature_params`, `signature_param_type_refs`, `signature_is_variadic`, and
+  `signature_has_void_param_list`.
+- `src/backend/bir/lir_to_bir/aggregate.cpp`: documented fallback parsing only
+  when hand-built legacy LIR lacks structured signature params.
+- `src/backend/bir/lir_to_bir/calling.cpp` and
+  `src/codegen/lir/call_args.hpp`: call-operand/callee type-string parsers,
+  not `LirFunction::signature_text` consumers.
+- `src/backend/mir/aarch64/codegen/emit.cpp`: no remaining
+  `function.signature_text` use in fast-path signature gates.
+
+No remaining runtime `signature_text` use is classified as suspicious semantic
+authority for generated LIR. No follow-up idea is required for this runbook's
+signature metadata boundary.
 
 ## Suggested Next
 
-Supervisor should review whether the active runbook is exhausted and whether
-remaining `signature_text` consumers are expected legacy compatibility paths or
-need a follow-up idea.
+Supervisor should run the broader validation checkpoint selected for closure,
+then route to plan-owner to judge whether the source idea can close.
 
 ## Watchouts
 
-The aarch64 source is not currently wired into `c4c_backend`, so the new
-backend test is a static drift guard over `emit.cpp` rather than a runtime
-aarch64 emission test. BIR still has a text parser for legacy hand-built LIR
-fixtures with missing structured signature fields; generated LIR should not
-take that path once Step 2 metadata is present.
+BIR retains `signature_text` parsers as compatibility fallback for hand-built
+legacy LIR fixtures with missing structured metadata. The HIR-to-LIR global-ref
+scan still treats `signature_text` as a possible compatibility carrier for
+embedded references, but that is not function-signature semantic authority.
 
 ## Proof
 
-Supervisor-selected proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
-passed. Proof log: `test_after.log`.
+No build or test command was required for this documentation-only audit packet.
+No proof logs were created or modified.
