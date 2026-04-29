@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/128_parser_ast_handoff_role_labeling.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Label `TypeSpec` And `TemplateArgRef`
+Current Step ID: 3
+Current Step Title: Label `Node`
 
 # Current Packet
 
