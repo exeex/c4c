@@ -356,6 +356,11 @@ void test_direct_call_callee_lookup_uses_authoritative_decl_identity() {
   const c4c::TextId stale_text = texts.intern("stale_direct_callee");
   const c4c::TextId structured_text = texts.intern("structured_direct_callee");
   const c4c::TextId linked_text = texts.intern("linked_direct_callee");
+  const c4c::TextId stale_qualified_text =
+      texts.intern("stale_qualified_direct_callee");
+  const c4c::TextId structured_qualified_text =
+      texts.intern("structured_qualified_direct_callee");
+  const c4c::hir::NamespaceQualifier api_ns = make_ns(texts, "api");
 
   add_function(module, c4c::hir::FunctionId{30}, "stale_direct_callee",
                stale_text);
@@ -363,6 +368,12 @@ void test_direct_call_callee_lookup_uses_authoritative_decl_identity() {
                structured_text);
   add_function(module, c4c::hir::FunctionId{32}, "linked_direct_callee",
                linked_text, module.link_names.intern("linked_direct_callee"));
+  add_function(module, c4c::hir::FunctionId{33},
+               "api::stale_qualified_direct_callee", stale_qualified_text,
+               c4c::kInvalidLinkName, api_ns);
+  add_function(module, c4c::hir::FunctionId{34},
+               "api::structured_qualified_direct_callee",
+               structured_qualified_text, c4c::kInvalidLinkName, api_ns);
 
   c4c::hir::DeclRef structured_ref;
   structured_ref.name = "stale_direct_callee";
@@ -394,6 +405,22 @@ void test_direct_call_callee_lookup_uses_authoritative_decl_identity() {
   expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
                            "stale_direct_callee", 32, 30),
               "direct-call link-name callee lookup should record stale-rendered mismatch");
+
+  c4c::hir::DeclRef qualified_ref;
+  qualified_ref.name = "api::stale_qualified_direct_callee";
+  qualified_ref.name_text_id = structured_qualified_text;
+  qualified_ref.ns_qual = api_ns;
+  const c4c::hir::Function* qualified_fn =
+      module.resolve_direct_call_callee(qualified_ref);
+  expect_true(qualified_fn != nullptr && qualified_fn->id.value == 34,
+              "qualified direct-call callee lookup should prefer structured identity over stale rendered name");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::Structured,
+                      "api::stale_qualified_direct_callee", 34),
+              "qualified direct-call structured lookup should record structured authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
+                           "api::stale_qualified_direct_callee", 34, 33),
+              "qualified direct-call structured lookup should record stale-rendered mismatch");
 }
 
 void test_operator_callee_lookup_uses_authoritative_decl_identity() {
