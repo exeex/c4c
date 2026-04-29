@@ -171,6 +171,9 @@ struct ParserTemplateState {
   std::unordered_map<NttpDefaultExprKey, std::vector<Token>,
                      NttpDefaultExprKeyHash>
       nttp_default_expr_tokens_by_key;
+  // Rendered-name compatibility mirror for TextId-less/final-spelling NTTP
+  // default lookups. Semantic cache lookup should prefer the
+  // NttpDefaultExprKey table above.
   std::unordered_map<std::string, std::vector<Token>>
       nttp_default_expr_tokens;
   size_t nttp_default_expr_cache_mismatch_count = 0;

@@ -8,37 +8,36 @@ Current Step Title: Demote Compatibility String Helpers And Tests
 
 ## Just Finished
 
-Step 4 packet completed: template primary/specialization rendered-name bridge
-surfaces now label retained string maps as final-spelling compatibility
-mirrors, while keeping `QualifiedNameKey` tables as the documented primary
-authority.
+Step 4 packet completed: NTTP default expression cache comments, local names,
+and frontend parser test wording now make the `NttpDefaultExprKey` table the
+structured cache and `nttp_default_expr_tokens` the rendered-name
+compatibility/final-spelling mirror.
 
-`ParserTemplateState` now comments `template_struct_defs` and
-`template_struct_specializations` as rendered-name compatibility mirrors.
-Template registration and lookup helpers use mirror/final-spelling local names
-for the string-map paths, and the frontend parser test was renamed with
-assertions updated to describe structured-key authority versus TextId-less
-compatibility. No behavior changed.
+`eval_deferred_nttp_default()` and `cache_nttp_default_expr_tokens()` now use
+rendered-mirror local names for the string-key path while preserving the
+structured-cache lookup order, TextId-less fallback behavior, and mismatch
+counter behavior exactly. The NTTP cache test was renamed and its assertions now
+describe the rendered mirror as secondary compatibility state.
 
 ## Suggested Next
 
 Next Step 4 packet: have the supervisor/plan-owner decide whether Step 4 has
 remaining honest compatibility-demotion surfaces, or whether the runbook step
-is exhausted. If continuing Step 4, a bounded candidate is the NTTP default
-cache rendered-name mirror around `nttp_default_expr_tokens` and its existing
-frontend parser tests, preserving all current fallback behavior.
+is exhausted. A bounded candidate, if continuing Step 4, is to classify any
+remaining public helper/test string surfaces that are final-spelling bridge
+state rather than semantic lookup authority.
 
 ## Watchouts
 
 This packet intentionally did not convert or delete
-`template_struct_defs` / `template_struct_specializations` fallback reads. It
-also did not alter `struct_tag_def_map`, `defined_struct_tags`,
-`nttp_default_expr_tokens`, public helper behavior, or template string-map
-fallback behavior.
+`nttp_default_expr_tokens` fallback reads. The retained rendered-name cache
+mirror remains functional for TextId-less compatibility/final-spelling lookup,
+and stale rendered-name precedence is still rejected only where a valid
+structured key/TextId path exists.
 
-The retained template string maps remain functional for TextId-less
-compatibility and final-spelling bridge lookups. Stale rendered-name precedence
-is still rejected only where a valid structured key/TextId path exists.
+No `template_struct_defs` / `template_struct_specializations`,
+`struct_tag_def_map`, `defined_struct_tags`, or public helper behavior was
+changed.
 
 ## Proof
 

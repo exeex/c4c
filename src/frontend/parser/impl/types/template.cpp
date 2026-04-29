@@ -1146,8 +1146,10 @@ bool Parser::eval_deferred_nttp_default(
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
     long long* out) {
-    const std::string legacy_key = tpl_name + ":" + std::to_string(param_idx);
-    auto legacy_it = template_state_.nttp_default_expr_tokens.find(legacy_key);
+    const std::string rendered_mirror_key =
+        tpl_name + ":" + std::to_string(param_idx);
+    auto rendered_mirror_it =
+        template_state_.nttp_default_expr_tokens.find(rendered_mirror_key);
 
     const TextId template_text_id = find_parser_text_id(tpl_name);
     const QualifiedNameKey structured_key = alias_template_key_in_context(
@@ -1171,14 +1173,15 @@ bool Parser::eval_deferred_nttp_default(
         const bool structured_ok = eval_deferred_nttp_expr_tokens(
             tpl_name, *structured_tokens, type_bindings, nttp_bindings,
             &structured_value);
-        if (legacy_it != template_state_.nttp_default_expr_tokens.end()) {
-            long long legacy_value = 0;
-            const bool legacy_ok = eval_deferred_nttp_expr_tokens(
-                tpl_name, legacy_it->second, type_bindings, nttp_bindings,
-                &legacy_value);
-            if (structured_ok != legacy_ok ||
-                (structured_ok && legacy_ok &&
-                 structured_value != legacy_value)) {
+        if (rendered_mirror_it !=
+            template_state_.nttp_default_expr_tokens.end()) {
+            long long rendered_mirror_value = 0;
+            const bool rendered_mirror_ok = eval_deferred_nttp_expr_tokens(
+                tpl_name, rendered_mirror_it->second, type_bindings,
+                nttp_bindings, &rendered_mirror_value);
+            if (structured_ok != rendered_mirror_ok ||
+                (structured_ok && rendered_mirror_ok &&
+                 structured_value != rendered_mirror_value)) {
                 ++template_state_.nttp_default_expr_cache_mismatch_count;
             }
         }
@@ -1187,26 +1190,26 @@ bool Parser::eval_deferred_nttp_default(
         return true;
     }
 
-    if (legacy_it != template_state_.nttp_default_expr_tokens.end()) {
-        long long legacy_value = 0;
-        const bool legacy_ok = eval_deferred_nttp_expr_tokens(
-            tpl_name, legacy_it->second, type_bindings, nttp_bindings,
-            &legacy_value);
+    if (rendered_mirror_it != template_state_.nttp_default_expr_tokens.end()) {
+        long long rendered_mirror_value = 0;
+        const bool rendered_mirror_ok = eval_deferred_nttp_expr_tokens(
+            tpl_name, rendered_mirror_it->second, type_bindings,
+            nttp_bindings, &rendered_mirror_value);
 
         if (structured_tokens) {
             long long structured_value = 0;
             const bool structured_ok = eval_deferred_nttp_expr_tokens(
                 tpl_name, *structured_tokens, type_bindings, nttp_bindings,
                 &structured_value);
-            if (structured_ok != legacy_ok ||
-                (structured_ok && legacy_ok &&
-                 structured_value != legacy_value)) {
+            if (structured_ok != rendered_mirror_ok ||
+                (structured_ok && rendered_mirror_ok &&
+                 structured_value != rendered_mirror_value)) {
                 ++template_state_.nttp_default_expr_cache_mismatch_count;
             }
         }
 
-        if (!legacy_ok) return false;
-        *out = legacy_value;
+        if (!rendered_mirror_ok) return false;
+        *out = rendered_mirror_value;
         return true;
     }
 
@@ -1220,7 +1223,7 @@ bool Parser::eval_deferred_nttp_default(
 
 void Parser::cache_nttp_default_expr_tokens(
     const QualifiedNameKey& template_key,
-    std::string_view legacy_template_name,
+    std::string_view rendered_template_name,
     int param_idx,
     std::vector<Token> toks) {
     if (template_key.base_text_id != kInvalidText && param_idx >= 0) {
@@ -1228,11 +1231,12 @@ void Parser::cache_nttp_default_expr_tokens(
             [ParserTemplateState::NttpDefaultExprKey{template_key, param_idx}] =
                 toks;
     }
-    if (!legacy_template_name.empty() && param_idx >= 0) {
-        std::string legacy_key(legacy_template_name);
-        legacy_key += ":";
-        legacy_key += std::to_string(param_idx);
-        template_state_.nttp_default_expr_tokens[legacy_key] = std::move(toks);
+    if (!rendered_template_name.empty() && param_idx >= 0) {
+        std::string rendered_mirror_key(rendered_template_name);
+        rendered_mirror_key += ":";
+        rendered_mirror_key += std::to_string(param_idx);
+        template_state_.nttp_default_expr_tokens[rendered_mirror_key] =
+            std::move(toks);
     }
 }
 

@@ -3093,7 +3093,7 @@ void test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors() {
               "TextId-less template specialization lookup should preserve the rendered-name compatibility mirror");
 }
 
-void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
+void test_parser_nttp_default_cache_keeps_rendered_mirror_secondary() {
   c4c::Lexer lexer("template<int N = M + 1>\nstruct ParsedTrait {};\n",
                    c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -3115,7 +3115,7 @@ void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
   expect_true(parsed_parser.template_state_.nttp_default_expr_tokens.find(
                   "ParsedTrait:0") !=
                   parsed_parser.template_state_.nttp_default_expr_tokens.end(),
-              "parsed NTTP defaults should populate the rendered-name mirror");
+              "parsed NTTP defaults should populate the rendered-name compatibility mirror");
 
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3139,7 +3139,7 @@ void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
               "NTTP default cache should populate the structured key");
   expect_true(parser.template_state_.nttp_default_expr_tokens.find("Trait:0") !=
                   parser.template_state_.nttp_default_expr_tokens.end(),
-              "NTTP default cache should keep the rendered-name mirror");
+              "NTTP default cache should keep the rendered-name compatibility mirror");
 
   parser.template_state_.nttp_default_expr_tokens["Trait:0"] = {
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "3"),
@@ -3148,12 +3148,12 @@ void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
   expect_true(parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),
               "dual NTTP default cache lookup should use the structured result");
   expect_eq_int(value, 2,
-                "mismatched NTTP default cache entries should not let rendered mirrors override structured data");
+                "mismatched NTTP default cache entries should not let the rendered-name mirror override structured data");
   expect_eq_int(
       static_cast<int>(
           parser.template_state_.nttp_default_expr_cache_mismatch_count),
       1,
-      "mismatched structured/rendered NTTP default cache entries should be detected");
+      "mismatched structured cache and rendered-name mirror entries should be detected");
 
   parser.template_state_.nttp_default_expr_tokens_by_key.erase(cache_key);
   expect_true(!parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),
@@ -3164,9 +3164,9 @@ void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
   };
   expect_true(parser.eval_deferred_nttp_default("LegacyTrait", 0, {}, {},
                                                 &value),
-              "TextId-less NTTP default cache lookup should preserve rendered-name compatibility");
+              "TextId-less NTTP default cache lookup should preserve rendered-name mirror compatibility");
   expect_eq_int(value, 5,
-                "TextId-less NTTP default cache fallback should preserve behavior");
+                "TextId-less rendered-name mirror fallback should preserve behavior");
 }
 
 void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse() {
@@ -4186,7 +4186,7 @@ int main() {
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
   test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors();
-  test_parser_nttp_default_cache_dual_reads_legacy_mismatch();
+  test_parser_nttp_default_cache_keeps_rendered_mirror_secondary();
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
   test_parser_template_static_member_lookup_prefers_record_definition();
   test_parser_template_instantiation_dedup_keys_demote_rendered_sync();
