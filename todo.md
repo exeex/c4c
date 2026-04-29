@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/133_parser_namespace_visible_name_compatibility_spelling_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Quarantine String Overloads and AST Projection Bridges
+Current Step ID: 5
+Current Step Title: Validation and Acceptance
 
 # Current Packet
 
@@ -29,8 +29,14 @@ fallback remains removed; no narrower key fallback was needed.
 
 ## Suggested Next
 
-Step 4 is ready for supervisor validation/review with the rejected-baseline
-fallout repaired.
+Execute `plan.md` Step 5 validation. Run the focused build/test target needed
+for the touched parser code, `frontend_parser_tests`, and targeted parse-only
+CTest selectors for using aliases, namespace directives, qualified namespace
+lookup, visible-name lookup, and the Step 4 repaired record-projection cases.
+Keep the record-projection bridge under validation pressure, and ask the
+supervisor whether final acceptance should escalate to broader parser CTest or
+full CTest because `lookup_type_in_context` and `resolve_visible_type` are
+broad lookup surfaces.
 
 ## Watchouts
 
@@ -48,3 +54,8 @@ Ran the supervisor-selected proof:
 Result: passed; proof log is `test_after.log`. The EASTL tuple recipe passed
 in the repaired subset with the broad `qualified_key_in_context` rendered
 fallback still removed.
+
+Code-review reminder satisfied by
+`review/idea133_step4_repair_review.md`, committed as `d1df79e6`. The review
+reported no blocking findings, recommended continuing the current route, and
+called out broader Step 5 proof as required before final acceptance.
