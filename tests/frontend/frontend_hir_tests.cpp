@@ -3089,6 +3089,128 @@ void test_hir_ctor_init_member_symbol_prefers_record_def_over_stale_tag() {
               "constructor initializer member symbol should prefer record_def owner over stale tag");
 }
 
+void test_hir_ctor_init_field_constructor_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_field_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_field_record->name = arena.strdup("RealFieldCtor");
+  real_field_record->unqualified_name = arena.strdup("RealFieldCtor");
+  real_field_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> field_owner_key =
+      lowerer.make_struct_def_node_owner_key(real_field_record);
+  expect_true(field_owner_key.has_value(),
+              "fixture should build a structured owner key for field constructor");
+
+  c4c::hir::HirStructDef real_field_def;
+  real_field_def.tag = "RealFieldCtor";
+  real_field_def.tag_text_id = module.link_name_texts->intern("RealFieldCtor");
+  real_field_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*field_owner_key, real_field_def.tag, true);
+  module.struct_defs[real_field_def.tag] = real_field_def;
+
+  c4c::hir::HirStructDef stale_field_def;
+  stale_field_def.tag = "StaleFieldCtor";
+  stale_field_def.tag_text_id = module.link_name_texts->intern("StaleFieldCtor");
+  stale_field_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_field_def.tag] = stale_field_def;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+  c4c::Node* real_param = parser.make_node(c4c::NK_DECL, 1);
+  real_param->name = arena.strdup("value");
+  real_param->type = int_ts;
+  c4c::Node* real_ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  real_ctor->name = arena.strdup("RealFieldCtor");
+  real_ctor->unqualified_name = arena.strdup("RealFieldCtor");
+  real_ctor->is_constructor = true;
+  real_ctor->type.base = c4c::TB_VOID;
+  real_ctor->n_params = 1;
+  real_ctor->params = arena.alloc_array<c4c::Node*>(1);
+  real_ctor->params[0] = real_param;
+  lowerer.struct_constructors_["RealFieldCtor"].push_back(
+      {"RealFieldCtor__ctor", real_ctor});
+
+  c4c::Node* stale_param = parser.make_node(c4c::NK_DECL, 1);
+  stale_param->name = arena.strdup("value");
+  stale_param->type = int_ts;
+  c4c::Node* stale_ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  stale_ctor->name = arena.strdup("StaleFieldCtor");
+  stale_ctor->unqualified_name = arena.strdup("StaleFieldCtor");
+  stale_ctor->is_constructor = true;
+  stale_ctor->type.base = c4c::TB_VOID;
+  stale_ctor->n_params = 1;
+  stale_ctor->params = arena.alloc_array<c4c::Node*>(1);
+  stale_ctor->params[0] = stale_param;
+  lowerer.struct_constructors_["StaleFieldCtor"].push_back(
+      {"StaleFieldCtor__ctor", stale_ctor});
+
+  c4c::TypeSpec field_ts{};
+  field_ts.array_size = -1;
+  field_ts.inner_rank = -1;
+  field_ts.base = c4c::TB_STRUCT;
+  field_ts.tag = arena.strdup("StaleFieldCtor");
+  field_ts.record_def = real_field_record;
+
+  c4c::hir::HirStructField field;
+  field.name = "field";
+  field.field_text_id = module.link_name_texts->intern("field");
+  field.elem_type = field_ts;
+  c4c::hir::HirStructDef outer_def;
+  outer_def.tag = "OuterCtorDispatch";
+  outer_def.tag_text_id = module.link_name_texts->intern("OuterCtorDispatch");
+  outer_def.ns_qual.context_id = parser.current_namespace_context_id();
+  outer_def.fields.push_back(field);
+  module.struct_defs[outer_def.tag] = outer_def;
+
+  c4c::Node* arg = parser.make_node(c4c::NK_INT_LIT, 1);
+  arg->ival = 7;
+  arg->type = int_ts;
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 1);
+  body->ival = 1;
+  c4c::Node* ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  ctor->name = arena.strdup("OuterCtorDispatch");
+  ctor->unqualified_name = arena.strdup("OuterCtorDispatch");
+  ctor->is_constructor = true;
+  ctor->type.base = c4c::TB_VOID;
+  ctor->body = body;
+  ctor->n_ctor_inits = 1;
+  ctor->ctor_init_names = arena.alloc_array<const char*>(1);
+  ctor->ctor_init_names[0] = arena.strdup("field");
+  ctor->ctor_init_nargs = arena.alloc_array<int>(1);
+  ctor->ctor_init_nargs[0] = 1;
+  ctor->ctor_init_args = arena.alloc_array<c4c::Node**>(1);
+  ctor->ctor_init_args[0] = arena.alloc_array<c4c::Node*>(1);
+  ctor->ctor_init_args[0][0] = arg;
+
+  lowerer.lower_struct_method(
+      "OuterCtorDispatch__ctor", "OuterCtorDispatch", ctor, nullptr, nullptr);
+
+  std::string lowered_callee;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* call = std::get_if<c4c::hir::CallExpr>(&expr.payload);
+    if (!call || call->args.empty()) continue;
+    const c4c::hir::Expr* callee = module.find_expr(call->callee);
+    if (!callee) continue;
+    if (const auto* ref = std::get_if<c4c::hir::DeclRef>(&callee->payload);
+        ref && (ref->name == "RealFieldCtor__ctor" ||
+                ref->name == "StaleFieldCtor__ctor")) {
+      lowered_callee = ref->name;
+      break;
+    }
+  }
+
+  expect_eq(lowered_callee, "RealFieldCtor__ctor",
+            "constructor initializer should use structured field owner before stale rendered tag");
+}
+
 void test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3912,6 +4034,7 @@ int main() {
   test_hir_init_list_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_implicit_this_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_ctor_init_member_symbol_prefers_record_def_over_stale_tag();
+  test_hir_ctor_init_field_constructor_prefers_record_def_over_stale_tag();
   test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_member_dtor_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag();

@@ -9,29 +9,27 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with direct struct constructor-call routing in `object.cpp`.
-`try_lower_direct_struct_constructor_call` now builds a constructor owner
-`TypeSpec` from the callee AST, including `record_def` and template-argument
-payloads, resolves it through structured owner lookup, and uses the resolved HIR
-struct tag for constructor and aggregate-temporary routing before falling back
-to rendered callee spelling.
+with constructor-initializer field constructor routing in `stmt.cpp`.
+When a member initializer dispatches a field constructor, the lookup now derives
+the constructor owner tag from structured field type identity (`record_def` or
+template owner carriers) before falling back to the rendered field type tag.
 
-Added focused HIR coverage proving a stale rendered constructor spelling cannot
-select the wrong constructor when structured `record_def` owner identity is
+Added focused HIR coverage proving a stale rendered field type tag cannot select
+the wrong field constructor when structured `record_def` owner identity is
 available.
 
 ## Suggested Next
 
-Continue Step 4 by auditing any remaining rendered-tag ingress in constructor
-paths outside direct call lowering, especially declaration/statement-side
-constructor dispatch that still keys through `decl_ts.tag` or field type tags.
+Continue Step 4 by auditing declaration-side constructor dispatch in
+`decl.cpp`, especially local declaration constructor paths that still key
+through `decl_ts.tag`.
 
 ## Watchouts
 
-Direct constructor-call lowering intentionally keeps the legacy rendered
-fallback only when no structured owner can be resolved. The delegated Do Not
-Touch list left declaration and statement constructor paths unchanged, so those
-remain candidates for separate packets.
+The `stmt.cpp` field-constructor path intentionally keeps the rendered fallback
+when no structured field owner can be resolved. Declaration-side constructor
+paths were outside this packet's Do Not Touch boundary and remain candidates for
+a separate packet.
 
 ## Proof
 

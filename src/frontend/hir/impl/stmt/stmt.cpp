@@ -795,8 +795,25 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
 
       bool did_ctor_call = false;
-      if (field_ts.base == TB_STRUCT && field_ts.tag && field_ts.ptr_level == 0) {
-        auto cit = struct_constructors_.find(field_ts.tag);
+      std::string field_ctor_tag;
+      if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0) {
+        const bool has_structured_field_owner =
+            field_ts.record_def || field_ts.tpl_struct_origin ||
+            (field_ts.tpl_struct_args.data && field_ts.tpl_struct_args.size > 0);
+        if (has_structured_field_owner) {
+          if (auto owner_tag = resolve_member_lookup_owner_tag(
+                  field_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
+                  &ctx.method_struct_tag, method_node,
+                  std::string("ctor-init-field-constructor-owner:") + mem_name)) {
+            field_ctor_tag = *owner_tag;
+          }
+        }
+        if (field_ctor_tag.empty() && field_ts.tag) {
+          field_ctor_tag = field_ts.tag;
+        }
+      }
+      if (!field_ctor_tag.empty()) {
+        auto cit = struct_constructors_.find(field_ctor_tag);
         if (cit != struct_constructors_.end() && !cit->second.empty()) {
           const CtorOverload* best = nullptr;
           if (cit->second.size() == 1 &&
@@ -851,7 +868,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
           if (best) {
             if (best->method_node->is_deleted) {
               std::string diag = "error: call to deleted constructor '";
-              diag += field_ts.tag;
+              diag += field_ctor_tag;
               diag += "'";
               throw std::runtime_error(diag);
             }
