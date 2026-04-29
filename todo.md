@@ -8,33 +8,23 @@ Current Step Title: Reprove Parser Cleanup And Decide Closure Or Split
 
 ## Just Finished
 
-Step 4 is exhausted after the record-layout compatibility tag-map demotion,
-template primary/specialization rendered-name mirror demotion, and NTTP default
-expression rendered-cache demotion packets.
+Step 5 final proof and route review completed.
 
-The remaining public helper/test string surfaces are not a precise additional
-Step 4 demotion packet: `struct_tag_def_map`, template rendered mirrors, and
-`nttp_default_expr_tokens` are now visibly compatibility/final-spelling mirrors;
-`defined_struct_tags`, rendered template instantiation keys, typedef-chain
-helper maps, diagnostics, source spelling, and string-facing public bridge tests
-fit final-spelling, compatibility, or downstream boundary categories rather than
-ordinary parser semantic lookup authority.
+The focused parser/template proof passed with matching before/after logs:
+`frontend_parser_tests` plus the selected C++ template specialization subset
+reported 10 tests passed, 0 failed in both `test_before.log` and
+`test_after.log`.
+
+Reviewer report: `review/parser_lookup_cleanup_step5_review.md`.
+Reviewer judgment was on track, matches source idea, technical debt acceptable,
+validation narrow proof sufficient, with no unsupported downgrade,
+testcase-overfit, or route drift found.
 
 ## Suggested Next
 
-Step 5 should reprove the parser cleanup route and decide closure versus split.
-Suggested supervisor proof is a fresh focused frontend/parser run covering the
-changed parser tests plus the template specialization subset used during Steps
-3 and 4:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_(template_specialization_member_typedef_trait_parse_cpp|template_specialization_typedef_chain_parse_cpp|template_specialization_visible_typedef_chain_parse_cpp|template_struct_specialization_parse_cpp|template_struct_specialization_runtime_cpp|template_bool_specialization_parse_cpp|specialization_identity_cpp|template_forward_pick_specialization_identity_cpp|eastl_slice6_template_defaults_and_refqual_cpp))$' > test_after.log 2>&1`
-
-After that proof, inspect the accumulated diff for unsupported downgrades,
-testcase-shaped shortcuts, or any remaining unclassified parser-owned string
-lookup authority. If none are present, ask the plan-owner to close idea 123
-with the selected regression guard. If a remaining issue is real but outside
-this runbook, split it into a new `ideas/open/` initiative instead of extending
-Step 4.
+Ask the plan owner to close idea 123 or split only if the closure gate finds a
+durable leftover. Pass `review/parser_lookup_cleanup_step5_review.md` as the
+route-quality review artifact.
 
 ## Watchouts
 
@@ -51,11 +41,15 @@ boundary.
 
 ## Proof
 
-Latest Step 4 proof command run exactly as delegated:
+Step 5 proof command run with matching before/after logs:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_(template_specialization_member_typedef_trait_parse_cpp|template_specialization_typedef_chain_parse_cpp|template_specialization_visible_typedef_chain_parse_cpp|template_struct_specialization_parse_cpp|template_struct_specialization_runtime_cpp|template_bool_specialization_parse_cpp|specialization_identity_cpp|template_forward_pick_specialization_identity_cpp|eastl_slice6_template_defaults_and_refqual_cpp))$'`
 
-Result: passed. `test_after.log` contains the delegated frontend parser subset
-output: 1 test passed, 0 failed.
+Result: passed. `test_before.log` and `test_after.log` both contain 10 tests
+passed, 0 failed.
 
-No validation was run for this lifecycle-only Step 4 exhaustion decision.
+Regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed. No new failures.
