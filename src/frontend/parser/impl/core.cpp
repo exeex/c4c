@@ -222,6 +222,35 @@ bool can_probe_local_binding(TextId name_text_id, std::string_view name) {
            name.find("::") == std::string_view::npos;
 }
 
+bool is_record_projection_type(const Parser& parser, const TypeSpec& type) {
+    if (type.base != TB_STRUCT && type.base != TB_UNION) return false;
+    if (parser.active_context_state_.current_struct_tag.empty()) return true;
+    if (type.record_def) return type.record_def->n_fields >= 0;
+    const Node* record =
+        resolve_record_type_spec(type, &parser.definition_state_.struct_tag_def_map);
+    return record && record->n_fields >= 0;
+}
+
+bool spelling_matches_current_record(std::string_view spelling,
+                                     std::string_view current_record,
+                                     std::string_view qualified_current) {
+    if (spelling.empty() || current_record.empty()) return false;
+    if (spelling == current_record || spelling == qualified_current) return true;
+    const size_t sep = qualified_current.rfind("::");
+    return sep != std::string_view::npos &&
+           spelling == qualified_current.substr(sep + 2);
+}
+
+std::string current_record_namespace_sibling(std::string_view current_record,
+                                             std::string_view name) {
+    if (name.empty() || name.find("::") != std::string_view::npos) return {};
+    const size_t sep = current_record.rfind("::");
+    if (sep == std::string_view::npos) return {};
+    std::string sibling(current_record.substr(0, sep + 2));
+    sibling.append(name);
+    return sibling;
+}
+
 QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
                                           TextId name_text_id,
                                           std::string_view fallback_name,
@@ -2392,6 +2421,46 @@ std::string Parser::resolve_visible_value_name(const std::string& name) const {
 
 Parser::VisibleNameResult Parser::resolve_visible_type(
     TextId name_text_id, std::string_view name) const {
+    if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
+        const std::string_view current_record = current_struct_tag_text();
+        const std::string qualified_current =
+            current_record.find("::") != std::string_view::npos
+                ? std::string(current_record)
+                : bridge_name_in_context(current_namespace_context_id(),
+                                         active_context_state_
+                                             .current_struct_tag_text_id,
+                                         current_record);
+        if (spelling_matches_current_record(name, current_record,
+                                            qualified_current)) {
+            VisibleNameResult result;
+            result.found = true;
+            result.kind = VisibleNameKind::Type;
+            result.base_text_id =
+                active_context_state_.current_struct_tag_text_id;
+            result.context_id = current_namespace_context_id();
+            result.source = VisibleNameSource::Local;
+            result.compatibility_spelling = qualified_current;
+            return result;
+        }
+        const std::string sibling =
+            current_record_namespace_sibling(qualified_current, name);
+        if (!sibling.empty()) {
+            if (const TypeSpec* sibling_type = find_typedef_type(sibling);
+                sibling_type &&
+                (sibling_type->base == TB_STRUCT ||
+                 sibling_type->base == TB_UNION) &&
+                !is_record_projection_type(*this, *sibling_type)) {
+                VisibleNameResult result;
+                result.found = true;
+                result.kind = VisibleNameKind::Type;
+                result.base_text_id = name_text_id;
+                result.context_id = current_namespace_context_id();
+                result.source = VisibleNameSource::Fallback;
+                result.compatibility_spelling = sibling;
+                return result;
+            }
+        }
+    }
     if (can_probe_local_binding(name_text_id, name) &&
         find_local_visible_typedef_type(name_text_id)) {
         VisibleNameResult result;
@@ -3072,7 +3141,13 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
     }
     const std::string candidate =
         bridge_name_in_context(context_id, name_text_id, name);
-    if (name_text_id == kInvalidText && has_typedef_type(candidate)) {
+    const TypeSpec* projected_typedef = find_typedef_type(candidate);
+    const bool explicit_textless_compat =
+        name_text_id == kInvalidText && projected_typedef;
+    const bool record_projection_bridge =
+        name_text_id != kInvalidText && projected_typedef &&
+        is_record_projection_type(*this, *projected_typedef);
+    if (explicit_textless_compat || record_projection_bridge) {
         resolved->found = true;
         resolved->kind = VisibleNameKind::Type;
         resolved->key = candidate_key;
