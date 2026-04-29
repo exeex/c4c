@@ -86,3 +86,17 @@ contract first:
 - Focused parser tests prove legacy rendered strings do not override covered
   `TextId` or semantic-table lookup paths.
 - Any unresolved cross-module conflict is captured as a separate open idea.
+
+## Lifecycle Note: 2026-04-29
+
+Active execution parked on `Step 3: Split Parser Semantic Lookup From Text
+Spelling` after inventorying `DefinitionState::struct_tag_def_map`.
+
+The first semantic-record family cannot be converted honestly inside
+parser-owned files because the lookup input crosses through `TypeSpec`, and
+`TypeSpec` carries record identity only as `const char* tag`. Converting
+`struct_tag_def_map` to another string-like key would still leave rendered tag
+spelling as semantic authority.
+
+Follow-up bridge initiative:
+`ideas/open/127_typed_parser_record_identity_bridge.md`.
