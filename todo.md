@@ -3,33 +3,57 @@
 Status: Active
 Source Idea Path: ideas/open/123_parser_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Convert Pure Parser Text Lookup To TextId
+Current Step ID: Step 3
+Current Step Title: Split Remaining Parser Semantic Lookup From Text Spelling
 
 ## Just Finished
 
-Step 2 converted the record field duplicate-name checker from rendered
-`std::string` set authority to parser `TextId` identity.
+Step 2 is exhausted after the two pure parser-local text lookup conversions.
 
-`parse_record_body()` now owns `std::unordered_set<TextId>` for
-`field_names_seen`, and `make_record_field_duplicate_checker()` resolves field
-spellings through the parser text table with fallback interning only when no
-existing parser text id is present. Duplicate diagnostics still report the
-original field spelling, and C++ mode still tolerates duplicate field names.
+Completed Step 2 packets:
+
+- K&R parameter declaration lookup now uses parser `TextId` identity instead
+  of `std::string` map authority.
+- Record field duplicate-name checking now uses `std::unordered_set<TextId>`
+  for `field_names_seen`; diagnostics still report original field spelling,
+  and C++ mode still tolerates duplicate field names.
+
+Focused reinventory after those commits found no remaining obvious pure
+parser-local text lookup map. Remaining string-keyed surfaces are
+compatibility/final-spelling mirrors, public support-helper boundaries, or
+semantic template/type binding state.
 
 ## Suggested Next
 
-Next bounded conversion packet: pick the next pure parser-local string lookup
-from the Step 1 inventory and convert only that local lookup to parser text
-identity if it has a clean `TextId` boundary.
+Next bounded Step 3 packet: convert the template specialization parameter
+binding scratch state in `src/frontend/parser/impl/types/types_helpers.hpp`
+from rendered parameter-name keys to parser/template parameter identity.
+
+Scope for that packet:
+
+- Target `select_template_struct_pattern()` and its local
+  `type_bindings_map` / `value_bindings_map`, plus the helper lookup in
+  `match_type_pattern()`.
+- Prefer `TextId` from `Node::template_param_name_text_ids` when available;
+  use the smallest fallback needed only where existing AST payloads lack a
+  valid text id.
+- Keep rendered names only as spelling/diagnostic or compatibility payloads
+  for existing `std::vector<std::pair<std::string, ...>>` call boundaries if
+  changing those callers would widen the packet.
+- Add or run focused template specialization proof that stale rendered
+  parameter spelling cannot override the selected parameter identity.
 
 ## Watchouts
 
-Do not widen the next packet into `struct_tag_def_map`, record layout
-const-eval helpers, template rendered mirrors, public support helper
-signatures, or parser semantic record maps. The record field duplicate checker
-kept its callback shape intentionally so this packet did not require parser
-member-dispatch signature churn.
+Do not widen the next packet into `defined_struct_tags`, `struct_tag_def_map`,
+record layout const-eval helpers, template rendered mirrors
+(`template_struct_defs`, `template_struct_specializations`,
+`instantiated_template_struct_keys`, `nttp_default_expr_tokens`), public
+support helper signatures, or parser semantic record maps.
+
+The template rendered maps already have structured-key companions and stale
+rendered-name coverage; they are compatibility/Step 4 cleanup unless a Step 3
+semantic packet proves a specific primary-authority leak.
 
 ## Proof
 
