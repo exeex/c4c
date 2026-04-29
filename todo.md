@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Audit Sema And HIR Text Authority
+Current Step ID: 4
+Current Step Title: Audit LIR, BIR, And Backend Handoff Text Authority
 
 # Current Packet
 
@@ -106,28 +106,30 @@ Suspicious authority:
 - No new Sema/HIR suspicious authority was found outside ideas 135 and 136.
   The suspicious Sema families all map to idea 135, and the suspicious HIR
   owner/member/method/template families all map to idea 136.
-- The Step 2 parser known-function-name gap remains outside ideas 135 and 136:
+- The Step 2 parser known-function-name gap remained outside ideas 135 and 136:
   `has_known_fn_name(const std::string&)`,
   `register_known_fn_name(const std::string&)`, rendered registration call
-  sites, and fallback parsing into `QualifiedNameKey` still need plan-owner
-  follow-up idea creation or adjustment before the audit can claim every
-  suspicious path has open follow-up coverage.
+  sites, and fallback parsing into `QualifiedNameKey` are now mapped to
+  `ideas/open/137_parser_known_function_name_compatibility_spelling_cleanup.md`.
+  This keeps the parser binding/disambiguation cleanup separate from the
+  Parser record/template, namespace visible-name, AST payload, Sema, and HIR
+  follow-up ideas.
 
 ## Suggested Next
 
 Proceed to Step 4 for LIR, BIR, and backend handoff text-authority audit.
-Supervisor should also route a plan-owner packet to create or adjust follow-up
-coverage for the parser known-function-name compatibility spelling gap; Step 3
-did not require new Sema/HIR follow-up ideas beyond 135 and 136.
+Step 3 did not require new Sema/HIR follow-up ideas beyond 135 and 136, and the
+Step 2 parser known-function-name compatibility spelling gap now has focused
+open follow-up coverage in idea 137.
 
 ## Watchouts
 
-Do not fold the known-function-name gap into ideas 135 or 136; it is a parser
-binding/disambiguation family from Step 2. Do not create duplicate Sema/HIR
-ideas for owner/static-member/method/template rendered lookup without first
-reconciling with ideas 135 and 136. Parser-support helper consumers are not a
-new parser gap based on this audit; their HIR-side rendered owner/template
-risks are already represented by idea 136.
+Do not fold the known-function-name gap into ideas 135 or 136; it is covered by
+idea 137 as a parser binding/disambiguation family from Step 2. Do not create
+duplicate Sema/HIR ideas for owner/static-member/method/template rendered
+lookup without first reconciling with ideas 135 and 136. Parser-support helper
+consumers are not a new parser gap based on this audit; their HIR-side rendered
+owner/template risks are already represented by idea 136.
 
 ## Proof
 
