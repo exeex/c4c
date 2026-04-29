@@ -1,6 +1,6 @@
 # Parser Legacy String Lookup Removal Convergence
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
 
 Parent Ideas:
@@ -112,3 +112,18 @@ spelling, diagnostics, emitted text, and compatibility payload.
 `DefinitionState::struct_tag_def_map` should now be treated as a
 compatibility/final-spelling mirror, testing hook, and tag-only fallback rather
 than the primary semantic record authority for converted parser paths.
+
+## Lifecycle Note: 2026-04-29 Closed
+
+Closed after the resumed parser cleanup runbook completed all five steps.
+Pure parser text lookup and the covered parser-owned semantic scratch binding
+paths were moved away from rendered-string authority, while retained string
+surfaces were classified as display, diagnostics, source spelling, final
+rendering, compatibility mirrors, or public bridge behavior.
+
+Final proof used matching focused parser/template before and after logs with
+10 tests passed and 0 failed in both logs. The regression guard passed with no
+new failures. Reviewer report
+`review/parser_lookup_cleanup_step5_review.md` judged the route on track,
+matching this source idea, with no unsupported downgrade, testcase-overfit, or
+route drift. No durable leftover blocked closure.
