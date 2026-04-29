@@ -827,6 +827,8 @@ bool Parser::has_visible_typedef_type(std::string_view name) const {
     return has_visible_typedef_type(find_parser_text_id(name), name);
 }
 
+// Compatibility bridge for tag/ref strings; semantic callers with parser-owned
+// identity should use the TextId overload.
 const TypeSpec* Parser::find_visible_typedef_type(std::string_view name) const {
     return find_visible_typedef_type(find_parser_text_id(name), name);
 }
@@ -1242,6 +1244,8 @@ const TypeSpec* Parser::find_visible_var_type(TextId name_text_id,
     return find_var_type(resolved);
 }
 
+// Compatibility bridge for projection strings; semantic callers with parser-
+// owned identity should use the TextId overload.
 const TypeSpec* Parser::find_visible_var_type(const std::string& name) const {
     return find_visible_var_type(find_parser_text_id(name), name);
 }
@@ -2364,6 +2368,8 @@ Parser::VisibleNameResult Parser::resolve_visible_value(
     return {};
 }
 
+// String-only visible resolution is a compatibility entry point. It immediately
+// recovers parser text identity when possible, then uses the structured path.
 Parser::VisibleNameResult Parser::resolve_visible_value(
     std::string_view name) const {
     return resolve_visible_value(find_parser_text_id(name), name);
@@ -2379,6 +2385,7 @@ std::string Parser::resolve_visible_value_name(TextId name_text_id,
     return std::string(name);
 }
 
+// Final spelling projection over structured visible-value resolution.
 std::string Parser::resolve_visible_value_name(const std::string& name) const {
     return resolve_visible_value_name(find_parser_text_id(name), name);
 }
@@ -2455,6 +2462,8 @@ Parser::VisibleNameResult Parser::resolve_visible_type(
     return {};
 }
 
+// String-only visible resolution is a compatibility entry point. It immediately
+// recovers parser text identity when possible, then uses the structured path.
 Parser::VisibleNameResult Parser::resolve_visible_type(
     std::string_view name) const {
     return resolve_visible_type(find_parser_text_id(name), name);
@@ -2486,6 +2495,7 @@ std::string Parser::resolve_visible_type_name(TextId name_text_id,
     return std::string(name);
 }
 
+// Final spelling projection over structured visible-type resolution.
 std::string Parser::resolve_visible_type_name(std::string_view name) const {
     return resolve_visible_type_name(find_parser_text_id(name), name);
 }
@@ -2515,6 +2525,8 @@ Parser::VisibleNameResult Parser::resolve_visible_concept(
     return {};
 }
 
+// String-only visible resolution is a compatibility entry point. It immediately
+// recovers parser text identity when possible, then uses the structured path.
 Parser::VisibleNameResult Parser::resolve_visible_concept(
     std::string_view name) const {
     return resolve_visible_concept(find_parser_text_id(name), name);
@@ -2530,6 +2542,7 @@ std::string Parser::resolve_visible_concept_name(TextId name_text_id,
     return std::string(name);
 }
 
+// Final spelling projection over structured visible-concept resolution.
 std::string Parser::resolve_visible_concept_name(const std::string& name) const {
     return resolve_visible_concept_name(find_parser_text_id(name), name);
 }
@@ -2848,6 +2861,8 @@ bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
     return !alias.compatibility_name.empty();
 }
 
+// String output overloads are projection bridges over the VisibleNameResult
+// overloads; they do not perform independent semantic lookup.
 bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
                                       std::string_view fallback_name,
                                       std::string* resolved) const {
@@ -2974,6 +2989,8 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
     return false;
 }
 
+// String output overloads are projection bridges over the VisibleNameResult
+// overloads; they do not perform independent semantic lookup.
 bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
                                      std::string_view name,
                                      std::string* resolved) const {
@@ -3068,6 +3085,8 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
     return false;
 }
 
+// String output overloads are projection bridges over the VisibleNameResult
+// overloads; they do not perform independent semantic lookup.
 bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
                                     std::string_view name,
                                     std::string* resolved) const {
@@ -3143,6 +3162,8 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
     return false;
 }
 
+// String output overloads are projection bridges over the VisibleNameResult
+// overloads; they do not perform independent semantic lookup.
 bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
                                        std::string_view name,
                                        std::string* resolved) const {

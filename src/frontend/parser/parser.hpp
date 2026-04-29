@@ -349,9 +349,13 @@ class Parser {
   const ParserAliasTemplateInfo* find_alias_template_info(
       const QualifiedNameKey& key) const;
   bool has_visible_typedef_type(TextId name_text_id, std::string_view name) const;
+  // String-only visible typedef helpers are compatibility bridges for tag/ref
+  // strings. Parser-owned token paths should pass TextId identity above.
   bool has_visible_typedef_type(std::string_view name) const;
   const TypeSpec* find_visible_typedef_type(TextId name_text_id,
                                             std::string_view name) const;
+  // String-only visible typedef lookup delegates to the TextId-aware path after
+  // a parser text lookup; use it only when no originating TextId is available.
   const TypeSpec* find_visible_typedef_type(std::string_view name) const;
   void push_local_binding_scope();
   bool pop_local_binding_scope();
@@ -405,6 +409,8 @@ class Parser {
       const QualifiedNameKey& key) const;
   const TypeSpec* find_visible_var_type(TextId name_text_id,
                                         std::string_view name) const;
+  // String-only visible value lookup is a compatibility bridge for projection
+  // strings. Token-backed semantic callers should use the TextId overload.
   const TypeSpec* find_visible_var_type(const std::string& name) const;
   void register_var_type_binding(TextId name_text_id, std::string_view name,
                                  const TypeSpec& type);
@@ -476,24 +482,29 @@ class Parser {
   bool lookup_using_value_alias(int context_id, TextId name_text_id,
                                 std::string_view fallback_name,
                                 VisibleNameResult* resolved) const;
+  // String output overloads project structured lookup results to spelling.
+  // They must not be used as independent semantic authority.
   bool lookup_using_value_alias(int context_id, TextId name_text_id,
                                 std::string_view fallback_name,
                                 std::string* resolved) const;
   bool lookup_value_in_context(int context_id, TextId name_text_id,
                                std::string_view name,
                                VisibleNameResult* resolved) const;
+  // Projection bridge over the VisibleNameResult overload.
   bool lookup_value_in_context(int context_id, TextId name_text_id,
                                std::string_view name,
                                std::string* resolved) const;
   bool lookup_type_in_context(int context_id, TextId name_text_id,
                               std::string_view name,
                               VisibleNameResult* resolved) const;
+  // Projection bridge over the VisibleNameResult overload.
   bool lookup_type_in_context(int context_id, TextId name_text_id,
                               std::string_view name,
                               std::string* resolved) const;
   bool lookup_concept_in_context(int context_id, TextId name_text_id,
                                  std::string_view name,
                                  VisibleNameResult* resolved) const;
+  // Projection bridge over the VisibleNameResult overload.
   bool lookup_concept_in_context(int context_id, TextId name_text_id,
                                  std::string_view name,
                                  std::string* resolved) const;
@@ -503,23 +514,31 @@ class Parser {
   const char* qualify_name_arena(const char* name);
   VisibleNameResult resolve_visible_value(TextId name_text_id,
                                           std::string_view name) const;
+  // String-only visible-name resolution is a compatibility entry point for
+  // callers that only have spelling; token/semantic callers should pass TextId.
   VisibleNameResult resolve_visible_value(std::string_view name) const;
   std::string resolve_visible_value_name(TextId name_text_id,
                                          std::string_view name) const;
+  // Final spelling projection over resolve_visible_value(...).
   std::string resolve_visible_value_name(const std::string& name) const;
   VisibleNameResult resolve_visible_type(TextId name_text_id,
                                          std::string_view name) const;
+  // String-only visible type resolution is compatibility/fallback only; prefer
+  // the TextId overload where parser-owned identity exists.
   VisibleNameResult resolve_visible_type(std::string_view name) const;
   std::string visible_name_spelling(
       const VisibleNameResult& result) const;
   std::string resolve_visible_type_name(TextId name_text_id,
                                         std::string_view name) const;
+  // Final spelling projection over resolve_visible_type(...).
   std::string resolve_visible_type_name(std::string_view name) const;
   VisibleNameResult resolve_visible_concept(TextId name_text_id,
                                             std::string_view name) const;
+  // String-only visible concept resolution is compatibility/fallback only.
   VisibleNameResult resolve_visible_concept(std::string_view name) const;
   std::string resolve_visible_concept_name(TextId name_text_id,
                                            std::string_view name) const;
+  // Final spelling projection over resolve_visible_concept(...).
   std::string resolve_visible_concept_name(const std::string& name) const;
   bool is_concept_name(const std::string& name) const;
   bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;

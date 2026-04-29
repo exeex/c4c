@@ -8,28 +8,32 @@ Current Step Title: Quarantine String Overloads and AST Projection Bridges
 
 ## Just Finished
 
-Plan Step 4 `Quarantine String Overloads and AST Projection Bridges` continued.
-`parse_base_type` now carries the current identifier token `TextId` into the
-visible value lookup used by the expression/type probe path, replacing
-`find_visible_var_type(id)` with `find_visible_var_type(id_text_id, id)`.
+Plan Step 4 `Quarantine String Overloads and AST Projection Bridges` finished
+as a helper quarantine/audit packet. `parser.hpp` and `core.cpp` now explicitly
+classify string-only visible typedef/value helpers, string-only visible
+resolution helpers, `resolve_visible_*_name`, and
+`lookup_*_in_context(..., std::string*)` overloads as compatibility,
+projection, or fallback bridges layered over TextId-aware or
+`VisibleNameResult` structured paths.
 
-Earlier Step 4 work already removed one-argument `resolve_visible_type` calls
-from the owned type/template files. This slice adds another token-backed
-semantic visible lookup conversion without changing final AST spelling.
+No semantic behavior changed in this packet. The helper contracts now document
+that parser-owned token/semantic callers should prefer TextId, namespace
+context, `QualifiedNameKey`, or `VisibleNameResult` paths when available.
 
 ## Suggested Next
 
-Continue Step 4 by auditing remaining string-only visible typedef lookups that
-come from tag/ref strings. Convert only call sites where the originating token
-`TextId` or parser-owned semantic key can be carried without confusing final
-AST projection spelling.
+Step 4 is ready for supervisor validation/review. If accepted, advance to the
+next plan step or close/split according to the active runbook.
 
 ## Watchouts
 
-Remaining string-only calls observed in `types/base.cpp` are classified as:
-member typedef recursion over `TypeSpec::tag`, enum/tag projection,
-`ts.tag` combined-specifier resolution, and serialized template arg refs. They
-do not have a clearly correct token `TextId` in this bounded slice.
+Remaining raw-string categories are explicit compatibility/projection cases:
+tag/ref strings such as `TypeSpec::tag`, enum/tag projection, final
+`resolve_visible_*_name` spelling projection, `std::string*` lookup projection
+over `VisibleNameResult`, and public string entry points for callers that have
+only spelling. Future packets should convert additional call sites only when a
+correct token `TextId`, namespace context id, or semantic key can be carried
+without changing final AST spelling semantics.
 
 ## Proof
 
