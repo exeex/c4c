@@ -481,13 +481,21 @@ inline const char* pending_template_type_kind_name(PendingTemplateTypeKind kind)
 }
 
 inline std::string encode_pending_type_ref(const TypeSpec& ts) {
+  auto has_structured_type_payload = [](const TypeSpec& type) {
+    return type.tpl_struct_origin || type.base != TB_VOID || type.ptr_level > 0 ||
+           type.array_rank > 0 || type.is_fn_ptr || type.is_vector;
+  };
   std::function<std::string(const TemplateArgRef&)> encode_arg =
       [&](const TemplateArgRef& arg) -> std::string {
-    if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
     if (arg.kind == TemplateArgKind::Value) {
       return std::string("v:") + std::to_string(arg.value);
     }
-    return std::string("t:{") + encode_pending_type_ref(arg.type) + "}";
+    if (arg.kind == TemplateArgKind::Type &&
+        has_structured_type_payload(arg.type)) {
+      return std::string("t:{") + encode_pending_type_ref(arg.type) + "}";
+    }
+    if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
+    return "t:?";
   };
   std::string out;
   out += "base=" + std::to_string(static_cast<int>(ts.base));

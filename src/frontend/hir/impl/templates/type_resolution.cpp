@@ -10,12 +10,12 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
 namespace {
 
 std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
-  if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
   if (arg.kind == TemplateArgKind::Value) return std::to_string(arg.value);
   if (arg.kind == TemplateArgKind::Type &&
       (has_concrete_type(arg.type) || arg.type.tpl_struct_origin)) {
     return encode_template_type_arg_ref_hir(arg.type);
   }
+  if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
   return {};
 }
 
@@ -120,7 +120,7 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
               debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
         } else {
           bool rebound_value = false;
-          if (src_arg.debug_text && src_arg.debug_text[0]) {
+          if (src_arg.value == 0 && src_arg.debug_text && src_arg.debug_text[0]) {
             auto nit = nttp_bindings.find(src_arg.debug_text);
             if (nit != nttp_bindings.end()) {
               dst_arg.value = nit->second;
@@ -128,7 +128,8 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
             }
           }
           const std::string debug_text =
-              (!rebound_value && src_arg.debug_text && src_arg.debug_text[0])
+              (!rebound_value && src_arg.value == 0 && src_arg.debug_text &&
+               src_arg.debug_text[0])
                   ? std::string(src_arg.debug_text)
                   : std::to_string(dst_arg.value);
           dst_arg.debug_text =

@@ -7,12 +7,12 @@ namespace c4c::hir {
 namespace {
 
 std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
-  if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
   if (arg.kind == TemplateArgKind::Value) return std::to_string(arg.value);
   if (arg.kind == TemplateArgKind::Type &&
       (has_concrete_type(arg.type) || arg.type.tpl_struct_origin)) {
     return encode_template_type_arg_ref_hir(arg.type);
   }
+  if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
   return {};
 }
 
@@ -380,6 +380,10 @@ bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
         return false;
       }
       out_arg->value = eval_val;
+      return true;
+    }
+    if (ref.value != 0 || debug_text.empty()) {
+      out_arg->value = ref.value;
       return true;
     }
     if (!debug_text.empty()) {

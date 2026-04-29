@@ -11,10 +11,29 @@
 #include "backend/bir/lir_to_bir/lowering.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <initializer_list>
 #include <iostream>
+#include <memory>
+#include <optional>
+#include <set>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#define private public
+#include "hir/impl/lowerer.hpp"
+#undef private
 
 namespace {
 
@@ -32,6 +51,13 @@ void expect_eq(std::string_view actual, std::string_view expected,
   if (actual != expected) {
     fail(msg + "\nExpected: " + std::string(expected) +
          "\nActual: " + std::string(actual));
+  }
+}
+
+void expect_eq_int(int actual, int expected, const std::string& msg) {
+  if (actual != expected) {
+    fail(msg + "\nExpected: " + std::to_string(expected) +
+         "\nActual: " + std::to_string(actual));
   }
 }
 
@@ -1584,6 +1610,52 @@ int main() {
               "builtin alias callees should stay on the invalid-id fallback when no semantic carrier exists");
 }
 
+void test_hir_template_arg_materialization_prefers_structured_value_payload() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Box");
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("N");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = true;
+
+  c4c::TypeSpec owner{};
+  owner.array_size = -1;
+  owner.inner_rank = -1;
+  owner.base = c4c::TB_STRUCT;
+  owner.tpl_struct_origin = arena.strdup("Box");
+  owner.tpl_struct_args.size = 1;
+  owner.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  owner.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+  owner.tpl_struct_args.data[0].value = 7;
+  owner.tpl_struct_args.data[0].debug_text = arena.strdup("RenderedN");
+
+  c4c::hir::Lowerer lowerer;
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  nttp_bindings["RenderedN"] = 101;
+
+  const c4c::hir::ResolvedTemplateArgs resolved =
+      lowerer.materialize_template_args(primary, owner, type_bindings,
+                                        nttp_bindings);
+
+  expect_true(resolved.concrete_args.size() == 1 &&
+                  resolved.concrete_args[0].is_value,
+              "HIR template materialization should keep the structured NTTP payload");
+  expect_eq_int(static_cast<int>(resolved.concrete_args[0].value), 7,
+                "stale TemplateArgRef debug_text must not select the NTTP value");
+  expect_true(resolved.nttp_bindings.size() == 1 &&
+                  resolved.nttp_bindings[0].first == "N",
+              "HIR template materialization should bind the primary NTTP name");
+  expect_eq_int(static_cast<int>(resolved.nttp_bindings[0].second), 7,
+                "HIR template materialization should bind from the structured value");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -2038,6 +2110,7 @@ int main() {
   test_hir_to_lir_object_helper_callees_prefer_link_name_ids();
   test_hir_to_lir_template_call_helper_callees_prefer_carrier_link_name_ids();
   test_hir_direct_call_builtin_alias_fallback_keeps_invalid_link_name_ids();
+  test_hir_template_arg_materialization_prefers_structured_value_payload();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

@@ -12,12 +12,12 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
 namespace {
 
 std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
-  if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
   if (arg.kind == TemplateArgKind::Value) return std::to_string(arg.value);
   if (arg.kind == TemplateArgKind::Type &&
       (has_concrete_type(arg.type) || arg.type.tpl_struct_origin)) {
     return encode_template_type_arg_ref_hir(arg.type);
   }
+  if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
   return {};
 }
 
