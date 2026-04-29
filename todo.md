@@ -8,20 +8,19 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 `hir_functions.cpp` previous-declaration alignment carryover
-packet. `Lowerer::lower_function()` now builds a `DeclRef` carrier from the
-function being lowered (`name`, `name_text_id`, `link_name_id`, and
-`ns_qual`) and resolves the previous declaration through
-`Module::resolve_function_decl()`. This routes structured and link-name
-authority through the shared resolver while preserving rendered-name fallback
-inside that resolver when declaration metadata is incomplete.
+Completed Step 3 `hir_types.cpp` function lookup demotion packet. The six
+remaining direct `find_function_by_name_legacy()` callsites in this file now
+build a local `DeclRef` carrier and resolve through
+`Module::resolve_function_decl()`, using source-node `name_text_id`/`ns_qual`
+where available and `LinkNameId` discovery for rendered or mangled carriers
+before the shared resolver's rendered-name fallback.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: inspect the remaining
-`find_function_by_name_legacy()` callers in `hir_types.cpp`, then route each
-through resolver authority where a `DeclRef`/`LinkNameId` carrier exists or
-classify the exact metadata gap.
+Next coherent Step 3 packet: inspect remaining direct
+`find_global_by_name_legacy()` callsites in `hir_types.cpp` and route each
+through `Module::resolve_global_decl()` or a more specific resolver where a
+`DeclRef`/`GlobalId`/`LinkNameId` carrier exists.
 
 ## Watchouts
 
@@ -78,8 +77,16 @@ Step 1 inventory classification:
   `Module::resolve_function_decl()`. The `hir_functions.cpp`
   previous-declaration alignment carryover now uses a `DeclRef` built from the
   function's existing declaration metadata and resolves through the same shared
-  function declaration resolver. Remaining direct function legacy helper callers
-  are in `hir_types.cpp` and need separate carrier-metadata inspection.
+  function declaration resolver. The `hir_types.cpp` direct function callers
+  now do the same.
+- Template/deduced call result inference in `hir_types.cpp` can often carry a
+  `LinkNameId` by looking up the deduced/materialized mangled name in
+  `module_->link_names`, but `deduced_template_calls_` and the local
+  `mangle_template_name()`/registry path still expose only rendered mangled
+  names at this lookup boundary. There is no structured `FunctionId` or
+  declaration-owner resolver metadata available here yet, so missing link-name
+  hits remain classified as a template metadata gap and intentionally fall back
+  inside `Module::resolve_function_decl()`.
 - Direct-call link-carrier discovery now records declaration lookup hits through
   the shared resolver. The hit/mismatch recorders deduplicate exact repeats, but
   future packets should keep an eye on noisy lookup telemetry if more call-site

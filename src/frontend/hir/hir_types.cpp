@@ -59,6 +59,18 @@ void copy_consteval_structured_bindings(const SourceMap& source,
   }
 }
 
+DeclRef make_function_lookup_decl_ref(Module& module, std::string name,
+                                      const Node* source = nullptr) {
+  DeclRef ref;
+  ref.name = std::move(name);
+  TextTable* texts = module.link_name_texts.get();
+  ref.name_text_id = source ? make_unqualified_text_id(source, texts)
+                            : make_text_id(ref.name, texts);
+  ref.ns_qual = source ? make_ns_qual(source, texts) : NamespaceQualifier{};
+  ref.link_name_id = module.link_names.find(ref.name);
+  return ref;
+}
+
 }  // namespace
 
 bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
@@ -705,7 +717,8 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
   if (const GlobalVar* gv = module_->find_global_by_name_legacy(name)) {
     if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
   }
-  if (const Function* fn = module_->find_function_by_name_legacy(name)) {
+  DeclRef fn_ref = make_function_lookup_decl_ref(*module_, name, callee);
+  if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
     return fn->return_type.spec;
   }
   return std::nullopt;
@@ -717,7 +730,8 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
 
   if (auto dit = deduced_template_calls_.find(call);
       dit != deduced_template_calls_.end()) {
-    if (const Function* fn = module_->find_function_by_name_legacy(dit->second.mangled_name)) {
+    DeclRef fn_ref = make_function_lookup_decl_ref(*module_, dit->second.mangled_name);
+    if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
       return fn->return_type.spec;
     }
   }
@@ -752,7 +766,8 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
           }
         }
       }
-      if (const Function* fn = module_->find_function_by_name_legacy(resolved_name)) {
+      DeclRef fn_ref = make_function_lookup_decl_ref(*module_, resolved_name);
+      if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
         return fn->return_type.spec;
       }
     }
@@ -2079,7 +2094,8 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
       if (const GlobalVar* gv = module_->find_global_by_name_legacy(name)) {
         return reference_value_ts(gv->type.spec);
       }
-      if (const Function* fn = module_->find_function_by_name_legacy(name)) {
+      DeclRef fn_ref = make_function_lookup_decl_ref(*module_, name, n);
+      if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
         TypeSpec ts = fn->return_type.spec;
         ts.is_fn_ptr = true;
         ts.ptr_level = 0;
@@ -2211,11 +2227,13 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
         const std::string callee_name = n->left->name;
         auto dit = deduced_template_calls_.find(n);
         if (dit != deduced_template_calls_.end()) {
-          if (const Function* fn = module_->find_function_by_name_legacy(dit->second.mangled_name)) {
+          DeclRef fn_ref = make_function_lookup_decl_ref(*module_, dit->second.mangled_name);
+          if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
             return reference_value_ts(fn->return_type.spec);
           }
         }
-        if (const Function* fn = module_->find_function_by_name_legacy(callee_name)) {
+        DeclRef fn_ref = make_function_lookup_decl_ref(*module_, callee_name, n->left);
+        if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
           return reference_value_ts(fn->return_type.spec);
         }
         TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
