@@ -8,19 +8,20 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 `hir_types.cpp` function lookup demotion packet. The six
-remaining direct `find_function_by_name_legacy()` callsites in this file now
-build a local `DeclRef` carrier and resolve through
-`Module::resolve_function_decl()`, using source-node `name_text_id`/`ns_qual`
-where available and `LinkNameId` discovery for rendered or mangled carriers
-before the shared resolver's rendered-name fallback.
+Completed Step 3 `hir_types.cpp` global lookup demotion packet. The remaining
+direct `find_global_by_name_legacy()` callsites in
+`infer_call_result_type_from_callee()` and `infer_generic_ctrl_type()` now build
+source-node `DeclRef` carriers and resolve through
+`Module::resolve_global_decl()`, preserving rendered-name fallback inside the
+shared resolver.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: inspect remaining direct
-`find_global_by_name_legacy()` callsites in `hir_types.cpp` and route each
-through `Module::resolve_global_decl()` or a more specific resolver where a
-`DeclRef`/`GlobalId`/`LinkNameId` carrier exists.
+Next coherent Step 3 packet: supervisor/reviewer review of the HIR direct
+legacy lookup demotion slice. `src/frontend/hir/hir_types.cpp` no longer has
+direct `find_function_by_name_legacy()` or `find_global_by_name_legacy()`
+callers; remaining references under `src/frontend/hir` are the resolver
+definitions and their internal fallback/parity paths in `hir_ir.hpp`.
 
 ## Watchouts
 
@@ -91,6 +92,10 @@ Step 1 inventory classification:
   the shared resolver. The hit/mismatch recorders deduplicate exact repeats, but
   future packets should keep an eye on noisy lookup telemetry if more call-site
   helpers are routed through the same boundary.
+- `hir_types.cpp` global type inference now follows the same resolver authority
+  path as the earlier function demotion: local/static `FunctionCtx` state still
+  wins first, then global `DeclRef` lookup records structured/link/fallback
+  authority through `Module::resolve_global_decl()`.
 - The focused HIR lookup tests cover module structured function/global,
   function and global `LinkNameId`, concrete `GlobalId`, direct-call
   structured/LinkNameId stale-rendered-name disagreement cases, and

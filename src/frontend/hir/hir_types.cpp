@@ -71,6 +71,18 @@ DeclRef make_function_lookup_decl_ref(Module& module, std::string name,
   return ref;
 }
 
+DeclRef make_global_lookup_decl_ref(Module& module, std::string name,
+                                    const Node* source = nullptr) {
+  DeclRef ref;
+  ref.name = std::move(name);
+  TextTable* texts = module.link_name_texts.get();
+  ref.name_text_id = source ? make_unqualified_text_id(source, texts)
+                            : make_text_id(ref.name, texts);
+  ref.ns_qual = source ? make_ns_qual(source, texts) : NamespaceQualifier{};
+  ref.link_name_id = module.link_names.find(ref.name);
+  return ref;
+}
+
 }  // namespace
 
 bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
@@ -714,7 +726,8 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
       }
     }
   }
-  if (const GlobalVar* gv = module_->find_global_by_name_legacy(name)) {
+  DeclRef global_ref = make_global_lookup_decl_ref(*module_, name, callee);
+  if (const GlobalVar* gv = module_->resolve_global_decl(global_ref)) {
     if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
   }
   DeclRef fn_ref = make_function_lookup_decl_ref(*module_, name, callee);
@@ -2091,7 +2104,8 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
           }
         }
       }
-      if (const GlobalVar* gv = module_->find_global_by_name_legacy(name)) {
+      DeclRef global_ref = make_global_lookup_decl_ref(*module_, name, n);
+      if (const GlobalVar* gv = module_->resolve_global_decl(global_ref)) {
         return reference_value_ts(gv->type.spec);
       }
       DeclRef fn_ref = make_function_lookup_decl_ref(*module_, name, n);
