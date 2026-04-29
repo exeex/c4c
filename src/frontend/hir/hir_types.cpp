@@ -1242,6 +1242,20 @@ GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& 
 
 const Node* Lowerer::find_struct_static_member_decl(
     const std::string& tag, const std::string& member) const {
+  const auto owner_key = make_struct_member_lookup_key(tag, member);
+  if (owner_key) {
+    const auto owner_it = struct_static_member_decls_by_owner_.find(*owner_key);
+    if (owner_it != struct_static_member_decls_by_owner_.end()) {
+      auto sit = struct_static_member_decls_.find(tag);
+      if (sit != struct_static_member_decls_.end()) {
+        auto mit = sit->second.find(member);
+        if (mit != sit->second.end()) {
+          record_struct_static_member_decl_lookup_parity(tag, member, mit->second);
+        }
+      }
+      return owner_it->second;
+    }
+  }
   auto sit = struct_static_member_decls_.find(tag);
   if (sit != struct_static_member_decls_.end()) {
     auto mit = sit->second.find(member);

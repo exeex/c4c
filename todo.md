@@ -9,28 +9,26 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with the HIR static-member const lookup repair. `find_struct_static_member_const_value`
-now checks the structured owner-key value map before accepting rendered-tag
-static-member values, while preserving rendered fallback when no owner key
-value is available.
+with the HIR static-member declaration lookup repair.
+`find_struct_static_member_decl` now checks the structured owner-key declaration
+map before accepting rendered-tag static-member declarations, while preserving
+rendered fallback when no owner-key declaration is available.
 
 Added focused HIR coverage for a template-instantiation owner key where stale
-rendered spelling carries the wrong value, plus fallback coverage for legacy
-rendered-only static-member values.
+rendered spelling points at the wrong declaration, plus fallback coverage for
+legacy rendered-only static-member declarations.
 
 ## Suggested Next
 
-Continue Step 4 with the declaration side of static-member lookup: audit
-`find_struct_static_member_decl` and its `try_eval_template_static_member_const`
-callers for a structured-first decl path that does not break the current
-parity-only rendered-decl compatibility test.
+Continue Step 4 by auditing the remaining method/static-member owner-key parity
+helpers for the same structured-primary boundary, starting with method mangled,
+method link-name, and method return-type lookups.
 
 ## Watchouts
 
-Only the static constexpr value helper is behaviorally structured-primary in
-this packet. Static-member declaration lookup still exposes rendered-map
-behavior with owner-key parity checks, so the next packet should either migrate
-that deliberately or update the existing lookup parity test in the same slice.
+This packet only migrates static-member declaration lookup. Existing rendered
+fallback is still active when `make_struct_member_lookup_key` cannot build a
+complete owner key or when no owner-key declaration entry exists for the member.
 
 ## Proof
 
