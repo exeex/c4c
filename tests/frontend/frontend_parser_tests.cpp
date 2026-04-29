@@ -3777,7 +3777,7 @@ c4c::Node* parser_test_record(c4c::Parser& parser, c4c::Arena& arena,
   return record;
 }
 
-void test_parser_record_layout_const_eval_prefers_record_definition() {
+void test_parser_record_layout_const_eval_uses_record_definition_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -3796,8 +3796,8 @@ void test_parser_record_layout_const_eval_prefers_record_definition() {
        parser_test_field(parser, arena, "value",
                          parser_test_scalar_type(c4c::TB_CHAR))});
 
-  std::unordered_map<std::string, c4c::Node*> struct_map;
-  struct_map["Shared"] = stale;
+  std::unordered_map<std::string, c4c::Node*> compatibility_tag_map;
+  compatibility_tag_map["Shared"] = stale;
 
   c4c::TypeSpec typed = parser_test_scalar_type(c4c::TB_STRUCT);
   typed.tag = arena.strdup("Shared");
@@ -3806,30 +3806,33 @@ void test_parser_record_layout_const_eval_prefers_record_definition() {
   c4c::Node* align_node = parser.make_node(c4c::NK_ALIGNOF_TYPE, 1);
   align_node->type = typed;
   long long align_value = 0;
-  expect_true(c4c::eval_const_int(align_node, &align_value, &struct_map),
+  expect_true(c4c::eval_const_int(align_node, &align_value,
+                                  &compatibility_tag_map),
               "alignof should evaluate for typed record TypeSpecs");
   expect_eq_int(static_cast<int>(align_value), 4,
-                "alignof should prefer record_def over stale rendered tag lookup");
+                "alignof should use record_def authority before stale final-spelling fallback");
 
   c4c::Node* size_node = parser.make_node(c4c::NK_SIZEOF_TYPE, 1);
   size_node->type = typed;
   long long size_value = 0;
-  expect_true(c4c::eval_const_int(size_node, &size_value, &struct_map),
+  expect_true(c4c::eval_const_int(size_node, &size_value,
+                                  &compatibility_tag_map),
               "sizeof should evaluate for typed record TypeSpecs");
   expect_eq_int(static_cast<int>(size_value), 8,
-                "sizeof should prefer record_def over stale rendered tag lookup");
+                "sizeof should use record_def authority before stale final-spelling fallback");
 
   c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
   offset_node->type = typed;
   offset_node->name = arena.strdup("value");
   long long offset_value = 0;
-  expect_true(c4c::eval_const_int(offset_node, &offset_value, &struct_map),
+  expect_true(c4c::eval_const_int(offset_node, &offset_value,
+                                  &compatibility_tag_map),
               "offsetof should evaluate for typed record TypeSpecs");
   expect_eq_int(static_cast<int>(offset_value), 4,
-                "offsetof should prefer record_def over stale rendered tag lookup");
+                "offsetof should use record_def authority before stale final-spelling fallback");
 }
 
-void test_parser_record_layout_const_eval_keeps_tag_fallback() {
+void test_parser_record_layout_const_eval_keeps_final_spelling_fallback() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -3842,8 +3845,8 @@ void test_parser_record_layout_const_eval_keeps_tag_fallback() {
        parser_test_field(parser, arena, "value",
                          parser_test_scalar_type(c4c::TB_CHAR))});
 
-  std::unordered_map<std::string, c4c::Node*> struct_map;
-  struct_map["Fallback"] = fallback;
+  std::unordered_map<std::string, c4c::Node*> compatibility_tag_map;
+  compatibility_tag_map["Fallback"] = fallback;
 
   c4c::TypeSpec tag_only = parser_test_scalar_type(c4c::TB_STRUCT);
   tag_only.tag = arena.strdup("Fallback");
@@ -3851,27 +3854,30 @@ void test_parser_record_layout_const_eval_keeps_tag_fallback() {
   c4c::Node* align_node = parser.make_node(c4c::NK_ALIGNOF_TYPE, 1);
   align_node->type = tag_only;
   long long align_value = 0;
-  expect_true(c4c::eval_const_int(align_node, &align_value, &struct_map),
-              "alignof should keep tag-only compatibility fallback");
+  expect_true(c4c::eval_const_int(align_node, &align_value,
+                                  &compatibility_tag_map),
+              "alignof should keep tag-only final-spelling compatibility fallback");
   expect_eq_int(static_cast<int>(align_value), 1,
-                "alignof fallback should use the rendered tag map");
+                "alignof fallback should use the rendered compatibility tag map");
 
   c4c::Node* size_node = parser.make_node(c4c::NK_SIZEOF_TYPE, 1);
   size_node->type = tag_only;
   long long size_value = 0;
-  expect_true(c4c::eval_const_int(size_node, &size_value, &struct_map),
-              "sizeof should keep tag-only compatibility fallback");
+  expect_true(c4c::eval_const_int(size_node, &size_value,
+                                  &compatibility_tag_map),
+              "sizeof should keep tag-only final-spelling compatibility fallback");
   expect_eq_int(static_cast<int>(size_value), 2,
-                "sizeof fallback should use the rendered tag map");
+                "sizeof fallback should use the rendered compatibility tag map");
 
   c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
   offset_node->type = tag_only;
   offset_node->name = arena.strdup("value");
   long long offset_value = 0;
-  expect_true(c4c::eval_const_int(offset_node, &offset_value, &struct_map),
-              "offsetof should keep tag-only compatibility fallback");
+  expect_true(c4c::eval_const_int(offset_node, &offset_value,
+                                  &compatibility_tag_map),
+              "offsetof should keep tag-only final-spelling compatibility fallback");
   expect_eq_int(static_cast<int>(offset_value), 1,
-                "offsetof fallback should use the rendered tag map");
+                "offsetof fallback should use the rendered compatibility tag map");
 }
 
 void test_parser_incomplete_decl_checks_prefer_record_definition() {
@@ -4188,8 +4194,8 @@ int main() {
   test_parser_template_substitution_preserves_record_definition_payloads();
   test_parser_direct_record_types_carry_record_definition();
   test_parser_tag_only_record_types_keep_null_record_definition();
-  test_parser_record_layout_const_eval_prefers_record_definition();
-  test_parser_record_layout_const_eval_keeps_tag_fallback();
+  test_parser_record_layout_const_eval_uses_record_definition_authority();
+  test_parser_record_layout_const_eval_keeps_final_spelling_fallback();
   test_parser_incomplete_decl_checks_prefer_record_definition();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
