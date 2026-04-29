@@ -14,14 +14,22 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
         std::string("error: range-for expression is not a struct type (line ") +
         std::to_string(n->line) + ")");
   }
+  const std::string* current_struct_tag =
+      !ctx.method_struct_tag.empty() ? &ctx.method_struct_tag : nullptr;
+  const std::string range_method_owner_tag =
+      resolve_struct_method_lookup_owner_tag(
+          range_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
+          current_struct_tag, n, "range-for-method-owner");
+  const std::string range_error_tag = range_ts.tag ? std::string(range_ts.tag)
+                                                   : range_method_owner_tag;
 
   auto find_method = [&](const char* method_name) -> std::string {
     auto method = find_struct_method_mangled(
-        range_ts.tag, method_name, range_ts.is_const);
+        range_method_owner_tag, method_name, range_ts.is_const);
     if (!method) {
       throw std::runtime_error(
           std::string("error: range-for: no ") + method_name +
-          "() method on struct " + range_ts.tag + " (line " +
+          "() method on struct " + range_error_tag + " (line " +
           std::to_string(n->line) + ")");
     }
     return *method;
@@ -41,7 +49,8 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     }
   }
   if (iter_ts.base == TB_VOID) {
-    if (auto rit = find_struct_method_return_type(range_ts.tag, "begin", false)) {
+    if (auto rit =
+            find_struct_method_return_type(range_method_owner_tag, "begin", false)) {
       iter_ts = *rit;
     }
   }
@@ -88,6 +97,12 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
 
   LocalId begin_lid = make_iter_local("__range_begin", begin_call);
   LocalId end_lid = make_iter_local("__range_end", end_call);
+  const std::string iter_method_owner_tag =
+      resolve_struct_method_lookup_owner_tag(
+          iter_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
+          current_struct_tag, n, "range-for-iterator-method-owner");
+  const std::string iter_error_tag =
+      iter_ts.tag ? std::string(iter_ts.tag) : iter_method_owner_tag;
 
   auto ref_local = [&](const char* name, LocalId lid) -> ExprId {
     DeclRef dr{};
@@ -99,10 +114,10 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
   ExprId cond_expr;
   {
     auto method = find_struct_method_mangled(
-        iter_ts.tag, "operator_neq", false);
+        iter_method_owner_tag, "operator_neq", false);
     if (!method) {
       throw std::runtime_error(
-          std::string("error: range-for: iterator type ") + iter_ts.tag +
+          std::string("error: range-for: iterator type ") + iter_error_tag +
           " has no operator!= (line " + std::to_string(n->line) + ")");
     }
     CallExpr cc{};
@@ -127,10 +142,10 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
   ExprId update_expr;
   {
     auto method = find_struct_method_mangled(
-        iter_ts.tag, "operator_preinc", false);
+        iter_method_owner_tag, "operator_preinc", false);
     if (!method) {
       throw std::runtime_error(
-          std::string("error: range-for: iterator type ") + iter_ts.tag +
+          std::string("error: range-for: iterator type ") + iter_error_tag +
           " has no prefix operator++ (line " + std::to_string(n->line) + ")");
     }
     CallExpr cc{};
@@ -176,10 +191,10 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     deref_ret_ts.base = TB_INT;
     {
       auto method = find_struct_method_mangled(
-          iter_ts.tag, "operator_deref", false);
+          iter_method_owner_tag, "operator_deref", false);
       if (!method) {
         throw std::runtime_error(
-            std::string("error: range-for: iterator type ") + iter_ts.tag +
+            std::string("error: range-for: iterator type ") + iter_error_tag +
             " has no operator* (line " + std::to_string(n->line) + ")");
       }
       CallExpr cc{};
@@ -193,7 +208,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
       }
       if (deref_ret_ts.base == TB_VOID || deref_ret_ts.base == TB_INT) {
         if (auto rit = find_struct_method_return_type(
-                iter_ts.tag, "operator_deref", false)) {
+                iter_method_owner_tag, "operator_deref", false)) {
           deref_ret_ts = *rit;
         }
       }

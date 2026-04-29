@@ -9,28 +9,32 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with the HIR struct-method lookup helper repair. `find_struct_method_mangled`,
-`find_struct_method_link_name_id`, and `find_struct_method_return_type` now
-check structured owner-key method maps before accepting rendered `tag::method`
-maps, including the existing preferred/alternate constness order, while
-preserving rendered fallback when no owner-key entry is available.
+with the range-for HIR method-lookup caller path. `lower_range_for_stmt` now
+resolves structured owner identity from the range and iterator `TypeSpec`
+carriers before calling `find_struct_method_mangled` or
+`find_struct_method_return_type`, while retaining rendered-tag fallback through
+the shared owner-resolution helper when structured identity is absent.
 
-Added focused HIR coverage for template-instantiation owner keys where stale
-rendered method maps point at wrong mangled names, link-name ids, and return
-types, plus fallback coverage for legacy rendered-only method maps.
+Added focused HIR coverage for the range-for method-owner path where a stale
+rendered range tag would select the wrong `begin` method unless `record_def`
+structured owner identity is used first.
 
 ## Suggested Next
 
-Continue Step 4 by auditing method lookup callers that still pass only rendered
-owner tags, and route a follow-up packet for any remaining tests outside this
-delegated subset that still encode rendered-primary method lookup expectations.
+Continue Step 4 by auditing the operator-call family in
+`src/frontend/hir/impl/expr/operator.cpp`, especially `try_lower_operator_call`,
+`lower_member_expr` operator-arrow chaining, and `maybe_bool_convert`, so those
+method lookups also prefer structured `TypeSpec` owner identity before rendered
+tags where available.
 
 ## Watchouts
 
-Method lookup parity counters are still only recorded when a rendered
-compatibility entry exists for the same constness key. Existing rendered
-fallback remains active when `make_struct_method_lookup_key` cannot build a
-complete owner key or when no owner-key method entry exists.
+`resolve_struct_method_lookup_owner_tag` currently reuses the member-owner
+resolver because both method and member lookup need the same structured record
+owner selection; it still returns `TypeSpec::tag` as the explicit rendered
+fallback. Other callers in `operator.cpp`, `expr/call.cpp`, and `expr/object.cpp`
+still pass rendered tags directly, but only `operator.cpp` is in this packet's
+owned file set.
 
 ## Proof
 

@@ -418,6 +418,22 @@ std::optional<HirStructMemberLookupKey> Lowerer::make_struct_member_lookup_key(
   return std::nullopt;
 }
 
+std::string Lowerer::resolve_struct_method_lookup_owner_tag(
+    const TypeSpec& owner_ts,
+    bool is_arrow,
+    const TypeBindings* tpl_bindings,
+    const NttpBindings* nttp_bindings,
+    const std::string* current_struct_tag,
+    const Node* span_node,
+    const std::string& context_name) {
+  if (auto owner_tag = resolve_member_lookup_owner_tag(
+          owner_ts, is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
+          span_node, context_name)) {
+    return *owner_tag;
+  }
+  return owner_ts.tag ? std::string(owner_ts.tag) : std::string{};
+}
+
 void Lowerer::record_struct_method_mangled_lookup_parity(
     const std::string& tag,
     const std::string& method,

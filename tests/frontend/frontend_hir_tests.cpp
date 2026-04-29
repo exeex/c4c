@@ -2072,6 +2072,71 @@ void test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key() {
               "method return-type lookup should preserve rendered fallback when no owner key exists");
 }
 
+void test_hir_range_for_method_owner_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealRange");
+  real_record->unqualified_name = arena.strdup("RealRange");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for the real range record");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealRange";
+  real_def.tag_text_id = module.link_name_texts->intern("RealRange");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleRenderedRange";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleRenderedRange");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  const c4c::TextId begin_text_id = module.link_name_texts->intern("begin");
+  c4c::hir::HirStructMethodLookupKey method_key;
+  method_key.owner_key = *owner_key;
+  method_key.method_text_id = begin_text_id;
+  method_key.is_const_method = false;
+  lowerer.struct_methods_by_owner_[method_key] = "RealRange__begin";
+  lowerer.struct_methods_["StaleRenderedRange::begin"] = "StaleRange__begin";
+
+  c4c::TypeSpec range_ts{};
+  range_ts.array_size = -1;
+  range_ts.inner_rank = -1;
+  range_ts.base = c4c::TB_STRUCT;
+  range_ts.tag = arena.strdup("StaleRenderedRange");
+  range_ts.record_def = real_record;
+
+  const std::optional<std::string> stale_rendered_method =
+      lowerer.find_struct_method_mangled("StaleRenderedRange", "begin", false);
+  expect_true(stale_rendered_method.has_value() &&
+                  *stale_rendered_method == "StaleRange__begin",
+              "fixture should expose the stale rendered method fallback before owner repair");
+
+  const std::string owner_tag = lowerer.resolve_struct_method_lookup_owner_tag(
+      range_ts, false, nullptr, nullptr, nullptr, nullptr,
+      "range-for-method-owner-test");
+  expect_true(owner_tag == "RealRange",
+              "range-for method owner resolution should prefer record_def over a stale rendered tag");
+
+  const std::optional<std::string> resolved_method =
+      lowerer.find_struct_method_mangled(owner_tag, "begin", false);
+  expect_true(resolved_method.has_value() &&
+                  *resolved_method == "RealRange__begin",
+              "range-for method lookup should use the structured owner before rendered spelling");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -2538,6 +2603,7 @@ int main() {
   test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_range_for_method_owner_prefers_record_def_over_stale_tag();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

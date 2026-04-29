@@ -383,6 +383,14 @@ class Lowerer {
       const std::string& tag,
       const std::string& method,
       bool is_const_obj) const;
+  std::string resolve_struct_method_lookup_owner_tag(
+      const TypeSpec& owner_ts,
+      bool is_arrow,
+      const TypeBindings* tpl_bindings,
+      const NttpBindings* nttp_bindings,
+      const std::string* current_struct_tag,
+      const Node* span_node,
+      const std::string& context_name);
   std::optional<HirStructMethodLookupKey> make_struct_method_lookup_key(
       const std::string& tag,
       const std::string& method,
