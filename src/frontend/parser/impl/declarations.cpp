@@ -3474,7 +3474,14 @@ top_level_base_ready:
         //   f(a, b) int a; short *b; { ... }
         // Bind declared types back to identifier list order.
         if (!knr_param_names.empty()) {
-            std::unordered_map<std::string, Node*> knr_param_decl_map;
+            std::vector<TextId> knr_param_name_text_ids;
+            knr_param_name_text_ids.reserve(knr_param_names.size());
+            for (const char* pnm : knr_param_names) {
+                knr_param_name_text_ids.push_back(
+                    parser.parser_text_id_for_token(kInvalidText,
+                                                    pnm ? pnm : ""));
+            }
+            std::unordered_map<TextId, Node*> knr_param_decl_map;
             while (parser.is_type_start() && !parser.check(TokenKind::LBrace)) {
                 TypeSpec knr_base = parser.parse_base_type();
                 parser.parse_attributes(&knr_base);
@@ -3486,23 +3493,34 @@ top_level_base_ready:
                     knr_ts.is_ptr_to_array = false;
                     knr_ts.array_size_expr = nullptr;
                     const char* knr_name = nullptr;
-                    parser.parse_declarator(knr_ts, &knr_name);
+                    TextId knr_name_text_id = kInvalidText;
+                    parser.parse_declarator(
+                        knr_ts, &knr_name, nullptr, nullptr, nullptr, nullptr,
+                        nullptr, nullptr, nullptr, &knr_name_text_id);
                     if (!knr_name) continue;
+                    if (knr_name_text_id == kInvalidText) {
+                        knr_name_text_id =
+                            parser.parser_text_id_for_token(kInvalidText,
+                                                            knr_name);
+                    }
+                    if (knr_name_text_id == kInvalidText) continue;
                     bool listed = false;
-                    for (const char* pnm : knr_param_names) {
-                        if (pnm && strcmp(pnm, knr_name) == 0) { listed = true; break; }
+                    for (TextId pnm_text_id : knr_param_name_text_ids) {
+                        if (pnm_text_id == knr_name_text_id) { listed = true; break; }
                     }
                     if (!listed) continue;
                     Node* p = parser.make_node(NK_DECL, ln);
                     p->name = knr_name;
                     p->type = knr_ts;
-                    knr_param_decl_map[knr_name] = p;
+                    knr_param_decl_map[knr_name_text_id] = p;
                 } while (parser.match(TokenKind::Comma));
                 parser.match(TokenKind::Semi);
             }
             params.clear();
-            for (const char* pnm : knr_param_names) {
-                auto it = knr_param_decl_map.find(pnm ? pnm : "");
+            for (size_t i = 0; i < knr_param_names.size(); ++i) {
+                const char* pnm = knr_param_names[i];
+                const TextId pnm_text_id = knr_param_name_text_ids[i];
+                auto it = knr_param_decl_map.find(pnm_text_id);
                 if (it != knr_param_decl_map.end()) {
                     params.push_back(it->second);
                     continue;
