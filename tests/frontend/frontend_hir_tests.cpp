@@ -1974,6 +1974,104 @@ void test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_ke
               "static member decl lookup should preserve rendered fallback when no owner key exists");
 }
 
+void test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef def;
+  def.tag = "StaleRenderedBox_T_int";
+  def.tag_text_id = module.link_name_texts->intern("Box");
+  def.ns_qual.context_id = 9;
+  c4c::hir::HirRecordOwnerTemplateIdentity identity;
+  identity.primary_declaration_text_id = def.tag_text_id;
+  identity.specialization_key = "type:int";
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_template_record_owner_key(def, std::move(identity));
+  module.index_struct_def_owner(owner_key, def.tag, true);
+  module.struct_defs[def.tag] = def;
+
+  const c4c::TextId method_text_id = module.link_name_texts->intern("method");
+  c4c::hir::HirStructMethodLookupKey method_key;
+  method_key.owner_key = owner_key;
+  method_key.method_text_id = method_text_id;
+  method_key.is_const_method = false;
+
+  const c4c::LinkNameId stale_link_name =
+      module.link_names.intern("stale_method_mangled");
+  const c4c::LinkNameId structured_link_name =
+      module.link_names.intern("structured_method_mangled");
+  c4c::TypeSpec stale_return_type{};
+  stale_return_type.base = c4c::TB_INT;
+  c4c::TypeSpec structured_return_type{};
+  structured_return_type.base = c4c::TB_LONG;
+
+  lowerer.struct_methods_[def.tag + "::method"] = "stale_method_mangled";
+  lowerer.struct_methods_by_owner_[method_key] = "structured_method_mangled";
+  lowerer.struct_method_link_name_ids_[def.tag + "::method"] = stale_link_name;
+  lowerer.struct_method_link_name_ids_by_owner_[method_key] =
+      structured_link_name;
+  lowerer.struct_method_ret_types_[def.tag + "::method"] = stale_return_type;
+  lowerer.struct_method_ret_types_by_owner_[method_key] = structured_return_type;
+
+  const std::optional<std::string> mangled =
+      lowerer.find_struct_method_mangled(def.tag, "method", false);
+  expect_true(mangled.has_value() && *mangled == "structured_method_mangled",
+              "method mangled lookup should prefer template owner keys over stale rendered tags");
+  expect_true(lowerer.struct_method_mangled_lookup_parity_checks_ == 1,
+              "structured-first method mangled lookup should still record rendered parity");
+  expect_true(lowerer.struct_method_mangled_lookup_parity_mismatches_ == 1,
+              "stale rendered method mangled names should be detected when structured lookup wins");
+
+  const std::optional<c4c::LinkNameId> link_name =
+      lowerer.find_struct_method_link_name_id(def.tag, "method", false);
+  expect_true(link_name.has_value() && *link_name == structured_link_name,
+              "method link-name lookup should prefer template owner keys over stale rendered tags");
+  expect_true(lowerer.struct_method_link_name_lookup_parity_checks_ == 1,
+              "structured-first method link-name lookup should still record rendered parity");
+  expect_true(lowerer.struct_method_link_name_lookup_parity_mismatches_ == 1,
+              "stale rendered method link names should be detected when structured lookup wins");
+
+  const std::optional<c4c::TypeSpec> return_type =
+      lowerer.find_struct_method_return_type(def.tag, "method", false);
+  expect_true(return_type.has_value() && return_type->base == c4c::TB_LONG,
+              "method return-type lookup should prefer template owner keys over stale rendered tags");
+  expect_true(lowerer.struct_method_return_type_lookup_parity_checks_ == 1,
+              "structured-first method return-type lookup should still record rendered parity");
+  expect_true(lowerer.struct_method_return_type_lookup_parity_mismatches_ == 1,
+              "stale rendered method return types should be detected when structured lookup wins");
+}
+
+void test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  lowerer.struct_methods_["LegacyRendered::method"] = "legacy_method_mangled";
+  const c4c::LinkNameId legacy_link_name =
+      module.link_names.intern("legacy_method_mangled");
+  lowerer.struct_method_link_name_ids_["LegacyRendered::method"] =
+      legacy_link_name;
+  c4c::TypeSpec legacy_return_type{};
+  legacy_return_type.base = c4c::TB_INT;
+  lowerer.struct_method_ret_types_["LegacyRendered::method"] = legacy_return_type;
+
+  const std::optional<std::string> mangled =
+      lowerer.find_struct_method_mangled("LegacyRendered", "method", false);
+  expect_true(mangled.has_value() && *mangled == "legacy_method_mangled",
+              "method mangled lookup should preserve rendered fallback when no owner key exists");
+
+  const std::optional<c4c::LinkNameId> link_name =
+      lowerer.find_struct_method_link_name_id("LegacyRendered", "method", false);
+  expect_true(link_name.has_value() && *link_name == legacy_link_name,
+              "method link-name lookup should preserve rendered fallback when no owner key exists");
+
+  const std::optional<c4c::TypeSpec> return_type =
+      lowerer.find_struct_method_return_type("LegacyRendered", "method", false);
+  expect_true(return_type.has_value() && return_type->base == c4c::TB_INT,
+              "method return-type lookup should preserve rendered fallback when no owner key exists");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -2438,6 +2536,8 @@ int main() {
   test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
+  test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

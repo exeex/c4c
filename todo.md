@@ -9,26 +9,28 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with the HIR static-member declaration lookup repair.
-`find_struct_static_member_decl` now checks the structured owner-key declaration
-map before accepting rendered-tag static-member declarations, while preserving
-rendered fallback when no owner-key declaration is available.
+with the HIR struct-method lookup helper repair. `find_struct_method_mangled`,
+`find_struct_method_link_name_id`, and `find_struct_method_return_type` now
+check structured owner-key method maps before accepting rendered `tag::method`
+maps, including the existing preferred/alternate constness order, while
+preserving rendered fallback when no owner-key entry is available.
 
-Added focused HIR coverage for a template-instantiation owner key where stale
-rendered spelling points at the wrong declaration, plus fallback coverage for
-legacy rendered-only static-member declarations.
+Added focused HIR coverage for template-instantiation owner keys where stale
+rendered method maps point at wrong mangled names, link-name ids, and return
+types, plus fallback coverage for legacy rendered-only method maps.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining method/static-member owner-key parity
-helpers for the same structured-primary boundary, starting with method mangled,
-method link-name, and method return-type lookups.
+Continue Step 4 by auditing method lookup callers that still pass only rendered
+owner tags, and route a follow-up packet for any remaining tests outside this
+delegated subset that still encode rendered-primary method lookup expectations.
 
 ## Watchouts
 
-This packet only migrates static-member declaration lookup. Existing rendered
-fallback is still active when `make_struct_member_lookup_key` cannot build a
-complete owner key or when no owner-key declaration entry exists for the member.
+Method lookup parity counters are still only recorded when a rendered
+compatibility entry exists for the same constness key. Existing rendered
+fallback remains active when `make_struct_method_lookup_key` cannot build a
+complete owner key or when no owner-key method entry exists.
 
 ## Proof
 

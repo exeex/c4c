@@ -551,24 +551,37 @@ std::optional<std::string> Lowerer::find_struct_method_mangled(
     bool is_const_obj) const {
   const std::string base_key = tag + "::" + method;
   const std::string const_key = base_key + "_const";
-  auto try_local = [&]() -> std::optional<std::string> {
-    auto it = is_const_obj ? struct_methods_.find(const_key)
-                           : struct_methods_.find(base_key);
-    if (it != struct_methods_.end()) {
+  auto rendered_key_for = [&](bool is_const_method) -> const std::string& {
+    return is_const_method ? const_key : base_key;
+  };
+  auto try_owner = [&](bool is_const_method) -> std::optional<std::string> {
+    const auto owner_key =
+        make_struct_method_lookup_key(tag, method, is_const_method);
+    if (!owner_key) return std::nullopt;
+    const auto owner_it = struct_methods_by_owner_.find(*owner_key);
+    if (owner_it == struct_methods_by_owner_.end()) return std::nullopt;
+    const auto rendered_it = struct_methods_.find(rendered_key_for(is_const_method));
+    if (rendered_it != struct_methods_.end()) {
       record_struct_method_mangled_lookup_parity(
-          tag, method, is_const_obj, it->second);
-      return it->second;
+          tag, method, is_const_method, rendered_it->second);
     }
-    it = is_const_obj ? struct_methods_.find(base_key)
-                      : struct_methods_.find(const_key);
+    return owner_it->second;
+  };
+  auto try_rendered = [&](bool is_const_method) -> std::optional<std::string> {
+    auto it = struct_methods_.find(rendered_key_for(is_const_method));
     if (it != struct_methods_.end()) {
       record_struct_method_mangled_lookup_parity(
-          tag, method, !is_const_obj, it->second);
+          tag, method, is_const_method, it->second);
       return it->second;
     }
     return std::nullopt;
   };
-  if (auto local = try_local()) return local;
+  const bool preferred_const = is_const_obj;
+  const bool alternate_const = !is_const_obj;
+  if (auto local = try_owner(preferred_const)) return local;
+  if (auto local = try_owner(alternate_const)) return local;
+  if (auto local = try_rendered(preferred_const)) return local;
+  if (auto local = try_rendered(alternate_const)) return local;
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
     for (const auto& base_tag : dit->second.base_tags) {
@@ -587,24 +600,40 @@ std::optional<LinkNameId> Lowerer::find_struct_method_link_name_id(
     bool is_const_obj) const {
   const std::string base_key = tag + "::" + method;
   const std::string const_key = base_key + "_const";
-  auto try_local = [&]() -> std::optional<LinkNameId> {
-    auto it = is_const_obj ? struct_method_link_name_ids_.find(const_key)
-                           : struct_method_link_name_ids_.find(base_key);
-    if (it != struct_method_link_name_ids_.end()) {
-      record_struct_method_link_name_lookup_parity(
-          tag, method, is_const_obj, it->second);
-      return it->second;
+  auto rendered_key_for = [&](bool is_const_method) -> const std::string& {
+    return is_const_method ? const_key : base_key;
+  };
+  auto try_owner = [&](bool is_const_method) -> std::optional<LinkNameId> {
+    const auto owner_key =
+        make_struct_method_lookup_key(tag, method, is_const_method);
+    if (!owner_key) return std::nullopt;
+    const auto owner_it = struct_method_link_name_ids_by_owner_.find(*owner_key);
+    if (owner_it == struct_method_link_name_ids_by_owner_.end()) {
+      return std::nullopt;
     }
-    it = is_const_obj ? struct_method_link_name_ids_.find(base_key)
-                      : struct_method_link_name_ids_.find(const_key);
+    const auto rendered_it =
+        struct_method_link_name_ids_.find(rendered_key_for(is_const_method));
+    if (rendered_it != struct_method_link_name_ids_.end()) {
+      record_struct_method_link_name_lookup_parity(
+          tag, method, is_const_method, rendered_it->second);
+    }
+    return owner_it->second;
+  };
+  auto try_rendered = [&](bool is_const_method) -> std::optional<LinkNameId> {
+    auto it = struct_method_link_name_ids_.find(rendered_key_for(is_const_method));
     if (it != struct_method_link_name_ids_.end()) {
       record_struct_method_link_name_lookup_parity(
-          tag, method, !is_const_obj, it->second);
+          tag, method, is_const_method, it->second);
       return it->second;
     }
     return std::nullopt;
   };
-  if (auto local = try_local()) return local;
+  const bool preferred_const = is_const_obj;
+  const bool alternate_const = !is_const_obj;
+  if (auto local = try_owner(preferred_const)) return local;
+  if (auto local = try_owner(alternate_const)) return local;
+  if (auto local = try_rendered(preferred_const)) return local;
+  if (auto local = try_rendered(alternate_const)) return local;
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
     for (const auto& base_tag : dit->second.base_tags) {
@@ -623,24 +652,38 @@ std::optional<TypeSpec> Lowerer::find_struct_method_return_type(
     bool is_const_obj) const {
   const std::string base_key = tag + "::" + method;
   const std::string const_key = base_key + "_const";
-  auto try_local = [&]() -> std::optional<TypeSpec> {
-    auto it = is_const_obj ? struct_method_ret_types_.find(const_key)
-                           : struct_method_ret_types_.find(base_key);
-    if (it != struct_method_ret_types_.end()) {
+  auto rendered_key_for = [&](bool is_const_method) -> const std::string& {
+    return is_const_method ? const_key : base_key;
+  };
+  auto try_owner = [&](bool is_const_method) -> std::optional<TypeSpec> {
+    const auto owner_key =
+        make_struct_method_lookup_key(tag, method, is_const_method);
+    if (!owner_key) return std::nullopt;
+    const auto owner_it = struct_method_ret_types_by_owner_.find(*owner_key);
+    if (owner_it == struct_method_ret_types_by_owner_.end()) return std::nullopt;
+    const auto rendered_it =
+        struct_method_ret_types_.find(rendered_key_for(is_const_method));
+    if (rendered_it != struct_method_ret_types_.end()) {
       record_struct_method_return_type_lookup_parity(
-          tag, method, is_const_obj, it->second);
-      return it->second;
+          tag, method, is_const_method, rendered_it->second);
     }
-    it = is_const_obj ? struct_method_ret_types_.find(base_key)
-                      : struct_method_ret_types_.find(const_key);
+    return owner_it->second;
+  };
+  auto try_rendered = [&](bool is_const_method) -> std::optional<TypeSpec> {
+    auto it = struct_method_ret_types_.find(rendered_key_for(is_const_method));
     if (it != struct_method_ret_types_.end()) {
       record_struct_method_return_type_lookup_parity(
-          tag, method, !is_const_obj, it->second);
+          tag, method, is_const_method, it->second);
       return it->second;
     }
     return std::nullopt;
   };
-  if (auto local = try_local()) return local;
+  const bool preferred_const = is_const_obj;
+  const bool alternate_const = !is_const_obj;
+  if (auto local = try_owner(preferred_const)) return local;
+  if (auto local = try_owner(alternate_const)) return local;
+  if (auto local = try_rendered(preferred_const)) return local;
+  if (auto local = try_rendered(alternate_const)) return local;
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
     for (const auto& base_tag : dit->second.base_tags) {
