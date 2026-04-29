@@ -757,10 +757,12 @@ TypeSpec Parser::parse_base_type() {
         return refs;
     };
 
-    std::function<bool(const std::string&, const std::string&, TypeSpec*)>
-        lookup_struct_member_typedef_recursive =
-            [&](const std::string& tag, const std::string& member,
+    std::function<bool(const TypeSpec&, const std::string&, TypeSpec*)>
+        lookup_struct_member_typedef_recursive_for_type;
+    lookup_struct_member_typedef_recursive_for_type =
+            [&](const TypeSpec& owner_ts, const std::string& member,
                 TypeSpec* out) -> bool {
+                const std::string tag = owner_ts.tag ? owner_ts.tag : "";
                 if (tag.empty() || member.empty() || !out) return false;
                 auto lookup_typedef_for_name =
                     [&](std::string_view name) -> const TypeSpec* {
@@ -947,18 +949,34 @@ TypeSpec Parser::parse_base_type() {
                             return true;
                         }
                         return false;
-                    };
+                };
                 std::string resolved_tag = tag;
-                if (const TypeSpec* typedef_type = lookup_typedef_for_name(tag)) {
-                    TypeSpec resolved = resolve_struct_like(*typedef_type);
+                TypeSpec resolved = resolve_struct_like(owner_ts);
+                if (!resolved.record_def) {
+                    if (const TypeSpec* typedef_type = lookup_typedef_for_name(tag)) {
+                        resolved = resolve_struct_like(*typedef_type);
+                    }
+                }
+                const Node* sdef = resolve_record_type_spec(
+                    resolved, &definition_state_.struct_tag_def_map);
+                if (resolved.tag && resolved.tag[0]) resolved_tag = resolved.tag;
+                if (!sdef) {
+                    if (const TypeSpec* typedef_type = lookup_typedef_for_name(tag)) {
+                        resolved = resolve_struct_like(*typedef_type);
+                        sdef = resolve_record_type_spec(
+                            resolved, &definition_state_.struct_tag_def_map);
+                    }
                     if (resolved.tag && resolved.tag[0])
                         resolved_tag = resolved.tag;
                 }
-                auto def_it = definition_state_.struct_tag_def_map.find(resolved_tag);
-                if (def_it == definition_state_.struct_tag_def_map.end() ||
-                    !def_it->second)
-                    return false;
-                const Node* sdef = def_it->second;
+                if (!sdef) {
+                    auto def_it =
+                        definition_state_.struct_tag_def_map.find(resolved_tag);
+                    if (def_it == definition_state_.struct_tag_def_map.end() ||
+                        !def_it->second)
+                        return false;
+                    sdef = def_it->second;
+                }
                 if (try_selected_specialization_member_typedefs(sdef))
                     return true;
                 if (try_node_member_typedefs(sdef))
@@ -967,12 +985,12 @@ TypeSpec Parser::parse_base_type() {
                 for (int bi = 0; bi < sdef->n_bases; ++bi) {
                     TypeSpec base_ts = resolve_struct_like(sdef->base_types[bi]);
                     if (!base_ts.tag || !base_ts.tag[0]) continue;
-                    if (lookup_struct_member_typedef_recursive(base_ts.tag, member, out))
+                    if (lookup_struct_member_typedef_recursive_for_type(
+                            base_ts, member, out))
                         return true;
                 }
                 return false;
             };
-
     bool has_signed   = false;
     bool has_unsigned = false;
     bool has_short    = false;
@@ -1264,12 +1282,20 @@ TypeSpec Parser::parse_base_type() {
                             has_signed || has_unsigned || has_short || long_count > 0 ||
                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                             has_struct || has_union || has_enum || base_set;
+                        const bool has_following_scope =
+                            core_input_state_.pos + 1 <
+                                static_cast<int>(core_input_state_.tokens.size()) &&
+                            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                TokenKind::ColonColon;
+                        const TypeSpec* visible_head_type =
+                            (k == TokenKind::Identifier && has_following_scope)
+                                ? find_visible_typedef_type(name_text_id, name)
+                                : nullptr;
+                        const bool typed_record_owner_scope =
+                            visible_head_type && visible_head_type->record_def;
                         const bool simple_unqualified_known_type_head =
                             k == TokenKind::Identifier &&
-                            !(core_input_state_.pos + 1 <
-                                  static_cast<int>(core_input_state_.tokens.size()) &&
-                              core_input_state_.tokens[core_input_state_.pos + 1].kind ==
-                                  TokenKind::ColonColon) &&
+                            (!has_following_scope || typed_record_owner_scope) &&
                             is_known_simple_visible_type_head(*this,
                                                               name_text_id,
                                                               name);
@@ -2250,7 +2276,8 @@ TypeSpec Parser::parse_base_type() {
                 std::string member(
                     token_spelling(core_input_state_.tokens[core_input_state_.pos + 1]));
                 TypeSpec resolved{};
-                if (lookup_struct_member_typedef_recursive(ts.tag, member, &resolved)) {
+                if (lookup_struct_member_typedef_recursive_for_type(
+                        ts, member, &resolved)) {
                     consume();  // ::
                     consume();  // member
                     bool save_const = ts.is_const, save_vol = ts.is_volatile;
@@ -2301,8 +2328,8 @@ TypeSpec Parser::parse_base_type() {
                             continue;
                         }
                         TypeSpec resolved_member{};
-                        if (!lookup_struct_member_typedef_recursive(
-                                arg_ts.tag,
+                        if (!lookup_struct_member_typedef_recursive_for_type(
+                                arg_ts,
                                 arg_ts.deferred_member_type_name,
                                 &resolved_member)) {
                             continue;
@@ -2979,8 +3006,8 @@ TypeSpec Parser::parse_base_type() {
                                     inst->base_types[bi].tag &&
                                     inst->base_types[bi].tag[0]) {
                                     TypeSpec resolved_member{};
-                                    if (lookup_struct_member_typedef_recursive(
-                                            inst->base_types[bi].tag,
+                                    if (lookup_struct_member_typedef_recursive_for_type(
+                                            inst->base_types[bi],
                                             inst->base_types[bi].deferred_member_type_name,
                                             &resolved_member)) {
                                         resolved_member.deferred_member_type_name = nullptr;
@@ -3259,7 +3286,8 @@ TypeSpec Parser::parse_base_type() {
                         return ts;
                     }
                     TypeSpec resolved{};
-                    if (lookup_struct_member_typedef_recursive(ts.tag, member, &resolved)) {
+                    if (lookup_struct_member_typedef_recursive_for_type(
+                            ts, member, &resolved)) {
                         consume(); // ::
                         consume(); // member
                         // The typedef resolves to a type — for `typedef bool_constant type;` inside

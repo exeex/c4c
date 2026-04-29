@@ -8,21 +8,24 @@ Current Step Title: Convert Parser Record Consumers To Typed Identity
 
 ## Just Finished
 
-Completed Step 3 nested dependent-typename owner traversal conversion.
-`types/declarator.cpp::parse_dependent_typename_specifier` now resolves
-`nested_decl->type` through `resolve_record_type_spec()` /
-`TypeSpec::record_def` before falling back to rendered `struct_tag_def_map`
-lookup. Added focused parser coverage for `typename Root::Nested::type` where
-the nested field's real `record_def` has the member typedef and the field's
-rendered `type.tag` points at a stale tag-map record.
+Completed Step 3 `types/base.cpp::lookup_struct_member_typedef_recursive`
+conversion for typedef-resolved struct-like owners. The recursive member typedef
+lookup now accepts the owner `TypeSpec`, resolves `TypeSpec::record_def` through
+`resolve_record_type_spec()` before rendered `struct_tag_def_map` fallback, and
+keeps tag-only compatibility fallback in place. The `parse_base_type()` scoped
+owner path now keeps record-backed typedef owners on this typed suffix route
+instead of reducing them to a rendered qualified-name lookup first.
+
+Added focused parser coverage for `Alias::type` where `Alias` has a real
+`record_def` with the target member typedef while `Alias.tag` points at a stale
+rendered tag-map record.
 
 ## Suggested Next
 
-Next bounded packet: convert
-`types/base.cpp::lookup_struct_member_typedef_recursive` so typedef-resolved
-struct-like owners prefer `TypeSpec::record_def` before rendered tag lookup.
-Add focused parser coverage where the resolved typedef's `record_def` carries
-the target member typedef while the rendered tag map points at a stale record.
+Next bounded packet: inventory the remaining Step 3 parser record consumers
+after the base/declarator/declaration conversions and separate true
+TypeSpec-backed candidates from rendered-name compatibility, final-spelling, and
+template propagation paths.
 
 Suggested focused proof:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests)$' > test_after.log 2>&1`
@@ -35,8 +38,9 @@ Do not delete `struct_tag_def_map` while tag-only compatibility consumers
 remain. The nested dependent-typename traversal still keeps rendered tag and
 qualified field-name fallback for tag-only or untyped records.
 
-Template instantiation paths remain a larger propagation family and should not
-be mixed into the `lookup_struct_member_typedef_recursive` packet.
+Template instantiation paths remain a larger propagation family. This packet
+preserved existing rendered lookup behavior there except where a `TypeSpec`
+owner was already available to the recursive member typedef helper.
 
 ## Proof
 
