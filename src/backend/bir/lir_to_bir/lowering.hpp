@@ -36,9 +36,13 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
 namespace lir_to_bir_detail {
 
+// LIR SSA spelling to lowered BIR value inside one function. This is a
+// route-local compatibility handle, not module semantic identity.
 using ValueMap = std::unordered_map<std::string, bir::Value>;
 
 struct GlobalAddress {
+  // LinkNameId-backed global resolution stores final spelling here because the
+  // memory/provenance tables still bridge to raw LIR operands.
   std::string global_name;
   bir::TypeKind value_type = bir::TypeKind::Void;
   std::size_t byte_offset = 0;
@@ -52,17 +56,25 @@ struct GlobalInfo {
   std::size_t storage_size_bytes = 0;
   bool supports_direct_value = false;
   bool supports_linear_addressing = false;
+  // Compatibility LIR type text retained for aggregate layout parsing.
   std::string type_text;
   std::optional<GlobalAddress> known_global_address;
+  // Compatibility/final spelling parsed from textual initializers. Known
+  // function targets also carry initializer_function_link_name_id.
   std::string initializer_symbol_name;
   LinkNameId initializer_function_link_name_id = kInvalidLinkName;
   bir::TypeKind initializer_offset_type = bir::TypeKind::Void;
   std::size_t initializer_byte_offset = 0;
   std::size_t runtime_element_count = 0;
   std::size_t runtime_element_stride_bytes = 0;
+  // Aggregate pointer-initializer fields are keyed by byte offset, not by
+  // string spelling.
   std::unordered_map<std::size_t, GlobalAddress> pointer_initializer_offsets;
 };
 
+// GlobalTypes and TypeDeclMap are unresolved LIR-boundary tables keyed by the
+// producer's final spellings. Converted BIR instructions carry LinkNameId where
+// that semantic identity is available.
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
 using TypeDeclMap = std::unordered_map<std::string, std::string>;
 struct FunctionSymbolSet {
@@ -94,19 +106,27 @@ struct FunctionSymbolSet {
 
  private:
   std::unordered_set<LinkNameId> link_name_ids;
+  // Compatibility lookup for textual pointer initializers that have not yet
+  // been normalized to LinkNameId at the parse boundary.
   std::unordered_map<std::string, LinkNameId> raw_symbol_link_name_ids;
 };
+// Function-local slot/provenance maps are keyed by route-local SSA or slot
+// spellings. They are storage handles within one lowered function and are not
+// module-level semantic authority.
 using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
 using LocalPointerSlots = std::unordered_map<std::string, std::string>;
 using LocalIndirectPointerSlotSet = std::unordered_set<std::string>;
 
 struct ParsedTypedOperand {
+  // Compatibility LIR type text retained only until the operand is lowered.
   std::string type_text;
   c4c::codegen::lir::LirOperand operand;
 };
 
 struct AggregateField {
   std::size_t byte_offset = 0;
+  // Compatibility/structured type spelling used to recurse through aggregate
+  // layouts.
   std::string type_text;
 };
 
@@ -123,11 +143,15 @@ struct AggregateTypeLayout {
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   std::size_t array_count = 0;
+  // Element type spelling is layout input/output text, not a lookup key after
+  // the layout has been resolved.
   std::string element_type_text;
   std::vector<AggregateField> fields;
 };
 
 struct BackendStructuredLayoutEntry {
+  // Structured type final spelling used to correlate the structured LIR table
+  // with legacy type-decl text during parity checks.
   std::string type_name;
   AggregateTypeLayout structured_layout;
   AggregateTypeLayout legacy_layout;
@@ -352,11 +376,16 @@ class BirFunctionLowerer {
     bir::Value rhs;
   };
 
+  // Selector lowering side table keyed by route-local SSA result spelling.
   using CompareMap = std::unordered_map<std::string, CompareExpr>;
+  // LIR block spelling lookup used before BIR BlockLabelId assignment.
   using BlockLookup = std::unordered_map<std::string, const c4c::codegen::lir::LirBlock*>;
+  // Aggregate SSA value to aggregate slot spelling within one function.
   using AggregateValueAliasMap = std::unordered_map<std::string, std::string>;
 
   struct BranchChain {
+    // Selector-recognition labels are raw LIR block spellings consumed before
+    // the lowered BIR block-label table is assigned.
     std::vector<std::string> labels;
     std::string leaf_label;
     std::string join_label;
@@ -369,18 +398,23 @@ class BirFunctionLowerer {
     };
 
     Kind kind = Kind::ScalarValue;
+    // Route-local SSA result spelling carried into generated BIR names/slots.
     std::string result_name;
     bir::TypeKind type = bir::TypeKind::Void;
+    // Compatibility LIR type text retained until aggregate layout resolution.
     std::string type_text;
     std::size_t aggregate_align_bytes = 0;
     std::vector<std::pair<std::string, c4c::codegen::lir::LirOperand>> incomings;
   };
 
+  // LIR block spelling to phi plans before BIR block-label ids exist.
   using PhiBlockPlanMap = std::unordered_map<std::string, std::vector<PhiLoweringPlan>>;
 
   struct PendingAggregatePhiCopy {
     c4c::codegen::lir::LirOperand source;
+    // Route-local aggregate slot spelling.
     std::string target_slot_name;
+    // Display/final spelling prefix for generated copy temporaries.
     std::string temp_prefix;
   };
 
@@ -388,10 +422,12 @@ class BirFunctionLowerer {
       std::unordered_map<std::string, std::vector<PendingAggregatePhiCopy>>;
 
   struct AggregateParamInfo {
+    // Compatibility LIR type text retained for byval aggregate layout.
     std::string type_text;
     AggregateTypeLayout layout;
   };
 
+  // Function-parameter final spelling to byval aggregate layout metadata.
   using AggregateParamMap = std::unordered_map<std::string, AggregateParamInfo>;
 
   struct LoweredReturnInfo {

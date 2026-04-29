@@ -1,42 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/126_bir_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Extend Structured Identity Across Blocks And Types
+Current Step ID: Step 5
+Current Step Title: Classify Remaining BIR String Surfaces
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed the BIR verifier block-label membership slice.
+Step 5 classified the remaining BIR string-keyed and raw-name surfaces after
+the covered `TextId`, `LinkNameId`, and `BlockLabelId` conversions.
 
-`bir_validate.cpp` now collects structured `BlockLabelId` definitions alongside
-legacy raw block labels. Phi incoming labels, branch targets, and conditional
-branch targets prefer structured membership whenever the reference carries a
-valid id; raw-string membership remains the compatibility path only when the
-reference id is absent. The verifier also rejects duplicate or unknown block
-definition ids.
-
-Added focused backend verifier coverage proving stale raw label text cannot
-override structured ids for phi incoming labels, plain branch targets, and
-conditional branch targets, while raw-only BIR remains valid when ids are
-absent.
+Added code comments at the retained surfaces that make their role explicit:
+display/final spellings for values, params, functions, calls, inline asm, and
+printer output; compatibility label spellings for raw-only BIR with structured
+`BlockLabelId` preferred when present; compatibility type text and structured
+type spelling bridges for aggregate layout; byte-offset keyed aggregate
+pointer/leaf-slot maps; route-local SSA, slot, selector, phi, aggregate, and
+provenance maps; `TextId`-keyed string byte payload lookup; raw function symbol
+fallbacks and global/type maps as unresolved LIR-boundary compatibility
+surfaces. No broad conversion or behavior change was made in this packet.
 
 ## Suggested Next
 
-Continue Step 4 by extending the same structured-id preference to the next
-block/type validation boundary that already carries ids. Keep raw fallback
-limited to carriers whose structured id is absent.
+Proceed to Step 6 closure/reproof review: run the supervisor-selected broader
+BIR cleanup proof, inspect the diff for testcase-overfit or silent raw-string
+semantic authority, and decide whether the active source idea can close or
+needs a follow-up split for upstream LIR/HIR metadata boundaries.
 
 ## Watchouts
 
-This packet intentionally did not change BIR printing, lowering, prepared BIR,
-or LIR producers. Block references still require non-empty raw label strings
-even when ids are present, matching the existing BIR surface contract.
+Retained raw-only `FunctionSymbolSet`, aggregate pointer offsets, structured
+type text, local SSA/slot/provenance maps, selector/dump/printer surfaces, and
+global/type producer-boundary maps are now classified as compatibility,
+display/dump/final spelling, byte-offset keyed layout payload, route-local
+lowering handles, or unresolved LIR boundaries. This packet intentionally did
+not implement new conversions or touch producer files.
 
 ## Proof
 
-Passed delegated Step 4 proof:
+Passed delegated Step 5 proof:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
 
 Result: build completed; `ctest` reported 100% tests passed, 0 failed out of

@@ -18,6 +18,8 @@ struct GlobalAddress;
 namespace c4c::backend {
 
 struct GlobalPointerSlotKey {
+  // LinkNameId-backed global resolution stores final spelling here because the
+  // memory maps bridge to raw LIR operands and target byte offsets.
   std::string global_name;
   std::size_t byte_offset = 0;
 
@@ -34,9 +36,11 @@ struct GlobalPointerSlotKeyHash {
 };
 
 struct LocalSlotAddress {
+  // Route-local slot spelling used by memory/provenance lowering.
   std::string slot_name;
   bir::TypeKind value_type = bir::TypeKind::Void;
   std::int64_t byte_offset = 0;
+  // Compatibility LIR type spellings retained for aggregate pointer layout.
   std::string storage_type_text;
   std::string type_text;
   std::vector<std::string> array_element_slots;
@@ -54,10 +58,13 @@ struct DynamicLocalPointerArrayAccess {
 };
 
 struct DynamicLocalAggregateArrayAccess {
+  // Compatibility LIR type spelling retained for element layout.
   std::string element_type_text;
   std::size_t byte_offset = 0;
   std::size_t element_count = 0;
   std::size_t element_stride_bytes = 0;
+  // Aggregate field slots are keyed by byte offset; values are route-local slot
+  // spellings.
   std::unordered_map<std::size_t, std::string> leaf_slots;
   bir::Value index;
 };
@@ -77,6 +84,7 @@ struct LocalPointerArrayBase {
 };
 
 struct DynamicGlobalPointerArrayAccess {
+  // Final spelling for a LinkNameId-backed global already resolved upstream.
   std::string global_name;
   std::size_t byte_offset = 0;
   std::size_t element_count = 0;
@@ -85,6 +93,7 @@ struct DynamicGlobalPointerArrayAccess {
 };
 
 struct DynamicGlobalAggregateArrayAccess {
+  // Final global spelling plus compatibility element type text used for layout.
   std::string global_name;
   std::string element_type_text;
   std::size_t byte_offset = 0;
@@ -94,6 +103,7 @@ struct DynamicGlobalAggregateArrayAccess {
 };
 
 struct DynamicGlobalScalarArrayAccess {
+  // Final spelling for a LinkNameId-backed global already resolved upstream.
   std::string global_name;
   bir::TypeKind element_type = bir::TypeKind::Void;
   std::size_t byte_offset = 0;
@@ -106,9 +116,12 @@ struct DynamicGlobalScalarArrayAccess {
 };
 
 struct LocalAggregateSlots {
+  // Compatibility LIR type spellings retained for aggregate slot layout.
   std::string storage_type_text;
   std::string type_text;
   std::size_t base_byte_offset = 0;
+  // Aggregate field slots are keyed by byte offset; values are route-local slot
+  // spellings.
   std::unordered_map<std::size_t, std::string> leaf_slots;
 };
 
@@ -118,6 +131,7 @@ struct PointerAddress {
   std::size_t byte_offset = 0;
   std::size_t dynamic_element_count = 0;
   std::size_t dynamic_element_stride_bytes = 0;
+  // Compatibility LIR type spellings retained for pointer provenance layout.
   std::string storage_type_text;
   std::string type_text;
 };
@@ -132,6 +146,9 @@ struct LocalAggregateGepTarget {
   std::int64_t byte_offset = 0;
 };
 
+// The following string-keyed maps are memory/provenance side tables keyed by
+// route-local SSA/slot spellings or final global spellings while lowering one
+// function. They do not replace LinkNameId on emitted BIR global operations.
 using GlobalPointerMap = std::unordered_map<std::string, lir_to_bir_detail::GlobalAddress>;
 using GlobalObjectPointerMap = std::unordered_map<std::string, lir_to_bir_detail::GlobalAddress>;
 using GlobalAddressIntMap = std::unordered_map<std::string, lir_to_bir_detail::GlobalAddress>;

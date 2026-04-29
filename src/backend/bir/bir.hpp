@@ -116,6 +116,8 @@ struct Value {
   TypeKind type = TypeKind::Void;
   std::int64_t immediate = 0;
   std::uint64_t immediate_bits = 0;
+  // Display/final spelling for SSA-like values; BIR does not use this as
+  // cross-object semantic identity.
   std::string name;
 
   static Value immediate_i1(bool value);
@@ -138,6 +140,8 @@ inline bool operator!=(const Value& lhs, const Value& rhs) {
 }
 
 struct PhiIncoming {
+  // Compatibility label spelling for dumps and raw-only BIR; label_id is the
+  // semantic block reference when present.
   std::string label;
   Value value;
   BlockLabelId label_id = kInvalidBlockLabel;
@@ -169,6 +173,7 @@ struct CallResultAbiInfo {
 
 struct Param {
   TypeKind type = TypeKind::Void;
+  // Display/final spelling for the lowered function parameter.
   std::string name;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
@@ -184,6 +189,8 @@ enum class LocalSlotStorageKind : unsigned char {
 };
 
 struct LocalSlot {
+  // Route-local slot handle used within one lowered function. This remains a
+  // local storage/provenance key, not module-level semantic identity.
   std::string name;
   TypeKind type = TypeKind::Void;
   std::size_t size_bytes = 0;
@@ -223,10 +230,13 @@ struct StringConstant {
 };
 
 struct StructuredTypeFieldSpelling {
+  // Dump/final type spelling retained for structured type rendering.
   std::string type_name;
 };
 
 struct StructuredTypeDeclSpelling {
+  // Dump/final type spelling; structured layout authority lives in the
+  // structured type tables built during lowering.
   std::string name;
   std::vector<StructuredTypeFieldSpelling> fields;
   bool is_packed = false;
@@ -251,6 +261,8 @@ struct MemoryAddress {
   };
 
   BaseKind base_kind = BaseKind::None;
+  // Display/compatibility spelling for address dumps. Global and label bases
+  // carry LinkNameId or BlockLabelId when semantic identity is known.
   std::string base_name;
   Value base_value;
   std::int64_t byte_offset = 0;
@@ -333,6 +345,8 @@ struct PhiInst {
 };
 
 struct InlineAsmMetadata {
+  // Inline assembly payload text is final spelling passed through for dumps and
+  // target emission diagnostics; it is not BIR lookup authority.
   std::string asm_text;
   std::string constraints;
   std::string args_text;
@@ -350,6 +364,8 @@ struct CallInst {
   std::vector<Value> args;
   std::vector<TypeKind> arg_types;
   std::vector<CallArgAbiInfo> arg_abi;
+  // Final type spelling for aggregate call results; return_type remains the
+  // scalar ABI class and structured_return_type_name is display/dump text.
   std::optional<std::string> structured_return_type_name;
   std::string return_type_name;
   TypeKind return_type = TypeKind::Void;
@@ -359,11 +375,13 @@ struct CallInst {
   bool is_variadic = false;
   bool is_noreturn = false;
   std::optional<InlineAsmMetadata> inline_asm;
+  // Route-local sret storage spelling used to relate generated local slots.
   std::optional<std::string> sret_storage_name;
 };
 
 struct LoadLocalInst {
   Value result;
+  // Route-local slot handle. Slot validation is function-local by LocalSlot.
   std::string slot_name;
   std::size_t byte_offset = 0;
   std::size_t align_bytes = 0;
@@ -397,6 +415,7 @@ struct StoreGlobalInst {
 };
 
 struct StoreLocalInst {
+  // Route-local slot handle. Slot validation is function-local by LocalSlot.
   std::string slot_name;
   Value value;
   std::size_t byte_offset = 0;
@@ -419,12 +438,16 @@ struct ReturnTerminator {
 };
 
 struct BranchTerminator {
+  // Compatibility label spelling for dumps and raw-only BIR; target_label_id is
+  // the semantic block reference when present.
   std::string target_label;
   BlockLabelId target_label_id = kInvalidBlockLabel;
 };
 
 struct CondBranchTerminator {
   Value condition;
+  // Compatibility label spellings for dumps and raw-only BIR; label ids are the
+  // semantic block references when present.
   std::string true_label;
   std::string false_label;
   BlockLabelId true_label_id = kInvalidBlockLabel;
@@ -441,6 +464,8 @@ struct Terminator {
   TerminatorKind kind = TerminatorKind::Return;
   std::optional<Value> value;
   Value condition;
+  // Compatibility label spellings for dumps/raw-only BIR. Structured
+  // BlockLabelId fields are authoritative when valid.
   std::string target_label;
   BlockLabelId target_label_id = kInvalidBlockLabel;
   std::string true_label;
@@ -464,6 +489,8 @@ struct Terminator {
 };
 
 struct Block {
+  // Compatibility/display label spelling. label_id is the semantic block
+  // identity when present.
   std::string label;
   std::vector<Inst> insts;
   Terminator terminator;
@@ -471,6 +498,8 @@ struct Block {
 };
 
 struct Function {
+  // Final/display function spelling. link_name_id is semantic identity when
+  // present.
   std::string name;
   LinkNameId link_name_id = kInvalidLinkName;
   TypeKind return_type = TypeKind::Void;

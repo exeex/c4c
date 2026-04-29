@@ -8,6 +8,8 @@ namespace c4c::backend {
 using lir_to_bir_detail::lower_integer_type;
 
 BirFunctionLowerer::BlockLookup BirFunctionLowerer::make_block_lookup() const {
+  // Raw LIR block spellings are a pre-BIR lowering lookup. Emitted BIR block
+  // references receive BlockLabelId during module finalization.
   BlockLookup blocks;
   for (const auto& block : function_.blocks) {
     blocks.emplace(block.label, &block);
@@ -18,6 +20,8 @@ BirFunctionLowerer::BlockLookup BirFunctionLowerer::make_block_lookup() const {
 std::optional<BirFunctionLowerer::BranchChain> BirFunctionLowerer::follow_empty_branch_chain(
     const BlockLookup& blocks,
     const std::string& start_label) {
+  // Selector/branch-chain recognition runs before BlockLabelId assignment, so
+  // the traversal set is keyed by raw LIR labels only inside this lowering pass.
   std::unordered_set<std::string> seen;
   const auto* current = [&]() -> const c4c::codegen::lir::LirBlock* {
     const auto it = blocks.find(start_label);
@@ -61,6 +65,8 @@ std::optional<BirFunctionLowerer::BranchChain> BirFunctionLowerer::follow_empty_
 std::optional<BirFunctionLowerer::BranchChain> BirFunctionLowerer::follow_canonical_select_chain(
     const BlockLookup& blocks,
     const std::string& start_label) {
+  // Selector recognition uses raw LIR labels as temporary CFG handles. These
+  // labels are not retained as semantic authority after BIR finalization.
   std::unordered_set<std::string> seen;
   const auto* current = [&]() -> const c4c::codegen::lir::LirBlock* {
     const auto it = blocks.find(start_label);

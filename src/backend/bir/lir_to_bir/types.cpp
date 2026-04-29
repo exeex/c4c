@@ -47,6 +47,8 @@ std::optional<std::string_view> resolve_type_decl_body(std::string_view text,
   if (trimmed.empty() || trimmed.front() != '%') {
     return std::nullopt;
   }
+  // Legacy textual type declarations are an unresolved LIR boundary. Structured
+  // declarations use StructNameId upstream and are correlated separately.
   const auto it = type_decls.find(std::string(trimmed));
   if (it == type_decls.end()) {
     return std::nullopt;
@@ -243,6 +245,8 @@ BackendStructuredLayoutTable build_backend_structured_layout_table(
     const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
     const c4c::StructNameTable& struct_names,
     const TypeDeclMap& legacy_type_decls) {
+  // Structured declaration spellings are final type names used only to bridge
+  // LIR's StructNameId table with legacy textual type declarations.
   std::unordered_map<std::string, const LirStructDecl*> structured_decls;
   structured_decls.reserve(struct_decls.size());
   for (const auto& decl : struct_decls) {

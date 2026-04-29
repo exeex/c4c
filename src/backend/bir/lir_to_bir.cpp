@@ -87,6 +87,8 @@ std::string decode_llvm_c_string(std::string_view raw_bytes) {
 struct LoweredStringConstantMetadata {
   std::vector<bir::StringConstant> ordered;
   c4c::TextTable names;
+  // String-pool byte payload lookup is keyed by interned TextId. The retained
+  // StringConstant::name spelling is compatibility/display text.
   std::unordered_map<c4c::TextId, std::string> bytes_by_name;
 };
 
@@ -129,6 +131,8 @@ bool gep_indices_are_all_zero(const c4c::codegen::lir::LirGepOp& gep) {
   return true;
 }
 
+// Route-local SSA spelling to string-pool TextId. The key is a temporary LIR
+// value handle; the string constant identity is the TextId payload.
 using StringPointerAliasMap = std::unordered_map<std::string, c4c::TextId>;
 
 StringPointerAliasMap collect_string_pointer_aliases(
@@ -211,6 +215,8 @@ std::vector<bir::CallInst*> collect_direct_bir_calls(bir::Function* function) {
 
 struct LirFunctionIdentityLookup {
   std::unordered_map<c4c::LinkNameId, const c4c::codegen::lir::LirFunction*> by_link_name_id;
+  // Compatibility fallback for raw-only LIR functions whose LinkNameId has not
+  // been populated at the producer boundary.
   std::unordered_map<std::string, const c4c::codegen::lir::LirFunction*> fallback_by_name;
 };
 

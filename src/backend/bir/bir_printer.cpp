@@ -34,6 +34,8 @@ std::string escape_quoted_text(std::string_view text) {
 }
 
 std::string render_value(const Value& value) {
+  // Printer output is dump/final spelling only. Semantic lookup has already
+  // happened before values reach this surface.
   if (value.kind == Value::Kind::Named) {
     return value.name;
   }
@@ -72,6 +74,8 @@ std::string render_call_type_name(const CallInst& call,
 }
 
 std::string render_call_target(const CallInst& call) {
+  // Call target text is dump/final spelling. Direct-call semantic identity is
+  // carried by callee_link_name_id when available.
   if (call.is_indirect && call.callee_value.has_value()) {
     return render_value(*call.callee_value);
   }
@@ -119,6 +123,8 @@ void render_sret_suffix(std::ostringstream& out, std::size_t size_bytes, std::si
 std::string render_block_label(const NameTables& names,
                                BlockLabelId label_id,
                                const std::string& fallback) {
+  // Prefer structured label spelling for dumps; fallback is raw-only
+  // compatibility text for legacy BIR payloads.
   const std::string_view spelling = names.block_labels.spelling(label_id);
   if (!spelling.empty()) {
     return std::string(spelling);
