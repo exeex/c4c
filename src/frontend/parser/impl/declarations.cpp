@@ -675,17 +675,17 @@ Node* parse_local_decl(Parser& parser) {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
-        if (!ts.tag) return true;
-        if (parser.is_cpp_mode() && !parser.active_context_state_.current_struct_tag.empty()) {
+        if (ts.tag && parser.is_cpp_mode() &&
+            !parser.active_context_state_.current_struct_tag.empty()) {
             if (is_same_visible_type_name(
                     parser, parser.active_context_state_.current_struct_tag_text_id,
                     parser.current_struct_tag_text(), parser.find_parser_text_id(ts.tag),
                     ts.tag))
                 return false;
         }
-        auto it = parser.definition_state_.struct_tag_def_map.find(ts.tag);
-        if (it == parser.definition_state_.struct_tag_def_map.end()) return true;
-        Node* def = it->second;
+        Node* def = resolve_record_type_spec(
+            ts, &parser.definition_state_.struct_tag_def_map);
+        if (!def) return true;
         return !def || def->n_fields < 0;
     };
 
@@ -2821,17 +2821,17 @@ top_level_base_ready:
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
-        if (!ts.tag) return true;
-        if (parser.is_cpp_mode() && !parser.active_context_state_.current_struct_tag.empty()) {
+        if (ts.tag && parser.is_cpp_mode() &&
+            !parser.active_context_state_.current_struct_tag.empty()) {
             if (is_same_visible_type_name(
                     parser, parser.active_context_state_.current_struct_tag_text_id,
                     parser.current_struct_tag_text(), parser.find_parser_text_id(ts.tag),
                     ts.tag))
                 return false;
         }
-        auto it = parser.definition_state_.struct_tag_def_map.find(ts.tag);
-        if (it == parser.definition_state_.struct_tag_def_map.end()) return true;
-        Node* def = it->second;
+        Node* def = resolve_record_type_spec(
+            ts, &parser.definition_state_.struct_tag_def_map);
+        if (!def) return true;
         return !def || def->n_fields < 0;
     };
     if (is_typedef) {

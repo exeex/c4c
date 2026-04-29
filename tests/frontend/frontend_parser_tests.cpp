@@ -3426,6 +3426,63 @@ void test_parser_record_layout_const_eval_keeps_tag_fallback() {
                 "offsetof fallback should use the rendered tag map");
 }
 
+void test_parser_incomplete_decl_checks_prefer_record_definition() {
+  auto make_alias_type = [](c4c::Arena& arena,
+                            c4c::Node* real) -> c4c::TypeSpec {
+    c4c::TypeSpec alias_ts = parser_test_scalar_type(c4c::TB_STRUCT);
+    alias_ts.tag = arena.strdup("Shared");
+    alias_ts.record_def = real;
+    return alias_ts;
+  };
+
+  {
+    c4c::Lexer lexer("Alias global_value;\n", c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    c4c::Node* real = parser_test_record(parser, arena, "Real", {});
+    c4c::Node* stale = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    stale->name = arena.strdup("Stale");
+    stale->n_fields = -1;
+    parser.definition_state_.struct_tag_def_map["Shared"] = stale;
+    parser.register_typedef_binding("Alias", make_alias_type(arena, real), true);
+
+    c4c::Node* decl = parse_top_level(parser);
+    expect_true(decl != nullptr && decl->kind == c4c::NK_GLOBAL_VAR,
+                "top-level declarations should accept a complete record_def even when the rendered tag map is stale");
+    expect_true(decl->type.record_def == real,
+                "top-level declaration should preserve the typed record identity");
+  }
+
+  {
+    c4c::Lexer lexer("Alias local_value;\n", c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    c4c::Node* real = parser_test_record(parser, arena, "Real", {});
+    c4c::Node* stale = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    stale->name = arena.strdup("Stale");
+    stale->n_fields = -1;
+    parser.definition_state_.struct_tag_def_map["Shared"] = stale;
+
+    const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+    parser.push_local_binding_scope();
+    parser.bind_local_typedef(alias_text, make_alias_type(arena, real));
+
+    c4c::Node* decl = c4c::parse_stmt(parser);
+    expect_true(decl != nullptr && decl->kind == c4c::NK_DECL,
+                "local declarations should accept a complete record_def even when the rendered tag map is stale");
+    expect_true(decl->type.record_def == real,
+                "local declaration should preserve the typed record identity");
+    expect_true(parser.pop_local_binding_scope(),
+                "test fixture should balance the local visible typedef scope");
+  }
+}
+
 void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3643,6 +3700,7 @@ int main() {
   test_parser_tag_only_record_types_keep_null_record_definition();
   test_parser_record_layout_const_eval_prefers_record_definition();
   test_parser_record_layout_const_eval_keeps_tag_fallback();
+  test_parser_incomplete_decl_checks_prefer_record_definition();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
