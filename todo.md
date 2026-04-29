@@ -8,36 +8,22 @@ Current Step Title: Validate Behavior And Close Audit Evidence
 
 ## Just Finished
 
-Completed Step 3 follow-up mapping for suspicious Sema/HIR string-authority
-paths found in Steps 1 and 2.
+Completed Step 4: Validate Behavior And Close Audit Evidence.
 
-Coverage map:
+Final classification outcome:
 
-- Existing idea 131 covers the broad cross-IR inventory and follow-up queue for
-  suspicious `std::string` / rendered-spelling authority.
-- Existing idea 134 covers parser-produced AST/template payload spelling that
-  reaches downstream Sema/HIR consumers, including `Node::name`,
-  `Node::unqualified_name`, template-origin fields, and deferred member-type
-  strings.
-- New idea 135 covers Sema lookup-consumer cleanup for
-  `resolve_owner_in_namespace_context`, `enclosing_method_owner_struct`,
-  `lookup_struct_static_member_type`, and unqualified variable lookup fallback
-  from `n->name` where `n->unqualified_name` or structured AST identity should
-  be authoritative.
-- New idea 136 covers HIR lookup-consumer cleanup for
-  `parse_scoped_function_name`, out-of-class method ownership, scoped
-  static-member lookup, rendered template primary/specialization lookup, and
-  struct method/static-member/member-symbol lookup where owner-key maps are
-  currently parity mirrors instead of returned authority.
-
-All suspicious Sema/HIR ingress string-authority paths recorded by Step 1 and
-Step 2 are now mapped to existing or new focused open ideas.
+- The audit did not require implementation changes in this runbook.
+- Suspicious Sema/HIR ingress string-authority paths found by the audit have
+  been mapped to focused follow-up ideas.
+- Existing generated/rendered-name uses remain classified as output/display or
+  key-generation behavior, not ingress authority.
+- The active runbook appears ready for plan-owner close or the next lifecycle
+  decision.
 
 ## Suggested Next
 
-Proceed to Step 4: validate behavior and close audit evidence. Suggested
-handoff is a docs/lifecycle-only proof check unless the supervisor chooses a
-fresh build/test subset for the audit closure.
+Ask the plan owner to close, deactivate, or otherwise advance lifecycle state
+for the active runbook.
 
 ## Watchouts
 
@@ -50,5 +36,19 @@ text.
 
 ## Proof
 
-Not run per delegated proof: Step 3 touched only lifecycle/follow-up idea
-coverage and `todo.md`; no implementation or test behavior changed.
+Supervisor already ran the final proof command and captured it into both
+`test_before.log` and `test_after.log`:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_parser_tests)$'
+```
+
+Both command captures exited 0.
+
+Regression guard:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Guard exited 0 with before=2 passed/0 failed and after=2 passed/0 failed.
