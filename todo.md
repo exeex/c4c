@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/125_lir_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Thread Semantic Identity Through Calls, Externs, And Globals
+Current Step ID: Step 5
+Current Step Title: Classify Remaining LIR String Surfaces
 
 # Current Packet
 
@@ -20,19 +20,27 @@ initializer name is drifted into a rendered-name collision and the helper's raw
 function carrier name is drifted. The semantic helper stays alive, while the
 rendered-name collision is still eliminated.
 
+Route review accepted Step 3 as complete for currently available structured
+call, extern, global, and function-carrier metadata. The remaining
+`collect_fn_refs` `signature_text` scan is retired from Step 3 executor scope
+because no local structured producer carrier for signature metadata function
+references is currently visible.
+
 ## Suggested Next
 
-Suggested next packet: review Step 3 for any remaining string-only signature
-reachability surfaces that lack structured carriers, then either split a
-follow-up carrier packet or hand Step 3 back for route review if no local
-structured identity exists yet.
+Suggested next packet: execute Step 5 classification for `collect_fn_refs`
+signature-text scanning and any other retained LIR string surfaces. Treat the
+signature scan as compatibility or an unresolved producer-carrier boundary
+unless the executor finds an existing structured signature-reference carrier;
+if such producer work is required, stop for lifecycle split instead of inventing
+a local carrier.
 
 ## Watchouts
 
 Global initializer reachability now has a structured function-id path; rendered
 `init_text` scanning remains as compatibility fallback. Function signature text
-is still a legacy string-scanned surface because this packet did not introduce
-new structured signature reference metadata.
+is a legacy string-scanned surface to classify in Step 5, not a remaining Step
+3 implementation packet.
 
 ## Proof
 

@@ -146,6 +146,10 @@ Completion check:
   strings as primary semantic lookup authority.
 - Focused LIR or LIR-to-BIR tests prove structured identity wins when rendered
   spelling drifts.
+- `collect_fn_refs` signature-text scanning is not treated as remaining Step 3
+  executor scope unless a structured producer carrier already exists; classify
+  it in Step 5 as compatibility or an unresolved boundary, or split a separate
+  carrier idea if that producer work becomes required.
 
 ## Step 4: Extend Structured Identity Across Pointer, Global, And Type Paths
 
@@ -180,6 +184,9 @@ Actions:
 - Rename helpers, parameters, comments, or tests where needed to show retained
   string paths are final spelling, display, diagnostics, dump text,
   compatibility payload, or unresolved-boundary surfaces.
+- Classify `collect_fn_refs` signature-text scanning explicitly as retained
+  compatibility or an unresolved producer-carrier boundary unless a structured
+  signature-reference carrier already exists.
 - Avoid deleting strings needed for LLVM output, dumps, diagnostics, or
   codegen-facing compatibility.
 - Keep public or BIR bridge surfaces classified if they cannot be safely
