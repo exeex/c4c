@@ -3018,6 +3018,98 @@ void test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag() {
               "local declaration member symbol should prefer record_def owner over stale tag");
 }
 
+void test_hir_compound_literal_member_symbol_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealCompoundOwner");
+  real_record->unqualified_name = arena.strdup("RealCompoundOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for compound literal");
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+  const c4c::MemberSymbolId real_id =
+      module.member_symbols.intern("RealCompoundOwner::field");
+  const c4c::MemberSymbolId stale_id =
+      module.member_symbols.intern("StaleCompoundOwner::field");
+
+  c4c::hir::HirStructField real_field;
+  real_field.name = "field";
+  real_field.field_text_id = module.link_name_texts->intern("field");
+  real_field.elem_type = int_ts;
+  real_field.member_symbol_id = real_id;
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealCompoundOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealCompoundOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  real_def.fields.push_back(real_field);
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructField stale_field = real_field;
+  stale_field.member_symbol_id = stale_id;
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleCompoundOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleCompoundOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleCompoundOwner");
+  owner_ts.record_def = real_record;
+
+  c4c::Node* value = parser.make_node(c4c::NK_INT_LIT, 1);
+  value->ival = 7;
+  value->type = int_ts;
+  c4c::Node* init = parser.make_node(c4c::NK_INIT_LIST, 1);
+  init->children = arena.alloc_array<c4c::Node*>(1);
+  init->children[0] = value;
+  init->n_children = 1;
+  c4c::Node* compound = parser.make_node(c4c::NK_COMPOUND_LIT, 1);
+  compound->type = owner_ts;
+  compound->left = init;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  const c4c::hir::ExprId expr_id =
+      lowerer.lower_compound_literal_expr(&ctx, compound);
+  expect_true(expr_id.valid(), "compound literal lowering should produce a base expression");
+
+  const c4c::hir::MemberExpr* member = nullptr;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    if (const auto* candidate = std::get_if<c4c::hir::MemberExpr>(&expr.payload);
+        candidate && candidate->field == "field") {
+      member = candidate;
+      break;
+    }
+  }
+  expect_true(member != nullptr,
+              "compound literal aggregate init should lower the member access");
+  expect_true(member->resolved_owner_tag == "RealCompoundOwner",
+              "compound literal member access should resolve structured owner tag first");
+  expect_true(member->member_symbol_id == real_id &&
+                  member->member_symbol_id != stale_id,
+              "compound literal member symbol should prefer record_def owner over stale tag");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -3496,6 +3588,7 @@ int main() {
   test_hir_implicit_this_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_ctor_init_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag();
+  test_hir_compound_literal_member_symbol_prefers_record_def_over_stale_tag();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

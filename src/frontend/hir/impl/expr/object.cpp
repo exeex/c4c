@@ -457,15 +457,51 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
       }
       return rhs_node->kind == NK_STR_LIT;
     };
+    struct AggregateOwner {
+      std::string tag;
+      const HirStructDef* def = nullptr;
+    };
+    auto resolve_aggregate_owner = [&](const TypeSpec& owner_ts,
+                                       const char* context) -> std::optional<AggregateOwner> {
+      if (!is_agg(owner_ts)) return std::nullopt;
+      const std::string* current_struct_tag =
+          ctx && !ctx->method_struct_tag.empty() ? &ctx->method_struct_tag : nullptr;
+      const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
+          owner_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
+          ctx ? &ctx->nttp_bindings : nullptr, current_struct_tag, n, context);
+      if (owner_tag) {
+        const auto sit = module_->struct_defs.find(*owner_tag);
+        if (sit != module_->struct_defs.end()) {
+          return AggregateOwner{*owner_tag, &sit->second};
+        }
+      }
+      if (owner_ts.tag && owner_ts.tag[0]) {
+        const auto sit = module_->struct_defs.find(owner_ts.tag);
+        if (sit != module_->struct_defs.end()) {
+          return AggregateOwner{std::string(owner_ts.tag), &sit->second};
+        }
+      }
+      return std::nullopt;
+    };
+    auto resolve_aggregate_member_symbol =
+        [&](const AggregateOwner& owner, const std::string& member,
+            MemberSymbolId fallback_id) -> MemberSymbolId {
+      MemberSymbolId member_symbol_id = kInvalidMemberSymbol;
+      if (!owner.tag.empty()) {
+        member_symbol_id = find_struct_member_symbol_id(owner.tag, member);
+      }
+      return member_symbol_id == kInvalidMemberSymbol ? fallback_id : member_symbol_id;
+    };
     std::function<void(const TypeSpec&, ExprId, const Node*, int&)> consume_from_list;
     consume_from_list = [&](const TypeSpec& cur_ts, ExprId cur_lhs, const Node* list_node,
                             int& cursor) {
       if (!list_node || list_node->kind != NK_INIT_LIST) return;
       if (cursor < 0) cursor = 0;
-      if (is_agg(cur_ts) && cur_ts.tag) {
-        const auto sit = module_->struct_defs.find(cur_ts.tag);
-        if (sit == module_->struct_defs.end()) return;
-        const auto& sd = sit->second;
+      if (is_agg(cur_ts)) {
+        const std::optional<AggregateOwner> owner =
+            resolve_aggregate_owner(cur_ts, "compound-literal-init-member-owner");
+        if (!owner || !owner->def) return;
+        const auto& sd = *owner->def;
         size_t next_field = 0;
         while (cursor < list_node->n_children && next_field < sd.fields.size()) {
           const Node* item = list_node->children[cursor];
@@ -495,8 +531,9 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
           me.field = fld.name;
           me.field_text_id = make_text_id(
               me.field, module_ ? module_->link_name_texts.get() : nullptr);
-          if (cur_ts.tag && cur_ts.tag[0]) me.resolved_owner_tag = cur_ts.tag;
-          me.member_symbol_id = fld.member_symbol_id;
+          me.resolved_owner_tag = owner->tag;
+          me.member_symbol_id =
+              resolve_aggregate_member_symbol(*owner, me.field, fld.member_symbol_id);
           me.is_arrow = false;
           ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
           const Node* val_node = init_item_value_node(item);
