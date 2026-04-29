@@ -8,14 +8,13 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 range-for `begin()` return-type lookup demotion packet.
-`Lowerer::lower_range_for_stmt()` now constructs a `DeclRef` for the resolved
-`begin()` method with its `link_name_id` and asks
-`Module::resolve_range_for_method_callee()` for return metadata instead of
-calling `find_function_by_name_legacy()` directly. The existing focused
-range-for method resolver test already pins that stale rendered names cannot
-override `LinkNameId` authority while preserving explicit rendered-name
-fallback.
+Completed Step 3 remaining direct method-return lookup demotion packet.
+The nested `operator_arrow` helper in `Lowerer::lower_member_expr()` now uses
+the resolved method `DeclRef` and `link_name_id` with
+`Module::resolve_operator_callee()`, and range-for `operator_deref` now uses
+the resolved method `DeclRef` and `link_name_id` with
+`Module::resolve_range_for_method_callee()`. Both sites keep their explicit
+method-return fallback path when resolver metadata is unavailable.
 
 ## Suggested Next
 
