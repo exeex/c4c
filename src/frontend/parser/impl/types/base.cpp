@@ -2638,6 +2638,7 @@ TypeSpec Parser::parse_base_type() {
                                         std::string(inst->base_types[bi].tag) == pname) {
                                         inst->base_types[bi].base = pts.base;
                                         inst->base_types[bi].tag = pts.tag;
+                                        inst->base_types[bi].record_def = pts.record_def;
                                         inst->base_types[bi].ptr_level += pts.ptr_level;
                                         inst->base_types[bi].is_const |= pts.is_const;
                                         inst->base_types[bi].is_volatile |= pts.is_volatile;

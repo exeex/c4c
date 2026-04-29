@@ -3405,6 +3405,9 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
   primary->template_param_is_nttp[0] = false;
   primary->template_param_is_pack = arena.alloc_array<bool>(1);
   primary->template_param_is_pack[0] = false;
+  primary->n_bases = 1;
+  primary->base_types = arena.alloc_array<c4c::TypeSpec>(1);
+  primary->base_types[0] = param_ts;
   primary->n_member_typedefs = 1;
   primary->member_typedef_names = arena.alloc_array<const char*>(1);
   primary->member_typedef_names[0] = arena.strdup("Alias");
@@ -3451,6 +3454,10 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
   payload_alias.record_def = payload;
   parser.register_typedef_binding(payload_alias_token.text_id, "PayloadAlias",
                                   payload_alias, true);
+  c4c::Node* stale_payload = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  stale_payload->name = arena.strdup("Payload");
+  stale_payload->n_fields = 0;
+  parser.register_struct_definition_for_testing("Payload", stale_payload);
 
   parser.replace_token_stream_for_testing({
       box_token,
@@ -3466,6 +3473,15 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
   expect_true(box_ts.record_def != nullptr,
               "direct template instantiation should return the instantiated record");
   const c4c::Node* box = box_ts.record_def;
+  expect_true(box->n_bases == 1 && box->base_types,
+              "template instantiation should clone base payloads");
+  expect_true(box->base_types[0].tag != nullptr &&
+                  std::string_view(box->base_types[0].tag) == "Payload",
+              "template base substitution should preserve rendered tag spelling");
+  expect_true(box->base_types[0].record_def == payload,
+              "template base substitution should preserve record_def");
+  expect_true(box->base_types[0].record_def != stale_payload,
+              "template base substitution should not use stale rendered tag-map state");
   expect_true(box->n_member_typedefs == 1 && box->member_typedef_types,
               "template instantiation should clone member typedef payloads");
   expect_true(box->member_typedef_types[0].record_def == payload,
