@@ -950,6 +950,100 @@ int call_helper(int value) { return helper(value); }
               "direct-call lowering should not trust a corrupted raw decl-ref name when LinkNameId is available");
 }
 
+void test_hir_to_lir_direct_call_lookup_rejects_rendered_name_collision_after_link_name_miss() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int rendered_shadow(int value) { return value + 100; }
+
+int call_external(int value) { return rendered_shadow(value); }
+)cpp");
+
+  const c4c::LinkNameId semantic_external_id =
+      hir_module.link_names.intern("semantic_external_helper");
+  expect_true(semantic_external_id != c4c::kInvalidLinkName,
+              "fixture should allocate a semantic external LinkNameId");
+
+  const auto caller_it = hir_module.fn_index.find("call_external");
+  expect_true(caller_it != hir_module.fn_index.end(),
+              "fixture caller should be present in the HIR function index");
+  c4c::hir::Function* caller = hir_module.find_function(caller_it->second);
+  expect_true(caller != nullptr,
+              "fixture caller should resolve through the HIR function lookup");
+
+  c4c::hir::DeclRef* callee_ref = nullptr;
+  for (auto& block : caller->blocks) {
+    for (auto& stmt : block.stmts) {
+      auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+      if (ret == nullptr || !ret->expr) {
+        continue;
+      }
+      auto* call = std::get_if<c4c::hir::CallExpr>(&hir_module.expr_pool[ret->expr->value].payload);
+      if (call == nullptr) {
+        continue;
+      }
+      callee_ref = std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[call->callee.value].payload);
+      if (callee_ref != nullptr) {
+        break;
+      }
+    }
+    if (callee_ref != nullptr) {
+      break;
+    }
+  }
+  expect_true(callee_ref != nullptr,
+              "fixture caller should retain a decl-ref callee before LIR lowering");
+  expect_eq(callee_ref->name, "rendered_shadow",
+            "fixture raw callee spelling should collide with a defined local function");
+
+  callee_ref->link_name_id = semantic_external_id;
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto lir_caller_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "call_external";
+      });
+  expect_true(lir_caller_it != lir_module.functions.end(),
+              "fixture caller should still lower after the call LinkNameId is drifted");
+
+  const c4c::codegen::lir::LirCallOp* direct_call = nullptr;
+  for (const auto& block : lir_caller_it->blocks) {
+    auto inst_it = std::find_if(block.insts.begin(), block.insts.end(),
+                                [](const c4c::codegen::lir::LirInst& inst) {
+                                  return std::holds_alternative<c4c::codegen::lir::LirCallOp>(inst);
+                                });
+    if (inst_it == block.insts.end()) {
+      continue;
+    }
+    direct_call = std::get_if<c4c::codegen::lir::LirCallOp>(&*inst_it);
+    if (direct_call != nullptr) {
+      break;
+    }
+  }
+  expect_true(direct_call != nullptr,
+              "fixture caller should still lower the direct call after semantic/raw drift");
+  expect_true(direct_call->direct_callee_link_name_id == semantic_external_id,
+              "direct-call lowering should keep the semantic external LinkNameId");
+  expect_true(direct_call->callee == "@semantic_external_helper",
+              "direct-call lowering should recover the external callee from LinkNameId after a local-name miss");
+  expect_true(direct_call->callee != "@rendered_shadow",
+              "direct-call lowering should not bind the drifted rendered name to the local function");
+
+  const auto extern_decl_it = std::find_if(
+      lir_module.extern_decls.begin(), lir_module.extern_decls.end(),
+      [&](const c4c::codegen::lir::LirExternDecl& decl) {
+        return decl.link_name_id == semantic_external_id;
+      });
+  expect_true(extern_decl_it != lir_module.extern_decls.end(),
+              "extern-call declaration finalization should preserve the semantic external LinkNameId");
+  expect_eq(lir_module.link_names.spelling(extern_decl_it->link_name_id),
+            "semantic_external_helper",
+            "extern-call declaration should resolve through the semantic LinkNameId");
+  expect_true(extern_decl_it->name != "rendered_shadow",
+              "extern-call declaration should not use the drifted local collision as authority");
+}
+
 void test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids() {
   c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 extern int helper(int value);
@@ -1792,6 +1886,7 @@ int main() {
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_dead_internal_reachability_prefers_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
+  test_hir_to_lir_direct_call_lookup_rejects_rendered_name_collision_after_link_name_miss();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
   test_hir_to_lir_decl_backed_call_result_inference_prefers_link_name_ids();
   test_hir_to_lir_object_helper_callees_prefer_link_name_ids();

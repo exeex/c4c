@@ -8,43 +8,40 @@ Current Step Title: Thread Semantic Identity Through Calls, Externs, And Globals
 
 ## Just Finished
 
-Completed Step 3 conversion for `eliminate_dead_internals` in
-`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`. Dead-internal reachability now
-tracks structured `LinkNameId` references beside legacy rendered-name
-references, uses `LirFunction::link_name_id` to identify discardable functions
-when present, and uses `LirCallOp::direct_callee_link_name_id` for direct-call
-reachability. Rendered `@name` scanning remains for signature text, global
-initializer text, indirect/string-only calls, call-argument function references,
-and other legacy string operands.
+Completed Step 3 conversion for `StmtEmitter` direct-call target lookup in
+`src/codegen/lir/hir_to_lir/call/target.cpp`. When a call carries a valid
+`LinkNameId`, local target resolution now treats that identity as authoritative
+and does not fall through to legacy rendered-name function lookup after a
+semantic miss. Unresolved external direct calls with a valid `LinkNameId` now
+seed the LIR callee operand and extern-call declaration from the link-name
+spelling instead of the raw decl-ref name.
 
-Added focused coverage in `tests/frontend/frontend_hir_tests.cpp` for a static
-helper whose raw HIR function name is corrupted while its semantic
-`LinkNameId` remains valid; lowering must keep the discardable helper reachable
-through the direct-call `LinkNameId`.
+Added focused coverage in `tests/frontend/frontend_hir_tests.cpp` for a call
+whose raw decl-ref spelling collides with a defined local function while its
+semantic `LinkNameId` names an external callee. Lowering must keep the
+external `LinkNameId`, emit `@semantic_external_helper`, and produce an extern
+declaration without letting the rendered local collision win.
 
 ## Suggested Next
 
-Suggested next packet: move the next remaining semantic lookup surface from
-Step 3, likely extern/global-init or StmtEmitter call lookup convergence,
-through the same structured-first pattern while preserving string-only
-fallbacks.
+Suggested next packet: convert the next remaining Step 3 global-init or extern
+finalization surface where existing `LinkNameId` metadata can replace rendered
+`@name` scanning or raw-name filtering while preserving string-only fallback
+compatibility.
 
 ## Watchouts
 
+`record_extern_call_decl` still has a raw-name local-function filter for
+TextId-less compatibility paths; this packet avoids that path for valid
+`LinkNameId` calls by resolving the extern name from the semantic table first.
 `eliminate_dead_internals` still treats global initializer text and signature
-text as legacy string-only surfaces, so future structured global-init metadata
-would need a separate packet. The direct-call callee string is no longer used
-as authority when `direct_callee_link_name_id` is present, but direct-call
-argument text is still scanned for function references passed as values.
+text as legacy string-only surfaces.
 
 ## Proof
 
 Delegated proof:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|backend_)'; } 2>&1 | tee test_after.log`
-
-Supervisor acceptance proof widened to include the touched HIR test binary:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests$|frontend_lir_|backend_)'; } 2>&1 | tee test_after.log`
 
-Passed. `test_after.log` contains the supervisor acceptance proof output; CTest
-reported 100% pass for the enabled selected tests, with the configured
-disabled MIR tests not run.
+Passed. `test_after.log` contains the delegated proof output; CTest reported
+100% pass for the enabled selected tests, with the configured disabled MIR
+tests not run.

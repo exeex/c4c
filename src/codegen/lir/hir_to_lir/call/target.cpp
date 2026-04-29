@@ -31,6 +31,7 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
 const Function* StmtEmitter::find_local_target_function(
     LinkNameId link_name_id, std::string_view fallback_name) const {
   if (const Function* fn = mod_.find_function(link_name_id)) return fn;
+  if (link_name_id != kInvalidLinkName) return nullptr;
   if (fallback_name.empty()) return nullptr;
   return mod_.find_function_by_name_legacy(fallback_name);
 }
@@ -51,10 +52,11 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
     unresolved_external_name = std::string(info.builtin->canonical_name);
   } else if (const auto* r = std::get_if<DeclRef>(&callee_e.payload);
              r && !r->local && !r->param_index && !r->global) {
-    info.callee_val = llvm_global_sym(r->name);
+    const std::string callee_name = emitted_link_name(mod_, r->link_name_id, r->name);
+    info.callee_val = llvm_global_sym(callee_name);
     info.callee_ts = resolve_payload_type(ctx, *r);
     unresolved_external_callee = true;
-    unresolved_external_name = r->name;
+    unresolved_external_name = callee_name;
     info.callee_link_name_id = r->link_name_id;
   } else {
     info.callee_val = emit_rval_id(ctx, call.callee, info.callee_ts);
