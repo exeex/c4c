@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/124_hir_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globals
+Current Step ID: Step 4
+Current Step Title: Extend Structured Lookup Proof Across HIR Edge Paths
 
 # Current Packet
 
@@ -13,15 +13,19 @@ direct `find_global_by_name_legacy()` callsites in
 `infer_call_result_type_from_callee()` and `infer_generic_ctrl_type()` now build
 source-node `DeclRef` carriers and resolve through
 `Module::resolve_global_decl()`, preserving rendered-name fallback inside the
-shared resolver.
+shared resolver. Step 3 is complete: direct HIR callers of
+`find_function_by_name_legacy()` and `find_global_by_name_legacy()` now remain
+only as resolver definitions/internal fallback/parity paths in `hir_ir.hpp`.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: supervisor/reviewer review of the HIR direct
-legacy lookup demotion slice. `src/frontend/hir/hir_types.cpp` no longer has
-direct `find_function_by_name_legacy()` or `find_global_by_name_legacy()`
-callers; remaining references under `src/frontend/hir` are the resolver
-definitions and their internal fallback/parity paths in `hir_ir.hpp`.
+Next coherent Step 4 packet: select one narrow HIR edge path from the Step 1
+inventory where structured metadata already exists, then extend the stale
+rendered-spelling proof across that path. Good first candidates are
+namespace-qualified symbol flows, template/consteval paths with existing
+structured mirrors, or link-name-backed symbol flows. If the selected edge path
+lacks required metadata, split that metadata propagation gap into a separate
+open idea instead of expanding this runbook.
 
 ## Watchouts
 
