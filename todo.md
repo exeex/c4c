@@ -1,39 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/128_parser_ast_handoff_role_labeling.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Label `Node`
+Current Step ID: 5
+Current Step Title: Prove No Behavior Change
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added behavior-preserving boundary-role labels for `Node` fields in
-`src/frontend/parser/ast.hpp`.
+Step 4 reviewed suspicious AST string/rendered-spelling authority from the
+Step 2/3 labels and found existing open idea coverage sufficient; no new
+follow-up idea was needed.
 
-The comment groups now distinguish cross-stage semantic payload, name/text
-identity bridges, compatibility/display spelling, parser recovery/debug
-payload, semantic hints/flags, and legacy bridge fields without changing
-declarations or behavior.
+Coverage mapping:
+- `deferred_member_type_name`, `debug_text`, `tag`, and
+  `qualifier_segments` are covered by `ideas/open/130_sema_hir_ast_ingress_boundary_audit.md`
+  for downstream AST ingress authority and by
+  `ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md` for
+  any cleanup split where string spelling remains semantic authority.
+- `template_origin_name`, `template_param_default_exprs`,
+  `template_arg_nttp_names`, `member_typedef_names`, `enum_names`,
+  `ctor_init_names`, `op`, and `sval` are covered by the same Sema/HIR ingress
+  audit plus the cross-IR string authority audit/follow-up queue.
+- Parser-side producers or intermediate carriers feeding those fields are
+  covered by `ideas/open/129_parser_intermediate_carrier_boundary_labeling.md`.
 
 ## Suggested Next
 
-Handle Step 4: review the edited labels for suspicious string or rendered
-spelling authority and capture any needed follow-up as a narrow `ideas/open/`
-idea without changing compiler behavior.
+Handle Step 5: run the supervisor-selected narrow compile or behavior proof for
+the AST labeling pass and record fresh results here.
 
 ## Watchouts
 
 - Keep this runbook behavior-preserving.
 - Do not replace string lookup paths or change parser/Sema/HIR/codegen behavior.
-- Record suspicious cross-stage string authority as follow-up idea work instead
-  of fixing it ad hoc.
-- `template_origin_name`, operator spelling, scalar raw lexeme spelling, and
-  constructor/template/member names are now explicitly labeled as compatibility,
-  display, identity-bridge, or legacy payload; Step 4 should decide whether any
-  of those need follow-up idea coverage.
+- Step 4 intentionally did not create a new idea because ideas 129, 130, and
+  131 already own the relevant parser producer, AST ingress consumer, and
+  cross-IR string-authority follow-up scopes.
 
 ## Proof
 
-Ran `cmake --build --preset default > test_after.log 2>&1`; it completed
+Step 4 was lifecycle-only and did not require a build. Previous Step 3 proof:
+ran `cmake --build --preset default > test_after.log 2>&1`; it completed
 successfully with exit code 0. `test_after.log` is the proof log path.
