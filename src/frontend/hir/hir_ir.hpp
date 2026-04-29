@@ -1550,6 +1550,10 @@ struct Module {
     return resolve_function_decl(ref);
   }
 
+  const Function* resolve_range_for_method_callee(const DeclRef& ref) const {
+    return resolve_function_decl(ref);
+  }
+
   GlobalVar* find_global(GlobalId id) {
     auto it = std::find_if(globals.begin(), globals.end(),
                            [&](const GlobalVar& gv) { return gv.id.value == id.value; });

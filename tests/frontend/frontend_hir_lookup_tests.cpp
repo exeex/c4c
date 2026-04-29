@@ -458,6 +458,52 @@ void test_operator_callee_lookup_uses_authoritative_decl_identity() {
               "operator legacy fallback should record rendered-name authority");
 }
 
+void test_range_for_method_callee_lookup_uses_authoritative_decl_identity() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId stale_text = texts.intern("stale_range_for_method");
+  const c4c::TextId linked_text = texts.intern("linked_range_for_method");
+
+  add_function(module, c4c::hir::FunctionId{50}, "stale_range_for_method",
+               stale_text);
+  add_function(module, c4c::hir::FunctionId{51}, "linked_range_for_method",
+               linked_text, module.link_names.intern("linked_range_for_method"));
+
+  c4c::hir::DeclRef link_ref;
+  link_ref.name = "stale_range_for_method";
+  link_ref.name_text_id = stale_text;
+  link_ref.link_name_id = module.link_names.find("linked_range_for_method");
+  const c4c::hir::Function* link_fn =
+      module.resolve_range_for_method_callee(link_ref);
+  expect_true(link_fn != nullptr && link_fn->id.value == 51,
+              "range-for method lookup should prefer LinkNameId over stale rendered name");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::LinkNameId,
+                      "stale_range_for_method", 51),
+              "range-for method link-name lookup should record link-name authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
+                           "stale_range_for_method", 51, 50),
+              "range-for method link-name lookup should record stale-rendered mismatch");
+
+  const c4c::TextId legacy_text = texts.intern("legacy_range_for_method");
+  add_function(module, c4c::hir::FunctionId{52}, "legacy_range_for_method",
+               c4c::kInvalidText);
+
+  c4c::hir::DeclRef legacy_ref;
+  legacy_ref.name = "legacy_range_for_method";
+  legacy_ref.name_text_id = legacy_text;
+  const c4c::hir::Function* legacy_fn =
+      module.resolve_range_for_method_callee(legacy_ref);
+  expect_true(legacy_fn != nullptr && legacy_fn->id.value == 52,
+              "range-for method lookup should preserve rendered-name fallback");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "legacy_range_for_method", 52),
+              "range-for method legacy fallback should record rendered-name authority");
+}
+
 }  // namespace
 
 int main() {
@@ -465,6 +511,7 @@ int main() {
   test_stale_rendered_names_do_not_override_authoritative_decl_lookup();
   test_direct_call_callee_lookup_uses_authoritative_decl_identity();
   test_operator_callee_lookup_uses_authoritative_decl_identity();
+  test_range_for_method_callee_lookup_uses_authoritative_decl_identity();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }
