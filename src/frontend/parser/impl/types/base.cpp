@@ -2,6 +2,7 @@
 #include "../parser_impl.hpp"
 #include "lexer.hpp"
 
+#include <algorithm>
 #include <climits>
 #include <cstring>
 #include <functional>
@@ -1483,10 +1484,19 @@ TypeSpec Parser::parse_base_type() {
                         const std::string alias_template_name(tname);
                         TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
+                        const size_t alias_param_count = std::max({
+                            ati->param_name_text_ids.size(),
+                            ati->param_is_nttp.size(),
+                            ati->param_is_pack.size(),
+                            ati->param_has_default.size(),
+                            ati->param_default_types.size(),
+                            ati->param_default_values.size(),
+                            ati->param_names.size(),
+                        });
                         auto alias_args_match = [&](const std::vector<TemplateArgParseResult>& args)
                             -> bool {
                             size_t ai = 0;
-                            for (size_t pi = 0; pi < ati->param_names.size(); ++pi) {
+                            for (size_t pi = 0; pi < alias_param_count; ++pi) {
                                 const bool is_pack =
                                     pi < ati->param_is_pack.size() && ati->param_is_pack[pi];
                                 const bool expects_value =
@@ -1521,7 +1531,7 @@ TypeSpec Parser::parse_base_type() {
                             std::vector<TemplateArgParseResult> resolved_alias_args =
                                 alias_args;
                             for (size_t pi = resolved_alias_args.size();
-                                 pi < ati->param_names.size(); ++pi) {
+                                 pi < alias_param_count; ++pi) {
                                 const bool is_pack =
                                     pi < ati->param_is_pack.size() && ati->param_is_pack[pi];
                                 if (is_pack) break;
@@ -1589,7 +1599,7 @@ TypeSpec Parser::parse_base_type() {
                                         return ref_text_id;
                                     }
                                     for (size_t pi = 0;
-                                         pi < ati->param_names.size(); ++pi) {
+                                         pi < alias_param_count; ++pi) {
                                         if (pi < ati->param_name_text_ids.size() &&
                                             ati->param_name_text_ids[pi] !=
                                                 kInvalidText) {
@@ -1603,7 +1613,7 @@ TypeSpec Parser::parse_base_type() {
                                     return kInvalidText;
                                 };
                             size_t bound_arg_index = 0;
-                            for (size_t pi = 0; pi < ati->param_names.size(); ++pi) {
+                            for (size_t pi = 0; pi < alias_param_count; ++pi) {
                                 const TextId param_text_id =
                                     alias_param_text_id(pi);
                                 if (param_text_id == kInvalidText) {
@@ -2273,7 +2283,7 @@ TypeSpec Parser::parse_base_type() {
                                 if (!resolved_alias_member) {
                                     for (size_t ai = 0;
                                          ai < resolved_alias_args.size() &&
-                                         ai < ati->param_names.size(); ++ai) {
+                                         ai < alias_param_count; ++ai) {
                                         if (ai < ati->param_is_nttp.size() &&
                                             ati->param_is_nttp[ai]) {
                                             continue;

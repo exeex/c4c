@@ -4303,6 +4303,42 @@ void test_parser_alias_template_substitution_prefers_param_text_id() {
               "alias-template substitution should bind by parameter TextId even when rendered parameter spelling is stale");
 }
 
+void test_parser_alias_template_substitution_does_not_require_param_name_spelling() {
+  c4c::Lexer lexer("Alias<int>", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_placeholder{};
+  alias_placeholder.array_size = -1;
+  alias_placeholder.inner_rank = -1;
+  alias_placeholder.base = c4c::TB_TYPEDEF;
+  alias_placeholder.tag = arena.strdup("Alias");
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const c4c::TextId param_text = lexer.text_table().intern("T");
+  parser.register_typedef_binding(alias_text, "Alias", alias_placeholder, true);
+
+  c4c::ParserAliasTemplateInfo info;
+  info.param_name_text_ids = {param_text};
+  info.param_is_nttp = {false};
+  info.param_is_pack = {false};
+  info.param_has_default = {false};
+  info.aliased_type.array_size = -1;
+  info.aliased_type.inner_rank = -1;
+  info.aliased_type.base = c4c::TB_TYPEDEF;
+  info.aliased_type.tag = arena.strdup("T");
+  parser.register_alias_template_info_for_testing(
+      parser.alias_template_key_in_context(
+          parser.current_namespace_context_id(), alias_text, "Alias"),
+      info);
+
+  const c4c::TypeSpec resolved = parser.parse_type_name();
+  expect_true(resolved.base == c4c::TB_INT,
+              "alias-template substitution should use structured parameter metadata without rendered param_names");
+}
+
 void test_parser_typename_template_parameter_probe_uses_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4454,6 +4490,7 @@ int main() {
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_alias_template_substitution_prefers_param_text_id();
+  test_parser_alias_template_substitution_does_not_require_param_name_spelling();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
   test_parser_qualified_declarator_name_uses_token_spelling();
