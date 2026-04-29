@@ -509,8 +509,11 @@ struct LirFunction {
   std::vector<LirStackObject> stack_objects;
   LirBlockId entry{};
 
-  // Pre-formatted signature text (define/declare line + template comments).
-  // Used by the printer; will be replaced with structured fields in Stage 2+.
+  // Final LLVM spelling for the function header plus compatibility payload for
+  // template comments. Type identity mirrors live in signature_*_type_refs.
+  // Function references embedded in this text have no structured producer
+  // carrier yet, so any reachability scan of this field is an unresolved
+  // producer-boundary compatibility fallback, not semantic authority.
   std::string signature_text;
 
   // Hoisted alloca instructions, rendered before entry block body instructions.
@@ -537,9 +540,13 @@ struct LirGlobal {
   // Structured fields — lowering fills these, printer assembles LLVM text.
   std::string linkage_vis;  // e.g. "internal ", "external ", "weak ", "extern_weak ", ""
   std::string qualifier;    // "constant " or "global "
-  std::string llvm_type;    // Pre-computed LLVM type string
+  std::string llvm_type;    // Final LLVM spelling for the global type
   std::optional<LirTypeRef> llvm_type_ref;  // Structured mirror when type identity is exact
-  std::string init_text;    // LLVM constant init text (empty for extern decls)
+  // Final LLVM spelling for the constant initializer (empty for extern decls).
+  // initializer_function_link_name_ids carries semantic function references;
+  // scanning init_text is retained only as a compatibility fallback for legacy
+  // initializer producers that still emit raw LLVM payloads.
+  std::string init_text;
   std::vector<LinkNameId> initializer_function_link_name_ids;
   int align_bytes = 0;      // 0 = no align suffix
   bool is_extern_decl = false;  // extern: no init, type only

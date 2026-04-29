@@ -8,39 +8,34 @@ Current Step Title: Classify Remaining LIR String Surfaces
 
 ## Just Finished
 
-Completed Step 3 conversion for the remaining LIR global-initializer
-reachability seed in `eliminate_dead_internals`. `LirGlobal` now carries
-structured function `LinkNameId`s referenced by its initializer, and
-dead-internal elimination seeds from those ids before falling back to legacy
-rendered `init_text` scanning.
+Completed Step 5 classification for retained LIR string reachability and
+rendering surfaces touched by the current inventory. `signature_text` is now
+documented as final LLVM header spelling plus template-comment compatibility
+payload, with `collect_fn_refs` scanning explicitly classified as an unresolved
+producer-carrier compatibility fallback because no structured signature
+function-reference carrier exists locally.
 
-Added focused frontend coverage for a global function-pointer initializer whose
-semantic static helper keeps a structured initializer identity while the raw
-initializer name is drifted into a rendered-name collision and the helper's raw
-function carrier name is drifted. The semantic helper stays alive, while the
-rendered-name collision is still eliminated.
-
-Route review accepted Step 3 as complete for currently available structured
-call, extern, global, and function-carrier metadata. The remaining
-`collect_fn_refs` `signature_text` scan is retired from Step 3 executor scope
-because no local structured producer carrier for signature metadata function
-references is currently visible.
+Classified `init_text` as final LLVM initializer spelling whose string scanning
+is only a legacy compatibility fallback behind
+`initializer_function_link_name_ids`; classified reachability `names` and
+`discardable_by_name` as compatibility fallback paths behind `LinkNameId`
+reachability; classified signature printer string replacement as a compatibility
+rendering bridge and verifier signature parsing as compatibility parity checks
+against structured type mirrors.
 
 ## Suggested Next
 
-Suggested next packet: execute Step 5 classification for `collect_fn_refs`
-signature-text scanning and any other retained LIR string surfaces. Treat the
-signature scan as compatibility or an unresolved producer-carrier boundary
-unless the executor finds an existing structured signature-reference carrier;
-if such producer work is required, stop for lifecycle split instead of inventing
-a local carrier.
+Suggested next packet: execute Step 6 reproof/review for LIR cleanup and decide
+whether the active runbook can close or whether the unresolved structured
+signature-reference carrier should become a separate producer-boundary idea.
 
 ## Watchouts
 
-Global initializer reachability now has a structured function-id path; rendered
-`init_text` scanning remains as compatibility fallback. Function signature text
-is a legacy string-scanned surface to classify in Step 5, not a remaining Step
-3 implementation packet.
+No new producer carrier was invented in Step 5. `collect_fn_refs`
+`signature_text` scanning remains intentionally retained as compatibility around
+an unresolved producer boundary, not as accepted semantic authority. If future
+work needs structured references inside function signatures or metadata, split
+that as upstream metadata work instead of extending this classification packet.
 
 ## Proof
 

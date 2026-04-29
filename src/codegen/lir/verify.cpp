@@ -640,6 +640,9 @@ void verify_global_type_ref_shadows(const LirModule& mod) {
 }
 
 std::string_view function_signature_line(const LirFunction& fn) {
+  // Verifier compatibility parser for signature_text. The rendered header is
+  // final LLVM spelling; structured type mirrors are checked against it so the
+  // compatibility payload cannot silently drift from semantic type identity.
   std::string_view signature = fn.signature_text;
   while (!signature.empty()) {
     const size_t line_end = signature.find('\n');

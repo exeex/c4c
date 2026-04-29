@@ -25,6 +25,9 @@ std::string render_signature_with_link_name(std::string_view signature_text,
                                             std::string_view resolved_name) {
   if (resolved_name.empty()) return std::string(signature_text);
 
+  // signature_text is retained final LLVM header spelling. The function's
+  // LinkNameId is the semantic identity; this string replacement is the
+  // compatibility rendering bridge until the header itself is fully structured.
   const std::size_t header_pos = signature_text.rfind("define ");
   const std::size_t decl_pos = signature_text.rfind("declare ");
   const std::size_t start_pos =

@@ -993,7 +993,10 @@ void emit_lbl(c4c::codegen::FnCtx& ctx, const std::string& lbl) {
 // and global initializers seed the worklist; internal functions are kept only if
 // transitively reachable.
 
-// Scan a string for @name / @"quoted name" global references.
+// Compatibility scanner for final LLVM spelling payloads that still may contain
+// @name / @"quoted name" global references. Callers should prefer structured
+// LinkNameId carriers when they exist and use this only for classified legacy
+// payloads or unresolved producer-boundary text.
 static void scan_refs(const std::string& s,
                       std::unordered_set<std::string>& refs) {
   size_t pos = 0;
@@ -1019,12 +1022,15 @@ static void scan_refs(const std::string& s,
 
 struct LirGlobalRefs {
   std::unordered_set<LinkNameId> link_name_ids;
+  // Compatibility fallback names collected from final LLVM spelling payloads
+  // when no structured LinkNameId carrier exists for that reference.
   std::unordered_set<std::string> names;
 };
 
 // Collect all global symbol references from a single LIR instruction.
-// Prefer structured direct-call identities and scan legacy string operands only
-// where LIR still has no semantic symbol carrier.
+// Prefer structured direct-call identities and scan legacy final-spelling or
+// compatibility string operands only where LIR still has no semantic symbol
+// carrier.
 static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
   auto S = [&](const std::string& s) { scan_refs(s, refs.names); };
   // Visit each typed LIR op and scan its string-valued operand fields.
@@ -1103,7 +1109,11 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
 // Collect all global references from a function's body.
 static LirGlobalRefs collect_fn_refs(const LirFunction& fn) {
   LirGlobalRefs refs;
-  // Scan signature text (may reference other functions in attributes/metadata).
+  // Unresolved producer-carrier boundary: signature_text is final LLVM header
+  // spelling plus template-comment compatibility payload. Type mirrors exist,
+  // but there is currently no structured carrier for function references that
+  // may be embedded in attributes/metadata, so this scan remains a classified
+  // compatibility fallback rather than semantic lookup authority.
   scan_refs(fn.signature_text, refs.names);
   // Scan hoisted allocas.
   for (const auto& inst : fn.alloca_insts) collect_inst_refs(inst, refs);
@@ -1116,6 +1126,9 @@ static LirGlobalRefs collect_fn_refs(const LirFunction& fn) {
 
 static void eliminate_dead_internals(LirModule& mod) {
   std::unordered_map<LinkNameId, size_t> discardable_by_link_name;
+  // Compatibility fallback for legacy reference payloads that have not been
+  // paired with a LinkNameId. Structured references seed through
+  // discardable_by_link_name first.
   std::unordered_map<std::string, size_t> discardable_by_name;
   for (size_t i = 0; i < mod.functions.size(); ++i) {
     const auto& f = mod.functions[i];
