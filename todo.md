@@ -1,95 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/129_parser_intermediate_carrier_boundary_labeling.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Audit parser-side string authority
+Current Step ID: 5
+Current Step Title: Validate behavior preservation
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Audited parser-side string authority without behavior changes.
+Step 4: Queued durable follow-up coverage for the suspicious parser-side
+cross-stage string authority found in Step 3.
 
-Local-only parser strings:
-- `ParserCoreInputState::source_file` in
-  `src/frontend/parser/impl/parser_state.hpp` is parser input/diagnostic
-  context, not semantic name authority.
-- `ParserParseContextFrame::function_name`, `ParserParseFailure::{function_name,
-  expected, got, detail, stack_trace}`, and `ParserParseDebugEvent::{kind,
-  function_name, detail}` in `src/frontend/parser/parser_types.hpp` are
-  diagnostics/debug carriers.
-- `ParserQualifiedNameRef::{qualifier_segments, base_name}` in
-  `src/frontend/parser/parser_types.hpp` are parse-time carriers paired with
-  `qualifier_text_ids`, `base_text_id`, and parser symbol ids; their rendered
-  `spelled()` form is a compatibility projection, not the preferred authority.
-- `ParserActiveContextState::{last_using_alias_name, last_resolved_typedef,
-  current_struct_tag}` in `src/frontend/parser/impl/parser_state.hpp` are
-  transient rollback-visible parser context when paired with the adjacent
-  `TextId`/`QualifiedNameKey` fields.
-
-Generated-name-only spelling:
-- `Parser::try_parse_operator_function_id(std::string& out_name)` in
-  `src/frontend/parser/parser.hpp` and `src/frontend/parser/impl/expressions.cpp`
-  generates canonical `operator_*` names from tokens.
-- Template instantiation/mangling helpers such as
-  `build_template_struct_mangled_name`, `TemplateInstantiationKey::Argument::
-  canonical_key`, and local `mangled`/`arg_refs` strings in
-  `src/frontend/parser/impl/types/base.cpp` derive synthetic names for emitted
-  parser artifacts.
-- Anonymous/generated record names driven by
-  `ParserDefinitionState::anon_counter` and generated template instance tags are
-  not source-spelling authority, though they can become compatibility lookup
-  keys after generation.
-
-Suspicious cross-stage authority / follow-up material:
-- `ParserDefinitionState::{defined_struct_tags, struct_tag_def_map}` in
-  `src/frontend/parser/impl/parser_state.hpp` are rendered-tag compatibility
-  mirrors; comments say semantic record lookup should prefer
-  `TypeSpec::record_def`, but implementation references still pass
-  `struct_tag_def_map` to constant evaluation and template instantiation paths.
-- `ParserTemplateState::{template_struct_defs, template_struct_specializations,
-  instantiated_template_struct_keys, nttp_default_expr_tokens}` in
-  `src/frontend/parser/impl/parser_state.hpp` mirror key-based template tables
-  with rendered string keys; mismatch counters indicate this remains an active
-  compatibility boundary.
-- `Parser::VisibleNameResult::compatibility_spelling`,
+Follow-up mapping:
+- `ideas/open/132_parser_rendered_record_template_lookup_mirror_cleanup.md`
+  owns rendered record/template lookup mirrors:
+  `ParserDefinitionState::{defined_struct_tags, struct_tag_def_map}` and
+  `ParserTemplateState::{template_struct_defs, template_struct_specializations,
+  instantiated_template_struct_keys, nttp_default_expr_tokens}`.
+- `ideas/open/133_parser_namespace_visible_name_compatibility_spelling_cleanup.md`
+  owns namespace and visible-name compatibility spelling:
+  `Parser::VisibleNameResult::compatibility_spelling`,
   `ParserNamespaceState::UsingValueAlias::compatibility_name`,
-  `compatibility_namespace_name_in_context`, and string overloads of namespace /
-  visible-name lookup in `src/frontend/parser/parser.hpp` carry rendered names
-  beside `QualifiedNameKey`/`TextId` identity and can still feed AST `name`
-  fields.
-- `ParserAliasTemplateInfo::param_names`,
-  `ParserTemplateArgParseResult::nttp_name`, and implementation uses that copy
-  `$expr:` text into `template_arg_nttp_names` remain string-backed template
-  payload bridges; `param_name_text_ids` and structured `TemplateArgRef` fields
-  exist but do not fully replace these paths.
-- Parser implementation writes rendered names into AST boundary fields such as
+  `compatibility_namespace_name_in_context`, and string overloads of namespace
+  and visible-name lookup helpers.
+- `ideas/open/134_parser_ast_template_payload_string_bridge_cleanup.md`
+  owns parser-produced AST/template payload bridges:
+  `ParserAliasTemplateInfo::param_names`,
+  `ParserTemplateArgParseResult::nttp_name`, `$expr:` text copied into
+  `template_arg_nttp_names`, `TemplateArgRef::debug_text`, and parser writes to
   `Node::name`, `Node::unqualified_name`, `Node::template_origin_name`,
-  `TypeSpec::tag`, `TypeSpec::tpl_struct_origin`,
-  `TypeSpec::deferred_member_type_name`, and `TemplateArgRef::debug_text`.
-  Some are documented compatibility/display fields in `ast.hpp`, but current
-  parser references still use them in lookup/substitution decisions, so Step 4
-  should preserve these as follow-up idea material rather than treating this
-  audit as cleanup-complete.
+  `TypeSpec::tag`, `TypeSpec::tpl_struct_origin`, and
+  `TypeSpec::deferred_member_type_name`.
+
+Existing ideas `130_sema_hir_ast_ingress_boundary_audit.md` and
+`131_cross_ir_string_authority_audit_and_followup_queue.md` remain audit/queue
+coverage. They are not concrete cleanup ownership for these parser producer
+paths, so Step 4 created separate narrow follow-up ideas.
 
 ## Suggested Next
 
-Delegate Step 4 to create narrow follow-up idea(s) for the suspicious
-cross-stage string authority paths above. Suggested split: one idea for rendered
-record/template lookup mirrors, and one idea for rendered AST/template payload
-bridges, unless the plan owner prefers a single umbrella cleanup idea.
+Delegate Step 5 to validate behavior preservation for this documentation and
+idea-queueing slice. No implementation files were changed by Step 4.
 
 ## Watchouts
 
-- This packet intentionally changed no parser headers, implementation files,
-  tests, `plan.md`, or source idea files.
-- The suspicious paths are not all bugs; many are named compatibility mirrors.
-  The risk is that rendered spelling can still decide semantic lookup after a
-  structured identity exists.
-- Step 4 owns idea creation under `ideas/open/`; executor authority for this
-  packet did not include creating those files.
+- Step 4 intentionally changed only `todo.md` and new files under
+  `ideas/open/`.
+- The new ideas are cleanup follow-ups, not proof that every listed path is a
+  bug. Each idea asks future execution to separate compatibility/display text
+  from semantic authority.
+- `plan.md` was left unchanged because the Step 4 runbook contract was already
+  consistent.
 
 ## Proof
 
-No build or test proof was required for this read-only audit/todo update.
-No tests were run and no new `test_after.log` was produced for this packet.
+No build or test proof was required for this lifecycle-only idea queueing
+packet. No tests were run and no new `test_after.log` was produced.
