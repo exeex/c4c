@@ -1165,8 +1165,8 @@ std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
   bir::Function lowered;
   lowered.name = function_name_for_identity(link_names, function);
   lowered.link_name_id = function.link_name_id;
-  auto return_info = lower_signature_return_info(
-      function.signature_text, type_decls, target_profile, &structured_layouts);
+  auto return_info =
+      lower_signature_return_info(function, type_decls, target_profile, &structured_layouts);
   if (!return_info.has_value()) {
     lowered.return_type = lower_param_type(function.return_type).value_or(bir::TypeKind::Void);
     lowered.return_abi = compute_function_return_abi(target_profile, lowered.return_type, false);

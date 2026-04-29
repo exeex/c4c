@@ -263,6 +263,59 @@ int check_call_return_rendering_prefers_structured_context() {
   return 0;
 }
 
+int check_lir_to_bir_signature_lowering_prefers_structured_metadata() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = pair_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+
+  lir::LirFunction decl;
+  decl.name = "structured_sig";
+  decl.is_declaration = true;
+  decl.signature_text = "declare void @structured_sig(void)";
+  decl.return_type = c4c::TypeSpec{.base = c4c::TB_VOID};
+  decl.signature_return_type_ref = lir::LirTypeRef("i32");
+  decl.signature_params.push_back(
+      lir::LirSignatureParam{.name = "%pair", .type = c4c::TypeSpec{.base = c4c::TB_STRUCT,
+                                                                     .tag = "Pair"}});
+  decl.signature_param_type_refs.push_back(
+      lir::LirTypeRef::struct_type("ptr byval(%struct.Pair) align 8", pair_id));
+  decl.signature_is_variadic = true;
+  module.functions.push_back(std::move(decl));
+
+  const auto lowered =
+      c4c::backend::try_lower_to_bir_with_options(module, c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return fail("structured signature drift fixture did not lower to BIR");
+  }
+  if (lowered.module->functions.size() != 1) {
+    return fail("structured signature drift fixture did not produce one declaration");
+  }
+
+  const bir::Function& function = lowered.module->functions.front();
+  if (function.return_type != bir::TypeKind::I32 || !function.return_abi.has_value() ||
+      function.return_abi->type != bir::TypeKind::I32) {
+    return fail("BIR declaration lowering used drifted signature_text return spelling");
+  }
+  if (!function.is_variadic) {
+    return fail("BIR declaration lowering ignored structured variadic metadata");
+  }
+  if (function.params.size() != 1 || function.params.front().name != "%pair" ||
+      function.params.front().type != bir::TypeKind::Ptr || !function.params.front().is_byval ||
+      function.params.front().size_bytes != 8 || function.params.front().align_bytes != 4) {
+    return fail("BIR declaration lowering ignored structured byval parameter metadata");
+  }
+  return 0;
+}
+
 int check_block_label_rendering_prefers_structured_identity() {
   bir::Module module;
   const c4c::BlockLabelId entry_id = module.names.block_labels.intern("entry");
@@ -573,6 +626,10 @@ int main() {
     return status;
   }
   if (const int status = check_call_return_rendering_prefers_structured_context();
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_lir_to_bir_signature_lowering_prefers_structured_metadata();
       status != 0) {
     return status;
   }

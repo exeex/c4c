@@ -106,9 +106,12 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower
     std::string_view text,
     const TypeDeclMap& type_decls,
     const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts) {
+  const std::string normalized_type = normalize_aggregate_param_type(text);
   auto layout = structured_layouts != nullptr
-                    ? lookup_backend_aggregate_type_layout(text, type_decls, *structured_layouts)
-                    : compute_aggregate_type_layout(text, type_decls);
+                    ? lookup_backend_aggregate_type_layout(normalized_type,
+                                                           type_decls,
+                                                           *structured_layouts)
+                    : compute_aggregate_type_layout(normalized_type, type_decls);
   if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
        layout.kind != AggregateTypeLayout::Kind::Array) ||
       layout.size_bytes == 0 || layout.align_bytes == 0) {
@@ -147,13 +150,19 @@ std::vector<std::pair<std::size_t, std::string>> BirFunctionLowerer::collect_sor
 
 BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_params() const {
   AggregateParamMap aggregate_params;
-  const auto parsed_params = parse_function_signature_params(function_.signature_text);
+  const bool structured_params_available = has_structured_signature_params(function_);
+  // Generated LIR carries structured signature params. The text parser remains
+  // only for legacy hand-built LIR fixtures that do not populate those fields.
+  const auto parsed_params = structured_params_available
+                                 ? structured_signature_params(function_)
+                                 : parse_function_signature_params(function_.signature_text);
   if (!parsed_params.has_value()) {
     return aggregate_params;
   }
 
   const bool use_declared_names =
-      !function_.params.empty() && function_.params.size() == parsed_params->size();
+      !structured_params_available && !function_.params.empty() &&
+      function_.params.size() == parsed_params->size();
   const auto limit = use_declared_names ? function_.params.size() : parsed_params->size();
   for (std::size_t index = 0; index < limit; ++index) {
     const auto& parsed_param = (*parsed_params)[index];

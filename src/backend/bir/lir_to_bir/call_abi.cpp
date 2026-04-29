@@ -165,6 +165,34 @@ BirFunctionLowerer::parse_function_signature_params(std::string_view signature_t
   return params;
 }
 
+bool BirFunctionLowerer::has_structured_signature_params(
+    const c4c::codegen::lir::LirFunction& function) {
+  return function.signature_has_void_param_list || function.signature_is_variadic ||
+         !function.signature_params.empty() || !function.signature_param_type_refs.empty();
+}
+
+std::optional<std::vector<BirFunctionLowerer::ParsedFunctionSignatureParam>>
+BirFunctionLowerer::structured_signature_params(
+    const c4c::codegen::lir::LirFunction& function) {
+  if (function.signature_params.size() != function.signature_param_type_refs.size()) {
+    return std::nullopt;
+  }
+
+  std::vector<ParsedFunctionSignatureParam> params;
+  params.reserve(function.signature_params.size() + (function.signature_is_variadic ? 1u : 0u));
+  for (std::size_t index = 0; index < function.signature_params.size(); ++index) {
+    params.push_back({
+        function.signature_param_type_refs[index].str(),
+        function.signature_params[index].name,
+        false,
+    });
+  }
+  if (function.signature_is_variadic) {
+    params.push_back({"", "...", true});
+  }
+  return params;
+}
+
 std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_return_info_from_type(
     std::string_view type_text,
     const TypeDeclMap& type_decls,
@@ -226,11 +254,20 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::infer_f
 }
 
 std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_signature_return_info(
-    std::string_view signature_text,
+    const c4c::codegen::lir::LirFunction& function,
     const TypeDeclMap& type_decls,
     const c4c::TargetProfile& target_profile,
     const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts) {
-  const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
+  if (function.signature_return_type_ref.has_value()) {
+    return lower_return_info_from_type(function.signature_return_type_ref->str(),
+                                       type_decls,
+                                       target_profile,
+                                       structured_layouts);
+  }
+
+  // Compatibility fallback for hand-built legacy LIR that predates structured
+  // signature metadata. Generated LIR should provide signature_return_type_ref.
+  const auto line = c4c::codegen::lir::trim_lir_arg_text(function.signature_text);
   const auto first_space = line.find(' ');
   const auto at_pos = line.find('@');
   if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
@@ -263,12 +300,17 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
             abi->sret_pointer = true;
           }
           return abi;
-        }(),
+      }(),
         .is_sret = true,
     });
   }
 
-  const auto parsed_params = parse_function_signature_params(function.signature_text);
+  const bool structured_params_available = has_structured_signature_params(function);
+  // Generated LIR carries structured signature params. The text parser remains
+  // only for legacy hand-built LIR fixtures that do not populate those fields.
+  const auto parsed_params = structured_params_available
+                                 ? structured_signature_params(function)
+                                 : parse_function_signature_params(function.signature_text);
   const auto parsed_fixed_param_count = [&]() -> std::size_t {
     if (!parsed_params.has_value()) {
       return 0;
@@ -288,21 +330,72 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
                   parsed_params->end(),
                   [](const ParsedFunctionSignatureParam& param) { return param.is_varargs; });
   const bool has_void_param_sentinel =
-      function.params.size() == 1 && is_void_param_sentinel(function.params.front().second);
+      function.signature_has_void_param_list ||
+      (!structured_params_available && function.params.size() == 1 &&
+       is_void_param_sentinel(function.params.front().second));
   if (has_void_param_sentinel &&
       (!parsed_params.has_value() ||
-       (parsed_params->size() == 1 && !parsed_params->front().is_varargs &&
-        c4c::codegen::lir::trim_lir_arg_text(parsed_params->front().type) == "void"))) {
+       (parsed_params->empty() ||
+        (parsed_params->size() == 1 && !parsed_params->front().is_varargs &&
+         c4c::codegen::lir::trim_lir_arg_text(parsed_params->front().type) == "void")))) {
     return true;
   }
 
-  if (parsed_params.has_value() && !function.params.empty() && !has_void_param_sentinel &&
+  if (!structured_params_available && parsed_params.has_value() && !function.params.empty() &&
+      !has_void_param_sentinel &&
       parsed_fixed_param_count != function.params.size()) {
     return false;
   }
 
-  for (std::size_t index = 0; index < function.params.size() && !has_void_param_sentinel;
-       ++index) {
+  if (structured_params_available) {
+    if (!parsed_params.has_value()) {
+      return false;
+    }
+    for (const auto& param : *parsed_params) {
+      if (param.is_varargs) {
+        lowered->is_variadic = true;
+        return true;
+      }
+      const auto layout = lower_byval_aggregate_layout(param.type, type_decls, structured_layouts);
+      if (layout.has_value()) {
+        if (param.operand.empty()) {
+          return false;
+        }
+        lowered->params.push_back(bir::Param{
+            .type = bir::TypeKind::Ptr,
+            .name = param.operand,
+            .size_bytes = layout->size_bytes,
+            .align_bytes = layout->align_bytes,
+            .abi =
+                [&]() -> std::optional<bir::CallArgAbiInfo> {
+              auto abi = lir_to_bir_detail::compute_call_arg_abi(target_profile, bir::TypeKind::Ptr);
+              if (abi.has_value()) {
+                abi->size_bytes = layout->size_bytes;
+                abi->align_bytes = layout->align_bytes;
+                abi->byval_copy = true;
+              }
+              return abi;
+            }(),
+            .is_byval = true,
+        });
+        continue;
+      }
+
+      const auto lowered_type = lower_scalar_or_function_pointer_type(param.type);
+      if (!lowered_type.has_value() || param.operand.empty()) {
+        return false;
+      }
+      lowered->params.push_back(bir::Param{
+          .type = *lowered_type,
+          .name = param.operand,
+          .abi = lir_to_bir_detail::compute_call_arg_abi(target_profile, *lowered_type),
+      });
+    }
+    lowered->is_variadic = parsed_is_variadic;
+    return true;
+  }
+
+  for (std::size_t index = 0; index < function.params.size() && !has_void_param_sentinel; ++index) {
     const auto& param = function.params[index];
     const auto lowered_type = lower_param_type(param.second);
     if (!lowered_type.has_value()) {

@@ -286,6 +286,10 @@ class BirFunctionLowerer {
       const c4c::codegen::lir::LirCallOp& call);
   static std::optional<std::vector<ParsedFunctionSignatureParam>> parse_function_signature_params(
       std::string_view signature_text);
+  static bool has_structured_signature_params(
+      const c4c::codegen::lir::LirFunction& function);
+  static std::optional<std::vector<ParsedFunctionSignatureParam>> structured_signature_params(
+      const c4c::codegen::lir::LirFunction& function);
   static std::optional<bir::Function> lower_extern_decl(
       const c4c::codegen::lir::LirExternDecl& decl,
       const c4c::LinkNameTable& link_names,
@@ -524,7 +528,7 @@ class BirFunctionLowerer {
       const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
   std::optional<LoweredReturnInfo> infer_function_return_info() const;
   static std::optional<LoweredReturnInfo> lower_signature_return_info(
-      std::string_view signature_text,
+      const c4c::codegen::lir::LirFunction& function,
       const TypeDeclMap& type_decls,
       const c4c::TargetProfile& target_profile,
       const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
