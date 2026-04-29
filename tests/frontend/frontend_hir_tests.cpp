@@ -2569,6 +2569,108 @@ void test_hir_member_call_method_owner_prefers_record_def_over_stale_tag() {
               "member call method lookup should use structured record_def owner before stale rendered spelling");
 }
 
+void test_hir_direct_constructor_call_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealDirectCtorOwner");
+  real_record->unqualified_name = arena.strdup("RealDirectCtorOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for direct constructor");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealDirectCtorOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealDirectCtorOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleDirectCtorOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleDirectCtorOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  c4c::Node* real_param = parser.make_node(c4c::NK_DECL, 0);
+  real_param->type = int_ts;
+  c4c::Node* real_ctor = parser.make_node(c4c::NK_FUNCTION, 0);
+  real_ctor->name = arena.strdup("RealDirectCtorOwner");
+  real_ctor->is_constructor = true;
+  real_ctor->params = arena.alloc_array<c4c::Node*>(1);
+  real_ctor->params[0] = real_param;
+  real_ctor->n_params = 1;
+
+  c4c::Node* stale_param = parser.make_node(c4c::NK_DECL, 0);
+  stale_param->type = int_ts;
+  c4c::Node* stale_ctor = parser.make_node(c4c::NK_FUNCTION, 0);
+  stale_ctor->name = arena.strdup("StaleDirectCtorOwner");
+  stale_ctor->is_constructor = true;
+  stale_ctor->params = arena.alloc_array<c4c::Node*>(1);
+  stale_ctor->params[0] = stale_param;
+  stale_ctor->n_params = 1;
+
+  lowerer.struct_constructors_["RealDirectCtorOwner"].push_back(
+      {"RealDirectCtorOwner__ctor", real_ctor});
+  lowerer.struct_constructors_["StaleDirectCtorOwner"].push_back(
+      {"StaleDirectCtorOwner__ctor", stale_ctor});
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleDirectCtorOwner");
+  owner_ts.record_def = real_record;
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 0);
+  callee->name = arena.strdup("StaleDirectCtorOwner");
+  callee->type = owner_ts;
+  c4c::Node* arg = parser.make_node(c4c::NK_INT_LIT, 0);
+  arg->ival = 7;
+  arg->type = int_ts;
+  c4c::Node* call_node = parser.make_node(c4c::NK_CALL, 1);
+  call_node->left = callee;
+  call_node->children = arena.alloc_array<c4c::Node*>(1);
+  call_node->children[0] = arg;
+  call_node->n_children = 1;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+
+  const std::optional<c4c::hir::ExprId> result =
+      lowerer.try_lower_direct_struct_constructor_call(&ctx, call_node);
+  expect_true(result.has_value() && result->valid(),
+              "direct constructor lowering should resolve through structured owner identity");
+
+  const c4c::hir::DeclRef* ctor_callee = nullptr;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* call = std::get_if<c4c::hir::CallExpr>(&expr.payload);
+    if (!call) continue;
+    const c4c::hir::Expr* callee_expr = module.find_expr(call->callee);
+    if (!callee_expr) continue;
+    ctor_callee = std::get_if<c4c::hir::DeclRef>(&callee_expr->payload);
+    if (ctor_callee) break;
+  }
+  expect_true(ctor_callee != nullptr &&
+                  ctor_callee->name == "RealDirectCtorOwner__ctor",
+              "direct constructor routing should not select the stale rendered constructor when record_def identity is available");
+}
+
 void test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3804,6 +3906,7 @@ int main() {
   test_hir_generic_ctrl_deref_method_owner_prefers_record_def_over_stale_tag();
   test_hir_generic_ctrl_operator_call_method_owner_prefers_record_def_over_stale_tag();
   test_hir_member_call_method_owner_prefers_record_def_over_stale_tag();
+  test_hir_direct_constructor_call_prefers_record_def_over_stale_tag();
   test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag();
   test_hir_delete_expr_method_owner_prefers_record_def_over_stale_tag();
   test_hir_init_list_member_symbol_prefers_record_def_over_stale_tag();

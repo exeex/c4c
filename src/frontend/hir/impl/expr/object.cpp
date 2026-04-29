@@ -46,9 +46,70 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
     return std::nullopt;
   }
 
+  const std::string callee_name = n->left->name;
+  std::optional<std::string> structured_callee_tag;
+  {
+    TypeSpec owner_ts = n->left->type;
+    bool has_structured_owner = false;
+    if (owner_ts.base == TB_STRUCT) {
+      if (!owner_ts.tag || !owner_ts.tag[0]) owner_ts.tag = callee_name.c_str();
+      has_structured_owner =
+          owner_ts.record_def || owner_ts.tpl_struct_origin ||
+          (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0);
+    } else {
+      owner_ts = TypeSpec{};
+      owner_ts.base = TB_STRUCT;
+      owner_ts.tag = callee_name.c_str();
+    }
+    owner_ts.array_size = -1;
+    owner_ts.inner_rank = -1;
+
+    auto sdit = struct_def_nodes_.find(callee_name);
+    if (!owner_ts.record_def && sdit != struct_def_nodes_.end() && sdit->second) {
+      owner_ts.record_def = const_cast<Node*>(sdit->second);
+      has_structured_owner = true;
+    }
+
+    const bool has_template_args =
+        n->left->has_template_args || n->left->n_template_args > 0;
+    const Node* primary_tpl = nullptr;
+    if (has_template_args) {
+      const char* primary_name =
+          (n->left->template_origin_name && n->left->template_origin_name[0])
+              ? n->left->template_origin_name
+              : callee_name.c_str();
+      primary_tpl = find_template_struct_primary(primary_name);
+      if (primary_tpl) {
+        owner_ts.tpl_struct_origin = primary_name;
+        assign_template_arg_refs_from_ast_args(
+            &owner_ts, n->left, primary_tpl, ctx, n->left,
+            PendingTemplateTypeKind::OwnerStruct, "direct-ctor-owner-arg");
+        has_structured_owner = true;
+      }
+    }
+
+    if (has_structured_owner) {
+      TypeBindings tpl_empty;
+      NttpBindings nttp_empty;
+      seed_and_resolve_pending_template_type_if_needed(
+          owner_ts, ctx ? ctx->tpl_bindings : tpl_empty,
+          ctx ? ctx->nttp_bindings : nttp_empty, n->left,
+          PendingTemplateTypeKind::OwnerStruct, "direct-ctor-owner",
+          primary_tpl);
+      const std::string* current_struct_tag =
+          (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+      structured_callee_tag = resolve_member_lookup_owner_tag(
+          owner_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
+          ctx ? &ctx->nttp_bindings : nullptr, current_struct_tag, n->left,
+          "direct-ctor-owner");
+    }
+  }
+  const std::string lookup_callee_tag =
+      structured_callee_tag.value_or(callee_name);
+
   if (n->n_children == 0) {
-    auto sit = module_->struct_defs.find(n->left->name);
-    auto cit = struct_constructors_.find(n->left->name);
+    auto sit = module_->struct_defs.find(lookup_callee_tag);
+    auto cit = struct_constructors_.find(lookup_callee_tag);
     if (sit != module_->struct_defs.end() &&
         (cit == struct_constructors_.end() || cit->second.empty())) {
       TypeSpec tmp_ts{};
@@ -76,9 +137,8 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
     }
   }
 
-  const std::string callee_name = n->left->name;
-  auto cit = struct_constructors_.find(callee_name);
-  auto sit = module_->struct_defs.find(callee_name);
+  auto cit = struct_constructors_.find(lookup_callee_tag);
+  auto sit = module_->struct_defs.find(lookup_callee_tag);
   if (cit == struct_constructors_.end() || sit == module_->struct_defs.end()) {
     return std::nullopt;
   }
@@ -140,7 +200,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
   if (!best) return std::nullopt;
   if (best->method_node->is_deleted) {
     std::string diag = "error: call to deleted constructor '";
-    diag += callee_name;
+    diag += lookup_callee_tag;
     diag += "'";
     throw std::runtime_error(diag);
   }

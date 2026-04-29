@@ -9,29 +9,29 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with scoped static member lookup in `scalar_control.cpp`. `Owner::member`
-lowering now builds an owner `TypeSpec` from AST template arguments and
-available `struct_def_nodes_` `record_def`, resolves that through
-`resolve_member_lookup_owner_tag`, and uses the structured owner tag for static
-member decl/value lookup before falling back to rendered owner spelling.
+with direct struct constructor-call routing in `object.cpp`.
+`try_lower_direct_struct_constructor_call` now builds a constructor owner
+`TypeSpec` from the callee AST, including `record_def` and template-argument
+payloads, resolves it through structured owner lookup, and uses the resolved HIR
+struct tag for constructor and aggregate-temporary routing before falling back
+to rendered callee spelling.
 
-Added focused HIR coverage proving a stale rendered scoped owner cannot select
-the wrong static member const value when structured `record_def` owner identity
-is available.
+Added focused HIR coverage proving a stale rendered constructor spelling cannot
+select the wrong constructor when structured `record_def` owner identity is
+available.
 
 ## Suggested Next
 
-Continue Step 4 by auditing constructor overload routing or any remaining
-rendered-tag member-symbol ingress outside the completed declaration,
-compound-literal aggregate-init, generated-body, and scoped static member
-lookup paths.
+Continue Step 4 by auditing any remaining rendered-tag ingress in constructor
+paths outside direct call lowering, especially declaration/statement-side
+constructor dispatch that still keys through `decl_ts.tag` or field type tags.
 
 ## Watchouts
 
-Scoped static member lookup intentionally keeps the legacy rendered fallback
-when no structured owner can be resolved. Template trait fast-path evaluation
-still uses the parsed template primary spelling for the value computation, but
-its resulting type lookup now consults the structured owner tag when available.
+Direct constructor-call lowering intentionally keeps the legacy rendered
+fallback only when no structured owner can be resolved. The delegated Do Not
+Touch list left declaration and statement constructor paths unchanged, so those
+remain candidates for separate packets.
 
 ## Proof
 
