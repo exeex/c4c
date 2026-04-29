@@ -394,12 +394,61 @@ void test_direct_call_callee_lookup_uses_authoritative_decl_identity() {
               "direct-call link-name callee lookup should record stale-rendered mismatch");
 }
 
+void test_operator_callee_lookup_uses_authoritative_decl_identity() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId stale_text = texts.intern("stale_operator_callee");
+  const c4c::TextId structured_text = texts.intern("structured_operator_callee");
+  const c4c::TextId linked_text = texts.intern("linked_operator_callee");
+
+  add_function(module, c4c::hir::FunctionId{40}, "stale_operator_callee",
+               stale_text);
+  add_function(module, c4c::hir::FunctionId{41}, "structured_operator_callee",
+               structured_text);
+  add_function(module, c4c::hir::FunctionId{42}, "linked_operator_callee",
+               linked_text, module.link_names.intern("linked_operator_callee"));
+
+  c4c::hir::DeclRef structured_ref;
+  structured_ref.name = "stale_operator_callee";
+  structured_ref.name_text_id = structured_text;
+  const c4c::hir::Function* structured_fn =
+      module.resolve_operator_callee(structured_ref);
+  expect_true(structured_fn != nullptr && structured_fn->id.value == 41,
+              "operator callee lookup should prefer structured identity over stale rendered name");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::Structured,
+                      "stale_operator_callee", 41),
+              "operator structured callee lookup should record structured authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
+                           "stale_operator_callee", 41, 40),
+              "operator structured callee lookup should record stale-rendered mismatch");
+
+  c4c::hir::DeclRef link_ref;
+  link_ref.name = "stale_operator_callee";
+  link_ref.name_text_id = stale_text;
+  link_ref.link_name_id = module.link_names.find("linked_operator_callee");
+  const c4c::hir::Function* link_fn =
+      module.resolve_operator_callee(link_ref);
+  expect_true(link_fn != nullptr && link_fn->id.value == 42,
+              "operator callee lookup should prefer LinkNameId over stale rendered name");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::LinkNameId,
+                      "stale_operator_callee", 42),
+              "operator link-name callee lookup should record link-name authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
+                           "stale_operator_callee", 42, 40),
+              "operator link-name callee lookup should record stale-rendered mismatch");
+}
+
 }  // namespace
 
 int main() {
   test_module_decl_lookup_records_each_authority();
   test_stale_rendered_names_do_not_override_authoritative_decl_lookup();
   test_direct_call_callee_lookup_uses_authoritative_decl_identity();
+  test_operator_callee_lookup_uses_authoritative_decl_identity();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

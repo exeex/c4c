@@ -184,7 +184,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   dr.link_name_id = module_->link_names.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_VOID;
-  const Function* callee_fn = module_->find_function_by_name_legacy(dr.name);
+  const Function* callee_fn = module_->resolve_operator_callee(dr);
   if (callee_fn) {
     fn_ts = callee_fn->return_type.spec;
   }

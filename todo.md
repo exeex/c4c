@@ -8,21 +8,20 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 direct-call callee lookup demotion packet. Direct-call
-lowering in `src/frontend/hir/impl/expr/call.cpp` now resolves function
-callees through `Module::resolve_direct_call_callee()`, which uses the existing
-LinkNameId/structured declaration resolver before legacy rendered-name
-fallback; local direct-call target, callee-type, link-carrier, method-call, and
-argument-parameter lookup paths no longer call rendered-name lookup directly.
-The focused HIR lookup test now proves stale rendered names cannot override
-direct-call structured or LinkNameId callee authority.
+Completed Step 3 operator-callee lookup demotion packet. The main overloaded
+operator-call helper in `src/frontend/hir/impl/expr/operator.cpp` now resolves
+callee return metadata through `Module::resolve_operator_callee()`, which uses
+the existing structured/LinkNameId function declaration resolver before
+explicit legacy rendered-name fallback. The focused HIR lookup test now proves
+stale rendered names cannot override operator-callee structured or LinkNameId
+authority.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: inspect the remaining non-direct-call function or
-global semantic lookup edges that still consume rendered-name compatibility
-maps directly, preferably constructor/operator helper paths adjacent to call
-lowering that already have LinkNameId or structured declaration carriers.
+Next coherent Step 3 packet: demote one remaining adjacent operator or
+range-for method return-type lookup that still calls
+`find_function_by_name_legacy()` directly even after constructing a `DeclRef`
+with `link_name_id`.
 
 ## Watchouts
 
@@ -69,9 +68,10 @@ Step 1 inventory classification:
   maps need separate metadata analysis before conversion.
 - `fn_index`, `global_index`, and `find_*_by_name_legacy()` remain live
   compatibility/fallback surfaces for missing or incomplete structured
-  declaration metadata. This packet removed direct-call uses of the function
-  legacy helper in `call.cpp`, but nearby operator/object/range-for helpers may
-  still need separate packets.
+  declaration metadata. The direct-call packet removed direct-call uses of the
+  function legacy helper in `call.cpp`; this packet demoted the main
+  overloaded-operator helper in `operator.cpp`, but the nested `operator_arrow`,
+  bool conversion, and range-for method helpers still need separate packets.
 - Direct-call link-carrier discovery now records declaration lookup hits through
   the shared resolver. The hit/mismatch recorders deduplicate exact repeats, but
   future packets should keep an eye on noisy lookup telemetry if more call-site
