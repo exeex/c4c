@@ -235,6 +235,28 @@ set_tests_properties(backend_prepare_structured_context PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_aarch64_signature_metadata_test
+    "${BACKEND_TEST_ROOT}/backend_aarch64_signature_metadata_test.cpp"
+)
+target_include_directories(backend_aarch64_signature_metadata_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_compile_definitions(backend_aarch64_signature_metadata_test PRIVATE
+    C4C_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
+set_target_properties(backend_aarch64_signature_metadata_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_aarch64_signature_metadata
+  COMMAND $<TARGET_FILE:backend_aarch64_signature_metadata_test>
+)
+set_tests_properties(backend_aarch64_signature_metadata PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_prepare_liveness_test
     "${BACKEND_TEST_ROOT}/backend_prepare_liveness_test.cpp"
 )

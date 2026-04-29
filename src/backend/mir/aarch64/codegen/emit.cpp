@@ -67,6 +67,99 @@ void validate_module(const c4c::codegen::lir::LirModule& module) {
   }
 }
 
+bool lir_typespec_is_i32(const c4c::TypeSpec& type) {
+  return type.ptr_level == 0 && type.array_rank == 0 && !type.is_lvalue_ref &&
+         !type.is_rvalue_ref && type.base == c4c::TB_INT;
+}
+
+bool lir_typespec_uses_nonminimal_signature_type(const c4c::TypeSpec& type) {
+  if (type.ptr_level > 0) {
+    return false;
+  }
+  switch (type.base) {
+    case c4c::TB_VOID:
+    case c4c::TB_CHAR:
+    case c4c::TB_UCHAR:
+    case c4c::TB_SCHAR:
+    case c4c::TB_SHORT:
+    case c4c::TB_USHORT:
+    case c4c::TB_INT:
+    case c4c::TB_UINT:
+    case c4c::TB_BOOL:
+      return false;
+    default:
+      return true;
+  }
+}
+
+bool lir_type_ref_is_i32(const c4c::codegen::lir::LirTypeRef& type_ref) {
+  return type_ref.str() == "i32";
+}
+
+bool lir_type_ref_uses_nonminimal_signature_type(
+    const c4c::codegen::lir::LirTypeRef& type_ref) {
+  return c4c::backend::backend_lir_type_uses_nonminimal_types(type_ref.str());
+}
+
+bool lir_function_returns_i32(const c4c::codegen::lir::LirFunction& function) {
+  if (function.signature_return_type_ref.has_value()) {
+    return lir_type_ref_is_i32(*function.signature_return_type_ref);
+  }
+  return lir_typespec_is_i32(function.return_type);
+}
+
+bool lir_function_has_fixed_param_count(
+    const c4c::codegen::lir::LirFunction& function,
+    std::size_t expected_count) {
+  if (function.signature_is_variadic) {
+    return false;
+  }
+  if (!function.signature_params.empty() || !function.signature_param_type_refs.empty() ||
+      function.signature_has_void_param_list) {
+    return function.signature_params.size() == expected_count &&
+           function.signature_param_type_refs.size() == function.signature_params.size();
+  }
+  return function.params.size() == expected_count;
+}
+
+bool lir_function_is_i32_definition(const c4c::codegen::lir::LirFunction& function) {
+  return !function.is_declaration && lir_function_returns_i32(function);
+}
+
+bool lir_function_is_zero_arg_i32_definition(
+    const c4c::codegen::lir::LirFunction& function) {
+  return lir_function_is_i32_definition(function) &&
+         lir_function_has_fixed_param_count(function, 0);
+}
+
+bool lir_function_signature_uses_nonminimal_types(
+    const c4c::codegen::lir::LirFunction& function) {
+  if (function.signature_return_type_ref.has_value()) {
+    if (lir_type_ref_uses_nonminimal_signature_type(*function.signature_return_type_ref)) {
+      return true;
+    }
+  } else if (lir_typespec_uses_nonminimal_signature_type(function.return_type)) {
+    return true;
+  }
+
+  if (!function.signature_param_type_refs.empty()) {
+    for (const auto& param_type : function.signature_param_type_refs) {
+      if (lir_type_ref_uses_nonminimal_signature_type(param_type)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  for (const auto& [name, param_type] : function.params) {
+    (void)name;
+    if (lir_typespec_uses_nonminimal_signature_type(param_type)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -241,8 +334,7 @@ bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& mo
   };
 
   for (const auto& function : module.functions) {
-    if (c4c::backend::backend_lir_function_signature_uses_nonminimal_types(
-            function.signature_text)) {
+    if (lir_function_signature_uses_nonminimal_types(function)) {
       return true;
     }
     for (const auto& inst : function.alloca_insts) {
@@ -558,7 +650,7 @@ std::optional<std::int64_t> parse_minimal_lir_return_sub_imm(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1) {
     return std::nullopt;
   }
@@ -636,7 +728,7 @@ std::optional<std::int64_t> parse_minimal_lir_return_imm(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1) {
     return std::nullopt;
   }
@@ -754,7 +846,7 @@ std::optional<std::int64_t> parse_minimal_lir_local_pointer_return_imm(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_i32_definition(function.signature_text) ||
+      !lir_function_is_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       function.alloca_insts.size() < 2) {
     return std::nullopt;
@@ -981,7 +1073,7 @@ std::optional<std::int64_t> try_constant_fold_single_block(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_i32_definition(function.signature_text) ||
+      !lir_function_is_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty()) {
     return std::nullopt;
@@ -1387,7 +1479,7 @@ bool is_double_indirect_local_pointer_conditional_return_fallback(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.alloca_insts.size() != 3 ||
       function.blocks.size() != 8) {
     return false;
@@ -1475,7 +1567,7 @@ bool is_alloca_backed_switch_return_fallback(const c4c::codegen::lir::LirModule&
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.alloca_insts.size() != 1 ||
       function.blocks.size() < 3) {
     return false;
@@ -1529,7 +1621,7 @@ bool is_constant_selector_switch_return_fallback(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || !function.alloca_insts.empty() ||
       function.blocks.size() < 3) {
     return false;
@@ -2247,7 +2339,7 @@ std::string asm_private_data_label(std::string_view target_triple,
 
 std::string asm_private_data_label(const c4c::codegen::lir::LirModule& module,
                                    std::string_view pool_name) {
-  return asm_private_data_label(module.target_triple, pool_name);
+  return asm_private_data_label(module.target_profile.triple, pool_name);
 }
 
 std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
@@ -2262,7 +2354,7 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   const auto& string_const = module.string_pool.front();
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2619,7 +2711,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2667,7 +2759,7 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2724,7 +2816,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_global_int_pointer_rou
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2810,7 +2902,7 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2865,7 +2957,7 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      !lir_function_is_zero_arg_i32_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -4666,43 +4758,6 @@ static GenTypeLayout gen_type_layout(const std::string& ty,
     return gen_struct_layout(trimmed, type_decls);
   }
   return {gen_type_bytes(trimmed), std::max(1, gen_type_bytes(trimmed))};
-}
-
-static std::optional<std::string> gen_parse_function_return_type(
-    std::string_view signature_text) {
-  std::string line(signature_text);
-  while (!line.empty() &&
-         std::isspace(static_cast<unsigned char>(line.front()))) {
-    line.erase(line.begin());
-  }
-  while (!line.empty() &&
-         std::isspace(static_cast<unsigned char>(line.back()))) {
-    line.pop_back();
-  }
-  std::string_view view(line);
-  if (view.rfind("define ", 0) != 0 && view.rfind("declare ", 0) != 0) {
-    return std::nullopt;
-  }
-  const std::size_t keyword_len = view.rfind("define ", 0) == 0 ? 7 : 8;
-  view.remove_prefix(keyword_len);
-  const std::size_t at = view.find('@');
-  if (at == std::string_view::npos) {
-    return std::nullopt;
-  }
-  const std::size_t split = view.rfind(' ', at);
-  if (split == std::string_view::npos) {
-    return std::nullopt;
-  }
-  std::string return_type(view.substr(0, split));
-  while (!return_type.empty() &&
-         std::isspace(static_cast<unsigned char>(return_type.front()))) {
-    return_type.erase(return_type.begin());
-  }
-  while (!return_type.empty() &&
-         std::isspace(static_cast<unsigned char>(return_type.back()))) {
-    return_type.pop_back();
-  }
-  return return_type;
 }
 
 // Parse struct type "{ T1, T2, ... }" — compute byte size.
@@ -6747,30 +6802,30 @@ std::optional<std::string> render_prepared_lir_module_if_supported(
   try {
     if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
         slice.has_value()) {
-      return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
+      return emit_minimal_scalar_global_store_reload_asm(module.target_profile.triple, *slice);
     }
     if (const auto slice = parse_minimal_global_int_pointer_roundtrip_slice(module);
         slice.has_value()) {
-      return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
+      return emit_minimal_scalar_global_load_asm(module.target_profile.triple, *slice);
     }
     if (const auto slice = parse_minimal_string_literal_char_slice(module);
         slice.has_value()) {
-      return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
+      return emit_minimal_string_literal_char_asm(module.target_profile.triple, *slice);
     }
     if (!needs_nonminimal_lowering) {
       if (const auto imm = parse_minimal_lir_local_pointer_return_imm(module);
           imm.has_value()) {
         return emit_minimal_return_imm_asm(
-            module.target_triple, module.functions.front().name, *imm);
+            module.target_profile.triple, module.functions.front().name, *imm);
       }
     }
     if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
       return emit_minimal_return_imm_asm(
-          module.target_triple, module.functions.front().name, *imm);
+          module.target_profile.triple, module.functions.front().name, *imm);
     }
     if (const auto imm = parse_minimal_lir_return_sub_imm(module); imm.has_value()) {
       return emit_minimal_return_sub_imm_asm(
-          module.target_triple, module.functions.front().name, *imm);
+          module.target_profile.triple, module.functions.front().name, *imm);
     }
   } catch (const std::invalid_argument&) {
   }
@@ -6894,7 +6949,7 @@ std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module)
   if (!needs_nonminimal_lowering) {
     if (const auto imm2 = try_constant_fold_single_block(module); imm2.has_value()) {
       return emit_minimal_return_imm_asm(
-          module.target_triple, module.functions.front().name, *imm2);
+          module.target_profile.triple, module.functions.front().name, *imm2);
     }
   }
   if (auto gen_asm = render_general_lir_asm_if_supported(module)) {
@@ -6906,7 +6961,7 @@ std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module)
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const auto target_profile = c4c::target_profile_from_triple(
-      module.target_triple.empty() ? c4c::default_host_target_triple() : module.target_triple);
+      module.target_profile.triple.empty() ? c4c::default_host_target_triple() : module.target_profile.triple);
   return c4c::backend::emit_target_lir_module(
       module, target_profile);
 }
@@ -6917,8 +6972,8 @@ assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& mo
       c4c::backend::assemble_target_lir_module(
           module,
           c4c::target_profile_from_triple(
-              module.target_triple.empty() ? c4c::default_host_target_triple()
-                                           : module.target_triple),
+              module.target_profile.triple.empty() ? c4c::default_host_target_triple()
+                                           : module.target_profile.triple),
           output_path);
   return assembler::AssembleResult{
       .staged_text = assembled.staged_text,
