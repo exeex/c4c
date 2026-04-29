@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/133_parser_namespace_visible_name_compatibility_spelling_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Tighten Namespace and Visible-Name Context Lookup
+Current Step ID: 4
+Current Step Title: Quarantine String Overloads and AST Projection Bridges
 
 # Current Packet
 
@@ -23,7 +23,13 @@ the remaining explicit TextId-less compatibility branches.
 
 ## Suggested Next
 
-Run a supervisor review or proceed to the next plan step if Step 3 is accepted.
+Execute a bounded `plan.md` Step 4 packet against string-returning
+visible-name and namespace helpers. Start by auditing `resolve_visible_*`
+string overloads, `resolve_visible_*_name`, and `lookup_*_in_context` string
+overloads, then convert one semantic call-site family to consume
+`VisibleNameResult`, `QualifiedNameKey`, `TextId`, or namespace context ids
+directly while leaving final AST spelling, diagnostics, debug output, and
+explicit fallback bridges intact.
 
 ## Watchouts
 
@@ -38,3 +44,6 @@ Ran the supervisor-selected proof:
 `cmake --build build --target frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_parser_tests$|using_namespace_directive_parse|local_value_shadows_using_alias_assign_expr_parse' --output-on-failure >> test_after.log 2>&1`
 
 Result: passed; proof log is `test_after.log`.
+
+Supervisor accepted and committed this Step 3 slice as `ec08d028`; canonical
+execution is advanced to Step 4.
