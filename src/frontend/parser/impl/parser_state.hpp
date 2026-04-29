@@ -164,6 +164,12 @@ struct ParserTemplateState {
   std::unordered_map<std::string, Node*> template_struct_defs;
   std::unordered_map<std::string, std::vector<Node*>>
       template_struct_specializations;
+  size_t template_struct_primary_rendered_mirror_compatibility_count = 0;
+  size_t template_struct_primary_rendered_mirror_mismatch_count = 0;
+  size_t template_struct_primary_rendered_mirror_fallback_count = 0;
+  size_t template_struct_specialization_rendered_mirror_compatibility_count = 0;
+  size_t template_struct_specialization_rendered_mirror_mismatch_count = 0;
+  size_t template_struct_specialization_rendered_mirror_fallback_count = 0;
   std::unordered_set<TemplateInstantiationKey, TemplateInstantiationKeyHash>
       instantiated_template_struct_keys_by_key;
   std::set<std::string> instantiated_template_struct_keys;

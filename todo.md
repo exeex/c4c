@@ -8,29 +8,26 @@ Current Step Title: Make Template Primary And Specialization Lookup Structured-P
 
 ## Just Finished
 
-Step 2 is closed for canonical execution. The supervisor reviewed the remaining
-`defined_struct_tags.count`, `struct_tag_def_map.find`,
-`struct_tag_def_map[...]`, and `has_defined_struct_tag` hits after commits
-`16f3b2d6` and `37f0b42f`; remaining record-mirror uses are producer writes,
-documented compatibility fallbacks after structured lookup, tests/fixtures, or
-template-family paths owned by Step 3/4. Matching `frontend_parser_tests`
-before/after guard passed with equal pass counts allowed.
+Step 3 added explicit rendered-mirror visibility for template primary and
+specialization lookup helpers. `find_template_struct_primary` and
+`find_template_struct_specializations` still return structured
+`QualifiedNameKey` results, including null structured misses, before rendered
+mirrors; stale/mismatched mirrors, matching compatibility mirrors, and
+TextId-less rendered fallback use now increment local counters.
 
 ## Suggested Next
 
-Next coherent packet: begin Step 3 by inventorying
-`template_struct_defs`, `template_struct_specializations`, and related template
-lookup helpers, then convert the first narrow semantic lookup path to prefer
-`QualifiedNameKey`, `TextId`, parser template ids, direct definition
-references, or another existing structured carrier before rendered template
-spelling.
+Next coherent packet: continue Step 3 by tracing remaining
+`template_struct_defs` and `template_struct_specializations` consumers outside
+the primary/specialization find helpers, then either retire dead rendered mirror
+reads or mark any remaining reads as explicit compatibility/final-spelling use.
 
 ## Watchouts
 
-Do not expand Step 3 by weakening expectations or deleting rendered mirrors
-before all semantic consumers have structured replacements. Preserve generated
-specialization spelling as final artifact or debug text, and make any rendered
-fallback visibly non-authoritative.
+The new counters are visibility only; they deliberately do not promote
+TextId-less fallback into structured failure and do not change the intended
+lookup winner. The rendered maps still exist as compatibility mirrors and
+registration/final-spelling bridges.
 
 ## Proof
 

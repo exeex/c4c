@@ -5,6 +5,7 @@
 #include <climits>
 #include <cstring>
 #include <functional>
+#include <initializer_list>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
@@ -75,6 +76,94 @@ void mark_template_instantiation_dedup_keys(
     }
 }
 
+std::vector<std::string> unique_nonempty_names(
+    std::initializer_list<std::string_view> names) {
+    std::vector<std::string> result;
+    for (std::string_view name : names) {
+        if (name.empty()) continue;
+        bool seen = false;
+        for (const std::string& existing : result) {
+            if (existing == name) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) result.emplace_back(name);
+    }
+    return result;
+}
+
+void record_template_primary_rendered_mirror_visibility(
+    ParserTemplateState& state,
+    const std::vector<std::string>& names,
+    Node* structured_result) {
+    for (const std::string& name : names) {
+        auto mirror_it = state.template_struct_defs.find(name);
+        if (mirror_it == state.template_struct_defs.end()) continue;
+        if (structured_result && mirror_it->second == structured_result) {
+            ++state.template_struct_primary_rendered_mirror_compatibility_count;
+        } else {
+            ++state.template_struct_primary_rendered_mirror_mismatch_count;
+        }
+        return;
+    }
+}
+
+Node* find_template_primary_rendered_mirror(
+    ParserTemplateState& state,
+    const std::vector<std::string>& names) {
+    for (const std::string& name : names) {
+        auto mirror_it = state.template_struct_defs.find(name);
+        if (mirror_it != state.template_struct_defs.end()) {
+            ++state.template_struct_primary_rendered_mirror_fallback_count;
+            return mirror_it->second;
+        }
+    }
+    return nullptr;
+}
+
+bool same_template_specializations(const std::vector<Node*>& lhs,
+                                   const std::vector<Node*>* rhs) {
+    if (!rhs || lhs.size() != rhs->size()) return false;
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        if (lhs[i] != (*rhs)[i]) return false;
+    }
+    return true;
+}
+
+void record_template_specialization_rendered_mirror_visibility(
+    ParserTemplateState& state,
+    const std::vector<std::string>& names,
+    const std::vector<Node*>* structured_result) {
+    for (const std::string& name : names) {
+        auto mirror_it = state.template_struct_specializations.find(name);
+        if (mirror_it == state.template_struct_specializations.end()) continue;
+        if (same_template_specializations(mirror_it->second,
+                                          structured_result)) {
+            ++state
+                  .template_struct_specialization_rendered_mirror_compatibility_count;
+        } else {
+            ++state
+                  .template_struct_specialization_rendered_mirror_mismatch_count;
+        }
+        return;
+    }
+}
+
+const std::vector<Node*>* find_template_specialization_rendered_mirror(
+    ParserTemplateState& state,
+    const std::vector<std::string>& names) {
+    for (const std::string& name : names) {
+        auto mirror_it = state.template_struct_specializations.find(name);
+        if (mirror_it != state.template_struct_specializations.end()) {
+            ++state
+                  .template_struct_specialization_rendered_mirror_fallback_count;
+            return &mirror_it->second;
+        }
+    }
+    return nullptr;
+}
+
 }  // namespace
 
 bool Parser::has_template_struct_primary(
@@ -96,6 +185,7 @@ Node* Parser::find_template_struct_primary(
     int context_id, TextId name_text_id, std::string_view fallback_name) const {
     if (context_id < 0) return nullptr;
     const bool has_structured_name = name_text_id != kInvalidText;
+    bool structured_lookup_possible = false;
 
     auto lookup_structured = [&](const QualifiedNameKey& key) -> Node* {
         if (key.base_text_id == kInvalidText) return nullptr;
@@ -105,31 +195,44 @@ Node* Parser::find_template_struct_primary(
                    : nullptr;
     };
 
+    Node* structured_result = nullptr;
     const QualifiedNameKey key =
         alias_template_key_in_context(context_id, name_text_id, fallback_name);
-    if (Node* node = lookup_structured(key)) return node;
+    structured_lookup_possible = has_structured_name;
+    structured_result = lookup_structured(key);
 
     const VisibleNameResult resolved_type =
         resolve_visible_type(name_text_id, fallback_name);
     const std::string resolved = visible_name_spelling(resolved_type);
-    if (resolved_type && !resolved.empty() && resolved != fallback_name) {
+    if (!structured_result && resolved_type && !resolved.empty() &&
+        resolved != fallback_name) {
         const QualifiedNameKey resolved_key = alias_template_key_in_context(
             resolved_type.context_id, resolved_type.base_text_id, resolved);
-        if (Node* node = lookup_structured(resolved_key)) return node;
+        structured_lookup_possible =
+            structured_lookup_possible ||
+            resolved_key.base_text_id != kInvalidText;
+        structured_result = lookup_structured(resolved_key);
+    }
+
+    if (structured_lookup_possible) {
+        record_template_primary_rendered_mirror_visibility(
+            template_state_,
+            unique_nonempty_names({fallback_name, std::string_view(resolved)}),
+            structured_result);
+        return structured_result;
     }
 
     if (!has_structured_name) {
-        auto mirror_it = template_state_.template_struct_defs.find(
-            std::string(fallback_name));
-        if (mirror_it != template_state_.template_struct_defs.end()) {
-            return mirror_it->second;
+        if (Node* mirror = find_template_primary_rendered_mirror(
+                template_state_, unique_nonempty_names({fallback_name}))) {
+            return mirror;
         }
     }
     if (resolved_type.base_text_id == kInvalidText && !resolved.empty() &&
         resolved != fallback_name) {
-        auto mirror_it = template_state_.template_struct_defs.find(resolved);
-        if (mirror_it != template_state_.template_struct_defs.end()) {
-            return mirror_it->second;
+        if (Node* mirror = find_template_primary_rendered_mirror(
+                template_state_, unique_nonempty_names({resolved}))) {
+            return mirror;
         }
     }
     return nullptr;
@@ -153,6 +256,7 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
     int context_id, TextId name_text_id, std::string_view fallback_name,
     const Node* primary_tpl) const {
     const bool has_structured_name = name_text_id != kInvalidText;
+    bool structured_lookup_possible = false;
     auto lookup_structured =
         [&](const QualifiedNameKey& key) -> const std::vector<Node*>* {
         if (key.base_text_id == kInvalidText) return nullptr;
@@ -163,6 +267,8 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
     };
 
     bool primary_has_structured_name = false;
+    const char* primary_lookup_name = nullptr;
+    const std::vector<Node*>* structured_result = nullptr;
     if (primary_tpl && primary_tpl->namespace_context_id >= 0) {
         const char* primary_name = primary_tpl->unqualified_name;
         TextId primary_name_text_id = primary_tpl->unqualified_text_id;
@@ -179,60 +285,72 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
             const QualifiedNameKey primary_key = alias_template_key_in_context(
                 primary_tpl->namespace_context_id, primary_name_text_id,
                 primary_name);
+            primary_lookup_name = primary_name;
             if (!(primary_key == alias_template_key_in_context(
                       context_id, name_text_id, fallback_name))) {
-                if (const auto* specializations =
-                        lookup_structured(primary_key)) {
-                    return specializations;
-                }
+                structured_lookup_possible =
+                    structured_lookup_possible ||
+                    primary_has_structured_name;
+                structured_result = lookup_structured(primary_key);
             }
         }
     }
 
     const QualifiedNameKey key =
         alias_template_key_in_context(context_id, name_text_id, fallback_name);
-    if (const auto* specializations = lookup_structured(key)) {
-        return specializations;
+    if (!structured_result) {
+        structured_lookup_possible =
+            structured_lookup_possible || has_structured_name;
+        structured_result = lookup_structured(key);
     }
 
     const VisibleNameResult resolved_type =
         resolve_visible_type(name_text_id, fallback_name);
     const std::string resolved = visible_name_spelling(resolved_type);
-    if (resolved_type && !resolved.empty() && resolved != fallback_name) {
+    if (!structured_result && resolved_type && !resolved.empty() &&
+        resolved != fallback_name) {
         const QualifiedNameKey resolved_key = alias_template_key_in_context(
             resolved_type.context_id, resolved_type.base_text_id, resolved);
         if (!(resolved_key == key)) {
-            if (const auto* specializations = lookup_structured(resolved_key)) {
-                return specializations;
-            }
+            structured_lookup_possible =
+                structured_lookup_possible ||
+                resolved_key.base_text_id != kInvalidText;
+            structured_result = lookup_structured(resolved_key);
         }
+    }
+
+    if (structured_lookup_possible) {
+        const std::vector<std::string> mirror_names = unique_nonempty_names(
+            {primary_tpl && primary_tpl->name ? std::string_view(primary_tpl->name)
+                                              : std::string_view(),
+             primary_lookup_name ? std::string_view(primary_lookup_name)
+                                 : std::string_view(),
+             fallback_name, std::string_view(resolved)});
+        record_template_specialization_rendered_mirror_visibility(
+            template_state_, mirror_names, structured_result);
+        return structured_result;
     }
 
     if (primary_tpl && !primary_has_structured_name && primary_tpl->name &&
         primary_tpl->name[0]) {
-        auto mirror_it = template_state_.template_struct_specializations.find(
-            primary_tpl->name);
-        if (mirror_it !=
-            template_state_.template_struct_specializations.end()) {
-            return &mirror_it->second;
+        if (const auto* mirror = find_template_specialization_rendered_mirror(
+                template_state_,
+                unique_nonempty_names({std::string_view(primary_tpl->name)}))) {
+            return mirror;
         }
     }
 
     if (!has_structured_name) {
-        auto mirror_it = template_state_.template_struct_specializations.find(
-            std::string(fallback_name));
-        if (mirror_it !=
-            template_state_.template_struct_specializations.end()) {
-            return &mirror_it->second;
+        if (const auto* mirror = find_template_specialization_rendered_mirror(
+                template_state_, unique_nonempty_names({fallback_name}))) {
+            return mirror;
         }
     }
     if (resolved_type.base_text_id == kInvalidText && !resolved.empty() &&
         resolved != fallback_name) {
-        auto mirror_it =
-            template_state_.template_struct_specializations.find(resolved);
-        if (mirror_it !=
-            template_state_.template_struct_specializations.end()) {
-            return &mirror_it->second;
+        if (const auto* mirror = find_template_specialization_rendered_mirror(
+                template_state_, unique_nonempty_names({resolved}))) {
+            return mirror;
         }
     }
     return nullptr;

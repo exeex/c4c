@@ -3190,10 +3190,20 @@ void test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors() {
                   parser.current_namespace_context_id(), trait_text,
                   "Trait") == nullptr,
               "template primary lookup should keep the QualifiedNameKey table authoritative over rendered-name mirrors");
+  expect_eq_int(
+      static_cast<int>(parser.template_state_
+                           .template_struct_primary_rendered_mirror_mismatch_count),
+      1,
+      "structured template primary lookup should report stale rendered mirrors");
   expect_true(parser.find_template_struct_primary(
                   parser.current_namespace_context_id(), c4c::kInvalidText,
                   "Trait") == primary,
               "TextId-less template primary lookup should preserve the rendered-name compatibility mirror");
+  expect_eq_int(
+      static_cast<int>(parser.template_state_
+                           .template_struct_primary_rendered_mirror_fallback_count),
+      1,
+      "TextId-less template primary lookup should report rendered mirror fallback use");
 
   c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
   specialization->name = arena.strdup("Trait_T_int");
@@ -3204,10 +3214,22 @@ void test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors() {
       specialization);
   expect_true(parser.find_template_struct_specializations(primary) == nullptr,
               "template specialization lookup should keep primary QualifiedNameKey state authoritative over rendered-name mirrors");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_
+              .template_struct_specialization_rendered_mirror_mismatch_count),
+      1,
+      "structured template specialization lookup should report stale rendered mirrors");
   expect_true(parser.find_template_struct_specializations(
                   parser.current_namespace_context_id(), trait_text, "Trait",
                   nullptr) == nullptr,
               "template specialization lookup should keep direct QualifiedNameKey state authoritative over rendered-name mirrors");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_
+              .template_struct_specialization_rendered_mirror_mismatch_count),
+      2,
+      "direct structured template specialization lookup should report stale rendered mirrors");
   const std::vector<c4c::Node*>* compatibility_specializations =
       parser.find_template_struct_specializations(
           parser.current_namespace_context_id(), c4c::kInvalidText, "Trait",
@@ -3216,6 +3238,41 @@ void test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors() {
                   compatibility_specializations->size() == 1 &&
                   (*compatibility_specializations)[0] == specialization,
               "TextId-less template specialization lookup should preserve the rendered-name compatibility mirror");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_
+              .template_struct_specialization_rendered_mirror_fallback_count),
+      1,
+      "TextId-less template specialization lookup should report rendered mirror fallback use");
+
+  const c4c::QualifiedNameKey trait_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), trait_text, "Trait");
+  parser.template_state_.template_struct_defs_by_key[trait_key] = primary;
+  parser.template_state_.template_struct_specializations_by_key[trait_key] = {
+      specialization};
+  expect_true(parser.find_template_struct_primary(
+                  parser.current_namespace_context_id(), trait_text,
+                  "Trait") == primary,
+              "structured template primary lookup should keep matching rendered mirrors secondary");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_
+              .template_struct_primary_rendered_mirror_compatibility_count),
+      1,
+      "matching rendered template primary mirrors should be visible as compatibility mirrors");
+  const std::vector<c4c::Node*>* structured_specializations =
+      parser.find_template_struct_specializations(
+          parser.current_namespace_context_id(), trait_text, "Trait", nullptr);
+  expect_true(structured_specializations != nullptr &&
+                  structured_specializations->size() == 1 &&
+                  (*structured_specializations)[0] == specialization,
+              "structured template specialization lookup should keep matching rendered mirrors secondary");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_
+              .template_struct_specialization_rendered_mirror_compatibility_count),
+      1,
+      "matching rendered template specialization mirrors should be visible as compatibility mirrors");
 }
 
 void test_parser_nttp_default_cache_keeps_rendered_mirror_secondary() {
