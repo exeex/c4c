@@ -8,33 +8,32 @@ Current Step Title: Quarantine NTTP and Template Argument Debug Text
 
 ## Just Finished
 
-Plan Step 3 `Quarantine NTTP and Template Argument Debug Text` started with a
-bounded sema comparison slice. `same_template_arg_ref` in
-`sema/type_utils.cpp` now compares template arguments by structured payload:
-`TemplateArgKind::Value` uses `value`, and `TemplateArgKind::Type` uses the
-structured `TypeSpec`. `TemplateArgRef::debug_text` no longer participates in
-this equivalence decision when structured payload exists.
+Plan Step 3 `Quarantine NTTP and Template Argument Debug Text` continued with
+a parser-side canonical key slice. `canonical_template_struct_type_key` in
+`types/types_helpers.hpp` now builds template argument keys from structured
+`TemplateArgRef` payload first: value args use `value`, and type args use the
+nested structured `TypeSpec` key. `debug_text` remains only as an explicit
+fallback when the type argument has no usable structured key.
 
-Focused coverage now includes a `type_binding_values_equivalent` case where
-two template argument refs have identical structured `kind/value` payloads but
-different `debug_text`; they compare equal. This makes the former debug-text
-authority path explicit and quarantined for this comparison family.
+Focused coverage now includes a canonical template-struct key case where two
+template argument refs have identical structured `kind/value` payloads but
+different `debug_text`; they produce the same key and the key contains the
+structured `v:7` value.
 
 ## Suggested Next
 
-Continue Step 3 with one parser-side keying/projection path. Good candidates
-are `canonical_template_struct_type_key` in `types/types_helpers.hpp` or
-parser `types/base.cpp` template-arg ref rendering, where `TemplateArgRef`
-already carries `kind`, `value`, and `type` but the code still consults
-`debug_text` first.
+Continue Step 3 with parser `types/base.cpp` template-arg ref rendering or
+the `$expr:` / `template_arg_nttp_names` projection path. Prefer a narrow call
+site where a structured expression node, value, or `TypeSpec` already exists
+and string fallback can be named explicitly.
 
 ## Watchouts
 
-This packet intentionally did not touch HIR template materialization or
-parser-side `$expr:` / `template_arg_nttp_names` flows. Those remain semantic
-string authority and should be handled in separate narrow slices. Avoid
-changing broad `Node::name` or `TypeSpec::tag` behavior while continuing Step
-3.
+`debug_text` is still used as an explicit fallback for structurally unknown
+type arguments in the canonical key helper. This packet intentionally did not
+touch HIR template materialization or parser-side `$expr:` /
+`template_arg_nttp_names` flows. Avoid changing broad `Node::name` or
+`TypeSpec::tag` behavior while continuing Step 3.
 
 ## Proof
 

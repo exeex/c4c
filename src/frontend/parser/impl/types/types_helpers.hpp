@@ -973,11 +973,14 @@ int specialization_match_score(const Node* spec) {
 std::string canonical_template_struct_type_key(const TypeSpec& ts) {
     std::function<std::string(const TemplateArgRef&)> canonical_arg_key =
         [&](const TemplateArgRef& arg) -> std::string {
-            if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
             if (arg.kind == TemplateArgKind::Value) {
                 return std::string("v:") + std::to_string(arg.value);
             }
-            return std::string("t:") + canonical_template_struct_type_key(arg.type);
+            std::string type_key = canonical_template_struct_type_key(arg.type);
+            if (!type_key.empty() && type_key != "unknown") {
+                return std::string("t:") + type_key;
+            }
+            return arg.debug_text && arg.debug_text[0] ? arg.debug_text : "t:?";
         };
     std::string out;
     if (ts.is_const) out += "const_";

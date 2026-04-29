@@ -4364,6 +4364,34 @@ void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payloa
               "template argument equivalence should prefer structured kind/value payload over debug_text");
 }
 
+void test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text() {
+  c4c::Arena arena;
+
+  auto make_box = [&](const char* debug_text) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = c4c::TB_TYPEDEF;
+    ts.tpl_struct_origin = arena.strdup("Box");
+    ts.tpl_struct_args.size = 1;
+    ts.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+    ts.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+    ts.tpl_struct_args.data[0].value = 7;
+    ts.tpl_struct_args.data[0].debug_text = arena.strdup(debug_text);
+    return ts;
+  };
+
+  const std::string lhs_key =
+      c4c::canonical_template_struct_type_key(make_box("N"));
+  const std::string rhs_key =
+      c4c::canonical_template_struct_type_key(make_box("DifferentRenderedName"));
+
+  expect_eq(lhs_key, rhs_key,
+            "canonical template struct type keys should prefer structured template arg value over debug_text");
+  expect_true(lhs_key.find("v:7") != std::string::npos,
+              "canonical template struct type key should include the structured value argument");
+}
+
 void test_parser_typename_template_parameter_probe_uses_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4517,6 +4545,7 @@ int main() {
   test_parser_alias_template_substitution_prefers_param_text_id();
   test_parser_alias_template_substitution_does_not_require_param_name_spelling();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
+  test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
   test_parser_qualified_declarator_name_uses_token_spelling();
