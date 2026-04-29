@@ -221,9 +221,55 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
     return std::nullopt;
   }
 
-  if (base_ts.tag && base_ts.tag[0] && module_->struct_defs.count(base_ts.tag)) {
-    return std::string(base_ts.tag);
-  }
+  auto try_structured_record_owner_tag = [&]() -> std::optional<std::string> {
+    if (!base_ts.record_def || base_ts.record_def->kind != NK_STRUCT_DEF) {
+      return std::nullopt;
+    }
+    if (auto owner_key = make_struct_def_node_owner_key(base_ts.record_def)) {
+      if (const SymbolName* owner_tag =
+              module_->find_struct_def_tag_by_owner(*owner_key)) {
+        if (module_->struct_defs.count(*owner_tag)) {
+          return std::string(*owner_tag);
+        }
+      }
+    }
+    if (base_ts.record_def->name && base_ts.record_def->name[0] &&
+        module_->struct_defs.count(base_ts.record_def->name)) {
+      return std::string(base_ts.record_def->name);
+    }
+    return std::nullopt;
+  };
+
+  auto try_structured_template_owner_tag = [&]() -> std::optional<std::string> {
+    if (!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) {
+      return std::nullopt;
+    }
+    const std::string incoming_tag =
+        (base_ts.tag && base_ts.tag[0]) ? std::string(base_ts.tag) : std::string{};
+    NttpBindings empty_nttp;
+    if (tpl_bindings) {
+      seed_and_resolve_pending_template_type_if_needed(
+          base_ts,
+          *tpl_bindings,
+          nttp_bindings ? *nttp_bindings : empty_nttp,
+          span_node,
+          PendingTemplateTypeKind::OwnerStruct,
+          context_name);
+    } else {
+      TypeBindings empty_tb;
+      realize_template_struct_if_needed(
+          base_ts, empty_tb, nttp_bindings ? *nttp_bindings : empty_nttp);
+    }
+    if (base_ts.tag && base_ts.tag[0] &&
+        (incoming_tag.empty() || incoming_tag != base_ts.tag) &&
+        module_->struct_defs.count(base_ts.tag)) {
+      return std::string(base_ts.tag);
+    }
+    return std::nullopt;
+  };
+
+  if (auto owner_tag = try_structured_record_owner_tag()) return owner_tag;
+  if (auto owner_tag = try_structured_template_owner_tag()) return owner_tag;
 
   if ((!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) &&
       base_ts.tag && base_ts.tag[0] &&
@@ -238,15 +284,9 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
 
   const bool recovered_identity =
       recover_template_struct_identity_from_tag(&base_ts, current_struct_tag);
-  if (tpl_bindings && base_ts.tpl_struct_origin) {
-    NttpBindings empty_nttp;
-    seed_and_resolve_pending_template_type_if_needed(
-        base_ts,
-        *tpl_bindings,
-        nttp_bindings ? *nttp_bindings : empty_nttp,
-        span_node,
-        PendingTemplateTypeKind::OwnerStruct,
-        context_name);
+  if (base_ts.tpl_struct_origin &&
+      (tpl_bindings || recovered_identity)) {
+    if (auto owner_tag = try_structured_template_owner_tag()) return owner_tag;
   } else if (recovered_identity) {
     TypeBindings empty_tb;
     NttpBindings empty_nb;

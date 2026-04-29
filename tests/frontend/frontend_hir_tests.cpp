@@ -1768,6 +1768,102 @@ void test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag() {
               "stale rendered owner tag must not block structured member typedef resolution");
 }
 
+void test_hir_member_owner_lookup_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  auto add_hir_struct = [&](const char* tag) {
+    c4c::hir::HirStructDef def;
+    def.tag = tag;
+    def.tag_text_id = module.link_name_texts->intern(tag);
+    def.ns_qual.context_id = parser.current_namespace_context_id();
+    module.index_struct_def_owner(c4c::hir::make_hir_record_owner_key(def),
+                                  def.tag, true);
+    module.struct_defs[def.tag] = std::move(def);
+  };
+  add_hir_struct("RealOwner");
+  add_hir_struct("StaleRenderedOwner");
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealOwner");
+  real_record->unqualified_name = arena.strdup("RealOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  lowerer.struct_def_nodes_["RealOwner"] = real_record;
+  lowerer.register_struct_def_node_owner(real_record);
+
+  c4c::TypeSpec base{};
+  base.array_size = -1;
+  base.inner_rank = -1;
+  base.base = c4c::TB_STRUCT;
+  base.tag = arena.strdup("StaleRenderedOwner");
+  base.record_def = real_record;
+
+  std::optional<std::string> owner_tag =
+      lowerer.resolve_member_lookup_owner_tag(
+          base, false, nullptr, nullptr, nullptr, nullptr,
+          "member-owner-record-def-test");
+
+  expect_true(owner_tag.has_value() && *owner_tag == "RealOwner",
+              "member owner lookup should prefer record_def over a stale rendered tag");
+}
+
+void test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef stale_primary_def;
+  stale_primary_def.tag = "Box";
+  stale_primary_def.tag_text_id = module.link_name_texts->intern("Box");
+  stale_primary_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_primary_def.tag] = stale_primary_def;
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = false;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+  lowerer.register_template_struct_primary("Box", primary);
+
+  c4c::TypeSpec base{};
+  base.array_size = -1;
+  base.inner_rank = -1;
+  base.base = c4c::TB_STRUCT;
+  base.tag = arena.strdup("Box");
+  base.tpl_struct_origin = arena.strdup("Box");
+  base.tpl_struct_args.size = 1;
+  base.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  base.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
+  base.tpl_struct_args.data[0].type.array_size = -1;
+  base.tpl_struct_args.data[0].type.inner_rank = -1;
+  base.tpl_struct_args.data[0].type.base = c4c::TB_INT;
+
+  std::optional<std::string> owner_tag =
+      lowerer.resolve_member_lookup_owner_tag(
+          base, false, nullptr, nullptr, nullptr, nullptr,
+          "member-owner-template-origin-test");
+
+  expect_true(owner_tag.has_value() && *owner_tag != "Box",
+              "member owner lookup should realize template-origin carriers before stale rendered tags");
+  expect_true(module.struct_defs.count(*owner_tag) != 0,
+              "template-origin owner lookup should return a realized HIR struct tag");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -2226,6 +2322,8 @@ int main() {
   test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback();
   test_hir_pending_type_ref_keeps_legacy_zero_value_debug_text();
   test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag();
+  test_hir_member_owner_lookup_prefers_record_def_over_stale_tag();
+  test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

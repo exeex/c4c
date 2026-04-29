@@ -8,28 +8,29 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 
 ## Just Finished
 
-Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` started
-with a focused deferred-member typedef authority repair. HIR now lets
-`TypeSpec::record_def` resolve a pending `deferred_member_type_name` before
-falling back to parser-rendered owner spelling in `TypeSpec::tag`.
+Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
+with the HIR member-owner lookup repair. `resolve_member_lookup_owner_tag` now
+tries structured `record_def` owner keys/direct record carriers and concrete
+`tpl_struct_origin` realization before accepting parser-rendered owner tags.
 
-Added focused HIR coverage where the owner `tag` is deliberately stale but the
-structured `record_def` points at the real record carrying the member typedef.
-That test would fail under the old rendered-tag-first path.
+Added focused HIR coverage where stale rendered owner spelling would have won
+under the old path: one direct `record_def` owner case and one template-origin
+realization case.
 
 ## Suggested Next
 
-Continue Step 4 with the adjacent member-owner lookup path in HIR: prefer
-structured owner keys or direct record carriers before `template_origin_name`
-or rendered owner tags in `resolve_member_lookup_owner_tag` and template static
-member helpers.
+Continue Step 4 with the adjacent template static-member helper lookups in HIR:
+audit `try_eval_template_static_member_const` and instantiated static-member
+const lookup paths for remaining tag-first owner resolution, preserving rendered
+fallback only when no structured carrier is available.
 
 ## Watchouts
 
-This slice intentionally handles direct `record_def` member typedefs only. The
-existing rendered-tag fallback remains for cases with no structured record
-carrier, inherited typedef traversal through already-lowered module base tags,
-and template-origin materialization paths.
+The rendered-tag fallback remains intentionally in place for types that carry no
+`record_def`, no concrete template-origin payload, and no recoverable current
+struct family. The new template-origin path only claims authority when
+realization changes or fills in the HIR struct tag, so unresolved/generic
+payloads can still fall through to the compatibility bridge.
 
 ## Proof
 
