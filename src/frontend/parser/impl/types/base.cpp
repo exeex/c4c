@@ -666,6 +666,27 @@ TypeSpec Parser::parse_base_type() {
                     arena_.strdup(refs[i].c_str());
             }
         };
+    auto zero_value_arg_ref_uses_debug_fallback =
+        [](const TemplateArgRef& arg) -> bool {
+            if (arg.kind != TemplateArgKind::Value || arg.value != 0 ||
+                !arg.debug_text || !arg.debug_text[0]) {
+                return false;
+            }
+            char* end = nullptr;
+            (void)std::strtoll(arg.debug_text, &end, 10);
+            return !(end && *end == '\0');
+        };
+    auto unstructured_type_arg_ref_uses_debug_fallback =
+        [](const TemplateArgRef& arg) -> bool {
+            if (arg.kind != TemplateArgKind::Type || !arg.debug_text ||
+                !arg.debug_text[0]) {
+                return false;
+            }
+            return !arg.type.tag && !arg.type.record_def &&
+                   !arg.type.tpl_struct_origin &&
+                   !arg.type.deferred_member_type_name &&
+                   arg.type.base == TB_VOID;
+        };
     auto render_template_arg_ref = [&](const ParsedTemplateArg& arg)
         -> std::string {
         if (arg.is_value) {
@@ -681,11 +702,17 @@ TypeSpec Parser::parse_base_type() {
                     if (i > 0) ref += ",";
                     const TemplateArgRef& nested = arg.type.tpl_struct_args.data[i];
                     if (nested.kind == TemplateArgKind::Value) {
-                        ref += std::to_string(nested.value);
+                        if (zero_value_arg_ref_uses_debug_fallback(nested)) {
+                            ref += nested.debug_text;
+                        } else {
+                            ref += std::to_string(nested.value);
+                        }
                     } else if (nested.kind == TemplateArgKind::Type) {
                         std::string nested_mangled;
                         append_type_mangled_suffix(nested_mangled, nested.type);
-                        if (nested_mangled.empty() && nested.type.tag) {
+                        if (unstructured_type_arg_ref_uses_debug_fallback(nested)) {
+                            ref += nested.debug_text;
+                        } else if (nested_mangled.empty() && nested.type.tag) {
                             ref += nested.type.tag;
                         } else if (!nested_mangled.empty()) {
                             ref += nested_mangled;
@@ -748,11 +775,17 @@ TypeSpec Parser::parse_base_type() {
             if (i > 0) refs += ",";
             const TemplateArgRef& arg = spec.tpl_struct_args.data[i];
             if (arg.kind == TemplateArgKind::Value) {
-                refs += std::to_string(arg.value);
+                if (zero_value_arg_ref_uses_debug_fallback(arg)) {
+                    refs += arg.debug_text;
+                } else {
+                    refs += std::to_string(arg.value);
+                }
             } else if (arg.kind == TemplateArgKind::Type) {
                 std::string mangled;
                 append_type_mangled_suffix(mangled, arg.type);
-                if (mangled.empty() && arg.type.tag) refs += arg.type.tag;
+                if (unstructured_type_arg_ref_uses_debug_fallback(arg))
+                    refs += arg.debug_text;
+                else if (mangled.empty() && arg.type.tag) refs += arg.type.tag;
                 else if (!mangled.empty()) refs += mangled;
                 else if (arg.debug_text && arg.debug_text[0]) refs += arg.debug_text;
             } else if (arg.debug_text && arg.debug_text[0]) {
@@ -2784,9 +2817,19 @@ TypeSpec Parser::parse_base_type() {
                                                     can_use_typed_args = false;
                                                     break;
                                                 }
+                                                if (zero_value_arg_ref_uses_debug_fallback(
+                                                        src_arg)) {
+                                                    can_use_typed_args = false;
+                                                    break;
+                                                }
                                                 base_arg.is_value = true;
                                                 base_arg.value = src_arg.value;
                                             } else {
+                                                if (unstructured_type_arg_ref_uses_debug_fallback(
+                                                        src_arg)) {
+                                                    can_use_typed_args = false;
+                                                    break;
+                                                }
                                                 base_arg.is_value = false;
                                                 base_arg.type = src_arg.type;
                                                 if (type_mentions_bound_param(base_arg.type)) {

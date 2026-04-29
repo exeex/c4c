@@ -7,6 +7,10 @@ namespace c4c::hir {
 namespace {
 
 std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
+  if (arg.kind == TemplateArgKind::Value && arg.value == 0 &&
+      arg.debug_text && arg.debug_text[0]) {
+    return arg.debug_text;
+  }
   if (arg.kind == TemplateArgKind::Value) return std::to_string(arg.value);
   if (arg.kind == TemplateArgKind::Type &&
       (has_concrete_type(arg.type) || arg.type.tpl_struct_origin)) {

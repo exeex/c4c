@@ -487,6 +487,10 @@ inline std::string encode_pending_type_ref(const TypeSpec& ts) {
   };
   std::function<std::string(const TemplateArgRef&)> encode_arg =
       [&](const TemplateArgRef& arg) -> std::string {
+    if (arg.kind == TemplateArgKind::Value && arg.value == 0 &&
+        arg.debug_text && arg.debug_text[0]) {
+      return arg.debug_text;
+    }
     if (arg.kind == TemplateArgKind::Value) {
       return std::string("v:") + std::to_string(arg.value);
     }

@@ -8,34 +8,35 @@ Current Step Title: Quarantine NTTP and Template Argument Debug Text
 
 ## Just Finished
 
-Plan Step 3 `Quarantine NTTP and Template Argument Debug Text` continued by
-quarantining HIR `TemplateArgRef::debug_text` authority in template
-materialization, pending-type keys, and template type rendering. HIR template
-argument encoders now prefer structured value/type payloads and only use
-`debug_text` as display or structurally unknown fallback text.
+Plan Step 3 `Quarantine NTTP and Template Argument Debug Text` completed the
+parser-side regression repair for base-instantiation template argument
+carriers. The base-instantiation path now refuses to consume zero-valued
+nonnumeric `TemplateArgRef` value carriers as literal `0`, and it also routes
+unstructured type-kind debug carriers such as `T` through the existing
+debug-text fallback instead of rendering them as default `void`.
 
-Focused HIR coverage now materializes `Box<7>` with stale rendered text
-`RenderedN` bound to `101`; `materialize_template_args` records `N = 7`,
-proving stale `TemplateArgRef::debug_text` cannot override a structured value
-payload.
+Focused HIR coverage now includes pending-type key encoding for zero/false
+legacy refs plus nonzero stale debug text, and materialization coverage for a
+zero-valued forwarded NTTP binding and a false forwarded NTTP binding. The
+delegated parse/HIR/runtime subset now passes.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing parser-to-HIR producers that create zero-valued
-legacy forwarded NTTP refs, then decide whether a structured presence bit is
-needed to distinguish real `0` payloads from debug-text-only fallback refs.
+Supervisor review and commit the completed Step 3 slice, including the prior
+HIR compatibility-carrier repairs, the parser base-instantiation fallback, and
+the focused HIR tests.
 
 ## Watchouts
 
-Plain forwarded NTTP identifiers still use a zero value plus `debug_text` as
-the compatibility carrier, so HIR materialization and type-resolution keep that
-zero-valued fallback path. Nonzero structured values and concrete structured
-types now bypass stale rendered text. `debug_text` remains an explicit fallback
-for deferred `$expr:` refs and structurally unknown type args.
+The fallback remains intentionally narrow: structured nonzero value refs stay
+value-primary, concrete structured type refs stay type-primary, and `$expr:`
+refs still use the existing deferred-expression path. Zero-valued debug-text
+carriers remain a compatibility fallback until the AST/HIR boundary has a real
+presence bit for value payloads.
 
 ## Proof
 
 Ran the supervisor-selected proof:
-`cmake --build build --target c4cll frontend_hir_tests frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_hir_tests$|^frontend_parser_tests$|cpp_hir_template_struct_arg_materialization|cpp_hir_template_deferred_nttp_expr|cpp_hir_template_deferred_nttp_arith_expr|cpp_hir_template_deferred_nttp_bool_expr|cpp_hir_template_deferred_nttp_static_member_expr|template_alias_nttp_expr|template_qualified_nttp_parse|qualified_trait_value_template_arg_parse|variadic_template_arg_sizeof_pack_parse' --output-on-failure >> test_after.log 2>&1`
+`cmake --build build --target c4cll frontend_hir_tests frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_hir_tests$|^frontend_parser_tests$|cpp_positive_sema_inherited_operator_call_temporary_runtime_cpp|cpp_positive_sema_template_alias_deferred_nttp_expr_runtime_cpp|cpp_positive_sema_template_struct_advanced_cpp|cpp_positive_sema_template_struct_nested_cpp|cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp|cpp_hir_template_struct_body_instantiation|cpp_hir_template_alias_deferred_nttp_static_member|cpp_hir_template_inherited_member_typedef_trait|cpp_hir_template_struct_arg_materialization|cpp_hir_template_deferred_nttp_expr|cpp_hir_template_deferred_nttp_arith_expr|cpp_hir_template_deferred_nttp_bool_expr|cpp_hir_template_deferred_nttp_static_member_expr|template_alias_nttp_expr|template_qualified_nttp_parse|template_type_context_nttp_parse|template_typedef_nttp_variants_parse|qualified_trait_value_template_arg_parse|variadic_template_arg_sizeof_pack_parse' --output-on-failure >> test_after.log 2>&1`
 
-Result: passed; proof log is `test_after.log`.
+Result: passed, 22/22 delegated tests green; proof log is `test_after.log`.

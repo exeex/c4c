@@ -2,6 +2,7 @@
 #include "hir_to_lir.hpp"
 #include "hir/hir_ir.hpp"
 #include "hir/hir_printer.hpp"
+#include "hir/compile_time_engine.hpp"
 #include "ir.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -1656,6 +1657,84 @@ void test_hir_template_arg_materialization_prefers_structured_value_payload() {
                 "HIR template materialization should bind from the structured value");
 }
 
+void test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Box");
+  primary->n_template_params = 2;
+  primary->template_param_names = arena.alloc_array<const char*>(2);
+  primary->template_param_names[0] = arena.strdup("N");
+  primary->template_param_names[1] = arena.strdup("Flag");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(2);
+  primary->template_param_is_nttp[0] = true;
+  primary->template_param_is_nttp[1] = true;
+
+  c4c::TypeSpec owner{};
+  owner.array_size = -1;
+  owner.inner_rank = -1;
+  owner.base = c4c::TB_STRUCT;
+  owner.tpl_struct_origin = arena.strdup("Box");
+  owner.tpl_struct_args.size = 2;
+  owner.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(2);
+  owner.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+  owner.tpl_struct_args.data[0].value = 0;
+  owner.tpl_struct_args.data[0].debug_text = arena.strdup("ForwardedN");
+  owner.tpl_struct_args.data[1].kind = c4c::TemplateArgKind::Value;
+  owner.tpl_struct_args.data[1].value = 0;
+  owner.tpl_struct_args.data[1].debug_text = arena.strdup("ForwardedFlag");
+
+  c4c::hir::Lowerer lowerer;
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  nttp_bindings["ForwardedN"] = 42;
+  nttp_bindings["ForwardedFlag"] = 0;
+
+  const c4c::hir::ResolvedTemplateArgs resolved =
+      lowerer.materialize_template_args(primary, owner, type_bindings,
+                                        nttp_bindings);
+
+  expect_true(resolved.concrete_args.size() == 2 &&
+                  resolved.concrete_args[0].is_value &&
+                  resolved.concrete_args[1].is_value,
+              "legacy zero-valued NTTP refs should still materialize as values");
+  expect_eq_int(static_cast<int>(resolved.concrete_args[0].value), 42,
+                "zero-valued forwarded NTTP refs should use debug_text bindings");
+  expect_eq_int(static_cast<int>(resolved.concrete_args[1].value), 0,
+                "false forwarded NTTP refs should keep the zero binding");
+}
+
+void test_hir_pending_type_ref_keeps_legacy_zero_value_debug_text() {
+  c4c::Arena arena;
+
+  c4c::TypeSpec owner{};
+  owner.array_size = -1;
+  owner.inner_rank = -1;
+  owner.base = c4c::TB_STRUCT;
+  owner.tpl_struct_origin = arena.strdup("Box");
+  owner.tpl_struct_args.size = 3;
+  owner.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(3);
+  owner.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+  owner.tpl_struct_args.data[0].value = 0;
+  owner.tpl_struct_args.data[0].debug_text = arena.strdup("ForwardedN");
+  owner.tpl_struct_args.data[1].kind = c4c::TemplateArgKind::Value;
+  owner.tpl_struct_args.data[1].value = 0;
+  owner.tpl_struct_args.data[1].debug_text = arena.strdup("ForwardedFlag");
+  owner.tpl_struct_args.data[2].kind = c4c::TemplateArgKind::Value;
+  owner.tpl_struct_args.data[2].value = 7;
+  owner.tpl_struct_args.data[2].debug_text = arena.strdup("StaleRenderedN");
+
+  const std::string encoded = c4c::hir::encode_pending_type_ref(owner);
+
+  expect_true(encoded.find("|args=ForwardedN,ForwardedFlag,v:7|") !=
+                  std::string::npos,
+              "pending template type keys should preserve zero-valued legacy "
+              "fallback refs while nonzero structured values win over stale text");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -2111,6 +2190,8 @@ int main() {
   test_hir_to_lir_template_call_helper_callees_prefer_carrier_link_name_ids();
   test_hir_direct_call_builtin_alias_fallback_keeps_invalid_link_name_ids();
   test_hir_template_arg_materialization_prefers_structured_value_payload();
+  test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback();
+  test_hir_pending_type_ref_keeps_legacy_zero_value_debug_text();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();
