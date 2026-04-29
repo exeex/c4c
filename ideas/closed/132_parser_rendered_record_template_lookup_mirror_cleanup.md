@@ -1,11 +1,12 @@
 # Parser Rendered Record Template Lookup Mirror Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
-- [129_parser_intermediate_carrier_boundary_labeling.md](/workspaces/c4c/ideas/open/129_parser_intermediate_carrier_boundary_labeling.md)
-- [131_cross_ir_string_authority_audit_and_followup_queue.md](/workspaces/c4c/ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md)
+- [129_parser_intermediate_carrier_boundary_labeling.md](/workspaces/c4c/ideas/closed/129_parser_intermediate_carrier_boundary_labeling.md)
+- [131_cross_ir_string_authority_audit_and_followup_queue.md](/workspaces/c4c/ideas/closed/131_cross_ir_string_authority_audit_and_followup_queue.md)
 
 ## Goal
 
@@ -61,3 +62,23 @@ Suspicious paths:
 - Focused parser/frontend tests cover namespace-qualified records, template
   specializations, and NTTP default-expression paths that previously crossed
   this boundary through rendered spelling.
+
+## Closure Summary
+
+Closed after the active runbook completed all five steps. Parser record
+definition lookup, template primary/specialization lookup, template
+instantiation, and NTTP default-expression handling now use structured identity
+as the primary semantic path when available.
+
+Remaining rendered record/template uses were audited as helper internals with
+visible mismatch/fallback accounting, compatibility mirror registration/cache
+writes, explicit rendered compatibility fallbacks after structured lookup, final
+artifact/generated spelling, eval_const_int support APIs, or focused tests. No
+unclassified semantic lookup path was found where rendered spelling silently
+wins after structured identity is available.
+
+Close proof included the canonical matching `frontend_parser_tests`
+before/after guard with equal pass counts allowed, supplemental
+`frontend_cxx_` coverage, and a final broad `ctest --test-dir build -j
+--output-on-failure` run with all 3089 executed tests passing and 12 tests
+disabled by CTest.
