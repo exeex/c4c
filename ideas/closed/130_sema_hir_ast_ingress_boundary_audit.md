@@ -1,7 +1,8 @@
 # Sema HIR AST Ingress Boundary Audit
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
 - [124_hir_legacy_string_lookup_removal_convergence.md](/workspaces/c4c/ideas/closed/124_hir_legacy_string_lookup_removal_convergence.md)
@@ -57,3 +58,30 @@ fallbacks.
 - Legitimate generated names are explicitly classified as non-cross-IR
   behavior.
 - Existing frontend/HIR tests remain behaviorally unchanged.
+
+## Closure Summary
+
+Closed after the active runbook classified Sema and HIR AST ingress boundaries
+without requiring implementation changes. Suspicious rendered-spelling authority
+paths were split into focused follow-up ideas:
+
+- `ideas/open/134_parser_ast_template_payload_string_bridge_cleanup.md`
+- `ideas/open/135_sema_structured_owner_static_member_lookup_cleanup.md`
+- `ideas/open/136_hir_structured_record_template_lookup_authority_cleanup.md`
+
+Generated, rendered, diagnostic, dump, mangled, label, and final display names
+remain classified as non-cross-IR authority unless a focused follow-up proves a
+semantic lookup dependency.
+
+Close proof used matching frontend/HIR logs generated with:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_parser_tests)$'
+```
+
+Both `test_before.log` and `test_after.log` report 2 passed / 0 failed tests.
+The close-time regression guard passed:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
