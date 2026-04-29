@@ -312,18 +312,20 @@ enum NodeKind {
 // The dump() free function provides debug printing.
 
 struct Node {
+    // Cross-stage semantic payload: node kind and source/provenance metadata
+    // carried from parsing into later diagnostics and lowering.
     NodeKind kind;
     int line;
     int column;
     const char* file;
     int namespace_context_id; // owning namespace for declarations / resolved namespace for refs
 
-    // --- type (for NK_DECL, NK_GLOBAL_VAR, NK_FUNCTION ret, NK_CAST,
-    //           NK_SIZEOF_TYPE, NK_ALIGNOF_TYPE, NK_COMPOUND_LIT, NK_PARAM) ---
+    // Cross-stage semantic payload: type contract attached to declarations,
+    // return types, casts, sizeof/alignof, compound literals, and params.
     TypeSpec type;
 
-    // --- name (for NK_VAR, NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR,
-    //           NK_GOTO, NK_LABEL, NK_MEMBER, NK_STRUCT_DEF, NK_ENUM_DEF) ---
+    // Name/text identity bridge: source and canonical names for identifiers,
+    // declarations, labels, members, records, and enums.
     const char* name;
     const char* unqualified_name; // source spelling base name before namespace canonicalization
     TextId unqualified_text_id;   // parser-owned text identity for unqualified_name
@@ -333,17 +335,19 @@ struct Node {
     bool is_global_qualified;        // true when the source spelling started with ::
     BuiltinId builtin_id;
 
-    // --- operator string (for NK_BINOP, NK_UNARY, NK_POSTFIX,
-    //                      NK_ASSIGN, NK_COMPOUND_ASSIGN) ---
+    // Compatibility/display spelling: operator token text still used by
+    // expression consumers and diagnostics for operator-shaped nodes.
     const char* op;
 
-    // --- scalar payload ---
+    // Cross-stage semantic payload plus debug/display spelling for scalar
+    // literals. Integer and character literals carry resolved values; floats
+    // preserve both parsed value and raw lexeme spelling.
     long long ival;     // NK_INT_LIT, NK_CHAR_LIT
     double    fval;     // NK_FLOAT_LIT (parsed value; raw text in sval)
     const char* sval;   // NK_STR_LIT (raw lexeme), NK_FLOAT_LIT (raw lexeme)
     bool is_imaginary;  // NK_INT_LIT, NK_FLOAT_LIT: GCC imaginary literal (200i, 1.0fi)
 
-    // --- primary children ---
+    // Cross-stage semantic payload: primary expression/statement child links.
     Node* left;         // primary child / operand / condition / func / lo
     Node* right;        // secondary child / index / hi
     Node* cond;         // NK_IF, NK_WHILE, NK_FOR, NK_DO_WHILE, NK_SWITCH, NK_TERNARY
@@ -354,7 +358,8 @@ struct Node {
     Node* init;         // NK_FOR init clause; NK_DECL / NK_GLOBAL_VAR initializer
     Node* update;       // NK_FOR update expression
 
-    // --- child arrays (arena-allocated) ---
+    // Cross-stage semantic payload: arena-owned child arrays for variable-size
+    // syntactic lists.
     // NK_BLOCK stmts / NK_CALL args / NK_PROGRAM items / NK_INIT_LIST items /
     // NK_COMPOUND_LIT items
     Node** children;
@@ -363,7 +368,9 @@ struct Node {
     // NK_FUNCTION params
     Node** params;
     int    n_params;
-    // C++ subset template metadata carried on declarations / references.
+
+    // Cross-stage semantic payload and name/text identity bridge: C++ subset
+    // template metadata carried on declarations and references.
     const char** template_param_names;
     TextId*      template_param_name_text_ids; // parallel: parser-owned identity for template_param_names
     bool*        template_param_is_nttp;  // parallel: true if non-type template param
@@ -380,9 +387,12 @@ struct Node {
     Node**       template_arg_exprs;      // parallel: parsed NTTP expression node when available
     int          n_template_args;
     bool         has_template_args;       // true if <...> was parsed (distinguishes f() from f<>())
+    // Legacy bridge field: string spelling of the primary template until all
+    // specialization paths use structured template identity.
     const char*  template_origin_name;    // primary template name for specialization patterns / instantiations
-    // NK_DECL / NK_GLOBAL_VAR / NK_FUNCTION param decls:
-    // function pointer prototype attached to this declarator, if any.
+
+    // Cross-stage semantic payload: function-pointer declarator prototypes
+    // attached to declarations, globals, functions, and params.
     Node** fn_ptr_params;
     int    n_fn_ptr_params;
     bool   fn_ptr_variadic;
@@ -394,7 +404,8 @@ struct Node {
     int    n_ret_fn_ptr_params;
     bool   ret_fn_ptr_variadic;
 
-    // NK_STRUCT_DEF fields  (each child is NK_DECL with type + name)
+    // Cross-stage semantic payload: record fields, member aliases, bases, and
+    // layout hints carried by NK_STRUCT_DEF.
     Node** fields;
     int    n_fields;
     const char** member_typedef_names; // struct-scope typedef/using alias names
@@ -405,21 +416,24 @@ struct Node {
     int    pack_align;   // #pragma pack alignment (0 = default, >0 = packed to N bytes)
     int    struct_align; // __attribute__((aligned(N))) on struct (0 = default)
 
-    // NK_ENUM_DEF variants
+    // Cross-stage semantic payload plus name/text identity bridge for
+    // NK_ENUM_DEF variants.
     const char** enum_names;  // arena-allocated array of variant names
     TextId*      enum_name_text_ids; // parallel parser-owned identity for enum_names
     long long*   enum_vals;   // arena-allocated array of variant values
     int          n_enum_variants;
     int          enum_has_explicit;   // bitmask: bit i = variant i has explicit value
 
-    // NK_ASM operand metadata
+    // Parser recovery/debug payload: inline asm operand bookkeeping that keeps
+    // parsed constraint lists available to later lowering and diagnostics.
     const char** asm_constraints; // outputs first, then inputs
     int          asm_n_constraints;
     int          asm_num_outputs;
     int          asm_num_inputs;
     int          asm_num_clobbers;
 
-    // --- flags ---
+    // Semantic hints/flags: parser-derived declaration, expression, layout,
+    // and C++ subset attributes consumed by later stages.
     bool variadic;      // NK_FUNCTION
     bool is_static;     // NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR
     bool is_extern;     // NK_FUNCTION, NK_GLOBAL_VAR
@@ -450,13 +464,14 @@ struct Node {
     bool is_parameter_pack; // NK_DECL: function parameter pack / declarator pack
     ExecutionDomain execution_domain; // declaration execution domain (default Host)
 
-    // C++ constructor initializer list: ClassName(params) : mem1(expr1), mem2(a,b) { body }
+    // Cross-stage semantic payload plus name bridge for constructor
+    // initializer lists.
     const char** ctor_init_names;  // arena-allocated array of member names
     Node***      ctor_init_args;   // arena-allocated: per-init array of arg nodes
     int*         ctor_init_nargs;  // arena-allocated: per-init argument count
     int          n_ctor_inits;     // number of initializer list items
 
-    // NK_LAMBDA metadata
+    // Semantic hints/flags for NK_LAMBDA capture and parameter-list spelling.
     LambdaCaptureDefault lambda_capture_default;
     bool lambda_has_parameter_list;
 };
