@@ -1,5 +1,6 @@
 #include "ir.hpp"
 #include "call_args_ops.hpp"
+#include "../shared/llvm_helpers.hpp"
 
 #include <sstream>
 #include <unordered_map>
@@ -640,9 +641,9 @@ void verify_global_type_ref_shadows(const LirModule& mod) {
 }
 
 std::string_view function_signature_line(const LirFunction& fn) {
-  // Verifier compatibility parser for signature_text. The rendered header is
-  // final LLVM spelling; structured type mirrors are checked against it so the
-  // compatibility payload cannot silently drift from semantic type identity.
+  // Verifier compatibility parser for signature_text. This only confirms that
+  // the final-render payload still contains a function header; semantic
+  // signature facts are validated from structured LIR metadata below.
   std::string_view signature = fn.signature_text;
   while (!signature.empty()) {
     const size_t line_end = signature.find('\n');
@@ -657,140 +658,73 @@ std::string_view function_signature_line(const LirFunction& fn) {
   return {};
 }
 
-std::string_view trim_signature_token(std::string_view value) {
-  while (!value.empty() && value.front() == ' ') value.remove_prefix(1);
-  while (!value.empty() && value.back() == ' ') value.remove_suffix(1);
-  return value;
-}
-
-bool consume_signature_token(std::string_view& value, std::string_view token) {
-  if (value.rfind(token, 0) != 0) return false;
-  if (value.size() > token.size() && value[token.size()] != ' ') return false;
-  value.remove_prefix(token.size());
-  value = trim_signature_token(value);
-  return true;
-}
-
-std::string_view signature_return_type_text(std::string_view line) {
-  const size_t params_begin = line.find('(');
-  if (params_begin == std::string_view::npos) return {};
-  std::string_view prefix = trim_signature_token(line.substr(0, params_begin));
-
-  if (consume_signature_token(prefix, "define")) {
-    consume_signature_token(prefix, "internal");
-    consume_signature_token(prefix, "weak");
-  } else if (consume_signature_token(prefix, "declare")) {
-    consume_signature_token(prefix, "extern_weak");
-  } else {
-    return {};
+StructNameId expected_direct_aggregate_signature_id(const LirModule& mod,
+                                                    const TypeSpec& type) {
+  if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
+      type.array_rank > 0 || !type.tag || !type.tag[0]) {
+    return kInvalidStructName;
   }
-  consume_signature_token(prefix, "hidden");
-  consume_signature_token(prefix, "protected");
-
-  const size_t symbol_pos = prefix.rfind(" @");
-  if (symbol_pos == std::string_view::npos) return {};
-  return trim_signature_token(prefix.substr(0, symbol_pos));
+  const std::string rendered = c4c::codegen::llvm_helpers::llvm_ty(type);
+  return find_declared_struct_name_id(mod, rendered);
 }
 
-std::vector<std::string_view> signature_param_texts(std::string_view line) {
-  const size_t params_begin = line.find('(');
-  if (params_begin == std::string_view::npos) return {};
+bool aggregate_signature_param_mirror_matches_type(const LirTypeRef& mirror,
+                                                   std::string_view type_text) {
+  if (mirror.str() == type_text) return true;
+  const std::string byval_fragment = "byval(" + std::string(type_text) + ")";
+  return mirror.str().find(byval_fragment) != std::string::npos;
+}
 
-  int depth = 0;
-  size_t params_end = std::string_view::npos;
-  for (size_t index = params_begin; index < line.size(); ++index) {
-    if (line[index] == '(') {
-      ++depth;
-    } else if (line[index] == ')') {
-      --depth;
-      if (depth == 0) {
-        params_end = index;
-        break;
-      }
+void verify_signature_type_ref_semantics(const LirModule& mod,
+                                         const LirTypeRef& mirror,
+                                         std::string_view field) {
+  require_type_ref(mirror, field, true);
+
+  if (mirror.has_struct_name_id()) {
+    verify_declared_struct_type_ref_mirror(mod, mirror, field);
+    const StructNameId rendered_struct_name_id =
+        find_declared_struct_name_id(mod, mirror.str());
+    if (rendered_struct_name_id != kInvalidStructName &&
+        rendered_struct_name_id != mirror.struct_name_id()) {
+      fail_verify(field,
+                  "StructNameId mirror names a different declared struct than its text");
     }
+    return;
   }
-  if (params_end == std::string_view::npos || params_end <= params_begin + 1) return {};
 
-  std::vector<std::string_view> params;
-  std::string_view text = line.substr(params_begin + 1, params_end - params_begin - 1);
-  int paren_depth = 0;
-  int brace_depth = 0;
-  int bracket_depth = 0;
-  size_t start = 0;
-  for (size_t index = 0; index <= text.size(); ++index) {
-    if (index == text.size() ||
-        (text[index] == ',' && paren_depth == 0 && brace_depth == 0 &&
-         bracket_depth == 0)) {
-      params.push_back(trim_signature_token(text.substr(start, index - start)));
-      start = index + 1;
-      continue;
-    }
-    if (text[index] == '(') ++paren_depth;
-    if (text[index] == ')') --paren_depth;
-    if (text[index] == '{') ++brace_depth;
-    if (text[index] == '}') --brace_depth;
-    if (text[index] == '[') ++bracket_depth;
-    if (text[index] == ']') --bracket_depth;
+  verify_known_struct_type_ref_mirror(mod, mirror, field, "signature");
+  if (const auto mismatch = type_ref_struct_name_mismatch_detail(mod.struct_names,
+                                                                mirror);
+      mismatch.has_value()) {
+    fail_verify(field, *mismatch);
   }
-  return params;
-}
-
-StructNameId signature_param_declared_struct_name_id(const LirModule& mod,
-                                                     std::string_view param) {
-  const StructNameId exact_struct_name_id =
-      find_declared_struct_name_id(mod, param);
-  if (exact_struct_name_id != kInvalidStructName) return exact_struct_name_id;
-
-  const size_t first_space = param.find(' ');
-  if (first_space == std::string_view::npos) return kInvalidStructName;
-  return find_declared_struct_name_id(mod, param.substr(0, first_space));
-}
-
-bool signature_type_ref_matches_text(std::string_view shadow,
-                                     std::string_view signature_type) {
-  if (signature_type == shadow) return true;
-  return signature_type.size() > shadow.size() &&
-         signature_type.substr(0, shadow.size()) == shadow &&
-         signature_type[shadow.size()] == ' ';
 }
 
 void verify_function_signature_return_type_ref_mirror(
     const LirModule& mod,
     const LirFunction& fn,
-    const LirTypeRef& mirror,
-    std::string_view signature_return) {
-  const std::string& shadow =
-      require_type_ref(mirror, "LirFunction.signature_return_type_ref", true);
-  const StructNameId signature_struct_name_id =
-      find_declared_struct_name_id(mod, signature_return);
+    const LirTypeRef& mirror) {
+  constexpr std::string_view field = "LirFunction.signature_return_type_ref";
+  verify_signature_type_ref_semantics(mod, mirror, field);
 
+  const StructNameId expected_id =
+      expected_direct_aggregate_signature_id(mod, fn.return_type);
+  if (expected_id == kInvalidStructName) return;
+
+  const std::string_view expected_name = mod.struct_names.spelling(expected_id);
   if (mirror.has_struct_name_id()) {
-    verify_declared_struct_type_ref_mirror(
-        mod, mirror, "LirFunction.signature_return_type_ref");
-    if (signature_struct_name_id != kInvalidStructName) {
-      if (mirror.struct_name_id() != signature_struct_name_id) {
-        fail_verify("LirFunction.signature_return_type_ref",
-                    "return mirror StructNameId does not match signature_text");
-      }
-      return;
+    if (mirror.struct_name_id() != expected_id) {
+      std::ostringstream detail;
+      detail << "return mirror for function '" << fn.name
+             << "' names a different structured return type than "
+             << expected_name;
+      fail_verify(field, detail.str());
     }
-  } else if (signature_struct_name_id != kInvalidStructName) {
-    fail_verify("LirFunction.signature_return_type_ref",
-                "known struct return type must carry matching StructNameId");
+    return;
   }
 
-  if (const auto mismatch =
-          type_ref_struct_name_mismatch_detail(mod.struct_names, mirror);
-      mismatch.has_value()) {
-    fail_verify("LirFunction.signature_return_type_ref", *mismatch);
-  }
-
-  if (signature_return != shadow) {
-    std::ostringstream detail;
-    detail << "return type mirror for function '" << fn.name
-           << "' does not match signature_text; shadow '" << shadow
-           << "', signature return '" << signature_return << "'";
-    fail_verify("LirFunction.signature_return_type_ref", detail.str());
+  if (mirror.str() == expected_name) {
+    fail_verify(field, "known struct return type must carry matching StructNameId");
   }
 }
 
@@ -798,41 +732,65 @@ void verify_function_signature_param_type_ref_mirror(
     const LirModule& mod,
     const LirFunction& fn,
     const LirTypeRef& mirror,
-    std::string_view param,
+    const LirSignatureParam* param,
     size_t index) {
-  const std::string& shadow =
-      require_type_ref(mirror, "LirFunction.signature_param_type_refs");
-  const StructNameId signature_struct_name_id =
-      signature_param_declared_struct_name_id(mod, param);
+  constexpr std::string_view field = "LirFunction.signature_param_type_refs";
+  verify_signature_type_ref_semantics(mod, mirror, field);
 
+  if (!param) return;
+
+  const StructNameId expected_id =
+      expected_direct_aggregate_signature_id(mod, param->type);
+  if (expected_id == kInvalidStructName) return;
+
+  const std::string_view expected_name = mod.struct_names.spelling(expected_id);
   if (mirror.has_struct_name_id()) {
-    verify_declared_struct_type_ref_mirror(
-        mod, mirror, "LirFunction.signature_param_type_refs");
-    if (signature_struct_name_id != kInvalidStructName) {
-      if (mirror.struct_name_id() != signature_struct_name_id) {
-        std::ostringstream detail;
-        detail << "parameter " << index
-               << " mirror StructNameId does not match signature_text";
-        fail_verify("LirFunction.signature_param_type_refs", detail.str());
-      }
-      return;
+    if (mirror.struct_name_id() != expected_id) {
+      std::ostringstream detail;
+      detail << "parameter " << index << " mirror for function '" << fn.name
+             << "' names a different structured parameter type than "
+             << expected_name;
+      fail_verify(field, detail.str());
     }
-  } else if (signature_struct_name_id != kInvalidStructName) {
-    fail_verify("LirFunction.signature_param_type_refs",
-                "known struct parameter type must carry matching StructNameId");
+    return;
   }
 
-  if (const auto mismatch =
-          type_ref_struct_name_mismatch_detail(mod.struct_names, mirror);
-      mismatch.has_value()) {
-    fail_verify("LirFunction.signature_param_type_refs", *mismatch);
-  }
-
-  if (!signature_type_ref_matches_text(shadow, param)) {
+  if (!aggregate_signature_param_mirror_matches_type(mirror, expected_name)) {
     std::ostringstream detail;
     detail << "parameter " << index << " mirror for function '" << fn.name
-           << "' does not match signature_text; shadow '" << shadow
-           << "', signature parameter '" << param << "'";
+           << "' does not match structured aggregate parameter type "
+           << expected_name << "; mirror '" << mirror.str() << "'";
+    fail_verify(field, detail.str());
+  }
+
+  if (mirror.str() == expected_name) {
+    std::ostringstream detail;
+    detail << "known struct parameter " << index
+           << " type must carry matching StructNameId";
+    fail_verify(field, detail.str());
+  }
+}
+
+void verify_function_signature_structured_param_shape(const LirFunction& fn) {
+  if (fn.signature_has_void_param_list) {
+    if (!fn.signature_params.empty() || !fn.signature_param_type_refs.empty()) {
+      fail_verify("LirFunction.signature_has_void_param_list",
+                  "void parameter list must not carry fixed signature params");
+    }
+    if (fn.signature_is_variadic) {
+      fail_verify("LirFunction.signature_is_variadic",
+                  "void parameter list must not be variadic");
+    }
+    return;
+  }
+
+  if (!fn.signature_params.empty() &&
+      fn.signature_param_type_refs.size() != fn.signature_params.size()) {
+    std::ostringstream detail;
+    detail << "function '" << fn.name << "' has "
+           << fn.signature_param_type_refs.size()
+           << " parameter type mirrors but "
+           << fn.signature_params.size() << " structured signature params";
     fail_verify("LirFunction.signature_param_type_refs", detail.str());
   }
 }
@@ -844,25 +802,18 @@ void verify_function_signature_type_ref_shadows(const LirModule& mod) {
       fail_verify("LirFunction.signature_text", "missing define/declare signature line");
     }
 
+    verify_function_signature_structured_param_shape(fn);
+
     if (fn.signature_return_type_ref.has_value()) {
       verify_function_signature_return_type_ref_mirror(
-          mod, fn, *fn.signature_return_type_ref, signature_return_type_text(line));
-    }
-
-    const auto params = signature_param_texts(line);
-    if (!fn.signature_param_type_refs.empty() &&
-        fn.signature_param_type_refs.size() > params.size()) {
-      std::ostringstream detail;
-      detail << "function '" << fn.name << "' has "
-             << fn.signature_param_type_refs.size()
-             << " parameter mirrors but only " << params.size()
-             << " signature parameters";
-      fail_verify("LirFunction.signature_param_type_refs", detail.str());
+          mod, fn, *fn.signature_return_type_ref);
     }
 
     for (size_t index = 0; index < fn.signature_param_type_refs.size(); ++index) {
+      const LirSignatureParam* param =
+          index < fn.signature_params.size() ? &fn.signature_params[index] : nullptr;
       verify_function_signature_param_type_ref_mirror(
-          mod, fn, fn.signature_param_type_refs[index], params[index], index);
+          mod, fn, fn.signature_param_type_refs[index], param, index);
     }
   }
 }

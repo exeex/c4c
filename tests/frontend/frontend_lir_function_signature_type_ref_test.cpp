@@ -292,6 +292,16 @@ int defined_void_params(void) {
       .str() = "%struct.StaleMirrorText";
   c4c::codegen::lir::verify_module(stale_param_text);
 
+  c4c::codegen::lir::LirModule stale_rendered_return_text = lir_module;
+  require_mutable_function(stale_rendered_return_text, "declared_pair", true)
+      .signature_text = "declare void @declared_pair(void)";
+  c4c::codegen::lir::verify_module(stale_rendered_return_text);
+
+  c4c::codegen::lir::LirModule stale_rendered_param_text = lir_module;
+  require_mutable_function(stale_rendered_param_text, "defined_pair", false)
+      .signature_text = "define void @defined_pair(void) {";
+  c4c::codegen::lir::verify_module(stale_rendered_param_text);
+
   c4c::codegen::lir::LirModule missing_return_name = lir_module;
   require_mutable_function(missing_return_name, "declared_pair", true)
       .signature_return_type_ref = c4c::codegen::lir::LirTypeRef("%struct.Pair");
@@ -325,18 +335,15 @@ int defined_void_params(void) {
       mismatched_param_name,
       "verifier should reject a signature parameter with mismatched StructNameId");
 
-  c4c::codegen::lir::LirModule param_text_fallback = lir_module;
-  auto& fallback_param_fn =
-      require_mutable_function(param_text_fallback, "defined_pair", false);
-  fallback_param_fn.signature_text =
+  c4c::codegen::lir::LirModule rendered_param_text_drift = lir_module;
+  auto& drifted_param_fn =
+      require_mutable_function(rendered_param_text_drift, "defined_pair", false);
+  drifted_param_fn.signature_text =
       "define %struct.Pair @defined_pair(%struct.NotDeclared %p.input) {";
-  fallback_param_fn.signature_param_type_refs[0] =
+  drifted_param_fn.signature_param_type_refs[0] =
       c4c::codegen::lir::LirTypeRef::struct_type("%struct.StaleMirrorText",
                                                  pair_id);
-  expect_verify_rejects(
-      param_text_fallback,
-      "verifier should reject signature parameter mirror text mismatch "
-      "without declared struct boundary");
+  c4c::codegen::lir::verify_module(rendered_param_text_drift);
 
   c4c::codegen::lir::LirModule byval_text_fallback = lir_module;
   require_mutable_function(byval_text_fallback, "declared_big", true)
