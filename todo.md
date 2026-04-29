@@ -8,45 +8,30 @@ Current Step Title: Reprove And Return To Parser Cleanup
 
 ## Just Finished
 
-Plan-owner review accepted Step 5 as complete. The latest Step 5
-classification records no remaining primary semantic `struct_tag_def_map`
-authority after the template static-member blocker fix.
+Step 6 reproof completed for the typed parser record identity bridge.
 
-Remaining map use is classified as compatibility/fallback:
+Focused parser/frontend proof passed against a matching refreshed baseline:
 
-- Mirror writers for parsed records, testing hooks, and direct/template
-  instantiation spelling keys.
-- Template instantiation dedup/reuse checks that preserve rendered spelling
-  compatibility while returning `TypeSpec::record_def` when the concrete record
-  is known.
-- `resolve_record_type_spec()` fallbacks and call sites that now prefer
-  `TypeSpec::record_def` before rendered tag lookup.
-- Const-eval/layout callers that pass the map so tag-only compatibility types
-  still work when no typed record identity is available.
-- Legacy nested-owner/member-typedef fallback branches that only run after the
-  typed owner path fails.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests|frontend_cxx_)' > test_after.log 2>&1`
 
-Added a local `ParserDefinitionState` comment documenting
-`struct_tag_def_map` as a rendered-tag compatibility mirror rather than typed
-semantic authority.
+Regression guard against matching focused `test_before.log` passed:
+3 passed before, 3 passed after, no new failures.
+
+Full-suite reproof passed against the accepted full-suite baseline:
+3088 enabled tests passed before, 3088 enabled tests passed after, no new
+failures. The disabled-test set remained the existing backend CLI trace/dump
+tests 27, 28, and 41-50.
+
+Supervisor overfit review found no supported-test downgrades, unsupported
+expectation rewrites, or testcase-shaped shortcuts. The added coverage asserts
+that stale rendered map state cannot override typed `TypeSpec::record_def`
+authority in the converted paths.
 
 ## Suggested Next
 
-Step 6 supervisor packet: reprove the typed parser record identity bridge and
-decide the return path to parent parser cleanup idea 123.
-
-Concrete expected work:
-
-- Run the focused typed-record and compatibility fallback parser/frontend proof
-  subset against the current bridge state, producing or refreshing
-  `test_after.log` as appropriate for the supervisor-selected regression guard.
-- Run broader parser-adjacent frontend validation appropriate for the
-  `TypeSpec` contract and template/static-member lookup changes.
-- Review the bridge diff for expectation downgrades or testcase-shaped
-  shortcuts; reject any overfit before lifecycle closure or parent-plan return.
-- If proof is clean, ask the plan owner to close or park idea 127 and resume or
-  regenerate parent parser cleanup idea 123 with `struct_tag_def_map`
-  classified as compatibility/final-spelling mirror.
+Ask the plan owner to close or park idea 127 and resume or regenerate parent
+parser cleanup idea 123 with `struct_tag_def_map` classified as a
+compatibility/final-spelling mirror.
 
 ## Watchouts
 
@@ -63,12 +48,15 @@ conversion packet, unless reproof exposes a real covered-path gap.
 
 ## Proof
 
-Delegated proof for this packet:
+Supervisor validation:
 
-`git diff --check -- todo.md src/frontend/parser/impl/parser_state.hpp src/frontend/parser/impl/support.cpp src/frontend/parser/impl/types/base.cpp src/frontend/parser/impl/types/template.cpp src/frontend/parser/impl/types/declarator.cpp src/frontend/parser/impl/types/struct.cpp src/frontend/parser/impl/declarations.cpp src/frontend/parser/impl/expressions.cpp tests/frontend/frontend_parser_tests.cpp`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests|frontend_cxx_)' > test_after.log 2>&1`
 
-Result: passed. This text-only classification packet did not update
-`test_after.log`.
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
-Plan-owner decision: Step 5 completion accepted; `plan.md` was already aligned
-with Step 6 and did not need a rewrite.
+`ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_baseline.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: focused proof, full-suite proof, and both regression-guard comparisons
+passed.
