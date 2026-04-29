@@ -1,7 +1,8 @@
 # LIR Structured Function Signature Metadata Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
 - [125_lir_legacy_string_lookup_removal_convergence.md](/workspaces/c4c/ideas/closed/125_lir_legacy_string_lookup_removal_convergence.md)
@@ -88,6 +89,24 @@ signature metadata surface.
   `signature_text`, is the semantic authority when the rendered spelling drifts.
 - Any remaining `signature_text` consumers that still act as semantic authority
   are listed in a follow-up idea instead of being left implicit.
+
+## Closure Note
+
+Completed by threading structured LIR signature metadata for return,
+parameter, variadic, void-parameter-list, aggregate, and ABI-relevant facts,
+then converting backend/BIR lowering, LIR verifier semantic checks, and
+aarch64 fast-path signature gates to use that metadata as the primary
+authority.
+
+Remaining `signature_text` uses are limited to final header rendering,
+diagnostics, renderability/final-spelling consistency checks, producer
+compatibility scanning, or documented legacy fallback paths for hand-built LIR
+without structured metadata. No remaining suspicious semantic authority was
+found for generated LIR, so no follow-up idea is required for this boundary.
+
+Close-time regression guard compared the full-suite baseline in
+`test_baseline.log` against `test_after.log`: 3088 passed before, 3089 passed
+after, 0 failed, and 0 new failures.
 
 ## Superseded Earlier Route
 
