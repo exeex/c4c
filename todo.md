@@ -8,20 +8,21 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 remaining direct method-return lookup demotion packet.
-The nested `operator_arrow` helper in `Lowerer::lower_member_expr()` now uses
-the resolved method `DeclRef` and `link_name_id` with
-`Module::resolve_operator_callee()`, and range-for `operator_deref` now uses
-the resolved method `DeclRef` and `link_name_id` with
-`Module::resolve_range_for_method_callee()`. Both sites keep their explicit
-method-return fallback path when resolver metadata is unavailable.
+Completed Step 3 small builtin/scalar-control direct function lookup demotion
+packet. `Lowerer::builtin_alignof_expr_bytes()` now builds a `DeclRef` carrier
+from the variable node, attaches available link-name metadata, and resolves
+function alignment through `Module::resolve_function_decl()`.
+`Lowerer::lower_var_expr()` now uses the existing `DeclRef` carrier plus
+available link-name metadata to derive function-pointer type metadata through
+the same resolver. Both sites preserve rendered-name fallback through the
+resolver when structured/link metadata is unavailable.
 
 ## Suggested Next
 
 Next coherent Step 3 packet: inspect the remaining `find_function_by_name_legacy()`
-callers in `hir_functions.cpp`, `builtin.cpp`, `scalar_control.cpp`, and
-`hir_types.cpp`, then route each through resolver authority where a
-`DeclRef`/`LinkNameId` carrier exists or classify the exact metadata gap.
+callers in `hir_functions.cpp` and `hir_types.cpp`, then route each through
+resolver authority where a `DeclRef`/`LinkNameId` carrier exists or classify
+the exact metadata gap.
 
 ## Watchouts
 
@@ -73,8 +74,11 @@ Step 1 inventory classification:
   overloaded-operator helper and bool-conversion helper in `operator.cpp`, the
   range-for prefix-increment, dereference, and `begin()` method return lookups
   in `range_for.cpp`, and the nested `operator_arrow` helper in `operator.cpp`
-  through resolver authority. Remaining direct function legacy helper callers
-  are outside `range_for.cpp` and need separate carrier-metadata inspection.
+  through resolver authority. The small builtin/scalar-control packet demoted
+  `builtin.cpp` and `scalar_control.cpp` direct function lookups through
+  `Module::resolve_function_decl()`. Remaining direct function legacy helper
+  callers are in `hir_functions.cpp` and `hir_types.cpp` and need separate
+  carrier-metadata inspection.
 - Direct-call link-carrier discovery now records declaration lookup hits through
   the shared resolver. The hit/mismatch recorders deduplicate exact repeats, but
   future packets should keep an eye on noisy lookup telemetry if more call-site
@@ -83,7 +87,8 @@ Step 1 inventory classification:
   function and global `LinkNameId`, concrete `GlobalId`, direct-call
   structured/LinkNameId stale-rendered-name disagreement cases, and
   operator/range-for resolver return metadata without weakening legacy fallback
-  coverage.
+  coverage. The builtin/scalar-control packet relies on the same function-decl
+  resolver coverage because both sites now delegate to that shared authority.
 
 Do not weaken tests or add named-case shortcuts. Stale rendered-name tests are
 appropriate only when they prove structured identity wins over legacy lookup

@@ -137,8 +137,14 @@ int Lowerer::builtin_alignof_expr_bytes(FunctionCtx* ctx, const Node* expr) {
   const TypeSpec expr_ts = infer_generic_ctrl_type(ctx, expr);
   int align = 0;
   if (expr && expr->kind == NK_VAR && expr->name) {
-    const std::string fn_name(expr->name);
-    if (const Function* fn = module_->find_function_by_name_legacy(fn_name)) {
+    DeclRef ref{};
+    ref.name = expr->name;
+    ref.name_text_id = make_unqualified_text_id(
+        expr, module_ ? module_->link_name_texts.get() : nullptr);
+    ref.ns_qual = make_ns_qual(
+        expr, module_ ? module_->link_name_texts.get() : nullptr);
+    attach_decl_ref_link_name_id(ref);
+    if (const Function* fn = module_->resolve_function_decl(ref)) {
       int fn_align = fn->attrs.align_bytes;
       if (fn_align > 0) align = fn_align;
     }

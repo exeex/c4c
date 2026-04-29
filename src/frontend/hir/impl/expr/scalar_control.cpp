@@ -227,7 +227,8 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
   }
   if (var_ts.base == TB_VOID && var_ts.ptr_level == 0 && var_ts.array_rank == 0 &&
       !r.local && !r.param_index && !r.global) {
-    if (const Function* fn = module_->find_function_by_name_legacy(r.name)) {
+    attach_decl_ref_link_name_id(r);
+    if (const Function* fn = module_->resolve_function_decl(r)) {
       var_ts = fn->return_type.spec;
       var_ts.ptr_level++;
       var_ts.is_fn_ptr = true;
