@@ -9,28 +9,28 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with the HIR member-owner lookup repair. `resolve_member_lookup_owner_tag` now
-tries structured `record_def` owner keys/direct record carriers and concrete
-`tpl_struct_origin` realization before accepting parser-rendered owner tags.
+with the HIR static-member const lookup repair. `find_struct_static_member_const_value`
+now checks the structured owner-key value map before accepting rendered-tag
+static-member values, while preserving rendered fallback when no owner key
+value is available.
 
-Added focused HIR coverage where stale rendered owner spelling would have won
-under the old path: one direct `record_def` owner case and one template-origin
-realization case.
+Added focused HIR coverage for a template-instantiation owner key where stale
+rendered spelling carries the wrong value, plus fallback coverage for legacy
+rendered-only static-member values.
 
 ## Suggested Next
 
-Continue Step 4 with the adjacent template static-member helper lookups in HIR:
-audit `try_eval_template_static_member_const` and instantiated static-member
-const lookup paths for remaining tag-first owner resolution, preserving rendered
-fallback only when no structured carrier is available.
+Continue Step 4 with the declaration side of static-member lookup: audit
+`find_struct_static_member_decl` and its `try_eval_template_static_member_const`
+callers for a structured-first decl path that does not break the current
+parity-only rendered-decl compatibility test.
 
 ## Watchouts
 
-The rendered-tag fallback remains intentionally in place for types that carry no
-`record_def`, no concrete template-origin payload, and no recoverable current
-struct family. The new template-origin path only claims authority when
-realization changes or fills in the HIR struct tag, so unresolved/generic
-payloads can still fall through to the compatibility bridge.
+Only the static constexpr value helper is behaviorally structured-primary in
+this packet. Static-member declaration lookup still exposes rendered-map
+behavior with owner-key parity checks, so the next packet should either migrate
+that deliberately or update the existing lookup parity test in the same slice.
 
 ## Proof
 

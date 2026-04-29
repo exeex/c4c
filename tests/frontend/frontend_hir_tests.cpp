@@ -1864,6 +1864,56 @@ void test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag() {
               "template-origin owner lookup should return a realized HIR struct tag");
 }
 
+void test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef def;
+  def.tag = "StaleRenderedBox_T_int";
+  def.tag_text_id = module.link_name_texts->intern("Box");
+  def.ns_qual.context_id = 9;
+  c4c::hir::HirRecordOwnerTemplateIdentity identity;
+  identity.primary_declaration_text_id = def.tag_text_id;
+  identity.specialization_key = "type:int";
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_template_record_owner_key(def, std::move(identity));
+  module.index_struct_def_owner(owner_key, def.tag, true);
+  module.struct_defs[def.tag] = def;
+
+  const c4c::TextId member_text_id = module.link_name_texts->intern("value");
+  c4c::hir::HirStructMemberLookupKey member_key;
+  member_key.owner_key = owner_key;
+  member_key.member_text_id = member_text_id;
+
+  lowerer.struct_static_member_const_values_[def.tag]["value"] = 11;
+  lowerer.struct_static_member_const_values_by_owner_[member_key] = 23;
+
+  const std::optional<long long> value =
+      lowerer.find_struct_static_member_const_value(def.tag, "value");
+
+  expect_true(value.has_value() && *value == 23,
+              "static member const lookup should prefer template owner keys over stale rendered tags");
+  expect_true(lowerer.struct_static_member_const_value_lookup_parity_checks_ == 1,
+              "structured-first static member const lookup should still record rendered parity");
+  expect_true(lowerer.struct_static_member_const_value_lookup_parity_mismatches_ == 1,
+              "stale rendered static member const values should be detected when structured lookup wins");
+}
+
+void test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  lowerer.struct_static_member_const_values_["LegacyRendered"]["value"] = 31;
+
+  const std::optional<long long> value =
+      lowerer.find_struct_static_member_const_value("LegacyRendered", "value");
+
+  expect_true(value.has_value() && *value == 31,
+              "static member const lookup should preserve rendered fallback when no owner key exists");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -2324,6 +2374,8 @@ int main() {
   test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag();
   test_hir_member_owner_lookup_prefers_record_def_over_stale_tag();
   test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag();
+  test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_tag();
+  test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();
