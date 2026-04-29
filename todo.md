@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/134_parser_ast_template_payload_string_bridge_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Classify AST and Template Payload String Authority
+Current Step ID: 2
+Current Step Title: Make Alias-Template Parameter Payloads Structured-Primary
 
 # Current Packet
 
@@ -77,12 +77,14 @@ Classification map:
 
 ## Suggested Next
 
-First bounded implementation packet: execute Step 2 on alias-template parameter
-payloads in `declarations.cpp`, `types/base.cpp`, focused parser tests, and
-`todo.md`. Convert the remaining alias-template substitution bindings to use
-`param_name_text_ids` as semantic keys wherever both sides have structured
-identity, leaving `param_names` only for display/generated spelling and an
-explicit no-TextId compatibility fallback.
+Execute `plan.md` Step 2 as a bounded alias-template parameter payload packet.
+Focus on `ParserAliasTemplateInfo::param_names`, `param_name_text_ids`,
+alias-template parsing in `declarations.cpp`, substitution/projection in
+`types/base.cpp`, and focused parser tests. Convert remaining alias-template
+substitution bindings to use `param_name_text_ids`, `TemplateParamId`, `TextId`,
+parser symbol ids, or existing structured template parameter records wherever
+both sides have structured identity. Leave `param_names` only for display,
+generated spelling, or an explicit no-TextId compatibility fallback.
 
 ## Watchouts
 
