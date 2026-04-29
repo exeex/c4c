@@ -1349,6 +1349,9 @@ struct CompileTimeState {
     return nullptr;
   }
 
+  // Step 5 classification: rendered-name maps are compatibility fallbacks for
+  // callers that cannot yet supply declaration keys; *_by_key_ mirrors are the
+  // structured authority when present.
   // Template function definitions indexed by name (AST node pointers).
   std::unordered_map<std::string, const Node*> template_fn_defs_;
   // Best-effort structured mirrors indexed by declaration identity.
@@ -1370,6 +1373,9 @@ struct CompileTimeState {
   std::unordered_map<CompileTimeRegistryKey, const Node*,
                      CompileTimeRegistryKeyHash>
       consteval_fn_defs_by_key_;
+  // Enum/const integer name maps remain compatibility and diagnostic-facing
+  // consteval inputs; structured value-binding mirrors are preferred when a
+  // declaration key is available.
   // Enum constant values (name → value).
   std::unordered_map<std::string, long long> enum_consts_;
   std::unordered_map<CompileTimeValueBindingKey, long long,
@@ -1382,6 +1388,8 @@ struct CompileTimeState {
       const_int_bindings_by_key_;
   std::vector<const Node*> static_assert_nodes_;
   // Pending type-driven template work discovered during AST-to-HIR lowering.
+  // String keys here are unresolved-boundary dedup/progress tokens rather than
+  // final semantic lookup authority.
   std::vector<PendingTemplateTypeWorkItem> pending_template_types_;
   std::unordered_set<std::string> pending_template_type_keys_;
   std::unordered_set<std::string> resolved_pending_template_type_keys_;

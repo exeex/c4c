@@ -1,32 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/124_hir_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Extend Structured Lookup Proof Across HIR Edge Paths
+Current Step ID: Step 5
+Current Step Title: Classify Remaining HIR String Surfaces
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 compile-time registry lookup proof extension.
-`frontend_hir_lookup_tests` now covers stale rendered-name conflicts for
-`CompileTimeState::find_template_def`, `find_template_struct_def`,
-`find_template_struct_specializations(primary_def, rendered_name)`, and
-`find_consteval_def`, and asserts declaration-key mirrors win while rendered
-fallback remains available when the declaration key has no structured entry.
+Started Step 5 classification for the remaining HIR string surfaces. The major
+retained surfaces are now classified as:
+
+- Compatibility bridges: `Module::fn_index` / `global_index`,
+  `find_*_by_name_legacy`, `CompileTimeState` rendered template/consteval maps,
+  rendered enum/const-int maps, and Lowerer rendered struct/template/member
+  caches that still sit beside structured mirrors and parity checks.
+- Final spelling / display: link-visible `name` / `mangled_name` fields,
+  template specialization keys, `struct_defs` rendered tags, HIR printer labels,
+  owner-key debug labels, and emitted ABI/codegen spelling.
+- Diagnostics / dumps: compile-time diagnostics, deferred-template diagnostic
+  strings, runtime lowering diagnostics, HIR dump/summary formatting, and parity
+  mismatch reporting text.
+- Local scope: `FunctionCtx` locals, params, labels, local const bindings,
+  local function-pointer signature maps, static-local names, and pack-parameter
+  bindings used while lowering a single function body.
+- Unresolved boundaries: encoded template-argument refs, deferred NTTP
+  expression text, pending-template-type dedup/progress keys, early
+  `function_decl_nodes_` return-type probes, and rendered struct/member lookup
+  inputs where every producer/consumer has not yet moved to owner/member keys.
+
+Added focused comments at the primary declaration hubs so those compatibility,
+local-scope, and unresolved-boundary roles are visible without changing
+behavior.
 
 ## Suggested Next
 
-Next coherent Step 4 packet: have the supervisor review whether the HIR lookup
-edge-path proof set is now broad enough for Step 4 acceptance, or select the
-next uncovered structured lookup family if one remains in the active plan.
+Next coherent Step 5 packet: have the supervisor review whether the remaining
+rendered struct/template/member compatibility caches should stay classified for
+closure or be split into a follow-up metadata-propagation idea before Step 6.
 
 ## Watchouts
 
-This packet is test-only and exercises existing `CompileTimeState` precedence;
-it does not change production lookup authority. The fallback assertions use
-unregistered declaration keys to prove rendered-name compatibility stays
-available when no structured entry exists.
+This packet is classification-only. It did not convert another lookup family or
+change lookup precedence. Remaining rendered maps that still participate in
+lookup are either explicit legacy compatibility fallbacks, local-scope maps, or
+unresolved producer/consumer boundaries with structured mirrors/parity coverage
+where the current runbook has already added it.
 
 ## Proof
 
@@ -37,4 +56,4 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 ```
 
 Result: passed. `test_after.log` contains `frontend_hir_lookup_tests`: 1 passed
-/ 0 failed after rebuilding `frontend_hir_lookup_tests`.
+/ 0 failed after rebuilding the default preset.

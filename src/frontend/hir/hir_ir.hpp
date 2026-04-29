@@ -1238,6 +1238,8 @@ struct Module {
   std::vector<GlobalVar> globals;
   std::vector<Expr> expr_pool;
 
+  // Step 5 classification: rendered-name compatibility indexes. Structured
+  // declaration/link-name lookup is authoritative when its metadata is present.
   std::unordered_map<SymbolName, FunctionId> fn_index;
   std::unordered_map<SymbolName, GlobalId> global_index;
   std::unordered_map<ModuleDeclLookupKey, FunctionId, ModuleDeclLookupKeyHash>
@@ -1247,7 +1249,9 @@ struct Module {
   mutable std::vector<ModuleDeclLookupHit> decl_lookup_hits;
   mutable std::vector<ModuleDeclLookupParityMismatch> decl_lookup_parity_mismatches;
 
-  // Struct/union definitions (populated by build_hir)
+  // Struct/union definitions (populated by build_hir). `struct_defs` remains a
+  // rendered-tag bridge for codegen/dumps; `struct_def_owner_index` is the
+  // structured owner lookup with parity tracking.
   std::unordered_map<SymbolName, HirStructDef> struct_defs;
   std::vector<SymbolName> struct_def_order;  // insertion order for deterministic emission
   std::unordered_map<HirRecordOwnerKey, SymbolName, HirRecordOwnerKeyHash>

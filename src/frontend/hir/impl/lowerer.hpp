@@ -269,6 +269,8 @@ class Lowerer {
     };
 
     Function* fn = nullptr;
+    // Step 5 classification: function-scope parser spelling maps. These are
+    // local-scope lowering state, not module/global semantic lookup authority.
     std::unordered_map<std::string, LocalId> locals;
     DenseIdMap<LocalId, TypeSpec> local_types;
     std::unordered_map<std::string, FnPtrSig> local_fn_ptr_sigs;
@@ -1016,6 +1018,9 @@ class Lowerer {
   std::shared_ptr<CompileTimeState> ct_state_ = std::make_shared<CompileTimeState>();
   // Convenience alias — shorthand for ct_state_->registry.
   InstantiationRegistry& registry_ = ct_state_->registry;
+  // Step 5 classification: rendered-name compatibility caches below are kept
+  // beside structured mirrors/parity checks until all HIR producers and
+  // consumers can pass owner/member identity directly.
   // Template struct definitions indexed by struct tag name.
   std::unordered_map<std::string, const Node*> struct_def_nodes_;
   std::unordered_map<HirRecordOwnerKey, const Node*, HirRecordOwnerKeyHash>
@@ -1075,7 +1080,7 @@ class Lowerer {
   mutable size_t struct_method_return_type_lookup_parity_mismatches_ = 0;
   // Top-level function definitions keyed by unqualified name for early
   // template-deduction return-type probes before ordinary functions are
-  // lowered into the module.
+  // lowered into the module; this is a lowering-phase unresolved boundary.
   std::unordered_map<std::string, const Node*> function_decl_nodes_;
   // Pending struct methods to lower.
   struct PendingMethod {
