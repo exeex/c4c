@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/134_parser_ast_template_payload_string_bridge_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Make Alias-Template Parameter Payloads Structured-Primary
+Current Step ID: 3
+Current Step Title: Quarantine NTTP and Template Argument Debug Text
 
 # Current Packet
 
@@ -23,11 +23,14 @@ argument. Existing stale-rendered-name coverage remains in place.
 
 ## Suggested Next
 
-Execute Step 3 as a bounded NTTP/template-argument string quarantine packet.
-Start with `ParserTemplateArgParseResult::nttp_name`, `$expr:` projection into
-`template_arg_nttp_names`, and `TemplateArgRef::debug_text` call sites where a
-structured expression node, value, `TypeSpec`, or template parameter TextId is
-already available.
+Execute `plan.md` Step 3 as a bounded NTTP/template-argument string quarantine
+packet. Start with `ParserTemplateArgParseResult::nttp_name`, `$expr:`
+projection into `template_arg_nttp_names`, and `TemplateArgRef::debug_text`
+call sites where a structured expression node, value, `TypeSpec`, template
+argument payload, or template parameter `TextId` is already available. Keep
+NTTP/debug strings only for display, diagnostics, dumps, or explicit
+compatibility fallback; make any remaining fallback branch visible and covered
+by focused tests.
 
 ## Watchouts
 
