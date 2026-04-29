@@ -13,7 +13,7 @@ using GlobalAddress = BirFunctionLowerer::GlobalAddress;
 using GlobalPointerSlotKey = BirFunctionLowerer::GlobalPointerSlotKey;
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::GlobalInfo;
-using lir_to_bir_detail::is_known_function_symbol;
+using lir_to_bir_detail::is_known_raw_function_symbol;
 using lir_to_bir_detail::type_size_bytes;
 
 static LinkNameId link_name_id_for_global(
@@ -153,7 +153,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_pointer_store_address(
     const std::string global_name = operand.str().substr(1);
     const auto global_it = global_types.find(global_name);
     if (global_it == global_types.end()) {
-      if (!is_known_function_symbol(global_name, function_symbols)) {
+      if (!is_known_raw_function_symbol(global_name, function_symbols)) {
         return std::nullopt;
       }
       return GlobalAddress{
@@ -213,7 +213,7 @@ std::optional<bir::Value> BirFunctionLowerer::resolve_local_aggregate_pointer_va
   }
 
   const std::string symbol_name = operand.str().substr(1);
-  if (!is_known_function_symbol(symbol_name, function_symbols)) {
+  if (!is_known_raw_function_symbol(symbol_name, function_symbols)) {
     return std::nullopt;
   }
   return bir::Value::named(bir::TypeKind::Ptr, "@" + symbol_name);
@@ -236,7 +236,7 @@ std::optional<bir::Value> BirFunctionLowerer::lower_call_pointer_arg_value(
   }
 
   const std::string symbol_name = operand.str().substr(1);
-  if (!is_known_function_symbol(symbol_name, function_symbols) &&
+  if (!is_known_raw_function_symbol(symbol_name, function_symbols) &&
       global_types.find(symbol_name) == global_types.end()) {
     return std::nullopt;
   }

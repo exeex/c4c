@@ -483,7 +483,8 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   ptr_to_function.name = "drifted_ptr_to_function_display";
   ptr_to_function.link_name_id = ptr_to_function_id;
   ptr_to_function.llvm_type = "ptr";
-  ptr_to_function.init_text = "ptr @semantic_callee";
+  ptr_to_function.init_text = "ptr @drifted_callee_display";
+  ptr_to_function.initializer_function_link_name_ids.push_back(callee_id);
   ptr_to_function.align_bytes = 8;
   module.globals.push_back(std::move(ptr_to_function));
 
@@ -510,9 +511,9 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
 
   const auto* lowered_ptr_to_function = find_global("semantic_ptr_to_function");
   if (lowered_ptr_to_function == nullptr ||
-      lowered_ptr_to_function->initializer_symbol_name != "semantic_callee" ||
+      lowered_ptr_to_function->initializer_symbol_name != "drifted_callee_display" ||
       lowered_ptr_to_function->initializer_symbol_name_id != callee_id) {
-    return fail("pointer initializer to a known function should carry the target LinkNameId");
+    return fail("pointer initializer with structured function id should not depend on raw display spelling");
   }
 
   c4c::backend::bir::Module compatibility_module;

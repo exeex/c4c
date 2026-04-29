@@ -118,15 +118,20 @@ std::string extern_decl_name_for_identity(const c4c::codegen::lir::LirModule& mo
 
 c4c::LinkNameId resolve_initializer_symbol_link_name_id(
     std::string_view symbol_name,
+    c4c::LinkNameId initializer_function_link_name_id,
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols) {
+  if (function_symbols.contains_link_name_id(initializer_function_link_name_id)) {
+    return initializer_function_link_name_id;
+  }
   const auto global_it = global_types.find(std::string(symbol_name));
   if (global_it != global_types.end()) {
     return global_it->second.link_name_id;
   }
-  const auto function_it = function_symbols.find(std::string(symbol_name));
-  if (function_it != function_symbols.end()) {
-    return function_it->second;
+  if (const auto function_link_name_id =
+          function_symbols.find_raw_symbol_link_name_id(symbol_name);
+      function_link_name_id.has_value()) {
+    return *function_link_name_id;
   }
   return c4c::kInvalidLinkName;
 }
@@ -833,12 +838,12 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   function_symbols.reserve(context.lir_module.extern_decls.size() +
                            context.lir_module.functions.size());
   for (const auto& decl : context.lir_module.extern_decls) {
-    function_symbols.emplace(extern_decl_name_for_identity(context.lir_module, decl),
-                             decl.link_name_id);
+    function_symbols.insert_function(extern_decl_name_for_identity(context.lir_module, decl),
+                                     decl.link_name_id);
   }
   for (const auto& function : context.lir_module.functions) {
-    function_symbols.emplace(function_name_for_reporting(context.lir_module, function),
-                             function.link_name_id);
+    function_symbols.insert_function(function_name_for_reporting(context.lir_module, function),
+                                     function.link_name_id);
   }
   const auto type_decls = build_type_decl_map(context.lir_module.type_decls);
   module.structured_types = build_bir_structured_type_spelling_context(
@@ -882,9 +887,17 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     if (!global.initializer_symbol_name.has_value()) {
       continue;
     }
+    const auto global_info_it = global_types.find(global.name);
+    const c4c::LinkNameId initializer_function_link_name_id =
+        global_info_it == global_types.end()
+            ? c4c::kInvalidLinkName
+            : global_info_it->second.initializer_function_link_name_id;
     global.initializer_symbol_name_id =
         resolve_initializer_symbol_link_name_id(
-            *global.initializer_symbol_name, global_types, function_symbols);
+            *global.initializer_symbol_name,
+            initializer_function_link_name_id,
+            global_types,
+            function_symbols);
   }
 
   if (!resolve_pointer_initializer_offsets(global_types, function_symbols)) {

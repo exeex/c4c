@@ -111,9 +111,14 @@ AggregateTypeLayout lookup_global_layout(
 
 }  // namespace
 
-bool is_known_function_symbol(std::string_view symbol_name,
-                              const FunctionSymbolSet& function_symbols) {
-  return function_symbols.find(std::string(symbol_name)) != function_symbols.end();
+bool is_known_function_link_name_id(LinkNameId link_name_id,
+                                    const FunctionSymbolSet& function_symbols) {
+  return function_symbols.contains_link_name_id(link_name_id);
+}
+
+bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
+                                  const FunctionSymbolSet& function_symbols) {
+  return function_symbols.find_raw_symbol_link_name_id(raw_symbol_name).has_value();
 }
 
 std::optional<GlobalAddress> resolve_known_global_address(std::string_view global_name,
@@ -132,7 +137,8 @@ std::optional<GlobalAddress> resolve_known_global_address(std::string_view globa
   if (info.initializer_symbol_name.empty()) {
     return std::nullopt;
   }
-  if (is_known_function_symbol(info.initializer_symbol_name, function_symbols)) {
+  if (is_known_function_link_name_id(info.initializer_function_link_name_id, function_symbols) ||
+      is_known_raw_function_symbol(info.initializer_symbol_name, function_symbols)) {
     if (info.initializer_offset_type != bir::TypeKind::Void || info.initializer_byte_offset != 0) {
       return std::nullopt;
     }
@@ -217,7 +223,7 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
 
       const auto target_it = global_types.find(address.global_name);
       if (target_it == global_types.end()) {
-        if (!is_known_function_symbol(address.global_name, function_symbols) ||
+        if (!is_known_raw_function_symbol(address.global_name, function_symbols) ||
             address.byte_offset != 0) {
           return false;
         }
@@ -297,6 +303,10 @@ std::optional<bir::Global> lower_minimal_global_impl(
         return std::nullopt;
       }
       info->initializer_symbol_name = initializer_address->global_name;
+      if (global.initializer_function_link_name_ids.size() == 1) {
+        info->initializer_function_link_name_id =
+            global.initializer_function_link_name_ids.front();
+      }
       info->initializer_offset_type = initializer_address->value_type;
       info->initializer_byte_offset = initializer_address->byte_offset;
       info->supports_linear_addressing = false;

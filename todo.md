@@ -8,34 +8,37 @@ Current Step Title: Prefer Semantic Identity In Function, Call, And Global Paths
 
 ## Just Finished
 
-Step 3 completed for the string-pool direct-call rewrite bridge in
-`src/backend/bir/lir_to_bir.cpp`.
+Step 3 completed for `FunctionSymbolSet` semantic membership in the
+LIR-to-BIR function/global paths.
 
-`rewrite_direct_call_string_pointer_args` now pairs lowered BIR functions with
-their LIR source functions by `Function::link_name_id` /
-`LirFunction::link_name_id` when the lowered function has a semantic id. Raw
-function-name fallback is restricted to functions where the lowered BIR
-function and candidate LIR function both lack semantic ids.
+`FunctionSymbolSet` now stores `LinkNameId` membership separately from raw
+symbol-name compatibility lookup. Known-function APIs prefer structured
+`LinkNameId` membership when an id is available, and the remaining string-only
+callers use the clearly named `is_known_raw_function_symbol` compatibility
+boundary.
 
-Added backend coverage in `tests/backend/backend_lir_to_bir_notes_test.cpp`
-with a raw-name decoy LIR function. The focused fixture proves the string-pool
-rewrite uses the semantic function id for the bridge and preserves the final
-`@.str.good` string-pool spelling instead of taking aliases from the raw-name
-decoy.
+Scalar pointer global initializers now carry the structured
+`LirGlobal::initializer_function_link_name_ids` id through `GlobalInfo` and use
+that id before raw initializer spelling when resolving
+`initializer_symbol_name_id` or known function-pointer addresses. Added focused
+coverage proving a drifted raw initializer function spelling still resolves to
+the covered function `LinkNameId` when the structured id is present, while the
+raw spelling remains preserved as compatibility/final spelling.
 
 ## Suggested Next
 
-Continue Step 3 on the next function, call, or global path where raw string
-lookup still controls semantic identity and a `LinkNameId` carrier is already
-available.
+Continue Step 3 on aggregate pointer-initializer function references or other
+call/global paths only where a structured id carrier already reaches BIR. If no
+per-reference id carrier exists, keep that boundary classified instead of
+inventing local name matching.
 
 ## Watchouts
 
-The direct-call rewrite still aligns LIR calls to lowered BIR calls by call
-order inside the matched function. This packet only removed raw function-name
-authority from the LIR/BIR function pairing. String-pool constants still
-intentionally use local `TextId` identity and final retained spelling, not
-`LinkNameId`.
+`GlobalAddress` and aggregate pointer-initializer offsets still carry only raw
+parsed LIR symbol text, so `resolve_pointer_initializer_offsets` remains a
+raw-string compatibility boundary. This packet intentionally did not add a
+local offset-to-function-id shortcut because `LirGlobal::initializer_function_link_name_ids`
+does not provide per-offset carriers.
 
 ## Proof
 

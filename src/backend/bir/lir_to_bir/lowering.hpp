@@ -55,6 +55,7 @@ struct GlobalInfo {
   std::string type_text;
   std::optional<GlobalAddress> known_global_address;
   std::string initializer_symbol_name;
+  LinkNameId initializer_function_link_name_id = kInvalidLinkName;
   bir::TypeKind initializer_offset_type = bir::TypeKind::Void;
   std::size_t initializer_byte_offset = 0;
   std::size_t runtime_element_count = 0;
@@ -64,7 +65,37 @@ struct GlobalInfo {
 
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
 using TypeDeclMap = std::unordered_map<std::string, std::string>;
-using FunctionSymbolSet = std::unordered_map<std::string, LinkNameId>;
+struct FunctionSymbolSet {
+  void reserve(std::size_t size) {
+    link_name_ids.reserve(size);
+    raw_symbol_link_name_ids.reserve(size);
+  }
+
+  void insert_function(std::string raw_symbol_name, LinkNameId link_name_id) {
+    if (link_name_id != kInvalidLinkName) {
+      link_name_ids.insert(link_name_id);
+    }
+    raw_symbol_link_name_ids.emplace(std::move(raw_symbol_name), link_name_id);
+  }
+
+  [[nodiscard]] bool contains_link_name_id(LinkNameId link_name_id) const {
+    return link_name_id != kInvalidLinkName &&
+           link_name_ids.find(link_name_id) != link_name_ids.end();
+  }
+
+  [[nodiscard]] std::optional<LinkNameId> find_raw_symbol_link_name_id(
+      std::string_view raw_symbol_name) const {
+    const auto it = raw_symbol_link_name_ids.find(std::string(raw_symbol_name));
+    if (it == raw_symbol_link_name_ids.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
+ private:
+  std::unordered_set<LinkNameId> link_name_ids;
+  std::unordered_map<std::string, LinkNameId> raw_symbol_link_name_ids;
+};
 using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
 using LocalPointerSlots = std::unordered_map<std::string, std::string>;
 using LocalIndirectPointerSlotSet = std::unordered_set<std::string>;
@@ -188,8 +219,10 @@ std::optional<GlobalAddress> resolve_known_global_address(
     GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     std::unordered_set<std::string>* active);
-bool is_known_function_symbol(std::string_view symbol_name,
-                              const FunctionSymbolSet& function_symbols);
+bool is_known_function_link_name_id(LinkNameId link_name_id,
+                                    const FunctionSymbolSet& function_symbols);
+bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
+                                  const FunctionSymbolSet& function_symbols);
 
 }  // namespace lir_to_bir_detail
 
