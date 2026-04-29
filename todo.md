@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Audit LIR, BIR, And Backend Handoff Text Authority
+Current Step ID: 5
+Current Step Title: Close Audit Evidence
 
 # Current Packet
 
@@ -109,17 +109,18 @@ Suspicious authority:
   `LirStructDecl`/`StructNameId` layouts are preferred when present and parity
   checked, but lookup is still driven by final type spelling and falls back to
   legacy text when structured layout is missing or parity cannot be used.
-- A new focused follow-up idea is needed before Step 5 for the LIR/BIR/backend
-  aggregate layout/type-decl text bridge. This should be separate from ideas
-  132-137 because it is a later-IR/backend handoff cleanup, not Parser, Sema,
-  or HIR owner/member/template lookup.
+- Follow-up coverage added: this family now maps to
+  `ideas/open/138_lir_bir_backend_aggregate_layout_type_decl_text_bridge_cleanup.md`.
+  It is intentionally separate from ideas 132-137 because it is a later-IR/
+  backend handoff cleanup, not Parser, Sema, or HIR owner/member/template
+  lookup.
 
 ## Suggested Next
 
-Before Step 5, have the plan owner create a focused open follow-up idea for the
-LIR/BIR/backend aggregate layout and type-declaration text bridge described
-above. Then Step 5 can summarize the full audit inventory and confirm every
-suspicious family maps to an open follow-up.
+Execute Step 5: summarize the full audit inventory, confirm every suspicious
+family from Steps 1-4 maps to an open follow-up idea, run the
+supervisor-delegated lifecycle/docs proof, and hand back whether idea 131 is
+ready for a plan-owner close decision.
 
 ## Watchouts
 
@@ -132,5 +133,7 @@ work; it already resolves to `LinkNameId` when producer data is available.
 
 ## Proof
 
-Not run per packet: no build proof required for read-only LIR/BIR/backend
-text-authority audit and `todo.md` update; tests were explicitly out of scope.
+Not run for this plan-owner lifecycle update: no implementation files or tests
+were changed. Coverage is recorded in
+`ideas/open/138_lir_bir_backend_aggregate_layout_type_decl_text_bridge_cleanup.md`,
+and `todo.md` now points to Step 5 for audit closure evidence.
