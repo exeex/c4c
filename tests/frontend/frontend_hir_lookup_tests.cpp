@@ -57,13 +57,15 @@ void add_function(c4c::hir::Module& module,
                   std::string name,
                   c4c::TextId name_text_id,
                   c4c::LinkNameId link_name_id = c4c::kInvalidLinkName,
-                  c4c::hir::NamespaceQualifier ns = {}) {
+                  c4c::hir::NamespaceQualifier ns = {},
+                  c4c::TypeBase return_base = c4c::TB_VOID) {
   c4c::hir::Function fn;
   fn.id = id;
   fn.name = std::move(name);
   fn.name_text_id = name_text_id;
   fn.link_name_id = link_name_id;
   fn.ns_qual = std::move(ns);
+  fn.return_type.spec.base = return_base;
   module.functions.push_back(fn);
   module.index_function_decl(module.functions.back());
 }
@@ -404,11 +406,12 @@ void test_operator_callee_lookup_uses_authoritative_decl_identity() {
   const c4c::TextId linked_text = texts.intern("linked_operator_callee");
 
   add_function(module, c4c::hir::FunctionId{40}, "stale_operator_callee",
-               stale_text);
+               stale_text, c4c::kInvalidLinkName, {}, c4c::TB_INT);
   add_function(module, c4c::hir::FunctionId{41}, "structured_operator_callee",
-               structured_text);
+               structured_text, c4c::kInvalidLinkName, {}, c4c::TB_LONG);
   add_function(module, c4c::hir::FunctionId{42}, "linked_operator_callee",
-               linked_text, module.link_names.intern("linked_operator_callee"));
+               linked_text, module.link_names.intern("linked_operator_callee"),
+               {}, c4c::TB_BOOL);
 
   c4c::hir::DeclRef structured_ref;
   structured_ref.name = "stale_operator_callee";
@@ -417,6 +420,9 @@ void test_operator_callee_lookup_uses_authoritative_decl_identity() {
       module.resolve_operator_callee(structured_ref);
   expect_true(structured_fn != nullptr && structured_fn->id.value == 41,
               "operator callee lookup should prefer structured identity over stale rendered name");
+  expect_true(structured_fn != nullptr &&
+                  structured_fn->return_type.spec.base == c4c::TB_LONG,
+              "operator callee return metadata should come from structured authority");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
                       c4c::hir::ModuleDeclLookupAuthority::Structured,
                       "stale_operator_callee", 41),
@@ -433,6 +439,9 @@ void test_operator_callee_lookup_uses_authoritative_decl_identity() {
       module.resolve_operator_callee(link_ref);
   expect_true(link_fn != nullptr && link_fn->id.value == 42,
               "operator callee lookup should prefer LinkNameId over stale rendered name");
+  expect_true(link_fn != nullptr &&
+                  link_fn->return_type.spec.base == c4c::TB_BOOL,
+              "operator callee return metadata should come from LinkNameId authority");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
                       c4c::hir::ModuleDeclLookupAuthority::LinkNameId,
                       "stale_operator_callee", 42),
@@ -443,7 +452,7 @@ void test_operator_callee_lookup_uses_authoritative_decl_identity() {
 
   const c4c::TextId legacy_text = texts.intern("legacy_operator_callee");
   add_function(module, c4c::hir::FunctionId{43}, "legacy_operator_callee",
-               c4c::kInvalidText);
+               c4c::kInvalidText, c4c::kInvalidLinkName, {}, c4c::TB_LONGLONG);
 
   c4c::hir::DeclRef legacy_ref;
   legacy_ref.name = "legacy_operator_callee";
@@ -452,6 +461,9 @@ void test_operator_callee_lookup_uses_authoritative_decl_identity() {
       module.resolve_operator_callee(legacy_ref);
   expect_true(legacy_fn != nullptr && legacy_fn->id.value == 43,
               "operator callee lookup should preserve rendered-name fallback");
+  expect_true(legacy_fn != nullptr &&
+                  legacy_fn->return_type.spec.base == c4c::TB_LONGLONG,
+              "operator callee return metadata should preserve rendered-name fallback");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
                       "legacy_operator_callee", 43),
@@ -467,9 +479,10 @@ void test_range_for_method_callee_lookup_uses_authoritative_decl_identity() {
   const c4c::TextId linked_text = texts.intern("linked_range_for_method");
 
   add_function(module, c4c::hir::FunctionId{50}, "stale_range_for_method",
-               stale_text);
+               stale_text, c4c::kInvalidLinkName, {}, c4c::TB_INT);
   add_function(module, c4c::hir::FunctionId{51}, "linked_range_for_method",
-               linked_text, module.link_names.intern("linked_range_for_method"));
+               linked_text, module.link_names.intern("linked_range_for_method"),
+               {}, c4c::TB_BOOL);
 
   c4c::hir::DeclRef link_ref;
   link_ref.name = "stale_range_for_method";
@@ -479,6 +492,9 @@ void test_range_for_method_callee_lookup_uses_authoritative_decl_identity() {
       module.resolve_range_for_method_callee(link_ref);
   expect_true(link_fn != nullptr && link_fn->id.value == 51,
               "range-for method lookup should prefer LinkNameId over stale rendered name");
+  expect_true(link_fn != nullptr &&
+                  link_fn->return_type.spec.base == c4c::TB_BOOL,
+              "range-for method return metadata should come from LinkNameId authority");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
                       c4c::hir::ModuleDeclLookupAuthority::LinkNameId,
                       "stale_range_for_method", 51),
@@ -489,7 +505,7 @@ void test_range_for_method_callee_lookup_uses_authoritative_decl_identity() {
 
   const c4c::TextId legacy_text = texts.intern("legacy_range_for_method");
   add_function(module, c4c::hir::FunctionId{52}, "legacy_range_for_method",
-               c4c::kInvalidText);
+               c4c::kInvalidText, c4c::kInvalidLinkName, {}, c4c::TB_LONGLONG);
 
   c4c::hir::DeclRef legacy_ref;
   legacy_ref.name = "legacy_range_for_method";
@@ -498,6 +514,9 @@ void test_range_for_method_callee_lookup_uses_authoritative_decl_identity() {
       module.resolve_range_for_method_callee(legacy_ref);
   expect_true(legacy_fn != nullptr && legacy_fn->id.value == 52,
               "range-for method lookup should preserve rendered-name fallback");
+  expect_true(legacy_fn != nullptr &&
+                  legacy_fn->return_type.spec.base == c4c::TB_LONGLONG,
+              "range-for method return metadata should preserve rendered-name fallback");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
                       "legacy_range_for_method", 52),

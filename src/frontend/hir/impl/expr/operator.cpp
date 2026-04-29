@@ -326,9 +326,12 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         auto method = find_struct_method_mangled(
             rts.tag, "operator_arrow", rts.is_const);
         if (!method) break;
+        DeclRef arrow_method_ref{};
+        arrow_method_ref.name = *method;
+        arrow_method_ref.link_name_id = module_->link_names.find(arrow_method_ref.name);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
-        if (const Function* fn = module_->find_function_by_name_legacy(*method)) {
+        if (const Function* fn = module_->resolve_operator_callee(arrow_method_ref)) {
           fn_ts = fn->return_type.spec;
         }
         if (fn_ts.base == TB_VOID) {
@@ -353,7 +356,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         CallExpr cc{};
         DeclRef dr{};
         dr.name = *method;
-        dr.link_name_id = module_->link_names.find(dr.name);
+        dr.link_name_id = arrow_method_ref.link_name_id;
         TypeSpec callee_ts = fn_ts;
         callee_ts.ptr_level++;
         cc.callee = append_expr(n, dr, callee_ts);

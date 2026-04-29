@@ -184,7 +184,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
       dr.name = *method;
       dr.link_name_id = module_->link_names.find(dr.name);
       {
-        if (const Function* fn = module_->find_function_by_name_legacy(*method)) {
+        if (const Function* fn = module_->resolve_range_for_method_callee(dr)) {
           deref_ret_ts = fn->return_type.spec;
         }
       }

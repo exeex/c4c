@@ -8,19 +8,23 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 range-for prefix-increment method return lookup demotion
-packet. `Lowerer::lower_range_for_stmt()` now resolves the range-for iterator
-`operator_preinc` return metadata through `Module::resolve_range_for_method_callee()`
-after constructing the `DeclRef` with its `link_name_id`, instead of calling
-`find_function_by_name_legacy()` directly. The focused HIR lookup test now pins
-range-for method LinkNameId authority over a stale rendered name while preserving
-explicit rendered-name fallback.
+Completed Step 3 nested `operator_arrow` and range-for `operator_deref`
+method return lookup demotion packet. `Lowerer::lower_member_expr()` now uses
+`Module::resolve_operator_callee()` for nested `operator_arrow` return
+metadata after constructing the `DeclRef` with its `link_name_id`, and
+`Lowerer::lower_range_for_stmt()` now uses
+`Module::resolve_range_for_method_callee()` for iterator `operator_deref`
+return metadata instead of calling `find_function_by_name_legacy()` directly.
+The focused HIR lookup test now pins that stale rendered names cannot override
+resolver-authoritative return metadata while preserving explicit rendered-name
+fallback.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: demote the remaining range-for dereference method
-return-type lookup that still calls `find_function_by_name_legacy()` directly
-after constructing a `DeclRef` with `link_name_id`.
+Next coherent Step 3 packet: inspect the remaining `find_function_by_name_legacy()`
+callers and decide whether the range-for `begin()` return-type lookup has
+enough declaration metadata for resolver demotion or should remain classified
+as a compatibility fallback.
 
 ## Watchouts
 
@@ -70,17 +74,20 @@ Step 1 inventory classification:
   declaration metadata. The direct-call packet removed direct-call uses of the
   function legacy helper in `call.cpp`; this packet demoted the main
   overloaded-operator helper and bool-conversion helper in `operator.cpp`, and
-  the range-for prefix-increment method return lookup in `range_for.cpp`, but
-  the nested `operator_arrow` and remaining range-for dereference method helper
-  still need separate packets.
+  the range-for prefix-increment method return lookup in `range_for.cpp`; the
+  nested `operator_arrow` helper in `operator.cpp` and range-for dereference
+  method helper in `range_for.cpp` are now also routed through resolver
+  authority. The range-for `begin()` return-type lookup still calls the legacy
+  helper and needs separate classification before demotion.
 - Direct-call link-carrier discovery now records declaration lookup hits through
   the shared resolver. The hit/mismatch recorders deduplicate exact repeats, but
   future packets should keep an eye on noisy lookup telemetry if more call-site
   helpers are routed through the same boundary.
 - The focused HIR lookup tests cover module structured function/global,
-  function and global `LinkNameId`, concrete `GlobalId`, and direct-call
-  structured/LinkNameId stale-rendered-name disagreement cases without
-  weakening legacy fallback coverage.
+  function and global `LinkNameId`, concrete `GlobalId`, direct-call
+  structured/LinkNameId stale-rendered-name disagreement cases, and
+  operator/range-for resolver return metadata without weakening legacy fallback
+  coverage.
 
 Do not weaken tests or add named-case shortcuts. Stale rendered-name tests are
 appropriate only when they prove structured identity wins over legacy lookup
