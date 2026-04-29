@@ -158,6 +158,9 @@ struct ParserTemplateState {
       template_struct_defs_by_key;
   std::unordered_map<QualifiedNameKey, std::vector<Node*>, QualifiedNameKeyHash>
       template_struct_specializations_by_key;
+  // Rendered-name compatibility mirrors. Template lookup should prefer the
+  // QualifiedNameKey tables above; these maps preserve final-spelling and
+  // TextId-less bridge behavior.
   std::unordered_map<std::string, Node*> template_struct_defs;
   std::unordered_map<std::string, std::vector<Node*>>
       template_struct_specializations;

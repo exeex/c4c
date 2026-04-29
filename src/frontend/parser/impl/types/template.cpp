@@ -119,14 +119,18 @@ Node* Parser::find_template_struct_primary(
     }
 
     if (!has_structured_name) {
-        auto it = template_state_.template_struct_defs.find(
+        auto mirror_it = template_state_.template_struct_defs.find(
             std::string(fallback_name));
-        if (it != template_state_.template_struct_defs.end()) return it->second;
+        if (mirror_it != template_state_.template_struct_defs.end()) {
+            return mirror_it->second;
+        }
     }
     if (resolved_type.base_text_id == kInvalidText && !resolved.empty() &&
         resolved != fallback_name) {
-        auto it = template_state_.template_struct_defs.find(resolved);
-        if (it != template_state_.template_struct_defs.end()) return it->second;
+        auto mirror_it = template_state_.template_struct_defs.find(resolved);
+        if (mirror_it != template_state_.template_struct_defs.end()) {
+            return mirror_it->second;
+        }
     }
     return nullptr;
 }
@@ -206,25 +210,29 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
 
     if (primary_tpl && !primary_has_structured_name && primary_tpl->name &&
         primary_tpl->name[0]) {
-        auto it = template_state_.template_struct_specializations.find(
+        auto mirror_it = template_state_.template_struct_specializations.find(
             primary_tpl->name);
-        if (it != template_state_.template_struct_specializations.end()) {
-            return &it->second;
+        if (mirror_it !=
+            template_state_.template_struct_specializations.end()) {
+            return &mirror_it->second;
         }
     }
 
     if (!has_structured_name) {
-        auto it = template_state_.template_struct_specializations.find(
+        auto mirror_it = template_state_.template_struct_specializations.find(
             std::string(fallback_name));
-        if (it != template_state_.template_struct_specializations.end()) {
-            return &it->second;
+        if (mirror_it !=
+            template_state_.template_struct_specializations.end()) {
+            return &mirror_it->second;
         }
     }
     if (resolved_type.base_text_id == kInvalidText && !resolved.empty() &&
         resolved != fallback_name) {
-        auto it = template_state_.template_struct_specializations.find(resolved);
-        if (it != template_state_.template_struct_specializations.end()) {
-            return &it->second;
+        auto mirror_it =
+            template_state_.template_struct_specializations.find(resolved);
+        if (mirror_it !=
+            template_state_.template_struct_specializations.end()) {
+            return &mirror_it->second;
         }
     }
     return nullptr;
@@ -291,15 +299,16 @@ void Parser::register_template_struct_primary(
         template_state_.template_struct_defs_by_key[key] = node;
     }
 
-    const std::string legacy_name(fallback_name);
-    if (!legacy_name.empty()) {
-        template_state_.template_struct_defs[legacy_name] = node;
+    const std::string rendered_primary_name(fallback_name);
+    if (!rendered_primary_name.empty()) {
+        template_state_.template_struct_defs[rendered_primary_name] = node;
     }
 
-    const std::string qualified =
+    const std::string rendered_qualified_bridge =
         bridge_name_in_context(context_id, name_text_id, fallback_name);
-    if (!qualified.empty() && qualified != legacy_name) {
-        template_state_.template_struct_defs[qualified] = node;
+    if (!rendered_qualified_bridge.empty() &&
+        rendered_qualified_bridge != rendered_primary_name) {
+        template_state_.template_struct_defs[rendered_qualified_bridge] = node;
     }
 }
 
@@ -325,18 +334,20 @@ void Parser::register_template_struct_specialization(
         .push_back(node);
     if (!node->name) return;
     if (primary_name.find("::") != std::string_view::npos) return;
-    std::string spelled_name = node->name;
-    const size_t scope_sep = spelled_name.rfind("::");
+    std::string specialization_final_spelling = node->name;
+    const size_t scope_sep = specialization_final_spelling.rfind("::");
     if (scope_sep == std::string::npos) return;
-    std::string qualified_primary =
-        spelled_name.substr(0, scope_sep + 2) + std::string(primary_name);
+    std::string rendered_qualified_primary =
+        specialization_final_spelling.substr(0, scope_sep + 2) +
+        std::string(primary_name);
     const QualifiedNameKey qualified_key = alias_template_key_in_context(
-        context_id, find_parser_text_id(qualified_primary), qualified_primary);
+        context_id, find_parser_text_id(rendered_qualified_primary),
+        rendered_qualified_primary);
     if (qualified_key.base_text_id != kInvalidText && !(qualified_key == key)) {
         template_state_.template_struct_specializations_by_key[qualified_key]
             .push_back(node);
     }
-    template_state_.template_struct_specializations[qualified_primary]
+    template_state_.template_struct_specializations[rendered_qualified_primary]
         .push_back(node);
 }
 

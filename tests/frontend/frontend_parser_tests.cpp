@@ -3046,7 +3046,7 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
               "test fixture should balance the local visible typedef scope");
 }
 
-void test_parser_template_lookup_demotes_legacy_rendered_name_bridges() {
+void test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -3064,11 +3064,11 @@ void test_parser_template_lookup_demotes_legacy_rendered_name_bridges() {
   expect_true(parser.find_template_struct_primary(
                   parser.current_namespace_context_id(), trait_text,
                   "Trait") == nullptr,
-              "template primary lookup should not promote legacy-only rendered names when a valid TextId lookup misses structured storage");
+              "template primary lookup should keep the QualifiedNameKey table authoritative over rendered-name mirrors");
   expect_true(parser.find_template_struct_primary(
                   parser.current_namespace_context_id(), c4c::kInvalidText,
                   "Trait") == primary,
-              "TextId-less template primary lookup should preserve rendered-name compatibility");
+              "TextId-less template primary lookup should preserve the rendered-name compatibility mirror");
 
   c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
   specialization->name = arena.strdup("Trait_T_int");
@@ -3078,19 +3078,19 @@ void test_parser_template_lookup_demotes_legacy_rendered_name_bridges() {
   parser.template_state_.template_struct_specializations["Trait"].push_back(
       specialization);
   expect_true(parser.find_template_struct_specializations(primary) == nullptr,
-              "template specialization lookup should not promote primary legacy rendered-name maps when the primary carries a valid TextId");
+              "template specialization lookup should keep primary QualifiedNameKey state authoritative over rendered-name mirrors");
   expect_true(parser.find_template_struct_specializations(
                   parser.current_namespace_context_id(), trait_text, "Trait",
                   nullptr) == nullptr,
-              "template specialization lookup should not promote legacy-only rendered names when a valid TextId lookup misses structured storage");
-  const std::vector<c4c::Node*>* legacy_specializations =
+              "template specialization lookup should keep direct QualifiedNameKey state authoritative over rendered-name mirrors");
+  const std::vector<c4c::Node*>* compatibility_specializations =
       parser.find_template_struct_specializations(
           parser.current_namespace_context_id(), c4c::kInvalidText, "Trait",
           nullptr);
-  expect_true(legacy_specializations != nullptr &&
-                  legacy_specializations->size() == 1 &&
-                  (*legacy_specializations)[0] == specialization,
-              "TextId-less template specialization lookup should preserve rendered-name compatibility");
+  expect_true(compatibility_specializations != nullptr &&
+                  compatibility_specializations->size() == 1 &&
+                  (*compatibility_specializations)[0] == specialization,
+              "TextId-less template specialization lookup should preserve the rendered-name compatibility mirror");
 }
 
 void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
@@ -4185,7 +4185,7 @@ int main() {
   test_parser_template_type_arg_prefers_local_visible_typedef_text_id();
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
-  test_parser_template_lookup_demotes_legacy_rendered_name_bridges();
+  test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors();
   test_parser_nttp_default_cache_dual_reads_legacy_mismatch();
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
   test_parser_template_static_member_lookup_prefers_record_definition();
