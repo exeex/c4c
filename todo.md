@@ -8,78 +8,72 @@ Current Step Title: Split Parser Semantic Lookup From Text Spelling
 
 ## Just Finished
 
-Completed Step 2 parser-template mirror demotion check for the
-`ParserTemplateState` family.
+Completed Step 3's first parser record-tag semantic packet as an inventory and
+blocker slice for `DefinitionState::struct_tag_def_map`.
 
-Verified the owned template paths keep structured/TextId authority ahead of
-rendered mirror entries:
-- `find_template_struct_primary` and `find_template_struct_specializations`
-  use `QualifiedNameKey` lookups for valid `TextId` names and only consult
-  rendered `template_struct_defs`/`template_struct_specializations` when the
-  lookup is TextId-less or otherwise a compatibility bridge.
-- `eval_deferred_nttp_default` uses `NttpDefaultExprKey` results for valid
-  template text and treats rendered `nttp_default_expr_tokens` as a mismatch
-  mirror, not a rescue path.
-- Template-instantiation de-dup helpers in `types/template.cpp` and
-  direct-emission helpers in `types/base.cpp` preserve rendered final-spelling
-  mirrors while refusing to let valid structured-key misses be satisfied by
-  legacy rendered entries.
+Inventory and classification of each owned read/write path:
+- `parser_state.hpp`: `struct_tag_def_map` is the rendered-tag-to-`Node*`
+  bridge. The key is spelling/final rendered tag text; the value is the parser
+  record identity currently available to lookup users.
+- `support.cpp`: `Parser::eval_const_int_with_parser_tables`,
+  `field_align`, `struct_align`, `struct_sizeof`, and `compute_offsetof` use
+  `TypeSpec::tag` strings to reach the record `Node*` for layout and
+  `offsetof`. These are semantic record lookups, but their public/helper
+  contract only receives `TypeSpec` plus a string-keyed map.
+- `support.cpp`: `register_struct_definition_for_testing` is a test
+  compatibility writer for rendered tags.
+- `declarations.cpp`: both local/global incomplete-object checks read
+  `TypeSpec::tag` through the map to decide whether a record definition has a
+  body; global constexpr evaluation passes the same bridge into const eval.
+- `expressions.cpp`: `offsetof` constant folding passes the map into
+  `eval_const_int`; the `NK_OFFSETOF` node carries the record only as
+  `TypeSpec::tag`.
+- `types/struct.cpp`: record definition registration writes both source
+  spelling and canonical `sd->name` spellings to the map; bit-field width
+  evaluation only passes the bridge through const eval.
+- `types/template.cpp`: template instantiation writes mangled rendered tags
+  for explicit specializations and injected parses; static member lookup reads
+  instantiated/base records by rendered tag and then recurses on `Node*`.
+- `types/declarator.cpp`: qualified/nested owner resolution reads the map from
+  resolved owner spelling or nested `TypeSpec::tag`; array-size evaluation only
+  passes the bridge through const eval.
+- `types/base.cpp`: member typedef lookup, template base instantiation,
+  direct template emission, and `StructLike::type` remapping read/write mangled
+  rendered tags while preserving `TypeSpec::tag` as the outward bridge.
+- `frontend_parser_tests.cpp`: direct-emission tests intentionally mutate and
+  assert `struct_tag_def_map` as the compatibility/final-spelling mirror for
+  template instantiation recovery.
 
-Focused tests in `tests/frontend/frontend_parser_tests.cpp` cover primary and
-specialization lookup demotion, NTTP default cache mirror mismatch behavior,
-specialization reuse, and direct-emission de-dup mirror healing. No owned code
-changes were needed in this packet because the delegated implementation state
-already matched the Step 2 contract.
+No parser-owned conversion was made. The blocker is that the first viable
+semantic-record surfaces all cross through `TypeSpec`, and `TypeSpec` currently
+carries record identity only as `const char* tag`. It has no parser-owned
+record pointer, record id, or typed semantic key in the delegated owned files.
+Changing the map behind these call sites would still make raw rendered tag text
+the authority, while adding real semantic identity requires changing the shared
+AST/type contract or downstream consumers that depend on `TypeSpec::tag`.
 
 ## Suggested Next
 
-Lifecycle review decision: Step 2 is exhausted for the currently identified
-pure parser text lookup work. The parser-template mirror family already proves
-the structured/TextId-first contract, and the remaining obvious string-keyed
-parser family is `struct_tag_def_map`, which is semantic record authority rather
-than pure text lookup.
-
-Next bounded implementation packet: execute Step 3's first semantic-record
-packet for the parser record-tag bridge.
-
-Suggested owned implementation files:
-- `src/frontend/parser/impl/parser_state.hpp`
-- `src/frontend/parser/impl/support.cpp`
-- `src/frontend/parser/parser_support.hpp`
-- `src/frontend/parser/impl/declarations.cpp`
-- `src/frontend/parser/impl/types/struct.cpp`
-- `src/frontend/parser/impl/types/template.cpp`
-- `src/frontend/parser/impl/types/base.cpp`
-- `src/frontend/parser/impl/types/declarator.cpp`
-- `src/frontend/parser/impl/expressions.cpp`
-- `tests/frontend/frontend_parser_tests.cpp`
-
-Packet goal: inventory each `struct_tag_def_map` read/write path, classify tag
-spelling versus record identity, and convert only the first bounded
-parser-owned record-tag lookup surface that can use semantic record authority
-without requiring downstream HIR/LIR/BIR contract changes. If the bridge cannot
-be contained in parser-owned code, stop and record the exact blocker for a
-separate open idea instead of widening the packet.
-
-Suggested proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' > test_after.log 2>&1`
+Plan-owner or supervisor follow-up: split a separate bridge initiative for
+typed parser record identity through `TypeSpec` and downstream type consumers.
+The smallest useful next design packet should define how a parsed record
+definition `Node*` or stable parser record id travels with struct/union
+`TypeSpec` values while preserving `TypeSpec::tag` as final spelling and
+compatibility output.
 
 ## Watchouts
 
-Do not treat `struct_tag_def_map` as a pure text-map conversion: struct tags
-feed sizeof/alignof, offsetof, template instantiation, and downstream type
-surfaces through rendered `TypeSpec::tag` strings. The Step 3 packet must start
-from semantic record authority and keep any required `TypeSpec::tag` string as
-an explicit bridge until the affected parser paths have a replacement.
+Do not convert `struct_tag_def_map` to a differently named string table or a
+`TextId` table as Step 3 progress. That would still treat spelling as semantic
+record authority because the lookup input is `TypeSpec::tag`.
 
-Do not delete string overloads wholesale. Public/parser test helpers still use
-string inputs as compatibility bridges, and many token-spelling probes are
-source spelling or diagnostics rather than lookup authority.
+Do not remove or weaken the existing template direct-emission tests that mutate
+`struct_tag_def_map`; they document the currently required compatibility mirror
+until typed record identity exists.
 
-Overfit risk: changing tests by weakening legacy bridge coverage would violate
-the plan. The parser template mirror tests intentionally prove both sides:
-valid structured misses are not rescued by rendered-name mirrors, while
-TextId-less compatibility and final-spelling mirrors remain available.
+Preserve `TypeSpec::tag` strings as explicit final-spelling/downstream bridges
+for sizeof/alignof/offsetof, template instantiations, member typedef lookup, and
+HIR-facing type surfaces.
 
 ## Proof
 
