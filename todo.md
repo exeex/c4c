@@ -9,27 +9,27 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with declaration-side local variable constructor routing in `decl.cpp`.
-Local direct constructor init, implicit default constructor init, and copy/move
-constructor dispatch now derive the lookup owner from structured declaration
-type identity (`record_def` or template owner carriers) before falling back to
-the rendered declaration `tag`.
+with declaration-side local destructor tracking in `decl.cpp`. Local destructor
+stack registration now derives the tracked destructor/member-dtor owner from
+structured declaration type identity (`record_def` or template owner carriers)
+before falling back to the rendered declaration `tag`.
 
 Added focused HIR coverage proving a stale rendered local declaration tag cannot
-select the wrong direct, default, or copy constructor when structured
-`record_def` owner identity is available.
+select the wrong explicit destructor tracking or suppress member-dtor tracking
+when structured `record_def` owner identity is available.
 
 ## Suggested Next
 
-Continue Step 4 by auditing remaining declaration-side destructor tracking in
-`decl.cpp`, especially local destructor stack paths that still key through
-`decl_ts.tag`.
+Continue Step 4 by auditing remaining declaration-side struct owner lookups in
+`decl.cpp` for any paths that still prefer rendered `tag` before structured
+owner identity.
 
 ## Watchouts
 
 Declaration constructor routing intentionally keeps the rendered fallback when
-no structured declaration owner can be resolved. Local destructor tracking still
-uses rendered `decl_ts.tag` and was outside this packet's Done When.
+no structured declaration owner can be resolved. Local destructor tracking now
+uses the same declaration owner helper; the rendered fallback remains
+intentional when no structured owner can be resolved.
 
 ## Proof
 

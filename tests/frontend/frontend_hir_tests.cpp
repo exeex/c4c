@@ -3486,6 +3486,150 @@ void test_hir_local_decl_copy_constructor_prefers_record_def_over_stale_tag() {
             "local copy constructor should use structured owner before stale rendered tag");
 }
 
+void test_hir_local_decl_destructor_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealLocalDtor");
+  real_record->unqualified_name = arena.strdup("RealLocalDtor");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for local destructor");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealLocalDtor";
+  real_def.tag_text_id = module.link_name_texts->intern("RealLocalDtor");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleLocalDtor";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleLocalDtor");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* real_dtor = parser.make_node(c4c::NK_FUNCTION, 1);
+  real_dtor->is_destructor = true;
+  real_dtor->type.base = c4c::TB_VOID;
+  lowerer.struct_destructors_["RealLocalDtor"] = {"RealLocalDtor__dtor", real_dtor};
+  c4c::Node* stale_dtor = parser.make_node(c4c::NK_FUNCTION, 1);
+  stale_dtor->is_destructor = true;
+  stale_dtor->type.base = c4c::TB_VOID;
+  lowerer.struct_destructors_["StaleLocalDtor"] = {"StaleLocalDtor__dtor",
+                                                   stale_dtor};
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleLocalDtor");
+  owner_ts.record_def = real_record;
+
+  c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
+  decl->name = arena.strdup("local");
+  decl->unqualified_name = arena.strdup("local");
+  decl->type = owner_ts;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  lowerer.lower_local_decl_stmt(ctx, decl);
+
+  expect_true(ctx.dtor_stack.size() == 1,
+              "local declaration with destructor should be tracked for scope exit");
+  expect_eq(ctx.dtor_stack.back().struct_tag, "RealLocalDtor",
+            "local destructor tracking should use structured owner before stale rendered tag");
+}
+
+void test_hir_local_decl_member_dtor_tracking_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealLocalMemberDtor");
+  real_record->unqualified_name = arena.strdup("RealLocalMemberDtor");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for local member dtor");
+
+  c4c::TypeSpec field_ts{};
+  field_ts.array_size = -1;
+  field_ts.inner_rank = -1;
+  field_ts.base = c4c::TB_STRUCT;
+  field_ts.tag = arena.strdup("InnerLocalDtor");
+
+  c4c::hir::HirStructDef inner_def;
+  inner_def.tag = "InnerLocalDtor";
+  inner_def.tag_text_id = module.link_name_texts->intern("InnerLocalDtor");
+  inner_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[inner_def.tag] = inner_def;
+  c4c::Node* inner_dtor = parser.make_node(c4c::NK_FUNCTION, 1);
+  inner_dtor->is_destructor = true;
+  inner_dtor->type.base = c4c::TB_VOID;
+  lowerer.struct_destructors_["InnerLocalDtor"] = {"InnerLocalDtor__dtor",
+                                                   inner_dtor};
+
+  c4c::hir::HirStructField field;
+  field.name = "field";
+  field.field_text_id = module.link_name_texts->intern("field");
+  field.elem_type = field_ts;
+  field.member_symbol_id = module.member_symbols.intern("RealLocalMemberDtor::field");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealLocalMemberDtor";
+  real_def.tag_text_id = module.link_name_texts->intern("RealLocalMemberDtor");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  real_def.fields.push_back(field);
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleLocalMemberDtor";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleLocalMemberDtor");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleLocalMemberDtor");
+  owner_ts.record_def = real_record;
+
+  c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
+  decl->name = arena.strdup("local");
+  decl->unqualified_name = arena.strdup("local");
+  decl->type = owner_ts;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  lowerer.lower_local_decl_stmt(ctx, decl);
+
+  expect_true(ctx.dtor_stack.size() == 1,
+              "local declaration with member dtors should be tracked for scope exit");
+  expect_eq(ctx.dtor_stack.back().struct_tag, "RealLocalMemberDtor",
+            "local member-dtor tracking should use structured owner before stale rendered tag");
+}
+
 void test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4313,6 +4457,8 @@ int main() {
   test_hir_local_decl_direct_constructor_prefers_record_def_over_stale_tag();
   test_hir_local_decl_default_constructor_prefers_record_def_over_stale_tag();
   test_hir_local_decl_copy_constructor_prefers_record_def_over_stale_tag();
+  test_hir_local_decl_destructor_prefers_record_def_over_stale_tag();
+  test_hir_local_decl_member_dtor_tracking_prefers_record_def_over_stale_tag();
   test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_member_dtor_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag();
