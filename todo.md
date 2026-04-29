@@ -8,31 +8,28 @@ Current Step Title: Convert Pure Parser Text Lookup To TextId
 
 ## Just Finished
 
-Step 2 converted the function-local K&R parameter declaration lookup in
-`parse_declaration_or_function()` from `std::unordered_map<std::string, Node*>`
-to `std::unordered_map<TextId, Node*>`.
+Step 2 converted the record field duplicate-name checker from rendered
+`std::string` set authority to parser `TextId` identity.
 
-Identifier-list parameter names are interned once at the local lookup boundary,
-K&R declaration names use the declarator-provided `TextId` with an interned
-fallback for arena spellings, and `Node::name` remains the original spelling
-used by the AST and diagnostics.
+`parse_record_body()` now owns `std::unordered_set<TextId>` for
+`field_names_seen`, and `make_record_field_duplicate_checker()` resolves field
+spellings through the parser text table with fallback interning only when no
+existing parser text id is present. Duplicate diagnostics still report the
+original field spelling, and C++ mode still tolerates duplicate field names.
 
 ## Suggested Next
 
 Next bounded conversion packet: pick the next pure parser-local string lookup
-from the Step 1 inventory, likely record `field_names_seen`, and convert only
-that local duplicate-name check to parser text identity if it has a clean
-`TextId` source at the boundary.
+from the Step 1 inventory and convert only that local lookup to parser text
+identity if it has a clean `TextId` boundary.
 
 ## Watchouts
 
 Do not widen the next packet into `struct_tag_def_map`, record layout
 const-eval helpers, template rendered mirrors, public support helper
-signatures, or files under `src/frontend/parser/impl/types/`.
-
-For K&R parameters, declaration names without a usable spelling/text id are
-ignored as before for malformed declarators; normal undeclared identifier-list
-parameters still receive the old-style implicit `int` fallback.
+signatures, or parser semantic record maps. The record field duplicate checker
+kept its callback shape intentionally so this packet did not require parser
+member-dispatch signature churn.
 
 ## Proof
 
@@ -40,4 +37,17 @@ Proof command run exactly as delegated:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains the frontend parser subset output.
+Result: passed. `test_after.log` contained the frontend parser subset output
+and was rolled forward to `test_before.log` after supervisor review.
+
+Supervisor regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed before log roll-forward. No new failures.
+
+Supervisor direct behavior check:
+
+`ctest --test-dir build -j --output-on-failure -R '^(negative_tests_bad_(struct|union)_duplicate_field|cpp_positive_sema_eastl_slice6_template_defaults_and_refqual_cpp)$'`
+
+Result: passed.

@@ -682,17 +682,26 @@ bool can_start_qualified_type_declaration(const Parser& parser,
 
 std::function<void(const char*)> make_record_field_duplicate_checker(
     Parser* parser,
-    std::unordered_set<std::string>* field_names_seen) {
+    std::unordered_set<TextId>* field_names_seen) {
     return [parser, field_names_seen](const char* fname) {
         if (!fname || !field_names_seen)
             return;
-        std::string n(fname);
-        if (field_names_seen->count(n)) {
+        const std::string_view name(fname);
+        if (name.empty())
+            return;
+        TextId name_text_id =
+            parser ? parser->find_parser_text_id(name) : kInvalidText;
+        if (name_text_id == kInvalidText && parser)
+            name_text_id = parser->parser_text_id_for_token(kInvalidText, name);
+        if (name_text_id == kInvalidText)
+            return;
+        if (field_names_seen->count(name_text_id)) {
             if (!parser || parser->is_cpp_mode())
                 return;
-            throw std::runtime_error(std::string("duplicate field name: ") + n);
+            throw std::runtime_error(std::string("duplicate field name: ") +
+                                     std::string(name));
         }
-        field_names_seen->insert(n);
+        field_names_seen->insert(name_text_id);
     };
 }
 

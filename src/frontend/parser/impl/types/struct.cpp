@@ -1898,7 +1898,7 @@ void parse_record_body(
     if (!body_state)
         return;
 
-    std::unordered_set<std::string> field_names_seen;
+    std::unordered_set<TextId> field_names_seen;
     auto check_dup_field =
         make_record_field_duplicate_checker(&parser, &field_names_seen);
 
