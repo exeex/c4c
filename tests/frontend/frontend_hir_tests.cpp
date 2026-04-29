@@ -1044,6 +1044,73 @@ int call_external(int value) { return rendered_shadow(value); }
               "extern-call declaration should not use the drifted local collision as authority");
 }
 
+void test_hir_to_lir_global_initializer_lookup_prefers_semantic_global_identity() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int semantic_global[2] = {1, 2};
+int rendered_shadow = 11;
+int *global_ptr = &semantic_global[1];
+)cpp");
+
+  const auto semantic_it = hir_module.global_index.find("semantic_global");
+  expect_true(semantic_it != hir_module.global_index.end(),
+              "fixture semantic global should be present in the HIR global index");
+  c4c::hir::GlobalVar* semantic_global = hir_module.find_global(semantic_it->second);
+  expect_true(semantic_global != nullptr &&
+                  semantic_global->link_name_id != c4c::kInvalidLinkName &&
+                  semantic_global->name_text_id != c4c::kInvalidText,
+              "fixture semantic global should carry stable HIR identity");
+
+  const auto shadow_it = hir_module.global_index.find("rendered_shadow");
+  expect_true(shadow_it != hir_module.global_index.end(),
+              "fixture shadow global should be present in the HIR global index");
+  const c4c::hir::GlobalVar* shadow_global = hir_module.find_global(shadow_it->second);
+  expect_true(shadow_global != nullptr,
+              "fixture shadow global should resolve through the HIR global lookup");
+
+  const auto ptr_it = hir_module.global_index.find("global_ptr");
+  expect_true(ptr_it != hir_module.global_index.end(),
+              "fixture pointer global should be present in the HIR global index");
+  c4c::hir::GlobalVar* global_ptr = hir_module.find_global(ptr_it->second);
+  expect_true(global_ptr != nullptr,
+              "fixture pointer global should resolve through the HIR global lookup");
+  auto* ptr_init = std::get_if<c4c::hir::InitScalar>(&global_ptr->init);
+  expect_true(ptr_init != nullptr,
+              "fixture pointer global should use a scalar initializer");
+
+  auto* addr_of =
+      std::get_if<c4c::hir::UnaryExpr>(&hir_module.expr_pool[ptr_init->expr.value].payload);
+  expect_true(addr_of != nullptr && addr_of->op == c4c::hir::UnaryOp::AddrOf,
+              "fixture pointer initializer should take a global address");
+  auto* index_expr =
+      std::get_if<c4c::hir::IndexExpr>(&hir_module.expr_pool[addr_of->operand.value].payload);
+  expect_true(index_expr != nullptr,
+              "fixture pointer initializer should index the semantic global array");
+  auto* base_ref =
+      std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[index_expr->base.value].payload);
+  expect_true(base_ref != nullptr && base_ref->global &&
+                  base_ref->global->value == semantic_global->id.value,
+              "fixture indexed base should carry a concrete semantic GlobalId");
+
+  semantic_global->name = shadow_global->name;
+  base_ref->name = shadow_global->name;
+  base_ref->link_name_id = c4c::kInvalidLinkName;
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto lir_ptr_it = std::find_if(
+      lir_module.globals.begin(), lir_module.globals.end(),
+      [&](const c4c::codegen::lir::LirGlobal& global) {
+        return global.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(global.link_name_id) == "global_ptr";
+      });
+  expect_true(lir_ptr_it != lir_module.globals.end(),
+              "fixture pointer global should lower through semantic identity");
+  expect_true(lir_ptr_it->init_text.find("@semantic_global") != std::string::npos,
+              "global initializer lowering should recover the semantic global from GlobalId identity");
+  expect_true(lir_ptr_it->init_text.find("@rendered_shadow") == std::string::npos,
+              "global initializer lowering should not trust a drifted raw global-name collision");
+}
+
 void test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids() {
   c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 extern int helper(int value);
@@ -1887,6 +1954,7 @@ int main() {
   test_hir_to_lir_dead_internal_reachability_prefers_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_direct_call_lookup_rejects_rendered_name_collision_after_link_name_miss();
+  test_hir_to_lir_global_initializer_lookup_prefers_semantic_global_identity();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
   test_hir_to_lir_decl_backed_call_result_inference_prefers_link_name_ids();
   test_hir_to_lir_object_helper_callees_prefer_link_name_ids();

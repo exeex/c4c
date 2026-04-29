@@ -703,24 +703,13 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
 
 }  // namespace stmt_emitter_detail
 
-// Draft-only staging file for Step 3 of the stmt_emitter split refactor.
-// The monolith remains the live implementation until Step 4 build wiring.
+namespace {
 
-StmtEmitter::StmtEmitter(const Module& m) : mod_(m) {}
-
-void StmtEmitter::set_module(lir::LirModule& module) { module_ = &module; }
-
-void StmtEmitter::emit_lir_op(FnCtx& ctx, lir::LirInst op) {
-  // Skip dead code after a terminator has been placed in this block.
-  if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) return;
-  ctx.cur_block().insts.push_back(std::move(op));
-  ctx.last_term = false;
-}
-
-const GlobalVar* StmtEmitter::select_global_object(const std::string& name) const {
+template <typename Matches>
+const GlobalVar* select_global_object_by(const Module& mod, Matches matches) {
   const GlobalVar* best = nullptr;
-  for (const auto& g : mod_.globals) {
-    if (g.name != name) continue;
+  for (const auto& g : mod.globals) {
+    if (!matches(g)) continue;
     if (!best) {
       best = &g;
       continue;
@@ -740,16 +729,66 @@ const GlobalVar* StmtEmitter::select_global_object(const std::string& name) cons
   return best;
 }
 
+}  // namespace
+
+// Draft-only staging file for Step 3 of the stmt_emitter split refactor.
+// The monolith remains the live implementation until Step 4 build wiring.
+
+StmtEmitter::StmtEmitter(const Module& m) : mod_(m) {}
+
+void StmtEmitter::set_module(lir::LirModule& module) { module_ = &module; }
+
+void StmtEmitter::emit_lir_op(FnCtx& ctx, lir::LirInst op) {
+  // Skip dead code after a terminator has been placed in this block.
+  if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) return;
+  ctx.cur_block().insts.push_back(std::move(op));
+  ctx.last_term = false;
+}
+
+const GlobalVar* StmtEmitter::select_global_object(const std::string& name) const {
+  return select_global_object_by(mod_, [&](const GlobalVar& g) { return g.name == name; });
+}
+
 const GlobalVar* StmtEmitter::select_global_object(GlobalId id) const {
   const GlobalVar* gv = mod_.find_global(id);
   if (!gv) return nullptr;
-  if (const GlobalVar* best = select_global_object(gv->name)) return best;
+  if (gv->link_name_id != kInvalidLinkName) {
+    if (const GlobalVar* best = select_global_object_by(mod_, [&](const GlobalVar& cand) {
+          return cand.link_name_id == gv->link_name_id;
+        })) {
+      return best;
+    }
+  }
+  if (gv->name_text_id != kInvalidText) {
+    if (const GlobalVar* best = select_global_object_by(mod_, [&](const GlobalVar& cand) {
+          return cand.name_text_id == gv->name_text_id;
+        })) {
+      return best;
+    }
+  }
+  if (gv->link_name_id == kInvalidLinkName && gv->name_text_id == kInvalidText) {
+    if (const GlobalVar* best = select_global_object(gv->name)) return best;
+  }
   return gv;
 }
 
 const GlobalVar* StmtEmitter::select_global_object(const DeclRef& ref) const {
   if (ref.global) return select_global_object(*ref.global);
-  if (const GlobalVar* gv = mod_.find_global(ref.link_name_id)) return gv;
+  if (ref.link_name_id != kInvalidLinkName) {
+    if (const GlobalVar* best = select_global_object_by(mod_, [&](const GlobalVar& cand) {
+          return cand.link_name_id == ref.link_name_id;
+        })) {
+      return best;
+    }
+  }
+  if (ref.name_text_id != kInvalidText) {
+    if (const GlobalVar* best = select_global_object_by(mod_, [&](const GlobalVar& cand) {
+          return cand.name_text_id == ref.name_text_id;
+        })) {
+      return best;
+    }
+  }
+  if (ref.link_name_id != kInvalidLinkName || ref.name_text_id != kInvalidText) return nullptr;
   return select_global_object(ref.name);
 }
 

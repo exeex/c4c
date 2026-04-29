@@ -59,6 +59,30 @@ std::string_view init_list_field_designator_text(const InitListItem& item,
   return {};
 }
 
+template <typename Matches>
+const GlobalVar* select_global_object_by(const Module& mod, Matches matches) {
+  const GlobalVar* best = nullptr;
+  for (const auto& g : mod.globals) {
+    if (!matches(g)) continue;
+    if (!best) {
+      best = &g;
+      continue;
+    }
+    const TypeSpec& best_ts = best->type.spec;
+    const TypeSpec& cand_ts = g.type.spec;
+    if (cand_ts.array_rank > 0 && best_ts.array_rank <= 0) {
+      best = &g;
+    } else if (cand_ts.array_rank > 0 && best_ts.array_rank > 0 &&
+               cand_ts.array_size > best_ts.array_size) {
+      best = &g;
+    } else if (cand_ts.array_rank <= 0 && best_ts.array_rank <= 0 &&
+               g.init.index() != 0 && best->init.index() == 0) {
+      best = &g;
+    }
+  }
+  return best;
+}
+
 }  // namespace
 
 // ── Constructor ───────────────────────────────────────────────────────────────
@@ -102,35 +126,49 @@ const HirStructDef* ConstInitEmitter::lookup_const_init_struct_def(const TypeSpe
 // ── Global object lookup ──────────────────────────────────────────────────────
 
 const GlobalVar* ConstInitEmitter::select_global_object(const std::string& name) const {
-  const GlobalVar* best = nullptr;
-  for (const auto& g : mod_.globals) {
-    if (g.name != name) continue;
-    if (!best) { best = &g; continue; }
-    const TypeSpec& best_ts = best->type.spec;
-    const TypeSpec& cand_ts = g.type.spec;
-    if (cand_ts.array_rank > 0 && best_ts.array_rank <= 0) {
-      best = &g;
-    } else if (cand_ts.array_rank > 0 && best_ts.array_rank > 0 &&
-               cand_ts.array_size > best_ts.array_size) {
-      best = &g;
-    } else if (cand_ts.array_rank <= 0 && best_ts.array_rank <= 0 &&
-               g.init.index() != 0 && best->init.index() == 0) {
-      best = &g;
-    }
-  }
-  return best;
+  return select_global_object_by(mod_, [&](const GlobalVar& g) { return g.name == name; });
 }
 
 const GlobalVar* ConstInitEmitter::select_global_object(GlobalId id) const {
   const GlobalVar* gv = mod_.find_global(id);
   if (!gv) return nullptr;
-  if (const GlobalVar* best = select_global_object(gv->name)) return best;
+  if (gv->link_name_id != kInvalidLinkName) {
+    if (const GlobalVar* best = select_global_object_by(mod_, [&](const GlobalVar& cand) {
+          return cand.link_name_id == gv->link_name_id;
+        })) {
+      return best;
+    }
+  }
+  if (gv->name_text_id != kInvalidText) {
+    if (const GlobalVar* best = select_global_object_by(mod_, [&](const GlobalVar& cand) {
+          return cand.name_text_id == gv->name_text_id;
+        })) {
+      return best;
+    }
+  }
+  if (gv->link_name_id == kInvalidLinkName && gv->name_text_id == kInvalidText) {
+    if (const GlobalVar* best = select_global_object(gv->name)) return best;
+  }
   return gv;
 }
 
 const GlobalVar* ConstInitEmitter::select_global_object(const DeclRef& ref) const {
   if (ref.global) return select_global_object(*ref.global);
-  if (const GlobalVar* gv = mod_.find_global(ref.link_name_id)) return gv;
+  if (ref.link_name_id != kInvalidLinkName) {
+    if (const GlobalVar* best = select_global_object_by(mod_, [&](const GlobalVar& cand) {
+          return cand.link_name_id == ref.link_name_id;
+        })) {
+      return best;
+    }
+  }
+  if (ref.name_text_id != kInvalidText) {
+    if (const GlobalVar* best = select_global_object_by(mod_, [&](const GlobalVar& cand) {
+          return cand.name_text_id == ref.name_text_id;
+        })) {
+      return best;
+    }
+  }
+  if (ref.link_name_id != kInvalidLinkName || ref.name_text_id != kInvalidText) return nullptr;
   return select_global_object(ref.name);
 }
 
@@ -475,14 +513,6 @@ std::optional<std::string> ConstInitEmitter::try_emit_global_address_expr(ExprId
     std::vector<std::string> indices;
   };
 
-  const auto resolve_global_decl_name = [&](LinkNameId id,
-                                            std::string_view name) -> std::optional<std::string> {
-    const GlobalVar* gv =
-        (id != kInvalidLinkName) ? mod_.find_global(id) : select_global_object(std::string(name));
-    if (!gv) return std::nullopt;
-    return emitted_link_name(mod_, gv->link_name_id, gv->name);
-  };
-
   std::function<std::optional<GlobalAddressExpr>(ExprId)> lower_expr =
       [&](ExprId expr_id) -> std::optional<GlobalAddressExpr> {
     const Expr& expr = get_expr(expr_id);
@@ -490,12 +520,12 @@ std::optional<std::string> ConstInitEmitter::try_emit_global_address_expr(ExprId
         [&](const auto& payload) -> std::optional<GlobalAddressExpr> {
           using T = std::decay_t<decltype(payload)>;
           if constexpr (std::is_same_v<T, DeclRef>) {
-            auto global_name = resolve_global_decl_name(payload.link_name_id, payload.name);
-            if (!global_name.has_value()) return std::nullopt;
             const GlobalVar* gv = select_global_object(payload);
             if (!gv) return std::nullopt;
+            const std::string global_name =
+                emitted_link_name(mod_, gv->link_name_id, gv->name);
             return GlobalAddressExpr{
-                .global_name = *global_name,
+                .global_name = global_name,
                 .root_type_text = llvm_alloca_ty(gv->type.spec),
                 .current_type = gv->type.spec,
                 .indices = {},
@@ -550,7 +580,17 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
   const auto resolve_global_decl_name = [&](LinkNameId id,
                                             std::string_view name) -> std::optional<std::string> {
     const GlobalVar* gv =
-        (id != kInvalidLinkName) ? mod_.find_global(id) : select_global_object(std::string(name));
+        (id != kInvalidLinkName)
+            ? select_global_object_by(mod_, [&](const GlobalVar& cand) {
+                return cand.link_name_id == id;
+              })
+            : select_global_object(std::string(name));
+    if (!gv) return std::nullopt;
+    return emitted_link_name(mod_, gv->link_name_id, gv->name);
+  };
+  const auto resolve_global_decl_ref_name =
+      [&](const DeclRef& ref) -> std::optional<std::string> {
+    const GlobalVar* gv = select_global_object(ref);
     if (!gv) return std::nullopt;
     return emitted_link_name(mod_, gv->link_name_id, gv->name);
   };
@@ -614,17 +654,24 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
              gname + ", i64 0, i64 0)";
     } else if constexpr (std::is_same_v<T, DeclRef>) {
       if (resolve_function_decl_name(p.link_name_id, p.name).has_value() ||
-          resolve_global_decl_name(p.link_name_id, p.name).has_value() ||
+          resolve_global_decl_ref_name(p).has_value() ||
           llvm_ty(expected_ts) == "ptr" ||
           expected_ts.ptr_level > 0 || expected_ts.is_fn_ptr) {
+        if (auto global_name = resolve_global_decl_ref_name(p)) {
+          return llvm_global_sym(*global_name);
+        }
         return llvm_global_sym(resolve_decl_name(p.link_name_id, p.name));
       }
       return "0";
     } else if constexpr (std::is_same_v<T, UnaryExpr>) {
       if (p.op == UnaryOp::AddrOf) {
         const Expr& op_e = get_expr(p.operand);
-        if (const auto* r = std::get_if<DeclRef>(&op_e.payload))
+        if (const auto* r = std::get_if<DeclRef>(&op_e.payload)) {
+          if (auto global_name = resolve_global_decl_ref_name(*r)) {
+            return llvm_global_sym(*global_name);
+          }
           return llvm_global_sym(resolve_decl_name(r->link_name_id, r->name));
+        }
         if (const auto* s = std::get_if<StringLiteral>(&op_e.payload)) {
           const std::string bytes = bytes_from_string_literal(*s);
           const std::string gname = intern_str(bytes);

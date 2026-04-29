@@ -8,32 +8,32 @@ Current Step Title: Thread Semantic Identity Through Calls, Externs, And Globals
 
 ## Just Finished
 
-Completed Step 3 conversion for `StmtEmitter` direct-call target lookup in
-`src/codegen/lir/hir_to_lir/call/target.cpp`. When a call carries a valid
-`LinkNameId`, local target resolution now treats that identity as authoritative
-and does not fall through to legacy rendered-name function lookup after a
-semantic miss. Unresolved external direct calls with a valid `LinkNameId` now
-seed the LIR callee operand and extern-call declaration from the link-name
-spelling instead of the raw decl-ref name.
+Completed Step 3 conversion for LIR global object reselection in
+`src/codegen/lir/hir_to_lir/core.cpp` and
+`src/codegen/lir/hir_to_lir/const_init_emitter.cpp`. `GlobalId` and
+global `DeclRef` selection now preserve the existing duplicate preference
+while matching by `LinkNameId` first, then `name_text_id`, and using rendered
+raw names only when stable identities are absent. Constant initializer
+global-name emission now uses the resolved `DeclRef` global object for
+global references before considering function or legacy rendered-name paths.
 
-Added focused coverage in `tests/frontend/frontend_hir_tests.cpp` for a call
-whose raw decl-ref spelling collides with a defined local function while its
-semantic `LinkNameId` names an external callee. Lowering must keep the
-external `LinkNameId`, emit `@semantic_external_helper`, and produce an extern
-declaration without letting the rendered local collision win.
+Added focused coverage in `tests/frontend/frontend_hir_tests.cpp` for a
+global pointer initializer whose semantic array global keeps a concrete
+`GlobalId` while both the HIR global carrier name and initializer decl-ref raw
+name are drifted into an existing rendered-name collision. Lowering must emit
+`@semantic_global` and not redirect the initializer to `@rendered_shadow`.
 
 ## Suggested Next
 
-Suggested next packet: convert the next remaining Step 3 global-init or extern
-finalization surface where existing `LinkNameId` metadata can replace rendered
-`@name` scanning or raw-name filtering while preserving string-only fallback
-compatibility.
+Suggested next packet: convert the remaining Step 3 string-only reachability
+surface in `eliminate_dead_internals` so global initializer and signature
+references can seed internal-function retention from structured identities
+where LIR already carries them.
 
 ## Watchouts
 
-`record_extern_call_decl` still has a raw-name local-function filter for
-TextId-less compatibility paths; this packet avoids that path for valid
-`LinkNameId` calls by resolving the extern name from the semantic table first.
+`select_global_object(const std::string&)` remains the compatibility path for
+TextId-less globals and keeps the old rendered-name duplicate preference.
 `eliminate_dead_internals` still treats global initializer text and signature
 text as legacy string-only surfaces.
 
