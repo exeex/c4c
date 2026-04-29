@@ -1343,7 +1343,7 @@ TypeSpec Parser::parse_base_type() {
                         if (!already_have_base) {
                             has_typedef = true;
                             const VisibleNameResult visible_type =
-                                resolve_visible_type(name);
+                                resolve_visible_type(name_text_id, name);
                             const std::string resolved =
                                 visible_type ? visible_name_spelling(visible_type)
                                              : std::string(name);
@@ -2089,8 +2089,12 @@ TypeSpec Parser::parse_base_type() {
                                                         resolved_owner);
                                             }
                                         } else if (!primary_tpl) {
+                                            const TextId owner_lookup_text_id =
+                                                find_parser_text_id(
+                                                    owner_lookup_name);
                                             const VisibleNameResult visible_owner =
                                                 resolve_visible_type(
+                                                    owner_lookup_text_id,
                                                     owner_lookup_name);
                                             resolved_owner =
                                                 visible_name_spelling(

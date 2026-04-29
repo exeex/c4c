@@ -8,35 +8,28 @@ Current Step Title: Quarantine String Overloads and AST Projection Bridges
 
 ## Just Finished
 
-Plan Step 3 `Tighten Namespace and Visible-Name Context Lookup` completed.
-`qualified_key_in_context(..., create_missing_path=false)` no longer repairs a
-missing structured namespace path by rendering
-`compatibility_namespace_name_in_context` and reparsing it as semantic
-authority. The non-creating key path now returns the structured key it can
-actually prove from context ids and TextIds.
+Plan Step 4 `Quarantine String Overloads and AST Projection Bridges` first
+bounded slice completed. `parse_base_type` no longer calls the raw string-only
+`resolve_visible_type(name)` at simple typedef parsing or deferred alias-member
+owner lookup sites where a token or parser-owned TextId is available. Both
+sites now call the TextId-aware overload and keep `visible_name_spelling` only
+as the final projection spelling.
 
-`lookup_type_in_context` now gates legacy rendered typedef lookup behind the
-explicit TextId-less compatibility path, matching the existing value lookup
-behavior. Namespace type/value tests now cover valid-TextId rejection for
-legacy rendered namespace bridges, direct qualified resolution rejection, and
-the remaining explicit TextId-less compatibility branches.
+The owned type/template files now have no one-argument `resolve_visible_type`
+calls; remaining `resolve_visible_type` use in the owned files passes TextId
+identity plus fallback spelling.
 
 ## Suggested Next
 
-Execute a bounded `plan.md` Step 4 packet against string-returning
-visible-name and namespace helpers. Start by auditing `resolve_visible_*`
-string overloads, `resolve_visible_*_name`, and `lookup_*_in_context` string
-overloads, then convert one semantic call-site family to consume
-`VisibleNameResult`, `QualifiedNameKey`, `TextId`, or namespace context ids
-directly while leaving final AST spelling, diagnostics, debug output, and
-explicit fallback bridges intact.
+Continue Step 4 by auditing other raw string typedef/template lookup bridges,
+especially `find_visible_typedef_type(const char*/std::string)` and final AST
+projection paths where a structured key or TextId is already available.
 
 ## Watchouts
 
-The preserved compatibility path is intentionally TextId-less. Imported
-namespace value compatibility already existed and remains covered; the new
-type-side coverage is direct namespace and qualified resolution only, because
-imported type fallback was not accepted by the current implementation.
+This slice is intentionally mechanical and semantic-call-site focused; it does
+not remove string overloads globally. Existing frontend parser coverage proved
+the changed type/template paths without adding new test contracts.
 
 ## Proof
 
@@ -44,6 +37,3 @@ Ran the supervisor-selected proof:
 `cmake --build build --target frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_parser_tests$|using_namespace_directive_parse|local_value_shadows_using_alias_assign_expr_parse' --output-on-failure >> test_after.log 2>&1`
 
 Result: passed; proof log is `test_after.log`.
-
-Supervisor accepted and committed this Step 3 slice as `ec08d028`; canonical
-execution is advanced to Step 4.
