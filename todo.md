@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/133_parser_namespace_visible_name_compatibility_spelling_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Classify Compatibility Spelling Authority
+Current Step ID: 2
+Current Step Title: Make Using-Value Alias Lookup Structured-Primary
 
 # Current Packet
 
@@ -35,7 +35,7 @@ Authority classification map:
 
 ## Suggested Next
 
-Start `plan.md` Step 2 with the using-value alias lookup/string overload
+Execute `plan.md` Step 2 with the using-value alias lookup/string overload
 cleanup. Keep `UsingValueAlias::target_key` as the semantic authority in
 `lookup_using_value_alias`, preserve explicit no-key `compatibility_name` as a
 named fallback path, and adjust focused parser tests only if needed to make the
