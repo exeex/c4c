@@ -1,6 +1,6 @@
 # LIR Structured Signature Reference Producer Boundary
 
-Status: Open
+Status: Blocked
 Created: 2026-04-29
 
 Parent Ideas:
@@ -55,3 +55,18 @@ references explicit instead of rediscovered from rendered spelling.
   diagnostics, dump text, or compatibility payload.
 - Focused tests prove structured signature-reference identity wins when
   rendered signature spelling drifts.
+
+## Lifecycle Review: 2026-04-29
+
+Step 1 inventory found no concrete signature-embedded function-reference family
+currently recovered by `collect_fn_refs` beyond the function header's own
+`@name` spelling and template-comment/fallback payload. Function pointer
+parameter and return types lower as type spelling or type metadata, not as
+callee function references in the signature.
+
+Because there is no producer-owned function-reference family to carry, adding an
+empty or minimally populated `LirFunction` signature-reference field would be a
+no-op route rather than semantic producer-boundary progress. Do not reactivate
+this idea until a concrete HIR-to-LIR source of signature-embedded function
+references is identified, or replace it with a narrower idea that owns a real
+fallback-scanner cleanup.
