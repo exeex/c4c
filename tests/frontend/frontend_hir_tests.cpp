@@ -1735,6 +1735,39 @@ void test_hir_pending_type_ref_keeps_legacy_zero_value_debug_text() {
               "fallback refs while nonzero structured values win over stale text");
 }
 
+void test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  record->name = arena.strdup("RealOwner");
+  record->n_member_typedefs = 1;
+  record->member_typedef_names = arena.alloc_array<const char*>(1);
+  record->member_typedef_names[0] = arena.strdup("value_type");
+  record->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  record->member_typedef_types[0].array_size = -1;
+  record->member_typedef_types[0].inner_rank = -1;
+  record->member_typedef_types[0].base = c4c::TB_INT;
+
+  c4c::TypeSpec owner{};
+  owner.array_size = -1;
+  owner.inner_rank = -1;
+  owner.base = c4c::TB_STRUCT;
+  owner.tag = arena.strdup("StaleRenderedOwner");
+  owner.record_def = record;
+  owner.deferred_member_type_name = arena.strdup("value_type");
+
+  c4c::hir::Lowerer lowerer;
+  const bool resolved = lowerer.resolve_struct_member_typedef_if_ready(&owner);
+
+  expect_true(resolved,
+              "deferred member typedef resolution should use structured record_def when tag spelling is stale");
+  expect_true(owner.base == c4c::TB_INT,
+              "stale rendered owner tag must not block structured member typedef resolution");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -2192,6 +2225,7 @@ int main() {
   test_hir_template_arg_materialization_prefers_structured_value_payload();
   test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback();
   test_hir_pending_type_ref_keeps_legacy_zero_value_debug_text();
+  test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

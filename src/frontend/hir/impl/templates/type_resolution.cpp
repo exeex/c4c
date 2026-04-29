@@ -30,6 +30,24 @@ bool matches_trait_family(const std::string& name, const char* suffix) {
          name.compare(name.size() - std::strlen(suffix) - 2, 2, "::") == 0;
 }
 
+bool resolve_record_def_member_typedef_type(const Node* record_def,
+                                            const std::string& member,
+                                            TypeSpec* out) {
+  if (!record_def || record_def->kind != NK_STRUCT_DEF || member.empty() || !out) {
+    return false;
+  }
+  if (!record_def->member_typedef_names || !record_def->member_typedef_types) {
+    return false;
+  }
+  for (int i = 0; i < record_def->n_member_typedefs; ++i) {
+    const char* alias_name = record_def->member_typedef_names[i];
+    if (!alias_name || member != alias_name) continue;
+    *out = record_def->member_typedef_types[i];
+    return true;
+  }
+  return false;
+}
+
 std::optional<TypeSpec> try_resolve_unary_type_transform_trait(
     const std::string& tpl_name,
     const std::string& member,
@@ -333,8 +351,16 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
 bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   const bool has_tag = ts && ts->tag && ts->tag[0];
   const bool has_origin = ts && ts->tpl_struct_origin && ts->tpl_struct_origin[0];
-  if (!ts || !ts->deferred_member_type_name || (!has_tag && !has_origin)) {
+  const bool has_record_def = ts && ts->record_def;
+  if (!ts || !ts->deferred_member_type_name ||
+      (!has_record_def && !has_tag && !has_origin)) {
     return false;
+  }
+  TypeSpec structured_member{};
+  if (resolve_record_def_member_typedef_type(
+          ts->record_def, ts->deferred_member_type_name, &structured_member)) {
+    *ts = structured_member;
+    return true;
   }
   auto apply_bindings = [&](TypeSpec resolved_member,
                             const TypeBindings& type_bindings,
