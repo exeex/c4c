@@ -9,27 +9,27 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with constructor-initializer field constructor routing in `stmt.cpp`.
-When a member initializer dispatches a field constructor, the lookup now derives
-the constructor owner tag from structured field type identity (`record_def` or
-template owner carriers) before falling back to the rendered field type tag.
+with declaration-side local variable constructor routing in `decl.cpp`.
+Local direct constructor init, implicit default constructor init, and copy/move
+constructor dispatch now derive the lookup owner from structured declaration
+type identity (`record_def` or template owner carriers) before falling back to
+the rendered declaration `tag`.
 
-Added focused HIR coverage proving a stale rendered field type tag cannot select
-the wrong field constructor when structured `record_def` owner identity is
-available.
+Added focused HIR coverage proving a stale rendered local declaration tag cannot
+select the wrong direct, default, or copy constructor when structured
+`record_def` owner identity is available.
 
 ## Suggested Next
 
-Continue Step 4 by auditing declaration-side constructor dispatch in
-`decl.cpp`, especially local declaration constructor paths that still key
-through `decl_ts.tag`.
+Continue Step 4 by auditing remaining declaration-side destructor tracking in
+`decl.cpp`, especially local destructor stack paths that still key through
+`decl_ts.tag`.
 
 ## Watchouts
 
-The `stmt.cpp` field-constructor path intentionally keeps the rendered fallback
-when no structured field owner can be resolved. Declaration-side constructor
-paths were outside this packet's Do Not Touch boundary and remain candidates for
-a separate packet.
+Declaration constructor routing intentionally keeps the rendered fallback when
+no structured declaration owner can be resolved. Local destructor tracking still
+uses rendered `decl_ts.tag` and was outside this packet's Done When.
 
 ## Proof
 

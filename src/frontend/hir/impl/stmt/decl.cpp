@@ -127,22 +127,50 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     }
     return {std::move(resolved_tag), member_symbol_id};
   };
+  auto resolve_decl_constructor_owner_tag =
+      [&](const TypeSpec& owner_ts,
+          const std::string& context_name) -> std::string {
+    if (owner_ts.base != TB_STRUCT || owner_ts.ptr_level != 0 ||
+        owner_ts.array_rank != 0) {
+      return {};
+    }
+    const bool has_structured_owner =
+        owner_ts.record_def || owner_ts.tpl_struct_origin ||
+        (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0);
+    if (has_structured_owner) {
+      const std::string* current_struct_tag =
+          !ctx.method_struct_tag.empty() ? &ctx.method_struct_tag : nullptr;
+      if (auto owner_tag = resolve_member_lookup_owner_tag(
+              owner_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
+              current_struct_tag, n, context_name)) {
+        return *owner_tag;
+      }
+    }
+    return owner_ts.tag ? std::string(owner_ts.tag) : std::string{};
+  };
+  const std::string decl_constructor_owner_tag =
+      resolve_decl_constructor_owner_tag(
+          d.type.spec, std::string("local-decl-constructor-owner:") + d.name);
   // C++ copy initialization: T var = expr; where T has a copy/move constructor.
   // Detect this early so we can skip setting d.init (the ctor call is emitted
   // after the decl, similar to the is_ctor_init path).
   bool is_struct_copy_init = false;
   if (n->init && !n->is_ctor_init && n->init->kind != NK_INIT_LIST &&
       d.type.spec.base == TB_STRUCT && d.type.spec.ptr_level == 0 &&
-      d.type.spec.array_rank == 0 && d.type.spec.tag &&
+      d.type.spec.array_rank == 0 && !decl_constructor_owner_tag.empty() &&
       !is_lvalue_ref_ts(effective_decl_ts) && !effective_decl_ts.is_rvalue_ref) {
-    auto cit = struct_constructors_.find(d.type.spec.tag);
+    auto cit = struct_constructors_.find(decl_constructor_owner_tag);
     if (cit != struct_constructors_.end()) {
       // Check if any constructor takes a single param of same struct type (copy/move ctor).
       for (const auto& ov : cit->second) {
         if (ov.method_node->n_params == 1) {
           TypeSpec param_ts = ov.method_node->params[0]->type;
           resolve_typedef_to_struct(param_ts);
-          if (param_ts.tag && strcmp(param_ts.tag, d.type.spec.tag) == 0 &&
+          const std::string param_owner_tag =
+              resolve_decl_constructor_owner_tag(
+                  param_ts,
+                  std::string("local-decl-copy-param-owner:") + d.name);
+          if (param_owner_tag == decl_constructor_owner_tag &&
               (param_ts.is_lvalue_ref || param_ts.is_rvalue_ref)) {
             is_struct_copy_init = true;
             break;
@@ -223,8 +251,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   append_stmt(ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
 
   // C++ constructor invocation: Type var(args) -> call StructTag__StructTag(&var, args...)
-  if (n->is_ctor_init && decl_ts.tag) {
-    auto cit = struct_constructors_.find(decl_ts.tag);
+  if (n->is_ctor_init && !decl_constructor_owner_tag.empty()) {
+    auto cit = struct_constructors_.find(decl_constructor_owner_tag);
     if (cit != struct_constructors_.end() && !cit->second.empty()) {
       // Resolve best constructor overload by matching argument types.
       const CtorOverload* best = nullptr;
@@ -276,7 +304,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       if (best) {
         if (best->method_node->is_deleted) {
           std::string diag = "error: call to deleted constructor '";
-          diag += decl_ts.tag;
+          diag += decl_constructor_owner_tag;
           diag += "'";
           throw std::runtime_error(diag);
         }
@@ -344,10 +372,10 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   }
 
   // C++ implicit default constructor: T var; where T has a zero-arg ctor.
-  if (!n->is_ctor_init && !n->init && decl_ts.tag &&
+  if (!n->is_ctor_init && !n->init && !decl_constructor_owner_tag.empty() &&
       decl_ts.base == TB_STRUCT && decl_ts.ptr_level == 0 &&
       decl_ts.array_rank == 0) {
-    auto cit = struct_constructors_.find(decl_ts.tag);
+    auto cit = struct_constructors_.find(decl_constructor_owner_tag);
     if (cit != struct_constructors_.end()) {
       // Find a zero-arg constructor.
       const CtorOverload* default_ctor = nullptr;
@@ -360,7 +388,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       if (default_ctor) {
         if (default_ctor->method_node->is_deleted) {
           std::string diag = "error: call to deleted default constructor '";
-          diag += decl_ts.tag;
+          diag += decl_constructor_owner_tag;
           diag += "'";
           throw std::runtime_error(diag);
         }
@@ -398,7 +426,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
 
   // C++ copy initialization: T var = expr; -> call copy/move constructor.
   if (is_struct_copy_init) {
-    auto cit = struct_constructors_.find(decl_ts.tag);
+    auto cit = struct_constructors_.find(decl_constructor_owner_tag);
     if (cit != struct_constructors_.end() && !cit->second.empty()) {
       // Score constructors: prefer T&& for rvalue, const T& for lvalue.
       bool init_is_lvalue = is_ast_lvalue(n->init, &ctx);
@@ -408,7 +436,11 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         if (ov.method_node->n_params != 1) continue;
         TypeSpec param_ts = ov.method_node->params[0]->type;
         resolve_typedef_to_struct(param_ts);
-        if (!param_ts.tag || strcmp(param_ts.tag, decl_ts.tag) != 0) continue;
+        const std::string param_owner_tag =
+            resolve_decl_constructor_owner_tag(
+                param_ts,
+                std::string("local-decl-copy-param-owner:") + d.name);
+        if (param_owner_tag != decl_constructor_owner_tag) continue;
         if (!param_ts.is_lvalue_ref && !param_ts.is_rvalue_ref) continue;
         int score = 0;
         if (param_ts.is_rvalue_ref && !init_is_lvalue) {
@@ -428,7 +460,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       if (best) {
         if (best->method_node->is_deleted) {
           std::string diag = "error: call to deleted constructor '";
-          diag += decl_ts.tag;
+          diag += decl_constructor_owner_tag;
           diag += "'";
           throw std::runtime_error(diag);
         }

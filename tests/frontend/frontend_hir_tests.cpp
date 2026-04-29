@@ -3211,6 +3211,281 @@ void test_hir_ctor_init_field_constructor_prefers_record_def_over_stale_tag() {
             "constructor initializer should use structured field owner before stale rendered tag");
 }
 
+void test_hir_local_decl_direct_constructor_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealLocalDirectCtor");
+  real_record->unqualified_name = arena.strdup("RealLocalDirectCtor");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for direct local constructor");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealLocalDirectCtor";
+  real_def.tag_text_id = module.link_name_texts->intern("RealLocalDirectCtor");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleLocalDirectCtor";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleLocalDirectCtor");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+  c4c::Node* real_param = parser.make_node(c4c::NK_DECL, 1);
+  real_param->type = int_ts;
+  c4c::Node* real_ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  real_ctor->is_constructor = true;
+  real_ctor->n_params = 1;
+  real_ctor->params = arena.alloc_array<c4c::Node*>(1);
+  real_ctor->params[0] = real_param;
+  lowerer.struct_constructors_["RealLocalDirectCtor"].push_back(
+      {"RealLocalDirectCtor__ctor", real_ctor});
+
+  c4c::Node* stale_param = parser.make_node(c4c::NK_DECL, 1);
+  stale_param->type = int_ts;
+  c4c::Node* stale_ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  stale_ctor->is_constructor = true;
+  stale_ctor->n_params = 1;
+  stale_ctor->params = arena.alloc_array<c4c::Node*>(1);
+  stale_ctor->params[0] = stale_param;
+  lowerer.struct_constructors_["StaleLocalDirectCtor"].push_back(
+      {"StaleLocalDirectCtor__ctor", stale_ctor});
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleLocalDirectCtor");
+  owner_ts.record_def = real_record;
+
+  c4c::Node* arg = parser.make_node(c4c::NK_INT_LIT, 1);
+  arg->ival = 7;
+  arg->type = int_ts;
+  c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
+  decl->name = arena.strdup("local");
+  decl->unqualified_name = arena.strdup("local");
+  decl->type = owner_ts;
+  decl->is_ctor_init = true;
+  decl->children = arena.alloc_array<c4c::Node*>(1);
+  decl->children[0] = arg;
+  decl->n_children = 1;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  lowerer.lower_local_decl_stmt(ctx, decl);
+
+  std::string lowered_callee;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* call = std::get_if<c4c::hir::CallExpr>(&expr.payload);
+    if (!call) continue;
+    const c4c::hir::Expr* callee = module.find_expr(call->callee);
+    if (!callee) continue;
+    if (const auto* ref = std::get_if<c4c::hir::DeclRef>(&callee->payload);
+        ref && (ref->name == "RealLocalDirectCtor__ctor" ||
+                ref->name == "StaleLocalDirectCtor__ctor")) {
+      lowered_callee = ref->name;
+      break;
+    }
+  }
+
+  expect_eq(lowered_callee, "RealLocalDirectCtor__ctor",
+            "local direct constructor init should use structured owner before stale rendered tag");
+}
+
+void test_hir_local_decl_default_constructor_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealLocalDefaultCtor");
+  real_record->unqualified_name = arena.strdup("RealLocalDefaultCtor");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for default local constructor");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealLocalDefaultCtor";
+  real_def.tag_text_id = module.link_name_texts->intern("RealLocalDefaultCtor");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleLocalDefaultCtor";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleLocalDefaultCtor");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* real_ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  real_ctor->is_constructor = true;
+  real_ctor->n_params = 0;
+  lowerer.struct_constructors_["RealLocalDefaultCtor"].push_back(
+      {"RealLocalDefaultCtor__ctor", real_ctor});
+  c4c::Node* stale_ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  stale_ctor->is_constructor = true;
+  stale_ctor->n_params = 0;
+  lowerer.struct_constructors_["StaleLocalDefaultCtor"].push_back(
+      {"StaleLocalDefaultCtor__ctor", stale_ctor});
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleLocalDefaultCtor");
+  owner_ts.record_def = real_record;
+
+  c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
+  decl->name = arena.strdup("local");
+  decl->unqualified_name = arena.strdup("local");
+  decl->type = owner_ts;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  lowerer.lower_local_decl_stmt(ctx, decl);
+
+  std::string lowered_callee;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* call = std::get_if<c4c::hir::CallExpr>(&expr.payload);
+    if (!call) continue;
+    const c4c::hir::Expr* callee = module.find_expr(call->callee);
+    if (!callee) continue;
+    if (const auto* ref = std::get_if<c4c::hir::DeclRef>(&callee->payload);
+        ref && (ref->name == "RealLocalDefaultCtor__ctor" ||
+                ref->name == "StaleLocalDefaultCtor__ctor")) {
+      lowered_callee = ref->name;
+      break;
+    }
+  }
+
+  expect_eq(lowered_callee, "RealLocalDefaultCtor__ctor",
+            "local implicit default constructor should use structured owner before stale rendered tag");
+}
+
+void test_hir_local_decl_copy_constructor_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealLocalCopyCtor");
+  real_record->unqualified_name = arena.strdup("RealLocalCopyCtor");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for copy local constructor");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealLocalCopyCtor";
+  real_def.tag_text_id = module.link_name_texts->intern("RealLocalCopyCtor");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleLocalCopyCtor";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleLocalCopyCtor");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleLocalCopyCtor");
+  owner_ts.record_def = real_record;
+
+  c4c::TypeSpec copy_param_ts = owner_ts;
+  copy_param_ts.is_lvalue_ref = true;
+  c4c::Node* real_param = parser.make_node(c4c::NK_DECL, 1);
+  real_param->type = copy_param_ts;
+  c4c::Node* real_ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  real_ctor->is_constructor = true;
+  real_ctor->n_params = 1;
+  real_ctor->params = arena.alloc_array<c4c::Node*>(1);
+  real_ctor->params[0] = real_param;
+  lowerer.struct_constructors_["RealLocalCopyCtor"].push_back(
+      {"RealLocalCopyCtor__copy_ctor", real_ctor});
+
+  c4c::TypeSpec stale_param_ts = owner_ts;
+  stale_param_ts.record_def = nullptr;
+  stale_param_ts.is_lvalue_ref = true;
+  c4c::Node* stale_param = parser.make_node(c4c::NK_DECL, 1);
+  stale_param->type = stale_param_ts;
+  c4c::Node* stale_ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  stale_ctor->is_constructor = true;
+  stale_ctor->n_params = 1;
+  stale_ctor->params = arena.alloc_array<c4c::Node*>(1);
+  stale_ctor->params[0] = stale_param;
+  lowerer.struct_constructors_["StaleLocalCopyCtor"].push_back(
+      {"StaleLocalCopyCtor__copy_ctor", stale_ctor});
+
+  c4c::Node* init = parser.make_node(c4c::NK_VAR, 1);
+  init->name = arena.strdup("source");
+  init->type = owner_ts;
+  c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
+  decl->name = arena.strdup("local");
+  decl->unqualified_name = arena.strdup("local");
+  decl->type = owner_ts;
+  decl->init = init;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  const c4c::hir::LocalId source_id{17};
+  ctx.locals["source"] = source_id;
+  ctx.local_types.insert(source_id, owner_ts);
+  lowerer.lower_local_decl_stmt(ctx, decl);
+
+  std::string lowered_callee;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* call = std::get_if<c4c::hir::CallExpr>(&expr.payload);
+    if (!call) continue;
+    const c4c::hir::Expr* callee = module.find_expr(call->callee);
+    if (!callee) continue;
+    if (const auto* ref = std::get_if<c4c::hir::DeclRef>(&callee->payload);
+        ref && (ref->name == "RealLocalCopyCtor__copy_ctor" ||
+                ref->name == "StaleLocalCopyCtor__copy_ctor")) {
+      lowered_callee = ref->name;
+      break;
+    }
+  }
+
+  expect_eq(lowered_callee, "RealLocalCopyCtor__copy_ctor",
+            "local copy constructor should use structured owner before stale rendered tag");
+}
+
 void test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4035,6 +4310,9 @@ int main() {
   test_hir_implicit_this_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_ctor_init_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_ctor_init_field_constructor_prefers_record_def_over_stale_tag();
+  test_hir_local_decl_direct_constructor_prefers_record_def_over_stale_tag();
+  test_hir_local_decl_default_constructor_prefers_record_def_over_stale_tag();
+  test_hir_local_decl_copy_constructor_prefers_record_def_over_stale_tag();
   test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_member_dtor_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag();
