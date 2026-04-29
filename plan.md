@@ -127,10 +127,20 @@ Concrete actions:
   or translate input before lookup.
 - Add or update focused tests that show rendered spelling does not override
   the covered `TextId` lookup path.
+- Treat parser-template rendered mirrors as the completed Step 2 proof family:
+  structured `QualifiedNameKey` / `NttpDefaultExprKey` lookups stay primary,
+  and rendered maps remain compatibility or final-spelling mirrors only.
+- Do not include `struct_tag_def_map` in this step. Record tags feed parser
+  semantic record lookup and downstream `TypeSpec::tag` bridges, so they belong
+  to Step 3 or to a separate bridge blocker if they cannot be contained in the
+  parser.
 
 Completion check:
-- Covered pure text lookups use `TextId` keys and focused parser tests prove
-  the intended lookup behavior without output or diagnostic regressions.
+- Covered pure text lookups use `TextId` or structured text keys, focused
+  parser tests prove the intended lookup behavior without output or diagnostic
+  regressions, and any remaining string-keyed parser family is classified as
+  semantic lookup, compatibility/final spelling, diagnostics, or a downstream
+  bridge.
 
 ### Step 3: Split Parser Semantic Lookup From Text Spelling
 
@@ -138,12 +148,25 @@ Goal: move parser semantic lookup disguised as rendered string lookup into a
 domain semantic table or typed key.
 
 Primary targets:
+- First packet: the parser record-tag bridge around
+  `DefinitionState::struct_tag_def_map`, `TypeSpec::tag`, `eval_const_int`,
+  `offsetof`, `sizeof` / `alignof`, and template-instantiated struct records.
 - Parser semantic lookup paths for declarations, symbols, selectors, or
   domain-specific parser records.
 - Helpers that currently make rendered strings the authority for meaning.
 - Tests that assert legacy rendered-name precedence over semantic identity.
 
 Concrete actions:
+- Start with a semantic-record packet for `struct_tag_def_map`: inventory each
+  parser-owned read/write path, classify source spelling versus record identity,
+  and identify where an existing `Node*`, record definition, tag declaration, or
+  typed key can carry semantic authority.
+- Preserve current `TypeSpec::tag` string behavior as an explicit bridge until
+  the packet proves every affected parser path has a semantic record source;
+  do not do a wholesale string-map deletion.
+- Convert only the first bounded record-tag lookup surface that can be kept
+  inside parser-owned files. If HIR/LIR/BIR contracts are required, stop and
+  record a separate bridge blocker instead of expanding this plan.
 - Replace one semantic string authority path at a time with a typed key,
   parser-domain table, or other existing semantic record.
 - Use `TextId` only as text identity or table indexing support, not as final
@@ -153,7 +176,10 @@ Concrete actions:
   of the intended parser contract.
 
 Completion check:
-- Covered semantic lookups resolve through parser-domain authority before raw
+- The first record-tag semantic packet either converts a bounded parser-owned
+  lookup surface to semantic record authority with focused parser proof, or
+  records the exact downstream bridge blocker for a separate open idea.
+  Covered semantic lookups resolve through parser-domain authority before raw
   spelling, with focused tests proving drifted rendered names cannot override
   the semantic table.
 
