@@ -8,43 +8,94 @@ Current Step Title: Re-Inventory Parser String Lookup After Record Bridge
 
 ## Just Finished
 
-Lifecycle returned from the typed parser record identity bridge.
+Step 1 inventory completed after the typed parser record identity bridge.
 
-Idea 127 closed after Step 6 reproof. The full-suite close gate compared the
-accepted baseline against the latest full-suite proof and passed: 3088 enabled
-tests before, 3088 enabled tests after, no new failures. The disabled-test set
-remained the existing backend CLI trace/dump tests 27, 28, and 41-50.
+Focused search found the remaining parser-owned `std::string` map/set families:
 
-The bridge established `TypeSpec::record_def` as parser semantic record
-identity where available, while `TypeSpec::tag` and
-`DefinitionState::struct_tag_def_map` remain spelling, compatibility, testing
-hook, and final-rendering support.
+- `ParserDefinitionState::defined_struct_tags`: compatibility/final-spelling
+  tag presence mirror.
+- `ParserDefinitionState::struct_tag_def_map`: compatibility/final-spelling
+  rendered tag-to-record mirror. `resolve_record_type_spec()` now prefers
+  `TypeSpec::record_def` before consulting this map.
+- `ParserTemplateState::template_struct_defs` and
+  `template_struct_specializations`: legacy rendered-name mirrors beside the
+  `QualifiedNameKey` primary/specialization tables.
+- `ParserTemplateState::instantiated_template_struct_keys`: legacy rendered
+  template-instantiation de-dup mirror beside `TemplateInstantiationKey`.
+- `ParserTemplateState::nttp_default_expr_tokens`: legacy rendered NTTP default
+  token cache beside `NttpDefaultExprKey`.
+- Function-local parser helpers:
+  `knr_param_decl_map`, record `field_names_seen`, template match
+  `type_bindings_map`/`value_bindings_map`, alias substitution `subst`, and
+  type/NTTP binding vectors. These are local text-spelling algorithm state, not
+  global semantic authority.
+
+Retained compatibility/helper categories:
+
+- Record layout const-eval helpers in `parser_support.hpp` and `support.cpp`
+  keep `std::unordered_map<std::string, Node*>* struct_map` so
+  `sizeof`/`alignof`/`offsetof` can still evaluate tag-only compatibility
+  inputs, while typed paths use `record_def` first.
+- The `eval_const_int()` overload taking
+  `std::unordered_map<std::string, long long>* compatibility_named_consts`
+  remains a rendered-name bridge. Parser-owned const-int evaluation already
+  routes named constants through `TextId`.
+- Template rendered maps remain compatibility mirrors only when lookup lacks a
+  valid `TextId`/structured key; existing tests assert stale rendered names do
+  not override structured lookup.
+- Tests at `frontend_parser_tests.cpp:3721` and `:3767` are retained
+  compatibility coverage for typed record layout preference and tag-only
+  fallback.
+
+Unresolved downstream boundary:
+
+- `resolve_typedef_chain()` / `types_compatible_p()` still accept
+  `std::unordered_map<std::string, TypeSpec>& tmap`. The focused search found
+  these as public support helper signatures rather than parser-owned state; do
+  not fold them into the first conversion packet without a caller-specific
+  route.
 
 ## Suggested Next
 
-Execute Step 1 of the regenerated parent parser cleanup runbook: inventory
-remaining parser `std::string` lookup maps and helper fallbacks after the
-record bridge, classify each remaining use, and identify the next smallest
-conversion packet that does not depend on `struct_tag_def_map` semantic
-authority.
+First bounded conversion packet: convert the function-local K&R parameter
+declaration lookup in `parse_declaration_or_function()` from
+`std::unordered_map<std::string, Node*> knr_param_decl_map` to a parser text
+identity lookup keyed by `TextId`.
+
+Scope for that packet:
+
+- Intern K&R declaration names and identifier-list names at the local lookup
+  boundary.
+- Keep `Node::name` spelling unchanged for diagnostics/final AST text.
+- Do not touch `struct_tag_def_map`, record layout const-eval, template
+  rendered mirrors, or public support helper signatures.
+- Focus proof on building plus the frontend parser test subset that exercises
+  old-style/K&R parameter declarations.
 
 ## Watchouts
 
-Do not reopen idea 127 unless a real regression in the typed record bridge is
-found. Treat `struct_tag_def_map` as a compatibility/final-spelling mirror, not
-as the next semantic conversion target.
+Do not treat `defined_struct_tags` or `struct_tag_def_map` as semantic
+conversion targets in the next packet. They are compatibility/final-spelling
+mirrors after idea 127.
 
-Preserve strings that serve source spelling, diagnostics, compatibility input,
-testing hooks, or final emitted text.
+Template legacy maps already have structured mirrors and stale-rendered-name
+tests; converting or renaming them is a separate semantic/compatibility packet,
+not the smallest Step 2 text-map slice.
 
-If a remaining semantic lookup family requires a separate bridge, create a new
-idea under `ideas/open/` and ask for lifecycle routing instead of silently
-expanding the parent parser cleanup route.
+The `resolve_typedef_chain()` / `types_compatible_p()` `tmap` signatures may
+need a downstream support-helper idea if a future packet finds live parser
+callers that require structured typedef-chain compatibility.
 
 ## Proof
 
-Close-time regression guard run by plan owner:
+Inventory-only packet; no build required by delegated proof.
 
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_baseline.log --after test_after.log --allow-non-decreasing-passed`
+Focused searches run:
 
-Result: passed; 3088 passed before, 3088 passed after, no new failures.
+- `rg -n "unordered_map<\\s*std::string|std::map<\\s*std::string|map<\\s*std::string" src/frontend/parser tests/frontend`
+- `rg -n "std::(unordered_)?set<\\s*std::string|std::vector<std::pair<std::string|std::unordered_map<std::string" src/frontend/parser/impl src/frontend/parser/parser.hpp src/frontend/parser/parser_support.hpp tests/frontend/frontend_parser_tests.cpp`
+- `rg -n "template_struct_defs\\b|template_struct_specializations\\b|instantiated_template_struct_keys\\b|nttp_default_expr_tokens\\b|nttp_default_expr_cache_mismatch|template_struct_instantiation_key_mismatch" src/frontend/parser/impl src/frontend/parser/parser.hpp tests/frontend/frontend_parser_tests.cpp`
+- `rg -n "eval_const_int\\(|resolve_typedef_chain\\(|types_compatible_p\\(|compatibility_named_consts|struct_map" src/frontend/parser tests/frontend/frontend_parser_tests.cpp`
+
+Result: inventory complete. No `test_after.log` was generated because this
+packet was explicitly inventory-only with no build/test proof required.
