@@ -8,47 +8,41 @@ Current Step Title: Make Using-Value Alias Lookup Structured-Primary
 
 ## Just Finished
 
-Plan Step 1 `Classify Compatibility Spelling Authority` completed as a
-classification-only packet.
+Plan Step 2 `Make Using-Value Alias Lookup Structured-Primary` completed.
+`lookup_using_value_alias(..., VisibleNameResult*)` now treats a non-empty
+`UsingValueAlias::compatibility_name` as authority only for explicit no-key
+aliases. Structured aliases still populate display spelling from
+`render_value_binding_name`, but they only resolve through
+`has_known_fn_name(alias.target_key)` or
+`find_structured_var_type(alias.target_key)`.
 
-Authority classification map:
-- `VisibleNameResult::compatibility_spelling`: display/projection bridge after
-  local visible value, type, and concept lookup; written by visible result
-  construction, using-alias resolution, namespace/type/value/concept lookup
-  helpers, qualified fallback results, and `visible_name_spelling` projection.
-  It must not override available `QualifiedNameKey`, `TextId`, parser symbol
-  ids, or namespace context ids.
-- `UsingValueAlias::target_key`: semantic authority for using-value alias
-  lookup. `lookup_using_value_alias` already tries structured target rendering
-  first through `render_value_binding_name`, `has_known_fn_name`, and
-  `find_structured_var_type`.
-- `UsingValueAlias::compatibility_name`: fallback-only authority for explicit
-  no-key compatibility aliases. It is written by testing helpers and
-  `declarations.cpp` using-import handling, and it should not validate a
-  missing or mismatched structured `target_key`.
-- `lookup_value_in_context`, `lookup_type_in_context`, and
-  `lookup_concept_in_context`: structured-primary bridges where `TextId` or
-  structured keys exist, with TextId-less branches classified as fallback-only.
-- `compatibility_namespace_name_in_context` and `bridge_name_in_context`:
-  namespace rendering/projection bridges that still need Step 3 treatment after
-  using-alias behavior is tightened.
+Focused parser tests now cover structured-target-missing rejection with a
+non-empty compatibility bridge, explicit no-key fallback preservation, and the
+type/template projection cases that intentionally pass through a known
+structured target key rather than compatibility spelling.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2 with the using-value alias lookup/string overload
-cleanup. Keep `UsingValueAlias::target_key` as the semantic authority in
-`lookup_using_value_alias`, preserve explicit no-key `compatibility_name` as a
-named fallback path, and adjust focused parser tests only if needed to make the
-structured-target mismatch and no-key fallback contract visible.
+Execute `plan.md` Step 3 against namespace rendering/projection bridges,
+especially `compatibility_namespace_name_in_context` and
+`bridge_name_in_context`, keeping TextId/structured context as primary
+authority and TextId-less branches as explicit compatibility fallback.
 
 ## Watchouts
 
-Existing tests already cover corrupted compatibility spelling not overriding
-structured using-value alias targets, explicit no-key compatibility fallback,
-local shadowing, and namespace import interactions. Avoid expectation rewrites
-or testcase-shaped shortcuts; add tests only for a contract gap.
+Some visible type/template tests use using-value aliases as projection bridges.
+Those tests now register the structured target key as known before expecting the
+projection to succeed; do not reintroduce compatibility-name success for
+structured aliases to satisfy similar cases.
 
 ## Proof
 
-Classification-only todo update; no build or test proof required. No
-`test_after.log` update was needed for this packet.
+Ran the supervisor-selected proof:
+`cmake --build build --target frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_parser_tests$' --output-on-failure >> test_after.log 2>&1`
+
+Result: passed; proof log is `test_after.log`.
+
+Also ran targeted parse-only selectors:
+`ctest --test-dir build -R 'using_namespace_directive_parse|local_value_shadows_using_alias_assign_expr_parse' --output-on-failure`
+
+Result: passed; both selectors were present in this build.

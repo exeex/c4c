@@ -2830,28 +2830,29 @@ bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
     const auto value_it = alias_it->second.find(name_text_id);
     if (value_it == alias_it->second.end()) return false;
     const ParserNamespaceState::UsingValueAlias& alias = value_it->second;
-    std::string spelling = render_value_binding_name(*this, alias.target_key);
-    if (spelling.empty()) {
-        spelling = alias.compatibility_name;
-    }
+    const bool has_structured_target =
+        alias.target_key.base_text_id != kInvalidText;
+    const std::string spelling =
+        has_structured_target ? render_value_binding_name(*this, alias.target_key)
+                              : alias.compatibility_name;
 
     resolved->found = true;
     resolved->kind = VisibleNameKind::Value;
     resolved->key = alias.target_key;
-    resolved->base_text_id = alias.target_key.base_text_id != kInvalidText
-                                 ? alias.target_key.base_text_id
-                                 : name_text_id;
+    resolved->base_text_id =
+        has_structured_target ? alias.target_key.base_text_id : name_text_id;
     resolved->context_id =
-        alias.target_key.base_text_id != kInvalidText ? alias.target_key.context_id
-                                                      : context_id;
+        has_structured_target ? alias.target_key.context_id : context_id;
     resolved->source = VisibleNameSource::UsingAlias;
     resolved->compatibility_spelling = spelling;
 
-    if (alias.target_key.base_text_id != kInvalidText) {
+    if (has_structured_target) {
         if (has_known_fn_name(alias.target_key)) return true;
         if (find_structured_var_type(alias.target_key)) return true;
+        return false;
     }
-    return !spelling.empty();
+    // Explicit no-key aliases are compatibility bridges only.
+    return !alias.compatibility_name.empty();
 }
 
 bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
