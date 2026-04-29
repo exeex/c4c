@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/123_parser_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Split Remaining Parser Semantic Lookup From Text Spelling
+Current Step ID: Step 4
+Current Step Title: Demote Compatibility String Helpers And Tests
 
 ## Just Finished
 
@@ -27,11 +27,17 @@ real parameter identity.
 
 ## Suggested Next
 
-Ask the plan owner to decide whether Step 3 is now exhausted and should advance
-to Step 4, or whether one more bounded Step 3 packet remains in local parser
-semantic scratch state. Do not expand this packet into public support helper
-signatures, template rendered mirror maps, `nttp_default_expr_tokens`,
-`defined_struct_tags`, or `struct_tag_def_map`.
+Step 3 is exhausted for the current runbook. Remaining direct string-keyed
+parser surfaces now classify as compatibility/final-spelling mirrors, public
+support-helper boundaries, or already-paired structured-key caches rather than
+precise bounded Step 3 semantic scratch packets.
+
+First bounded Step 4 packet: demote the record-layout compatibility helper
+surface around `resolve_record_type_spec()`, `eval_const_int()` struct-map
+parameters, and the frontend parser record-layout tests. Keep typed
+`TypeSpec::record_def` authority unchanged, but rename or document the retained
+rendered tag map path as tag-only compatibility/final-spelling fallback in the
+header, helper parameter names/comments, and test names/assertions.
 
 ## Watchouts
 
