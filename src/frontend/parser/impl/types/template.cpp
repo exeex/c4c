@@ -894,20 +894,28 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         if (!ref_primary) { ti = saved_ti; return false; }
 
         std::string ref_mangled;
+        TypeSpec resolved_ref_ts{};
         if (!ensure_template_struct_instantiated_from_args(
                 resolved_ref_tpl_name, ref_primary, ref_args,
                 ref_primary->line, &ref_mangled,
-                "template_member_lookup_instantiation")) {
+                "template_member_lookup_instantiation",
+                &resolved_ref_ts)) {
             ti = saved_ti;
             return false;
         }
 
-        auto sdef_it = definition_state_.struct_tag_def_map.find(ref_mangled);
-        if (sdef_it == definition_state_.struct_tag_def_map.end()) {
+        const Node* sdef = resolve_record_type_spec(
+            resolved_ref_ts, &definition_state_.struct_tag_def_map);
+        if (!sdef) {
+            auto sdef_it = definition_state_.struct_tag_def_map.find(ref_mangled);
+            if (sdef_it != definition_state_.struct_tag_def_map.end()) {
+                sdef = sdef_it->second;
+            }
+        }
+        if (!sdef) {
             ti = saved_ti;
             return false;
         }
-        const Node* sdef = sdef_it->second;
 
         std::function<bool(const Node*)> lookup_static_member_recursive =
             [&](const Node* cur) -> bool {
@@ -942,10 +950,9 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 }
                 for (int bi = 0; bi < cur->n_bases; ++bi) {
                     const TypeSpec& base_ts = cur->base_types[bi];
-                    if (!base_ts.tag || !base_ts.tag[0]) continue;
-                    auto bit = definition_state_.struct_tag_def_map.find(base_ts.tag);
-                    if (bit != definition_state_.struct_tag_def_map.end() &&
-                        lookup_static_member_recursive(bit->second))
+                    const Node* base_def = resolve_record_type_spec(
+                        base_ts, &definition_state_.struct_tag_def_map);
+                    if (base_def && lookup_static_member_recursive(base_def))
                         return true;
                 }
                 return false;

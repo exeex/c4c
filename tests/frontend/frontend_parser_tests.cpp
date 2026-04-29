@@ -3221,6 +3221,111 @@ void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse()
               "stale rendered template tag-map entries should not override record_def");
 }
 
+void test_parser_template_static_member_lookup_prefers_record_definition() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  auto make_static_value_record = [&](const char* record_name,
+                                      const char* member_name,
+                                      long long value) {
+    c4c::Node* record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    record->name = arena.strdup(record_name);
+    record->n_fields = 1;
+    record->fields = arena.alloc_array<c4c::Node*>(1);
+    c4c::Node* member = parser.make_node(c4c::NK_DECL, 1);
+    member->name = arena.strdup(member_name);
+    member->is_static = true;
+    member->ival = value;
+    record->fields[0] = member;
+    return record;
+  };
+
+  c4c::Node* real_base =
+      make_static_value_record("RealBase", "value", 17);
+  c4c::Node* stale_base =
+      make_static_value_record("StaleBase", "value", 33);
+  parser.definition_state_.struct_tag_def_map["SharedBase"] = stale_base;
+
+  const c4c::TextId trait_text = texts.intern("Trait");
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Trait");
+  primary->unqualified_name = arena.strdup("Trait");
+  primary->unqualified_text_id = trait_text;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = false;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+  parser.register_template_struct_primary(
+      parser.current_namespace_context_id(), trait_text, "Trait", primary);
+
+  c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
+  specialization->name = arena.strdup("Trait_T_int");
+  specialization->unqualified_name = arena.strdup("Trait");
+  specialization->unqualified_text_id = trait_text;
+  specialization->namespace_context_id = parser.current_namespace_context_id();
+  specialization->template_origin_name = arena.strdup("Trait");
+  specialization->n_template_args = 1;
+  specialization->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+  specialization->template_arg_types[0].array_size = -1;
+  specialization->template_arg_types[0].inner_rank = -1;
+  specialization->template_arg_types[0].base = c4c::TB_INT;
+  specialization->template_arg_is_value = arena.alloc_array<bool>(1);
+  specialization->template_arg_is_value[0] = false;
+  specialization->n_bases = 1;
+  specialization->base_types = arena.alloc_array<c4c::TypeSpec>(1);
+  specialization->base_types[0].array_size = -1;
+  specialization->base_types[0].inner_rank = -1;
+  specialization->base_types[0].base = c4c::TB_STRUCT;
+  specialization->base_types[0].tag = arena.strdup("SharedBase");
+  specialization->base_types[0].record_def = real_base;
+  parser.register_template_struct_specialization(
+      parser.current_namespace_context_id(), trait_text, "Trait",
+      specialization);
+
+  c4c::Parser::TemplateArgParseResult arg{};
+  arg.is_value = false;
+  arg.type.array_size = -1;
+  arg.type.inner_rank = -1;
+  arg.type.base = c4c::TB_INT;
+  std::string resolved_mangled;
+  c4c::TypeSpec resolved_specialization{};
+  expect_true(parser.ensure_template_struct_instantiated_from_args(
+                  "Trait", primary, {arg}, 1, &resolved_mangled,
+                  "template_static_member_record_def_test",
+                  &resolved_specialization),
+              "template static member fixture should resolve the specialization");
+  expect_true(resolved_specialization.record_def == specialization,
+              "template static member instantiation should carry record_def");
+
+  c4c::Node* stale_instantiation =
+      make_static_value_record("StaleTrait", "value", 99);
+  parser.definition_state_.struct_tag_def_map[resolved_mangled] =
+      stale_instantiation;
+
+  const std::vector<c4c::Token> toks = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Trait"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+
+  long long value = 0;
+  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {},
+                                                    &value),
+              "template static member lookup should traverse typed records");
+  expect_eq_int(value, 17,
+                "template static member lookup should prefer record_def over stale rendered tag maps");
+}
+
 void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
   c4c::Arena arena;
   c4c::Parser parser({}, arena, nullptr, nullptr, c4c::SourceProfile::CppSubset);
@@ -3961,6 +4066,7 @@ int main() {
   test_parser_template_lookup_demotes_legacy_rendered_name_bridges();
   test_parser_nttp_default_cache_dual_reads_legacy_mismatch();
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
+  test_parser_template_static_member_lookup_prefers_record_definition();
   test_parser_template_instantiation_dedup_keys_demote_rendered_sync();
   test_parser_template_instantiation_dedup_keys_mirror_direct_emission();
   test_parser_template_substitution_preserves_record_definition_payloads();

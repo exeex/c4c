@@ -8,63 +8,31 @@ Current Step Title: Demote struct_tag_def_map To Compatibility Mirror
 
 ## Just Finished
 
-Step 5 first packet inventoried all remaining
-`DefinitionState::struct_tag_def_map` references and classified them after the
-typed `TypeSpec::record_def` propagation work.
+Step 5 converted the template static-member lookup blocker in
+`types/template.cpp`.
 
-Compatibility/final-spelling mirror writers and cache hooks:
-- `parser_state.hpp` keeps the rendered-spelling map as parser state.
-- `support.cpp::register_struct_definition_for_testing()` is a test hook for
-  compatibility/stale-map coverage.
-- `types/struct.cpp::register_record_definition()` writes source and canonical
-  spelling keys for declared records.
-- `types/template.cpp::ensure_template_struct_instantiated_from_args()` writes
-  explicit specialization/injected instantiation keys and uses `count()` for
-  rendered-instantiation cache/dedup behavior.
-- `types/base.cpp` direct template emission writes the mangled instance key as
-  the retained final-spelling compatibility mirror.
-- parser tests intentionally mutate or assert the map as stale/fallback mirror
-  coverage, not as the desired semantic authority.
+`try_eval_template_static_member` now asks
+`ensure_template_struct_instantiated_from_args()` for a resolved `TypeSpec` and
+uses `resolve_record_type_spec()` so `TypeSpec::record_def` is semantic
+authority when present. The rendered `struct_tag_def_map` lookup remains only
+as fallback for tag-only compatibility.
 
-Typed-identity fallback readers that already prefer `record_def` when a
-`TypeSpec` is available:
-- `support.cpp::resolve_record_type_spec()` is the central typed-first helper;
-  layout, `alignof`, `sizeof`, and `offsetof` use its map lookup only for
-  tag-only compatibility.
-- `declarations.cpp` incomplete-object checks use `resolve_record_type_spec()`
-  and keep `eval_const_int()` map arguments for constant-expression layout
-  fallback.
-- `expressions.cpp` `__builtin_offsetof` folding passes the map into
-  `eval_const_int()` so `NK_OFFSETOF` can use typed identity first and
-  compatibility spelling second.
-- `types/base.cpp` member typedef owner lookup, template base reconstruction,
-  deferred member resolution, and template suffix handling either use
-  `resolve_record_type_spec()` first or use map lookup only after an
-  instantiation/helper boundary where a rendered key is the compatibility
-  bridge.
-- `types/declarator.cpp` dependent typename owner and nested owner traversal
-  use `resolve_record_type_spec()` first; remaining map finds are fallback for
-  tag-only or qualified-name compatibility.
-- `types/struct.cpp` bitfield width evaluation passes the map to
-  `eval_const_int()` for constant-expression compatibility.
+Recursive inherited static-member lookup now resolves each `base_ts` through
+`resolve_record_type_spec(base_ts, &definition_state_.struct_tag_def_map)`,
+which prefers typed base identity before rendered tag fallback.
 
-Still-semantic authority / Step 5 blocker:
-- `types/template.cpp` template static-member lookup obtains `sdef` solely via
-  `struct_tag_def_map.find(ref_mangled)` after
-  `ensure_template_struct_instantiated_from_args()`, and its recursive base
-  search follows `base_ts.tag` through the map instead of consulting
-  `base_ts.record_def` first. This should be converted before the map can be
-  described as only a compatibility mirror.
+Focused parser coverage now proves stale rendered map entries cannot redirect
+template static-member lookup: the instantiated record map key points at one
+stale record and the base tag points at another stale record, but lookup still
+returns the static member value from the real typed base `record_def`.
 
 ## Suggested Next
 
-Convert the `types/template.cpp` template static-member lookup blocker: ask
-`ensure_template_struct_instantiated_from_args()` for a resolved `TypeSpec`,
-walk `record_def` when present, and keep rendered-map lookup only as fallback.
-Also make the recursive base walk prefer `resolve_record_type_spec(base_ts,
-...)` before `base_ts.tag` fallback. This next packet should include focused
-coverage where a stale rendered base tag cannot redirect template static
-member lookup.
+Run a final Step 5 classification pass over remaining
+`DefinitionState::struct_tag_def_map` readers/writers and record whether the
+map can now be documented or renamed as a compatibility mirror without changing
+behavior. Keep the packet inventory-first and only make a tiny documentation or
+name-local clarification if the classification is unambiguous.
 
 ## Watchouts
 
@@ -72,19 +40,15 @@ Do not delete `struct_tag_def_map` or remove rendered template compatibility
 keys during Step 5. Preserve `TypeSpec::tag` as spelling, diagnostics, emitted
 text, and compatibility payload.
 
-Do not infer semantic record identity from an existing rendered map entry when
-a typed `record_def` producer should be carrying the identity directly. Stale
-map-entry tests are the guardrail for this step.
-
-The inventory packet made no behavior changes and deliberately did not rename
-or document retained map sites while the template static-member reader remains
-primary semantic authority.
+The converted static-member path still passes the map to
+`resolve_record_type_spec()` and `eval_const_int()` for tag-only/layout
+compatibility; that is intentional fallback behavior, not semantic authority
+when a `record_def` exists.
 
 ## Proof
 
-Delegated proof for this inventory packet:
+Delegated proof for this packet:
 
-`git diff --check -- todo.md src/frontend/parser/impl/parser_state.hpp src/frontend/parser/impl/support.cpp src/frontend/parser/impl/types/base.cpp src/frontend/parser/impl/types/template.cpp src/frontend/parser/impl/types/declarator.cpp src/frontend/parser/impl/types/struct.cpp src/frontend/parser/impl/declarations.cpp src/frontend/parser/impl/expressions.cpp tests/frontend/frontend_parser_tests.cpp`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests|frontend_cxx_)' > test_after.log 2>&1`
 
-No `test_after.log` update was required because this packet changed only
-`todo.md` inventory notes.
+Result: passed. Proof log: `test_after.log`.
