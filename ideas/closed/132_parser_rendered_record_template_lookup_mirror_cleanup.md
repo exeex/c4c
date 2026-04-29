@@ -1,9 +1,10 @@
 # Parser Rendered Record Template Lookup Mirror Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
 Closed: 2026-04-29
 Reopened: 2026-04-29
+Reclosed: 2026-04-29
 
 Parent Ideas:
 - [129_parser_intermediate_carrier_boundary_labeling.md](/workspaces/c4c/ideas/closed/129_parser_intermediate_carrier_boundary_labeling.md)
@@ -99,3 +100,16 @@ new unrelated initiative. The fix must preserve the no-overfit rule: diagnose
 and repair the structured identity propagation/mirror authority path that can
 produce the mismatched return type-ref, rather than weakening the rebuilt test,
 rewriting expectations, or matching only `declared_pair`.
+
+## Reclose Summary
+
+Reclosed after implementation commit `2c722228` repaired the rebuilt
+`frontend_lir_function_signature_type_ref` regression by making LIR function
+signature TypeSpec tags module-owned and deriving aggregate type-ref identity
+from structured tag spelling rather than rendered mirror text.
+
+Reviewer artifact `review/reviewA.md` found no blocking drift or overfit issue.
+The close gate resolved the rebuilt regression under the canonical
+`test_before.log`/`test_after.log` guard, and the accepted full baseline in
+`test_baseline.log` passed all 3089 executed tests with 12 CTest-disabled tests
+not run.
