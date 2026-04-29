@@ -49,6 +49,10 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
       this_ts.base = TB_STRUCT;
       this_ts.tag = sit->second.tag.c_str();
       this_ts.ptr_level = 1;
+      auto owner_sdit = struct_def_nodes_.find(struct_tag);
+      if (owner_sdit != struct_def_nodes_.end()) {
+        this_ts.record_def = const_cast<Node*>(owner_sdit->second);
+      }
       ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
 
       std::string other_name =
@@ -75,8 +79,16 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
         lhs_me.field = field.name;
         lhs_me.field_text_id = make_text_id(
             lhs_me.field, module_ ? module_->link_name_texts.get() : nullptr);
-        lhs_me.resolved_owner_tag = struct_tag;
-        lhs_me.member_symbol_id = field.member_symbol_id;
+        const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
+            this_ts, true, &ctx.tpl_bindings, &ctx.nttp_bindings,
+            &ctx.method_struct_tag, method_node,
+            std::string("defaulted-method-member-owner:") + field.name);
+        lhs_me.resolved_owner_tag = owner_tag.value_or(struct_tag);
+        lhs_me.member_symbol_id =
+            find_struct_member_symbol_id(lhs_me.resolved_owner_tag, field.name);
+        if (lhs_me.member_symbol_id == kInvalidMemberSymbol) {
+          lhs_me.member_symbol_id = field.member_symbol_id;
+        }
         lhs_me.is_arrow = true;
         ExprId lhs_member =
             append_expr(method_node, lhs_me, field_ts, ValueCategory::LValue);
@@ -86,8 +98,8 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
         rhs_me.field = field.name;
         rhs_me.field_text_id = make_text_id(
             rhs_me.field, module_ ? module_->link_name_texts.get() : nullptr);
-        rhs_me.resolved_owner_tag = struct_tag;
-        rhs_me.member_symbol_id = field.member_symbol_id;
+        rhs_me.resolved_owner_tag = lhs_me.resolved_owner_tag;
+        rhs_me.member_symbol_id = lhs_me.member_symbol_id;
         rhs_me.is_arrow = true;
         ExprId rhs_member =
             append_expr(method_node, rhs_me, field_ts, ValueCategory::LValue);
@@ -132,6 +144,14 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
                                      const Node* span_node) {
   auto sit = module_->struct_defs.find(struct_tag);
   if (sit == module_->struct_defs.end()) return;
+  TypeSpec owner_ts{};
+  owner_ts.base = TB_STRUCT;
+  owner_ts.tag = sit->second.tag.c_str();
+  owner_ts.ptr_level = 1;
+  auto owner_sdit = struct_def_nodes_.find(struct_tag);
+  if (owner_sdit != struct_def_nodes_.end()) {
+    owner_ts.record_def = const_cast<Node*>(owner_sdit->second);
+  }
   const auto& fields = sit->second.fields;
   for (auto it = fields.rbegin(); it != fields.rend(); ++it) {
     const auto& field = *it;
@@ -149,8 +169,15 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
     me.field = field.name;
     me.field_text_id = make_text_id(
         me.field, module_ ? module_->link_name_texts.get() : nullptr);
-    me.resolved_owner_tag = struct_tag;
-    me.member_symbol_id = field.member_symbol_id;
+    const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
+        owner_ts, true, &ctx.tpl_bindings, &ctx.nttp_bindings,
+        &ctx.method_struct_tag, span_node,
+        std::string("member-dtor-member-owner:") + field.name);
+    me.resolved_owner_tag = owner_tag.value_or(struct_tag);
+    me.member_symbol_id = find_struct_member_symbol_id(me.resolved_owner_tag, field.name);
+    if (me.member_symbol_id == kInvalidMemberSymbol) {
+      me.member_symbol_id = field.member_symbol_id;
+    }
     me.is_arrow = true;
     TypeSpec field_ts = field.elem_type;
     ExprId member_id = append_expr(span_node, me, field_ts, ValueCategory::LValue);

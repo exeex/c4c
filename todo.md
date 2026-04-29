@@ -9,32 +9,34 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with expression-side compound-literal aggregate-init member-symbol ingress in
-`expr/object.cpp`. The `consume_from_list` aggregate member path now resolves
-the owner from the available `TypeSpec` structured carrier before falling back
-to rendered tags, and it prefers the resolved owner member symbol before the
-legacy field-stored symbol.
+with generated defaulted-method and member-destructor-call member-symbol ingress
+in `stmt.cpp`. Defaulted copy/move generated member expressions and generated
+member destructor-call expressions now build an owner `TypeSpec` from the
+current struct and available `struct_def_nodes_` `record_def`, resolve the
+owner through `resolve_member_lookup_owner_tag`, and prefer
+`find_struct_member_symbol_id` for the structured owner before falling back to
+the legacy field-stored member symbol.
 
-Added focused HIR coverage proving a compound literal whose `TypeSpec` carries
-a real `record_def` but a stale rendered tag lowers the aggregate `MemberExpr`
-with the structured owner tag and selects the real owner member symbol instead
-of the stale rendered symbol.
+Added focused HIR coverage proving stale rendered owner tags cannot select the
+wrong member symbol for a defaulted copy generated member access or a generated
+member-destructor access when structured `record_def` owner identity is
+available.
 
 ## Suggested Next
 
 Continue Step 4 by auditing any remaining rendered-tag member-symbol ingress
-outside the completed declaration and compound-literal aggregate-init paths.
-Keep static member lookup, constructor overload routing, and previously
-completed method/member-expression routes separate unless delegated.
+outside the completed declaration, compound-literal aggregate-init, defaulted
+copy/move, and member-destructor generated-body paths. Keep static member
+lookup, constructor overload routing, and previously completed
+method/member-expression routes separate unless delegated.
 
 ## Watchouts
 
-The compound-literal helper intentionally keeps the rendered-tag struct lookup
-and old field-stored member-symbol fallback when structured owner resolution has
-no usable owner, so legacy aggregate initialization remains supported. This
-packet only touched `expr/object.cpp`; constructor overload routing, static
-member lookup, and earlier expression/statement member routes were left
-untouched.
+Both touched `stmt.cpp` sites intentionally keep the rendered `struct_tag` and
+old field-stored member-symbol fallback when structured owner resolution has no
+usable owner, so legacy generated bodies remain supported. This packet did not
+touch static member lookup, constructor overload routing, or other expression
+member routes.
 
 ## Proof
 
