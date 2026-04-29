@@ -747,7 +747,8 @@ struct Triple triple = {.right = 7};
   expect_true(hir_dump.find("broken_right") == std::string::npos,
               "HIR printer should not trust a corrupted raw field designator");
 
-  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+  const c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
   const auto lir_global_it = std::find_if(
       lir_module.globals.begin(), lir_module.globals.end(),
       [](const c4c::codegen::lir::LirGlobal& global) { return global.name == "triple"; });
@@ -806,6 +807,64 @@ int use_template() { return id<int>(add_one(global_value)); }
               "fixture global should lower into a concrete LIR global carrier");
   expect_true(lir_global_it->link_name_id == hir_global->link_name_id,
               "LIR globals should forward the HIR LinkNameId on the direct emitted-global path");
+}
+
+void test_hir_to_lir_dead_internal_reachability_prefers_link_name_ids() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+static int helper(int value) { return value + 1; }
+
+int call_helper(int value) { return helper(value); }
+)cpp");
+
+  const auto helper_it = hir_module.fn_index.find("helper");
+  expect_true(helper_it != hir_module.fn_index.end(),
+              "fixture helper should be present in the HIR function index");
+  c4c::hir::Function* helper = hir_module.find_function(helper_it->second);
+  expect_true(helper != nullptr && helper->link_name_id != c4c::kInvalidLinkName,
+              "fixture static helper should carry a stable HIR LinkNameId");
+  const c4c::LinkNameId helper_link_name_id = helper->link_name_id;
+
+  helper->name = "broken_helper_definition_name";
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto lir_helper_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id == helper_link_name_id;
+      });
+  expect_true(lir_helper_it != lir_module.functions.end(),
+              "dead-internal elimination should keep a static helper reached by semantic LinkNameId");
+  expect_true(lir_helper_it->can_elide_if_unreferenced,
+              "fixture helper should still exercise the discardable-function reachability path");
+
+  const auto lir_caller_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "call_helper";
+      });
+  expect_true(lir_caller_it != lir_module.functions.end(),
+              "fixture caller should lower as the non-discardable reachability seed");
+
+  const c4c::codegen::lir::LirCallOp* direct_call = nullptr;
+  for (const auto& block : lir_caller_it->blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
+      if (call != nullptr &&
+          call->direct_callee_link_name_id == helper_link_name_id) {
+        direct_call = call;
+        break;
+      }
+    }
+    if (direct_call != nullptr) {
+      break;
+    }
+  }
+  expect_true(direct_call != nullptr,
+              "fixture caller should preserve the static helper direct-call LinkNameId");
+  expect_true(direct_call->callee == "@helper",
+              "fixture should recover the direct-call spelling from semantic identity");
 }
 
 void test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids() {
@@ -1731,6 +1790,7 @@ int main() {
   test_hir_member_exprs_preserve_text_ids_for_field_names();
   test_hir_global_init_designators_preserve_text_ids_for_field_names();
   test_hir_to_lir_forwards_function_link_name_ids();
+  test_hir_to_lir_dead_internal_reachability_prefers_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
   test_hir_to_lir_decl_backed_call_result_inference_prefers_link_name_ids();

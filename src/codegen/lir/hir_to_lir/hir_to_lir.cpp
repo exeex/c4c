@@ -929,19 +929,36 @@ static void scan_refs(const std::string& s,
   }
 }
 
+struct LirGlobalRefs {
+  std::unordered_set<LinkNameId> link_name_ids;
+  std::unordered_set<std::string> names;
+};
+
 // Collect all global symbol references from a single LIR instruction.
-// Scans every string operand field for @-prefixed global references.
-static void collect_inst_refs(const LirInst& inst,
-                              std::unordered_set<std::string>& refs) {
-  auto S = [&](const std::string& s) { scan_refs(s, refs); };
+// Prefer structured direct-call identities and scan legacy string operands only
+// where LIR still has no semantic symbol carrier.
+static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
+  auto S = [&](const std::string& s) { scan_refs(s, refs.names); };
   // Visit each typed LIR op and scan its string-valued operand fields.
   // Types with no string operands (legacy typed ops with no producers) are
   // handled by the default case.
   auto visitor = [&](const auto& op) {
     using T = std::decay_t<decltype(op)>;
     if constexpr (std::is_same_v<T, LirCallOp>) {
-      collect_lir_global_symbol_refs_from_call(
-          op, [&](std::string_view ref) { refs.insert(std::string(ref)); });
+      if (op.direct_callee_link_name_id != kInvalidLinkName) {
+        refs.link_name_ids.insert(op.direct_callee_link_name_id);
+        collect_lir_global_symbol_refs_from_call_args(
+            op.args_str,
+            [&](std::string_view ref) {
+              refs.names.insert(std::string(ref));
+            });
+      } else {
+        collect_lir_global_symbol_refs_from_call(
+            op,
+            [&](std::string_view ref) {
+              refs.names.insert(std::string(ref));
+            });
+      }
     } else if constexpr (std::is_same_v<T, LirStoreOp>) {
       S(op.val); S(op.ptr);
     } else if constexpr (std::is_same_v<T, LirLoadOp>) {
@@ -996,10 +1013,10 @@ static void collect_inst_refs(const LirInst& inst,
 }
 
 // Collect all global references from a function's body.
-static std::unordered_set<std::string> collect_fn_refs(const LirFunction& fn) {
-  std::unordered_set<std::string> refs;
+static LirGlobalRefs collect_fn_refs(const LirFunction& fn) {
+  LirGlobalRefs refs;
   // Scan signature text (may reference other functions in attributes/metadata).
-  scan_refs(fn.signature_text, refs);
+  scan_refs(fn.signature_text, refs.names);
   // Scan hoisted allocas.
   for (const auto& inst : fn.alloca_insts) collect_inst_refs(inst, refs);
   // Scan block instructions.
@@ -1010,28 +1027,45 @@ static std::unordered_set<std::string> collect_fn_refs(const LirFunction& fn) {
 }
 
 static void eliminate_dead_internals(LirModule& mod) {
-  std::unordered_set<std::string> discardable_fns;
-  for (const auto& f : mod.functions) {
-    if (f.can_elide_if_unreferenced) discardable_fns.insert(f.name);
+  std::unordered_map<LinkNameId, size_t> discardable_by_link_name;
+  std::unordered_map<std::string, size_t> discardable_by_name;
+  for (size_t i = 0; i < mod.functions.size(); ++i) {
+    const auto& f = mod.functions[i];
+    if (!f.can_elide_if_unreferenced) continue;
+    if (f.link_name_id != kInvalidLinkName) {
+      discardable_by_link_name.emplace(f.link_name_id, i);
+    }
+    discardable_by_name.emplace(f.name, i);
   }
-  if (discardable_fns.empty()) return;
+  if (discardable_by_link_name.empty() && discardable_by_name.empty()) return;
 
   // Build per-function reference sets.
-  std::unordered_map<std::string, size_t> fn_idx_by_name;
-  std::vector<std::unordered_set<std::string>> fn_refs(mod.functions.size());
+  std::vector<LirGlobalRefs> fn_refs(mod.functions.size());
   for (size_t i = 0; i < mod.functions.size(); ++i) {
-    fn_idx_by_name[mod.functions[i].name] = i;
     fn_refs[i] = collect_fn_refs(mod.functions[i]);
   }
 
-  std::unordered_set<std::string> reachable;
-  std::vector<std::string> worklist;
+  std::vector<bool> reachable(mod.functions.size(), false);
+  std::vector<size_t> worklist;
 
-  auto seed = [&](const std::unordered_set<std::string>& refs) {
-    for (const auto& r : refs) {
-      if (discardable_fns.count(r) && !reachable.count(r)) {
-        reachable.insert(r);
-        worklist.push_back(r);
+  auto seed_idx = [&](size_t idx) {
+    if (!reachable[idx]) {
+      reachable[idx] = true;
+      worklist.push_back(idx);
+    }
+  };
+
+  auto seed = [&](const LirGlobalRefs& refs) {
+    for (const LinkNameId id : refs.link_name_ids) {
+      auto it = discardable_by_link_name.find(id);
+      if (it != discardable_by_link_name.end()) {
+        seed_idx(it->second);
+      }
+    }
+    for (const auto& name : refs.names) {
+      auto it = discardable_by_name.find(name);
+      if (it != discardable_by_name.end()) {
+        seed_idx(it->second);
       }
     }
   };
@@ -1043,26 +1077,27 @@ static void eliminate_dead_internals(LirModule& mod) {
 
   // Seed from global initializers.
   for (const auto& g : mod.globals) {
-    std::unordered_set<std::string> grefs;
-    scan_refs(g.init_text, grefs);
+    LirGlobalRefs grefs;
+    scan_refs(g.init_text, grefs.names);
     seed(grefs);
   }
 
   // Propagate: internal functions referenced by reachable internal functions.
   while (!worklist.empty()) {
-    std::string cur = std::move(worklist.back());
+    const size_t cur = worklist.back();
     worklist.pop_back();
-    auto it = fn_idx_by_name.find(cur);
-    if (it == fn_idx_by_name.end()) continue;
-    seed(fn_refs[it->second]);
+    seed(fn_refs[cur]);
   }
 
   // Remove unreachable discardable functions.
+  size_t idx = 0;
   mod.functions.erase(
       std::remove_if(mod.functions.begin(), mod.functions.end(),
                      [&](const LirFunction& f) {
-                       return f.can_elide_if_unreferenced &&
-                              !reachable.count(f.name);
+                       const bool remove = f.can_elide_if_unreferenced &&
+                                           !reachable[idx];
+                       ++idx;
+                       return remove;
                      }),
       mod.functions.end());
 }

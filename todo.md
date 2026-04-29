@@ -1,71 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/125_lir_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory LIR String Lookup Surfaces
+Current Step ID: Step 3
+Current Step Title: Thread Semantic Identity Through Calls, Externs, And Globals
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 inventory for `src/codegen/lir` string lookup surfaces.
-Major classifications:
+Completed Step 3 conversion for `eliminate_dead_internals` in
+`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`. Dead-internal reachability now
+tracks structured `LinkNameId` references beside legacy rendered-name
+references, uses `LirFunction::link_name_id` to identify discardable functions
+when present, and uses `LirCallOp::direct_callee_link_name_id` for direct-call
+reachability. Rendered `@name` scanning remains for signature text, global
+initializer text, indirect/string-only calls, call-argument function references,
+and other legacy string operands.
 
-- Pure text lookup with structured IDs already nearby:
-  `dedup_globals` and `dedup_functions` in
-  `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` already prefer
-  `LinkNameId` then `TextId`, but still retain raw `std::string` fallback maps
-  (`best_by_name`) when HIR lacks stable IDs.
-- Semantic lookup needing conversion:
-  `eliminate_dead_internals` in
-  `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` builds
-  `std::unordered_set<std::string>` and
-  `std::unordered_map<std::string, size_t>` from rendered `@name` references,
-  then decides which discardable functions survive by rendered function name.
-  Direct calls already carry `direct_callee_link_name_id`, and
-  `LirFunction` carries `link_name_id`, so this is the first bounded
-  conversion target.
-- Semantic lookup with legacy fallback:
-  `StmtEmitter::find_local_target_function` and const-init function/global
-  resolution prefer `LinkNameId` or object IDs when available, then fall back
-  to `find_function_by_name_legacy`, `select_global_object(name)`, or raw
-  `DeclRef::name`.
-- Compatibility bridge:
-  `LirModule::record_extern_decl` keeps
-  `extern_decl_link_name_map` plus `extern_decl_name_map`; the name map is a
-  fallback bridge for calls without `LinkNameId`, and link-name entries migrate
-  existing name entries when semantic identity appears.
-- Struct/type bridge:
-  `verify_struct_decl_shadows`, `find_declared_struct_name_id`, and related
-  type-ref mirror checks compare structured `StructNameId`/`LirTypeRef`
-  records against legacy rendered `type_decls` or signature text. These are
-  compatibility/shadow checks, not first conversion targets.
-- Final spelling/display:
-  `lir_printer.cpp`, `emitted_link_name` helpers, `llvm_global_sym`,
-  `LirOperand`/`LirTypeRef` text, string-pool names, diagnostics, labels, and
-  LLVM opcode/predicate text remain spelling, dump, or output surfaces unless
-  used as lookup authority.
-- Unresolved boundaries:
-  `mod.struct_defs.find(ts.tag)`, field-name comparisons, builtin-name checks,
-  special identifiers such as `__func__`, and parser-like scans of legacy LIR
-  operand text depend on upstream HIR metadata or LLVM syntax payloads and
-  should not be folded into the first packet.
+Added focused coverage in `tests/frontend/frontend_hir_tests.cpp` for a static
+helper whose raw HIR function name is corrupted while its semantic
+`LinkNameId` remains valid; lowering must keep the discardable helper reachable
+through the direct-call `LinkNameId`.
 
 ## Suggested Next
 
-Convert the `eliminate_dead_internals` reachability path to prefer
-`LinkNameId` for LIR functions and direct call references, retaining rendered
-`@name` scanning only as a legacy fallback for operands/signature text that do
-not yet carry structured identity.
+Suggested next packet: move the next remaining semantic lookup surface from
+Step 3, likely extern/global-init or StmtEmitter call lookup convergence,
+through the same structured-first pattern while preserving string-only
+fallbacks.
 
 ## Watchouts
 
-Keep the dead-internal conversion behavior-preserving: non-discardable
-functions and global initializers still seed reachability, and legacy text
-scans remain for string-only references. Do not convert final LLVM spelling,
-diagnostic text, or struct shadow verification into semantic authority work.
+`eliminate_dead_internals` still treats global initializer text and signature
+text as legacy string-only surfaces, so future structured global-init metadata
+would need a separate packet. The direct-call callee string is no longer used
+as authority when `direct_callee_link_name_id` is present, but direct-call
+argument text is still scanned for function references passed as values.
 
 ## Proof
 
-Inventory-only `todo.md` update; no build or test proof required by the
-delegated packet. Existing `test_after.log` was not modified.
+Delegated proof:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|backend_)'; } 2>&1 | tee test_after.log`
+
+Supervisor acceptance proof widened to include the touched HIR test binary:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests$|frontend_lir_|backend_)'; } 2>&1 | tee test_after.log`
+
+Passed. `test_after.log` contains the supervisor acceptance proof output; CTest
+reported 100% pass for the enabled selected tests, with the configured
+disabled MIR tests not run.
