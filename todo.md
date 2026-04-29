@@ -1,124 +1,135 @@
 Status: Active
 Source Idea Path: ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Audit Parser And AST Boundary Text Authority
+Current Step ID: 3
+Current Step Title: Audit Sema And HIR Text Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 audited remaining Parser and AST-boundary text authority outside the
-already covered ideas 132, 133, and 134.
+Step 3 audited Sema and HIR text authority against existing follow-up ideas
+135 and 136, including the Step 2 carryover helper consumers.
 
 Structured identity:
 
-- `ParserSymbolTable`, `ParserNameTables`, `ParserBindingState` typedef/value
-  tables, local lexical tables, enum/const-int TextId bindings, and
-  `QualifiedNameKey` maps are structured identity surfaces.
-- `ParserQualifiedNameRef` is structured-primary: it carries
-  `qualifier_text_ids`, `qualifier_symbol_ids`, `base_text_id`, and
-  `base_symbol_id`; `qualifier_segments`, `base_name`, and `spelled()` are
-  projection/display text.
-- `ParserNamespaceContext::text_id`, `named_namespace_children`,
-  `using_namespace_contexts`, and `namespace_stack` are structured namespace
-  identity; `display_name`, `canonical_name`, and `current_namespace` are
-  rendered namespace display/final spelling.
-- `Node::unqualified_text_id`, `Node::qualifier_text_ids`,
-  `namespace_context_id`, `TypeSpec::record_def`, template-param TextId arrays,
-  enum-name TextId arrays, and `TemplateArgRef` typed/value fields are
-  structured AST-boundary carriers.
-- `eval_const_int_with_parser_tables()` uses TextId named constants; `op` text
-  in unary/binary/assignment AST nodes is legitimate operator kind spelling
-  because no separate operator enum exists for those expression forms.
+- Sema structured mirrors exist for globals, functions, ref/cpp overloads,
+  consteval functions, enum/global/local const values, local scopes, enum
+  variants, record completeness, static members, instance fields, and bases:
+  `SemaStructuredNameKey`, `TextId`, `Const*ByKey`, and `*_by_text` maps are
+  structured carriers when the lookup result is returned from the structured
+  path or used as a keyed consteval environment.
+- HIR structured identity exists for record owners and lookup keys:
+  `NamespaceQualifier`, declaration `TextId`, `ModuleDeclLookupKey`,
+  `HirRecordOwnerKey`, `HirStructMethodLookupKey`,
+  `HirStructMemberLookupKey`, `MemberSymbolId`, `LinkNameId`, and
+  `CompileTimeRegistryKey` maps are the intended authority surfaces.
+- HIR compile-time registries already provide structured-first helpers for
+  declaration-keyed lookup: `find_template_def(Node*, rendered_name)`,
+  `find_template_struct_def(Node*, rendered_name)`,
+  `find_template_struct_specializations(Node*, rendered_name)`, and
+  `find_consteval_def(Node*, rendered_name)` first probe structured maps and
+  only fall back to rendered names when the caller supplies them.
+- HIR local `FunctionCtx` maps for locals, params, labels, function-pointer
+  signatures, static globals, block const bindings, and pack params are
+  function-scope lowering state. They use parser spelling inside one lexical
+  lowering context, not cross-IR owner/member/template authority.
 
 Legitimate display or final text:
 
-- Diagnostics/debug carriers are display-only: parse-context stack,
-  parse-failure `expected`/`got`/`detail`, parse-debug event text, token-window
-  formatting, AST dump names, `node_kind_name()`, and injected-parse debug
-  reasons.
-- Literal and source-preservation text is final/display payload:
-  `NK_STR_LIT::sval`, raw float lexemes in `sval`, char/string literal
-  spelling, `sizeof...` pack text, inline-asm template/constraints, pragma
-  argument strings, linkage specs, local labels/goto labels, designated-init
-  fields, offsetof field paths, constructor-init member names, and anonymous
-  generated namespace/template parameter names.
-- Mangled/generated names are final artifact spelling, not source identity:
-  operator mangled suffixes, template instantiation mangled tags,
-  `append_type_mangled_suffix*()`, and generated specialization names.
+- Diagnostics and debug text remain legitimate: Sema diagnostic messages,
+  compile-time/HIR diagnostic strings, HIR dump/printer text, debug parity
+  counters, pending-template-type context names, and formatted unresolved
+  template-type messages.
+- Final/generated HIR text remains legitimate when not used as source identity:
+  sanitized symbols, mangled template instance names, operator method spelling,
+  emitted function/global names, link names, generated specialization keys,
+  string literal payloads, asm text, and label names.
+- HIR template parameter names and binding-map names are legitimate local
+  template-substitution keys while they are scoped to a primary/template
+  pattern and not used as cross-owner record/template lookup by themselves.
 
-Compatibility fallback already covered by ideas 132-134:
+Compatibility fallback already covered by ideas 135 and 136:
 
-- Idea 132 covers parser record/template rendered mirrors and their consumers:
-  `defined_struct_tags`, `struct_tag_def_map`, rendered template primary and
-  specialization maps, instantiated-template rendered keys, and rendered NTTP
-  default-expression token caches. `resolve_record_type_spec()` is structured
-  first through `TypeSpec::record_def`; its rendered tag map fallback is within
-  idea 132.
-- Idea 133 covers parser namespace/visible-name compatibility spelling:
-  `VisibleNameResult::compatibility_spelling`,
-  `UsingValueAlias::compatibility_name`,
-  `compatibility_namespace_name_in_context()`, `bridge_name_in_context()`,
-  `qualify_name*()`, and string-returning visible/qualified lookup helpers.
-- Idea 134 covers parser-produced AST/template payload strings:
-  `ParserAliasTemplateInfo::param_names`,
-  `ParserTemplateArgParseResult::nttp_name`,
-  `template_arg_nttp_names`, `TemplateArgRef::debug_text`, `Node::name`,
-  `Node::unqualified_name`, `Node::template_origin_name`, `TypeSpec::tag`,
-  `TypeSpec::tpl_struct_origin`, and `TypeSpec::deferred_member_type_name`.
+- Idea 135 covers Sema rendered owner/static-member/member fallback authority:
+  `resolve_owner_in_namespace_context()`, `enclosing_method_owner_struct()`,
+  `lookup_struct_static_member_type()`, `has_struct_instance_field()`, and
+  unqualified variable lookup fallback from `n->name` to
+  `n->unqualified_name`. These paths compare structured mirrors but still
+  return legacy string-map results in several cases.
+- Idea 135 also covers Sema record-completeness and record-key lookup by
+  rendered `TypeSpec::tag`: `structured_record_keys_by_tag_` is keyed by
+  rendered tag and is used to reach structured completeness/base/static-member
+  mirrors. That is part of the same owner/member lookup cleanup, not a separate
+  Step 4 issue.
+- Idea 136 covers HIR rendered owner/method/member authority:
+  `try_parse_qualified_struct_method_name()`,
+  `attach_out_of_class_struct_method_defs()`,
+  `find_struct_method_mangled()`,
+  `find_struct_method_link_name_id()`,
+  `find_struct_method_return_type()`,
+  `find_struct_static_member_decl()`,
+  `find_struct_static_member_const_value()`, and
+  `find_struct_member_symbol_id()` still derive or return semantic answers
+  from rendered tags, rendered `tag::member` strings, or `MemberSymbolTable`
+  rendered lookup while by-owner maps only check parity.
+- Idea 136 covers HIR template struct primary/specialization authority:
+  `find_template_struct_primary()`, `find_template_struct_specializations()`,
+  `canonical_template_struct_primary()`, `seed_pending_template_type()`,
+  `realize_template_struct_if_needed()`, and `recover_template_struct_identity_from_tag()`
+  still depend on rendered `tpl_struct_origin`, rendered tags, or family-root
+  parsing while structured owner maps only verify parity or provide fallback.
+- Idea 136 covers HIR static-member/type-trait helper authority where rendered
+  struct maps are still consumer-facing: `eval_struct_static_member_value_hir()`
+  recurses through `struct_defs` by rendered tag and `member_name`.
 
-Compatibility fallback outside ideas 132-134:
+Compatibility fallback outside the Sema/HIR follow-up scope:
 
-- `eval_const_int(Node*, ..., unordered_map<string,long long>*)` is a documented
-  legacy/HIR compatibility overload. Parser-owned paths use the TextId overload,
-  so this is a Step 3 AST-consumer/HIR handoff rather than a new parser gap.
-- `resolve_typedef_chain()` and `types_compatible_p()` are public
-  string-map-compatible helpers still used by HIR with empty typedef maps. The
-  parser-owned builtin path uses `Parser::are_types_compatible()` and parser
-  typedef lookup, so this is also a Step 3 HIR/consumer audit item.
+- HIR compile-time state still has rendered-name overloads for template,
+  template-struct, consteval, enum, and const-int maps. These are documented
+  compatibility fallbacks when declaration keys are unavailable; the
+  structured overloads are already primary when callers pass a node/key.
+- Step 2 parser-support carryover: HIR uses `types_compatible_p()` with empty
+  typedef maps in `normalize_zero_sized_struct_return_from_body()` and
+  template pattern matching. With empty typedef maps, these uses compare
+  `TypeSpec` payloads and do not add string-map authority beyond existing HIR
+  template/type cleanup covered by idea 136.
+- Step 2 parser-support carryover: HIR uses the string-compatible
+  `eval_const_int()` overload for struct static member values with empty
+  struct/const maps or NTTP binding maps. The empty-map uses are compatibility
+  wrappers around expression folding; the NTTP binding-name use is local
+  template substitution state. The rendered owner/member lookup around those
+  values is already covered by idea 136.
 
-Suspicious authority outside ideas 132-134:
+Suspicious authority:
 
-- Parser function-name authority still exposes string-facing bridges that are
-  not named by ideas 132-134: `has_known_fn_name(const std::string&)`,
-  `register_known_fn_name(const std::string&)`,
-  `register_known_fn_name_in_context()` fallback branches, and call sites that
-  register rendered `qualified_op_name`, `qualified_ctor_name`, or
-  `scoped_decl_name`. The backing table is structured
-  `unordered_set<QualifiedNameKey> known_fn_names`, but rendered strings can
-  still be reparsed into keys and used for function/call disambiguation.
-  Cross-check: this is not idea 132 record/template mirror work, not idea 133
-  namespace/visible-name compatibility spelling, and not idea 134
-  parser-produced AST/template payload text.
-
-Uncovered parser/AST-boundary gap assessment:
-
-- One uncovered parser-side gap remains: known-function-name compatibility
-  spelling can still act as lookup/disambiguation authority before all parser
-  callers pass `QualifiedNameKey`/`TextId` directly.
-- No additional uncovered parser/AST-boundary gaps were found outside that
-  known-function-name family after excluding ideas 132, 133, and 134.
+- No new Sema/HIR suspicious authority was found outside ideas 135 and 136.
+  The suspicious Sema families all map to idea 135, and the suspicious HIR
+  owner/member/method/template families all map to idea 136.
+- The Step 2 parser known-function-name gap remains outside ideas 135 and 136:
+  `has_known_fn_name(const std::string&)`,
+  `register_known_fn_name(const std::string&)`, rendered registration call
+  sites, and fallback parsing into `QualifiedNameKey` still need plan-owner
+  follow-up idea creation or adjustment before the audit can claim every
+  suspicious path has open follow-up coverage.
 
 ## Suggested Next
 
-Proceed to Step 3 with two handoff threads:
-
-- Ask the plan owner to create or adjust follow-up coverage for parser
-  known-function-name compatibility spelling if Step 3 is allowed to queue new
-  parser follow-up work.
-- Audit AST-consumer/HIR text authority for the parser-support compatibility
-  helpers: the string-map `eval_const_int()` overload and
-  `resolve_typedef_chain()` / `types_compatible_p()` helper use from HIR.
+Proceed to Step 4 for LIR, BIR, and backend handoff text-authority audit.
+Supervisor should also route a plan-owner packet to create or adjust follow-up
+coverage for the parser known-function-name compatibility spelling gap; Step 3
+did not require new Sema/HIR follow-up ideas beyond 135 and 136.
 
 ## Watchouts
 
-Do not fold known-function-name cleanup into ideas 132-134; it is a distinct
-parser binding/disambiguation authority family. Do not treat the public
-parser-support HIR helper findings as parser implementation gaps until Step 3
-checks their consumer-side authority.
+Do not fold the known-function-name gap into ideas 135 or 136; it is a parser
+binding/disambiguation family from Step 2. Do not create duplicate Sema/HIR
+ideas for owner/static-member/method/template rendered lookup without first
+reconciling with ideas 135 and 136. Parser-support helper consumers are not a
+new parser gap based on this audit; their HIR-side rendered owner/template
+risks are already represented by idea 136.
 
 ## Proof
 
-Not run per packet: no build proof required for read-only Parser/AST-boundary
+Not run per packet: no build proof required for read-only Sema/HIR
 text-authority audit and `todo.md` update; tests were explicitly out of scope.
