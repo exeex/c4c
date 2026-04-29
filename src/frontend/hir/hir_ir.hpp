@@ -1542,6 +1542,10 @@ struct Module {
     return structured ? structured : legacy;
   }
 
+  const Function* resolve_direct_call_callee(const DeclRef& ref) const {
+    return resolve_function_decl(ref);
+  }
+
   GlobalVar* find_global(GlobalId id) {
     auto it = std::find_if(globals.begin(), globals.end(),
                            [&](const GlobalVar& gv) { return gv.id.value == id.value; });

@@ -8,20 +8,21 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 first bounded semantic lookup demotion packet for HIR module
-declaration resolution. `Module::classify_function_decl_lookup()`,
-`resolve_function_decl()`, `classify_global_decl_lookup()`, and
-`resolve_global_decl()` now keep structured, link-name, and concrete-global
-authority ahead of stale rendered-name legacy hits when both exist and
-disagree, while recording the legacy mismatch.
+Completed Step 3 direct-call callee lookup demotion packet. Direct-call
+lowering in `src/frontend/hir/impl/expr/call.cpp` now resolves function
+callees through `Module::resolve_direct_call_callee()`, which uses the existing
+LinkNameId/structured declaration resolver before legacy rendered-name
+fallback; local direct-call target, callee-type, link-carrier, method-call, and
+argument-parameter lookup paths no longer call rendered-name lookup directly.
+The focused HIR lookup test now proves stale rendered names cannot override
+direct-call structured or LinkNameId callee authority.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: demote rendered-name semantic authority for one
-nearby function/global lookup edge path that already has structured metadata,
-preferably namespace-qualified or link-name-backed flows outside
-`Module::resolve_*_decl()` rather than lowerer local maps or compile-time-engine
-registries.
+Next coherent Step 3 packet: inspect the remaining non-direct-call function or
+global semantic lookup edges that still consume rendered-name compatibility
+maps directly, preferably constructor/operator helper paths adjacent to call
+lowering that already have LinkNameId or structured declaration carriers.
 
 ## Watchouts
 
@@ -35,9 +36,9 @@ Step 1 inventory classification:
   path; otherwise classify as unresolved local-scope metadata gaps.
 - Semantic lookup: `Module::fn_index` / `global_index` and
   `find_*_by_name_legacy()` are rendered-name compatibility indexes beside
-  existing `fn_structured_index` / `global_structured_index`. The current
-  disagreement branch returns the legacy hit, so this is the first precise
-  conversion packet.
+  existing `fn_structured_index` / `global_structured_index`. The module
+  declaration resolver now makes structured/link/concrete authorities win on
+  disagreement and keeps legacy rendered-name lookup as fallback.
 - Semantic lookup: `CompileTimeState` template/consteval definition maps retain
   rendered-name maps but already have `CompileTimeRegistryKey` structured
   mirrors and comments that classify rendered lookup as fallback. Treat as a
@@ -68,10 +69,17 @@ Step 1 inventory classification:
   maps need separate metadata analysis before conversion.
 - `fn_index`, `global_index`, and `find_*_by_name_legacy()` remain live
   compatibility/fallback surfaces for missing or incomplete structured
-  declaration metadata.
-- The new focused HIR lookup test covers structured function/global, function
-  and global `LinkNameId`, and concrete `GlobalId` stale-rendered-name
-  disagreement cases without weakening legacy fallback coverage.
+  declaration metadata. This packet removed direct-call uses of the function
+  legacy helper in `call.cpp`, but nearby operator/object/range-for helpers may
+  still need separate packets.
+- Direct-call link-carrier discovery now records declaration lookup hits through
+  the shared resolver. The hit/mismatch recorders deduplicate exact repeats, but
+  future packets should keep an eye on noisy lookup telemetry if more call-site
+  helpers are routed through the same boundary.
+- The focused HIR lookup tests cover module structured function/global,
+  function and global `LinkNameId`, concrete `GlobalId`, and direct-call
+  structured/LinkNameId stale-rendered-name disagreement cases without
+  weakening legacy fallback coverage.
 
 Do not weaken tests or add named-case shortcuts. Stale rendered-name tests are
 appropriate only when they prove structured identity wins over legacy lookup
