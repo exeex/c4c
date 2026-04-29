@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/129_parser_intermediate_carrier_boundary_labeling.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify parser helper structs
+Current Step ID: 3
+Current Step Title: Audit parser-side string authority
 
 # Current Packet
 
