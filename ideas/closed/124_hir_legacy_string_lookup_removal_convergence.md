@@ -1,7 +1,8 @@
 # HIR Legacy String Lookup Removal Convergence
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
 - [99_hir_module_symbol_structured_lookup_mirror.md](/workspaces/c4c/ideas/closed/99_hir_module_symbol_structured_lookup_mirror.md)
@@ -83,3 +84,25 @@ Cross-module failures are expected during this cleanup. When they happen:
   `TextId` or semantic-table lookup paths.
 - Downstream LIR/BIR expectations are aligned with the same authority rule or
   split into follow-up ideas.
+
+## Closure Summary
+
+Closed after Step 6 lifecycle review found the source idea acceptance criteria
+satisfied. Remaining HIR string surfaces are classified as compatibility,
+final-spelling/display, diagnostics/dumps, local-scope, or unresolved-boundary
+uses rather than silent semantic authority. No follow-up split is required for
+the retained rendered struct/template/member compatibility caches at this
+time.
+
+Close proof used matching broad HIR regression logs generated with:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -L hir > <log> 2>&1
+```
+
+Both `test_before.log` and `test_after.log` report 78 passed / 0 failed
+HIR-labeled tests. The close-time regression guard passed:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
