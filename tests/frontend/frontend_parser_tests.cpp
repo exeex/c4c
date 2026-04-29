@@ -1220,6 +1220,66 @@ void test_parser_dependent_typename_owner_alias_prefers_record_definition() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_nested_dependent_typename_prefers_record_definition() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::Node* real_nested = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_nested->name = arena.strdup("RealNested");
+  real_nested->member_typedef_names = arena.alloc_array<const char*>(1);
+  real_nested->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  real_nested->n_member_typedefs = 1;
+  real_nested->member_typedef_names[0] = arena.strdup("type");
+  real_nested->member_typedef_types[0].array_size = -1;
+  real_nested->member_typedef_types[0].inner_rank = -1;
+  real_nested->member_typedef_types[0].base = c4c::TB_LONG;
+
+  c4c::Node* stale_nested = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  stale_nested->name = arena.strdup("StaleNested");
+  stale_nested->n_member_typedefs = 0;
+  parser.register_struct_definition_for_testing("StaleNested", stale_nested);
+
+  c4c::TypeSpec nested_field_type{};
+  nested_field_type.array_size = -1;
+  nested_field_type.inner_rank = -1;
+  nested_field_type.base = c4c::TB_STRUCT;
+  nested_field_type.tag = arena.strdup("StaleNested");
+  nested_field_type.record_def = real_nested;
+
+  c4c::Node* nested_field = parser.make_node(c4c::NK_DECL, 1);
+  nested_field->name = arena.strdup("Nested");
+  nested_field->type = nested_field_type;
+
+  c4c::Node* root = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  root->name = arena.strdup("Root");
+  root->n_fields = 1;
+  root->fields = arena.alloc_array<c4c::Node*>(1);
+  root->fields[0] = nested_field;
+  parser.register_struct_definition_for_testing("Root", root);
+
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Root"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Nested"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
+  });
+
+  std::string resolved_name;
+  expect_true(parser.parse_dependent_typename_specifier(&resolved_name),
+              "nested dependent typename owners should use field record_def before stale rendered tags");
+
+  expect_eq(resolved_name, "Root::Nested::type",
+            "nested dependent typename parsing should preserve nested spelling");
+  const c4c::TypeSpec* resolved_type = parser.find_typedef_type(resolved_name);
+  expect_true(resolved_type != nullptr && resolved_type->base == c4c::TB_LONG,
+              "nested record_def owner lookup should recover the real nested member typedef");
+}
+
 void test_parser_is_typedef_name_uses_local_visible_scope_lookup() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3644,6 +3704,7 @@ int main() {
   test_parser_decode_type_ref_text_uses_local_visible_scope_lookup();
   test_parser_dependent_typename_uses_local_visible_owner_alias();
   test_parser_dependent_typename_owner_alias_prefers_record_definition();
+  test_parser_nested_dependent_typename_prefers_record_definition();
   test_parser_is_typedef_name_uses_local_visible_scope_lookup();
   test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_lookup();
   test_parser_record_body_context_keeps_visible_template_origin_lookup_local();

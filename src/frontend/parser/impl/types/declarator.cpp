@@ -834,28 +834,43 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                 owner = nested_owner;
                                 continue;
                             }
-                            if (!nested_decl || !nested_decl->type.tag ||
-                                !nested_decl->type.tag[0]) {
+                            if (!nested_decl) {
                                 ok = false;
                                 break;
                             }
-                            std::string nested_owner_tag = nested_decl->type.tag;
-                            owner_it = definition_state_.struct_tag_def_map.find(
-                                nested_owner_tag);
-                            if (owner_it ==
-                                    definition_state_.struct_tag_def_map.end() ||
-                                !owner_it->second) {
-                                nested_owner_tag = qualified_node_name(nested_decl);
-                                owner_it = definition_state_.struct_tag_def_map.find(
-                                    nested_owner_tag);
+                            const Node* resolved_nested_owner =
+                                resolve_record_type_spec(
+                                    nested_decl->type,
+                                    &definition_state_.struct_tag_def_map);
+                            if (!resolved_nested_owner) {
+                                if (!nested_decl->type.tag ||
+                                    !nested_decl->type.tag[0]) {
+                                    ok = false;
+                                    break;
+                                }
+                                std::string nested_owner_tag =
+                                    nested_decl->type.tag;
+                                owner_it =
+                                    definition_state_.struct_tag_def_map.find(
+                                        nested_owner_tag);
+                                if (owner_it ==
+                                        definition_state_.struct_tag_def_map.end() ||
+                                    !owner_it->second) {
+                                    nested_owner_tag =
+                                        qualified_node_name(nested_decl);
+                                    owner_it =
+                                        definition_state_.struct_tag_def_map.find(
+                                            nested_owner_tag);
+                                }
+                                if (owner_it ==
+                                        definition_state_.struct_tag_def_map.end() ||
+                                    !owner_it->second) {
+                                    ok = false;
+                                    break;
+                                }
+                                resolved_nested_owner = owner_it->second;
                             }
-                            if (owner_it ==
-                                    definition_state_.struct_tag_def_map.end() ||
-                                !owner_it->second) {
-                                ok = false;
-                                break;
-                            }
-                            owner = owner_it->second;
+                            owner = resolved_nested_owner;
                         }
                         if (ok) return owner;
                     }
