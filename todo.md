@@ -3,47 +3,59 @@
 Status: Active
 Source Idea Path: ideas/open/123_parser_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Demote Compatibility String Helpers And Tests
+Current Step ID: Step 5
+Current Step Title: Reprove Parser Cleanup And Decide Closure Or Split
 
 ## Just Finished
 
-Step 4 packet completed: NTTP default expression cache comments, local names,
-and frontend parser test wording now make the `NttpDefaultExprKey` table the
-structured cache and `nttp_default_expr_tokens` the rendered-name
-compatibility/final-spelling mirror.
+Step 4 is exhausted after the record-layout compatibility tag-map demotion,
+template primary/specialization rendered-name mirror demotion, and NTTP default
+expression rendered-cache demotion packets.
 
-`eval_deferred_nttp_default()` and `cache_nttp_default_expr_tokens()` now use
-rendered-mirror local names for the string-key path while preserving the
-structured-cache lookup order, TextId-less fallback behavior, and mismatch
-counter behavior exactly. The NTTP cache test was renamed and its assertions now
-describe the rendered mirror as secondary compatibility state.
+The remaining public helper/test string surfaces are not a precise additional
+Step 4 demotion packet: `struct_tag_def_map`, template rendered mirrors, and
+`nttp_default_expr_tokens` are now visibly compatibility/final-spelling mirrors;
+`defined_struct_tags`, rendered template instantiation keys, typedef-chain
+helper maps, diagnostics, source spelling, and string-facing public bridge tests
+fit final-spelling, compatibility, or downstream boundary categories rather than
+ordinary parser semantic lookup authority.
 
 ## Suggested Next
 
-Next Step 4 packet: have the supervisor/plan-owner decide whether Step 4 has
-remaining honest compatibility-demotion surfaces, or whether the runbook step
-is exhausted. A bounded candidate, if continuing Step 4, is to classify any
-remaining public helper/test string surfaces that are final-spelling bridge
-state rather than semantic lookup authority.
+Step 5 should reprove the parser cleanup route and decide closure versus split.
+Suggested supervisor proof is a fresh focused frontend/parser run covering the
+changed parser tests plus the template specialization subset used during Steps
+3 and 4:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_(template_specialization_member_typedef_trait_parse_cpp|template_specialization_typedef_chain_parse_cpp|template_specialization_visible_typedef_chain_parse_cpp|template_struct_specialization_parse_cpp|template_struct_specialization_runtime_cpp|template_bool_specialization_parse_cpp|specialization_identity_cpp|template_forward_pick_specialization_identity_cpp|eastl_slice6_template_defaults_and_refqual_cpp))$' > test_after.log 2>&1`
+
+After that proof, inspect the accumulated diff for unsupported downgrades,
+testcase-shaped shortcuts, or any remaining unclassified parser-owned string
+lookup authority. If none are present, ask the plan-owner to close idea 123
+with the selected regression guard. If a remaining issue is real but outside
+this runbook, split it into a new `ideas/open/` initiative instead of extending
+Step 4.
 
 ## Watchouts
 
-This packet intentionally did not convert or delete
-`nttp_default_expr_tokens` fallback reads. The retained rendered-name cache
-mirror remains functional for TextId-less compatibility/final-spelling lookup,
-and stale rendered-name precedence is still rejected only where a valid
-structured key/TextId path exists.
+Do not treat Step 5 as permission to delete retained strings. The intended
+terminal state still preserves display, diagnostics, source spelling, final
+emitted names, TextId-less compatibility, and public string-facing bridge
+behavior.
 
-No `template_struct_defs` / `template_struct_specializations`,
-`struct_tag_def_map`, `defined_struct_tags`, or public helper behavior was
-changed.
+Closure requires source-idea acceptance, not just `plan.md` exhaustion. If the
+proof or diff review finds a genuine unresolved parser-owned semantic lookup,
+route it explicitly: keep it in Step 5 only if it is a closure blocker inside
+idea 123, or create a separate open idea if it is a downstream/cross-module
+boundary.
 
 ## Proof
 
-Proof command run exactly as delegated:
+Latest Step 4 proof command run exactly as delegated:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' > test_after.log 2>&1`
 
 Result: passed. `test_after.log` contains the delegated frontend parser subset
 output: 1 test passed, 0 failed.
+
+No validation was run for this lifecycle-only Step 4 exhaustion decision.
