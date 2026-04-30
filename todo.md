@@ -8,21 +8,17 @@ Current Step Title: Remove Parser Template And NTTP Default Rendered Mirrors
 
 ## Just Finished
 
-Step 2.1 removed parser template-instantiation rendered de-dup key
-authority. `ParserTemplateState::TemplateInstantiationKey` /
-`instantiated_template_struct_keys_by_key` is now the only parser de-dup key
-carrier for `ensure_template_struct_instantiated_from_args(...)` and direct
-template emission; the rendered de-dup set and mismatch telemetry were deleted,
-and focused parser tests now cover structured-key recreation/reuse for both
-paths.
+Step 2.1 removed the now-unused rendered
+`make_template_struct_instance_key(...)` helper from parser type helpers. No
+rendered template-instantiation de-dup helper remains reachable under that
+name; parser de-dup authority stays on
+`ParserTemplateState::TemplateInstantiationKey` /
+`instantiated_template_struct_keys_by_key`.
 
 ## Suggested Next
 
-Continue with the supervisor-selected next Step 2 parser cleanup packet. The
-parser-owned NTTP default mirrors and template-instantiation de-dup mirrors
-covered by this step are removed or demoted; any remaining rendered parser
-lookup cleanup should stay in narrow slices unless the supervisor asks for plan
-review.
+Continue with the supervisor-selected next Step 2 parser cleanup packet, or
+route through plan review if the supervisor considers Step 2.1 exhausted.
 
 ## Watchouts
 
@@ -39,14 +35,10 @@ The legacy string overloads for `eval_deferred_nttp_default(...)` and
 packet, but they now delegate to structured-key lookup and ignore the rendered
 name as semantic authority.
 
-`make_template_struct_instance_key(...)` still exists in parser type helpers as
-an unused rendered spelling helper after this slice. It is outside the owned
-files for this packet and should be removed only if a later packet owns
-`src/frontend/parser/impl/types/types_helpers.hpp`.
-
 ## Proof
 
 Passed:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
 
-Result: 927/927 tests passed. Proof log: `test_after.log`.
+Result: build succeeded and 927/927 tests passed. Proof log:
+`test_after.log`.

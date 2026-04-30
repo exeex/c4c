@@ -1149,66 +1149,6 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
     return out;
 }
 
-std::string make_template_struct_instance_key(
-    const Node* primary_tpl,
-    const std::vector<ParsedTemplateArg>& concrete_args) {
-    if (!primary_tpl || !primary_tpl->name) return {};
-    std::string key = primary_tpl->name;
-    key += "<";
-    bool first = true;
-    int arg_idx = 0;
-    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
-        const char* param_name = primary_tpl->template_param_names[pi];
-        if (!param_name) continue;
-        if (!first) key += ",";
-        first = false;
-        key += param_name;
-        key += "=";
-        const bool is_pack =
-            primary_tpl->template_param_is_pack &&
-            primary_tpl->template_param_is_pack[pi];
-        if (is_pack) {
-            bool first_pack_arg = true;
-            while (arg_idx < static_cast<int>(concrete_args.size())) {
-                if (!first_pack_arg) key += "|";
-                first_pack_arg = false;
-                if (concrete_args[arg_idx].is_value) {
-                    if (concrete_args[arg_idx].nttp_name &&
-                        concrete_args[arg_idx].nttp_name[0] &&
-                        std::strncmp(concrete_args[arg_idx].nttp_name, "$expr:", 6) == 0) {
-                        key += concrete_args[arg_idx].nttp_name;
-                    } else {
-                        key += std::to_string(concrete_args[arg_idx].value);
-                    }
-                } else {
-                    key += canonical_template_struct_type_key(
-                        concrete_args[arg_idx].type);
-                }
-                ++arg_idx;
-            }
-            continue;
-        }
-        if (arg_idx >= static_cast<int>(concrete_args.size())) {
-            key += "?";
-            continue;
-        }
-        if (concrete_args[arg_idx].is_value) {
-            if (concrete_args[arg_idx].nttp_name &&
-                concrete_args[arg_idx].nttp_name[0] &&
-                std::strncmp(concrete_args[arg_idx].nttp_name, "$expr:", 6) == 0) {
-                key += concrete_args[arg_idx].nttp_name;
-            } else {
-                key += std::to_string(concrete_args[arg_idx].value);
-            }
-        } else {
-            key += canonical_template_struct_type_key(concrete_args[arg_idx].type);
-        }
-        ++arg_idx;
-    }
-    key += ">";
-    return key;
-}
-
 ParserTemplateState::TemplateInstantiationKey::Argument
 make_template_instantiation_argument_key(const ParsedTemplateArg& arg) {
     ParserTemplateState::TemplateInstantiationKey::Argument key;
