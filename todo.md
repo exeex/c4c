@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/137_parser_known_function_name_compatibility_spelling_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Structured Registration Paths
+Current Step ID: 3
+Current Step Title: Add Structured Lookup and Disambiguation Paths
 
 # Current Packet
 
@@ -17,9 +17,11 @@ final spelling/display data.
 
 ## Suggested Next
 
-Step 2 next packet: continue converting any remaining parser known-function
-registration path that still has structured identity available but reaches
-string-only registration first.
+Step 3 next packet: convert lookup/disambiguation sites that still consult
+rendered `head_name`, `current_member_name`, or visible-name spelling so they
+probe structured known-function keys first when parser identity is available.
+Keep string lookup as an explicit compatibility fallback and add fallback
+visibility where mismatches remain diagnosable.
 
 ## Watchouts
 
