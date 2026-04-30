@@ -3,13 +3,15 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.3
-Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Authority
+Current Step ID: Step 2.4
+Current Step Title: Audit Parser Type, Tag, And Member-Typedef Routes
 
 ## Just Finished
 
-Step 2.3 removed the remaining parser semantic spelling/fallback parameters
-from `lookup_value_in_context(...)`, `lookup_type_in_context(...)`, and
+Step 2.3 is complete. The committed parser lookup API contractions removed the
+value-alias visible-type rendered re-entry, removed fallback spelling from
+`lookup_using_value_alias(...)`, and removed spelling/fallback parameters from
+`lookup_value_in_context(...)`, `lookup_type_in_context(...)`, and
 `lookup_concept_in_context(...)`. The helpers now accept only `context_id`, the
 structured `TextId`, and `VisibleNameResult*`, and they reject `kInvalidText`
 instead of recovering lookup authority from rendered spellings.
@@ -21,9 +23,11 @@ string cases for value, type, and concept lookup while asserting invalid
 
 ## Suggested Next
 
-Supervisor should review the Step 2.3 parser API contraction diff and decide
-whether this completes the active packet or needs a plan-owner/reviewer pass
-before commit.
+Delegate Step 2.4: audit parser type, tag, and member-typedef routes for
+renamed helpers, compatibility wrappers, string/string_view semantic lookup
+parameters, fallback spelling parameters, and rendered-name lookup after a
+structured miss. The packet should preserve or add focused parser disagreement
+tests and produce a fresh canonical `test_after.log`.
 
 ## Watchouts
 
