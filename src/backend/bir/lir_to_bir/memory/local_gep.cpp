@@ -12,9 +12,10 @@ namespace c4c::backend {
 using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
 using DynamicLocalPointerArrayAccess = BirFunctionLowerer::DynamicLocalPointerArrayAccess;
 using LocalAggregateGepTarget = BirFunctionLowerer::LocalAggregateGepTarget;
+using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 using lir_to_bir_detail::compute_aggregate_type_layout;
-using lir_to_bir_detail::lookup_backend_aggregate_type_layout;
+using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
@@ -27,14 +28,26 @@ struct LocalAggregateRawByteSliceLeaf {
   std::string type_text;
 };
 
-BirFunctionLowerer::AggregateTypeLayout lookup_local_gep_layout(
+BackendAggregateLayoutLookup lookup_local_gep_layout_result(
     std::string_view type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
   if (structured_layouts != nullptr) {
-    return lookup_backend_aggregate_type_layout(type_text, type_decls, *structured_layouts);
+    return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
   }
-  return compute_aggregate_type_layout(type_text, type_decls);
+  return BackendAggregateLayoutLookup{
+      .layout = compute_aggregate_type_layout(type_text, type_decls),
+      .used_structured_layout = false,
+      .used_legacy_fallback = true,
+      .structured_text_mismatch = false,
+  };
+}
+
+BirFunctionLowerer::AggregateTypeLayout lookup_local_gep_layout(
+    std::string_view type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  return lookup_local_gep_layout_result(type_text, type_decls, structured_layouts).layout;
 }
 
 std::optional<AggregateByteOffsetProjection> resolve_local_gep_child_index_projection(
