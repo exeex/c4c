@@ -6183,12 +6183,24 @@ void test_parser_alias_template_member_typedef_carrier_uses_structured_rhs() {
                   parser.find_parser_text_id(
                       info->member_typedef.owner_args[0].type.tag) == param_text,
               "alias-template member typedef carrier should keep substitutable type args structured");
+  expect_true(info->aliased_type.deferred_member_type_text_id == member_text,
+              "deferred owner-member TypeSpec should preserve the member TextId");
+
+  c4c::TypeSpec stale_rendered_member = info->aliased_type;
+  stale_rendered_member.deferred_member_type_name =
+      arena.strdup("stale_rendered_member");
+  expect_true(c4c::type_binding_values_equivalent(info->aliased_type,
+                                                  stale_rendered_member),
+              "deferred owner-member TypeSpec equivalence should prefer member TextId over stale rendered spelling");
 
   c4c::ParserAliasTemplateInfo& mutable_info =
       parser.template_state_.alias_template_info[alias_key];
   mutable_info.aliased_type.tag = arena.strdup("CorruptRenderedOwner");
   mutable_info.aliased_type.deferred_member_type_name =
       arena.strdup("corrupt_member");
+  expect_true(mutable_info.aliased_type.deferred_member_type_text_id ==
+                  member_text,
+              "deferred owner-member TypeSpec should retain member TextId after rendered spelling drift");
   expect_true(mutable_info.member_typedef.owner_key == owner_key &&
                   mutable_info.member_typedef.member_text_id == member_text,
               "alias-template member typedef carrier should survive rendered/deferred TypeSpec spelling drift");

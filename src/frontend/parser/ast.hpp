@@ -165,6 +165,8 @@ struct TypeSpec {
     // `StructLike::type`-style name until a structured member-type reference
     // replaces the string handoff.
     const char* deferred_member_type_name; // pending `StructLike::type`-style member typedef
+    TextId deferred_member_type_text_id =
+        kInvalidText; // parser-owned identity for deferred_member_type_name
 };
 
 struct TemplateArgRef {

@@ -8,23 +8,24 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired one bounded qualified `TypeSpec` producer gap:
-`typename`-qualified dependent type resolution now attaches the source
-base-name `TextId`, qualifier segment `TextId`s, global-qualification bit, and
-resolved namespace context to the returned `TypeSpec` copy when it resolves an
-existing structured typedef payload. Focused parser coverage mutates stale
-rendered `TypeSpec::tag` and qualifier segment spelling while asserting the
-qualified `typename ns::Alias` metadata remains intact.
+Step 3.1 repaired one bounded deferred owner-member `TypeSpec` producer gap:
+template-owner/member dependent `typename` handoff now preserves a parser-owned
+`deferred_member_type_text_id` alongside the legacy rendered
+`deferred_member_type_name`, including the alias-template RHS carrier,
+deferred member suffix carriers, and dependent `typename Owner<T>::type`
+handoff. Focused parser/Sema coverage mutates stale deferred rendered spelling
+while asserting the structured member `TextId` remains authoritative for the
+covered carrier.
 
 ## Suggested Next
 
 Continue Step 3.1 with one narrow metadata-producer packet for any remaining
 qualified `TypeSpec` production site that still carries only rendered
-qualifier spelling, or for a synthetic consteval local producer not covered by
-parameter, condition-local, ordinary-local, or `for`-init metadata. A useful
-next qualified-type sweep target is template-owner/member dependent typename
-handoff, because this packet covered the resolved structured typedef payload
-copy but did not prove every deferred owner-member carrier.
+qualifier/member spelling, or for a synthetic consteval local producer not
+covered by parameter, condition-local, ordinary-local, or `for`-init metadata.
+A useful next sweep target is proving whether downstream deferred
+owner-member consumers can use `deferred_member_type_text_id` everywhere before
+any rendered compatibility is removed.
 
 ## Watchouts
 
@@ -61,6 +62,12 @@ copy but did not prove every deferred owner-member carrier.
   parser-owned qualifier/base metadata, but broader deferred template
   owner-member handoff remains unproven and should stay as a separate bounded
   producer packet if needed.
+- Deferred owner-member `TypeSpec` carriers now preserve the member `TextId`
+  for the covered parser-owned production routes, but the legacy rendered
+  member spelling is still present for compatibility/display. Do not delete
+  rendered deferred-member compatibility until each downstream consumer is
+  proven against `deferred_member_type_text_id` or an equivalent structured
+  owner/member carrier.
 
 ## Proof
 

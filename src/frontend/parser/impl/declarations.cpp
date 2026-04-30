@@ -1616,6 +1616,7 @@ Node* parse_top_level(Parser& parser) {
                         int owner_template_arg_start = -1;
                         int owner_template_arg_end = -1;
                         std::string member_name;
+                        TextId member_text_id = kInvalidText;
                         while (probe < parser.core_input_state_.pos) {
                             if (parser.core_input_state_.tokens[probe].kind != TokenKind::Identifier)
                                 break;
@@ -1649,6 +1650,7 @@ Node* parse_top_level(Parser& parser) {
                                 }
                             }
                             member_name = segment;
+                            member_text_id = segment_text_id;
                             break;
                         }
 
@@ -1701,6 +1703,7 @@ Node* parse_top_level(Parser& parser) {
                             }
                             alias_ts.deferred_member_type_name =
                                 parser.arena_.strdup(member_name.c_str());
+                            alias_ts.deferred_member_type_text_id = member_text_id;
                         }
                     }
                 } catch (const std::exception&) {

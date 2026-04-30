@@ -2001,6 +2001,9 @@ TypeSpec Parser::parse_base_type() {
                                                 ts.deferred_member_type_name =
                                                     arena_.strdup(
                                                         member_name.c_str());
+                                                ts.deferred_member_type_text_id =
+                                                    ati->member_typedef
+                                                        .member_text_id;
                                                 return true;
                                             }
 
@@ -2153,6 +2156,7 @@ TypeSpec Parser::parse_base_type() {
                     consume();  // ::
                     consume();  // member
                     ts.deferred_member_type_name = arena_.strdup(member.c_str());
+                    ts.deferred_member_type_text_id = member_text_id;
                     return ts;
                 }
             }
@@ -2193,14 +2197,17 @@ TypeSpec Parser::parse_base_type() {
                             continue;
                         }
                         TypeSpec resolved_member{};
+                        const TextId deferred_member_text_id =
+                            arg_ts.deferred_member_type_text_id;
                         if (!lookup_struct_member_typedef_recursive_for_type(
                                 arg_ts,
                                 arg_ts.deferred_member_type_name,
-                                kInvalidText,
+                                deferred_member_text_id,
                                 &resolved_member)) {
                             continue;
                         }
                         resolved_member.deferred_member_type_name = nullptr;
+                        resolved_member.deferred_member_type_text_id = kInvalidText;
                         arg_ts = resolved_member;
                     }
                     bool has_pack_param = false;
@@ -2946,12 +2953,17 @@ TypeSpec Parser::parse_base_type() {
                                     inst->base_types[bi].tag &&
                                     inst->base_types[bi].tag[0]) {
                                     TypeSpec resolved_member{};
+                                    const TextId deferred_member_text_id =
+                                        inst->base_types[bi]
+                                            .deferred_member_type_text_id;
                                     if (lookup_struct_member_typedef_recursive_for_type(
                                             inst->base_types[bi],
                                             inst->base_types[bi].deferred_member_type_name,
-                                            kInvalidText,
+                                            deferred_member_text_id,
                                             &resolved_member)) {
                                         resolved_member.deferred_member_type_name = nullptr;
+                                        resolved_member.deferred_member_type_text_id =
+                                            kInvalidText;
                                         inst->base_types[bi] = resolved_member;
                                     }
                                 }
@@ -3234,6 +3246,8 @@ TypeSpec Parser::parse_base_type() {
                     core_input_state_.tokens[core_input_state_.pos + 1].kind ==
                         TokenKind::Identifier) {
                     std::string member(token_spelling(core_input_state_.tokens[core_input_state_.pos + 1]));
+                    const TextId member_text_id =
+                        core_input_state_.tokens[core_input_state_.pos + 1].text_id;
                     const bool should_preserve_deferred_template_member =
                         ts.tpl_struct_origin && ts.tpl_struct_args.size > 0 &&
                         member == "type";
@@ -3241,11 +3255,10 @@ TypeSpec Parser::parse_base_type() {
                         consume(); // ::
                         consume(); // member
                         ts.deferred_member_type_name = arena_.strdup(member.c_str());
+                        ts.deferred_member_type_text_id = member_text_id;
                         return ts;
                     }
                     TypeSpec resolved{};
-                    const TextId member_text_id =
-                        core_input_state_.tokens[core_input_state_.pos + 1].text_id;
                     if (lookup_struct_member_typedef_recursive_for_type(
                             ts, member, member_text_id, &resolved)) {
                         consume(); // ::
@@ -3282,6 +3295,7 @@ TypeSpec Parser::parse_base_type() {
                         consume(); // ::
                         consume(); // member
                         ts.deferred_member_type_name = arena_.strdup(member.c_str());
+                        ts.deferred_member_type_text_id = member_text_id;
                     }
                 }
                 return ts;

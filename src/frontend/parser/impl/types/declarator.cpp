@@ -644,6 +644,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                     arena_.strdup(std::string(token_spelling(
                                       core_input_state_.tokens[final_scope_pos + 1]))
                                       .c_str());
+                owner_ts.deferred_member_type_text_id =
+                    core_input_state_.tokens[final_scope_pos + 1].text_id;
                 *out_owner_ts = owner_ts;
                 return true;
             };
@@ -778,6 +780,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                             arena_.strdup(std::string(token_spelling(
                                               core_input_state_.tokens[final_scope_pos + 1]))
                                               .c_str());
+                        owner_ts.deferred_member_type_text_id =
+                            core_input_state_.tokens[final_scope_pos + 1].text_id;
                         cache_typedef_type(spelled_name, owner_ts);
                         resolved = spelled_name;
                         resolved_type = owner_ts;
