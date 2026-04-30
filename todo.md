@@ -9,20 +9,17 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 ## Just Finished
 
 Step 3.1 repaired the bounded parser deferred owner-member lookup consumer
-around `lookup_struct_member_typedef_recursive_for_type`: record-member and
-selected-specialization member typedef scans now prefer
-`deferred_member_type_text_id`/member `TextId` matching before rendered
-`deferred_member_type_name`. Focused parser coverage feeds a stale rendered
-deferred member spelling through a typedef-backed template argument and proves
-the valid member `TextId` still resolves the member typedef.
+around `typespec_mentions_template_param`: a populated
+`deferred_member_type_text_id` is now authoritative for deferred-member
+dependency classification, so a structured miss does not fall back to rendered
+`deferred_member_type_name`. Focused parser coverage uses stale rendered text
+that would mention template parameter `T`, proves a valid member `TextId` hit
+still classifies as dependent, proves a populated miss is rejected, and keeps
+rendered compatibility only when structured metadata is absent.
 
 ## Suggested Next
 
-Continue Step 3.1 with a bounded consumer-repair packet for
-`typespec_mentions_template_param`: when `deferred_member_type_text_id` is
-populated and misses the referenced template parameter, the helper must not
-fall back to rendered `deferred_member_type_name` dependency classification.
-After that repair is proven, re-check any remaining parser/Sema
+Continue Step 3.1 by re-checking any remaining parser/Sema
 `deferred_member_type_name` uses before classifying them as display,
 mangling/reference-string construction, or downstream HIR handoff only.
 
@@ -67,18 +64,15 @@ mangling/reference-string construction, or downstream HIR handoff only.
   rendered deferred-member compatibility until each downstream consumer is
   proven against `deferred_member_type_text_id` or an equivalent structured
   owner/member carrier.
-- `typespec_mentions_template_param` still needs a populated-metadata-miss
-  repair: if `deferred_member_type_text_id` is valid but does not mention the
-  template parameter, rendered `deferred_member_type_name` must not decide
-  dependency classification as a fallback.
 - `lookup_struct_member_typedef_recursive_for_type` member-name matching is now
   proven against stale rendered `deferred_member_type_name` when a valid member
-  `TextId` is present. Apart from the still-open
-  `typespec_mentions_template_param` populated-metadata-miss behavior, rendered
-  deferred-member uses found in this packet appear to be parser
-  display/reference-string construction or handoff payloads; do not classify
-  them as semantic lookup removal without proving the concrete parser/Sema
-  consumer.
+  `TextId` is present.
+- `typespec_mentions_template_param` dependency classification is now proven
+  against stale rendered `deferred_member_type_name` when a valid
+  `deferred_member_type_text_id` is present. Remaining rendered deferred-member
+  uses found in this route appear to be parser display/reference-string
+  construction or handoff payloads; do not classify them as semantic lookup
+  removal without proving the concrete parser/Sema consumer.
 
 ## Proof
 

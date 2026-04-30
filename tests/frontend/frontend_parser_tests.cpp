@@ -6436,7 +6436,7 @@ void test_typespec_mentions_template_param_uses_deferred_member_text_id() {
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_STRUCT;
   ts.tag = arena.strdup("Owner");
-  ts.deferred_member_type_name = arena.strdup("stale_rendered_member");
+  ts.deferred_member_type_name = arena.strdup("T");
   ts.deferred_member_type_text_id = owner.template_param_name_text_ids[0];
 
   expect_true(c4c::typespec_mentions_template_param(ts, &owner),
@@ -6444,7 +6444,11 @@ void test_typespec_mentions_template_param_uses_deferred_member_text_id() {
 
   ts.deferred_member_type_text_id = texts.intern("Other");
   expect_true(!c4c::typespec_mentions_template_param(ts, &owner),
-              "deferred owner-member dependency checks should reject stale rendered spelling after structured miss");
+              "deferred owner-member dependency checks should reject rendered fallback after structured miss");
+
+  ts.deferred_member_type_text_id = c4c::kInvalidText;
+  expect_true(c4c::typespec_mentions_template_param(ts, &owner),
+              "deferred owner-member dependency checks should keep rendered compatibility when structured metadata is absent");
 }
 
 void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches() {

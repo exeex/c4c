@@ -608,13 +608,17 @@ inline std::string template_arg_debug_text_at(const TypeSpec& ts, int index) {
 }
 
 inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* node) {
-    return node_has_template_param_name(node, ts.tag) ||
-           node_has_template_param_text_id(node, ts.tag_text_id) ||
-           node_has_template_param_text_id(node, ts.template_param_text_id) ||
-           template_arg_list_mentions_template_param(ts, node) ||
-           node_has_template_param_text_id(
-               node, ts.deferred_member_type_text_id) ||
-           text_mentions_template_param(node, ts.deferred_member_type_name);
+    if (node_has_template_param_name(node, ts.tag) ||
+        node_has_template_param_text_id(node, ts.tag_text_id) ||
+        node_has_template_param_text_id(node, ts.template_param_text_id) ||
+        template_arg_list_mentions_template_param(ts, node)) {
+        return true;
+    }
+    if (ts.deferred_member_type_text_id != kInvalidText) {
+        return node_has_template_param_text_id(
+            node, ts.deferred_member_type_text_id);
+    }
+    return text_mentions_template_param(node, ts.deferred_member_type_name);
 }
 
 inline bool is_dependent_template_struct_specialization(const Node* node) {
