@@ -8,63 +8,117 @@ Current Step Title: Inventory Live Member-Typedef Mirror Consumers
 
 ## Just Finished
 
-Step 2.4 remains active. The accepted checkpoint at commit `e139897a` removed
-only the unused
-`register_struct_member_typedef_binding(const std::string&, const TypeSpec&)`
-overload that split rendered scoped text into owner/member identity. The live
-`register_struct_member_typedef_binding(owner, member, type)` rendered
-`owner::member` typedef mirror is still reachable and remains the blocker.
+Step 2.4.1 inventory-only packet completed. Live writers of the remaining
+`register_struct_member_typedef_binding(owner, member, type)` mirror are:
 
-The pending Step 2.4 member-typedef conversion was rejected by
-`review/step2_4_member_typedef_conversion_review.md` and its worktree diff was
-discarded. That rejected route added
-`find_structured_member_typedef_type(std::string_view qualified_name)`, parsed
-rendered qualified text back into owner/member identity, and then tried to
-recover structured record/member lookup from that rendered input. The reviewer
-classified that as route drift because it preserves rendered-string semantic
-rediscovery behind a new wrapper.
+- `src/frontend/parser/impl/types/struct.cpp:763`: record-body `using Alias =
+  ...;` writer. Strongest carrier is the in-flight record body member typedef
+  arrays (`member_typedef_names` / `member_typedef_types`), later copied to the
+  owning `Node` at `src/frontend/parser/impl/types/struct.cpp:2265`. Missing
+  carrier: no direct structured owner key is passed; it uses
+  `current_struct_tag_text()`.
+- `src/frontend/parser/impl/types/struct.cpp:803`: record-body `typedef ...`
+  writer. Strongest carrier is the same in-flight member typedef arrays and
+  final record `Node` arrays. Missing carrier: no direct structured owner key;
+  it also uses `current_struct_tag_text()`.
+- `src/frontend/parser/impl/types/base.cpp:3223`: template-instantiation clone
+  writer. Strongest carrier is the instantiated record `Node` plus its cloned
+  member typedef arrays and substituted `TypeSpec` values. Missing carrier: the
+  mirror owner is the rendered instantiation name `mangled`, not a
+  `QualifiedNameKey`.
+
+Live readers that can observe that mirror are:
+
+- `src/frontend/parser/impl/core.cpp:660`: `find_typedef_type(TextId)` detects
+  rendered names containing `::`, builds a key with `known_fn_name_key(0,
+  name_text_id)`, then reads `struct_typedefs`. Strongest carrier at this call
+  boundary is only a rendered `TextId`; structured owner/member metadata is
+  missing.
+- `src/frontend/parser/impl/core.cpp:679` and `:690`: direct
+  `find_typedef_type(QualifiedNameKey)` / `find_structured_typedef_type`
+  readers. Strongest carrier is `QualifiedNameKey`.
+- `src/frontend/parser/impl/core.cpp:769-794`: `find_visible_typedef_type`
+  first does ordinary visible lookup, then reads `struct_typedefs` through
+  `VisibleNameResult.key`. Strongest carrier is `QualifiedNameKey` plus
+  namespace context id from visible-name resolution.
+- `src/frontend/parser/impl/core.cpp:2278-2281`: current-record sibling
+  fallback builds a key from rendered sibling text and calls
+  `find_typedef_type(sibling_text_id)`. Strongest carrier is current namespace
+  context plus rendered spelling; owner/member metadata is missing.
+- `src/frontend/parser/impl/core.cpp:2316-2322`: using-alias type resolution
+  checks `find_structured_typedef_type(target_key)` before textual fallback.
+  Strongest carrier is `QualifiedNameKey`.
+- `src/frontend/parser/impl/core.cpp:2816-2828`: `lookup_type_in_context`
+  constructs `struct_typedef_key_in_context(context_id, name_text_id)` and
+  reads `struct_typedefs`. Strongest carrier is namespace context id plus
+  `QualifiedNameKey`.
+- `src/frontend/parser/impl/types/types_helpers.hpp:153`, `:160`, `:212`,
+  `:234`, and `:709`: qualified-type helper/probe readers use
+  `resolve_qualified_type(qn).key` and `find_structured_typedef_type`. Strongest
+  carrier is `QualifiedNameRef` lowered to `QualifiedNameKey`, with direct
+  record-definition probes available through
+  `qualified_record_definition_in_context`.
+- `src/frontend/parser/impl/expressions.cpp:1394-1460`: qualified expression
+  disambiguation first checks `qualified_type_record_definition_from_structured_authority`
+  and scans the owner `Node` member typedef arrays; its fallback reparses the
+  qualified spelling through `parse_base_type`. Strongest carrier for a first
+  conversion is the owner record `Node` plus member typedef arrays; the fallback
+  path is missing structured metadata and should not grow a rendered
+  qualified-text helper.
+- `src/frontend/parser/impl/types/declarator.cpp:760-789`: dependent typename
+  resolution follows nested owners and scans `Node` member typedef arrays, then
+  caches the resolved member typedef under the dependent spelling. Strongest
+  carrier is direct record/declaration metadata plus member typedef arrays.
+- `src/frontend/parser/impl/types/base.cpp:766-990` and later recursive call
+  sites: base-type member typedef lookup resolves from `TypeSpec::record_def`
+  when present, otherwise tries structured record/tag probes, then scans `Node`
+  member typedef arrays and bases. Strongest carrier is `TypeSpec::record_def`
+  plus member typedef arrays; fallback tag lookup by spelling is the remaining
+  weak carrier.
+- `src/frontend/hir/impl/templates/type_resolution.cpp:33-49`,
+  `:83-345`, and `:351-520`: HIR member-typedef resolution reads AST `Node`
+  member typedef arrays through `TypeSpec::record_def`, `struct_def_nodes_`,
+  template origin metadata, and selected template pattern metadata. It does not
+  call the parser mirror directly. Strongest carrier is `TypeSpec::record_def`
+  / direct record `Node`; tag-string fallback remains only after record/origin
+  metadata is absent.
 
 ## Suggested Next
 
-Delegate Step 2.4.1 as an inventory-only or very small probe packet before any
-more mirror deletion. The executor should list live
-`register_struct_member_typedef_binding(owner, member, type)` mirror consumers
-and classify each by the strongest available structured carrier:
-`TypeSpec::record_def`, member typedef arrays on a record `Node`, namespace
-context id, `QualifiedNameKey`, direct record/declaration metadata, or missing
-metadata.
-
-The first follow-up code packet should convert only one classified carrier
-family. Do not delete the whole live `owner::member` mirror until the remaining
-semantic consumers are converted or represented as metadata blockers.
+First smallest code packet: convert only the two record-body writers in
+`src/frontend/parser/impl/types/struct.cpp` away from the rendered
+`owner::member` mirror by registering/storing through the existing member
+typedef arrays and a structured owner carrier available during record
+finalization. Keep the template-instantiation writer in
+`src/frontend/parser/impl/types/base.cpp:3223` and all readers unchanged for
+that first packet unless the record-finalization structured carrier is already
+available without widening the slice.
 
 ## Watchouts
 
-Non-semantic string uses remain in token-spelling/rendering helpers,
-diagnostics/debug bridges, namespace compatibility projection, template debug
-arg rendering, and final spelling projection. `TypeSpec::record_def`,
-qualified record/tag probes, member typedef arrays, and existing structured
-typedef maps remain the authority where present.
+Do not introduce a helper that accepts rendered `owner::member`, `std::string`,
+or `std::string_view` qualified text and splits or reparses it into owner/member
+identity. The only safe first conversion path is one that starts from an
+already-structured carrier: record `Node`, member typedef arrays,
+`QualifiedNameKey`, namespace context id, or `TypeSpec::record_def`.
 
-Do not remove the live `owner::member` mirror as a standalone deletion; the
-failed exploratory proof showed it is still protecting parser progress and one
-runtime member-typedef case.
+The riskiest live reader is still `find_typedef_type(TextId)` for names
+containing `::` because it has only rendered spelling at its boundary. Treat it
+as a blocker/last consumer unless an upstream caller can pass a
+`QualifiedNameKey` or record `Node` instead.
 
-Do not revive the rejected route under a different name. A helper such as
-`find_structured_member_typedef_type(std::string_view qualified_name)` is not
-structured progress if its first semantic step is parsing rendered qualified
-lookup text or reconstructing owner/member identity from spelling.
-
-Step 2.4 is now split into structured-carrier-only substeps. The next packet
-must not introduce a parser/Sema semantic helper that takes rendered
-`owner::member` text, `std::string`, or `std::string_view` qualified text as
-input, even if the helper later scans `TypeSpec::record_def` or member typedef
-arrays.
+The HIR side already prefers `TypeSpec::record_def` and member typedef arrays;
+avoid moving parser rendered-text reconstruction into HIR to compensate for
+parser-side mirror deletion.
 
 ## Proof
 
-Passed:
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_parse_local_using_alias_statement_probe_dump|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
+Inventory-only; no build required and no `test_after.log` was changed.
 
-`test_after.log` contains the fresh passing proof for this packet: 100% tests
-passed, 0 tests failed out of 928.
+Evidence commands run:
+
+- `rg -n "register_struct_member_typedef_binding|struct_member_typedef|member_typedef|find_.*typedef|typedef.*member" src include tests -g'*.{cpp,hpp,h,cc,cxx}'` (the missing `include/` path made `rg` exit 2, but it still printed source/test matches)
+- `rg -n "TypeSpec::record_def|record_def|member_typedef|typedefs|QualifiedNameKey|namespace_context|namespace.*id|context id|current_namespace" src include -g'*.{cpp,hpp,h,cc,cxx}'` (same missing `include/` path behavior)
+- `rg -n "find_structured_typedef_type|find_typedef_type\\(|struct_typedefs|register_structured_typedef_binding|register_struct_member_typedef_binding|struct_typedef_key_in_context|make_struct_member_typedef_key" src/frontend -g'*.{cpp,hpp,h}'`
+- targeted `sed -n` reads for the writer/reader ranges listed above
+- `c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/frontend/parser/impl/core.cpp find_structured_typedef_type build/compile_commands.json` and the matching `register_struct_member_typedef_binding` query were attempted; both reported that `core.cpp` was not directly loadable from the compile database, so the inventory used `rg` plus targeted source reads.
