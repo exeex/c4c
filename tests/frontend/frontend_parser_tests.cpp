@@ -3312,6 +3312,47 @@ void test_parser_stmt_prefers_expression_for_member_access_after_visible_type_he
               "member-access after a visible type head should stay an expression statement");
 }
 
+void test_parser_local_using_alias_qualified_static_call_keeps_spelled_value() {
+  c4c::Lexer lexer("namespace api {\n"
+                   "struct widget {\n"
+                   "  static int make() { return 1; }\n"
+                   "};\n"
+                   "}\n"
+                   "int main() {\n"
+                   "  using Alias = api::widget;\n"
+                   "  Alias::make();\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "local using-alias static call regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the static call regression should contain the namespace item and main");
+
+  c4c::Node* main_fn = program->children[1];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the static call regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 2,
+                "main should retain the using alias and static call statement");
+  c4c::Node* stmt = main_fn->body->children[1];
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_EXPR_STMT,
+              "qualified static calls through a local using alias should stay expression statements");
+  expect_true(stmt->left != nullptr && stmt->left->kind == c4c::NK_CALL,
+              "qualified static calls through a local using alias should remain calls");
+  expect_true(stmt->left->left != nullptr &&
+                  stmt->left->left->kind == c4c::NK_VAR,
+              "qualified static calls through a local using alias should keep a variable callee");
+  expect_eq(stmt->left->left->name, "Alias::make",
+            "qualified static calls through a local using alias should keep the spelled callee");
+}
+
 void test_parser_stmt_disambiguates_qualified_visible_value_member_access_as_expr() {
   c4c::Lexer lexer("namespace api {\n"
                    "struct Payload {\n"
@@ -5401,6 +5442,7 @@ int main() {
   test_parser_stmt_disambiguates_global_qualified_template_call_as_expr();
   test_parser_stmt_disambiguates_global_qualified_operator_call_as_expr();
   test_parser_stmt_prefers_expression_for_member_access_after_visible_type_head();
+  test_parser_local_using_alias_qualified_static_call_keeps_spelled_value();
   test_parser_stmt_disambiguates_qualified_visible_value_member_access_as_expr();
   test_parser_stmt_disambiguates_qualified_visible_value_member_access_assignment_as_expr();
   test_parser_template_member_suffix_probe_uses_token_spelling();

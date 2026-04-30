@@ -1385,23 +1385,79 @@ Node* parse_primary(Parser& parser) {
                 return parse_postfix(parser, n);
             }
         }
-        auto qualified_name_starts_from_type_owner =
-            [&](const Parser::QualifiedNameRef& type_qn) -> bool {
-            if (type_qn.qualifier_segments.empty()) return false;
-
-            const Parser::QualifiedNameRef owner_qn =
-                qualified_owner_name(parser, type_qn);
-            return qualified_type_owner_has_structured_authority(parser,
-                                                                 owner_qn);
-        };
         if (parser.is_cpp_mode() && (parser.check(TokenKind::Less) || parser.check(TokenKind::LParen))) {
             const QualifiedTypeProbe type_probe = probe_qualified_type(parser, qn);
             const std::string candidate_type_name =
                 !type_probe.resolved_typedef_name.empty()
                     ? type_probe.resolved_typedef_name
                     : type_probe.spelled_name;
-            if (type_probe.has_resolved_typedef ||
-                qualified_name_starts_from_type_owner(qn)) {
+            auto qualified_name_is_member_typedef =
+                [&](const Parser::QualifiedNameRef& type_qn) -> bool {
+                    if (type_qn.qualifier_segments.empty()) return false;
+
+                    const Parser::QualifiedNameRef owner_qn =
+                        qualified_owner_name(parser, type_qn);
+                    const Node* owner =
+                        qualified_type_record_definition_from_structured_authority(
+                            parser, owner_qn);
+                    if (owner && owner->n_member_typedefs > 0) {
+                        const std::string_view member_name =
+                            parser.parser_text(type_qn.base_text_id,
+                                               type_qn.base_name);
+                        for (int i = 0; i < owner->n_member_typedefs; ++i) {
+                            const char* typedef_name =
+                                owner->member_typedef_names[i];
+                            if (typedef_name && member_name == typedef_name)
+                                return true;
+                        }
+                    }
+
+                    const int saved_pos = parser.pos_;
+                    std::vector<Token> saved_tokens = parser.tokens_;
+                    const std::string saved_typedef_fallback =
+                        parser.active_context_state_.last_resolved_typedef;
+                    const TextId saved_typedef_text_id =
+                        parser.active_context_state_.last_resolved_typedef_text_id;
+                    auto restore_probe_state = [&]() {
+                        parser.pos_ = saved_pos;
+                        parser.tokens_ = saved_tokens;
+                        parser.clear_last_resolved_typedef();
+                        if (saved_typedef_text_id != kInvalidText) {
+                            parser.set_last_resolved_typedef(parser.parser_text(
+                                saved_typedef_text_id, saved_typedef_fallback));
+                        } else if (!saved_typedef_fallback.empty()) {
+                            parser.set_last_resolved_typedef(
+                                saved_typedef_fallback);
+                        }
+                    };
+
+                    const std::string spelled_type_name =
+                        parser.qualified_name_text(
+                            type_qn, true /* include_global_prefix */);
+                    parser.pos_ = ident_start;
+                    TypeSpec probe_ts{};
+                    try {
+                        probe_ts = parser.parse_base_type();
+                    } catch (...) {
+                        restore_probe_state();
+                        return false;
+                    }
+                    const bool consumed_member_typedef =
+                        (parser.last_resolved_typedef_text() ==
+                             spelled_type_name ||
+                         parser.last_resolved_typedef_text() ==
+                             parser.qualified_name_text(
+                                 owner_qn,
+                                 true /* include_global_prefix */)) &&
+                        (parser.check(TokenKind::Less) ||
+                         parser.check(TokenKind::LParen)) &&
+                        !parser.resolves_to_record_ctor_type(probe_ts);
+                    restore_probe_state();
+                    return consumed_member_typedef;
+                };
+            const bool is_member_typedef =
+                qualified_name_is_member_typedef(qn);
+            if (type_probe.has_resolved_typedef || is_member_typedef) {
                 parser.pos_ = ident_start;
                 std::vector<Token> saved_tokens = parser.tokens_;
                 const std::string saved_typedef_fallback =

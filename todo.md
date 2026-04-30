@@ -8,18 +8,20 @@ Current Step Title: Remove Parser Declarator And Known-Function Rendered Recover
 
 ## Just Finished
 
-Step 2.2 started and completed the parser visible-value string-only API cleanup:
-`resolve_visible_value(std::string_view)` and
-`resolve_visible_value_name(const std::string&)` were deleted from the parser
-header/implementation, and the four parser tests that still called the rendered
-compatibility projection now pass explicit `TextId` values into the structured
-`resolve_visible_value_name(TextId, std::string_view)` overload.
+Step 2.2 refined the local using-alias qualified value parsing regression fix
+without restoring string-only visible-value APIs. Expression parsing now enters
+the typedef cast/constructor branch for qualified names only when the full name
+resolves as a type or when structured member-typedef metadata/probing shows the
+final segment is a member typedef. `Alias::make()` stays on the value expression
+path with the spelled `Alias::make` callee, while
+`base_type::allocator_type(7)` remains a qualified member typedef functional
+cast.
 
 ## Suggested Next
 
-Continue Step 2.2 with the next parser-owned rendered recovery cleanup,
-prioritizing any remaining declarator or known-function compatibility path that
-has a structured key carrier available without touching HIR/LIR/backend files.
+Supervisor can review and commit this Step 2.2 regression slice, then continue
+with the next parser-owned rendered recovery cleanup that has a structured key
+carrier available without touching HIR/LIR/backend files.
 
 ## Watchouts
 
@@ -31,9 +33,10 @@ migration into this parser packet; route that through
 `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a narrower HIR
 metadata idea if the supervisor switches scope.
 
-No remaining direct string-only `resolve_visible_value(...)` or
-`resolve_visible_value_name(...)` parser/test callers were found after deletion;
-production parser call sites already use the `TextId` structured overload.
+No remaining `resolve_visible_value(std::string_view)` or
+`resolve_visible_value_name(const std::string&)` parser/test APIs or callers
+were found after this regression fix; production parser call sites remain on
+the `TextId` structured overload.
 
 The clang caller query was attempted as requested, but the current
 `build/compile_commands.json` did not load `src/frontend/parser/impl/core.cpp`;
@@ -42,6 +45,9 @@ the small API surface was verified with `rg` instead.
 ## Proof
 
 Passed:
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_parse_local_using_alias_statement_probe_dump|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
 
-`test_after.log` records 927/927 tests passed.
+`test_after.log` records 928/928 selected tests passed, including
+`cpp_parse_local_using_alias_statement_probe_dump`,
+`cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp`, and
+`frontend_parser_tests`.
