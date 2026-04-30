@@ -9,19 +9,22 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 ## Just Finished
 
 Step 3.1 repaired one bounded qualified `TypeSpec` producer gap:
-qualified base-type parsing now records the resolved namespace context,
-base-name `TextId`, and qualifier segment `TextId`s directly on `TypeSpec`
-for resolved qualified typedef and dependent qualified typedef branches.
-Focused parser coverage mutates stale rendered `TypeSpec::tag` and qualifier
-segment spelling while asserting the structured base and qualifier metadata
-remain intact.
+`typename`-qualified dependent type resolution now attaches the source
+base-name `TextId`, qualifier segment `TextId`s, global-qualification bit, and
+resolved namespace context to the returned `TypeSpec` copy when it resolves an
+existing structured typedef payload. Focused parser coverage mutates stale
+rendered `TypeSpec::tag` and qualifier segment spelling while asserting the
+qualified `typename ns::Alias` metadata remains intact.
 
 ## Suggested Next
 
 Continue Step 3.1 with one narrow metadata-producer packet for any remaining
 qualified `TypeSpec` production site that still carries only rendered
 qualifier spelling, or for a synthetic consteval local producer not covered by
-parameter, condition-local, ordinary-local, or `for`-init metadata.
+parameter, condition-local, ordinary-local, or `for`-init metadata. A useful
+next qualified-type sweep target is template-owner/member dependent typename
+handoff, because this packet covered the resolved structured typedef payload
+copy but did not prove every deferred owner-member carrier.
 
 ## Watchouts
 
@@ -54,6 +57,10 @@ parameter, condition-local, ordinary-local, or `for`-init metadata.
   and namespace context on the covered qualified base-type parser path, but
   retained rendered qualifier strings are still compatibility/display payloads
   until each downstream consumer is proven against the structured fields.
+- Qualified `typename` structured typedef payload copies now receive the same
+  parser-owned qualifier/base metadata, but broader deferred template
+  owner-member handoff remains unproven and should stay as a separate bounded
+  producer packet if needed.
 
 ## Proof
 

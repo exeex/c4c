@@ -649,6 +649,34 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
             };
         const bool is_qualified_typename =
             qn.is_global_qualified || !qn.qualifier_segments.empty();
+        auto attach_qualified_typename_metadata = [&](TypeSpec* type) {
+            if (!type || !is_qualified_typename) return;
+            type->tag_text_id = qn.base_text_id;
+            type->is_global_qualified = qn.is_global_qualified;
+            type->namespace_context_id = resolve_namespace_context(qn);
+            type->n_qualifier_segments =
+                static_cast<int>(qn.qualifier_segments.size());
+            if (type->n_qualifier_segments <= 0) return;
+            type->qualifier_segments =
+                arena_.alloc_array<const char*>(type->n_qualifier_segments);
+            type->qualifier_text_ids =
+                arena_.alloc_array<TextId>(type->n_qualifier_segments);
+            for (int i = 0; i < type->n_qualifier_segments; ++i) {
+                type->qualifier_segments[i] =
+                    arena_.strdup(qn.qualifier_segments[i].c_str());
+                type->qualifier_text_ids[i] =
+                    i < static_cast<int>(qn.qualifier_text_ids.size())
+                        ? qn.qualifier_text_ids[i]
+                        : kInvalidText;
+            }
+        };
+        auto write_resolved_type_output = [&]() {
+            if (out_type && resolved_type_payload) {
+                *out_type = *resolved_type_payload;
+                attach_qualified_typename_metadata(out_type);
+            }
+            if (out_has_type) *out_has_type = resolved_type_payload != nullptr;
+        };
         const QualifiedNameKey structured_typedef_key =
             is_qualified_typename ? qualified_name_key(qn) : QualifiedNameKey{};
         auto find_structured_typedef = [&]() -> const TypeSpec* {
@@ -760,9 +788,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
             }
             if (preserved_template_owner_member) {
                 if (out_name) *out_name = resolved;
-                if (out_type && resolved_type_payload)
-                    *out_type = *resolved_type_payload;
-                if (out_has_type) *out_has_type = resolved_type_payload != nullptr;
+                write_resolved_type_output();
                 return true;
             }
             resolved = dep_name;
@@ -932,9 +958,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
             }
         }
         if (out_name) *out_name = resolved;
-        if (out_type && resolved_type_payload)
-            *out_type = *resolved_type_payload;
-        if (out_has_type) *out_has_type = resolved_type_payload != nullptr;
+        write_resolved_type_output();
     }
     return true;
 }
