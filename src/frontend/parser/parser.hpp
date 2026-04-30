@@ -420,18 +420,8 @@ class Parser {
   void register_structured_var_type_binding_in_context(
       int context_id, TextId name_text_id, std::string_view fallback_name,
       const TypeSpec& type);
-  // Public string-facing compatibility bridge; parser-owned callers should use
-  // the QualifiedNameKey/TextId overloads when that identity is available.
-  bool has_known_fn_name(const std::string& name) const;
   bool has_known_fn_name(const QualifiedNameKey& key) const;
-  bool has_known_fn_name_compatibility_fallback(
-      std::string_view rendered_name) const;
-  // Public string-facing compatibility bridge; parser-owned callers should use
-  // the QualifiedNameKey/TextId overloads when that identity is available.
-  void register_known_fn_name(const std::string& name);
   void register_known_fn_name(const QualifiedNameKey& key);
-  void register_known_fn_name_compatibility_fallback(
-      std::string_view rendered_name);
   bool register_known_fn_name_in_context(int context_id, TextId name_text_id,
                                          std::string_view fallback_name);
   bool has_structured_concept_name(const QualifiedNameKey& key) const;

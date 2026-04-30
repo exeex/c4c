@@ -752,18 +752,9 @@ const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
 
 const TypeSpec* Parser::find_typedef_type(
     const QualifiedNameKey& key, std::string_view fallback_name) const {
+    (void)fallback_name;
     if (const TypeSpec* structured = find_structured_typedef_type(key)) {
         return structured;
-    }
-    const std::string rendered = render_structured_name(*this, key);
-    if (!rendered.empty()) {
-        if (const TypeSpec* legacy = find_typedef_type(rendered)) {
-            return legacy;
-        }
-    }
-    if (key.base_text_id == kInvalidText && !fallback_name.empty() &&
-        fallback_name != rendered) {
-        return find_typedef_type(fallback_name);
     }
     return nullptr;
 }
@@ -1418,30 +1409,8 @@ bool Parser::has_known_fn_name(const QualifiedNameKey& key) const {
     return binding_state_.known_fn_names.count(key) > 0;
 }
 
-bool Parser::has_known_fn_name(const std::string& name) const {
-    return has_known_fn_name_compatibility_fallback(name);
-}
-
 void Parser::register_known_fn_name(const QualifiedNameKey& key) {
     binding_state_.known_fn_names.insert(key);
-}
-
-void Parser::register_known_fn_name(const std::string& name) {
-    register_known_fn_name_compatibility_fallback(name);
-}
-
-bool Parser::has_known_fn_name_compatibility_fallback(
-    std::string_view rendered_name) const {
-    return has_known_fn_name(known_fn_name_key(
-        0, parser_text_id_for_token(kInvalidText, rendered_name),
-        rendered_name));
-}
-
-void Parser::register_known_fn_name_compatibility_fallback(
-    std::string_view rendered_name) {
-    register_known_fn_name(intern_known_fn_name_key_from_spelling(
-        *this, 0, parser_text_id_for_token(kInvalidText, rendered_name),
-        rendered_name));
 }
 
 bool Parser::register_known_fn_name_in_context(int context_id,
@@ -1463,11 +1432,6 @@ bool Parser::register_known_fn_name_in_context(int context_id,
         *this, context_id, name_text_id, fallback_name, true);
     if (structured_key.base_text_id != kInvalidText) {
         register_known_fn_name(structured_key);
-        return true;
-    }
-
-    if (fallback_name.find("::") != std::string_view::npos) {
-        register_known_fn_name_compatibility_fallback(fallback_name);
         return true;
     }
     return false;

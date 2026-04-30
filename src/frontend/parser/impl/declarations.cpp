@@ -2586,7 +2586,6 @@ Node* parse_top_level(Parser& parser) {
             } else {
                 parser.match(TokenKind::Semi);
             }
-            bool registered_structured_operator_name = false;
             const TextId operator_base_text_id =
                 parser.parser_text_id_for_token(kInvalidText, operator_base_name);
             if (operator_base_text_id != kInvalidText) {
@@ -2600,11 +2599,6 @@ Node* parse_top_level(Parser& parser) {
                             qualified_owner_text_ids);
                 }
                 parser.register_known_fn_name(operator_key);
-                registered_structured_operator_name = true;
-            }
-            if (!registered_structured_operator_name) {
-                parser.register_known_fn_name_compatibility_fallback(
-                    qualified_op_name);
             }
             restore_current_struct_tag(parser, saved_tag_op_text_id,
                                        saved_tag_op_fallback);
@@ -2755,7 +2749,6 @@ Node* parse_top_level(Parser& parser) {
                 } else {
                     parser.match(TokenKind::Semi);
                 }
-                bool registered_structured_ctor_name = false;
                 if (ctor_name_text_id != kInvalidText) {
                     QualifiedNameKey ctor_key;
                     ctor_key.context_id = 0;
@@ -2767,11 +2760,6 @@ Node* parse_top_level(Parser& parser) {
                                 qualified_owner_text_ids);
                     }
                     parser.register_known_fn_name(ctor_key);
-                    registered_structured_ctor_name = true;
-                }
-                if (!registered_structured_ctor_name) {
-                    parser.register_known_fn_name_compatibility_fallback(
-                        qualified_ctor_name);
                 }
                 restore_current_struct_tag(parser, saved_tag_ctor_text_id,
                                            saved_tag_ctor_fallback);
@@ -3392,16 +3380,9 @@ top_level_base_ready:
         parser.qualify_name_arena(decl_name_text_id, decl_name);
     auto register_decl_known_fn_name = [&]() {
         if (decl_name) {
-            if (parser.register_known_fn_name_in_context(
+            parser.register_known_fn_name_in_context(
                 parser.current_namespace_context_id(), decl_name_text_id,
-                decl_name)) {
-                return;
-            }
-        }
-        if (scoped_decl_name && scoped_decl_name[0]) {
-            parser.register_known_fn_name_compatibility_fallback(
-                scoped_decl_name);
-            return;
+                decl_name);
         }
     };
 
