@@ -3,12 +3,12 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4.4.4
-Current Step Title: Shrink Or Delete The Member-Typedef Mirror
+Current Step ID: Step 2.4.4.5
+Current Step Title: Replace The Dependent/Template Member-Typedef Bridge
 
 ## Just Finished
 
-Step 2.4.4.4 deleted the obsolete public
+Step 2.4.4.4, now narrowed in `plan.md`, deleted the obsolete public
 `register_struct_member_typedef_binding` rendered writer/helper and its private
 key builder. `register_record_member_typedef_bindings` no longer creates
 generic rendered `owner::member` typedef storage for ordinary non-template
@@ -19,9 +19,10 @@ template alias/member-typedef parse/runtime cases.
 
 ## Suggested Next
 
-Proceed to the next member-typedef mirror shrink by replacing the remaining
-dependent/template compatibility bridge with a structured metadata carrier for
-template primary/specialization member typedef lookup.
+Execute Step 2.4.4.5 by replacing the remaining dependent/template
+compatibility bridge with a structured metadata carrier for template
+primary/specialization member typedef lookup, or record the exact missing
+carrier as a blocker before any final mirror deletion.
 
 ## Watchouts
 

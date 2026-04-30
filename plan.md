@@ -472,26 +472,98 @@ Completion check:
 - Narrow parser/Sema tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.4.4.4: Shrink Or Delete The Member-Typedef Mirror
+### Step 2.4.4.4: Narrow The Non-Template Member-Typedef Mirror
 
-Goal: delete the live `owner::member` typedef mirror, or shrink it to a
-non-semantic compatibility cache only after all reachable semantic consumers
-have structured carriers or recorded blockers.
+Goal: delete the obsolete public rendered member-typedef writer and stop
+ordinary non-template record-body typedef publication from using generic
+rendered `owner::member` storage.
 
-Primary target: `register_struct_member_typedef_binding(owner, member, type)`
-and any remaining lookup path backed by the rendered scoped mirror.
+Primary target: `register_struct_member_typedef_binding(owner, member, type)`,
+its private rendered-key builder, and non-template record-body member typedef
+publication.
 
 Actions:
 
-- Confirm Steps 2.4.4.1, 2.4.4.2, and 2.4.4.3 have removed, converted, or
-  blocked every semantic writer/reader that depended on rendered scoped
-  storage.
-- Delete the mirror writer and storage only if no semantic consumer remains.
-- If a narrow compatibility cache must remain, make its non-semantic purpose
-  explicit and ensure it cannot decide parser/Sema semantic identity.
+- Delete the public rendered writer/helper and its private rendered-key
+  builder when ordinary record-body member typedefs already publish through a
+  structured record/member key.
+- Stop non-template record-body member typedef publication from creating
+  generic rendered `owner::member` storage.
+- Keep any dependent/template compatibility bridge only as an explicitly named
+  blocker, not as completion of mirror deletion.
 - Search for helper-only renames, wrappers around rendered lookup, fallback
   spelling parameters, local rendered-string reconstruction, and
   `std::string_view` qualified lookup APIs introduced during Step 2.4.
+
+Completion check:
+
+- The obsolete public rendered member-typedef writer/helper is deleted.
+- Ordinary non-template record-body member typedefs no longer create generic
+  rendered `owner::member` semantic storage.
+- Any retained dependent/template compatibility bridge is recorded as the next
+  structured metadata target and is not treated as final mirror deletion.
+- No helper-only rename, wrapper-only packet, or moved rendered-key
+  reconstruction is counted as removal progress.
+- Narrow parser tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.4.4.5: Replace The Dependent/Template Member-Typedef Bridge
+
+Goal: replace the remaining dependent/template member-typedef compatibility
+bridge with structured parser metadata, or record the exact missing carrier as
+a blocker before any final mirror deletion is attempted.
+
+Primary target: the record-body dependent/template compatibility bridge that
+still publishes member typedefs through rendered scoped storage while template
+primary/specialization member typedef metadata is not available early enough.
+
+Actions:
+
+- Trace the dependent/template reader and writer that still require the
+  compatibility bridge, including template primary, specialization, and alias
+  member-typedef cases.
+- Identify the structured carrier needed during record-body finalization before
+  post-parse template parameter attachment runs.
+- Add or route through structured metadata for template primary/specialization
+  member typedef lookup when it is locally available in parser/Sema scope.
+- If the carrier belongs outside parser/Sema or cannot be made available in
+  this route, record the exact blocker instead of deleting the bridge.
+- Do not replace the bridge with a helper that renders, splits, or reparses
+  `owner::member` text, rendered `mangled` spelling, `std::string`,
+  `std::string_view`, or fallback spelling.
+- Keep rendered template/member spelling only for diagnostics, display, debug
+  output, mangling, or final emitted text.
+
+Completion check:
+
+- The dependent/template member-typedef path no longer uses rendered scoped
+  storage as semantic authority, or the precise missing structured carrier is
+  recorded as a blocker.
+- Template primary/specialization member typedef lookup has a structured
+  metadata route when parser/Sema has enough ownership to provide one.
+- The previously regressed template alias/member-typedef tests are covered
+  without adding testcase-shaped shortcuts.
+- Narrow parser/Sema tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.4.4.6: Delete Or Park The Remaining Member-Typedef Mirror
+
+Goal: delete the live `owner::member` typedef mirror, or park only a
+non-semantic compatibility cache, after the dependent/template bridge is
+converted or recorded as a blocker.
+
+Primary target: any remaining lookup path backed by rendered scoped
+member-typedef storage.
+
+Actions:
+
+- Confirm Steps 2.4.4.1 through 2.4.4.5 have removed, converted, or blocked
+  every semantic writer/reader that depended on rendered scoped storage.
+- Delete the mirror writer and storage only if no semantic consumer remains.
+- If a narrow compatibility cache must remain, make its non-semantic purpose
+  explicit and ensure it cannot decide parser/Sema semantic identity.
+- Represent any remaining metadata blockers as separate open ideas when they
+  are outside the current parser/Sema plan.
 
 Completion check:
 
