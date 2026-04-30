@@ -6447,6 +6447,67 @@ void test_consteval_template_arg_expr_payload_ignores_stale_rendered_name() {
                 "stale rendered $expr text must not select the NTTP value");
 }
 
+void test_parser_consteval_parameter_preserves_unqualified_text_metadata() {
+  c4c::Lexer lexer("consteval int id(int value) { return value; }\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parse_top_level(parser);
+
+  expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION,
+              "consteval parameter fixture should parse as a function");
+  expect_true(fn->n_params == 1 && fn->params && fn->params[0],
+              "consteval parameter fixture should retain one parameter");
+  c4c::Node* param = fn->params[0];
+  expect_eq(param->name, "value",
+            "parameter rendered spelling should remain the source name");
+  expect_eq(param->unqualified_name, "value",
+            "parameter unqualified metadata should keep the source base name");
+  expect_true(param->unqualified_text_id == lexer.text_table().intern("value"),
+              "parameter TextId metadata should come from the identifier token");
+  expect_true(param->n_qualifier_segments == 0 && !param->is_global_qualified,
+              "parameter metadata should stay unqualified for local lookup");
+}
+
+void test_consteval_parameter_binding_uses_text_metadata_over_stale_rendered_name() {
+  c4c::Lexer lexer("consteval int id(int value) { return value; }\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parse_top_level(parser);
+  expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION,
+              "consteval parameter binding fixture should parse as a function");
+  expect_true(fn->n_params == 1 && fn->params && fn->params[0],
+              "consteval parameter binding fixture should retain one parameter");
+  expect_true(fn->body && fn->body->kind == c4c::NK_BLOCK &&
+                  fn->body->n_children == 1 && fn->body->children[0] &&
+                  fn->body->children[0]->kind == c4c::NK_RETURN &&
+                  fn->body->children[0]->left &&
+                  fn->body->children[0]->left->kind == c4c::NK_VAR,
+              "consteval parameter binding fixture should return the parameter");
+
+  c4c::Node* param = fn->params[0];
+  c4c::Node* returned_ref = fn->body->children[0]->left;
+  param->name = arena.strdup("stale_param_rendering");
+  returned_ref->name = arena.strdup("stale_ref_rendering");
+
+  std::unordered_map<std::string, const c4c::Node*> consteval_fns;
+  c4c::hir::ConstEvalEnv env{};
+  auto result = c4c::hir::evaluate_consteval_call(
+      fn, {c4c::hir::ConstValue::make_int(42)}, env, consteval_fns);
+
+  expect_true(result.ok(),
+              "consteval parameter binding should evaluate through TextId metadata");
+  expect_eq_int(static_cast<int>(result.as_int()), 42,
+                "stale rendered parameter names should not block TextId local lookup");
+}
+
 void test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name() {
   c4c::TextTable texts;
   const c4c::TextId actual_text = texts.intern("Actual");
@@ -7006,6 +7067,8 @@ int main() {
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
   test_consteval_template_arg_expr_payload_ignores_stale_rendered_name();
+  test_parser_consteval_parameter_preserves_unqualified_text_metadata();
+  test_consteval_parameter_binding_uses_text_metadata_over_stale_rendered_name();
   test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name();
   test_consteval_value_lookup_keeps_no_metadata_rendered_compatibility();
   test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();

@@ -8,28 +8,25 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3 review was absorbed from
-`review/step3_consteval_value_type_review.md`. The prior consteval value/type
-work is not closed: same-spelling rendered fallback can still decide
-`ConstEvalEnv::lookup(const Node*)` after populated metadata misses, and
-consteval `TypeSpec` lookup still uses rendered-name-to-metadata mirror maps as
-an intermediate bridge.
+Step 3.1 repaired the parser parameter metadata producer: `parse_param` now
+copies the declarator identifier `TextId` and unqualified source name onto the
+returned `NK_DECL` without adding namespace qualifiers. Focused consteval parser
+tests cover parsed function parameters and show parameter binding/readback still
+uses `TextId` metadata when rendered parameter/reference names are stale.
 
 ## Suggested Next
 
-Execute Step 3.1. Delegate one bounded metadata-producer packet for consteval
-locals, loop locals, parameters, synthetic locals, or `TypeSpec` intrinsic
-identifier metadata. If the producer is outside parser/Sema ownership or lacks
-a clear source carrier, park that exact blocker in this file before any further
-Step 3 lookup-deletion packet.
+Continue Step 3.1 with one bounded metadata-producer packet for consteval
+locals, loop locals, synthetic locals, or `TypeSpec` intrinsic identifier
+metadata before attempting any consteval rendered-fallback deletion.
 
 ## Watchouts
 
 - Do not treat the previous consteval value/type fallback slice as closed while
   same-spelling rendered fallback can still decide lookup after populated
   metadata misses.
-- Same-spelling consteval local/loop/parameter compatibility is now a
-  metadata-producer target, not acceptable lookup-deletion progress.
+- Same-spelling consteval local/loop compatibility remains a metadata-producer
+  target, not acceptable lookup-deletion progress.
 - Do not delete the rendered-name `eval_const_int` compatibility overload while
   HIR still passes `NttpBindings` as `std::unordered_map<std::string, long long>`.
 - Route deletion of the rendered-name `eval_const_int` compatibility overload
@@ -51,6 +48,7 @@ Step 3 lookup-deletion packet.
 
 ## Proof
 
-Lifecycle-only review absorption. No implementation proof was run for this
-rewrite. The next code-changing Step 3.1 packet must produce fresh canonical
-`test_after.log` for the supervisor-selected proof command.
+Passed:
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*)$' --output-on-failure) > test_after.log 2>&1`
+
+Proof log: `test_after.log`.

@@ -2595,12 +2595,14 @@ Node* parse_param(Parser& parser) {
     }
     TypeSpec pts = parser.parse_base_type();
     const char* pname = nullptr;
+    TextId pname_text_id = kInvalidText;
     Node** fn_ptr_params = nullptr;
     int n_fn_ptr_params = 0;
     bool fn_ptr_variadic = false;
     bool is_parameter_pack = false;
     parser.parse_declarator(pts, &pname, &fn_ptr_params, &n_fn_ptr_params,
-                            &fn_ptr_variadic, &is_parameter_pack);
+                            &fn_ptr_variadic, &is_parameter_pack,
+                            nullptr, nullptr, nullptr, &pname_text_id);
     skip_cpp11_attrs_only();
     parse_plain_function_declarator_suffix(
         parser, pts, /*decay_to_function_pointer=*/true);
@@ -2631,6 +2633,11 @@ Node* parse_param(Parser& parser) {
     Node* p = parser.make_node(NK_DECL, ln);
     p->type = pts;
     p->name = pname ? pname : nullptr;
+    if (pname && pname[0]) {
+        p->unqualified_name = pname;
+        p->unqualified_text_id =
+            parser.parser_text_id_for_token(pname_text_id, pname);
+    }
     p->fn_ptr_params = fn_ptr_params;
     p->n_fn_ptr_params = n_fn_ptr_params;
     p->fn_ptr_variadic = fn_ptr_variadic;
