@@ -795,10 +795,9 @@ Node* parse_primary(Parser& parser) {
                 visible_type_head_name(
                     parser, qualifier_owner_text_id,
                     parser.parser_text(qualifier_owner_text_id, qualifier_owner));
-            if (parser.has_visible_typedef_type(qualifier_owner_text_id,
-                                         qualifier_owner) ||
+            if (parser.has_visible_typedef_type(qualifier_owner_text_id) ||
                 (!resolved_owner.empty() &&
-                 (parser.has_visible_typedef_type(resolved_owner) ||
+                 (parser.has_visible_typedef_type(parser.find_parser_text_id(resolved_owner)) ||
                   resolved_owner == current_tag ||
                   qualifier_owner == current_tag))) {
                 // Inside a method body, `BaseAlias::operator...(args)` names a
@@ -1335,7 +1334,7 @@ Node* parse_primary(Parser& parser) {
         if (parser.is_cpp_mode() && qn.qualifier_segments.empty() &&
             parser.check(TokenKind::LParen)) {
             const TypeSpec* direct_typedef =
-                parser.find_visible_typedef_type(qn.base_text_id, qn_base_name);
+                parser.find_visible_typedef_type(qn.base_text_id);
             if (direct_typedef) {
                 TypeSpec cast_ts = *direct_typedef;
                 const std::string visible_typedef_name =
@@ -1398,14 +1397,14 @@ Node* parse_primary(Parser& parser) {
 
             if (owner_qn.qualifier_segments.empty() &&
                 !owner_qn.is_global_qualified &&
-                parser.has_visible_typedef_type(owner_qn.base_text_id, owner_qn.base_name)) {
+                parser.has_visible_typedef_type(owner_qn.base_text_id)) {
                 return true;
             }
 
             return parser.has_template_struct_primary(owner_qn) ||
                    qualified_type_has_structured_record_definition(parser,
                                                                    owner_qn) ||
-                   parser.has_typedef_type(owner_name) ||
+                   parser.has_typedef_type(parser.find_parser_text_id(owner_name)) ||
                    // Rendered-name compatibility for owner tags that have not
                    // carried structured record identity to this expression
                    // disambiguation path.

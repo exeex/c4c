@@ -335,28 +335,18 @@ class Parser {
   SymbolId symbol_id_for_token(const Token& token);
   void populate_qualified_name_symbol_ids(QualifiedNameRef* name);
   std::string_view symbol_spelling(SymbolId id) const;
-  bool has_typedef_name(std::string_view name) const;
-  bool is_typedef_name(TextId name_text_id, std::string_view name) const;
-  bool has_typedef_type(std::string_view name) const;
-  const TypeSpec* find_typedef_type(TextId name_text_id,
-                                    std::string_view fallback_name) const;
-  const TypeSpec* find_typedef_type(std::string_view name) const;
-  const TypeSpec* find_typedef_type(const QualifiedNameKey& key,
-                                    std::string_view fallback_name) const;
+  bool has_typedef_name(TextId name_text_id) const;
+  bool is_typedef_name(TextId name_text_id) const;
+  bool has_typedef_type(TextId name_text_id) const;
+  const TypeSpec* find_typedef_type(TextId name_text_id) const;
+  const TypeSpec* find_typedef_type(const QualifiedNameKey& key) const;
   bool has_structured_typedef_type(const QualifiedNameKey& key) const;
   const TypeSpec* find_structured_typedef_type(
       const QualifiedNameKey& key) const;
   const ParserAliasTemplateInfo* find_alias_template_info(
       const QualifiedNameKey& key) const;
-  bool has_visible_typedef_type(TextId name_text_id, std::string_view name) const;
-  // String-only visible typedef helpers are compatibility bridges for tag/ref
-  // strings. Parser-owned token paths should pass TextId identity above.
-  bool has_visible_typedef_type(std::string_view name) const;
-  const TypeSpec* find_visible_typedef_type(TextId name_text_id,
-                                            std::string_view name) const;
-  // String-only visible typedef lookup delegates to the TextId-aware path after
-  // a parser text lookup; use it only when no originating TextId is available.
-  const TypeSpec* find_visible_typedef_type(std::string_view name) const;
+  bool has_visible_typedef_type(TextId name_text_id) const;
+  const TypeSpec* find_visible_typedef_type(TextId name_text_id) const;
   void push_local_binding_scope();
   bool pop_local_binding_scope();
   bool has_local_binding_scope() const;
@@ -373,19 +363,11 @@ class Parser {
   bool is_user_typedef_name(const std::string& name) const;
   bool has_conflicting_user_typedef_binding(const std::string& name,
                                             const TypeSpec& type) const;
-  void register_typedef_name(TextId name_text_id, std::string_view name,
-                             bool is_user_typedef);
-  void register_typedef_name(const std::string& name, bool is_user_typedef);
-  void register_typedef_binding(TextId name_text_id, std::string_view name,
-                                const TypeSpec& type, bool is_user_typedef);
-  void register_typedef_binding(const std::string& name, const TypeSpec& type,
+  void register_typedef_name(TextId name_text_id, bool is_user_typedef);
+  void register_typedef_binding(TextId name_text_id, const TypeSpec& type,
                                 bool is_user_typedef);
-  void unregister_typedef_binding(TextId name_text_id,
-                                  std::string_view fallback_name);
-  void unregister_typedef_binding(const std::string& name);
-  void register_synthesized_typedef_binding(TextId name_text_id,
-                                            std::string_view name);
-  void register_synthesized_typedef_binding(const std::string& name);
+  void unregister_typedef_binding(TextId name_text_id);
+  void register_synthesized_typedef_binding(TextId name_text_id);
   void register_tag_type_binding(const std::string& name, TypeBase base,
                                  const char* tag,
                                  TypeBase enum_underlying_base = TB_VOID);
@@ -396,38 +378,23 @@ class Parser {
   void register_struct_member_typedef_binding(const std::string& scoped_name,
                                               const TypeSpec& type);
   void register_structured_typedef_binding_in_context(
-      int context_id, TextId name_text_id, std::string_view fallback_name,
-      const TypeSpec& type);
-  bool has_var_type(const std::string& name) const;
-  const TypeSpec* find_var_type(TextId name_text_id,
-                                std::string_view fallback_name) const;
-  const TypeSpec* find_var_type(const std::string& name) const;
-  const TypeSpec* find_var_type(const QualifiedNameKey& key,
-                                std::string_view fallback_name) const;
+      int context_id, TextId name_text_id, const TypeSpec& type);
+  const TypeSpec* find_var_type(TextId name_text_id) const;
+  const TypeSpec* find_var_type(const QualifiedNameKey& key) const;
   bool has_structured_var_type(const QualifiedNameKey& key) const;
   const TypeSpec* find_structured_var_type(
       const QualifiedNameKey& key) const;
-  const TypeSpec* find_visible_var_type(TextId name_text_id,
-                                        std::string_view name) const;
-  // String-only visible value lookup is a compatibility bridge for projection
-  // strings. Token-backed semantic callers should use the TextId overload.
-  const TypeSpec* find_visible_var_type(const std::string& name) const;
-  void register_var_type_binding(TextId name_text_id, std::string_view name,
-                                 const TypeSpec& type);
-  void register_var_type_binding(const std::string& name, const TypeSpec& type);
+  const TypeSpec* find_visible_var_type(TextId name_text_id) const;
+  void register_var_type_binding(TextId name_text_id, const TypeSpec& type);
   void register_structured_var_type_binding(const QualifiedNameKey& key,
                                             const TypeSpec& type);
   void register_structured_var_type_binding_in_context(
-      int context_id, TextId name_text_id, std::string_view fallback_name,
-      const TypeSpec& type);
+      int context_id, TextId name_text_id, const TypeSpec& type);
   bool has_known_fn_name(const QualifiedNameKey& key) const;
   void register_known_fn_name(const QualifiedNameKey& key);
-  bool register_known_fn_name_in_context(int context_id, TextId name_text_id,
-                                         std::string_view fallback_name);
+  bool register_known_fn_name_in_context(int context_id, TextId name_text_id);
   bool has_structured_concept_name(const QualifiedNameKey& key) const;
-  void register_concept_name_in_context(int context_id, TextId name_text_id,
-                                        std::string_view fallback_name);
-  bool is_typedef_name(std::string_view s) const;
+  void register_concept_name_in_context(int context_id, TextId name_text_id);
   bool is_cpp_mode() const;
 
   // ── lookup / binding helpers: namespace resolution and qualified names ───
@@ -445,23 +412,18 @@ class Parser {
   // Compatibility/debug bridge for legacy string-keyed namespace consumers.
   std::string compatibility_namespace_name_in_context(
       int context_id, TextId name_text_id, std::string_view fallback_name) const;
-  QualifiedNameKey known_fn_name_key(int context_id, TextId name_text_id,
-                                     std::string_view name) const;
-  QualifiedNameKey intern_semantic_name_key(std::string_view name);
-  QualifiedNameKey known_fn_name_key_in_context(
-      int context_id, TextId name_text_id,
-      std::string_view fallback_name) const;
+  QualifiedNameKey known_fn_name_key(int context_id, TextId name_text_id) const;
+  QualifiedNameKey intern_semantic_name_key(TextId name_text_id);
+  QualifiedNameKey known_fn_name_key_in_context(int context_id,
+                                                TextId name_text_id) const;
   QualifiedNameKey current_record_member_name_key(
-      TextId member_text_id, std::string_view fallback_member_name) const;
+      TextId member_text_id) const;
   QualifiedNameKey struct_typedef_key_in_context(
-      int context_id, TextId name_text_id,
-      std::string_view fallback_name) const;
+      int context_id, TextId name_text_id) const;
   QualifiedNameKey alias_template_key_in_context(
-      int context_id, TextId name_text_id,
-      std::string_view fallback_name) const;
+      int context_id, TextId name_text_id) const;
   const ParserAliasTemplateInfo* find_alias_template_info_in_context(
-      int context_id, TextId name_text_id,
-      std::string_view fallback_name) const;
+      int context_id, TextId name_text_id) const;
   QualifiedNameKey qualified_name_key(const QualifiedNameRef& name);
   std::string bridge_name_in_context(int context_id, TextId name_text_id,
                                      std::string_view fallback_name) const;

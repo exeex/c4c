@@ -113,7 +113,7 @@ std::string visible_type_head_name(const Parser& parser,
                                    TextId name_text_id,
                                    std::string_view name) {
     if (const TypeSpec* visible_type =
-            parser.find_visible_typedef_type(name_text_id, name)) {
+            parser.find_visible_typedef_type(name_text_id)) {
         if (visible_type->tag && visible_type->tag[0]) {
             return visible_type->tag;
         }
@@ -143,7 +143,7 @@ bool type_spec_has_structured_record_definition(const Parser& parser,
 bool visible_type_head_has_structured_record_definition(
     const Parser& parser, TextId name_text_id, std::string_view name) {
     return type_spec_has_structured_record_definition(
-        parser, parser.find_visible_typedef_type(name_text_id, name));
+        parser, parser.find_visible_typedef_type(name_text_id));
 }
 
 bool visible_type_result_has_structured_record_definition(
@@ -156,7 +156,8 @@ bool visible_type_result_has_structured_record_definition(
     }
     if (resolved_name.empty()) return false;
     return type_spec_has_structured_record_definition(
-        parser, parser.find_typedef_type(resolved_name));
+        parser,
+        parser.find_typedef_type(parser.find_parser_text_id(resolved_name)));
 }
 
 Node* qualified_type_structured_record_definition(
@@ -172,7 +173,8 @@ Node* qualified_type_structured_record_definition(
     }
     if (resolved_name.empty()) return nullptr;
     return type_spec_structured_record_definition(
-        parser, parser.find_typedef_type(resolved_name));
+        parser,
+        parser.find_typedef_type(parser.find_parser_text_id(resolved_name)));
 }
 
 bool qualified_type_has_structured_record_definition(
@@ -418,8 +420,8 @@ bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
                                std::string_view name) {
     if (match_floatn_keyword_base(name, nullptr)) return true;
     if (parser.is_template_scope_type_param(name_text_id, name)) return true;
-    if (parser.is_typedef_name(name_text_id, name)) return true;
-    if (parser.has_visible_typedef_type(name_text_id, name)) return true;
+    if (parser.is_typedef_name(name_text_id)) return true;
+    if (parser.has_visible_typedef_type(name_text_id)) return true;
     const std::string resolved =
         visible_type_head_name(parser, name_text_id, name);
     if (visible_type_head_has_structured_record_definition(parser, name_text_id,
@@ -441,9 +443,9 @@ bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
 bool is_known_simple_visible_type_head(const Parser& parser,
                                        TextId name_text_id,
                                        std::string_view name) {
-    return parser.is_typedef_name(name_text_id, name) ||
+    return parser.is_typedef_name(name_text_id) ||
            parser.is_template_scope_type_param(name_text_id, name) ||
-           parser.has_visible_typedef_type(name_text_id, name);
+           parser.has_visible_typedef_type(name_text_id);
 }
 
 bool starts_with_value_like_template_expr(const Parser& parser,
@@ -553,7 +555,8 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
         const Parser::VisibleNameResult resolved_type =
             parser.resolve_qualified_type(qn);
         std::string resolved = parser.visible_name_spelling(resolved_type);
-        if (!resolved.empty() && parser.has_typedef_type(resolved))
+        if (!resolved.empty() &&
+            parser.has_typedef_type(parser.find_parser_text_id(resolved)))
             return resolved;
     } else {
         return visible_type_head_name(parser, qn.base_text_id, base_name);
@@ -562,7 +565,7 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
     const Parser::VisibleNameResult visible_type =
         parser.resolve_visible_type(qn.base_text_id, base_name);
     std::string resolved = parser.visible_name_spelling(visible_type);
-    if (visible_type && parser.has_visible_typedef_type(qn.base_text_id, base_name))
+    if (visible_type && parser.has_visible_typedef_type(qn.base_text_id))
         return resolved;
     if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
         return {};
@@ -626,8 +629,8 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
     QualifiedTypeProbe probe;
     probe.resolved_typedef_name = resolve_qualified_known_type_name(parser, qn);
     if ((!qn.qualifier_segments.empty() || qn.is_global_qualified)
-            ? parser.has_typedef_type(probe.resolved_typedef_name)
-            : parser.has_visible_typedef_type(qn.base_text_id, qn.base_name)) {
+            ? parser.has_typedef_type(parser.find_parser_text_id(probe.resolved_typedef_name))
+            : parser.has_visible_typedef_type(qn.base_text_id)) {
         probe.has_resolved_typedef = true;
         return probe;
     }

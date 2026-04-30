@@ -85,7 +85,7 @@ static QualifiedNameKey template_instantiation_name_key_for_direct_emit(
     if (name_text_id == kInvalidText && name && name[0]) {
         name_text_id = parser.parser_text_id_for_token(kInvalidText, name);
     }
-    return parser.alias_template_key_in_context(context_id, name_text_id, name);
+    return parser.alias_template_key_in_context(context_id, name_text_id);
 }
 
 static bool has_template_instantiation_dedup_key_for_direct_emit(
@@ -313,17 +313,16 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
 
         const Token& head_tok = core_input_state_.tokens[pos];
         const std::string head_name = std::string(token_spelling(head_tok));
-        if (find_visible_var_type(head_tok.text_id, head_name)) return 1;
+        if (find_visible_var_type(head_tok.text_id)) return 1;
 
         const QualifiedNameKey direct_known_fn_key =
-            known_fn_name_key_in_context(current_namespace_context_id(),
-                                         head_tok.text_id, head_name);
+            known_fn_name_key_in_context(current_namespace_context_id(), head_tok.text_id);
         if (direct_known_fn_key.base_text_id != kInvalidText) {
             if (has_known_fn_name(direct_known_fn_key)) return 1;
         }
 
         const QualifiedNameKey current_member_key =
-            current_record_member_name_key(head_tok.text_id, head_name);
+            current_record_member_name_key(head_tok.text_id);
         if (current_member_key.base_text_id != kInvalidText) {
             if (has_known_fn_name(current_member_key)) return 1;
         }
@@ -419,7 +418,7 @@ bool Parser::looks_like_unresolved_parenthesized_parameter_type_head(int pos) co
     const std::string head_name = std::string(token_spelling(head_tok));
     if (is_concept_name(head_name)) return false;
     if (is_known_simple_visible_type_head(*this, head_text_id, head_name)) return false;
-    if (find_visible_var_type(head_text_id, head_name)) return false;
+    if (find_visible_var_type(head_text_id)) return false;
 
     const int lparen = pos + 1;
     if (lparen >= static_cast<int>(core_input_state_.tokens.size()) ||
@@ -807,9 +806,10 @@ TypeSpec Parser::parse_base_type() {
                 auto lookup_typedef_for_name =
                     [&](std::string_view name) -> const TypeSpec* {
                         if (name.empty()) return nullptr;
+                        const TextId name_text_id = find_parser_text_id(name);
                         return name.find("::") == std::string_view::npos
-                                   ? find_visible_typedef_type(name)
-                                   : find_typedef_type(name);
+                                   ? find_visible_typedef_type(name_text_id)
+                                   : find_typedef_type(name_text_id);
                     };
                 auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
                     ts = resolve_typedef_type_chain(ts);
@@ -832,7 +832,8 @@ TypeSpec Parser::parse_base_type() {
                             return true;
                         }
                     }
-                    const TypeSpec* type = find_typedef_type(scoped);
+                    const TypeSpec* type =
+                        find_typedef_type(find_parser_text_id(scoped));
                     if (!type) return false;
                     *out = *type;
                     return true;
@@ -1109,7 +1110,7 @@ TypeSpec Parser::parse_base_type() {
             std::string id(token_spelling(cur()));
             consume();
             if (const TypeSpec* var_type =
-                    find_visible_var_type(id_text_id, id)) {
+                    find_visible_var_type(id_text_id)) {
                 *out = *var_type;
             } else {
                 out->base = TB_INT;  // enum constants and unknowns → int
@@ -1336,7 +1337,7 @@ TypeSpec Parser::parse_base_type() {
                                 TokenKind::ColonColon;
                         const TypeSpec* visible_head_type =
                             (k == TokenKind::Identifier && has_following_scope)
-                                ? find_visible_typedef_type(name_text_id, name)
+                                ? find_visible_typedef_type(name_text_id)
                                 : nullptr;
                         const bool typed_record_owner_scope =
                             visible_head_type && visible_head_type->record_def;
@@ -1457,7 +1458,7 @@ TypeSpec Parser::parse_base_type() {
         Node* ed = parse_enum(*this);
         definition_state_.last_enum_def = ed;
         if (ed && ed->name) {
-            if (const TypeSpec* typedef_type = find_visible_typedef_type(ed->name)) {
+            if (const TypeSpec* typedef_type = find_visible_typedef_type(find_parser_text_id(ed->name))) {
                 ts = *typedef_type;
             }
         }
@@ -1491,9 +1492,10 @@ TypeSpec Parser::parse_base_type() {
         if (tname) {
             const bool is_unqualified_typedef =
                 std::strstr(tname, "::") == nullptr;
+            const TextId tname_text_id = find_parser_text_id(tname);
             const TypeSpec* typedef_type =
-                is_unqualified_typedef ? find_visible_typedef_type(tname)
-                                       : find_typedef_type(tname);
+                is_unqualified_typedef ? find_visible_typedef_type(tname_text_id)
+                                       : find_typedef_type(tname_text_id);
             if (typedef_type) {
                 // Resolve: use the stored TypeSpec, preserving qualifiers from this context
                 bool save_const = ts.is_const, save_vol = ts.is_volatile;
@@ -1505,18 +1507,14 @@ TypeSpec Parser::parse_base_type() {
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
                     const QualifiedNameKey alias_key = alias_template_key_in_context(
-                        current_namespace_context_id(),
-                        active_context_state_.last_resolved_typedef_text_id,
-                        tname);
+                        current_namespace_context_id(), active_context_state_.last_resolved_typedef_text_id);
                     const ParserAliasTemplateInfo* ati =
                         find_alias_template_info(alias_key);
                     if (!ati) {
                         // Legacy rendered-name recovery stays fallback-only once the
                         // structured alias key probe has been exhausted.
                         ati = find_alias_template_info_in_context(
-                            current_namespace_context_id(),
-                            active_context_state_.last_resolved_typedef_text_id,
-                            tname);
+                            current_namespace_context_id(), active_context_state_.last_resolved_typedef_text_id);
                     }
                     if (ati) {
                         const std::string alias_template_name(tname);
@@ -1853,8 +1851,8 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         const TypeSpec* typedef_type =
                                             ref.find("::") == std::string::npos
-                                                ? find_visible_typedef_type(ref)
-                                                : find_typedef_type(ref);
+                                                ? find_visible_typedef_type(find_parser_text_id(ref))
+                                                : find_typedef_type(find_parser_text_id(ref));
                                         if (typedef_type) {
                                             parsed.type = *typedef_type;
                                             *out = parsed;

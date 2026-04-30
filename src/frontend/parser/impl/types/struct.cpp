@@ -24,7 +24,9 @@ struct ParserFunctionParamScopeGuard {
         active = true;
         for (Node* param : params) {
             if (!param || !param->name || !param->name[0]) continue;
-            parser->register_var_type_binding(param->name, param->type);
+            parser->register_var_type_binding(
+                parser->parser_text_id_for_token(kInvalidText, param->name),
+                param->type);
         }
     }
 
@@ -209,8 +211,8 @@ void parse_record_template_member_prelude(
         return parser.parser_text_id_for_token(token_text_id, fallback);
     };
     auto register_synthesized_typedef_binding =
-        [&](TextId name_text_id, const std::string& name) {
-            parser.register_synthesized_typedef_binding(name_text_id, name);
+        [&](TextId name_text_id) {
+            parser.register_synthesized_typedef_binding(name_text_id);
         };
     auto token_spelling = [&](const Token& token) {
         return parser.token_spelling(token);
@@ -273,7 +275,7 @@ void parse_record_template_member_prelude(
                 const TextId pname_text_id =
                     parser_text_id_for_token(cur().text_id, pname);
                 consume();
-                register_synthesized_typedef_binding(pname_text_id, pname);
+                register_synthesized_typedef_binding(pname_text_id);
                 injected_type_params->push_back(
                     {pname_text_id, arena_.strdup(pname.c_str())});
             }
@@ -328,7 +330,7 @@ void parse_record_template_member_prelude(
                 const TextId pname_text_id =
                     parser_text_id_for_token(cur().text_id, pname);
                 consume();
-                register_synthesized_typedef_binding(pname_text_id, pname);
+                register_synthesized_typedef_binding(pname_text_id);
                 injected_type_params->push_back(
                     {pname_text_id, arena_.strdup(pname.c_str())});
             }
@@ -377,7 +379,7 @@ void parse_record_template_member_prelude(
                         const TextId pname_text_id =
                             parser_text_id_for_token(cur().text_id, pname);
                         consume();
-                        register_synthesized_typedef_binding(pname_text_id, pname);
+                        register_synthesized_typedef_binding(pname_text_id);
                         injected_type_params->push_back(
                             {pname_text_id, arena_.strdup(pname.c_str())});
                     }
@@ -536,7 +538,7 @@ void parse_record_template_member_prelude(
                             const TextId pname_text_id =
                                 parser_text_id_for_token(cur().text_id, pname);
                             consume();
-                            register_synthesized_typedef_binding(pname_text_id, pname);
+                            register_synthesized_typedef_binding(pname_text_id);
                             injected_type_params->push_back(
                                 {pname_text_id, arena_.strdup(pname.c_str())});
                         }
@@ -747,13 +749,14 @@ bool try_parse_record_using_member(
     if (parser.check(TokenKind::Identifier) &&
         parser.core_input_state_.pos + 1 < static_cast<int>(parser.core_input_state_.tokens.size()) &&
         parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind == TokenKind::Assign) {
+        const TextId alias_name_text_id = parser.cur().text_id;
         std::string alias_name = std::string(parser.token_spelling(parser.cur()));
         parser.consume(); // name
         parser.consume(); // '='
         TypeSpec alias_ts = parser.parse_type_name();
         parser.expect(TokenKind::Semi);
 
-        parser.register_typedef_binding(alias_name, alias_ts, false);
+        parser.register_typedef_binding(alias_name_text_id, alias_ts, false);
         member_typedef_names->push_back(parser.arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
         if (!parser.current_struct_tag_text().empty()) {
@@ -785,10 +788,10 @@ bool try_parse_record_typedef_member(
                                        Node** fn_ptr_params,
                                        int n_fn_ptr_params,
                                        bool fn_ptr_variadic) {
-        parser.register_typedef_binding(name, type, true);
+        const TextId typedef_name_id =
+            parser.parser_text_id_for_token(kInvalidText, name);
+        parser.register_typedef_binding(typedef_name_id, type, true);
         if (type.is_fn_ptr && (n_fn_ptr_params > 0 || fn_ptr_variadic)) {
-            const TextId typedef_name_id =
-                parser.parser_text_id_for_token(kInvalidText, name);
             if (typedef_name_id != kInvalidText) {
                 parser.binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                     fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic};
@@ -921,7 +924,7 @@ bool try_parse_record_enum_member(
             // Prefer enum type tag if available
             fts.base = TB_ENUM;
             fts.tag  = ed->name;
-            if (const TypeSpec* enum_type = parser.find_typedef_type(ed->name))
+            if (const TypeSpec* enum_type = parser.find_typedef_type(parser.find_parser_text_id(ed->name)))
                 fts.enum_underlying_base = enum_type->enum_underlying_base;
         }
         while (true) {
@@ -1861,7 +1864,8 @@ void begin_record_body_context(Parser& parser,
     // Make the current record name available for self-type parsing within the
     // body before member dispatch starts.
     if (parser.is_cpp_mode() && tag && tag[0])
-        parser.register_typedef_name(tag, false);
+        parser.register_typedef_name(
+            parser.parser_text_id_for_token(kInvalidText, tag), false);
 
     if (saved_struct_tag)
         *saved_struct_tag = parser.active_context_state_.current_struct_tag;
@@ -1881,11 +1885,13 @@ void begin_record_body_context(Parser& parser,
     if (!parser.is_cpp_mode())
         return;
 
-    parser.register_typedef_name(template_origin_name, false);
+    const TextId template_origin_text_id =
+        parser.parser_text_id_for_token(kInvalidText, template_origin_name);
+    parser.register_typedef_name(template_origin_text_id, false);
     const bool has_existing_template_origin_type =
         std::strstr(template_origin_name, "::") == nullptr
-            ? parser.has_visible_typedef_type(template_origin_name)
-            : parser.has_typedef_type(template_origin_name);
+            ? parser.has_visible_typedef_type(template_origin_text_id)
+            : parser.has_typedef_type(template_origin_text_id);
     if (!has_existing_template_origin_type) {
         parser.register_tag_type_binding(template_origin_name, TB_STRUCT, tag);
     }
@@ -2075,6 +2081,7 @@ Node* parse_record_tag_setup(
     const std::vector<Parser::TemplateArgParseResult>& specialization_args) {
     if (!parser.check(TokenKind::LBrace)) {
         const char* resolved_tag = tag ? *tag : nullptr;
+        const char* source_tag = resolved_tag;
         if (!resolved_tag) {
             char buf[32];
             snprintf(buf, sizeof(buf), "_anon_%d",
@@ -2109,6 +2116,12 @@ Node* parse_record_tag_setup(
             parser.register_tag_type_binding(resolved_tag,
                                              is_union ? TB_UNION : TB_STRUCT,
                                              resolved_tag);
+            if (source_tag && source_tag[0] &&
+                std::strcmp(source_tag, resolved_tag) != 0) {
+                parser.register_tag_type_binding(source_tag,
+                                                 is_union ? TB_UNION : TB_STRUCT,
+                                                 resolved_tag);
+            }
         }
         if (parser.is_cpp_mode() &&
             parser.active_context_state_.parsing_top_level_context)

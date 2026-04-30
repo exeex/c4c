@@ -206,7 +206,9 @@ Node* parse_stmt(Parser& parser) {
                 return parser.make_node(NK_INVALID_STMT, ln);
             }
             // Register as typedef so subsequent code recognizes the name.
-            parser.register_typedef_binding(alias_name, alias_ts, true);
+            parser.register_typedef_binding(
+                parser.parser_text_id_for_token(kInvalidText, alias_name),
+                alias_ts, true);
             return parser.make_node(NK_EMPTY, ln);
         }
 
@@ -344,7 +346,10 @@ Node* parse_stmt(Parser& parser) {
                         TypeSpec ts = base_ts;
                         ts.array_size_expr = nullptr;
                         const char* vname = nullptr;
-                        parser.parse_declarator(ts, &vname);
+                        TextId vname_text_id = kInvalidText;
+                        parser.parse_declarator(ts, &vname, nullptr, nullptr,
+                                                nullptr, nullptr, nullptr, nullptr,
+                                                nullptr, &vname_text_id);
                         parser.skip_attributes();
                         parser.skip_asm();
                         parser.skip_attributes();
@@ -367,7 +372,7 @@ Node* parse_stmt(Parser& parser) {
                         decl->type = ts;
                         decl->name = vname;
                         decl->init = init_node;
-                        parser.register_var_type_binding(vname, ts);
+                        parser.register_var_type_binding(parser.parser_text_id_for_token(vname_text_id, vname), ts);
                         condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;
@@ -479,7 +484,10 @@ Node* parse_stmt(Parser& parser) {
                         TypeSpec ts = base_ts;
                         ts.array_size_expr = nullptr;
                         const char* vname = nullptr;
-                        parser.parse_declarator(ts, &vname);
+                        TextId vname_text_id = kInvalidText;
+                        parser.parse_declarator(ts, &vname, nullptr, nullptr,
+                                                nullptr, nullptr, nullptr, nullptr,
+                                                nullptr, &vname_text_id);
                         parser.skip_attributes();
                         parser.skip_asm();
                         parser.skip_attributes();
@@ -502,7 +510,7 @@ Node* parse_stmt(Parser& parser) {
                         decl->type = ts;
                         decl->name = vname;
                         decl->init = init_node;
-                        parser.register_var_type_binding(vname, ts);
+                        parser.register_var_type_binding(parser.parser_text_id_for_token(vname_text_id, vname), ts);
                         condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;
@@ -747,7 +755,10 @@ Node* parse_stmt(Parser& parser) {
                         TypeSpec ts = base_ts;
                         ts.array_size_expr = nullptr;
                         const char* vname = nullptr;
-                        parser.parse_declarator(ts, &vname);
+                        TextId vname_text_id = kInvalidText;
+                        parser.parse_declarator(ts, &vname, nullptr, nullptr,
+                                                nullptr, nullptr, nullptr, nullptr,
+                                                nullptr, &vname_text_id);
                         parser.skip_attributes();
                         parser.skip_asm();
                         parser.skip_attributes();
@@ -770,7 +781,7 @@ Node* parse_stmt(Parser& parser) {
                         decl->type = ts;
                         decl->name = vname;
                         decl->init = init_node;
-                        parser.register_var_type_binding(vname, ts);
+                        parser.register_var_type_binding(parser.parser_text_id_for_token(vname_text_id, vname), ts);
                         condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;

@@ -13,12 +13,8 @@
 
 namespace c4c {
 
-bool Parser::is_typedef_name(std::string_view s) const {
-    return is_typedef_name(find_parser_text_id(s), s);
-}
-
-bool Parser::is_typedef_name(TextId name_text_id, std::string_view s) const {
-    if (has_typedef_name(s)) return true;
+bool Parser::is_typedef_name(TextId name_text_id) const {
+    if (has_typedef_name(name_text_id)) return true;
     return find_local_visible_typedef_type(name_text_id) != nullptr;
 }
 
@@ -173,8 +169,8 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
             const TextId start_text_id = core_input_state_.tokens[start_pos].text_id;
             const std::string_view start_name =
                 token_spelling(core_input_state_.tokens[start_pos]);
-            if (!is_typedef_name(start_text_id, start_name) &&
-                !has_visible_typedef_type(start_text_id, start_name) &&
+            if (!is_typedef_name(start_text_id) &&
+                !has_visible_typedef_type(start_text_id) &&
                 !is_template_scope_type_param(start_text_id, start_name)) {
                 return false;
             }
@@ -319,10 +315,9 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
         const TextId name_text_id = cur().text_id;
         const std::string_view name = token_spelling(cur());
         const QualifiedNameKey alias_key = alias_template_key_in_context(
-            current_namespace_context_id(), name_text_id, name);
+            current_namespace_context_id(), name_text_id);
         if (find_alias_template_info(alias_key) ||
-            find_alias_template_info_in_context(current_namespace_context_id(),
-                                                name_text_id, name)) {
+            find_alias_template_info_in_context(current_namespace_context_id(), name_text_id)) {
             return false;
         }
     }
@@ -602,17 +597,18 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
         std::string resolved = dep_name;
         const TypeSpec* visible_dep_typedef =
             (!qn.is_global_qualified && qn.qualifier_segments.empty())
-                ? find_visible_typedef_type(qn.base_text_id, qn.base_name)
+                ? find_visible_typedef_type(qn.base_text_id)
                 : nullptr;
         if (!visible_dep_typedef &&
-            !has_visible_typedef_type(qn.base_text_id, dep_name)) {
+            !has_visible_typedef_type(qn.base_text_id)) {
             const VisibleNameResult visible_type =
                 resolve_visible_type(qn.base_text_id, dep_name);
             if (visible_type) {
                 resolved = visible_name_spelling(visible_type);
             }
         }
-        if (!visible_dep_typedef && !has_typedef_type(resolved)) {
+        if (!visible_dep_typedef &&
+            !has_typedef_type(find_parser_text_id(resolved))) {
             bool preserved_template_owner_member = false;
             if (spelled_name.find('<') != std::string::npos &&
                 parser_text(qn.base_text_id, qn.base_name) == "type") {
@@ -670,7 +666,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                 return true;
             }
             resolved = dep_name;
-            if (!has_typedef_type(resolved) && !qn.qualifier_segments.empty()) {
+            if (!has_typedef_type(find_parser_text_id(resolved)) &&
+                !qn.qualifier_segments.empty()) {
                 auto follow_nested_owner =
                     [&](const QualifiedNameRef& owner_name) -> const Node* {
                     if (owner_name.qualifier_segments.empty()) return nullptr;
@@ -750,9 +747,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         if (!resolved_owner_tag.empty()) owner_tag = resolved_owner_tag;
                         const TypeSpec* owner_typedef =
                             owner_tag.find("::") == std::string::npos
-                                ? find_visible_typedef_type(owner_qn.base_text_id,
-                                                            owner_tag)
-                                : find_typedef_type(owner_tag);
+                                ? find_visible_typedef_type(owner_qn.base_text_id)
+                                : find_typedef_type(find_parser_text_id(owner_tag));
                         const Node* owner =
                             qualified_type_structured_record_definition(
                                 *this, owner_qn, owner_tag);
@@ -894,7 +890,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                             std::string(parser_text(qn.base_text_id,
                                                     qn.base_name));
                         if (const TypeSpec* scoped_type =
-                                find_typedef_type(scoped_name)) {
+                                find_typedef_type(find_parser_text_id(scoped_name))) {
                             resolved_member = *scoped_type;
                             found_member = true;
                         }
