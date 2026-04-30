@@ -8,20 +8,18 @@ Current Step Title: Remove Parser Declarator And Known-Function Rendered Recover
 
 ## Just Finished
 
-Step 2.2 refined the local using-alias qualified value parsing regression fix
-without restoring string-only visible-value APIs. Expression parsing now enters
-the typedef cast/constructor branch for qualified names only when the full name
-resolves as a type or when structured member-typedef metadata/probing shows the
-final segment is a member typedef. `Alias::make()` stays on the value expression
-path with the spelled `Alias::make` callee, while
-`base_type::allocator_type(7)` remains a qualified member typedef functional
-cast.
+Step 2.2 deleted the parser qualified-value string projection API
+`resolve_qualified_value_name(const QualifiedNameRef&)` after `rg` found only a
+white-box test caller. The compatibility check in `frontend_parser_tests` now
+asserts the structured `resolve_qualified_value(...)` result and projects
+display text with `visible_name_spelling(...)` only where the test checks the
+TextId-less compatibility spelling.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 2.2 regression slice, then continue
-with the next parser-owned rendered recovery cleanup that has a structured key
-carrier available without touching HIR/LIR/backend files.
+Supervisor can review and commit this focused Step 2.2 API deletion slice, then
+continue with the next parser-owned rendered recovery cleanup that already has
+a structured key carrier available without touching HIR/LIR/backend files.
 
 ## Watchouts
 
@@ -33,14 +31,10 @@ migration into this parser packet; route that through
 `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a narrower HIR
 metadata idea if the supervisor switches scope.
 
-No remaining `resolve_visible_value(std::string_view)` or
-`resolve_visible_value_name(const std::string&)` parser/test APIs or callers
-were found after this regression fix; production parser call sites remain on
-the `TextId` structured overload.
-
-The clang caller query was attempted as requested, but the current
-`build/compile_commands.json` did not load `src/frontend/parser/impl/core.cpp`;
-the small API surface was verified with `rg` instead.
+No remaining `resolve_qualified_value_name` declaration, definition, or caller
+was found after this packet. Production parser call sites remain on
+`resolve_qualified_value(...)` and explicit `visible_name_spelling(...)`
+projection where display text is genuinely needed.
 
 ## Proof
 

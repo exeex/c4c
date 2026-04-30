@@ -433,7 +433,6 @@ class Parser {
   int resolve_namespace_name(const QualifiedNameRef& name) const;
   VisibleNameResult resolve_qualified_value(
       const QualifiedNameRef& name) const;
-  std::string resolve_qualified_value_name(const QualifiedNameRef& name) const;
   VisibleNameResult resolve_qualified_type(
       const QualifiedNameRef& name) const;
   std::string resolve_qualified_type_name(const QualifiedNameRef& name) const;

@@ -2698,11 +2698,6 @@ Parser::VisibleNameResult Parser::resolve_qualified_value(
     return {};
 }
 
-std::string Parser::resolve_qualified_value_name(
-    const QualifiedNameRef& name) const {
-    return visible_name_spelling(resolve_qualified_value(name));
-}
-
 Parser::VisibleNameResult Parser::resolve_qualified_type(
     const QualifiedNameRef& name) const {
     const std::string base_name =

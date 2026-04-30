@@ -1966,8 +1966,12 @@ void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_va
   expect_true(!parser.resolve_qualified_value(qn),
               "qualified value resolution should not promote legacy-only rendered names for valid TextIds");
   qn.base_text_id = c4c::kInvalidText;
-  expect_eq(parser.resolve_qualified_value_name(qn), "ns::LegacyOnlyValue",
-            "qualified value resolution should preserve explicit TextId-less compatibility");
+  const c4c::Parser::VisibleNameResult resolved_value =
+      parser.resolve_qualified_value(qn);
+  expect_true(static_cast<bool>(resolved_value),
+              "qualified value resolution should preserve explicit TextId-less compatibility");
+  expect_eq(parser.visible_name_spelling(resolved_value), "ns::LegacyOnlyValue",
+            "qualified value resolution should project explicit TextId-less compatibility spelling");
 
   parser.namespace_state_.using_namespace_contexts[0].push_back(ns_context);
   resolved.clear();
