@@ -9,33 +9,35 @@ Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 ## Just Finished
 
 Step 2 qualified-type parse fallback repair completed the reviewer-blocked
-route cleanup from `review/qualified_type_parse_fallback_review.md`:
+route cleanup from `review/qualified_type_parse_fallback_review.md` by removing
+the remaining `Parser::lookup_type_in_context` projected rendered typedef
+fallback:
 
-- removed rendered qualified enum lookup from `probe_qualified_type`; qualified
-  enum authority now comes from parsed enum definition metadata in namespace
-  context, not `find_typedef_type(find_parser_text_id("Q::E"))`;
-- removed the spelling-only unresolved `Q::T<...>` type path and kept only the
-  existing dependent-template placeholder case when parsed template arguments
-  reference an active template type parameter;
-- kept structured typedef registration on namespace-scope typedef producers and
-  removed the block-local registration leak;
-- added focused parser tests for legacy rendered enum storage, unknown
-  namespace-qualified template ids, parsed namespace-scope typedef
-  registration, and block-local typedef non-visibility through `ns::T`.
+- removed the `bridge_name_in_context(...)` / rendered `find_typedef_type(...)`
+  semantic authority path after structured namespace typedef lookup misses;
+- kept direct namespace, imported namespace, and global visible type lookup
+  working when the typedef authority comes from structured keys;
+- updated focused parser tests so legacy rendered `ns::T` typedef storage alone
+  cannot drive `lookup_type_in_context` or qualified type resolution, while
+  parsed namespace-scope typedefs still resolve and block-local typedefs do not
+  leak through `ns::T`.
 
 ## Suggested Next
 
 Next executor packet can continue Step 2 by auditing the remaining parser
-rendered-string semantic lookup routes outside the repaired qualified-type parse
-path, using the same rule: structured metadata may authorize parsing; rendered
-spelling alone may not.
+rendered-string semantic lookup routes outside the repaired qualified-type and
+namespace typedef lookup paths, using the same rule: structured metadata may
+authorize parsing; rendered spelling alone may not.
 
 ## Watchouts
 
 The dependent-template placeholder intentionally accepts `Q::T<U>` only when a
 parsed template argument is an active template type parameter. Unknown
 namespace-qualified template ids with concrete arguments, such as
-`ns::Missing<int>`, remain rejected.
+`ns::Missing<int>`, remain rejected. `lookup_type_in_context(0, T)` can still
+report the queried visible spelling for an imported structured typedef through
+the existing global visible typedef facade; non-global imported namespace lookup
+projects the structured `ns::T` spelling.
 
 ## Proof
 

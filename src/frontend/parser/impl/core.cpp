@@ -2993,21 +2993,6 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
             }
         }
     }
-    const std::string candidate =
-        bridge_name_in_context(context_id, name_text_id, name);
-    const TextId candidate_text_id = find_parser_text_id(candidate);
-    const TypeSpec* projected_typedef =
-        find_typedef_type(candidate_text_id);
-    if (projected_typedef && candidate_text_id != kInvalidText) {
-        resolved->found = true;
-        resolved->kind = VisibleNameKind::Type;
-        resolved->key = candidate_key;
-        resolved->base_text_id = candidate_text_id;
-        resolved->context_id = context_id;
-        resolved->source = VisibleNameSource::Fallback;
-        resolved->compatibility_spelling = candidate;
-        return true;
-    }
     return false;
 }
 
