@@ -3,39 +3,38 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4.4.5A.1
-Current Step Title: Construct Alias-Template Member-Typedef Carrier Before TypeSpec Flattening
+Current Step ID: Step 2.4.4.5A.2
+Current Step Title: Resolve Alias Instantiation Through The Structured Carrier
 
 ## Just Finished
 
-Step 2.4.4.5A.1 is implemented as a producer-only parser slice.
-`ParserAliasTemplateInfo` now carries a structured
-`ParserAliasTemplateMemberTypedefInfo` for RHS forms like
-`typename Owner<Args>::member`, populated by a tentative parser-structure pass
-before normal `TypeSpec` parsing/flattening. The carrier preserves the owner
-`QualifiedNameKey`, parsed/substitutable owner template arguments, and member
-`TextId`. A focused `frontend_parser_tests` case proves the carrier remains
-intact after the rendered/deferred `TypeSpec` spelling is deliberately drifted.
+Step 2.4.4.5A.2 is implemented. Alias-template substitution now tries the
+structured `ParserAliasTemplateInfo::member_typedef` carrier before the
+rendered/deferred bridge, substituting owner args from alias parameter
+`TextId`s, probing the concrete owner/member typedef cache by
+`TemplateInstantiationKey`, and otherwise selecting the owner template pattern
+through the carrier's `QualifiedNameKey` plus member `TextId`. A focused
+`frontend_parser_tests` case proves `Alias<int>` resolves through the carrier
+even after the rendered/deferred `TypeSpec` owner/member spelling is drifted.
 
 ## Suggested Next
 
-Execute Step 2.4.4.5A.2: consume the structured alias-template member-typedef
-carrier during alias instantiation/substitution, while keeping bridge deletion
-out of scope until Step 2.4.4.5B.
+Execute Step 2.4.4.5A.3: review the complete Step 2.4.4.5A
+producer-plus-consumer route before any Step 2.4.4.5B bridge deletion.
 
 ## Watchouts
 
-- The existing rendered/deferred `TypeSpec` bridge remains in place because
-  deleting it caused the expected bridge-regression failures; Step 2.4.4.5B
-  still owns bridge deletion.
-- The new carrier is not seeded from `tpl_struct_origin`,
-  `deferred_member_type_name`, `TypeSpec::tag`, `qualified_name_from_text`,
-  `qualified_alias_name`, rendered owner/member spellings,
+- The structured consumer intentionally bails out for owner args that still
+  mention active template-scope parameters so dependent alias-of-alias cases
+  keep using the existing dependent/template bridge until concrete
+  instantiation.
+- The rendered/deferred `TypeSpec` bridge and alias-name-derived `_t` fallback
+  remain reachable only after the structured carrier route fails; Step
+  2.4.4.5B still owns bridge deletion.
+- The consumer does not infer carrier identity from `tpl_struct_origin`,
+  `deferred_member_type_name`, `TypeSpec::tag`, rendered owner/member spelling,
   `TemplateArgRef::debug_text`, saved RHS token reparsing, or a local
   alias-of-alias parser.
-- The current producer parser accepts structured `typename Owner<Args>::member`
-  shapes; Step 2.4.4.5A.2 should preserve the same route discipline when
-  mapping alias actuals onto `member_typedef.owner_args`.
 
 ## Proof
 

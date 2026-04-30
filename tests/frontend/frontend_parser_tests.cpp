@@ -5451,6 +5451,44 @@ void test_parser_alias_template_member_typedef_carrier_uses_structured_rhs() {
               "alias-template member typedef carrier should survive rendered/deferred TypeSpec spelling drift");
 }
 
+void test_parser_alias_template_member_typedef_substitution_uses_structured_carrier() {
+  c4c::Lexer lexer(
+      "template<typename T> struct Owner { using type = T; };\n"
+      "template<typename T> using Alias = typename Owner<T>::type;\n",
+      c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  (void)parse_top_level(parser);
+  (void)parse_top_level(parser);
+
+  const c4c::TextId alias_text = parser.find_parser_text_id("Alias");
+  const c4c::QualifiedNameKey alias_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), alias_text);
+  c4c::ParserAliasTemplateInfo& info =
+      parser.template_state_.alias_template_info[alias_key];
+  expect_true(info.member_typedef.valid,
+              "alias-template member typedef substitution test requires the structured carrier");
+  info.aliased_type.base = c4c::TB_STRUCT;
+  info.aliased_type.tag = arena.strdup("StaleRenderedOwner");
+  info.aliased_type.tpl_struct_origin = info.aliased_type.tag;
+  info.aliased_type.deferred_member_type_name = arena.strdup("stale_member");
+
+  const c4c::Token seed = tokens.empty() ? c4c::Token{} : tokens.front();
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  });
+
+  const c4c::TypeSpec resolved = parser.parse_type_name();
+  expect_true(resolved.base == c4c::TB_INT,
+              "alias-template member typedef substitution should resolve through the structured carrier despite stale rendered/deferred TypeSpec spelling");
+}
+
 void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches() {
   c4c::Arena arena;
 
@@ -5780,6 +5818,7 @@ int main() {
   test_parser_alias_template_substitution_prefers_param_text_id();
   test_parser_alias_template_substitution_does_not_require_param_name_spelling();
   test_parser_alias_template_member_typedef_carrier_uses_structured_rhs();
+  test_parser_alias_template_member_typedef_substitution_uses_structured_carrier();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();

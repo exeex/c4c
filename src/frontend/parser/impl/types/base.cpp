@@ -1897,13 +1897,84 @@ TypeSpec Parser::parse_base_type() {
                                             if (!parse_template_arg_ref(part, &actual))
                                                 return false;
                                             out_args->push_back(actual);
-                                        }
-                                        return true;
-                                    };
-                                auto type_mentions_template_scope_param =
-                                    [&](const TypeSpec& type) -> bool {
+                                            }
+                                            return true;
+                                        };
+                                    auto alias_param_index_for_text_id =
+                                        [&](TextId param_text_id) -> size_t {
+                                            if (param_text_id == kInvalidText) {
+                                                return alias_param_count;
+                                            }
+                                            for (size_t pi = 0;
+                                                 pi < alias_param_count; ++pi) {
+                                                if (alias_param_text_id(pi) ==
+                                                    param_text_id) {
+                                                    return pi;
+                                                }
+                                            }
+                                            return alias_param_count;
+                                        };
+                                    auto substitute_carrier_arg =
+                                        [&](const ParsedTemplateArg& carrier_arg,
+                                            ParsedTemplateArg* out_arg) -> bool {
+                                            if (!out_arg) return false;
+                                            *out_arg = carrier_arg;
+                                            if (carrier_arg.is_value) {
+                                                if (!carrier_arg.nttp_name ||
+                                                    !carrier_arg.nttp_name[0]) {
+                                                    return true;
+                                                }
+                                                const TextId nttp_text_id =
+                                                    alias_param_ref_text_id(
+                                                        carrier_arg.nttp_name);
+                                                const size_t pi =
+                                                    alias_param_index_for_text_id(
+                                                        nttp_text_id);
+                                                if (pi >= resolved_alias_args.size() ||
+                                                    pi >= alias_param_count) {
+                                                    return true;
+                                                }
+                                                if (!resolved_alias_args[pi].is_value) {
+                                                    return false;
+                                                }
+                                                *out_arg = resolved_alias_args[pi];
+                                                return true;
+                                            }
+                                            const TypeSpec& carrier_type =
+                                                carrier_arg.type;
+                                            if (carrier_type.base != TB_TYPEDEF ||
+                                                !carrier_type.tag ||
+                                                !carrier_type.tag[0]) {
+                                                return true;
+                                            }
+                                            const TextId type_text_id =
+                                                alias_param_ref_text_id(
+                                                    carrier_type.tag);
+                                            const size_t pi =
+                                                alias_param_index_for_text_id(
+                                                    type_text_id);
+                                            if (pi >= resolved_alias_args.size() ||
+                                                pi >= alias_param_count) {
+                                                return true;
+                                            }
+                                            if (resolved_alias_args[pi].is_value) {
+                                                return false;
+                                            }
+                                            *out_arg = resolved_alias_args[pi];
+                                            return true;
+                                        };
+                                    auto type_mentions_template_scope_param =
+                                        [&](const TypeSpec& type) -> bool {
                                         std::function<bool(const TypeSpec&)> type_mentions_dep_params =
                                             [&](const TypeSpec& inner) -> bool {
+                                                if (inner.base == TB_TYPEDEF &&
+                                                    inner.tag &&
+                                                    inner.tag[0] &&
+                                                    is_template_scope_type_param(
+                                                        alias_param_ref_text_id(
+                                                            inner.tag))) {
+                                                    return true;
+                                                }
                                                 if (!inner.tpl_struct_args.data ||
                                                     inner.tpl_struct_args.size <= 0) {
                                                     return false;
@@ -1919,10 +1990,173 @@ TypeSpec Parser::parse_base_type() {
                                                 }
                                                 return false;
                                             };
-                                        return type_mentions_dep_params(type);
-                                    };
-                                auto has_dependent_owner_args =
-                                    [&](const std::string& owner_name) -> bool {
+                                            return type_mentions_dep_params(type);
+                                        };
+                                    auto apply_alias_template_bindings =
+                                        [&](TypeSpec member_ts,
+                                            const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+                                            const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+                                            bool* substituted_type = nullptr) {
+                                            if (substituted_type) {
+                                                *substituted_type = false;
+                                            }
+                                            for (const auto& [pname, pts] :
+                                                 type_bindings) {
+                                                if (member_ts.base == TB_TYPEDEF &&
+                                                    member_ts.tag &&
+                                                    std::string(member_ts.tag) ==
+                                                        pname) {
+                                                    const int outer_ptr_level =
+                                                        member_ts.ptr_level;
+                                                    const bool outer_lref =
+                                                        member_ts.is_lvalue_ref;
+                                                    const bool outer_rref =
+                                                        member_ts.is_rvalue_ref;
+                                                    const bool outer_const =
+                                                        member_ts.is_const;
+                                                    const bool outer_volatile =
+                                                        member_ts.is_volatile;
+                                                    member_ts = pts;
+                                                    member_ts.ptr_level +=
+                                                        outer_ptr_level;
+                                                    member_ts.is_lvalue_ref =
+                                                        member_ts.is_lvalue_ref ||
+                                                        outer_lref;
+                                                    member_ts.is_rvalue_ref =
+                                                        !member_ts.is_lvalue_ref &&
+                                                        (member_ts.is_rvalue_ref ||
+                                                         outer_rref);
+                                                    member_ts.is_const =
+                                                        member_ts.is_const ||
+                                                        outer_const;
+                                                    member_ts.is_volatile =
+                                                        member_ts.is_volatile ||
+                                                        outer_volatile;
+                                                    if (substituted_type) {
+                                                        *substituted_type = true;
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                            if (member_ts.array_size_expr &&
+                                                member_ts.array_size_expr->kind ==
+                                                    NK_VAR &&
+                                                member_ts.array_size_expr->name) {
+                                                for (const auto& [pname, value] :
+                                                     nttp_bindings) {
+                                                    if (std::string(
+                                                            member_ts.array_size_expr
+                                                                ->name) == pname) {
+                                                        if (member_ts.array_rank > 0) {
+                                                            member_ts.array_dims[0] =
+                                                                value;
+                                                            member_ts.array_size =
+                                                                value;
+                                                        }
+                                                        member_ts.array_size_expr =
+                                                            nullptr;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            return member_ts;
+                                        };
+                                    auto resolve_structured_alias_member_type =
+                                        [&]() -> bool {
+                                            if (!ati->member_typedef.valid ||
+                                                ati->member_typedef.owner_key
+                                                        .base_text_id ==
+                                                    kInvalidText ||
+                                                ati->member_typedef.member_text_id ==
+                                                    kInvalidText) {
+                                                return false;
+                                            }
+                                            const Node* primary_tpl =
+                                                find_template_struct_primary(
+                                                    ati->member_typedef.owner_key);
+                                            if (!primary_tpl) return false;
+
+                                            std::vector<ParsedTemplateArg>
+                                                actual_args;
+                                            actual_args.reserve(
+                                                ati->member_typedef.owner_args
+                                                    .size());
+                                            for (const ParsedTemplateArg& carrier_arg :
+                                                 ati->member_typedef.owner_args) {
+                                                ParsedTemplateArg actual{};
+                                                if (!substitute_carrier_arg(
+                                                        carrier_arg, &actual)) {
+                                                    return false;
+                                                }
+                                                if (!actual.is_value &&
+                                                    type_mentions_template_scope_param(
+                                                        actual.type)) {
+                                                    return false;
+                                                }
+                                                actual_args.push_back(actual);
+                                            }
+
+                                            const ParserTemplateState::
+                                                TemplateInstantiationKey
+                                                    concrete_owner{
+                                                        ati->member_typedef
+                                                            .owner_key,
+                                                        make_template_instantiation_argument_keys(
+                                                            actual_args)};
+                                            if (const TypeSpec* structured_member =
+                                                    find_template_instantiation_member_typedef_type(
+                                                        concrete_owner,
+                                                        ati->member_typedef
+                                                            .member_text_id)) {
+                                                ts = *structured_member;
+                                                return true;
+                                            }
+
+                                            std::vector<std::pair<std::string, TypeSpec>>
+                                                type_bindings;
+                                            std::vector<std::pair<std::string, long long>>
+                                                nttp_bindings;
+                                            const std::vector<Node*>* specializations =
+                                                find_template_struct_specializations(
+                                                    ati->member_typedef.owner_key);
+                                            const Node* selected =
+                                                select_template_struct_pattern_for_args(
+                                                    actual_args, primary_tpl,
+                                                    specializations,
+                                                    &type_bindings,
+                                                    &nttp_bindings);
+                                            if (!selected ||
+                                                selected->n_member_typedefs <= 0) {
+                                                return false;
+                                            }
+                                            for (int mi = 0;
+                                                 mi < selected->n_member_typedefs;
+                                                 ++mi) {
+                                                const char* member =
+                                                    selected
+                                                        ->member_typedef_names[mi];
+                                                if (!member || !member[0]) continue;
+                                                const TextId selected_member_text_id =
+                                                    parser_text_id_for_token(
+                                                        kInvalidText, member);
+                                                if (selected_member_text_id !=
+                                                    ati->member_typedef
+                                                        .member_text_id) {
+                                                    continue;
+                                                }
+                                                bool substituted = false;
+                                                ts = apply_alias_template_bindings(
+                                                    selected
+                                                        ->member_typedef_types[mi],
+                                                    type_bindings, nttp_bindings,
+                                                    &substituted);
+                                                (void)substituted;
+                                                return true;
+                                            }
+                                            return false;
+                                        };
+                                    auto has_dependent_owner_args =
+                                        [&](const std::string& owner_name) -> bool {
                                         std::vector<ParsedTemplateArg> actual_args;
                                         if (!build_transformed_owner_args(
                                                 owner_name, &actual_args)) {
@@ -2214,20 +2448,23 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         return false;
                                     };
-                                    if (ts.base == TB_TYPEDEF && ts.tag) {
-                                        if (split_qualified_member_type_name(
-                                                *this, ts.tag, &owner_qn,
-                                                &member_name)) {
-                                            owner_name = owner_qn.spelled(
-                                                owner_qn.is_global_qualified);
+                                        if (ts.base == TB_TYPEDEF && ts.tag) {
+                                            if (split_qualified_member_type_name(
+                                                    *this, ts.tag, &owner_qn,
+                                                    &member_name)) {
+                                                owner_name = owner_qn.spelled(
+                                                    owner_qn.is_global_qualified);
+                                            }
                                         }
-                                    }
-                                    if (!owner_name.empty() && !member_name.empty())
                                         resolved_alias_member =
-                                            (has_dependent_owner_args(owner_name) &&
-                                             preserve_deferred_alias_member(
-                                                 owner_name, member_name)) ||
-                                            resolve_alias_member_type(
+                                            resolve_structured_alias_member_type();
+                                        if (!owner_name.empty() && !member_name.empty())
+                                            resolved_alias_member =
+                                                resolved_alias_member ||
+                                                (has_dependent_owner_args(owner_name) &&
+                                                 preserve_deferred_alias_member(
+                                                     owner_name, member_name)) ||
+                                                resolve_alias_member_type(
                                                 owner_name, &owner_qn,
                                                 member_name) ||
                                             apply_unary_alias_transform(
