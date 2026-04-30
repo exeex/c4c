@@ -1,8 +1,9 @@
 # HIR Structured Record Template Lookup Authority Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
 Reopened: 2026-04-30
+Closed: 2026-04-30
 
 Parent Ideas:
 - [130_sema_hir_ast_ingress_boundary_audit.md](/workspaces/c4c/ideas/open/130_sema_hir_ast_ingress_boundary_audit.md)
@@ -74,3 +75,17 @@ the accepted baseline and identified the likely first bad commit as
 `ea92258d`, in structured static-member const lookup. Repair remains inside
 idea 136 because the regression is in the static-member/template lookup
 acceptance surface.
+
+## Closure Note
+
+Reopened idea 136 is closed after repairing the structured static-member
+const-value regression in commit `5d393638` and validating the repair in commit
+`6d6ece99`. The repaired acceptance surface preserves instantiated trait,
+static-member evaluation, and inherited base-recursion semantics while keeping
+structured owner/member lookup authority.
+
+Step 4 acceptance accepted the repaired full-suite baseline at HEAD
+`f19609fc`: 3089 total tests, 8 known `llvm_gcc_c_torture` failures, and no
+failures for regression tests 761, 762, 763, 764, or 1362. The close-time
+regression guard for the unchanged acceptance slice passed 48/48 before and
+48/48 after with no new failures.
