@@ -1488,9 +1488,9 @@ void test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_looku
       parser.parser_symbol_tables().intern_identifier("Alias");
   parser.parser_symbol_tables().user_typedefs.insert(alias_symbol);
 
-  expect_true(!parser.has_conflicting_user_typedef_binding("Alias", alias_ts),
+  expect_true(!parser.has_conflicting_user_typedef_binding(alias_text, alias_ts),
               "typedef conflict checks should accept matching scope-local visible typedefs");
-  expect_true(parser.has_conflicting_user_typedef_binding("Alias", different_ts),
+  expect_true(parser.has_conflicting_user_typedef_binding(alias_text, different_ts),
               "typedef conflict checks should reject incompatible scope-local visible typedefs");
 
   expect_true(parser.pop_local_binding_scope(),

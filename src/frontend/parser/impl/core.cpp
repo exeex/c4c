@@ -887,25 +887,23 @@ bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
                parser_text_id_for_token(kInvalidText, ts.tag));
 }
 
-bool Parser::is_user_typedef_name(const std::string& name) const {
-    const TextId name_text_id = find_parser_text_id(name);
+bool Parser::is_user_typedef_name(TextId name_text_id) const {
     if (has_local_visible_user_typedef(name_text_id)) return true;
+    const std::string_view name = parser_text(name_text_id, {});
     if (!uses_symbol_identity(name)) {
         return name_text_id != kInvalidText &&
                binding_state_.non_atom_user_typedefs.count(name_text_id) > 0;
     }
-    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
+    const SymbolId id =
+        shared_lookup_state_.parser_name_tables.find_identifier(name_text_id);
     return id != kInvalidSymbol &&
            shared_lookup_state_.parser_name_tables.user_typedefs.count(id) > 0;
 }
 
-bool Parser::has_conflicting_user_typedef_binding(const std::string& name,
+bool Parser::has_conflicting_user_typedef_binding(TextId name_text_id,
                                                   const TypeSpec& type) const {
-    const TypeSpec* existing_typedef =
-        name.find("::") == std::string::npos
-            ? find_visible_typedef_type(find_parser_text_id(name))
-            : find_typedef_type(find_parser_text_id(name));
-    return is_user_typedef_name(name) && existing_typedef &&
+    const TypeSpec* existing_typedef = find_visible_typedef_type(name_text_id);
+    return is_user_typedef_name(name_text_id) && existing_typedef &&
            !are_types_compatible(*existing_typedef, type);
 }
 

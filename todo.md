@@ -8,28 +8,25 @@ Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 
 ## Just Finished
 
-Step 2 fixed the remaining migrated `frontend_parser_tests.cpp` assertions
-after the parser semantic lookup API removals. Direct `QualifiedNameKey`
-semantic checks now require explicit structured storage, concept and
-alias-template fixtures use parser-owned `TextId` state, and value lookup tests
-no longer treat rendered compatibility names as semantic authority.
-
-No parser implementation compatibility wrappers or removed fallback semantic
-APIs were reintroduced. Type projection bridge assertions remain explicit where
-current visible-name APIs intentionally require rendered spelling.
+Step 2 removed the parser rendered-string conflict route
+`Parser::has_conflicting_user_typedef_binding(const std::string&, const TypeSpec&)`.
+The conflict predicate and its user-typedef predicate now take parser-owned
+`TextId` values, typedef declaration call sites pass the `parse_declarator`
+text IDs directly, and the parser fixture asserts through the same `TextId`
+authority.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 2 test-migration slice, then choose
-the next parser rendered-string compatibility route outside the now-green
-frontend parser/Sema subset.
+Supervisor can review and commit this Step 2 parser API slice, then choose the
+next parser rendered-string compatibility route still outside this conflict
+lookup path.
 
 ## Watchouts
 
-`lookup_type_in_context`, visible-name projection helpers, and NTTP/default or
-template de-dup rendering mirrors still intentionally accept rendered spelling
-where their current APIs require it. This packet kept those projection bridges
-separate from removed direct semantic lookup routes.
+`find_visible_typedef_type(TextId)` remains the conflict route's lookup
+authority, so local visible typedefs and structured/visible type resolution stay
+covered without reintroducing string-name semantic probing. Other projection
+bridges that intentionally accept rendered spelling were left untouched.
 
 ## Proof
 

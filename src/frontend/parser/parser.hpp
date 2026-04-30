@@ -360,8 +360,8 @@ class Parser {
   TypeSpec resolve_struct_like_typedef_type(TypeSpec ts) const;
   bool are_types_compatible(const TypeSpec& lhs, const TypeSpec& rhs) const;
   bool resolves_to_record_ctor_type(TypeSpec ts) const;
-  bool is_user_typedef_name(const std::string& name) const;
-  bool has_conflicting_user_typedef_binding(const std::string& name,
+  bool is_user_typedef_name(TextId name_text_id) const;
+  bool has_conflicting_user_typedef_binding(TextId name_text_id,
                                             const TypeSpec& type) const;
   void register_typedef_name(TextId name_text_id, bool is_user_typedef);
   void register_typedef_binding(TextId name_text_id, const TypeSpec& type,

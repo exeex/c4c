@@ -707,7 +707,7 @@ Node* parse_local_decl(Parser& parser) {
                          nullptr, nullptr, nullptr, &tdname_text_id);
         if (tdname) {
             if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdname) &&
-                parser.has_conflicting_user_typedef_binding(tdname, ts_copy))
+                parser.has_conflicting_user_typedef_binding(tdname_text_id, ts_copy))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
             parser.register_typedef_binding(
                 tdname_text_id, ts_copy,
@@ -738,7 +738,7 @@ Node* parse_local_decl(Parser& parser) {
                              &tdn2_text_id);
             if (tdn2) {
                 if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
-                    parser.has_conflicting_user_typedef_binding(tdn2, ts2))
+                    parser.has_conflicting_user_typedef_binding(tdn2_text_id, ts2))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
                 parser.register_typedef_binding(
                     tdn2_text_id, ts2,
@@ -2911,7 +2911,7 @@ top_level_base_ready:
             const char* scoped_tdname =
                 parser.qualify_name_arena(tdname_text_id, tdname);
             if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdname) &&
-                parser.has_conflicting_user_typedef_binding(tdname, ts_copy))
+                parser.has_conflicting_user_typedef_binding(tdname_text_id, ts_copy))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
             parser.register_typedef_binding(
                 tdname_text_id, ts_copy,
@@ -2947,7 +2947,7 @@ top_level_base_ready:
                 const char* scoped_tdn2 =
                     parser.qualify_name_arena(tdn2_text_id, tdn2);
                 if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
-                    parser.has_conflicting_user_typedef_binding(tdn2, ts2))
+                    parser.has_conflicting_user_typedef_binding(tdn2_text_id, ts2))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
                 parser.register_typedef_binding(
                     tdn2_text_id, ts2,
