@@ -1174,15 +1174,16 @@ class Validator {
 
   std::optional<TypeSpec> lookup_struct_static_member_type(
       const std::string& tag, const std::string& member, const Node* reference = nullptr) const {
-    auto legacy = lookup_struct_static_member_type_legacy(tag, member);
     if (reference && reference->unqualified_text_id != kInvalidText) {
       if (auto record_key = structured_record_key_for_tag(tag); record_key.has_value()) {
+        auto legacy = lookup_struct_static_member_type_legacy(tag, member);
         auto structured =
             lookup_struct_static_member_type_by_key(*record_key, reference->unqualified_text_id);
         compare_optional_type_lookup(legacy, structured);
+        return structured;
       }
     }
-    return legacy;
+    return lookup_struct_static_member_type_legacy(tag, member);
   }
 
   bool has_struct_instance_field_by_key(

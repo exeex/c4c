@@ -4,6 +4,7 @@
 #include "parser.hpp"
 #include "sema/consteval.hpp"
 #include "sema/type_utils.hpp"
+#include "sema/validate.hpp"
 
 #include <cstdlib>
 #include <exception>
@@ -3652,6 +3653,89 @@ void test_parser_template_static_member_lookup_prefers_record_definition() {
                 "template static member lookup should prefer record_def over stale rendered tag maps");
 }
 
+void test_sema_static_member_type_lookup_prefers_structured_member_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base, int ptr_level = 0) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    ts.ptr_level = ptr_level;
+    return ts;
+  };
+
+  const c4c::TextId owner_text = texts.intern("Owner");
+  const c4c::TextId actual_text = texts.intern("actual");
+  const c4c::TextId stale_text = texts.intern("stale");
+
+  c4c::Node* owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner->name = arena.strdup("Owner");
+  owner->unqualified_name = arena.strdup("Owner");
+  owner->unqualified_text_id = owner_text;
+  owner->namespace_context_id = parser.current_namespace_context_id();
+  owner->n_fields = 2;
+  owner->fields = arena.alloc_array<c4c::Node*>(2);
+
+  c4c::Node* actual = parser.make_node(c4c::NK_DECL, 1);
+  actual->name = arena.strdup("actual");
+  actual->unqualified_name = arena.strdup("actual");
+  actual->unqualified_text_id = actual_text;
+  actual->namespace_context_id = owner->namespace_context_id;
+  actual->is_static = true;
+  actual->type = make_ts(c4c::TB_INT, 1);
+  owner->fields[0] = actual;
+
+  c4c::Node* stale = parser.make_node(c4c::NK_DECL, 1);
+  stale->name = arena.strdup("stale");
+  stale->unqualified_name = arena.strdup("stale");
+  stale->unqualified_text_id = stale_text;
+  stale->namespace_context_id = owner->namespace_context_id;
+  stale->is_static = true;
+  stale->type = make_ts(c4c::TB_FLOAT);
+  owner->fields[1] = stale;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("Owner::stale");
+  ref->unqualified_name = arena.strdup("actual");
+  ref->unqualified_text_id = actual_text;
+  ref->namespace_context_id = owner->namespace_context_id;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("Owner");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = owner_text;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("returns_actual");
+  fn->unqualified_name = arena.strdup("returns_actual");
+  fn->unqualified_text_id = texts.intern("returns_actual");
+  fn->namespace_context_id = owner->namespace_context_id;
+  fn->type = make_ts(c4c::TB_INT, 1);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = owner;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(result.ok,
+              "Sema static member lookup should use structured member TextId over rendered member spelling");
+}
+
 void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
   c4c::Arena arena;
   c4c::Parser parser({}, arena, nullptr, nullptr, c4c::SourceProfile::CppSubset);
@@ -4641,6 +4725,7 @@ int main() {
   test_parser_nttp_default_cache_keeps_rendered_mirror_secondary();
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
   test_parser_template_static_member_lookup_prefers_record_definition();
+  test_sema_static_member_type_lookup_prefers_structured_member_key();
   test_parser_template_instantiation_dedup_keys_demote_rendered_sync();
   test_parser_template_instantiation_dedup_keys_mirror_direct_emission();
   test_parser_template_substitution_preserves_record_definition_payloads();
