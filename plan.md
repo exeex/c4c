@@ -433,7 +433,46 @@ Completion check:
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.4.4.3: Shrink Or Delete The Member-Typedef Mirror
+### Step 2.4.4.3: Convert C-Style Cast Type-Id Member-Typedef Consumer
+
+Goal: make C-style cast/type-id parsing resolve non-template record-body member
+typedefs through structured record/member metadata before the rendered
+`owner::member` mirror is deleted.
+
+Primary target: the parser type-id and C-style cast path that currently depends
+on record-body rendered scoped typedef entries such as `Box::AliasL` and
+`Box::AliasR`.
+
+Actions:
+
+- Start from the existing non-template record owner metadata available while
+  parsing C-style cast/type-id names; do not recover owner/member identity by
+  rendering or splitting `owner::member` text.
+- Resolve the member typedef through direct record/member metadata,
+  `TypeSpec::record_def`, declaration metadata, or an equivalent structured
+  record/member carrier using member `TextId`.
+- Keep rendered owner/member spelling only for diagnostics, display, debug
+  output, mangling, or final emitted names.
+- Cover the `cpp_positive_sema_c_style_cast_member_typedef_ref_alias_basic_cpp`
+  failure mode plus nearby same-feature positive cases without adding
+  testcase-shaped shortcuts.
+- Do not delete the record-body rendered scoped typedef writer in this packet
+  unless the structured C-style cast/type-id consumer is first proven.
+
+Completion check:
+
+- C-style cast/type-id parsing for non-template record-body member typedefs no
+  longer depends on the rendered generic typedef table for `owner::member`
+  entries.
+- `Box::AliasL` / `Box::AliasR` style member typedef references resolve
+  through structured record/member metadata.
+- No helper accepting rendered qualified text, `std::string`,
+  `std::string_view`, or fallback spelling is introduced for this semantic
+  lookup.
+- Narrow parser/Sema tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.4.4.4: Shrink Or Delete The Member-Typedef Mirror
 
 Goal: delete the live `owner::member` typedef mirror, or shrink it to a
 non-semantic compatibility cache only after all reachable semantic consumers
@@ -444,8 +483,9 @@ and any remaining lookup path backed by the rendered scoped mirror.
 
 Actions:
 
-- Confirm Steps 2.4.4.1 and 2.4.4.2 have removed, converted, or blocked every
-  semantic writer/reader that depended on rendered scoped storage.
+- Confirm Steps 2.4.4.1, 2.4.4.2, and 2.4.4.3 have removed, converted, or
+  blocked every semantic writer/reader that depended on rendered scoped
+  storage.
 - Delete the mirror writer and storage only if no semantic consumer remains.
 - If a narrow compatibility cache must remain, make its non-semantic purpose
   explicit and ensure it cannot decide parser/Sema semantic identity.

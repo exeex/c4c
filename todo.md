@@ -3,48 +3,46 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4.4.2
-Current Step Title: Add Template-Instantiation Member-Typedef Carrier
+Current Step ID: Step 2.4.4.3
+Current Step Title: Convert C-Style Cast Type-Id Member-Typedef Consumer
 
 ## Just Finished
 
-Step 2.4.4.2 implementation completed. Parser template state now has structured
-storage keyed by `TemplateInstantiationKey concrete_owner + TextId
-member_text_id`, exposed through parser register/find APIs.
+The deletion probe for the old Step 2.4.4.3 re-audited the remaining rendered
+`owner::member` member-typedef mirror after Step 2.4.4.2. The public
+`register_struct_member_typedef_binding(owner, member, type)` helper has no
+production writer left, but deleting the record-body rendered scoped typedef
+writer in `register_record_member_typedef_bindings` exposed a live semantic
+consumer.
 
-The template-instantiation member-typedef writer in
-`src/frontend/parser/impl/types/base.cpp` now registers substituted member
-typedefs through that concrete-instantiation carrier instead of calling
-`register_struct_member_typedef_binding(mangled, member, type)`. The reader
-path for instantiated record owners reconstructs the same concrete owner key
-from the instantiated record's primary-template metadata and concrete argument
-payload, then queries by member `TextId` before consulting record member arrays.
-
-Focused parser coverage now corrupts stale rendered scoped typedef storage and
-the direct member array after instantiation, then proves
-`Box<PayloadAlias>::Alias` still resolves through the structured concrete-owner
-carrier.
+Concrete blocker: C-style cast/type-id parsing still depends on the rendered
+`Box::AliasL` / `Box::AliasR` typedef entries produced from record-body member
+typedefs. Removing the `source_tag + "::" + member_name` `register_typedef_binding`
+write from `src/frontend/parser/impl/types/struct.cpp` made
+`cpp_positive_sema_c_style_cast_member_typedef_ref_alias_basic_cpp` fail with
+`cast to unknown type name 'Box::AliasL'` and `Box::AliasR`; related selected
+positive cases also failed or timed out. The attempted deletion was reverted, so
+no rendered-string workaround was moved or kept as new progress.
 
 ## Suggested Next
 
-Next bounded packet: Step 2.4.4.3 can re-audit whether any semantic
-`owner::member` typedef mirror consumers remain, then shrink or delete the
-rendered scoped mirror only if all reachable consumers have structured carriers
-or explicit blockers.
+Step 2.4.4.3 is now the next bounded packet: add a structured C-style
+cast/type-id member-typedef consumer for non-template record-body member
+typedefs, so `Box::AliasL` and `Box::AliasR` resolve through record/member
+metadata instead of the rendered generic typedef table. After that carrier
+exists and is proven, proceed to Step 2.4.4.4 to retry deleting the record-body
+rendered scoped typedef writer.
 
 ## Watchouts
 
-The new carrier is parser-local. Do not use it as proof that HIR/LIR/BIR or
-backend metadata boundaries can consume concrete-instantiation member typedefs
-without their own structured handoff.
-
-`register_struct_member_typedef_binding(owner, member, type)` still exists for
-remaining mirror audit work; Step 2.4.4.3 should verify live semantic readers
-before deleting or narrowing it.
+`register_struct_member_typedef_binding(owner, member, type)` remains only
+because the record-body rendered mirror still has a semantic consumer. Do not
+delete only that helper as progress unless the C-style cast/type-id consumer has
+first moved to structured metadata.
 
 ## Proof
 
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_parse_local_using_alias_statement_probe_dump|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
 
-Passed: build plus 928 selected frontend/parser/Sema tests. Proof log:
-`test_after.log`.
+Failed during the deletion probe and recorded the blocker in `test_after.log`.
+The final code edits were reverted; only this `todo.md` blocker update remains.
