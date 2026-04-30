@@ -807,23 +807,6 @@ TypeSpec Parser::parse_base_type() {
                     }
                     return ts;
                 };
-                auto try_lookup = [&](const std::string& scoped) -> bool {
-                    QualifiedNameRef scoped_qn;
-                    if (qualified_name_from_text(*this, scoped, &scoped_qn)) {
-                        const QualifiedNameKey scoped_key =
-                            qualified_name_key(scoped_qn);
-                        if (const TypeSpec* structured =
-                                find_structured_typedef_type(scoped_key)) {
-                            *out = *structured;
-                            return true;
-                        }
-                    }
-                    const TypeSpec* type =
-                        find_typedef_type(find_parser_text_id(scoped));
-                    if (!type) return false;
-                    *out = *type;
-                    return true;
-                };
                 auto try_node_member_typedefs = [&](const Node* sdef) -> bool {
                     if (!sdef || sdef->n_member_typedefs <= 0) return false;
                     for (int i = 0; i < sdef->n_member_typedefs; ++i) {
@@ -834,6 +817,17 @@ TypeSpec Parser::parse_base_type() {
                         }
                     }
                     return false;
+                };
+                auto structured_record_for_tag = [&](const TypeSpec& ts) -> const Node* {
+                    if (!ts.tag || !ts.tag[0]) return nullptr;
+                    QualifiedNameRef qn;
+                    if (qualified_name_from_text(*this, ts.tag, &qn)) {
+                        return qualified_type_record_definition_from_structured_authority(
+                            *this, qn);
+                    }
+                    return record_definition_in_context_by_text_id(
+                        *this, current_namespace_context_id(),
+                        find_parser_text_id(ts.tag));
                 };
                 auto apply_template_bindings =
                     [&](TypeSpec member_ts,
@@ -980,42 +974,25 @@ TypeSpec Parser::parse_base_type() {
                         }
                         return false;
                 };
-                std::string resolved_tag = tag;
                 TypeSpec resolved = resolve_struct_like(owner_ts);
                 if (!resolved.record_def) {
                     if (const TypeSpec* typedef_type = lookup_typedef_for_name(tag)) {
                         resolved = resolve_struct_like(*typedef_type);
                     }
                 }
-                const Node* sdef = resolve_record_type_spec(
-                    resolved, &definition_state_.struct_tag_def_map);
-                if (resolved.tag && resolved.tag[0]) resolved_tag = resolved.tag;
+                const Node* sdef = resolve_record_type_spec(resolved, nullptr);
+                if (!sdef) sdef = structured_record_for_tag(resolved);
                 if (!sdef) {
                     if (const TypeSpec* typedef_type = lookup_typedef_for_name(tag)) {
                         resolved = resolve_struct_like(*typedef_type);
-                        sdef = resolve_record_type_spec(
-                            resolved, &definition_state_.struct_tag_def_map);
+                        sdef = resolve_record_type_spec(resolved, nullptr);
+                        if (!sdef) sdef = structured_record_for_tag(resolved);
                     }
-                    if (resolved.tag && resolved.tag[0])
-                        resolved_tag = resolved.tag;
                 }
-                if (!sdef) {
-                    if (resolved_tag.empty()) return false;
-                    // Rendered-tag map lookup is a compatibility fallback for
-                    // tag-only paths after structured record identity failed.
-                    auto def_it =
-                        definition_state_.struct_tag_def_map.find(resolved_tag);
-                    if (def_it == definition_state_.struct_tag_def_map.end() ||
-                        !def_it->second)
-                        return false;
-                    sdef = def_it->second;
-                }
+                if (!sdef) return false;
                 if (try_selected_specialization_member_typedefs(sdef))
                     return true;
                 if (try_node_member_typedefs(sdef))
-                    return true;
-                if (!resolved_tag.empty() &&
-                    try_lookup(resolved_tag + "::" + member))
                     return true;
                 for (int bi = 0; bi < sdef->n_bases; ++bi) {
                     TypeSpec base_ts = resolve_struct_like(sdef->base_types[bi]);
@@ -3392,6 +3369,13 @@ TypeSpec Parser::parse_base_type() {
                         definition_state_.struct_tag_def_map[mangled] = inst;
                         definition_state_.defined_struct_tags.insert(mangled);
                         instantiated_record = inst;
+                    } else {
+                        auto existing_inst =
+                            definition_state_.struct_tag_def_map.find(mangled);
+                        if (existing_inst !=
+                            definition_state_.struct_tag_def_map.end()) {
+                            instantiated_record = existing_inst->second;
+                        }
                     }
                     ts.tag = arena_.strdup(mangled.c_str());
                     ts.record_def = instantiated_record;

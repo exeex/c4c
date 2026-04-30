@@ -1301,6 +1301,90 @@ void test_parser_member_typedef_suffix_uses_tagless_record_definition() {
                 "member typedef suffix lookup should use tagless record_def owners");
 }
 
+void test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks() {
+  {
+    c4c::Arena arena;
+    c4c::TextTable texts;
+    c4c::FileTable files;
+    c4c::Parser parser({}, arena, &texts, &files,
+                       c4c::SourceProfile::CppSubset);
+    c4c::Token seed{};
+
+    c4c::Node* rendered_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    rendered_owner->name = arena.strdup("RenderedOnlyBox");
+    rendered_owner->member_typedef_names = arena.alloc_array<const char*>(1);
+    rendered_owner->member_typedef_types =
+        arena.alloc_array<c4c::TypeSpec>(1);
+    rendered_owner->n_member_typedefs = 1;
+    rendered_owner->member_typedef_names[0] = arena.strdup("type");
+    rendered_owner->member_typedef_types[0].array_size = -1;
+    rendered_owner->member_typedef_types[0].inner_rank = -1;
+    rendered_owner->member_typedef_types[0].base = c4c::TB_INT;
+    parser.register_struct_definition_for_testing("RenderedOnlyBox",
+                                                  rendered_owner);
+
+    c4c::TypeSpec alias_ts{};
+    alias_ts.array_size = -1;
+    alias_ts.inner_rank = -1;
+    alias_ts.base = c4c::TB_STRUCT;
+    alias_ts.tag = arena.strdup("RenderedOnlyBox");
+    parser.register_typedef_binding(parser_test_text_id(parser, "Alias"),
+                                    alias_ts, true);
+
+    parser.replace_token_stream_for_testing({
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+        parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
+    });
+
+    const c4c::TypeSpec member_ts = parser.parse_base_type();
+    expect_true(member_ts.base == c4c::TB_STRUCT &&
+                    member_ts.deferred_member_type_name != nullptr,
+                "member typedef suffix lookup should reject rendered tag-map owner recovery");
+  }
+
+  {
+    c4c::Arena arena;
+    c4c::TextTable texts;
+    c4c::FileTable files;
+    c4c::Parser parser({}, arena, &texts, &files,
+                       c4c::SourceProfile::CppSubset);
+    c4c::Token seed{};
+
+    c4c::Node* structured_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    structured_owner->name = arena.strdup("OwnerTag");
+    structured_owner->n_member_typedefs = 0;
+
+    c4c::TypeSpec alias_ts{};
+    alias_ts.array_size = -1;
+    alias_ts.inner_rank = -1;
+    alias_ts.base = c4c::TB_STRUCT;
+    alias_ts.tag = arena.strdup("OwnerTag");
+    alias_ts.record_def = structured_owner;
+    parser.register_typedef_binding(parser_test_text_id(parser, "Alias"),
+                                    alias_ts, true);
+
+    c4c::TypeSpec rendered_member_ts{};
+    rendered_member_ts.array_size = -1;
+    rendered_member_ts.inner_rank = -1;
+    rendered_member_ts.base = c4c::TB_LONG;
+    parser.register_typedef_binding(
+        parser_test_text_id(parser, "OwnerTag::type"), rendered_member_ts,
+        true);
+
+    parser.replace_token_stream_for_testing({
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+        parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
+    });
+
+    const c4c::TypeSpec member_ts = parser.parse_base_type();
+    expect_true(member_ts.base == c4c::TB_STRUCT &&
+                    member_ts.deferred_member_type_name != nullptr,
+                "member typedef suffix lookup should reject rendered owner::member typedef storage");
+  }
+}
+
 void test_parser_nested_dependent_typename_prefers_record_definition() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5315,6 +5399,7 @@ int main() {
   test_parser_dependent_typename_owner_alias_prefers_record_definition();
   test_parser_member_typedef_suffix_prefers_record_definition();
   test_parser_member_typedef_suffix_uses_tagless_record_definition();
+  test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks();
   test_parser_nested_dependent_typename_prefers_record_definition();
   test_parser_nested_dependent_typename_uses_tagless_record_definition();
   test_parser_record_ctor_probe_prefers_record_definition();

@@ -8,29 +8,33 @@ Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 
 ## Just Finished
 
-Step 2 const-int string overload cleanup was inspected but left blocked and
-out of scope for this parser packet: parser-owned named constants already flow
-through `std::unordered_map<TextId, long long>`, but deleting the rendered-name
-`eval_const_int(...)` overload still requires non-parser HIR callers that pass
-`NttpBindings`, currently `std::unordered_map<std::string, long long>`.
+Step 2 removed `parse_base_type` member-typedef authority from rendered
+`resolved_tag` lookup: `lookup_struct_member_typedef_recursive_for_type` no
+longer falls back to `struct_tag_def_map.find(resolved_tag)` after typed record
+identity misses, and no longer resolves `resolved_tag + "::" + member` through
+flat typedef storage. Focused parser tests now reject rendered-only owner/tag
+and rendered `owner::member` storage while preserving `record_def` and direct
+member typedef arrays. This packet finished the dirty slice by reattaching the
+existing concrete template instantiation `record_def` when direct template
+instantiation dedup has already fired, so deferred `typename
+ns::holder<int>::type` arguments normalize to `int` in the static-member
+constexpr/template-variable path without restoring rendered member lookup.
 
 ## Suggested Next
 
-Next parser-only Step 2 packet should continue removing rendered-string
-semantic lookup routes that are wholly owned by parser support code, while
-leaving the const-int overload in place until a separate HIR
-`NttpBindings`/metadata-carrier initiative is authorized.
+Supervisor should review and commit this Step 2 slice, then choose the next
+rendered-string semantic lookup route from the active plan.
 
 ## Watchouts
 
-Exact blocker: `src/frontend/hir/impl/templates/templates.cpp` calls
-`eval_const_int(..., const NttpBindings*)` at line 184 and
-`eval_const_int(..., &kEmptyConsts)` at line 189; `NttpBindings` is declared as
-`std::unordered_map<std::string, long long>` in `src/frontend/hir/hir_ir.hpp`.
-Those files are outside this packet's ownership, so this parser packet must not
-pull in HIR carrier migration work.
+The member typedef resolver still intentionally rejects rendered-only owner
+recovery and rendered `owner::member` typedef storage. The new reattachment is
+limited to the direct template-instantiation path so later lookups can use
+`TypeSpec::record_def` on the returned owner type.
 
 ## Proof
 
-Not run. No build or test was required for this todo-only cleanup, and this
-blocked probe does not claim a fresh `test_after.log`.
+Passed. Ran the delegated proof command:
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`.
+Build passed and CTest reported 927/927 passing. Proof log:
+`test_after.log`.
