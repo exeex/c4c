@@ -8,27 +8,27 @@ Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Route
 
 ## Just Finished
 
-Step 3 removed rendered-name authority from the Sema consteval value and
-function lookup helpers when structured or `TextId` metadata is available.
-`ConstEvalEnv::lookup(const Node*)` now returns structured, then `TextId`, then
-rendered fallback values, and consteval function lookup uses the same
-structured/`TextId` preference before falling back to `consteval_fns` by name.
-Focused stale-rendered tests cover both value lookup and nested consteval
-function lookup disagreement.
+Step 3 removed rendered-name authority from Sema ref-overload and C++ overload
+lookup helpers when a call reference carries a structured function key.
+`lookup_ref_overloads_by_name()` and `lookup_cpp_overloads_by_name()` now parity
+check rendered vs structured vectors, return the structured vector when present,
+and keep rendered maps only as compatibility fallback. A focused Sema parser
+test covers stale rendered-name disagreement for both ref-overload and C++
+overload-set calls.
 
 ## Suggested Next
 
-Continue Step 3 with the remaining Sema rendered-name owner/member/static
-lookup routes outside the consteval helpers, starting from owner/member/static
-call sites that already have declaration, owner-key, `TextId`, or structured
-metadata.
+Continue Step 3 with the remaining Sema rendered-name owner/member/static lookup
+routes, prioritizing helpers where owner-key, declaration, `TextId`, or other
+structured metadata is already available and rendered maps can become fallback
+only.
 
 ## Watchouts
 
 - Do not delete the rendered-name `eval_const_int` compatibility overload while
   HIR still passes `NttpBindings` as `std::unordered_map<std::string, long long>`.
-- This packet intentionally kept rendered consteval lookup as compatibility
-  fallback when neither structured nor `TextId` metadata produces a result.
+- This packet intentionally kept rendered overload lookup as compatibility
+  fallback when the reference has no structured overload vector.
 - Parser `eval_const_int` callers that have named constants already use
   `std::unordered_map<TextId, long long>`; parser three-argument layout calls
   do not perform named-constant lookup.
@@ -41,5 +41,5 @@ metadata.
 ## Proof
 
 Ran the delegated proof command:
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*consteval.*|cpp_hir_.*consteval.*|cpp_hir_template_deferred_nttp.*|cpp_hir_template_alias_deferred_nttp_static_member)$' --output-on-failure) > test_after.log 2>&1`.
-It passed with 38/38 tests green. Proof log: `test_after.log`.
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_hir_lookup_tests|frontend_parser_tests|cpp_positive_sema_.*(overload|function|method|static|member|call).*|cpp_negative_tests_.*(overload|function|method|static|member|call).*)$' --output-on-failure) > test_after.log 2>&1`.
+It passed with 404/404 tests green. Proof log: `test_after.log`.

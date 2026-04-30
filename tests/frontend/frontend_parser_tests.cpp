@@ -4612,6 +4612,152 @@ void test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_sp
               "unqualified symbol lookup should use structured TextId before rendered names" + diag);
 }
 
+c4c::TypeSpec make_sema_lookup_ts(c4c::TypeBase base, int ptr_level = 0) {
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = base;
+  ts.ptr_level = ptr_level;
+  return ts;
+}
+
+c4c::Node* make_sema_lookup_function(c4c::Parser& parser, c4c::Arena& arena,
+                                     const char* rendered_name,
+                                     const char* structured_name,
+                                     c4c::TextId structured_text,
+                                     c4c::TypeSpec ret,
+                                     c4c::TypeSpec param) {
+  c4c::Node* arg = parser.make_node(c4c::NK_DECL, 1);
+  arg->name = arena.strdup("arg");
+  arg->unqualified_name = arena.strdup("arg");
+  arg->unqualified_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "arg");
+  arg->namespace_context_id = parser.current_namespace_context_id();
+  arg->type = param;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->name = arena.strdup(rendered_name);
+  fn->unqualified_name = arena.strdup(structured_name);
+  fn->unqualified_text_id = structured_text;
+  fn->namespace_context_id = parser.current_namespace_context_id();
+  fn->type = ret;
+  fn->n_params = 1;
+  fn->params = arena.alloc_array<c4c::Node*>(1);
+  fn->params[0] = arg;
+  return fn;
+}
+
+c4c::Node* make_sema_lookup_calling_function(c4c::Parser& parser,
+                                             c4c::Arena& arena,
+                                             const char* caller_name,
+                                             const char* rendered_callee,
+                                             const char* structured_callee,
+                                             c4c::TextId structured_callee_text) {
+  c4c::Node* literal = parser.make_node(c4c::NK_INT_LIT, 1);
+  literal->ival = 1;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
+  callee->name = arena.strdup(rendered_callee);
+  callee->unqualified_name = arena.strdup(structured_callee);
+  callee->unqualified_text_id = structured_callee_text;
+  callee->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::Node* call = parser.make_node(c4c::NK_CALL, 1);
+  call->left = callee;
+  call->n_children = 1;
+  call->children = arena.alloc_array<c4c::Node*>(1);
+  call->children[0] = literal;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 1);
+  ret->left = call;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 1);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->name = arena.strdup(caller_name);
+  fn->unqualified_name = arena.strdup(caller_name);
+  fn->unqualified_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, caller_name);
+  fn->namespace_context_id = parser.current_namespace_context_id();
+  fn->type = make_sema_lookup_ts(c4c::TB_INT, 1);
+  fn->body = body;
+  return fn;
+}
+
+void test_sema_overload_lookup_prefers_structured_key_over_rendered_spelling() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId actual_ref_text = texts.intern("actual_ref_overload");
+  const c4c::TextId actual_cpp_text = texts.intern("operator_actual_lookup");
+  c4c::TypeSpec int_value = make_sema_lookup_ts(c4c::TB_INT);
+  c4c::TypeSpec double_value = make_sema_lookup_ts(c4c::TB_DOUBLE);
+  c4c::TypeSpec int_ptr = make_sema_lookup_ts(c4c::TB_INT, 1);
+  c4c::TypeSpec stale_ret = make_sema_lookup_ts(c4c::TB_DOUBLE);
+  c4c::TypeSpec lvalue_int_ref = int_value;
+  lvalue_int_ref.is_lvalue_ref = true;
+  c4c::TypeSpec rvalue_int_ref = int_value;
+  rvalue_int_ref.is_rvalue_ref = true;
+
+  c4c::Node* stale_ref_lvalue = make_sema_lookup_function(
+      parser, arena, "stale_ref_overload", "stale_ref_overload",
+      texts.intern("stale_ref_overload"), stale_ret, lvalue_int_ref);
+  c4c::Node* stale_ref_rvalue = make_sema_lookup_function(
+      parser, arena, "stale_ref_overload", "stale_ref_overload",
+      texts.intern("stale_ref_overload"), stale_ret, rvalue_int_ref);
+  c4c::Node* actual_ref_lvalue = make_sema_lookup_function(
+      parser, arena, "actual_ref_overload", "actual_ref_overload",
+      actual_ref_text, int_ptr, lvalue_int_ref);
+  c4c::Node* actual_ref_rvalue = make_sema_lookup_function(
+      parser, arena, "actual_ref_overload", "actual_ref_overload",
+      actual_ref_text, int_ptr, rvalue_int_ref);
+
+  c4c::Node* stale_cpp_int = make_sema_lookup_function(
+      parser, arena, "operator_stale_lookup", "operator_stale_lookup",
+      texts.intern("operator_stale_lookup"), stale_ret, int_value);
+  c4c::Node* stale_cpp_double = make_sema_lookup_function(
+      parser, arena, "operator_stale_lookup", "operator_stale_lookup",
+      texts.intern("operator_stale_lookup"), stale_ret, double_value);
+  c4c::Node* actual_cpp_int = make_sema_lookup_function(
+      parser, arena, "operator_actual_lookup", "operator_actual_lookup",
+      actual_cpp_text, int_ptr, int_value);
+  c4c::Node* actual_cpp_double = make_sema_lookup_function(
+      parser, arena, "operator_actual_lookup", "operator_actual_lookup",
+      actual_cpp_text, int_ptr, double_value);
+
+  c4c::Node* ref_caller = make_sema_lookup_calling_function(
+      parser, arena, "call_structured_ref_overload", "stale_ref_overload",
+      "actual_ref_overload", actual_ref_text);
+  c4c::Node* cpp_caller = make_sema_lookup_calling_function(
+      parser, arena, "call_structured_cpp_overload", "operator_stale_lookup",
+      "operator_actual_lookup", actual_cpp_text);
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 10;
+  program->children = arena.alloc_array<c4c::Node*>(10);
+  program->children[0] = stale_ref_lvalue;
+  program->children[1] = stale_ref_rvalue;
+  program->children[2] = actual_ref_lvalue;
+  program->children[3] = actual_ref_rvalue;
+  program->children[4] = stale_cpp_int;
+  program->children[5] = stale_cpp_double;
+  program->children[6] = actual_cpp_int;
+  program->children[7] = actual_cpp_double;
+  program->children[8] = ref_caller;
+  program->children[9] = cpp_caller;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  const std::string diag =
+      result.diagnostics.empty() ? "" : (": " + result.diagnostics.front().message);
+  expect_true(result.ok,
+              "overload lookup should use structured function keys before rendered names" + diag);
+}
+
 void test_sema_namespace_owner_resolution_prefers_structured_owner_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6115,6 +6261,7 @@ int main() {
   test_parser_template_static_member_lookup_prefers_record_definition();
   test_sema_static_member_type_lookup_prefers_structured_member_key();
   test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling();
+  test_sema_overload_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_namespace_owner_resolution_prefers_structured_owner_key();
   test_sema_method_validation_prefers_structured_owner_key_for_fields();
   test_parser_template_instantiation_dedup_keys_skip_mark_on_failed_instantiation();

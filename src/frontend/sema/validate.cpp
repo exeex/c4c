@@ -727,7 +727,10 @@ class Validator {
         it != ref_overload_sigs_.end() ? &it->second : nullptr;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
-        (void)compare_sema_lookup_ptrs(legacy, lookup_ref_overloads_by_key(*key));
+        const std::vector<FunctionSig>* structured =
+            lookup_ref_overloads_by_key(*key);
+        (void)compare_sema_lookup_ptrs(legacy, structured);
+        if (structured) return structured;
       }
     }
     return legacy;
@@ -740,7 +743,10 @@ class Validator {
         it != cpp_overload_sigs_.end() ? &it->second : nullptr;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
-        (void)compare_sema_lookup_ptrs(legacy, lookup_cpp_overloads_by_key(*key));
+        const std::vector<FunctionSig>* structured =
+            lookup_cpp_overloads_by_key(*key);
+        (void)compare_sema_lookup_ptrs(legacy, structured);
+        if (structured) return structured;
       }
     }
     return legacy;
