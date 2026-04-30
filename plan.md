@@ -507,27 +507,70 @@ Completion check:
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.4.4.5: Replace The Dependent/Template Member-Typedef Bridge
+### Step 2.4.4.5A: Add Alias-Template Member-Typedef Carrier
 
-Goal: replace the remaining dependent/template member-typedef compatibility
-bridge with structured parser metadata, or record the exact missing carrier as
-a blocker before any final mirror deletion is attempted.
+Goal: make alias templates for `typename Owner<Args>::member` preserve
+structured owner/member metadata so alias instantiation can resolve template
+primary/specialization member typedefs without the rendered bridge.
 
-Primary target: the record-body dependent/template compatibility bridge that
-still publishes member typedefs through rendered scoped storage while template
-primary/specialization member typedef metadata is not available early enough.
+Primary target: `ParserAliasTemplateInfo` and the parser/Sema alias-template
+registration and instantiation path that currently carries only
+`TypeSpec aliased_type` for dependent member typedef aliases.
 
 Actions:
 
-- Trace the dependent/template reader and writer that still require the
-  compatibility bridge, including template primary, specialization, and alias
-  member-typedef cases.
-- Identify the structured carrier needed during record-body finalization before
-  post-parse template parameter attachment runs.
-- Add or route through structured metadata for template primary/specialization
-  member typedef lookup when it is locally available in parser/Sema scope.
-- If the carrier belongs outside parser/Sema or cannot be made available in
-  this route, record the exact blocker instead of deleting the bridge.
+- Extend the alias-template metadata path for
+  `typename Owner<Args>::member` with a structured owner
+  `QualifiedNameKey`, substituted template argument refs/keys, and member
+  `TextId`.
+- Populate that carrier while parsing alias templates, before the dependent
+  owner/member identity is flattened into rendered/deferred `TypeSpec` fields
+  such as `tag`, `tpl_struct_origin`, template-arg refs, or
+  `deferred_member_type_name`.
+- Make alias instantiation resolve the selected template
+  primary/specialization member typedef from this structured carrier before
+  consulting any compatibility bridge.
+- Keep rendered owner/member spelling only for diagnostics, display, debug
+  output, mangling, or final emitted text.
+- Do not replace the missing carrier with a helper that renders, splits, or
+  reparses `Owner::member`, rendered `mangled` spelling, `std::string`,
+  `std::string_view`, or fallback spelling.
+
+Completion check:
+
+- `ParserAliasTemplateInfo` or an equivalent parser/Sema-owned alias-template
+  carrier preserves structured owner `QualifiedNameKey`, argument refs/keys,
+  and member `TextId` for dependent member typedef aliases.
+- Alias instantiation can resolve `typename Owner<Args>::member` through that
+  structured carrier for template primary/specialization member typedefs.
+- The four known bridge-deletion regressions are examined as same-feature
+  coverage, not solved through named-test shortcuts:
+  `cpp_positive_sema_eastl_slice7_piecewise_ctor_parse_cpp`,
+  `cpp_positive_sema_step3_timeout_probe_baseline_parse_cpp`,
+  `cpp_positive_sema_tuple_element_alias_mix_parse_cpp`, and
+  `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`.
+- Narrow parser/Sema tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.4.4.5B: Replace The Dependent/Template Member-Typedef Bridge
+
+Goal: delete or structurally bypass the remaining dependent/template
+member-typedef compatibility bridge after alias-template member-typedef
+metadata is available.
+
+Primary target: the record-body dependent/template compatibility bridge that
+still publishes member typedefs through rendered scoped storage while template
+primary/specialization member typedef metadata is being completed.
+
+Actions:
+
+- Re-attempt deletion of the dependent/template compatibility bridge after
+  Step 2.4.4.5A lands.
+- Route all remaining template primary, specialization, and alias
+  member-typedef readers through structured parser/Sema metadata.
+- If another missing carrier is discovered, record that exact carrier as a
+  blocker or separate metadata idea before any final mirror deletion is
+  attempted.
 - Do not replace the bridge with a helper that renders, splits, or reparses
   `owner::member` text, rendered `mangled` spelling, `std::string`,
   `std::string_view`, or fallback spelling.
@@ -537,8 +580,8 @@ Actions:
 Completion check:
 
 - The dependent/template member-typedef path no longer uses rendered scoped
-  storage as semantic authority, or the precise missing structured carrier is
-  recorded as a blocker.
+  storage as semantic authority, or any remaining missing structured carrier is
+  represented as an explicit blocker.
 - Template primary/specialization member typedef lookup has a structured
   metadata route when parser/Sema has enough ownership to provide one.
 - The previously regressed template alias/member-typedef tests are covered
@@ -557,7 +600,7 @@ member-typedef storage.
 
 Actions:
 
-- Confirm Steps 2.4.4.1 through 2.4.4.5 have removed, converted, or blocked
+- Confirm Steps 2.4.4.1 through 2.4.4.5B have removed, converted, or blocked
   every semantic writer/reader that depended on rendered scoped storage.
 - Delete the mirror writer and storage only if no semantic consumer remains.
 - If a narrow compatibility cache must remain, make its non-semantic purpose
