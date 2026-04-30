@@ -75,6 +75,43 @@ void collect_late_static_asserts_recursive(
   if (n->update) collect_late_static_asserts_recursive(n->update, ct_state, child_template_owner);
 }
 
+std::optional<HirStructMethodLookupKey> make_out_of_class_struct_method_lookup_key(
+    const Node* fn,
+    Module& m) {
+  if (!fn || fn->kind != NK_FUNCTION || !m.link_name_texts ||
+      fn->n_qualifier_segments <= 0 || !fn->qualifier_segments ||
+      !fn->unqualified_name || !fn->unqualified_name[0]) {
+    return std::nullopt;
+  }
+
+  TextTable* texts = m.link_name_texts.get();
+  NamespaceQualifier owner_ns = make_ns_qual(fn, texts);
+  if (owner_ns.segment_text_ids.size() !=
+          static_cast<size_t>(fn->n_qualifier_segments) ||
+      owner_ns.segments.empty()) {
+    return std::nullopt;
+  }
+
+  const TextId owner_text_id = owner_ns.segment_text_ids.back();
+  owner_ns.segments.pop_back();
+  owner_ns.segment_text_ids.pop_back();
+  const HirRecordOwnerKey owner_key =
+      make_hir_record_owner_key(owner_ns, owner_text_id);
+  if (!hir_record_owner_key_has_complete_metadata(owner_key) ||
+      !m.find_struct_def_tag_by_owner(owner_key)) {
+    return std::nullopt;
+  }
+
+  HirStructMethodLookupKey method_key;
+  method_key.owner_key = owner_key;
+  method_key.method_text_id = make_unqualified_text_id(fn, texts);
+  method_key.is_const_method = fn->is_const_method;
+  if (!hir_struct_method_lookup_key_has_complete_metadata(method_key)) {
+    return std::nullopt;
+  }
+  return method_key;
+}
+
 }  // namespace
 
 std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {
@@ -489,13 +526,25 @@ void Lowerer::attach_out_of_class_struct_method_defs(
     Module& m) {
   for (const Node* item : items) {
     if (item->kind != NK_FUNCTION || !item->body) continue;
-    auto method_ref = try_parse_qualified_struct_method_name(item);
-    if (!method_ref.has_value()) continue;
-    if (!m.struct_defs.count(method_ref->struct_tag)) continue;
-    auto mit = struct_methods_.find(method_ref->key);
-    if (mit == struct_methods_.end()) continue;
+    std::optional<std::string> mangled;
+    const auto structured_key =
+        make_out_of_class_struct_method_lookup_key(item, m);
+    if (structured_key) {
+      auto owner_it = struct_methods_by_owner_.find(*structured_key);
+      if (owner_it != struct_methods_by_owner_.end()) {
+        mangled = owner_it->second;
+      }
+    }
+    if (!mangled) {
+      auto method_ref = try_parse_qualified_struct_method_name(item);
+      if (!method_ref.has_value()) continue;
+      if (!m.struct_defs.count(method_ref->struct_tag)) continue;
+      auto mit = struct_methods_.find(method_ref->key);
+      if (mit == struct_methods_.end()) continue;
+      mangled = mit->second;
+    }
     for (auto& pm : pending_methods_) {
-      if (pm.mangled == mit->second) {
+      if (pm.mangled == *mangled) {
         pm.method_node = item;
         break;
       }
@@ -508,9 +557,20 @@ void Lowerer::lower_non_method_functions_and_globals(
     Module& m) {
   for (const Node* item : items) {
     if (item->kind == NK_FUNCTION) {
-      auto method_ref = try_parse_qualified_struct_method_name(item);
-      if (method_ref.has_value() && m.struct_defs.count(method_ref->struct_tag) &&
-          struct_methods_.count(method_ref->key)) {
+      bool is_out_of_class_method = false;
+      const auto structured_key =
+          make_out_of_class_struct_method_lookup_key(item, m);
+      if (structured_key &&
+          struct_methods_by_owner_.count(*structured_key) > 0) {
+        is_out_of_class_method = true;
+      } else {
+        auto method_ref = try_parse_qualified_struct_method_name(item);
+        is_out_of_class_method =
+            method_ref.has_value() &&
+            m.struct_defs.count(method_ref->struct_tag) > 0 &&
+            struct_methods_.count(method_ref->key) > 0;
+      }
+      if (is_out_of_class_method) {
         continue;
       }
       if (item->is_consteval && item->n_template_params == 0) {
