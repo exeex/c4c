@@ -18,11 +18,13 @@ the valid member `TextId` still resolves the member typedef.
 
 ## Suggested Next
 
-Continue Step 3.1 by checking the remaining parser/Sema
-`deferred_member_type_name` uses in `parse_base_type` that concatenate or carry
-rendered spellings for dependency refs, diagnostics, or downstream handoff; if
-they are display/mangling/HIR handoff only, record that ownership boundary
-without editing HIR.
+Continue Step 3.1 with a bounded consumer-repair packet for
+`typespec_mentions_template_param`: when `deferred_member_type_text_id` is
+populated and misses the referenced template parameter, the helper must not
+fall back to rendered `deferred_member_type_name` dependency classification.
+After that repair is proven, re-check any remaining parser/Sema
+`deferred_member_type_name` uses before classifying them as display,
+mangling/reference-string construction, or downstream HIR handoff only.
 
 ## Watchouts
 
@@ -65,17 +67,18 @@ without editing HIR.
   rendered deferred-member compatibility until each downstream consumer is
   proven against `deferred_member_type_text_id` or an equivalent structured
   owner/member carrier.
-- `typespec_mentions_template_param` is now proven against stale rendered
-  `deferred_member_type_name` when `deferred_member_type_text_id` is present;
-  remaining parser/Sema deferred-member consumers should be checked separately
-  instead of treating this dependency-classification repair as lookup
-  resolution coverage.
+- `typespec_mentions_template_param` still needs a populated-metadata-miss
+  repair: if `deferred_member_type_text_id` is valid but does not mention the
+  template parameter, rendered `deferred_member_type_name` must not decide
+  dependency classification as a fallback.
 - `lookup_struct_member_typedef_recursive_for_type` member-name matching is now
   proven against stale rendered `deferred_member_type_name` when a valid member
-  `TextId` is present. The remaining rendered deferred-member uses found in
-  this packet are parser display/reference-string construction or handoff
-  payloads; do not classify them as semantic lookup removal without proving a
-  concrete parser/Sema consumer.
+  `TextId` is present. Apart from the still-open
+  `typespec_mentions_template_param` populated-metadata-miss behavior, rendered
+  deferred-member uses found in this packet appear to be parser
+  display/reference-string construction or handoff payloads; do not classify
+  them as semantic lookup removal without proving the concrete parser/Sema
+  consumer.
 
 ## Proof
 
