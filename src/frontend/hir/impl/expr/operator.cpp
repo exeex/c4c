@@ -400,20 +400,23 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
               base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
               n, std::string("member-owner:") + m.field)) {
         m.resolved_owner_tag = *owner_tag;
-        m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
+        m.member_symbol_id = find_struct_member_symbol_id(
+            base_ts, *owner_tag, m.field, m.field_text_id);
       } else if (n->left) {
         const TypeSpec ast_base_ts = infer_generic_ctrl_type(ctx, n->left);
         if (auto owner_tag = resolve_member_lookup_owner_tag(
                 ast_base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
                 n, std::string("member-owner-ast:") + m.field)) {
           m.resolved_owner_tag = *owner_tag;
-          m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
+          m.member_symbol_id = find_struct_member_symbol_id(
+              ast_base_ts, *owner_tag, m.field, m.field_text_id);
         } else if (auto owner_tag = resolve_member_lookup_owner_tag(
                        n->left->type, m.is_arrow, tpl_bindings, nttp_bindings,
                        current_struct_tag, n,
                        std::string("member-owner-raw-ast:") + m.field)) {
           m.resolved_owner_tag = *owner_tag;
-          m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
+          m.member_symbol_id = find_struct_member_symbol_id(
+              n->left->type, *owner_tag, m.field, m.field_text_id);
         }
       }
       return append_expr(n, m, resolved_member_type(m, n->type), ValueCategory::LValue);
@@ -435,20 +438,23 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
           base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
           n, std::string("member-owner:") + m.field)) {
     m.resolved_owner_tag = *owner_tag;
-    m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
+    m.member_symbol_id = find_struct_member_symbol_id(
+        base_ts, *owner_tag, m.field, m.field_text_id);
   } else if (n->left) {
     const TypeSpec ast_base_ts = infer_generic_ctrl_type(ctx, n->left);
     if (auto owner_tag = resolve_member_lookup_owner_tag(
             ast_base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
             n, std::string("member-owner-ast:") + m.field)) {
       m.resolved_owner_tag = *owner_tag;
-      m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
+      m.member_symbol_id = find_struct_member_symbol_id(
+          ast_base_ts, *owner_tag, m.field, m.field_text_id);
     } else if (auto owner_tag = resolve_member_lookup_owner_tag(
                    n->left->type, m.is_arrow, tpl_bindings, nttp_bindings,
                    current_struct_tag, n,
                    std::string("member-owner-raw-ast:") + m.field)) {
       m.resolved_owner_tag = *owner_tag;
-      m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
+      m.member_symbol_id = find_struct_member_symbol_id(
+          n->left->type, *owner_tag, m.field, m.field_text_id);
     }
   }
   const ValueCategory category =

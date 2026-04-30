@@ -85,7 +85,9 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
             std::string("defaulted-method-member-owner:") + field.name);
         lhs_me.resolved_owner_tag = owner_tag.value_or(struct_tag);
         lhs_me.member_symbol_id =
-            find_struct_member_symbol_id(lhs_me.resolved_owner_tag, field.name);
+            find_struct_member_symbol_id(
+                this_ts, lhs_me.resolved_owner_tag, field.name,
+                lhs_me.field_text_id);
         if (lhs_me.member_symbol_id == kInvalidMemberSymbol) {
           lhs_me.member_symbol_id = field.member_symbol_id;
         }
@@ -174,7 +176,8 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
         &ctx.method_struct_tag, span_node,
         std::string("member-dtor-member-owner:") + field.name);
     me.resolved_owner_tag = owner_tag.value_or(struct_tag);
-    me.member_symbol_id = find_struct_member_symbol_id(me.resolved_owner_tag, field.name);
+    me.member_symbol_id = find_struct_member_symbol_id(
+        owner_ts, me.resolved_owner_tag, field.name, me.field_text_id);
     if (me.member_symbol_id == kInvalidMemberSymbol) {
       me.member_symbol_id = field.member_symbol_id;
     }
@@ -790,7 +793,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
           this_ts, true, &ctx.tpl_bindings, &ctx.nttp_bindings, &ctx.method_struct_tag,
           method_node, std::string("ctor-init-member-owner:") + mem_name);
       me.resolved_owner_tag = owner_tag.value_or(struct_tag);
-      me.member_symbol_id = find_struct_member_symbol_id(me.resolved_owner_tag, mem_name);
+      me.member_symbol_id = find_struct_member_symbol_id(
+          this_ts, me.resolved_owner_tag, mem_name, me.field_text_id);
       me.is_arrow = true;
       ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
 

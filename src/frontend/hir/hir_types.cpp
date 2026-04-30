@@ -428,6 +428,17 @@ std::optional<HirStructMemberLookupKey> Lowerer::make_struct_member_lookup_key(
   return key;
 }
 
+std::optional<HirStructMemberLookupKey> Lowerer::make_struct_member_lookup_key(
+    const TypeSpec& owner_ts,
+    TextId member_text_id) const {
+  if (!owner_ts.record_def || owner_ts.record_def->kind != NK_STRUCT_DEF) {
+    return std::nullopt;
+  }
+  const auto owner_key = make_struct_def_node_owner_key(owner_ts.record_def);
+  if (!owner_key) return std::nullopt;
+  return make_struct_member_lookup_key(*owner_key, member_text_id);
+}
+
 std::string Lowerer::resolve_struct_method_lookup_owner_tag(
     const TypeSpec& owner_ts,
     bool is_arrow,
@@ -1428,6 +1439,12 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
 
 MemberSymbolId Lowerer::find_struct_member_symbol_id(
     const std::string& tag, const std::string& member) const {
+  const auto owner_key = make_struct_member_lookup_key(tag, member);
+  if (owner_key) {
+    const MemberSymbolId owner_id = find_struct_member_symbol_id(
+        *owner_key, &tag, &member);
+    if (owner_id != kInvalidMemberSymbol) return owner_id;
+  }
   const MemberSymbolId direct_id =
       module_->member_symbols.find(tag + "::" + member);
   if (direct_id != kInvalidMemberSymbol) {
@@ -1441,6 +1458,49 @@ MemberSymbolId Lowerer::find_struct_member_symbol_id(
           find_struct_member_symbol_id(base_tag, member);
       if (inherited_id != kInvalidMemberSymbol) return inherited_id;
     }
+  }
+  return kInvalidMemberSymbol;
+}
+
+MemberSymbolId Lowerer::find_struct_member_symbol_id(
+    const HirStructMemberLookupKey& key,
+    const std::string* rendered_tag,
+    const std::string* rendered_member) const {
+  if (!hir_struct_member_lookup_key_has_complete_metadata(key)) {
+    return kInvalidMemberSymbol;
+  }
+  const auto owner_it = struct_member_symbol_ids_by_owner_.find(key);
+  if (owner_it == struct_member_symbol_ids_by_owner_.end()) {
+    return kInvalidMemberSymbol;
+  }
+  if (rendered_tag && rendered_member) {
+    const MemberSymbolId rendered_id =
+        module_->member_symbols.find(*rendered_tag + "::" + *rendered_member);
+    if (rendered_id != kInvalidMemberSymbol) {
+      ++struct_member_symbol_id_lookup_parity_checks_;
+      if (rendered_id != owner_it->second) {
+        ++struct_member_symbol_id_lookup_parity_mismatches_;
+      }
+    }
+  }
+  return owner_it->second;
+}
+
+MemberSymbolId Lowerer::find_struct_member_symbol_id(
+    const TypeSpec& owner_ts,
+    const std::string& rendered_tag,
+    const std::string& member,
+    TextId member_text_id) const {
+  if (const auto key = make_struct_member_lookup_key(owner_ts, member_text_id)) {
+    const MemberSymbolId owner_id =
+        find_struct_member_symbol_id(*key, &rendered_tag, &member);
+    if (owner_id != kInvalidMemberSymbol) return owner_id;
+  }
+  if (!rendered_tag.empty()) {
+    return find_struct_member_symbol_id(rendered_tag, member);
+  }
+  if (owner_ts.tag && owner_ts.tag[0]) {
+    return find_struct_member_symbol_id(owner_ts.tag, member);
   }
   return kInvalidMemberSymbol;
 }

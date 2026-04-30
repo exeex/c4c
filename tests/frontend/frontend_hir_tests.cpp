@@ -2234,6 +2234,60 @@ void test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_ke
               "static member decl lookup should preserve rendered fallback when no owner key exists");
 }
 
+void test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spelling() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node real_record{};
+  real_record.kind = c4c::NK_STRUCT_DEF;
+  real_record.name = "RealSymbolOwner";
+  real_record.unqualified_name = "RealSymbolOwner";
+  real_record.namespace_context_id = 6;
+
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(&real_record);
+  expect_true(owner_key.has_value(),
+              "fixture real member-symbol owner should have structured identity");
+
+  const c4c::TextId field_text_id = module.link_name_texts->intern("field");
+  const c4c::hir::HirStructMemberLookupKey member_key =
+      *lowerer.make_struct_member_lookup_key(*owner_key, field_text_id);
+  const c4c::MemberSymbolId structured_id =
+      module.member_symbols.intern("RealSymbolOwner::field");
+  const c4c::MemberSymbolId stale_id =
+      module.member_symbols.intern("StaleRenderedOwner::stale_field");
+  lowerer.struct_member_symbol_ids_by_owner_[member_key] = structured_id;
+
+  const std::string stale_owner = "StaleRenderedOwner";
+  const std::string stale_member = "stale_field";
+  const c4c::MemberSymbolId direct_id =
+      lowerer.find_struct_member_symbol_id(
+          member_key, &stale_owner, &stale_member);
+
+  expect_true(direct_id == structured_id && direct_id != stale_id,
+              "direct member-symbol lookup should prefer owner/member keys over stale rendered spelling");
+  expect_true(lowerer.struct_member_symbol_id_lookup_parity_checks_ == 1,
+              "direct member-symbol owner-key lookup should record rendered parity");
+  expect_true(lowerer.struct_member_symbol_id_lookup_parity_mismatches_ == 1,
+              "direct member-symbol owner-key lookup should detect stale rendered spelling");
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = stale_owner.c_str();
+  owner_ts.record_def = &real_record;
+  const c4c::MemberSymbolId typed_id =
+      lowerer.find_struct_member_symbol_id(
+          owner_ts, stale_owner, stale_member, field_text_id);
+
+  expect_true(typed_id == structured_id,
+              "TypeSpec-carried member-symbol lookup should prefer record_def/member TextId authority");
+  expect_true(lowerer.struct_member_symbol_id_lookup_parity_checks_ == 2,
+              "TypeSpec-carried member-symbol lookup should also record rendered parity");
+  expect_true(lowerer.struct_member_symbol_id_lookup_parity_mismatches_ == 2,
+              "TypeSpec-carried member-symbol lookup should also detect stale rendered spelling");
+}
+
 void test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -5003,6 +5057,7 @@ int main() {
   test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spelling();
   test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag();
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();

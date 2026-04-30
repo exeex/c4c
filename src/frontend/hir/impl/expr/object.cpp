@@ -382,10 +382,12 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
         list_node, std::string("init-list-member:") + field_name);
     if (owner_tag) {
       lhs.resolved_owner_tag = *owner_tag;
-      lhs.member_symbol_id = find_struct_member_symbol_id(*owner_tag, field_name);
+      lhs.member_symbol_id = find_struct_member_symbol_id(
+          param_ts, *owner_tag, field_name, lhs.field_text_id);
     } else if (param_ts.tag && param_ts.tag[0]) {
       lhs.resolved_owner_tag = param_ts.tag;
-      lhs.member_symbol_id = find_struct_member_symbol_id(param_ts.tag, field_name);
+      lhs.member_symbol_id = find_struct_member_symbol_id(
+          param_ts, param_ts.tag, field_name, lhs.field_text_id);
     }
     lhs.is_arrow = false;
     ExprId lhs_id = append_expr(list_node, lhs, field_ts, ValueCategory::LValue);

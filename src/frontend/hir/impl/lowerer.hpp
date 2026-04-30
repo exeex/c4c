@@ -372,6 +372,15 @@ class Lowerer {
       const std::string* rendered_member = nullptr) const;
   MemberSymbolId find_struct_member_symbol_id(
       const std::string& tag, const std::string& member) const;
+  MemberSymbolId find_struct_member_symbol_id(
+      const HirStructMemberLookupKey& key,
+      const std::string* rendered_tag = nullptr,
+      const std::string* rendered_member = nullptr) const;
+  MemberSymbolId find_struct_member_symbol_id(
+      const TypeSpec& owner_ts,
+      const std::string& rendered_tag,
+      const std::string& member,
+      TextId member_text_id) const;
   std::optional<long long> try_eval_instantiated_struct_static_member_const(
       const std::string& tag, const std::string& member) const;
 
@@ -408,6 +417,9 @@ class Lowerer {
       const std::string& member) const;
   std::optional<HirStructMemberLookupKey> make_struct_member_lookup_key(
       const HirRecordOwnerKey& owner_key,
+      TextId member_text_id) const;
+  std::optional<HirStructMemberLookupKey> make_struct_member_lookup_key(
+      const TypeSpec& owner_ts,
       TextId member_text_id) const;
   void record_struct_method_mangled_lookup_parity(
       const std::string& tag,

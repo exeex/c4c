@@ -193,7 +193,10 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     }
     MemberSymbolId member_symbol_id = kInvalidMemberSymbol;
     if (!resolved_tag.empty()) {
-      member_symbol_id = find_struct_member_symbol_id(resolved_tag, member);
+      const TextId member_text_id =
+          make_text_id(member, module_ ? module_->link_name_texts.get() : nullptr);
+      member_symbol_id = find_struct_member_symbol_id(
+          owner_ts, resolved_tag, member, member_text_id);
     }
     if (member_symbol_id == kInvalidMemberSymbol) {
       member_symbol_id = fallback_id;
