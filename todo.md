@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4
-Current Step Title: Audit Parser Type, Tag, And Member-Typedef Routes
+Current Step ID: Step 2.4.1
+Current Step Title: Inventory Live Member-Typedef Mirror Consumers
 
 ## Just Finished
 
@@ -26,17 +26,17 @@ rediscovery behind a new wrapper.
 
 ## Suggested Next
 
-Delegate a narrow Step 2.4 follow-up for the remaining member-typedef blocker:
-replace the live `owner::member` typedef mirror consumers with lookup that
-starts from an existing structured carrier, then delete or shrink the mirror
-only after the structured route owns those consumers.
+Delegate Step 2.4.1 as an inventory-only or very small probe packet before any
+more mirror deletion. The executor should list live
+`register_struct_member_typedef_binding(owner, member, type)` mirror consumers
+and classify each by the strongest available structured carrier:
+`TypeSpec::record_def`, member typedef arrays on a record `Node`, namespace
+context id, `QualifiedNameKey`, direct record/declaration metadata, or missing
+metadata.
 
-Acceptable starting carriers include owner `TypeSpec::record_def`, direct
-record or declaration metadata, member typedef arrays, namespace context id,
-or an already-available `QualifiedNameKey`. The next packet must not introduce
-or rely on a semantic helper that takes rendered `owner::member` text,
-`std::string`, or `std::string_view` and parses it back into owner/member
-identity.
+The first follow-up code packet should convert only one classified carrier
+family. Do not delete the whole live `owner::member` mirror until the remaining
+semantic consumers are converted or represented as metadata blockers.
 
 ## Watchouts
 
@@ -54,6 +54,12 @@ Do not revive the rejected route under a different name. A helper such as
 `find_structured_member_typedef_type(std::string_view qualified_name)` is not
 structured progress if its first semantic step is parsing rendered qualified
 lookup text or reconstructing owner/member identity from spelling.
+
+Step 2.4 is now split into structured-carrier-only substeps. The next packet
+must not introduce a parser/Sema semantic helper that takes rendered
+`owner::member` text, `std::string`, or `std::string_view` qualified text as
+input, even if the helper later scans `TypeSpec::record_def` or member typedef
+arrays.
 
 ## Proof
 

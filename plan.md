@@ -259,35 +259,128 @@ Completion check:
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.4: Audit Parser Type, Tag, And Member-Typedef Routes
+### Step 2.4.1: Inventory Live Member-Typedef Mirror Consumers
 
-Goal: verify the already-converted parser typedef, tag, record type-head, and
-member-typedef routes did not leave a reachable rendered-string authority
-behind a renamed helper or compatibility wrapper.
+Goal: identify every remaining consumer protected by the live
+`owner::member` typedef mirror before deleting or shrinking it.
 
-Primary target: parser type parsing, record lookup, structured typedef
-bindings, `TypeSpec::record_def`, member typedef arrays, and tag lookup routes.
+Primary target: parser member-typedef registration and lookup routes,
+including `register_struct_member_typedef_binding(owner, member, type)`,
+`TypeSpec::record_def`, member typedef arrays, namespace context ids,
+`QualifiedNameKey`, direct record/declaration metadata, and any call site that
+still reaches semantic lookup through rendered scoped text.
 
 Actions:
 
-- Inspect the completed Step 2 parser changes for helper-only renames,
-  comment-only classification, or new wrappers around rendered lookup.
-- Search for string/string_view semantic lookup parameters, fallback spelling
-  parameters, `resolved_tag + "::" + member` lookup, and
-  `struct_tag_def_map.find(rendered-name)` after a structured miss.
-- Confirm `TextId` is used only for text identity and richer domain keys are
-  used when namespace, owner, record, template, or declaration identity matters.
-- Add or preserve focused parser disagreement tests for typedef, tag, record
-  type-head, and member-typedef behavior.
-- If the audit finds missing producer metadata outside parser/Sema ownership,
-  record a metadata idea instead of restoring rendered lookup.
+- Inventory the live mirror writers and readers, including template
+  instantiation, record body parsing, qualified type lookup, declarator lookup,
+  expression owner/type probes, and focused frontend tests that mention member
+  typedefs.
+- Classify each live consumer by the strongest available structured carrier:
+  `TypeSpec::record_def`, member typedef arrays on a `Node`, namespace context
+  id, `QualifiedNameKey`, direct record/declaration metadata, or only rendered
+  scoped spelling.
+- Record consumers that lack a structured carrier as metadata blockers instead
+  of routing them through rendered text.
+- Preserve or add focused parser tests only for one classified carrier at a
+  time; do not use one large runtime case as the sole proof.
+- Explicitly reject the previously reviewed route from
+  `review/step2_4_member_typedef_conversion_review.md`: do not introduce a
+  helper that accepts rendered `owner::member` text, `std::string`, or
+  `std::string_view` qualified text and parses it back into owner/member
+  identity.
 
 Completion check:
 
-- No covered parser type/tag/member route uses rendered spelling as alternate
-  semantic authority after structured metadata exists.
+- `todo.md` records the live mirror consumers, their carrier classification,
+  and the first smallest consumer to convert.
+- The next code packet is scoped to one carrier class, not deletion of the
+  whole mirror.
+- No helper taking rendered qualified text is proposed as structured progress.
+- Lifecycle-only inventory rewrite does not claim code proof.
+
+### Step 2.4.2: Prove Direct Record Member-Typedef Lookup
+
+Goal: make direct record/member metadata own one member-typedef consumer before
+changing mirror storage.
+
+Primary target: consumers that already have `TypeSpec::record_def`, a direct
+record `Node*`, or declaration metadata for the owner.
+
+Actions:
+
+- Convert one reachable consumer to scan member typedef arrays from the direct
+  record/declaration carrier.
+- Compare member identity through `TextId` or direct member metadata when that
+  is the actual domain; do not fall back to `std::string_view` member equality.
+- Keep rendered owner or member spelling only for diagnostics, display, debug,
+  mangling, or final emitted text.
+- Add or keep a focused parser disagreement test proving direct record metadata
+  wins over stale rendered `owner::member` mirror storage.
+
+Completion check:
+
+- The converted consumer starts from direct record/declaration metadata and
+  does not parse rendered qualified text.
+- The covered test fails on stale mirror authority and passes through the
+  direct carrier.
+- Narrow parser tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.4.3: Prove Qualified Key Or Namespace-Context Lookup
+
+Goal: convert one member-typedef consumer that lacks direct record metadata but
+already has namespace-aware structured identity.
+
+Primary target: call sites with an existing `QualifiedNameKey`, namespace
+context id plus `TextId`, or parser qualified-name carrier.
+
+Actions:
+
+- Start from the existing qualified/domain key supplied by the caller; do not
+  render it and then parse the rendered text back into a key.
+- Route lookup through structured typedef maps or record/tag metadata keyed by
+  namespace context and member text identity.
+- Delete or narrow any overload whose only purpose is accepting rendered
+  qualified spelling for this semantic lookup.
+- Add or keep one focused disagreement test where stale rendered scoped
+  spelling disagrees with the structured qualified carrier.
+
+Completion check:
+
+- The covered consumer no longer consults rendered `owner::member` spelling as
+  semantic authority after a structured qualified carrier exists.
+- No parser semantic API for the route accepts `std::string`,
+  `std::string_view`, rendered qualified text, or fallback spelling.
+- Narrow parser tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.4.4: Shrink Or Delete The Member-Typedef Mirror
+
+Goal: delete the live `owner::member` typedef mirror, or shrink it to a
+non-semantic compatibility cache only after all reachable semantic consumers
+have structured carriers.
+
+Primary target: `register_struct_member_typedef_binding(owner, member, type)`
+and any remaining lookup path backed by the rendered scoped mirror.
+
+Actions:
+
+- Re-run the Step 2.4.1 inventory and confirm each semantic consumer has been
+  converted, blocked by a recorded metadata idea, or proven non-semantic.
+- Delete the mirror writer and storage if no semantic consumer remains.
+- If a narrow compatibility cache must remain, make its non-semantic purpose
+  explicit and ensure it cannot decide parser/Sema semantic identity.
+- Search for helper-only renames, wrappers around rendered lookup, fallback
+  spelling parameters, and `std::string_view` qualified lookup APIs introduced
+  during Step 2.4.
+
+Completion check:
+
+- No covered parser type/tag/member route uses rendered scoped spelling as
+  alternate semantic authority after structured metadata exists.
 - No helper-only rename or wrapper-only packet is counted as removal progress.
-- Any new metadata blockers are represented as separate open ideas.
+- Any remaining metadata blockers are represented as separate open ideas.
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
