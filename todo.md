@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Complete
+Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
 Current Step ID: Step 2.3
@@ -20,9 +20,19 @@ valid-`TextId` no-key compatibility aliases, and invalid-`TextId` rejection.
 
 ## Suggested Next
 
-Supervisor can commit this parser API contraction slice, then continue Step
-2.3 with the remaining parser semantic lookup APIs that still accept spelling
-parameters if the active route stays in parser-owned scope.
+Continue Step 2.3 with a parser-owned API contraction packet for
+`lookup_value_in_context`, `lookup_type_in_context`, and
+`lookup_concept_in_context`.
+
+The packet should remove the `std::string_view name` semantic/fallback
+parameter from these APIs and update recursive/caller/test call sites to pass
+only structured lookup carriers (`context_id`, `TextId`, and
+`VisibleNameResult*`). It should delete the `kInvalidText` plus rendered
+fallback recovery path in these helpers unless the executor proves a missing
+carrier and records a metadata blocker instead of preserving string lookup.
+
+Proof should include a fresh build plus focused parser tests that cover the
+existing same-feature drifted-string cases for value, type, and concept lookup.
 
 ## Watchouts
 
