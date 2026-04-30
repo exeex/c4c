@@ -17,8 +17,9 @@ using DynamicLocalPointerArrayAccess = BirFunctionLowerer::DynamicLocalPointerAr
 using GlobalAddress = BirFunctionLowerer::GlobalAddress;
 using LocalPointerArrayBase = BirFunctionLowerer::LocalPointerArrayBase;
 using PointerAddress = BirFunctionLowerer::PointerAddress;
+using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using lir_to_bir_detail::compute_aggregate_type_layout;
-using lir_to_bir_detail::lookup_backend_aggregate_type_layout;
+using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
 using lir_to_bir_detail::type_size_bytes;
@@ -27,14 +28,26 @@ namespace {
 
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 
-BirFunctionLowerer::AggregateTypeLayout lookup_addressing_layout(
+BackendAggregateLayoutLookup lookup_addressing_layout_result(
     std::string_view type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
   if (structured_layouts != nullptr) {
-    return lookup_backend_aggregate_type_layout(type_text, type_decls, *structured_layouts);
+    return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
   }
-  return compute_aggregate_type_layout(type_text, type_decls);
+  return BackendAggregateLayoutLookup{
+      .layout = compute_aggregate_type_layout(type_text, type_decls),
+      .used_structured_layout = false,
+      .used_legacy_fallback = true,
+      .structured_text_mismatch = false,
+  };
+}
+
+BirFunctionLowerer::AggregateTypeLayout lookup_addressing_layout(
+    std::string_view type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  return lookup_addressing_layout_result(type_text, type_decls, structured_layouts).layout;
 }
 
 std::optional<BirFunctionLowerer::AggregateArrayExtent>
