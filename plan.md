@@ -777,13 +777,90 @@ Completion check:
 - Any code-changing packet has fresh build proof and fresh canonical
   `test_after.log`; todo-only blocker bookkeeping does not claim a code proof.
 
-### Step 3: Remove Sema Rendered-String Owner And Consteval Lookup Routes
+### Step 3.1: Add Consteval Local And TypeSpec Metadata Producers
 
-Goal: Sema owner/member/static/consteval lookup must not consult rendered names
-after owner keys, AST nodes, declarations, or structured maps are available.
+Goal: make consteval value/type lookup metadata complete enough that rendered
+same-spelling compatibility can be deleted instead of deciding semantic lookup
+after structured or `TextId` misses.
 
-Primary target: Sema owner/member/static lookup paths and consteval lookup
-helpers.
+Primary target: consteval interpreter value/type metadata producers for
+parameters, loop locals, synthetic locals, local declarations, and `TypeSpec`
+tag/name carriers.
+
+Actions:
+
+- Read `review/step3_consteval_value_type_review.md` before delegating code for
+  this step.
+- Inspect the producers that should populate consteval local, loop, parameter,
+  and synthetic-local structured metadata before `ConstEvalEnv::lookup(const
+  Node*)` runs.
+- Inspect the producers that should give consteval `TypeSpec` lookup intrinsic
+  identifier metadata instead of relying on rendered-name-to-metadata mirror
+  maps.
+- Add or repair parser/Sema-owned metadata producers where the owner and
+  consumer contract is clear.
+- If a required producer lives outside parser/Sema ownership or has no clear
+  source carrier, record that exact blocker in `todo.md` at the lowest correct
+  layer before attempting another lookup-deletion packet.
+- Do not claim the previous consteval value/type fallback work as closed while
+  same-spelling rendered fallback can still decide lookup after populated
+  metadata misses.
+- Do not delete rendered compatibility in this step unless the matching
+  producer completeness is proven for the route being deleted.
+
+Completion check:
+
+- `todo.md` names the exact consteval metadata producer repaired or the exact
+  blocker parked.
+- Consteval local/loop/parameter/synthetic-local lookup has enough structured
+  or `TextId` metadata to make metadata misses authoritative for the covered
+  route, or the missing producer is explicitly parked.
+- Consteval `TypeSpec` lookup no longer depends on rendered-name-to-metadata
+  mirrors for the covered route, or that dependency is explicitly parked.
+- Narrow Sema/frontend tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor for code-changing packets.
+
+### Step 3.2: Delete Consteval Rendered Compatibility After Metadata Completion
+
+Goal: remove consteval value/type rendered-name fallback only after Step 3.1
+has repaired or explicitly parked the matching metadata producer gap.
+
+Primary target: `ConstEvalEnv::lookup(const Node*)`, consteval type binding
+lookup helpers, and consteval function/value/type lookup APIs that still accept
+or consult rendered spelling.
+
+Actions:
+
+- Block rendered fallback after any populated structured or `TextId` metadata
+  miss, including same-spelling local names.
+- Delete or collapse consteval semantic lookup APIs that take `std::string`,
+  `std::string_view`, rendered names, or fallback spelling once the route has a
+  structured/domain key.
+- Keep no-metadata rendered compatibility only when `todo.md` names the missing
+  producer and the fallback is explicitly out of scope for the packet.
+- Keep rendered strings only for diagnostics, display, debug output, mangling,
+  ABI/link spelling, or final emitted text.
+- Add focused same-feature tests proving metadata miss rejection and no stale
+  same-spelling rendered recovery for the covered route.
+
+Completion check:
+
+- Covered consteval value/type paths no longer use rendered spelling as
+  semantic authority after structured or `TextId` metadata exists and misses.
+- Covered consteval semantic lookup APIs no longer accept string/string_view or
+  fallback spelling parameters.
+- Any remaining no-metadata compatibility route is recorded as a blocker or
+  separate metadata idea before Step 3.2 is treated as complete.
+- Narrow Sema/frontend tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 3.3: Remove Remaining Sema Owner/Member/Static Rendered Routes
+
+Goal: Sema owner/member/static lookup must not consult rendered names after
+owner keys, AST nodes, declarations, or structured maps are available.
+
+Primary target: Sema owner/member/static lookup paths outside the consteval
+value/type metadata-producer route.
 
 Actions:
 
@@ -796,8 +873,6 @@ Actions:
   owner, declaration, `TextId`, or domain key route.
 - Remove Sema semantic helpers whose `fallback` or `legacy` names preserve
   rendered-spelling compatibility.
-- Remove string recovery from consteval function/value/type lookup where the
-  `Node*`, declaration, or structured key is available.
 - Add focused Sema tests for same-feature structured-vs-rendered disagreement.
 
 Completion check:
@@ -807,7 +882,8 @@ Completion check:
   fallback spelling parameters.
 - Covered Sema overload families are collapsed to structured/domain-key APIs.
 - Any missing mirror or producer metadata is recorded as a new open idea.
-- Narrow Sema tests and a fresh build pass.
+- Narrow Sema tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
 
 ### Step 4: Repair Parser-to-Sema Metadata Handoff Gaps
 

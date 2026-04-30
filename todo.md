@@ -3,31 +3,33 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Routes
+Current Step ID: Step 3.1
+Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3 removed stale rendered-name authority from inline consteval value lookup.
-`ConstEvalEnv::lookup(const Node*)` now probes structured metadata first, then
-`TextId` metadata, tracks populated metadata misses, rejects stale rendered
-fallback when metadata misses, and keeps rendered compatibility only for
-no-metadata or same-spelling compatibility cases. Focused frontend coverage now
-verifies structured miss -> `TextId` hit, metadata miss rejection for stale
-rendered names, and no-metadata rendered compatibility.
+Step 3 review was absorbed from
+`review/step3_consteval_value_type_review.md`. The prior consteval value/type
+work is not closed: same-spelling rendered fallback can still decide
+`ConstEvalEnv::lookup(const Node*)` after populated metadata misses, and
+consteval `TypeSpec` lookup still uses rendered-name-to-metadata mirror maps as
+an intermediate bridge.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing remaining Sema rendered semantic lookup routes
-that still consult rendered names after structured or `TextId` misses, then
-delegate one bounded route where the producing metadata is complete enough to
-make the miss authoritative without touching HIR or backend carriers.
+Execute Step 3.1. Delegate one bounded metadata-producer packet for consteval
+locals, loop locals, parameters, synthetic locals, or `TypeSpec` intrinsic
+identifier metadata. If the producer is outside parser/Sema ownership or lacks
+a clear source carrier, park that exact blocker in this file before any further
+Step 3 lookup-deletion packet.
 
 ## Watchouts
 
-- Some existing parsed method-body positives still lack structured field
-  `TextId` metadata, so instance-field lookup must keep rendered compatibility
-  fallback when the structured field metadata chain is absent.
+- Do not treat the previous consteval value/type fallback slice as closed while
+  same-spelling rendered fallback can still decide lookup after populated
+  metadata misses.
+- Same-spelling consteval local/loop/parameter compatibility is now a
+  metadata-producer target, not acceptable lookup-deletion progress.
 - Do not delete the rendered-name `eval_const_int` compatibility overload while
   HIR still passes `NttpBindings` as `std::unordered_map<std::string, long long>`.
 - Route deletion of the rendered-name `eval_const_int` compatibility overload
@@ -40,8 +42,8 @@ make the miss authoritative without touching HIR or backend carriers.
   their producers carry equivalent structured metadata.
 - Consteval `TypeSpec` resolution still depends on the recorded rendered-name
   to structured/`TextId` mirror maps to find metadata for a `TypeSpec` tag;
-  this packet made those mirrors authoritative but did not add intrinsic
-  `TypeSpec` identifier metadata.
+  Step 3.1 owns either adding intrinsic `TypeSpec` identifier metadata for a
+  bounded route or parking the exact missing producer.
 - Consteval interpreter locals still need same-spelling rendered compatibility
   because some existing parameter/loop-local references do not have complete
   matching local `TextId`/structured mirrors. Treat removal of that compatibility
@@ -49,6 +51,6 @@ make the miss authoritative without touching HIR or backend carriers.
 
 ## Proof
 
-Ran the delegated proof command:
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*)$' --output-on-failure) > test_after.log 2>&1`.
-It passed with 464/464 tests green. Proof log: `test_after.log`.
+Lifecycle-only review absorption. No implementation proof was run for this
+rewrite. The next code-changing Step 3.1 packet must produce fresh canonical
+`test_after.log` for the supervisor-selected proof command.
