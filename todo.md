@@ -8,20 +8,20 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired the bounded parser deferred owner-member lookup consumer
-around `typespec_mentions_template_param`: a populated
-`deferred_member_type_text_id` is now authoritative for deferred-member
-dependency classification, so a structured miss does not fall back to rendered
-`deferred_member_type_name`. Focused parser coverage uses stale rendered text
-that would mention template parameter `T`, proves a valid member `TextId` hit
-still classifies as dependent, proves a populated miss is rejected, and keeps
-rendered compatibility only when structured metadata is absent.
+Step 3.1 repaired Sema `TypeSpec` equality for deferred owner-member metadata:
+`type_binding_values_equivalent` now treats a populated
+`deferred_member_type_text_id` on either side as authoritative, so rendered
+`deferred_member_type_name` equality cannot hide missing or mismatched member
+TextId metadata. Focused parser-test coverage proves matching member TextIds
+ignore stale rendered names, same rendered names are rejected when only one side
+has metadata or the TextIds mismatch, and rendered compatibility remains only
+when both sides lack member TextId metadata.
 
 ## Suggested Next
 
-Continue Step 3.1 by re-checking any remaining parser/Sema
-`deferred_member_type_name` uses before classifying them as display,
-mangling/reference-string construction, or downstream HIR handoff only.
+Continue Step 3.1 by routing any remaining parser/Sema deferred-member
+consumers through populated `deferred_member_type_text_id` or equivalent
+structured owner/member metadata before removing rendered-name compatibility.
 
 ## Watchouts
 
@@ -73,6 +73,10 @@ mangling/reference-string construction, or downstream HIR handoff only.
   uses found in this route appear to be parser display/reference-string
   construction or handoff payloads; do not classify them as semantic lookup
   removal without proving the concrete parser/Sema consumer.
+- `type_binding_values_equivalent` no longer accepts rendered deferred-member
+  spelling equality when either side has populated member TextId metadata and
+  the other side lacks or mismatches it. Same-TextId equality still tolerates
+  stale rendered member spelling.
 
 ## Proof
 

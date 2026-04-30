@@ -6451,6 +6451,37 @@ void test_typespec_mentions_template_param_uses_deferred_member_text_id() {
               "deferred owner-member dependency checks should keep rendered compatibility when structured metadata is absent");
 }
 
+void test_type_binding_equivalence_uses_deferred_member_text_id_authority() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+
+  c4c::TypeSpec lhs{};
+  lhs.base = c4c::TB_STRUCT;
+  lhs.tag = arena.strdup("Owner");
+  lhs.deferred_member_type_name = arena.strdup("type");
+  lhs.deferred_member_type_text_id = texts.intern("type");
+
+  c4c::TypeSpec rhs = lhs;
+  rhs.deferred_member_type_name = arena.strdup("stale_rendered_member");
+  expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
+              "deferred owner-member TypeSpec equivalence should accept matching member TextIds despite stale rendered names");
+
+  rhs = lhs;
+  rhs.deferred_member_type_text_id = c4c::kInvalidText;
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "deferred owner-member TypeSpec equivalence should reject same rendered names when only one side has member TextId metadata");
+
+  rhs = lhs;
+  rhs.deferred_member_type_text_id = texts.intern("other");
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "deferred owner-member TypeSpec equivalence should reject same rendered names when member TextIds mismatch");
+
+  lhs.deferred_member_type_text_id = c4c::kInvalidText;
+  rhs.deferred_member_type_text_id = c4c::kInvalidText;
+  expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
+              "deferred owner-member TypeSpec equivalence should keep rendered compatibility when both sides lack member TextId metadata");
+}
+
 void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches() {
   c4c::Arena arena;
 
@@ -7562,6 +7593,7 @@ int main() {
   test_parser_qualified_alias_template_member_typedef_substitution_uses_structured_carrier();
   test_parser_alias_of_alias_member_typedef_substitution_uses_structured_carrier();
   test_typespec_mentions_template_param_uses_deferred_member_text_id();
+  test_type_binding_equivalence_uses_deferred_member_text_id_authority();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
