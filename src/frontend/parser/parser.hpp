@@ -439,13 +439,10 @@ class Parser {
   bool lookup_using_value_alias(int context_id, TextId name_text_id,
                                 VisibleNameResult* resolved) const;
   bool lookup_value_in_context(int context_id, TextId name_text_id,
-                               std::string_view name,
                                VisibleNameResult* resolved) const;
   bool lookup_type_in_context(int context_id, TextId name_text_id,
-                              std::string_view name,
                               VisibleNameResult* resolved) const;
   bool lookup_concept_in_context(int context_id, TextId name_text_id,
-                                 std::string_view name,
                                  VisibleNameResult* resolved) const;
   std::string qualify_name(TextId name_text_id, std::string_view name) const;
   std::string qualify_name(const std::string& name) const;

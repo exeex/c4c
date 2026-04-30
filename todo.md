@@ -8,31 +8,22 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the remaining fallback spelling authority from
-`lookup_using_value_alias(...)`. The helper now requires callers to provide an
-existing alias `TextId`, has no `std::string_view` fallback parameter, and no
-longer recovers a missing key with `find_parser_text_id(...)`.
+Step 2.3 removed the remaining parser semantic spelling/fallback parameters
+from `lookup_value_in_context(...)`, `lookup_type_in_context(...)`, and
+`lookup_concept_in_context(...)`. The helpers now accept only `context_id`, the
+structured `TextId`, and `VisibleNameResult*`, and they reject `kInvalidText`
+instead of recovering lookup authority from rendered spellings.
 
-Production and focused parser-test call sites now pass only `context_id`, the
-alias `TextId`, and the result pointer. `frontend_parser_tests` still covers
-structured alias rejection when the target has no semantic binding, explicit
-valid-`TextId` no-key compatibility aliases, and invalid-`TextId` rejection.
+Production recursive and qualified/visible lookup call sites were updated to
+use the contracted APIs. Focused parser tests now cover the existing drifted
+string cases for value, type, and concept lookup while asserting invalid
+`TextId` rejection for the formerly preserved rendered fallback routes.
 
 ## Suggested Next
 
-Continue Step 2.3 with a parser-owned API contraction packet for
-`lookup_value_in_context`, `lookup_type_in_context`, and
-`lookup_concept_in_context`.
-
-The packet should remove the `std::string_view name` semantic/fallback
-parameter from these APIs and update recursive/caller/test call sites to pass
-only structured lookup carriers (`context_id`, `TextId`, and
-`VisibleNameResult*`). It should delete the `kInvalidText` plus rendered
-fallback recovery path in these helpers unless the executor proves a missing
-carrier and records a metadata blocker instead of preserving string lookup.
-
-Proof should include a fresh build plus focused parser tests that cover the
-existing same-feature drifted-string cases for value, type, and concept lookup.
+Supervisor should review the Step 2.3 parser API contraction diff and decide
+whether this completes the active packet or needs a plan-owner/reviewer pass
+before commit.
 
 ## Watchouts
 
@@ -48,10 +39,13 @@ metadata idea if the supervisor switches scope.
 future callers that lack a valid alias `TextId` need carrier repair rather
 than a rendered spelling lookup path.
 
+The three contracted parser lookup helpers now follow the same rule: callers
+without a valid `TextId` must repair metadata before invoking the helper.
+
 ## Proof
 
 Passed:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_parse_local_using_alias_statement_probe_dump|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
 
-`test_after.log` contains the fresh passing proof: 100% tests passed, 0 tests
-failed out of 928.
+`test_after.log` contains the fresh passing proof for this packet: 100% tests
+passed, 0 tests failed out of 928.
