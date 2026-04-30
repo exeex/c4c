@@ -6493,6 +6493,103 @@ void test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered
                 "consteval value lookup should prefer TextId metadata over stale rendered names");
 }
 
+c4c::Node make_consteval_sizeof_type_node(const c4c::TypeSpec& type) {
+  c4c::Node n{};
+  n.kind = c4c::NK_SIZEOF_TYPE;
+  n.type = type;
+  return n;
+}
+
+c4c::TypeSpec make_consteval_typedef_ref(c4c::Arena& arena,
+                                         const char* tag) {
+  c4c::TypeSpec ts = make_sema_lookup_ts(c4c::TB_TYPEDEF);
+  ts.tag = arena.strdup(tag);
+  return ts;
+}
+
+void test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  const c4c::TextId tmpl_text = texts.intern("Fn");
+  const c4c::TextId actual_text = texts.intern("Actual");
+  const c4c::TextId text_only_text = texts.intern("TextOnly");
+
+  c4c::hir::TypeBindings rendered;
+  rendered["stale"] = make_sema_lookup_ts(c4c::TB_INT);
+  rendered["stale_text_only"] = make_sema_lookup_ts(c4c::TB_INT);
+
+  c4c::hir::TypeBindingStructuredKey key;
+  key.namespace_context_id = 7;
+  key.template_text_id = tmpl_text;
+  key.param_index = 0;
+  key.param_text_id = actual_text;
+
+  c4c::hir::TypeBindingTextMap by_text;
+  by_text[actual_text] = make_sema_lookup_ts(c4c::TB_LONGLONG);
+  by_text[text_only_text] = make_sema_lookup_ts(c4c::TB_LONG);
+  c4c::hir::TypeBindingStructuredMap by_key;
+  by_key[key] = make_sema_lookup_ts(c4c::TB_CHAR);
+  c4c::hir::TypeBindingNameTextMap text_ids_by_name;
+  text_ids_by_name["stale"] = actual_text;
+  text_ids_by_name["stale_text_only"] = text_only_text;
+  c4c::hir::TypeBindingNameStructuredMap keys_by_name;
+  keys_by_name["stale"] = key;
+
+  c4c::hir::ConstEvalEnv env{};
+  env.type_bindings = &rendered;
+  env.type_bindings_by_text = &by_text;
+  env.type_bindings_by_key = &by_key;
+  env.type_binding_text_ids_by_name = &text_ids_by_name;
+  env.type_binding_keys_by_name = &keys_by_name;
+
+  c4c::Node structured_node =
+      make_consteval_sizeof_type_node(make_consteval_typedef_ref(arena, "stale"));
+  auto structured = c4c::hir::evaluate_constant_expr(&structured_node, env);
+  expect_true(structured.ok(), "structured consteval type binding lookup should evaluate");
+  expect_eq_int(static_cast<int>(structured.as_int()), 1,
+                "consteval type binding lookup should prefer structured metadata over stale rendered names");
+
+  c4c::Node text_node =
+      make_consteval_sizeof_type_node(make_consteval_typedef_ref(arena, "stale_text_only"));
+  auto text = c4c::hir::evaluate_constant_expr(&text_node, env);
+  expect_true(text.ok(), "TextId consteval type binding lookup should evaluate");
+  expect_eq_int(static_cast<int>(text.as_int()), 8,
+                "consteval type binding lookup should prefer TextId metadata over stale rendered names");
+
+  c4c::hir::TypeBindingStructuredMap empty_key_map;
+  env.type_bindings_by_key = &empty_key_map;
+  auto text_after_structured_miss =
+      c4c::hir::evaluate_constant_expr(&structured_node, env);
+  expect_true(text_after_structured_miss.ok(),
+              "TextId consteval type binding lookup should still answer after structured metadata misses");
+  expect_eq_int(static_cast<int>(text_after_structured_miss.as_int()), 8,
+                "consteval type binding lookup should use TextId metadata before rendered fallback");
+
+  c4c::hir::TypeBindingTextMap empty_text_map;
+  env.type_bindings_by_text = &empty_text_map;
+  auto authoritative_miss =
+      c4c::hir::evaluate_constant_expr(&structured_node, env);
+  expect_true(!authoritative_miss.ok(),
+              "consteval type binding lookup should reject stale rendered names after metadata misses");
+}
+
+void test_consteval_type_binding_lookup_keeps_no_metadata_rendered_compatibility() {
+  c4c::Arena arena;
+  c4c::hir::TypeBindings rendered;
+  rendered["legacy"] = make_sema_lookup_ts(c4c::TB_INT);
+
+  c4c::hir::ConstEvalEnv env{};
+  env.type_bindings = &rendered;
+
+  c4c::Node legacy_node =
+      make_consteval_sizeof_type_node(make_consteval_typedef_ref(arena, "legacy"));
+  auto legacy = c4c::hir::evaluate_constant_expr(&legacy_node, env);
+  expect_true(legacy.ok(),
+              "consteval type binding lookup should retain rendered fallback without metadata");
+  expect_eq_int(static_cast<int>(legacy.as_int()), 4,
+                "consteval type binding rendered fallback should still resolve no-metadata bindings");
+}
+
 c4c::Node* make_consteval_returning(c4c::Parser& parser, c4c::Arena& arena,
                                     const char* name, c4c::TextId text_id,
                                     long long value) {
@@ -6864,6 +6961,8 @@ int main() {
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
   test_consteval_template_arg_expr_payload_ignores_stale_rendered_name();
   test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name();
+  test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
+  test_consteval_type_binding_lookup_keeps_no_metadata_rendered_compatibility();
   test_consteval_function_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
   test_sema_consteval_function_lookup_prefers_text_metadata_over_stale_rendered_name();
   test_sema_consteval_function_lookup_rejects_stale_rendered_name_after_text_miss();

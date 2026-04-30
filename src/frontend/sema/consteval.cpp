@@ -4,8 +4,6 @@
 #include <cstdint>
 #include <cstring>
 
-#include "type_utils.hpp"
-
 namespace c4c::hir {
 namespace {
 
@@ -83,43 +81,62 @@ ConstValue apply_integer_cast(long long value, const TypeSpec& ts) {
   return ConstValue::make_int(static_cast<long long>(uv));
 }
 
-const TypeSpec* lookup_type_binding_by_text(const ConstEvalEnv& env,
-                                            const std::string& name) {
-  if (!env.type_bindings_by_text || !env.type_binding_text_ids_by_name) return nullptr;
+enum class TypeBindingLookupStatus {
+  NoMetadata,
+  Miss,
+  Found,
+};
+
+struct TypeBindingLookupResult {
+  TypeBindingLookupStatus status = TypeBindingLookupStatus::NoMetadata;
+  const TypeSpec* type = nullptr;
+};
+
+TypeBindingLookupResult lookup_type_binding_by_text(const ConstEvalEnv& env,
+                                                    const std::string& name) {
+  if (!env.type_bindings_by_text || !env.type_binding_text_ids_by_name) return {};
   auto text_it = env.type_binding_text_ids_by_name->find(name);
-  if (text_it == env.type_binding_text_ids_by_name->end() ||
-      text_it->second == kInvalidText) {
-    return nullptr;
-  }
+  if (text_it == env.type_binding_text_ids_by_name->end()) return {};
+  if (text_it->second == kInvalidText) return {TypeBindingLookupStatus::Miss, nullptr};
   auto it = env.type_bindings_by_text->find(text_it->second);
-  return it != env.type_bindings_by_text->end() ? &it->second : nullptr;
-}
-
-const TypeSpec* lookup_type_binding_by_key(const ConstEvalEnv& env,
-                                           const std::string& name) {
-  if (!env.type_bindings_by_key || !env.type_binding_keys_by_name) return nullptr;
-  auto key_it = env.type_binding_keys_by_name->find(name);
-  if (key_it == env.type_binding_keys_by_name->end() || !key_it->second.valid()) {
-    return nullptr;
+  if (it == env.type_bindings_by_text->end()) {
+    return {TypeBindingLookupStatus::Miss, nullptr};
   }
-  auto it = env.type_bindings_by_key->find(key_it->second);
-  return it != env.type_bindings_by_key->end() ? &it->second : nullptr;
+  return {TypeBindingLookupStatus::Found, &it->second};
 }
 
-bool compare_type_binding_values(const TypeSpec* legacy, const TypeSpec* advisory) {
-  if (!advisory) return true;
-  return legacy && type_binding_values_equivalent(*legacy, *advisory);
+TypeBindingLookupResult lookup_type_binding_by_key(const ConstEvalEnv& env,
+                                                   const std::string& name) {
+  if (!env.type_bindings_by_key || !env.type_binding_keys_by_name) return {};
+  auto key_it = env.type_binding_keys_by_name->find(name);
+  if (key_it == env.type_binding_keys_by_name->end()) return {};
+  if (!key_it->second.valid()) return {TypeBindingLookupStatus::Miss, nullptr};
+  auto it = env.type_bindings_by_key->find(key_it->second);
+  if (it == env.type_bindings_by_key->end()) {
+    return {TypeBindingLookupStatus::Miss, nullptr};
+  }
+  return {TypeBindingLookupStatus::Found, &it->second};
 }
 
 // Resolve a TypeSpec through type_bindings if it's a TB_TYPEDEF with a known substitution.
 TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
-  if (ts.base != TB_TYPEDEF || !ts.tag || !env.type_bindings) return ts;
+  if (ts.base != TB_TYPEDEF || !ts.tag) return ts;
   const std::string name = ts.tag;
+
+  const TypeBindingLookupResult structured = lookup_type_binding_by_key(env, name);
+  if (structured.status == TypeBindingLookupStatus::Found) return *structured.type;
+  bool has_authoritative_metadata =
+      structured.status == TypeBindingLookupStatus::Miss;
+
+  const TypeBindingLookupResult text = lookup_type_binding_by_text(env, name);
+  if (text.status == TypeBindingLookupStatus::Found) return *text.type;
+  has_authoritative_metadata =
+      has_authoritative_metadata || text.status == TypeBindingLookupStatus::Miss;
+  if (has_authoritative_metadata) return ts;
+
+  if (!env.type_bindings) return ts;
   auto it = env.type_bindings->find(name);
-  const TypeSpec* legacy = it != env.type_bindings->end() ? &it->second : nullptr;
-  (void)compare_type_binding_values(legacy, lookup_type_binding_by_text(env, name));
-  (void)compare_type_binding_values(legacy, lookup_type_binding_by_key(env, name));
-  return legacy ? *legacy : ts;
+  return it != env.type_bindings->end() ? it->second : ts;
 }
 
 TextId template_param_text_id_for_param(const Node* func_def, int param_index) {

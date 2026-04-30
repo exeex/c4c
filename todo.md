@@ -8,22 +8,21 @@ Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Route
 
 ## Just Finished
 
-Step 3 made Sema template type-parameter recognition treat recorded
-`TextId` metadata as authoritative. `is_known_template_type_param_name` now
-stops after a structured name-to-`TextId` mirror miss, including stale rendered
-parameter names whose mirror was poisoned by disagreeing `TextId`s, instead of
-re-authorizing the rendered parameter-name set. `is_current_template_type_param_name`
-keeps rendered compatibility only for matching parameters without structured
-metadata. Focused frontend coverage now corrupts same-spelling template
-type-parameter `TextId` metadata and verifies Sema rejects the stale rendered
-fallback while preserving no-metadata rendered compatibility.
+Step 3 removed rendered-name authority from consteval `TypeSpec`
+type-binding resolution when structured or `TextId` binding metadata is
+available. `resolve_type` now tries the structured binding key first, then the
+`TextId` mirror, treats either metadata miss as authoritative, and only uses the
+legacy rendered `type_bindings` map when no binding metadata is present.
+Focused frontend coverage now verifies structured and `TextId` metadata win
+over stale rendered names, metadata misses reject the stale rendered fallback,
+and no-metadata rendered compatibility still works.
 
 ## Suggested Next
 
-Continue Step 3 with the next remaining Sema rendered-name semantic lookup
-route that already has structured or `TextId` metadata; prefer a route where
-the compatibility fallback can be bounded to no-metadata references without
-touching HIR or backend carriers.
+Continue Step 3 by reviewing the remaining Sema/consteval rendered semantic
+lookup routes that already have structured or `TextId` metadata, then delegate
+one bounded route where fallback can be limited to no-metadata compatibility
+without touching HIR or backend carriers.
 
 ## Watchouts
 
@@ -40,9 +39,10 @@ touching HIR or backend carriers.
 - Namespace-qualified rendered bridges and synthetic locals without structured
   metadata remain compatibility candidates; do not collapse those routes until
   their producers carry equivalent structured metadata.
-- `TypeSpec` cast targets still do not carry their own `TextId`; the current
-  template-parameter route can only use the current function parameter metadata
-  and the global recorded mirror.
+- Consteval `TypeSpec` resolution still depends on the recorded rendered-name
+  to structured/`TextId` mirror maps to find metadata for a `TypeSpec` tag;
+  this packet made those mirrors authoritative but did not add intrinsic
+  `TypeSpec` identifier metadata.
 
 ## Proof
 
