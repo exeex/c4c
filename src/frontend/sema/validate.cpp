@@ -1227,6 +1227,7 @@ class Validator {
     if (record_key.has_value() && member_text_id != kInvalidText) {
       const bool structured = has_struct_instance_field_by_key(*record_key, member_text_id);
       (void)compare_sema_lookup_presence(legacy, structured);
+      if (structured) return true;
     }
     return legacy;
   }
@@ -1307,7 +1308,7 @@ class Validator {
     return it->second;
   }
 
-  std::optional<std::string> enclosing_method_owner_struct(const Node* fn) const {
+  std::optional<std::string> enclosing_method_owner_struct_compatibility(const Node* fn) const {
     if (const Node* record = enclosing_method_owner_record(fn)) return std::string(record->name);
     if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
       if (complete_structs_.count(*owner) || complete_unions_.count(*owner)) return owner;
@@ -1729,7 +1730,7 @@ class Validator {
     if (const Node* owner_record = enclosing_method_owner_record(fn)) {
       current_method_struct_tag_ = owner_record->name ? owner_record->name : "";
       current_method_struct_key_ = sema_symbol_name_key(owner_record);
-    } else if (auto owner = enclosing_method_owner_struct(fn); owner.has_value()) {
+    } else if (auto owner = enclosing_method_owner_struct_compatibility(fn); owner.has_value()) {
       current_method_struct_tag_ = *owner;
       current_method_struct_key_ = structured_record_key_for_tag(*owner);
     }
