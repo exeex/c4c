@@ -6344,6 +6344,32 @@ void test_parser_alias_of_alias_member_typedef_substitution_uses_structured_carr
               "alias-template member typedef substitution should consume alias-of-alias arguments through the structured carrier despite stale rendered/deferred spelling");
 }
 
+void test_typespec_mentions_template_param_uses_deferred_member_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+
+  c4c::Node owner{};
+  owner.kind = c4c::NK_STRUCT_DEF;
+  owner.n_template_params = 1;
+  owner.template_param_names = arena.alloc_array<const char*>(1);
+  owner.template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  owner.template_param_names[0] = arena.strdup("T");
+  owner.template_param_name_text_ids[0] = texts.intern("T");
+
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_STRUCT;
+  ts.tag = arena.strdup("Owner");
+  ts.deferred_member_type_name = arena.strdup("stale_rendered_member");
+  ts.deferred_member_type_text_id = owner.template_param_name_text_ids[0];
+
+  expect_true(c4c::typespec_mentions_template_param(ts, &owner),
+              "deferred owner-member dependency checks should use member TextId despite stale rendered spelling");
+
+  ts.deferred_member_type_text_id = texts.intern("Other");
+  expect_true(!c4c::typespec_mentions_template_param(ts, &owner),
+              "deferred owner-member dependency checks should reject stale rendered spelling after structured miss");
+}
+
 void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches() {
   c4c::Arena arena;
 
@@ -7453,6 +7479,7 @@ int main() {
   test_parser_alias_template_member_typedef_substitution_uses_structured_carrier();
   test_parser_qualified_alias_template_member_typedef_substitution_uses_structured_carrier();
   test_parser_alias_of_alias_member_typedef_substitution_uses_structured_carrier();
+  test_typespec_mentions_template_param_uses_deferred_member_text_id();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();

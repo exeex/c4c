@@ -8,24 +8,20 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired one bounded deferred owner-member `TypeSpec` producer gap:
-template-owner/member dependent `typename` handoff now preserves a parser-owned
-`deferred_member_type_text_id` alongside the legacy rendered
-`deferred_member_type_name`, including the alias-template RHS carrier,
-deferred member suffix carriers, and dependent `typename Owner<T>::type`
-handoff. Focused parser/Sema coverage mutates stale deferred rendered spelling
-while asserting the structured member `TextId` remains authoritative for the
-covered carrier.
+Step 3.1 repaired one bounded parser deferred owner-member consumer:
+`typespec_mentions_template_param` now uses structured template-param `TextId`
+metadata, including `TypeSpec::deferred_member_type_text_id`, before falling
+back to rendered deferred member spelling. Focused parser coverage mutates a
+deferred owner-member `TypeSpec` to stale rendered spelling, proves the member
+`TextId` still marks the dependency, and proves a structured miss rejects the
+stale rendered spelling.
 
 ## Suggested Next
 
-Continue Step 3.1 with one narrow metadata-producer packet for any remaining
-qualified `TypeSpec` production site that still carries only rendered
-qualifier/member spelling, or for a synthetic consteval local producer not
-covered by parameter, condition-local, ordinary-local, or `for`-init metadata.
-A useful next sweep target is proving whether downstream deferred
-owner-member consumers can use `deferred_member_type_text_id` everywhere before
-any rendered compatibility is removed.
+Continue Step 3.1 with one narrow parser/Sema deferred owner-member consumer
+packet around `lookup_struct_member_typedef_recursive_for_type` member-name
+matching, or record the HIR ownership boundary if the remaining stale rendered
+uses are display/mangling/HIR handoff only.
 
 ## Watchouts
 
@@ -68,6 +64,11 @@ any rendered compatibility is removed.
   rendered deferred-member compatibility until each downstream consumer is
   proven against `deferred_member_type_text_id` or an equivalent structured
   owner/member carrier.
+- `typespec_mentions_template_param` is now proven against stale rendered
+  `deferred_member_type_name` when `deferred_member_type_text_id` is present;
+  remaining parser/Sema deferred-member consumers should be checked separately
+  instead of treating this dependency-classification repair as lookup
+  resolution coverage.
 
 ## Proof
 

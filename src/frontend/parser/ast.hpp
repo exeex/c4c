@@ -504,6 +504,16 @@ inline bool node_has_template_param_name(const Node* node, const char* name) {
     return false;
 }
 
+inline bool node_has_template_param_text_id(const Node* node, TextId text_id) {
+    if (!node || text_id == kInvalidText || !node->template_param_name_text_ids) {
+        return false;
+    }
+    for (int i = 0; i < node->n_template_params; ++i) {
+        if (node->template_param_name_text_ids[i] == text_id) return true;
+    }
+    return false;
+}
+
 inline bool text_mentions_template_param(const Node* node, const char* text) {
     if (!node || !text || !text[0]) return false;
     const char* cur = text;
@@ -599,7 +609,11 @@ inline std::string template_arg_debug_text_at(const TypeSpec& ts, int index) {
 
 inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* node) {
     return node_has_template_param_name(node, ts.tag) ||
+           node_has_template_param_text_id(node, ts.tag_text_id) ||
+           node_has_template_param_text_id(node, ts.template_param_text_id) ||
            template_arg_list_mentions_template_param(ts, node) ||
+           node_has_template_param_text_id(
+               node, ts.deferred_member_type_text_id) ||
            text_mentions_template_param(node, ts.deferred_member_type_name);
 }
 
