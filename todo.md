@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4.2
-Current Step Title: Prove Direct Record Member-Typedef Lookup
+Current Step ID: Step 2.4.3
+Current Step Title: Prove Qualified Key Or Namespace-Context Lookup
 
 ## Just Finished
 
@@ -26,12 +26,19 @@ direct keys.
 
 ## Suggested Next
 
-Bounded next packet: convert one remaining reader that still enters member
-typedef lookup with rendered qualified text to a structured carrier
-(`QualifiedNameKey`, `TypeSpec::record_def`, or owner `Node`) without removing
-the compatibility mirror. Good candidates remain the `find_typedef_type(TextId)`
-qualified-spelling branch or the current-record sibling fallback, but the
-supervisor should pick the next reader based on source-idea priority.
+Bounded Step 2.4.3 executor packet: convert one qualified-key or
+namespace-context member-typedef reader, preferably `lookup_type_in_context`
+or a nearby qualified-type probe path that already has `context_id` plus
+member `TextId` / `QualifiedNameKey`, so it reads direct structured typedef
+authority without rendering `owner::member` text or reparsing qualified
+spelling.
+
+Keep `find_typedef_type(TextId)`'s qualified-spelling branch and the
+current-record sibling fallback as later/removal candidates unless the executor
+first identifies an upstream caller that can pass an existing
+`QualifiedNameKey`, namespace context, or parser qualified-name carrier. Do not
+count a local rewrite of those TextId-only boundaries as Step 2.4.3 progress if
+it still starts from rendered qualified text.
 
 ## Watchouts
 
@@ -46,6 +53,11 @@ Do not add a helper that accepts rendered `owner::member`, `std::string`, or
 `std::string_view` qualified text and splits or reparses it into owner/member
 identity. This packet added only a key builder from namespace context,
 record `TextId`, and member `TextId`.
+
+For Step 2.4.3, reject any route that merely moves the rendered qualified-text
+lookup behind a new wrapper. The converted reader should start from an existing
+structured carrier supplied by the caller: `QualifiedNameKey`,
+`QualifiedNameRef`, namespace context plus `TextId`, or record/tag metadata.
 
 ## Proof
 
