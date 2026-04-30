@@ -761,6 +761,13 @@ TypeSpec Parser::parse_base_type() {
         }
         return refs;
     };
+    auto deferred_member_lookup_name = [&](const TypeSpec& spec) -> std::string {
+        if (spec.deferred_member_type_text_id != kInvalidText) {
+            std::string name(parser_text(spec.deferred_member_type_text_id, {}));
+            if (!name.empty()) return name;
+        }
+        return spec.deferred_member_type_name ? spec.deferred_member_type_name : "";
+    };
 
     std::function<bool(const TypeSpec&, const std::string&, TextId, TypeSpec*)>
         lookup_struct_member_typedef_recursive_for_type;
@@ -2962,7 +2969,10 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                     }
                                 }
-                                if (inst->base_types[bi].deferred_member_type_name &&
+                                const std::string deferred_member_name =
+                                    deferred_member_lookup_name(
+                                        inst->base_types[bi]);
+                                if (!deferred_member_name.empty() &&
                                     inst->base_types[bi].tag &&
                                     inst->base_types[bi].tag[0]) {
                                     TypeSpec resolved_member{};
@@ -2971,7 +2981,7 @@ TypeSpec Parser::parse_base_type() {
                                             .deferred_member_type_text_id;
                                     if (lookup_struct_member_typedef_recursive_for_type(
                                             inst->base_types[bi],
-                                            inst->base_types[bi].deferred_member_type_name,
+                                            deferred_member_name,
                                             deferred_member_text_id,
                                             &resolved_member)) {
                                         resolved_member.deferred_member_type_name = nullptr;

@@ -8,20 +8,19 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired Sema `TypeSpec` equality for deferred owner-member metadata:
-`type_binding_values_equivalent` now treats a populated
-`deferred_member_type_text_id` on either side as authoritative, so rendered
-`deferred_member_type_name` equality cannot hide missing or mismatched member
-TextId metadata. Focused parser-test coverage proves matching member TextIds
-ignore stale rendered names, same rendered names are rejected when only one side
-has metadata or the TextIds mismatch, and rendered compatibility remains only
-when both sides lack member TextId metadata.
+Step 3.1 repaired the parser template-instantiation base-type deferred
+owner-member consumer in `parse_base_type`: instantiated base `TypeSpec`
+resolution now derives the lookup member spelling from populated
+`deferred_member_type_text_id` before falling back to rendered
+`deferred_member_type_name`. Focused parser coverage proves a deferred base
+member typedef carrier with member TextId metadata but no rendered member
+spelling still resolves through the structured member identity.
 
 ## Suggested Next
 
-Continue Step 3.1 by routing any remaining parser/Sema deferred-member
-consumers through populated `deferred_member_type_text_id` or equivalent
-structured owner/member metadata before removing rendered-name compatibility.
+Continue Step 3.1 by routing the next concrete parser/Sema deferred-member or
+consteval metadata consumer through populated structured/TextId metadata before
+attempting any rendered-compatibility deletion.
 
 ## Watchouts
 
@@ -67,6 +66,10 @@ structured owner/member metadata before removing rendered-name compatibility.
 - `lookup_struct_member_typedef_recursive_for_type` member-name matching is now
   proven against stale rendered `deferred_member_type_name` when a valid member
   `TextId` is present.
+- Template-instantiation base-type deferred-member resolution now accepts the
+  member `TextId` as the lookup source even when the rendered deferred-member
+  spelling is absent; keep remaining rendered `$member` template-arg strings as
+  compatibility/debug payloads until a concrete semantic consumer is proven.
 - `typespec_mentions_template_param` dependency classification is now proven
   against stale rendered `deferred_member_type_name` when a valid
   `deferred_member_type_text_id` is present. Remaining rendered deferred-member

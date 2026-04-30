@@ -2720,6 +2720,84 @@ void test_parser_deferred_member_typedef_lookup_uses_member_text_id() {
               "deferred member typedef lookup should use member TextId before stale rendered member spelling");
 }
 
+void test_parser_template_base_deferred_member_typedef_uses_member_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+  const c4c::Token box_token =
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Box");
+  const c4c::Token owner_token =
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Owner");
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+
+  c4c::Node* owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner->name = arena.strdup("Owner");
+  owner->unqualified_name = arena.strdup("Owner");
+  owner->unqualified_text_id = owner_token.text_id;
+  owner->namespace_context_id = parser.current_namespace_context_id();
+  owner->n_member_typedefs = 1;
+  owner->member_typedef_names = arena.alloc_array<const char*>(1);
+  owner->member_typedef_names[0] = arena.strdup("Alias");
+  owner->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  owner->member_typedef_types[0].array_size = -1;
+  owner->member_typedef_types[0].inner_rank = -1;
+  owner->member_typedef_types[0].base = c4c::TB_INT;
+  parser.register_struct_definition_for_testing("Owner", owner);
+
+  c4c::TypeSpec deferred_base{};
+  deferred_base.array_size = -1;
+  deferred_base.inner_rank = -1;
+  deferred_base.base = c4c::TB_STRUCT;
+  deferred_base.tag = arena.strdup("Owner");
+  deferred_base.record_def = owner;
+  deferred_base.deferred_member_type_text_id = alias_text;
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->unqualified_text_id = box_token.text_id;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = false;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+  primary->n_bases = 1;
+  primary->base_types = arena.alloc_array<c4c::TypeSpec>(1);
+  primary->base_types[0] = deferred_base;
+  parser.register_template_struct_primary(
+      parser.current_namespace_context_id(), box_token.text_id, primary);
+  parser.template_state_.template_struct_defs_by_key
+      [parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                            box_token.text_id)] = primary;
+
+  c4c::TypeSpec box_alias{};
+  box_alias.array_size = -1;
+  box_alias.inner_rank = -1;
+  box_alias.base = c4c::TB_STRUCT;
+  box_alias.tag = arena.strdup("Box");
+  parser.register_typedef_binding(box_token.text_id, box_alias, true);
+
+  parser.replace_token_stream_for_testing({
+      box_token,
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwDouble, "double"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+  });
+  const c4c::TypeSpec box_ts = parser.parse_base_type();
+  expect_true(box_ts.record_def != nullptr &&
+                  box_ts.record_def->n_bases == 1 &&
+                  box_ts.record_def->base_types &&
+                  box_ts.record_def->base_types[0].base == c4c::TB_INT,
+              "template base deferred member typedef lookup should use member TextId without rendered member spelling");
+}
+
 void test_parser_namespace_typedef_registration_stays_namespace_scoped() {
   c4c::Lexer lexer("namespace ns {\n"
                    "typedef int Alias;\n"
@@ -7519,6 +7597,7 @@ int main() {
   test_parser_c_style_cast_member_typedef_uses_structured_metadata();
   test_parser_template_instantiation_member_typedef_uses_concrete_key();
   test_parser_deferred_member_typedef_lookup_uses_member_text_id();
+  test_parser_template_base_deferred_member_typedef_uses_member_text_id();
   test_parser_namespace_typedef_registration_stays_namespace_scoped();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();
   test_parser_using_value_alias_prefers_structured_target_type();
