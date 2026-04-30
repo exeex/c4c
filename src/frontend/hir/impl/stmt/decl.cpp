@@ -1,7 +1,17 @@
 #include "stmt.hpp"
 #include "consteval.hpp"
 
+#include <cstring>
+
 namespace c4c::hir {
+
+namespace {
+
+bool is_generated_anonymous_record_tag(const char* name) {
+  return name && std::strncmp(name, "_anon_", 6) == 0;
+}
+
+}  // namespace
 
 void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   // Local function prototype (e.g. `int f1(char *);` inside a function body):
@@ -108,8 +118,15 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   const bool use_array_init_fast_path =
       is_array_with_init_list && !d.type.spec.is_vector &&
       can_fast_path_scalar_array_init(n->init);
-  auto has_decl_structured_owner_identity = [](const TypeSpec& owner_ts) {
-    return owner_ts.record_def || owner_ts.tpl_struct_origin ||
+  auto has_decl_structured_owner_identity = [&](const TypeSpec& owner_ts) {
+    const std::optional<HirRecordOwnerKey> record_owner_key =
+        (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF)
+            ? make_struct_def_node_owner_key(owner_ts.record_def)
+            : std::nullopt;
+    const bool record_def_has_structured_owner_identity =
+        record_owner_key.has_value() &&
+        !is_generated_anonymous_record_tag(owner_ts.record_def->name);
+    return record_def_has_structured_owner_identity || owner_ts.tpl_struct_origin ||
            (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0);
   };
   auto resolve_decl_structured_owner_tag =
@@ -118,22 +135,23 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     while (resolve_struct_member_typedef_if_ready(&owner_ts)) {
     }
     resolve_typedef_to_struct(owner_ts);
-    if (owner_ts.base != TB_STRUCT || owner_ts.ptr_level != 0 ||
+    if ((owner_ts.base != TB_STRUCT && owner_ts.base != TB_UNION) ||
+        owner_ts.ptr_level != 0 ||
         owner_ts.array_rank != 0) {
       return std::nullopt;
     }
+    const std::optional<HirRecordOwnerKey> record_owner_key =
+        (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF)
+            ? make_struct_def_node_owner_key(owner_ts.record_def)
+            : std::nullopt;
     if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
-      if (auto owner_key = make_struct_def_node_owner_key(owner_ts.record_def)) {
+      if (record_owner_key) {
         if (const SymbolName* owner_tag =
-                module_->find_struct_def_tag_by_owner(*owner_key)) {
+                module_->find_struct_def_tag_by_owner(*record_owner_key)) {
           if (module_->struct_defs.count(*owner_tag)) {
             return std::string(*owner_tag);
           }
         }
-      }
-      if (owner_ts.record_def->name && owner_ts.record_def->name[0] &&
-          module_->struct_defs.count(owner_ts.record_def->name)) {
-        return std::string(owner_ts.record_def->name);
       }
     }
     if (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) {
@@ -185,7 +203,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   auto resolve_decl_struct_owner_tag =
       [&](const TypeSpec& owner_ts,
           const std::string& context_name) -> std::string {
-    if (owner_ts.base != TB_STRUCT || owner_ts.ptr_level != 0 ||
+    if ((owner_ts.base != TB_STRUCT && owner_ts.base != TB_UNION) ||
+        owner_ts.ptr_level != 0 ||
         owner_ts.array_rank != 0) {
       return {};
     }

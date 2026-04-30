@@ -15,6 +15,10 @@ bool matches_trait_family(const std::string& name, const char* suffix) {
          name.compare(name.size() - std::strlen(suffix) - 2, 2, "::") == 0;
 }
 
+bool is_generated_anonymous_record_tag(const char* name) {
+  return name && std::strncmp(name, "_anon_", 6) == 0;
+}
+
 bool is_signed_trait_type(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
   switch (ts.base) {
@@ -217,11 +221,19 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
   while (resolve_struct_member_typedef_if_ready(&base_ts)) {
   }
   resolve_typedef_to_struct(base_ts);
-  if (base_ts.base != TB_STRUCT || base_ts.ptr_level != 0 || base_ts.array_rank != 0) {
+  if ((base_ts.base != TB_STRUCT && base_ts.base != TB_UNION) ||
+      base_ts.ptr_level != 0 || base_ts.array_rank != 0) {
     return std::nullopt;
   }
+  const std::optional<HirRecordOwnerKey> record_owner_key =
+      (base_ts.record_def && base_ts.record_def->kind == NK_STRUCT_DEF)
+          ? make_struct_def_node_owner_key(base_ts.record_def)
+          : std::nullopt;
+  const bool record_def_has_structured_owner_identity =
+      record_owner_key.has_value() &&
+      !is_generated_anonymous_record_tag(base_ts.record_def->name);
   const bool has_structured_owner_identity =
-      base_ts.record_def ||
+      record_def_has_structured_owner_identity ||
       (base_ts.tpl_struct_origin && base_ts.tpl_struct_origin[0]) ||
       (base_ts.tpl_struct_args.data && base_ts.tpl_struct_args.size > 0);
 
@@ -229,9 +241,9 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
     if (!base_ts.record_def || base_ts.record_def->kind != NK_STRUCT_DEF) {
       return std::nullopt;
     }
-    if (auto owner_key = make_struct_def_node_owner_key(base_ts.record_def)) {
+    if (record_owner_key) {
       if (const SymbolName* owner_tag =
-              module_->find_struct_def_tag_by_owner(*owner_key)) {
+              module_->find_struct_def_tag_by_owner(*record_owner_key)) {
         if (module_->struct_defs.count(*owner_tag)) {
           return std::string(*owner_tag);
         }

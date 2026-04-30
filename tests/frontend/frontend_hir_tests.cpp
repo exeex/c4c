@@ -1900,6 +1900,42 @@ void test_hir_member_owner_lookup_record_def_failure_does_not_use_stale_tag() {
               "member owner lookup must not return a stale rendered tag when record_def identity fails to resolve");
 }
 
+void test_hir_member_owner_lookup_generated_record_def_without_key_keeps_tag_fallback() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::C);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef generated_def;
+  generated_def.tag = "__anon_record_1";
+  generated_def.tag_text_id = module.link_name_texts->intern("__anon_record_1");
+  generated_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[generated_def.tag] = generated_def;
+
+  c4c::Node* generated_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  generated_record->name = arena.strdup("_anon_0");
+  generated_record->unqualified_name = arena.strdup("_anon_0");
+  generated_record->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::TypeSpec base{};
+  base.array_size = -1;
+  base.inner_rank = -1;
+  base.base = c4c::TB_UNION;
+  base.tag = arena.strdup("__anon_record_1");
+  base.record_def = generated_record;
+
+  const std::optional<std::string> owner_tag =
+      lowerer.resolve_member_lookup_owner_tag(
+          base, false, nullptr, nullptr, nullptr, nullptr,
+          "member-owner-generated-record-def-fallback-test");
+
+  expect_true(owner_tag.has_value() && *owner_tag == "__anon_record_1",
+              "generated anonymous aggregate record_def owners without an owner key should keep rendered tag compatibility");
+}
+
 void test_hir_member_owner_lookup_template_args_failure_does_not_use_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4777,6 +4813,7 @@ int main() {
   test_hir_member_owner_lookup_prefers_record_def_over_stale_tag();
   test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag();
   test_hir_member_owner_lookup_record_def_failure_does_not_use_stale_tag();
+  test_hir_member_owner_lookup_generated_record_def_without_key_keeps_tag_fallback();
   test_hir_member_owner_lookup_template_args_failure_does_not_use_stale_tag();
   test_hir_member_expr_owner_failure_does_not_use_stale_tag();
   test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_tag();
