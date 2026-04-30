@@ -6976,9 +6976,57 @@ void test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered
   auto metadata_miss = c4c::hir::evaluate_constant_expr(&metadata_miss_ref, env);
   expect_true(!metadata_miss.ok(),
               "consteval value lookup should reject stale rendered names after metadata misses");
+
+  c4c::Node same_spelling_text_miss_ref = ref;
+  same_spelling_text_miss_ref.name = "SameSpellingTextMiss";
+  same_spelling_text_miss_ref.unqualified_name = "SameSpellingTextMiss";
+  same_spelling_text_miss_ref.unqualified_text_id =
+      texts.intern("SameSpellingTextMiss");
+  same_spelling_text_miss_ref.namespace_context_id = -1;
+  rendered["SameSpellingTextMiss"] = 8;
+
+  auto same_spelling_text_miss =
+      c4c::hir::evaluate_constant_expr(&same_spelling_text_miss_ref, env);
+  expect_true(!same_spelling_text_miss.ok(),
+              "consteval value lookup should reject same-spelling rendered fallback after TextId metadata misses");
+
+  c4c::Node same_spelling_structured_miss_ref = ref;
+  same_spelling_structured_miss_ref.name = "SameSpellingStructuredMiss";
+  same_spelling_structured_miss_ref.unqualified_name =
+      "SameSpellingStructuredMiss";
+  same_spelling_structured_miss_ref.unqualified_text_id =
+      texts.intern("SameSpellingStructuredMiss");
+  same_spelling_structured_miss_ref.namespace_context_id = 13;
+  rendered["SameSpellingStructuredMiss"] = 9;
+
+  c4c::hir::ConstEvalEnv structured_only_env{};
+  structured_only_env.named_consts = &rendered;
+  structured_only_env.named_consts_by_key = &by_key;
+  auto same_spelling_structured_miss = c4c::hir::evaluate_constant_expr(
+      &same_spelling_structured_miss_ref, structured_only_env);
+  expect_true(!same_spelling_structured_miss.ok(),
+              "consteval value lookup should reject same-spelling rendered fallback after structured metadata misses");
+
+  c4c::Node nttp_legacy_ref = ref;
+  nttp_legacy_ref.name = "N";
+  nttp_legacy_ref.unqualified_name = "N";
+  nttp_legacy_ref.unqualified_text_id = texts.intern("N");
+  nttp_legacy_ref.namespace_context_id = -1;
+  std::unordered_map<std::string, long long> nttp_rendered;
+  nttp_rendered["N"] = 10;
+
+  c4c::hir::ConstEvalEnv nttp_compat_env = env;
+  nttp_compat_env.nttp_bindings = &nttp_rendered;
+  auto nttp_legacy =
+      c4c::hir::evaluate_constant_expr(&nttp_legacy_ref, nttp_compat_env);
+  expect_true(nttp_legacy.ok(),
+              "consteval value lookup should retain HIR-owned rendered NTTP compatibility");
+  expect_eq_int(static_cast<int>(nttp_legacy.as_int()), 10,
+                "rendered NTTP compatibility should survive unrelated value metadata misses");
 }
 
 void test_consteval_value_lookup_keeps_no_metadata_rendered_compatibility() {
+  c4c::TextTable texts;
   c4c::Node legacy_node{};
   legacy_node.kind = c4c::NK_VAR;
   legacy_node.name = "legacy";
@@ -6997,6 +7045,20 @@ void test_consteval_value_lookup_keeps_no_metadata_rendered_compatibility() {
               "consteval value lookup should retain rendered fallback without metadata");
   expect_eq_int(static_cast<int>(legacy.as_int()), 9,
                 "consteval value lookup rendered fallback should still resolve no-metadata bindings");
+
+  c4c::Node text_carrier_legacy_node = legacy_node;
+  text_carrier_legacy_node.name = "legacy_text_carrier";
+  text_carrier_legacy_node.unqualified_name = "legacy_text_carrier";
+  text_carrier_legacy_node.unqualified_text_id =
+      texts.intern("legacy_text_carrier");
+  rendered["legacy_text_carrier"] = 10;
+
+  auto text_carrier_legacy =
+      c4c::hir::evaluate_constant_expr(&text_carrier_legacy_node, env);
+  expect_true(text_carrier_legacy.ok(),
+              "consteval value lookup should keep rendered fallback when no metadata maps answer");
+  expect_eq_int(static_cast<int>(text_carrier_legacy.as_int()), 10,
+                "no-metadata rendered fallback should still tolerate a parser TextId carrier");
 }
 
 c4c::Node make_consteval_sizeof_type_node(const c4c::TypeSpec& type) {

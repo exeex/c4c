@@ -3,37 +3,38 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 3.1
-Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
+Current Step ID: Step 3.2
+Current Step Title: Delete Consteval Rendered Compatibility After Metadata Completion
 
 ## Just Finished
 
-Step 3.1 repaired the earlier parser template-argument deferred owner-member
-consumer in `parse_base_type`: actual type-argument `TypeSpec` resolution now
-derives the lookup member spelling from populated
-`deferred_member_type_text_id` before falling back to rendered
-`deferred_member_type_name`. Focused parser coverage proves a deferred member
-typedef carrier with member TextId metadata but no rendered member spelling
-still resolves through the structured member identity.
+Step 3.2 deleted the consteval value rendered-name fallback in
+`ConstEvalEnv::lookup(const Node*)` once structured or TextId value metadata
+produces an authoritative miss, including same-spelling rendered names. Focused
+parser tests now prove same-spelling TextId and structured metadata misses
+reject rendered fallback, no-metadata rendered compatibility remains, and the
+HIR-owned legacy `NttpBindings` bridge remains available when NTTP metadata maps
+themselves do not authoritatively miss.
 
 ## Suggested Next
 
-Continue Step 3.1 by routing the next concrete parser/Sema deferred-member or
-consteval metadata consumer through populated structured/TextId metadata before
-attempting any rendered-compatibility deletion.
+Run supervisor-side route review for Step 3 completion and choose the next
+bounded rendered-lookup removal packet from the remaining watchouts.
 
 ## Watchouts
 
-- Do not treat the previous consteval value/type fallback slice as closed while
-  same-spelling rendered fallback can still decide lookup after populated
-  metadata misses.
-- Same-spelling consteval local/loop compatibility remains a metadata-producer
-  target, not acceptable lookup-deletion progress.
 - Do not delete the rendered-name `eval_const_int` compatibility overload while
   HIR still passes `NttpBindings` as `std::unordered_map<std::string, long long>`.
 - Route deletion of the rendered-name `eval_const_int` compatibility overload
   through `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a
   narrower HIR metadata idea before treating it as parser/Sema closure work.
+- The `ConstEvalEnv::lookup(const Node*)` NTTP string bridge is intentionally
+  retained only for HIR-owned `nttp_bindings` compatibility when the NTTP
+  structured/TextId metadata maps themselves have not missed.
+- No-metadata consteval value rendered compatibility remains intentional for
+  producers with no structured/TextId value metadata maps.
+- Type-binding rendered bridges and HIR-owned `NttpBindings` compatibility were
+  not removed in this packet.
 - Step 3 must not count diagnostics, display, mangle/final spelling, or
   comment-only classification as semantic lookup removal.
 - Namespace-qualified rendered bridges and synthetic locals without structured
