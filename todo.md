@@ -1,52 +1,35 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/139_parser_sema_legacy_string_lookup_resweep.md
+Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Demote Parser Lookup Fallbacks Where Structured Keys Exist
+Current Step ID: Step 1
+Current Step Title: Inventory Rendered-String Semantic Authority
 
 ## Just Finished
 
-Completed Step 2 first Sema-side structured-primary packet for consteval
-function lookup.
-
-Changed `src/frontend/sema/validate.cpp` and
-`src/frontend/sema/consteval.cpp` so consteval function lookup checks the
-structured key map before returning the rendered-name map result. Rendered-name
-lookup remains the compatibility fallback when the structured mirror is absent,
-and the structured/rendered pointer comparison remains advisory.
+Rolled the branch back to `20657e1e` and rewrote the active parser/Sema idea
+away from classification/renaming work. The active contract is now removal:
+each semantic rendered-string lookup route must be deleted, replaced by
+structured metadata, or split into a metadata blocker idea.
 
 ## Suggested Next
 
-Next coherent packet: convert Sema consteval value/type binding lookup in
-`src/frontend/sema/consteval.cpp` to structured-primary for
-`ConstEvalEnv::lookup(const Node*)` and `resolve_type`, while preserving
-rendered-name compatibility fallback for missing structured bindings.
+Start with `src/frontend/parser/impl/core.cpp` and identify the first concrete
+rendered-string semantic route to remove. Candidate hot spots are typedef and
+value lookup paths that render or accept a spelling after a structured key was
+available.
 
-Suggested proof command for that packet:
-`cmake --build build --target c4cll && ctest --test-dir build -R 'cpp_(positive_sema_consteval|hir_consteval|negative_tests_bad_consteval|negative_tests_static_assert_consteval)' --output-on-failure`
+Suggested proof command for the first narrow parser packet:
+`cmake --build build --target c4cll && ctest --test-dir build -R 'cpp_(positive_parser|positive_sema|negative_tests)' --output-on-failure`
 
 ## Watchouts
 
-Do not edit HIR, LIR, BIR, or backend implementation for this frontend resweep
-except to record a separate metadata handoff blocker under `ideas/open/`.
-Rendered strings may remain for diagnostics, display, final spelling,
-compatibility input, or explicit TextId-less fallback.
-
-Parser already has many classified compatibility bridges from the prior cleanup
-series. Avoid starting with broad parser typedef fallback removal; the Sema
-consteval lookup packet is narrower and has direct structured mirrors already
-available.
-
-A strict "valid key miss returns null" version broke nested consteval calls
-because some consteval body references still have valid structured keys without
-matching structured function mirror entries. Treat those misses as compatibility
-fallbacks unless the next packet repairs the missing mirror source.
+Do not count helper renaming, comment changes, wrapper extraction, or relabeling
+as progress. Do not retain a semantic string recovery route as the final shape
+of a packet. If the structured carrier is missing, open a new metadata idea
+instead of preserving string rediscovery.
 
 ## Proof
 
-Proof passed:
-`cmake --build build --target c4cll && ctest --test-dir build -R 'cpp_(positive_sema_consteval|hir_consteval|negative_tests_bad_consteval|negative_tests_static_assert_consteval)' --output-on-failure`
-
-Proof log: `test_after.log`
+Lifecycle-only rewrite. No code validation run.

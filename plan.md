@@ -1,76 +1,77 @@
-# Parser/Sema Legacy String Lookup Resweep Runbook
+# Parser/Sema Rendered String Lookup Removal Runbook
 
 Status: Active
-Source Idea: ideas/open/139_parser_sema_legacy_string_lookup_resweep.md
+Source Idea: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 
 ## Purpose
 
-Run a second parser and Sema cleanup pass for legacy rendered-string lookup
-authority after the prior frontend cleanup series.
+Finish the parser/Sema cleanup by deleting rendered-string semantic lookup
+routes instead of renaming or reclassifying them.
 
-Goal: make parser and Sema semantic lookup structured-primary wherever
-`TextId`, namespace context ids, `QualifiedNameKey`, direct AST links,
-`TypeSpec::record_def`, or Sema owner keys already exist.
+Goal: parser/Sema semantic lookup must use direct AST links, declaration/owner
+objects, namespace context ids, `TextId`, `QualifiedNameKey`,
+`TypeSpec::record_def`, or Sema structured owner keys where those carriers are
+available.
 
 ## Core Rule
 
-Rendered strings may remain as source spelling, diagnostics, display/final
-rendering, compatibility input, or explicitly classified TextId-less fallback.
-They must not silently decide parser or Sema semantic lookup when structured
-metadata is available.
+If structured metadata is available, rendered strings must not decide parser or
+Sema semantic identity. A string-keyed semantic route is acceptable only while
+the same packet is replacing it, or while a new metadata idea is being created
+because the required carrier does not exist.
 
 ## Read First
 
-- `ideas/open/139_parser_sema_legacy_string_lookup_resweep.md`
+- `ideas/open/139_parser_sema_rendered_string_lookup_removal.md`
 - `src/frontend/parser`
 - `src/frontend/sema`
 - Parser typedef, value, tag, template, NTTP-default, and known-function lookup
   paths
-- Sema owner/member/static lookup paths
+- Sema owner/member/static/consteval lookup paths
 - Parser-to-Sema AST and semantic handoff surfaces
 
 ## Current Targets
 
-- Parser lookup maps and rendered-name fallback helpers
-- Parser compatibility mirror reads
-- Sema structured owner/member/static lookup routes
-- Parser-to-Sema metadata handoff for text identity, namespace context, record
-  identity, and owner keys
+- Parser string-keyed semantic lookup maps and rendered-name probes
+- Parser call sites that render `QualifiedNameKey` and then re-enter
+  string lookup
+- Sema consteval, owner, member, and static lookup routes that consult rendered
+  names after structured keys exist
+- Parser-to-Sema metadata handoff for `TextId`, namespace context, record
+  identity, `TypeSpec::record_def`, declaration objects, and owner keys
 - Focused frontend tests for structured-vs-rendered disagreement cases
 
 ## Non-Goals
 
 - Do not change HIR, LIR, BIR, or backend implementation except to record a
   separate metadata handoff blocker under `ideas/open/`.
-- Do not remove diagnostic, source-spelling, dump, or final emitted text
-  strings.
+- Do not remove diagnostic, source-spelling, dump, final emitted text, or
+  ABI/link-visible strings.
 - Do not weaken supported behavior, mark tests unsupported, or use
   testcase-shaped shortcuts.
-- Do not treat `TextId` alone as semantic authority when a domain key or
-  direct semantic carrier exists.
+- Do not treat helper renaming, comment changes, or wrapper extraction as
+  lookup removal.
 
 ## Working Model
 
 Parser and Sema lookup should follow this order:
 
-1. Use direct AST links, Sema structured owner keys, `QualifiedNameKey`,
-   namespace-aware keys, or other domain semantic carriers when available.
-2. Use `TextId` as stable text identity where the lookup domain makes that
-   correct.
-3. Use rendered strings only for spelling/display, producer-boundary
-   compatibility, or explicitly classified missing-metadata fallback.
-4. When a downstream cleanup needs metadata that parser/Sema cannot honestly
-   provide yet, split that bridge into a new open idea instead of expanding
-   this runbook.
+1. Use direct AST links, declaration/owner objects, Sema structured owner keys,
+   `QualifiedNameKey`, namespace-aware keys, or other domain semantic carriers.
+2. Use `TextId` only where text identity is the correct lookup domain.
+3. Use rendered strings only for non-semantic output: source spelling,
+   diagnostics, display, dumps, final emitted text, and ABI/link spelling.
+4. When a semantic lookup cannot be converted because metadata is missing,
+   create a new open idea for that producer/consumer contract and remove the
+   string rediscovery goal from this packet.
 
 ## Execution Rules
 
-- Start with inventory and classification before deleting or converting
-  fallbacks.
-- Keep each implementation packet narrow and prove it with a fresh build or
-  focused frontend test subset.
-- Prefer semantic lowering and structured key propagation over named-case
-  matching.
+- Start each packet by naming the exact rendered-string semantic route being
+  removed.
+- The packet must either delete that route, replace it with structured
+  metadata, or open a metadata blocker idea.
+- Do not present renamed helpers or newly labeled string wrappers as progress.
 - Tests should cover same-feature drifted-string behavior, not only one narrow
   testcase.
 - Update `todo.md` for packet progress; rewrite this runbook only when the
@@ -78,93 +79,96 @@ Parser and Sema lookup should follow this order:
 
 ## Steps
 
-### Step 1: Inventory Parser and Sema String Lookup Authority
+### Step 1: Inventory Rendered-String Semantic Authority
 
 Goal: identify parser and Sema paths where rendered strings still decide
-semantic lookup despite available structured metadata.
+semantic lookup.
 
 Primary target: `src/frontend/parser` and `src/frontend/sema`.
 
 Actions:
 
-- Search for `std::string` keyed lookup maps, rendered-name fallback helpers,
-  and compatibility mirror reads in parser and Sema.
-- Classify each string surface as semantic authority, display/diagnostic,
-  final spelling, compatibility input, TextId-less fallback, or local scratch.
+- Search for string-keyed semantic maps, rendered-name probes, and helper paths
+  that re-enter lookup through spelling.
+- Classify only two outcomes for each semantic route: removable now, or blocked
+  by missing metadata.
 - Trace parser typedef, value, tag, template, NTTP-default, and known-function
   lookup paths.
-- Trace Sema owner/member/static lookup paths that fall back from structured
-  keys to rendered names.
-- Identify the smallest first implementation packet that converts or demotes
-  one real semantic lookup path.
+- Trace Sema owner/member/static/consteval lookup paths.
+- Choose the smallest first packet that deletes or structurally replaces one
+  real string authority route.
 
 Completion check:
 
-- `todo.md` records the selected first implementation packet and proof command
-  for supervisor delegation.
-- The inventory distinguishes structured-primary, legitimate string, and
-  suspicious string-authority routes.
+- `todo.md` records the selected first removal packet and proof command.
+- The inventory does not bless semantic string lookup as a retained outcome.
 
-### Step 2: Demote Parser Lookup Fallbacks Where Structured Keys Exist
+### Step 2: Remove Parser Rendered-String Semantic Lookup Routes
 
-Goal: make parser lookup routes prefer existing structured carriers over
-rendered names.
+Goal: parser lookup must not render a structured key and then use the rendered
+spelling as semantic authority.
 
 Primary target: parser typedef, value, tag, template, NTTP-default, and
 known-function lookup paths with existing structured alternatives.
 
 Actions:
 
-- Route lookups through `TextId`, namespace context ids, `QualifiedNameKey`, or
-  direct AST links where those carriers already exist.
-- Keep rendered-name mirrors only as compatibility fallback or spelling data.
-- Make structured/rendered disagreement observable when practical.
+- Convert lookups to `TextId`, namespace context ids, `QualifiedNameKey`,
+  direct AST links, or `TypeSpec::record_def` where those carriers already
+  exist.
+- Delete string re-entry after structured-key misses when the caller supplied a
+  valid structured carrier.
+- Where deletion exposes missing producer metadata, create a new open idea
+  instead of keeping string rediscovery.
 - Add focused parser tests for drifted rendered spelling where structured
-  metadata should win.
+  metadata must win.
 
 Completion check:
 
-- Covered parser paths are structured-primary.
-- Compatibility fallback behavior remains explicit and tested where retained.
+- Covered parser paths no longer use rendered spelling as alternate semantic
+  authority.
+- New metadata blockers, if any, are represented as separate open ideas.
 - Narrow parser tests and a fresh build pass.
 
-### Step 3: Tighten Sema Owner, Member, and Static Lookup Authority
+### Step 3: Remove Sema Rendered-String Owner And Consteval Lookup Routes
 
-Goal: prevent Sema structured owner/member/static lookup from silently falling
-back to rendered names when owner keys or direct semantic carriers are present.
+Goal: Sema owner/member/static/consteval lookup must not consult rendered names
+after owner keys, AST nodes, declarations, or structured maps are available.
 
-Primary target: Sema owner/member/static lookup paths and structured owner key
+Primary target: Sema owner/member/static lookup paths and consteval lookup
 helpers.
 
 Actions:
 
 - Inspect structured owner key construction and lookup call sites.
-- Convert fallback paths to structured-primary lookup where the producer
-  already supplies owner or record identity.
-- Preserve rendered names for diagnostics and compatibility inputs.
+- Convert rendered-name probes to structured owner/member/static lookups where
+  producer metadata already exists.
+- Remove string recovery from consteval function/value/type lookup where the
+  `Node*`, declaration, or structured key is available.
 - Add focused Sema tests for same-feature structured-vs-rendered disagreement.
 
 Completion check:
 
-- Covered Sema paths use structured owner/member/static lookup authority.
-- Retained rendered-name fallback is classified and guarded.
+- Covered Sema paths use structured semantic authority only.
+- Any missing mirror or producer metadata is recorded as a new open idea.
 - Narrow Sema tests and a fresh build pass.
 
 ### Step 4: Repair Parser-to-Sema Metadata Handoff Gaps
 
 Goal: prevent parser-to-Sema handoff from dropping metadata and forcing later
-rendered-string rediscovery.
+string rediscovery.
 
 Primary target: AST and semantic handoff fields carrying `TextId`, namespace
-context, record identity, `TypeSpec::record_def`, and owner keys.
+context, record identity, `TypeSpec::record_def`, declarations, and owner keys.
 
 Actions:
 
-- Trace handoff for typedefs, values, records, templates, NTTP defaults,
-  known functions, members, and static members.
+- Trace handoff for typedefs, values, records, templates, NTTP defaults, known
+  functions, members, static members, and consteval references.
 - Preserve existing structured metadata through parser-to-Sema boundaries.
-- If a required cross-module carrier is missing, create a separate
-  `ideas/open/` follow-up instead of widening this plan.
+- Add missing fields only when the producer and consumer contract is clear and
+  scoped to parser/Sema.
+- Create separate open ideas for larger cross-module carriers.
 - Add tests where handoff preserves structured identity despite drifted
   rendered spelling.
 
@@ -174,32 +178,28 @@ Completion check:
 - New metadata blockers, if any, are represented as separate open ideas.
 - Focused frontend tests and a fresh build pass.
 
-### Step 5: Consolidate Classification and Compatibility Guards
+### Step 5: Audit For Rename-Only Or Wrapper-Only Work
 
-Goal: make retained parser/Sema string surfaces explicit and difficult to
-mistake for semantic authority.
-
-Primary target: helper names, comments, fallback wrappers, and tests around
-retained string lookup surfaces.
+Goal: ensure the plan did not replace old rendered-string authority with a
+newly named equivalent.
 
 Actions:
 
-- Rename or extract helpers where needed so call sites distinguish structured
-  lookup, compatibility fallback, and display/final spelling.
-- Remove duplicated ad hoc rendered-name fallback logic from paths that can use
-  a central structured-primary helper.
-- Keep concise comments only where they prevent future authority drift.
+- Inspect the diff for helper-only renames, comment-only classification, or
+  string wrappers still reachable from semantic lookup call sites.
+- Search parser/Sema for rendered-name semantic probes introduced or retained
+  by this work.
+- Reject any packet whose main effect is rewording rather than removal.
 - Confirm tests do not rely on rendered-name authority after structured
   metadata is available.
 
 Completion check:
 
-- Retained parser/Sema string surfaces are classified by role.
-- Callers no longer silently prefer rendered strings over available structured
-  metadata.
+- No helper-only rename packet is counted as progress.
+- Remaining parser/Sema string uses are non-semantic output or source spelling.
 - A broader frontend validation checkpoint passes.
 
-### Step 6: Final Frontend Coverage and Regression Check
+### Step 6: Final Frontend Coverage And Regression Check
 
 Goal: prove the source idea acceptance criteria without relying on one named
 testcase.
@@ -211,11 +211,11 @@ Actions:
 - Run a broader frontend validation command selected by the supervisor, such as
   a frontend-focused `ctest` subset or matching `c4c-regression-guard` scope.
 - Inspect the diff for unsupported expectation downgrades, narrow named-case
-  shortcuts, or unclassified semantic string authority.
+  shortcuts, or retained semantic string authority.
 
 Completion check:
 
 - Acceptance criteria from the source idea are satisfied.
 - `todo.md` records proof commands and results.
 - The supervisor has enough evidence to decide whether the source idea can be
-  closed or needs another runbook.
+  closed or must split remaining metadata blockers into new ideas.

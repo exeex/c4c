@@ -6,7 +6,7 @@ Created: 2026-04-30
 Parent Ideas:
 - [124_hir_legacy_string_lookup_removal_convergence.md](/workspaces/c4c/ideas/closed/124_hir_legacy_string_lookup_removal_convergence.md)
 - [136_hir_structured_record_template_lookup_authority_cleanup.md](/workspaces/c4c/ideas/closed/136_hir_structured_record_template_lookup_authority_cleanup.md)
-- [139_parser_sema_legacy_string_lookup_resweep.md](/workspaces/c4c/ideas/open/139_parser_sema_legacy_string_lookup_resweep.md)
+- [139_parser_sema_rendered_string_lookup_removal.md](/workspaces/c4c/ideas/open/139_parser_sema_rendered_string_lookup_removal.md)
 
 ## Goal
 
@@ -59,4 +59,3 @@ This idea is the HIR leg of the second 123-to-126 style cleanup sequence.
 - Remaining HIR string surfaces are classified as display, diagnostics, dump,
   final spelling, compatibility, local scratch, or unresolved metadata boundary.
 - Cross-module metadata blockers are represented as open ideas.
-
