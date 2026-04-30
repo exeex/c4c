@@ -977,6 +977,7 @@ void Parser::register_synthesized_typedef_binding(TextId name_text_id) {
     synthesized_ts.inner_rank = -1;
     synthesized_ts.base = TB_TYPEDEF;
     synthesized_ts.tag = arena_.strdup(std::string(resolved_name).c_str());
+    synthesized_ts.tag_text_id = name_text_id;
     register_typedef_binding(name_text_id, synthesized_ts, false);
 }
 

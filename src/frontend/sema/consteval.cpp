@@ -105,6 +105,16 @@ TypeBindingLookupResult lookup_type_binding_by_text(const ConstEvalEnv& env,
   return {TypeBindingLookupStatus::Found, &it->second};
 }
 
+TypeBindingLookupResult lookup_type_binding_by_text_id(const ConstEvalEnv& env,
+                                                       TextId text_id) {
+  if (!env.type_bindings_by_text || text_id == kInvalidText) return {};
+  auto it = env.type_bindings_by_text->find(text_id);
+  if (it == env.type_bindings_by_text->end()) {
+    return {TypeBindingLookupStatus::Miss, nullptr};
+  }
+  return {TypeBindingLookupStatus::Found, &it->second};
+}
+
 TypeBindingLookupResult lookup_type_binding_by_key(const ConstEvalEnv& env,
                                                    const std::string& name) {
   if (!env.type_bindings_by_key || !env.type_binding_keys_by_name) return {};
@@ -127,6 +137,12 @@ TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (structured.status == TypeBindingLookupStatus::Found) return *structured.type;
   bool has_authoritative_metadata =
       structured.status == TypeBindingLookupStatus::Miss;
+
+  const TypeBindingLookupResult intrinsic_text =
+      lookup_type_binding_by_text_id(env, ts.tag_text_id);
+  if (intrinsic_text.status == TypeBindingLookupStatus::Found) return *intrinsic_text.type;
+  has_authoritative_metadata =
+      has_authoritative_metadata || intrinsic_text.status == TypeBindingLookupStatus::Miss;
 
   const TypeBindingLookupResult text = lookup_type_binding_by_text(env, name);
   if (text.status == TypeBindingLookupStatus::Found) return *text.type;

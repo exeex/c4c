@@ -2870,6 +2870,7 @@ Node* parse_top_level(Parser& parser) {
                     for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
                     base_ts.base = TB_TYPEDEF;
                     base_ts.tag = parser.arena_.strdup(spelled.c_str());
+                    base_ts.tag_text_id = name_text_id;
                     parser.consume();
                     goto top_level_base_ready;
                 }
@@ -2887,6 +2888,7 @@ Node* parse_top_level(Parser& parser) {
                     for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
                     base_ts.base = TB_TYPEDEF;
                     base_ts.tag = parser.arena_.strdup(spelled.c_str());
+                    base_ts.tag_text_id = name_text_id;
                     parser.consume();
                     goto top_level_base_ready;
                 }

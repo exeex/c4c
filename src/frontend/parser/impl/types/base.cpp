@@ -1390,6 +1390,9 @@ TypeSpec Parser::parse_base_type() {
                                 visible_type ? visible_name_spelling(visible_type)
                                              : std::string(name);
                             ts.tag = arena_.strdup(resolved.c_str());
+                            ts.tag_text_id = visible_type && visible_type.base_text_id != kInvalidText
+                                                 ? visible_type.base_text_id
+                                                 : name_text_id;
                             consume();
                         }
                         done = true;
@@ -1406,6 +1409,7 @@ TypeSpec Parser::parse_base_type() {
                         has_typedef = true;
                         const std::string spelled(name);
                         ts.tag = arena_.strdup(spelled.c_str());
+                        ts.tag_text_id = name_text_id;
                         consume();
                         done = true;
                     } else {
@@ -2163,6 +2167,7 @@ TypeSpec Parser::parse_base_type() {
                     if (parse_template_argument_list(&ignored_args)) {
                         ts.base = TB_TYPEDEF;
                         ts.tag = tname;
+                        ts.tag_text_id = tname_text_id;
                         ts.array_size = -1;
                         ts.array_rank = 0;
                         return ts;

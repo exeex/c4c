@@ -101,6 +101,7 @@ struct TypeSpec {
     // parser, Sema, HIR, and diagnostics where no TextId-backed authority
     // exists yet.
     const char* tag;         // struct/union/enum tag or typedef name (may be null)
+    TextId tag_text_id;      // parser-owned identity for tag/typedef names when available
 
     // Cross-stage type contract: parser-owned record identity for structured
     // type names.

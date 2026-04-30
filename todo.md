@@ -8,18 +8,20 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired the parser ordinary local-declaration metadata producer:
-`parse_local_decl` now copies the declarator identifier `TextId` and
-unqualified source name onto each produced `NK_DECL` node, and local variable
-type binding reuses that same `TextId`. Focused consteval tests cover ordinary
-locals and `for`-init locals where declaration/reference rendered names are
-stale but binding/readback still uses `TextId` metadata.
+Step 3.1 repaired a bounded consteval `TypeSpec` metadata producer route:
+`TypeSpec` now carries parser-owned `tag_text_id` metadata for typedef/template
+parameter names, synthesized template-parameter typedef bindings populate that
+carrier, and consteval type binding resolution can use `TypeSpec::tag_text_id`
+directly against `type_bindings_by_text` without rendered-name-to-`TextId`
+mirror maps for `sizeof(T)`-style template parameter TypeSpecs. Focused tests
+cover parser preservation of the carrier and consteval lookup with a stale
+rendered `TypeSpec::tag` while no rendered-name text mirror is installed.
 
 ## Suggested Next
 
 Continue Step 3.1 with one bounded metadata-producer packet for any remaining
-synthetic local or `TypeSpec` intrinsic identifier metadata before attempting
-any consteval rendered-fallback deletion.
+synthetic local or qualified/structured `TypeSpec` carrier gap before
+attempting broad consteval rendered-fallback deletion.
 
 ## Watchouts
 
@@ -38,10 +40,11 @@ any consteval rendered-fallback deletion.
 - Namespace-qualified rendered bridges and synthetic locals without structured
   metadata remain compatibility candidates; do not collapse those routes until
   their producers carry equivalent structured metadata.
-- Consteval `TypeSpec` resolution still depends on the recorded rendered-name
-  to structured/`TextId` mirror maps to find metadata for a `TypeSpec` tag;
-  Step 3.1 owns either adding intrinsic `TypeSpec` identifier metadata for a
-  bounded route or parking the exact missing producer.
+- Consteval `TypeSpec` resolution no longer needs rendered-name-to-`TextId`
+  mirror maps for the covered unqualified template-parameter `sizeof(T)` route,
+  but structured-key lookup still uses the existing rendered-name-to-key mirror
+  because `TypeSpec` does not yet carry the function-template owner/parameter
+  index needed to build `TypeBindingStructuredKey` intrinsically.
 - Consteval interpreter locals may still need same-spelling rendered
   compatibility for synthetic local producers not covered by parameter,
   condition-local, ordinary-local, or `for`-init local declaration metadata.
@@ -53,4 +56,4 @@ any consteval rendered-fallback deletion.
 Passed:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*)$' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: `test_after.log`.
+Proof log: `test_after.log` (464 tests passed).

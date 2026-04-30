@@ -6786,6 +6786,80 @@ c4c::TypeSpec make_consteval_typedef_ref(c4c::Arena& arena,
   return ts;
 }
 
+void test_parser_consteval_sizeof_type_preserves_typedef_text_metadata() {
+  c4c::Lexer lexer("template<typename T>\n"
+                   "consteval int width() { return sizeof(T); }\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parse_top_level(parser);
+  expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION,
+              "consteval TypeSpec metadata fixture should parse as a function");
+  expect_true(fn->n_template_params == 1 && fn->template_param_name_text_ids,
+              "consteval TypeSpec metadata fixture should retain template parameter TextIds");
+  expect_true(fn->body && fn->body->kind == c4c::NK_BLOCK &&
+                  fn->body->n_children == 1 && fn->body->children[0] &&
+                  fn->body->children[0]->kind == c4c::NK_RETURN &&
+                  fn->body->children[0]->left &&
+                  fn->body->children[0]->left->kind == c4c::NK_SIZEOF_TYPE,
+              "consteval TypeSpec metadata fixture should return sizeof(T)");
+
+  c4c::Node* sizeof_type = fn->body->children[0]->left;
+  const c4c::TextId t_text = lexer.text_table().intern("T");
+  expect_true(sizeof_type->type.base == c4c::TB_TYPEDEF,
+              "sizeof(T) should carry a typedef TypeSpec");
+  expect_eq(sizeof_type->type.tag, "T",
+            "sizeof(T) should preserve the source typedef spelling");
+  expect_true(sizeof_type->type.tag_text_id == t_text,
+              "sizeof(T) TypeSpec should carry intrinsic typedef TextId metadata");
+}
+
+void test_consteval_type_binding_lookup_uses_typespec_text_metadata_without_name_mirrors() {
+  c4c::Lexer lexer("template<typename T>\n"
+                   "consteval int width() { return sizeof(T); }\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parse_top_level(parser);
+  expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION,
+              "consteval TypeSpec lookup fixture should parse as a function");
+  c4c::Node* sizeof_type = fn->body->children[0]->left;
+  sizeof_type->type.tag = arena.strdup("stale_rendered_T");
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
+  callee->name = arena.strdup("width");
+  callee->has_template_args = true;
+  callee->n_template_args = 1;
+  callee->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+  callee->template_arg_types[0] = make_sema_lookup_ts(c4c::TB_LONGLONG);
+
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  c4c::hir::TypeBindingTextMap by_text;
+  c4c::hir::ConstEvalEnv outer_env{};
+  c4c::hir::ConstEvalEnv call_env = c4c::hir::bind_consteval_call_env(
+      callee, fn, outer_env, &type_bindings, &nttp_bindings, &by_text);
+  type_bindings["stale_rendered_T"] = make_sema_lookup_ts(c4c::TB_INT);
+
+  expect_true(call_env.type_bindings_by_text == &by_text,
+              "consteval call binding should expose TypeSpec TextId bindings");
+  expect_true(call_env.type_binding_text_ids_by_name == nullptr,
+              "consteval TypeSpec lookup fixture should not install rendered-name TextId mirrors");
+
+  std::unordered_map<std::string, const c4c::Node*> consteval_fns;
+  auto result = c4c::hir::evaluate_consteval_call(fn, {}, call_env, consteval_fns);
+  expect_true(result.ok(),
+              "consteval TypeSpec lookup should evaluate through intrinsic TypeSpec TextId metadata");
+  expect_eq_int(static_cast<int>(result.as_int()), 8,
+                "stale rendered TypeSpec tag must not select the rendered type binding");
+}
+
 void test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -7247,6 +7321,8 @@ int main() {
   test_consteval_for_init_local_binding_uses_text_metadata_over_stale_rendered_name();
   test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name();
   test_consteval_value_lookup_keeps_no_metadata_rendered_compatibility();
+  test_parser_consteval_sizeof_type_preserves_typedef_text_metadata();
+  test_consteval_type_binding_lookup_uses_typespec_text_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
   test_consteval_type_binding_lookup_keeps_no_metadata_rendered_compatibility();
   test_consteval_function_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
