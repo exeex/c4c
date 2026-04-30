@@ -791,7 +791,11 @@ TypeSpec Parser::parse_base_type() {
                     if (!sdef || sdef->n_member_typedefs <= 0) return false;
                     for (int i = 0; i < sdef->n_member_typedefs; ++i) {
                         const char* name = sdef->member_typedef_names[i];
-                        if (name && member == name) {
+                        const bool name_matches =
+                            member_text_id != kInvalidText
+                                ? find_parser_text_id(name ? name : "") == member_text_id
+                                : (name && member == name);
+                        if (name_matches) {
                             *out = sdef->member_typedef_types[i];
                             return true;
                         }
@@ -939,14 +943,23 @@ TypeSpec Parser::parse_base_type() {
                         if (!selected || selected->n_member_typedefs <= 0) return false;
                         for (int i = 0; i < selected->n_member_typedefs; ++i) {
                             const char* name = selected->member_typedef_names[i];
-                            if (!name || member != name) continue;
+                            const bool name_matches =
+                                member_text_id != kInvalidText
+                                    ? find_parser_text_id(name ? name : "") ==
+                                          member_text_id
+                                    : (name && member == name);
+                            if (!name_matches) continue;
                             TypeSpec selected_member_ts =
                                 selected->member_typedef_types[i];
                             bool substituted_type = false;
                             *out = apply_template_bindings(
                                 selected_member_ts,
                                 type_bindings, nttp_bindings, &substituted_type);
-                            if (!substituted_type && member == "type" &&
+                            const bool is_type_member =
+                                member_text_id != kInvalidText
+                                    ? find_parser_text_id("type") == member_text_id
+                                    : member == "type";
+                            if (!substituted_type && is_type_member &&
                                 type_bindings.size() == 1) {
                                 *out = type_bindings.front().second;
                             }

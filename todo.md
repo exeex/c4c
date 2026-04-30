@@ -8,20 +8,21 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired one bounded parser deferred owner-member consumer:
-`typespec_mentions_template_param` now uses structured template-param `TextId`
-metadata, including `TypeSpec::deferred_member_type_text_id`, before falling
-back to rendered deferred member spelling. Focused parser coverage mutates a
-deferred owner-member `TypeSpec` to stale rendered spelling, proves the member
-`TextId` still marks the dependency, and proves a structured miss rejects the
-stale rendered spelling.
+Step 3.1 repaired the bounded parser deferred owner-member lookup consumer
+around `lookup_struct_member_typedef_recursive_for_type`: record-member and
+selected-specialization member typedef scans now prefer
+`deferred_member_type_text_id`/member `TextId` matching before rendered
+`deferred_member_type_name`. Focused parser coverage feeds a stale rendered
+deferred member spelling through a typedef-backed template argument and proves
+the valid member `TextId` still resolves the member typedef.
 
 ## Suggested Next
 
-Continue Step 3.1 with one narrow parser/Sema deferred owner-member consumer
-packet around `lookup_struct_member_typedef_recursive_for_type` member-name
-matching, or record the HIR ownership boundary if the remaining stale rendered
-uses are display/mangling/HIR handoff only.
+Continue Step 3.1 by checking the remaining parser/Sema
+`deferred_member_type_name` uses in `parse_base_type` that concatenate or carry
+rendered spellings for dependency refs, diagnostics, or downstream handoff; if
+they are display/mangling/HIR handoff only, record that ownership boundary
+without editing HIR.
 
 ## Watchouts
 
@@ -69,6 +70,12 @@ uses are display/mangling/HIR handoff only.
   remaining parser/Sema deferred-member consumers should be checked separately
   instead of treating this dependency-classification repair as lookup
   resolution coverage.
+- `lookup_struct_member_typedef_recursive_for_type` member-name matching is now
+  proven against stale rendered `deferred_member_type_name` when a valid member
+  `TextId` is present. The remaining rendered deferred-member uses found in
+  this packet are parser display/reference-string construction or handoff
+  payloads; do not classify them as semantic lookup removal without proving a
+  concrete parser/Sema consumer.
 
 ## Proof
 
