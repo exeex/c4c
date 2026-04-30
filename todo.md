@@ -8,45 +8,54 @@ Current Step Title: Consolidate Fallback and Mismatch Reporting
 
 ## Just Finished
 
-Step 4 global initializer layout coverage completed for idea 138. Existing
-global lowering already passes `BackendStructuredLayoutTable` through
-`lower_minimal_global()` into `lower_aggregate_initializer()`; focused coverage
-now proves the real global lowering route uses structured i32 layout data when
-a mismatched legacy `%struct.Pair` shadow exists, emits the structured-vs-legacy
-parity note, and preserves the legacy i64 `TypeDeclMap` fallback when no
-structured declaration exists.
+Step 5 fallback/mismatch API trace completed for idea 138. The central
+structured layout table already records `structured_layout`, `legacy_layout`,
+`legacy_found`, `structured_found`, and parity state in
+`BackendStructuredLayoutEntry`, and module lowering reports parity mismatches
+through `report_backend_structured_layout_parity_notes()`. The gap is that
+`lookup_backend_aggregate_type_layout()` returns only `AggregateTypeLayout`, so
+callers can observe the selected shape but not whether it was
+structured-primary, legacy fallback, or a structured/text mismatch case.
 
 ## Suggested Next
 
-Execute Step 5 by consolidating aggregate layout fallback and mismatch reporting
-around the shared lookup/text-parsing helpers. Start from the Step 4 finding
-that global lowering already routes structured layout data through
-`BackendStructuredLayoutTable` into `lower_aggregate_initializer()`, while the
-empty-table case must keep the legacy `TypeDeclMap` fallback for raw or
-hand-built LIR.
+Smallest first Step 5 implementation packet:
 
-Suggested first packet:
+Introduce a narrow lookup-result wrapper for the central backend aggregate
+layout helper, for example `BackendAggregateLayoutLookup`, containing the
+selected `AggregateTypeLayout` plus source/status facts such as
+structured-primary, legacy fallback used, and structured/text mismatch visible.
+Add a compatibility accessor or wrapper so existing layout consumers can keep
+using the selected layout while focused tests assert the new status for:
+matching structured table, mismatched structured table, and empty-table legacy
+fallback. Keep the first packet in `src/backend/bir/lir_to_bir/lowering.hpp`,
+`src/backend/bir/lir_to_bir/types.cpp`, and
+`tests/backend/backend_prepare_structured_context_test.cpp`; do not rewrite the
+memory/global/aggregate call sites yet.
 
-- Inspect the aggregate layout lookup helper APIs and callers for duplicated
-  fallback or mismatch handling.
-- Tighten names or result shapes so callers can distinguish
-  structured-primary, fallback-used, and structured/text mismatch cases without
-  reparsing final `%type` text.
-- Preserve final emitted text, diagnostics, and dumps as display/emission
-  concerns only.
-- Prove focused mismatch/fallback visibility, then run the broader backend/LIR
-  checkpoint selected by the supervisor.
+Exact proof command for that packet:
+`cmake --build build --target backend_prepare_structured_context_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_prepare_structured_context$' --output-on-failure >> test_after.log 2>&1`.
 
 ## Watchouts
 
-Step 4 required no production change. `global_initializers.cpp` still needs the
-legacy fallback path because module lowering always supplies a structured layout
-table, but that table is empty when `struct_decls` is absent and
-`lookup_backend_aggregate_type_layout()` then falls back to `TypeDeclMap`.
+Structured-primary lookup itself is centralized in `types.cpp`, but the
+optional-table wrapper pattern is duplicated in `aggregate.cpp`,
+`global_initializers.cpp`, `globals.cpp`, `memory/addressing.cpp`,
+`memory/local_gep.cpp`, and `memory/local_slots.cpp`. Those wrappers are a good
+later cleanup only after the central lookup result shape exists.
+
+Mismatch reporting is currently module-level and table-wide: module lowering
+builds `BackendStructuredLayoutTable`, calls
+`report_backend_structured_layout_parity_notes()`, then passes the table into
+global and function lowering. That keeps mismatches visible for real module
+lowering, but direct helper users and projection tests can only infer mismatch
+behavior from returned layout shape. Preserve raw/hand-built LIR compatibility:
+when the structured table is empty or lacks the `%struct.*` key,
+`compute_aggregate_type_layout()` must remain the legacy `TypeDeclMap` fallback.
 
 ## Proof
 
-Proof passed for this Step 4 packet:
-`cmake --build build --target backend_prepare_structured_context_test backend_lir_to_bir_notes_test > test_after.log 2>&1 && ctest --test-dir build -R '^(backend_prepare_structured_context|backend_lir_to_bir_notes)$' --output-on-failure >> test_after.log 2>&1`.
+Proof for this Step 5 trace packet:
+`git diff --check -- todo.md`.
 
-Proof log: `test_after.log`.
+This delegated packet is docs/state only and does not produce `test_after.log`.
