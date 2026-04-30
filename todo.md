@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/138_lir_bir_backend_aggregate_layout_type_decl_text_bridge_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Move Aggregate Initializer Layout Consumers Off Text Authority
+Current Step ID: Step 4
+Current Step Title: Move Global Initializer Layout Consumers Off Text Authority
 
 ## Just Finished
 
@@ -17,9 +17,9 @@ the legacy i64 `TypeDeclMap` fallback.
 
 ## Suggested Next
 
-Next coherent packet: execute Step 4 by making global initializer layout
-coverage prove structured-present behavior, structured-missing fallback, and
-mismatch visibility through the global lowering route that calls
+Current Step 4 packet: make global initializer layout coverage prove
+structured-present behavior, structured-missing fallback, and mismatch
+visibility through the global lowering route that calls
 `lower_aggregate_initializer()`.
 
 Suggested proof for that packet:
