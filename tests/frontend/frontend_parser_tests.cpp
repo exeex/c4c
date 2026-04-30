@@ -6601,6 +6601,85 @@ void test_consteval_condition_decl_binding_uses_text_metadata_over_stale_rendere
                 "stale rendered condition-local names should not block TextId lookup");
 }
 
+void test_consteval_local_decl_binding_uses_text_metadata_over_stale_rendered_name() {
+  c4c::Lexer lexer("consteval int id() {\n"
+                   "  int value = 7;\n"
+                   "  return value;\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parse_top_level(parser);
+  expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION && fn->body &&
+                  fn->body->kind == c4c::NK_BLOCK && fn->body->n_children == 2,
+              "consteval local-declaration fixture should parse as a function body");
+  c4c::Node* decl = fn->body->children[0];
+  c4c::Node* ret = fn->body->children[1];
+  expect_true(decl && decl->kind == c4c::NK_DECL && ret &&
+                  ret->kind == c4c::NK_RETURN && ret->left &&
+                  ret->left->kind == c4c::NK_VAR,
+              "consteval local-declaration fixture should retain the declaration and reference");
+
+  decl->name = arena.strdup("stale_local_decl_rendering");
+  ret->left->name = arena.strdup("stale_local_ref_rendering");
+
+  std::unordered_map<std::string, const c4c::Node*> consteval_fns;
+  c4c::hir::ConstEvalEnv env{};
+  auto result = c4c::hir::evaluate_consteval_call(fn, {}, env, consteval_fns);
+
+  expect_true(result.ok(),
+              "consteval local declaration binding should evaluate through TextId metadata");
+  expect_eq_int(static_cast<int>(result.as_int()), 7,
+                "stale rendered local declaration names should not block TextId lookup");
+}
+
+void test_consteval_for_init_local_binding_uses_text_metadata_over_stale_rendered_name() {
+  c4c::Lexer lexer("consteval int id() {\n"
+                   "  for (int value = 8; value; value = 0) { return value; }\n"
+                   "  return 0;\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parse_top_level(parser);
+  expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION && fn->body &&
+                  fn->body->kind == c4c::NK_BLOCK && fn->body->n_children >= 1,
+              "consteval for-local fixture should parse as a function body");
+  c4c::Node* for_node = fn->body->children[0];
+  expect_true(for_node && for_node->kind == c4c::NK_FOR && for_node->init &&
+                  for_node->init->kind == c4c::NK_DECL && for_node->cond &&
+                  for_node->cond->kind == c4c::NK_VAR && for_node->body &&
+                  for_node->body->kind == c4c::NK_BLOCK &&
+                  for_node->body->n_children == 1 &&
+                  for_node->body->children[0] &&
+                  for_node->body->children[0]->kind == c4c::NK_RETURN &&
+                  for_node->body->children[0]->left &&
+                  for_node->body->children[0]->left->kind == c4c::NK_VAR,
+              "consteval for-local fixture should retain the init declaration and references");
+
+  c4c::Node* decl = for_node->init;
+  c4c::Node* condition_ref = for_node->cond;
+  c4c::Node* returned_ref = for_node->body->children[0]->left;
+  decl->name = arena.strdup("stale_for_decl_rendering");
+  condition_ref->name = arena.strdup("stale_for_condition_rendering");
+  returned_ref->name = arena.strdup("stale_for_return_rendering");
+
+  std::unordered_map<std::string, const c4c::Node*> consteval_fns;
+  c4c::hir::ConstEvalEnv env{};
+  auto result = c4c::hir::evaluate_consteval_call(fn, {}, env, consteval_fns);
+
+  expect_true(result.ok(),
+              "consteval for-init local binding should evaluate through TextId metadata");
+  expect_eq_int(static_cast<int>(result.as_int()), 8,
+                "stale rendered for-init local names should not block TextId lookup");
+}
+
 void test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name() {
   c4c::TextTable texts;
   const c4c::TextId actual_text = texts.intern("Actual");
@@ -7164,6 +7243,8 @@ int main() {
   test_parser_consteval_parameter_preserves_unqualified_text_metadata();
   test_consteval_parameter_binding_uses_text_metadata_over_stale_rendered_name();
   test_consteval_condition_decl_binding_uses_text_metadata_over_stale_rendered_name();
+  test_consteval_local_decl_binding_uses_text_metadata_over_stale_rendered_name();
+  test_consteval_for_init_local_binding_uses_text_metadata_over_stale_rendered_name();
   test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name();
   test_consteval_value_lookup_keeps_no_metadata_rendered_compatibility();
   test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();

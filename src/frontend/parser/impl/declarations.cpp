@@ -853,9 +853,11 @@ Node* parse_local_decl(Parser& parser) {
         Node** ret_fn_ptr_params = nullptr;
         int n_ret_fn_ptr_params = 0;
         bool ret_fn_ptr_variadic = false;
+        TextId vname_text_id = kInvalidText;
         parser.parse_declarator(ts, &vname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic,
                          nullptr,
-                         &ret_fn_ptr_params, &n_ret_fn_ptr_params, &ret_fn_ptr_variadic);
+                         &ret_fn_ptr_params, &n_ret_fn_ptr_params, &ret_fn_ptr_variadic,
+                         &vname_text_id);
         // C++ constructor invocation: `Type var(args)` where Type is a struct.
         // In C mode this is a K&R function-type suffix that we skip.
         bool is_kr_fn_decl = false;
@@ -1116,6 +1118,9 @@ Node* parse_local_decl(Parser& parser) {
         d->type      = ts;
         if (is_constexpr) d->type.is_const = true;
         d->name      = vname;
+        d->unqualified_name = vname;
+        d->unqualified_text_id =
+            parser.parser_text_id_for_token(vname_text_id, vname);
         d->init      = init_node;
         d->is_ctor_init = is_ctor_init;
         if (is_ctor_init && !ctor_args.empty()) {
@@ -1143,8 +1148,7 @@ Node* parse_local_decl(Parser& parser) {
             }
         }
         if (vname && !parser.active_context_state_.suppress_local_var_bindings) {
-            parser.register_var_type_binding(
-                parser.parser_text_id_for_token(kInvalidText, vname), ts);
+            parser.register_var_type_binding(d->unqualified_text_id, ts);
         }
         decls.push_back(d);
     } while (parser.match(TokenKind::Comma));

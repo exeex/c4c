@@ -8,19 +8,18 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired the parser condition-declaration metadata producers: the
-`if`, `while`, and `switch` condition-local declaration paths now copy the
-declarator identifier `TextId` and unqualified source name onto their `NK_DECL`
-nodes without adding namespace qualifiers, and the synthetic condition
-reference receives the same unqualified metadata. Focused parser and consteval
-tests cover parsed condition locals and show binding/readback still uses
-`TextId` metadata when rendered declaration/reference names are stale.
+Step 3.1 repaired the parser ordinary local-declaration metadata producer:
+`parse_local_decl` now copies the declarator identifier `TextId` and
+unqualified source name onto each produced `NK_DECL` node, and local variable
+type binding reuses that same `TextId`. Focused consteval tests cover ordinary
+locals and `for`-init locals where declaration/reference rendered names are
+stale but binding/readback still uses `TextId` metadata.
 
 ## Suggested Next
 
-Continue Step 3.1 with one bounded metadata-producer packet for remaining local
-declarations, loop locals, synthetic locals, or `TypeSpec` intrinsic identifier
-metadata before attempting any consteval rendered-fallback deletion.
+Continue Step 3.1 with one bounded metadata-producer packet for any remaining
+synthetic local or `TypeSpec` intrinsic identifier metadata before attempting
+any consteval rendered-fallback deletion.
 
 ## Watchouts
 
@@ -43,10 +42,11 @@ metadata before attempting any consteval rendered-fallback deletion.
   to structured/`TextId` mirror maps to find metadata for a `TypeSpec` tag;
   Step 3.1 owns either adding intrinsic `TypeSpec` identifier metadata for a
   bounded route or parking the exact missing producer.
-- Consteval interpreter locals still need same-spelling rendered compatibility
-  because some existing parameter/loop-local references do not have complete
-  matching local `TextId`/structured mirrors. Treat removal of that compatibility
-  as a metadata-producer packet, not a lookup-only packet.
+- Consteval interpreter locals may still need same-spelling rendered
+  compatibility for synthetic local producers not covered by parameter,
+  condition-local, ordinary-local, or `for`-init local declaration metadata.
+  Treat removal of that compatibility as a metadata-producer packet, not a
+  lookup-only packet.
 
 ## Proof
 
