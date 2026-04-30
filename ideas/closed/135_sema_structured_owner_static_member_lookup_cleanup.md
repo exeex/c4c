@@ -1,12 +1,13 @@
 # Sema Structured Owner Static Member Lookup Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-30
 
 Parent Ideas:
 - [130_sema_hir_ast_ingress_boundary_audit.md](/workspaces/c4c/ideas/open/130_sema_hir_ast_ingress_boundary_audit.md)
 - [131_cross_ir_string_authority_audit_and_followup_queue.md](/workspaces/c4c/ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md)
-- [134_parser_ast_template_payload_string_bridge_cleanup.md](/workspaces/c4c/ideas/open/134_parser_ast_template_payload_string_bridge_cleanup.md)
+- [134_parser_ast_template_payload_string_bridge_cleanup.md](/workspaces/c4c/ideas/closed/134_parser_ast_template_payload_string_bridge_cleanup.md)
 
 ## Goal
 
@@ -59,3 +60,39 @@ Suspicious Sema paths:
   compatibility-only, not silent semantic authority.
 - Nearby same-feature tests cover namespace-qualified owner lookup, static
   member lookup, and unqualified-name fallback behavior.
+
+## Closure Notes
+
+Accepted as complete after Step 6 validation.
+
+Implementation commits for this idea made Sema namespace-owner resolution,
+enclosing method-owner lookup, static-member lookup, and unqualified lookup
+prefer structured identity when parser AST carriers are present. Focused tests
+cover namespace-qualified owner lookup, static members, method-owner context,
+and unqualified-name fallback behavior where rendered spelling could previously
+mask mismatches.
+
+Remaining rendered-name paths are compatibility-only or non-semantic output
+paths:
+
+- rendered owner resolution remains a fallback when structured owner keys are
+  absent or invalid
+- static-member lookup falls back to legacy rendered maps only when no usable
+  member `TextId`/record key is available
+- unqualified `Node::name` lookup retains a narrow compatibility recovery via
+  `Node::unqualified_name` for producers that still expose visible namespace
+  spelling before Sema has bound locals
+- diagnostics, display, debug output, and legacy string-facing bridges may
+  continue to carry rendered spelling without becoming semantic authority
+
+Close-time proof:
+
+`cmake --build build --target c4cll frontend_parser_tests frontend_hir_lookup_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_lookup_tests|.*sema.*|cpp_negative_tests_bad_scope.*|negative_tests_bad_scope.*)$' >> test_after.log 2>&1`
+
+Result: 1000/1000 tests passed.
+
+Regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: PASS with 1000 passed before and 1000 passed after.
