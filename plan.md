@@ -182,41 +182,84 @@ Completion check:
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.2: Remove Parser Declarator And Known-Function Rendered Recovery
+### Step 2.2: Complete Parser VisibleName Projection Overload Cleanup
 
-Goal: parser declarator, value, and known-function lookup must not recover
-semantic identity by parsing or searching rendered qualified names after token
-or namespace metadata exists.
+Goal: delete parser lookup overloads whose only purpose is projecting
+structured lookup results into rendered strings, without claiming that deletion
+as removal of the remaining semantic spelling authority.
 
-Primary target: parser declaration and statement paths that register or query
-values, function declarations, known functions, and qualified declarator names.
+Primary target: parser `VisibleNameResult` lookup APIs and focused parser tests
+that used `std::string*` output projection overloads.
 
 Actions:
 
-- Inspect qualified declarator parsing, known-function registration, static
-  member/value lookup, and expression owner lookup call sites.
-- Convert lookup authority to `TextId`, namespace context ids,
-  `QualifiedNameKey`, direct AST links, or declaration objects where available.
-- Delete string re-entry after a structured key, declaration name `TextId`, or
-  namespace-aware key was supplied.
-- Collapse parser overload families that keep both rendered-name and
-  structured lookup routes for the same value/function query.
-- Keep rendered names only for source spelling, diagnostics, mangling, ABI/link
-  names, or final emitted text.
-- Add focused parser tests for drifted rendered qualified names in the covered
-  value/function route.
+- Delete `std::string*` projection overloads for parser value, type, and
+  concept lookup when callers can keep `VisibleNameResult` until a display
+  spelling is explicitly needed.
+- Keep `visible_name_spelling(...)` only as an explicit display/diagnostic/test
+  projection, not as a semantic lookup carrier.
+- Update tests to assert structured lookup results first and project spelling
+  only for display assertions.
+- Do not count this checkpoint as completion of parser declarator, value,
+  known-function, or Sema spelling/fallback removal.
+- Do not claim a fresh proof artifact unless canonical `test_after.log` exists
+  for the delegated proof command.
 
 Completion check:
 
-- Covered declarator/value/known-function paths no longer use rendered
-  spelling as alternate semantic authority.
-- Covered APIs no longer accept string/string_view or fallback spelling
+- Parser `std::string*` output projection overloads for the covered
+  `VisibleNameResult` lookup family are deleted.
+- Tests no longer require semantic lookup APIs to return rendered spelling
+  through output parameters.
+- `todo.md` records that remaining semantic spelling/fallback authority is
+  still open.
+
+### Step 2.3: Remove Remaining Parser Semantic Spelling And Fallback Authority
+
+Goal: parser declarator, value, known-function, and visible-type lookup must
+not recover semantic identity by projecting structured lookup results to
+rendered spelling and then re-entering lookup through `TextId` or fallback
+strings.
+
+Primary target: parser declaration and statement paths that register or query
+values, function declarations, known functions, qualified declarator names, and
+visible types.
+
+Actions:
+
+- Inspect `resolve_visible_type(...)`, qualified declarator parsing,
+  known-function registration, static member/value lookup, and expression owner
+  lookup call sites.
+- Delete the production route where `lookup_using_value_alias(...)` returns a
+  `VisibleNameResult`, `visible_name_spelling(...)` projects it to a rendered
+  string, the caller recovers a `TextId`, and typedef/type lookup is driven by
+  that recovered spelling.
+- Remove or replace parser semantic lookup parameters that still accept
+  `std::string_view` spelling or fallback strings, including
+  `lookup_using_value_alias`, `lookup_value_in_context`,
+  `lookup_type_in_context`, and `lookup_concept_in_context`.
+- Convert lookup authority to `TextId`, namespace context ids,
+  `QualifiedNameKey`, direct AST links, declaration objects, or
+  `VisibleNameResult` fields where those carriers are available.
+- Treat `kInvalidText` plus rendered fallback recovery as a semantic lookup
+  route unless the retained string use is visibly diagnostic/display-only.
+- Keep rendered names only for source spelling, diagnostics, mangling, ABI/link
+  names, or final emitted text.
+- Add focused parser tests for same-feature drifted rendered spelling in the
+  covered value/type/known-function routes.
+
+Completion check:
+
+- Covered declarator/value/known-function/visible-type paths no longer use
+  rendered spelling as alternate semantic authority after structured metadata
+  exists.
+- Covered parser APIs no longer accept string/string_view or fallback spelling
   parameters for semantic lookup.
 - Tests prove structured metadata wins over drifted rendered spelling.
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.3: Audit Parser Type, Tag, And Member-Typedef Routes
+### Step 2.4: Audit Parser Type, Tag, And Member-Typedef Routes
 
 Goal: verify the already-converted parser typedef, tag, record type-head, and
 member-typedef routes did not leave a reachable rendered-string authority
@@ -248,7 +291,7 @@ Completion check:
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.4: Preserve Parser Const-Int Boundary And HIR Blocker
+### Step 2.5: Preserve Parser Const-Int Boundary And HIR Blocker
 
 Goal: keep parser-owned const-int lookup on structured maps while preventing
 the Step 2 parser route from absorbing HIR `NttpBindings` carrier migration.
