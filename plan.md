@@ -387,22 +387,34 @@ Completion check:
   as progress.
 - Lifecycle-only inventory rewrite does not claim code proof.
 
-### Step 2.4.4.2: Convert Or Block The Template-Instantiation Writer
+### Step 2.4.4.2: Add Template-Instantiation Member-Typedef Carrier
 
-Goal: make the template-instantiation member-typedef writer use a caller-owned
-structured owner/member carrier, or record the missing metadata as a blocker.
+Goal: make the template-instantiation member-typedef writer use parser-owned
+structured storage keyed by concrete template-instantiation identity plus
+member text identity.
 
 Primary target: the template-instantiation path in
 `src/frontend/parser/impl/types/base.cpp` that currently reaches member typedef
-registration through rendered instantiation spelling.
+registration through rendered instantiation spelling, plus the minimal parser
+metadata/API surface required to store and query:
+`TemplateInstantiationKey concrete_owner + TextId member_text_id`.
 
 Actions:
 
-- If a structured carrier exists, pass that carrier directly to the member
-  typedef storage route without splitting rendered `mangled`,
-  `owner::member`, or fallback spelling.
-- If the structured carrier does not exist, stop and create or request a
-  metadata blocker idea instead of reconstructing identity from rendered text.
+- Add a parser-owned member-typedef carrier/API for concrete template
+  instantiations instead of forcing `TemplateInstantiationKey` through
+  `QualifiedNameKey` or rendered spelling.
+- Reuse the call site's existing structured concrete-instantiation metadata:
+  primary template `QualifiedNameKey`, concrete
+  `TemplateInstantiationKey::Argument` vector, and direct member name
+  `TextId`.
+- Convert the template-instantiation writer to register member typedefs
+  through the concrete template-instantiation carrier.
+- Add reader plumbing only for callers that can query from the same concrete
+  template owner plus member `TextId`; do not add a generic rendered
+  `owner::member` rediscovery route.
+- Treat any need to cross into HIR, LIR, BIR, or backend metadata as a separate
+  open idea instead of widening this parser/Sema plan.
 - Keep rendered instantiation spelling only for mangling, diagnostics, debug
   output, or final emitted names.
 - Add or keep a focused disagreement test proving the writer does not let stale
@@ -410,10 +422,14 @@ Actions:
 
 Completion check:
 
+- Parser metadata contains a structured storage/API path for
+  `TemplateInstantiationKey concrete_owner + TextId member_text_id`; it does
+  not alias all specializations of the same primary template.
 - The covered writer no longer builds semantic `QualifiedNameKey` or
-  owner/member identity by parsing rendered instantiation text.
-- Any missing template-instantiation metadata is represented as a blocker
-  rather than a new string rediscovery route.
+  owner/member identity by parsing rendered instantiation text or using
+  rendered `mangled` as concrete owner identity.
+- Any remaining missing metadata outside parser/Sema is represented as a
+  separate open blocker idea rather than a new string rediscovery route.
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
