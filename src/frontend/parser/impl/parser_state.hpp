@@ -160,8 +160,6 @@ struct ParserTemplateState {
       template_struct_specializations_by_key;
   std::unordered_set<TemplateInstantiationKey, TemplateInstantiationKeyHash>
       instantiated_template_struct_keys_by_key;
-  std::set<std::string> instantiated_template_struct_keys;
-  size_t template_struct_instantiation_key_mismatch_count = 0;
   std::unordered_map<NttpDefaultExprKey, std::vector<Token>,
                      NttpDefaultExprKeyHash>
       nttp_default_expr_tokens_by_key;

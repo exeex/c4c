@@ -3878,7 +3878,7 @@ void test_parser_nttp_default_cache_uses_structured_key_only() {
               "TextId-less NTTP default cache lookup should reject rendered-name mirror compatibility");
 }
 
-void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse() {
+void test_parser_template_instantiation_dedup_keys_structure_specialization_reuse() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -3947,36 +3947,21 @@ void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse()
                 "explicit specialization reuse should preserve the specialized static member value");
   expect_eq_int(
       static_cast<int>(
-          parser.template_state_.instantiated_template_struct_keys.size()),
-      1,
-      "template instantiation should populate the rendered de-dup key");
-  expect_eq_int(
-      static_cast<int>(
           parser.template_state_.instantiated_template_struct_keys_by_key.size()),
       1,
       "template instantiation should populate the structured de-dup key");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_.template_struct_instantiation_key_mismatch_count),
-      0,
-      "fresh mirrored template instantiation keys should not report a mismatch");
 
   parser.template_state_.instantiated_template_struct_keys_by_key.clear();
   value = 0;
   expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
-              "template instantiation reuse should keep legacy behavior when the structured mirror is missing");
+              "template instantiation reuse should rebuild structured de-dup state from typed metadata");
   expect_eq_int(value, 19,
-                "legacy rendered de-dup state should remain behavior-compatible");
+                "structured template instantiation reuse should preserve the specialized static member value");
   expect_eq_int(
       static_cast<int>(
           parser.template_state_.instantiated_template_struct_keys_by_key.size()),
       1,
-      "template instantiation lookup should heal a missing structured mirror");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_.template_struct_instantiation_key_mismatch_count),
-      1,
-      "missing structured template instantiation mirrors should be detected");
+      "template instantiation lookup should recreate the structured key");
 
   c4c::Parser::TemplateArgParseResult arg{};
   arg.is_value = false;
@@ -4414,7 +4399,7 @@ void test_sema_method_validation_prefers_structured_owner_key_for_fields() {
               "method validation should use structured owner and field keys before rendered spelling");
 }
 
-void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
+void test_parser_template_instantiation_dedup_keys_skip_mark_on_failed_instantiation() {
   c4c::Arena arena;
   c4c::Parser parser({}, arena, nullptr, nullptr, c4c::SourceProfile::CppSubset);
 
@@ -4434,9 +4419,6 @@ void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
       parser.current_namespace_context_id(), primary->unqualified_text_id,
       primary);
 
-  parser.template_state_.instantiated_template_struct_keys.insert(
-      "Broken<T=int>");
-
   c4c::Parser::TemplateArgParseResult arg{};
   arg.is_value = false;
   arg.type.array_size = -1;
@@ -4447,7 +4429,7 @@ void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
   try {
     (void)parser.ensure_template_struct_instantiated_from_args(
         "Broken", primary, {arg}, 1, &mangled,
-        "template_instantiation_dedup_demote_rendered_sync");
+        "template_instantiation_dedup_failed_mark");
   } catch (const std::exception&) {
     threw = true;
   }
@@ -4458,15 +4440,10 @@ void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
       static_cast<int>(
           parser.template_state_.instantiated_template_struct_keys_by_key.size()),
       0,
-      "valid-TextId template instantiation sync should not promote legacy-only rendered de-dup keys");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_.template_struct_instantiation_key_mismatch_count),
-      0,
-      "no-text-table template instantiation failure should not promote rendered de-dup mismatch telemetry");
+      "failed template instantiation should not mark a structured de-dup key");
 }
 
-void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
+void test_parser_template_instantiation_dedup_keys_structure_direct_emission() {
   c4c::Lexer lexer(
       "template<typename T>\n"
       "struct Box { T value; };\n",
@@ -4501,72 +4478,43 @@ void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
               "direct template emission should return the created record_def");
   expect_true(parser.definition_state_.struct_tag_def_map[first.tag] ==
                   first.record_def,
-              "direct template emission record_def should match the rendered map mirror");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_.instantiated_template_struct_keys.size()),
-      1,
-      "direct template emission should populate the rendered de-dup key");
+              "direct template emission record_def should match the tag map entry");
   expect_eq_int(
       static_cast<int>(
           parser.template_state_.instantiated_template_struct_keys_by_key.size()),
       1,
       "direct template emission should populate the structured de-dup key");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_.template_struct_instantiation_key_mismatch_count),
-      0,
-      "fresh direct template emission should not report a de-dup key mismatch");
 
   parser.template_state_.instantiated_template_struct_keys_by_key.clear();
   parser.definition_state_.struct_tag_def_map.erase(first.tag);
   parser.definition_state_.defined_struct_tags.erase(first.tag);
   c4c::TypeSpec second = parse_box_int();
   expect_true(second.base == c4c::TB_STRUCT && second.tag != nullptr,
-              "legacy-only rendered direct-emission de-dup should fall through to concrete emission when a structured key is available");
+              "missing structured direct-emission de-dup should fall through to concrete emission");
   expect_true(second.record_def != nullptr,
               "demoted direct template emission should return the recreated record_def");
   expect_eq(first.tag, second.tag,
-            "demoted rendered direct-emission de-dup should preserve the instantiated tag spelling");
+            "recreated direct-emission de-dup should preserve the instantiated tag spelling");
   expect_true(parser.definition_state_.struct_tag_def_map.count(first.tag) > 0,
-              "legacy-only rendered direct-emission de-dup should recreate the concrete struct definition");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_.instantiated_template_struct_keys.size()),
-      1,
-      "direct template emission should keep one rendered de-dup key after reuse");
+              "missing structured direct-emission de-dup should recreate the concrete struct definition");
   expect_eq_int(
       static_cast<int>(
           parser.template_state_.instantiated_template_struct_keys_by_key.size()),
       1,
-      "direct template emission should heal a missing structured mirror");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_.template_struct_instantiation_key_mismatch_count),
-      1,
-      "direct template emission should detect a missing structured mirror");
+      "direct template emission should recreate the structured de-dup key");
 
-  parser.template_state_.instantiated_template_struct_keys.clear();
   c4c::TypeSpec third = parse_box_int();
   expect_true(third.base == c4c::TB_STRUCT && third.tag != nullptr,
-              "structured direct-emission de-dup should keep behavior-compatible reuse");
+              "structured direct-emission de-dup should reuse the existing concrete type");
+  expect_true(third.record_def == second.record_def,
+              "structured direct-emission de-dup should keep the existing record_def");
   expect_eq(first.tag, third.tag,
             "structured direct-emission de-dup should preserve the instantiated tag");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_.instantiated_template_struct_keys.size()),
-      1,
-      "direct template emission should heal a missing rendered mirror");
   expect_eq_int(
       static_cast<int>(
           parser.template_state_.instantiated_template_struct_keys_by_key.size()),
       1,
       "direct template emission should keep one structured de-dup key after reuse");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_.template_struct_instantiation_key_mismatch_count),
-      2,
-      "direct template emission should detect a missing rendered mirror");
 }
 
 void test_parser_template_substitution_preserves_record_definition_payloads() {
@@ -5459,14 +5407,14 @@ int main() {
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
   test_parser_template_lookup_uses_structured_template_keys();
   test_parser_nttp_default_cache_uses_structured_key_only();
-  test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
+  test_parser_template_instantiation_dedup_keys_structure_specialization_reuse();
   test_parser_template_static_member_lookup_prefers_record_definition();
   test_sema_static_member_type_lookup_prefers_structured_member_key();
   test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_namespace_owner_resolution_prefers_structured_owner_key();
   test_sema_method_validation_prefers_structured_owner_key_for_fields();
-  test_parser_template_instantiation_dedup_keys_demote_rendered_sync();
-  test_parser_template_instantiation_dedup_keys_mirror_direct_emission();
+  test_parser_template_instantiation_dedup_keys_skip_mark_on_failed_instantiation();
+  test_parser_template_instantiation_dedup_keys_structure_direct_emission();
   test_parser_template_substitution_preserves_record_definition_payloads();
   test_parser_direct_record_types_carry_record_definition();
   test_parser_tag_only_record_types_keep_null_record_definition();

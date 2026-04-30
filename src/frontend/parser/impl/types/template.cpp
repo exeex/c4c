@@ -38,37 +38,9 @@ QualifiedNameKey template_instantiation_name_key(
     return parser.alias_template_key_in_context(context_id, name_text_id);
 }
 
-void sync_template_instantiation_dedup_keys(
-    Parser& parser,
-    const ParserTemplateState::TemplateInstantiationKey& structured_key,
-    const std::string& legacy_key) {
-    if (legacy_key.empty() ||
-        structured_key.template_key.base_text_id == kInvalidText) {
-        return;
-    }
-
-    const bool legacy_present =
-        parser.template_state_.instantiated_template_struct_keys.count(
-            legacy_key) > 0;
-    const bool structured_present =
-        parser.template_state_.instantiated_template_struct_keys_by_key.count(
-            structured_key) > 0;
-    if (legacy_present != structured_present) {
-        ++parser.template_state_
-              .template_struct_instantiation_key_mismatch_count;
-    }
-    if (structured_present && !legacy_present) {
-        parser.template_state_.instantiated_template_struct_keys.insert(
-            legacy_key);
-    }
-}
-
 void mark_template_instantiation_dedup_keys(
     Parser& parser,
-    const ParserTemplateState::TemplateInstantiationKey& structured_key,
-    const std::string& legacy_key) {
-    if (legacy_key.empty()) return;
-    parser.template_state_.instantiated_template_struct_keys.insert(legacy_key);
+    const ParserTemplateState::TemplateInstantiationKey& structured_key) {
     if (structured_key.template_key.base_text_id != kInvalidText) {
         parser.template_state_.instantiated_template_struct_keys_by_key.insert(
             structured_key);
@@ -238,13 +210,9 @@ bool Parser::ensure_template_struct_instantiated_from_args(
 
     *out_mangled = build_template_struct_mangled_name(
         template_name, primary_tpl, selected, args);
-    const std::string rendered_instance_key =
-        make_template_struct_instance_key(primary_tpl, args);
     const ParserTemplateState::TemplateInstantiationKey structured_instance_key{
         template_instantiation_name_key(*this, primary_tpl, template_name),
         make_template_instantiation_argument_keys(args)};
-    sync_template_instantiation_dedup_keys(
-        *this, structured_instance_key, rendered_instance_key);
 
     // Typed fast path: an explicit full specialization already exists as a
     // concrete struct node, so we can register/use it directly without
@@ -265,7 +233,7 @@ bool Parser::ensure_template_struct_instantiated_from_args(
             out_resolved->record_def = const_cast<Node*>(selected);
         }
         mark_template_instantiation_dedup_keys(
-            *this, structured_instance_key, rendered_instance_key);
+            *this, structured_instance_key);
         return true;
     }
 
@@ -277,7 +245,7 @@ bool Parser::ensure_template_struct_instantiated_from_args(
         }
     }
     mark_template_instantiation_dedup_keys(
-        *this, structured_instance_key, rendered_instance_key);
+        *this, structured_instance_key);
 
     auto injected_it = definition_state_.struct_tag_def_map.find(*out_mangled);
     if (out_resolved && !out_resolved->tag &&

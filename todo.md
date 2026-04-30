@@ -8,19 +8,21 @@ Current Step Title: Remove Parser Template And NTTP Default Rendered Mirrors
 
 ## Just Finished
 
-Step 2.1 removed parser NTTP-default rendered-name cache/evaluation mirror
-authority for the structured template-key route. Deferred NTTP default tokens
-are now cached and evaluated through
-`ParserTemplateState::NttpDefaultExprKey`, owned parsing code no longer passes
-the rendered node name into the cache API, and focused parser tests prove stale
-or TextId-less rendered mirror entries cannot override or authorize default
-evaluation.
+Step 2.1 removed parser template-instantiation rendered de-dup key
+authority. `ParserTemplateState::TemplateInstantiationKey` /
+`instantiated_template_struct_keys_by_key` is now the only parser de-dup key
+carrier for `ensure_template_struct_instantiated_from_args(...)` and direct
+template emission; the rendered de-dup set and mismatch telemetry were deleted,
+and focused parser tests now cover structured-key recreation/reuse for both
+paths.
 
 ## Suggested Next
 
 Continue with the supervisor-selected next Step 2 parser cleanup packet. The
-remaining parser rendered mirrors should be handled as separate narrow slices
-unless the supervisor asks for a plan review first.
+parser-owned NTTP default mirrors and template-instantiation de-dup mirrors
+covered by this step are removed or demoted; any remaining rendered parser
+lookup cleanup should stay in narrow slices unless the supervisor asks for plan
+review.
 
 ## Watchouts
 
@@ -36,6 +38,11 @@ The legacy string overloads for `eval_deferred_nttp_default(...)` and
 `cache_nttp_default_expr_tokens(...)` still exist for callers outside this owned
 packet, but they now delegate to structured-key lookup and ignore the rendered
 name as semantic authority.
+
+`make_template_struct_instance_key(...)` still exists in parser type helpers as
+an unused rendered spelling helper after this slice. It is outside the owned
+files for this packet and should be removed only if a later packet owns
+`src/frontend/parser/impl/types/types_helpers.hpp`.
 
 ## Proof
 
