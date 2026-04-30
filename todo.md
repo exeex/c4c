@@ -8,38 +8,29 @@ Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 
 ## Just Finished
 
-Step 2 direct record/type-head cleanup removed rendered record-tag authority from
-`types_helpers.hpp` direct and qualified type-start probes:
-
-- removed `has_defined_struct_tag(...)` fallback checks from
-  `is_known_simple_type_head(...)`, `resolve_qualified_known_type_name(...)`,
-  and `probe_qualified_type(...)`;
-- replaced those direct/visible record checks with record-node metadata
-  matching on namespace context plus `unqualified_text_id`;
-- removed rendered `resolved_name` typedef re-entry from
-  `visible_type_result_has_structured_record_definition(...)` and
-  `qualified_type_structured_record_definition(...)`;
-- added parser coverage showing rendered-only tag storage no longer authorizes a
-  direct record type-head probe, while structured record metadata still does
-  even when the rendered map key/name disagrees.
+Step 2 const-int string overload cleanup was inspected but left blocked and
+out of scope for this parser packet: parser-owned named constants already flow
+through `std::unordered_map<TextId, long long>`, but deleting the rendered-name
+`eval_const_int(...)` overload still requires non-parser HIR callers that pass
+`NttpBindings`, currently `std::unordered_map<std::string, long long>`.
 
 ## Suggested Next
 
-Next executor packet can continue Step 2 by auditing remaining parser semantic
-lookup bridges outside this direct record/type-start helper path, especially
-string projection overloads or `fallback`-named helpers that still feed parser
-semantic lookup after a structured key exists.
+Next parser-only Step 2 packet should continue removing rendered-string
+semantic lookup routes that are wholly owned by parser support code, while
+leaving the const-int overload in place until a separate HIR
+`NttpBindings`/metadata-carrier initiative is authorized.
 
 ## Watchouts
 
-`resolve_record_type_spec(...)` still keeps the documented tag-only
-sizeof/alignof/offsetof compatibility fallback in `support.cpp`; this packet
-did not remove that non-type-start layout bridge because the existing typed
-`TypeSpec::record_def` path already wins there and current tests still cover
-the tag-only fallback contract.
+Exact blocker: `src/frontend/hir/impl/templates/templates.cpp` calls
+`eval_const_int(..., const NttpBindings*)` at line 184 and
+`eval_const_int(..., &kEmptyConsts)` at line 189; `NttpBindings` is declared as
+`std::unordered_map<std::string, long long>` in `src/frontend/hir/hir_ir.hpp`.
+Those files are outside this packet's ownership, so this parser packet must not
+pull in HIR carrier migration work.
 
 ## Proof
 
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
-
-Result: passed, 927/927 tests green. Proof log: `test_after.log`.
+Not run. No build or test was required for this todo-only cleanup, and this
+blocked probe does not claim a fresh `test_after.log`.
