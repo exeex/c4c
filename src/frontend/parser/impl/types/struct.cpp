@@ -2341,16 +2341,6 @@ void register_record_member_typedef_bindings(Parser& parser, Node* sd,
             parser.register_dependent_record_member_typedef_binding(
                 member_key, sd->member_typedef_types[i]);
         }
-        if (has_template_dependent_context && source_tag && source_tag[0]) {
-            // Legacy dependent/template compatibility bridge. Non-template
-            // record member typedefs are published through the structured key.
-            std::string scoped_name(source_tag);
-            scoped_name += "::";
-            scoped_name += member_name;
-            parser.register_typedef_binding(
-                parser.parser_text_id_for_token(kInvalidText, scoped_name),
-                sd->member_typedef_types[i], false);
-        }
     }
 }
 

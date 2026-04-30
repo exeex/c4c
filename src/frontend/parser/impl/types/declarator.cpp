@@ -545,8 +545,11 @@ void apply_declarator_pointer_token(Parser& parser, TypeSpec& ts,
     ts.ptr_level++;
 }
 
-bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
+bool Parser::parse_dependent_typename_specifier(std::string* out_name,
+                                                TypeSpec* out_type,
+                                                bool* out_has_type) {
     ParseContextGuard trace(this, __func__);
+    if (out_has_type) *out_has_type = false;
     const int start_pos = core_input_state_.pos;
     std::string dep_name;
     QualifiedNameRef qn;
@@ -558,7 +561,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
         return false;
     }
 
-    if (out_name) {
+    if (out_name || out_type || out_has_type) {
         auto join_token_lexemes = [&](int start, int end) -> std::string {
             std::string out;
             for (int i = start; i < end; ++i) {
@@ -574,10 +577,129 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
         const std::string spelled_name =
             join_token_lexemes(owner_start, core_input_state_.pos);
         std::string resolved = dep_name;
+        TypeSpec resolved_type{};
+        const TypeSpec* resolved_type_payload = nullptr;
+        const int owner_prefix_start = owner_start;
+        auto final_owner_scope_pos = [&]() -> int {
+            int final_scope_pos = -1;
+            for (int i = owner_prefix_start; i + 1 < core_input_state_.pos; ++i) {
+                if (core_input_state_.tokens[i].kind == TokenKind::ColonColon &&
+                    core_input_state_.tokens[i + 1].kind == TokenKind::Identifier) {
+                    final_scope_pos = i;
+                }
+            }
+            return final_scope_pos;
+        };
+        auto owner_prefix_contains_typename = [&](int final_scope_pos) -> bool {
+            if (final_scope_pos <= owner_prefix_start) return false;
+            for (int i = owner_prefix_start; i < final_scope_pos; ++i) {
+                if (core_input_state_.tokens[i].kind == TokenKind::KwTypename)
+                    return true;
+            }
+            return false;
+        };
+        auto try_make_deferred_template_owner_member =
+            [&](TypeSpec* out_owner_ts) -> bool {
+                if (!out_owner_ts || spelled_name.find('<') == std::string::npos)
+                    return false;
+                const int final_scope_pos = final_owner_scope_pos();
+                if (final_scope_pos <= owner_prefix_start ||
+                    owner_prefix_contains_typename(final_scope_pos)) {
+                    return false;
+                }
+                TypeSpec owner_ts{};
+                owner_ts.array_size = -1;
+                owner_ts.inner_rank = -1;
+                std::vector<Token> inject_toks;
+                inject_toks.reserve(
+                    static_cast<size_t>(final_scope_pos - owner_prefix_start + 1));
+                for (int i = owner_prefix_start; i < final_scope_pos; ++i) {
+                    inject_toks.push_back(core_input_state_.tokens[i]);
+                }
+                Token sentinel_seed{};
+                if (owner_prefix_start < final_scope_pos) {
+                    sentinel_seed = core_input_state_.tokens[owner_prefix_start];
+                }
+                Token sentinel =
+                    make_injected_token(sentinel_seed, TokenKind::Semi, ";");
+                inject_toks.push_back(sentinel);
+
+                int saved_pos = pos_;
+                auto saved_toks = std::move(tokens_);
+                tokens_ = std::move(inject_toks);
+                pos_ = 0;
+                try {
+                    owner_ts = parse_base_type();
+                } catch (...) {
+                }
+                tokens_ = std::move(saved_toks);
+                pos_ = saved_pos;
+
+                if (!((owner_ts.tpl_struct_origin &&
+                       owner_ts.tpl_struct_origin[0]) ||
+                      (owner_ts.tag && owner_ts.tag[0]))) {
+                    return false;
+                }
+                owner_ts.deferred_member_type_name =
+                    arena_.strdup(std::string(token_spelling(
+                                      core_input_state_.tokens[final_scope_pos + 1]))
+                                      .c_str());
+                *out_owner_ts = owner_ts;
+                return true;
+            };
+        const bool is_qualified_typename =
+            qn.is_global_qualified || !qn.qualifier_segments.empty();
+        const QualifiedNameKey structured_typedef_key =
+            is_qualified_typename ? qualified_name_key(qn) : QualifiedNameKey{};
+        auto find_structured_typedef = [&]() -> const TypeSpec* {
+            if (structured_typedef_key.base_text_id != kInvalidText) {
+                if (const TypeSpec* type =
+                        find_typedef_type(structured_typedef_key)) {
+                    return type;
+                }
+            }
+            if (qn.qualifier_segments.empty() ||
+                qn.base_text_id == kInvalidText) {
+                return nullptr;
+            }
+            const QualifiedNameRef owner_qn = qualified_owner_name(*this, qn);
+            if (owner_qn.base_text_id == kInvalidText) return nullptr;
+            const int owner_context = resolve_namespace_context(owner_qn);
+            if (owner_context < 0) return nullptr;
+            const QualifiedNameKey member_key =
+                record_member_typedef_key_in_context(
+                    owner_context, owner_qn.base_text_id, qn.base_text_id);
+            return find_typedef_type(member_key);
+        };
+        const TypeSpec* structured_typedef = find_structured_typedef();
+        const bool has_structured_typedef = structured_typedef != nullptr;
+        if (structured_typedef) {
+            resolved_type_payload = structured_typedef;
+            TypeSpec deferred_owner_member{};
+            const bool structured_typedef_needs_owner_handoff =
+                structured_typedef->is_lvalue_ref ||
+                structured_typedef->is_rvalue_ref ||
+                template_state_.template_scope_stack.empty();
+            if (structured_typedef_needs_owner_handoff &&
+                try_make_deferred_template_owner_member(&deferred_owner_member)) {
+                deferred_owner_member.is_lvalue_ref =
+                    deferred_owner_member.is_lvalue_ref ||
+                    structured_typedef->is_lvalue_ref;
+                deferred_owner_member.is_rvalue_ref =
+                    !deferred_owner_member.is_lvalue_ref &&
+                    (deferred_owner_member.is_rvalue_ref ||
+                     structured_typedef->is_rvalue_ref);
+                resolved_type = deferred_owner_member;
+                resolved_type_payload = &resolved_type;
+            }
+        }
         const TypeSpec* visible_dep_typedef =
             (!qn.is_global_qualified && qn.qualifier_segments.empty())
                 ? find_visible_typedef_type(qn.base_text_id)
                 : nullptr;
+        if (visible_dep_typedef) {
+            resolved_type_payload = visible_dep_typedef;
+        }
         if (!visible_dep_typedef &&
             !has_visible_typedef_type(qn.base_text_id)) {
             const VisibleNameResult visible_type =
@@ -587,18 +709,12 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
             }
         }
         if (!visible_dep_typedef &&
+            !has_structured_typedef &&
             !has_typedef_type(find_parser_text_id(resolved))) {
             bool preserved_template_owner_member = false;
             if (spelled_name.find('<') != std::string::npos &&
                 parser_text(qn.base_text_id, qn.base_name) == "type") {
-                int final_scope_pos = -1;
-                for (int i = owner_start; i + 1 < core_input_state_.pos; ++i) {
-                    if (core_input_state_.tokens[i].kind == TokenKind::ColonColon &&
-                        core_input_state_.tokens[i + 1].kind ==
-                            TokenKind::Identifier) {
-                        final_scope_pos = i;
-                    }
-                }
+                const int final_scope_pos = final_owner_scope_pos();
                 if (final_scope_pos > owner_start) {
                     TypeSpec owner_ts{};
                     owner_ts.array_size = -1;
@@ -636,16 +752,22 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                               .c_str());
                         cache_typedef_type(spelled_name, owner_ts);
                         resolved = spelled_name;
+                        resolved_type = owner_ts;
+                        resolved_type_payload = &resolved_type;
                         preserved_template_owner_member = true;
                     }
                 }
             }
             if (preserved_template_owner_member) {
-                *out_name = resolved;
+                if (out_name) *out_name = resolved;
+                if (out_type && resolved_type_payload)
+                    *out_type = *resolved_type_payload;
+                if (out_has_type) *out_has_type = resolved_type_payload != nullptr;
                 return true;
             }
             resolved = dep_name;
-            if (!has_typedef_type(find_parser_text_id(resolved)) &&
+            if (!has_structured_typedef &&
+                !has_typedef_type(find_parser_text_id(resolved)) &&
                 !qn.qualifier_segments.empty()) {
                 auto follow_nested_owner =
                     [&](const QualifiedNameRef& owner_name) -> const Node* {
@@ -787,12 +909,32 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                     }
                     if (found_member) {
                         cache_typedef_type(dep_name, resolved_member);
+                        if (resolved_member.is_lvalue_ref ||
+                            resolved_member.is_rvalue_ref) {
+                            resolved_type = {};
+                            resolved_type.array_size = -1;
+                            resolved_type.inner_rank = -1;
+                            resolved_type.base = TB_TYPEDEF;
+                            resolved_type.tag =
+                                arena_.strdup(dep_name.c_str());
+                            resolved_type.is_lvalue_ref =
+                                resolved_member.is_lvalue_ref;
+                            resolved_type.is_rvalue_ref =
+                                !resolved_type.is_lvalue_ref &&
+                                resolved_member.is_rvalue_ref;
+                        } else {
+                            resolved_type = resolved_member;
+                        }
+                        resolved_type_payload = &resolved_type;
                         resolved = dep_name;
                     }
                 }
             }
         }
-        *out_name = resolved;
+        if (out_name) *out_name = resolved;
+        if (out_type && resolved_type_payload)
+            *out_type = *resolved_type_payload;
+        if (out_has_type) *out_has_type = resolved_type_payload != nullptr;
     }
     return true;
 }
@@ -804,7 +946,16 @@ bool try_parse_cpp_scoped_base_type(Parser& parser, bool already_have_base,
 
     if (parser.check(TokenKind::KwTypename)) {
         std::string resolved;
-        if (!parser.parse_dependent_typename_specifier(&resolved)) return false;
+        TypeSpec resolved_type{};
+        bool has_resolved_type = false;
+        if (!parser.parse_dependent_typename_specifier(&resolved,
+                                                       &resolved_type,
+                                                       &has_resolved_type))
+            return false;
+        if (has_resolved_type) {
+            *out_ts = resolved_type;
+            return true;
+        }
         out_ts->tag = parser.arena_.strdup(resolved.c_str());
         return true;
     }
