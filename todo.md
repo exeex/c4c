@@ -8,18 +8,18 @@ Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Route
 
 ## Just Finished
 
-Step 3 removed rendered-name authority from Sema instance-field lookup when a
-structured owner key and member `TextId` have field metadata and miss.
-`has_struct_instance_field()` now treats structured field metadata as
-authoritative when present, while preserving rendered-name fallback only for
-routes where structured field metadata is absent. A focused Sema method-body
-test covers stale rendered field spelling being rejected instead of accepted.
+Step 3 removed rendered-name authority from Sema ordinary local/global/enum
+symbol lookup when the rendered candidate itself has structured metadata and an
+unqualified structured reference key misses. `lookup_symbol()` still returns
+structured local/global/enum hits first, but plain stale rendered local/global
+spelling no longer survives a structured miss. Focused Sema tests cover stale
+rendered local and global disagreement being rejected.
 
 ## Suggested Next
 
-Continue Step 3 with the remaining Sema rendered-name owner/member/static
-lookup routes after instance fields, prioritizing helpers where structured
-metadata is already available and rendered maps can become fallback only.
+Continue Step 3 with Sema function/overload/consteval rendered-name lookup
+routes, prioritizing helpers where structured or TextId metadata can make a
+miss authoritative without relying on namespace-qualified rendered bridges.
 
 ## Watchouts
 
@@ -41,9 +41,14 @@ metadata is already available and rendered maps can become fallback only.
   narrower HIR metadata idea before treating it as parser/Sema closure work.
 - Step 3 must not count diagnostics, display, mangle/final spelling, or
   comment-only classification as semantic lookup removal.
+- Namespace-qualified rendered global names such as using-import and anonymous
+  namespace bridges still lack equivalent structured symbol metadata on this
+  route, so this packet intentionally preserves those fallbacks.
+- Synthetic locals without structured metadata, such as predefined function
+  name identifiers, must remain rendered fallback candidates.
 
 ## Proof
 
 Ran the delegated proof command:
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(method|member|static|field).*|cpp_negative_tests_.*(method|member|static|field).*)$' --output-on-failure) > test_after.log 2>&1`.
-It passed with 264/264 tests green. Proof log: `test_after.log`.
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call).*)$' --output-on-failure) > test_after.log 2>&1`.
+It passed with 430/430 tests green. Proof log: `test_after.log`.

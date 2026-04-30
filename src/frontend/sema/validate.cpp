@@ -522,9 +522,11 @@ class Validator {
 
   std::vector<Diagnostic> diags_;
   std::unordered_map<std::string, TypeSpec> globals_;
+  std::unordered_set<std::string> structured_global_names_;
   std::unordered_map<SemaStructuredNameKey, const TypeSpec*, SemaStructuredNameKeyHash>
       structured_globals_;
   std::unordered_map<std::string, TypeSpec> enum_consts_;
+  std::unordered_set<std::string> structured_enum_const_names_;
   std::unordered_map<SemaStructuredNameKey, const TypeSpec*, SemaStructuredNameKeyHash>
       structured_enum_consts_;
   ConstMap enum_const_vals_global_;   // integer values of global enum constants
@@ -582,6 +584,7 @@ class Validator {
   std::string current_method_struct_tag_;
   std::optional<SemaStructuredNameKey> current_method_struct_key_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
+  std::vector<std::unordered_set<std::string>> structured_scope_names_;
   std::vector<std::unordered_map<SemaStructuredNameKey, ScopedSym*, SemaStructuredNameKeyHash>>
       structured_scopes_;
   bool suppress_uninit_read_ = false;
@@ -649,6 +652,7 @@ class Validator {
     auto [it, inserted] = globals_.insert_or_assign(n->name, n->type);
     (void)inserted;
     if (auto key = sema_symbol_name_key(n); key.has_value() && key->valid()) {
+      structured_global_names_.insert(n->name);
       structured_globals_[*key] = &it->second;
     }
   }
@@ -792,6 +796,7 @@ class Validator {
 
   void enter_scope() {
     scopes_.emplace_back();
+    structured_scope_names_.emplace_back();
     structured_scopes_.emplace_back();
     enum_const_vals_scopes_.emplace_back();
     enum_const_vals_scopes_by_text_.emplace_back();
@@ -803,6 +808,7 @@ class Validator {
 
   void leave_scope() {
     if (!scopes_.empty()) scopes_.pop_back();
+    if (!structured_scope_names_.empty()) structured_scope_names_.pop_back();
     if (!structured_scopes_.empty()) structured_scopes_.pop_back();
     if (!enum_const_vals_scopes_.empty()) enum_const_vals_scopes_.pop_back();
     if (!enum_const_vals_scopes_by_text_.empty()) enum_const_vals_scopes_by_text_.pop_back();
@@ -822,6 +828,10 @@ class Validator {
     }
     auto [it, inserted] = scope.emplace(name, ScopedSym{ts, initialized});
     if (inserted && structured_key.has_value() && structured_key->valid()) {
+      if (structured_scope_names_.size() < scopes_.size()) {
+        structured_scope_names_.resize(scopes_.size());
+      }
+      structured_scope_names_.back().insert(name);
       if (structured_scopes_.size() < scopes_.size()) structured_scopes_.resize(scopes_.size());
       structured_scopes_.back().emplace(*structured_key, &it->second);
     }
@@ -849,12 +859,23 @@ class Validator {
     return deduced;
   }
 
-  const ScopedSym* lookup_local_symbol_by_name(const std::string& name) const {
-    for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-      auto f = it->find(name);
-      if (f != it->end()) return &f->second;
+  struct LocalRenderedLookup {
+    const ScopedSym* symbol = nullptr;
+    bool has_structured_metadata = false;
+  };
+
+  LocalRenderedLookup lookup_local_symbol_by_name(const std::string& name) const {
+    for (std::size_t i = scopes_.size(); i > 0; --i) {
+      const auto& scope = scopes_[i - 1];
+      auto f = scope.find(name);
+      if (f != scope.end()) {
+        const bool structured =
+            i <= structured_scope_names_.size() &&
+            structured_scope_names_[i - 1].count(name) > 0;
+        return LocalRenderedLookup{&f->second, structured};
+      }
     }
-    return nullptr;
+    return {};
   }
 
   const ScopedSym* lookup_local_symbol_by_key(const SemaStructuredNameKey& key) const {
@@ -867,24 +888,35 @@ class Validator {
 
   std::optional<ScopedSym> lookup_symbol(const std::string& name,
                                          const Node* reference = nullptr) const {
-    const ScopedSym* rendered_local_compatibility = lookup_local_symbol_by_name(name);
+    const LocalRenderedLookup rendered_local = lookup_local_symbol_by_name(name);
     const auto local_key = reference ? sema_local_name_key(reference) : std::nullopt;
     if (local_key.has_value()) {
       const ScopedSym* structured = lookup_local_symbol_by_key(*local_key);
-      (void)compare_sema_lookup_ptrs(rendered_local_compatibility, structured);
+      (void)compare_sema_lookup_ptrs(rendered_local.symbol, structured);
       if (structured) return *structured;
     }
-    if (rendered_local_compatibility) return *rendered_local_compatibility;
+    if (rendered_local.symbol &&
+        !(local_key.has_value() && rendered_local.has_structured_metadata)) {
+      return *rendered_local.symbol;
+    }
 
     const auto structured_key = reference ? sema_symbol_name_key(reference) : std::nullopt;
+    const bool has_unqualified_structured_symbol_key =
+        structured_key.has_value() && reference &&
+        !reference->is_global_qualified && reference->n_qualifier_segments == 0;
     auto g = globals_.find(name);
     const TypeSpec* rendered_global_compatibility = g != globals_.end() ? &g->second : nullptr;
+    const bool rendered_global_has_structured_metadata =
+        name.find("::") == std::string::npos && structured_global_names_.count(name) > 0;
     if (structured_key.has_value()) {
       const TypeSpec* structured_global = lookup_global_by_key(*structured_key);
       (void)compare_sema_lookup_ptrs(rendered_global_compatibility, structured_global);
       if (structured_global) return ScopedSym{*structured_global, true};
     }
-    if (rendered_global_compatibility) return ScopedSym{*rendered_global_compatibility, true};
+    if (rendered_global_compatibility &&
+        !(has_unqualified_structured_symbol_key && rendered_global_has_structured_metadata)) {
+      return ScopedSym{*rendered_global_compatibility, true};
+    }
 
     const FunctionSig* fn = lookup_function_by_name(name, reference);
     if (fn) {
@@ -894,6 +926,8 @@ class Validator {
     }
     auto ec = enum_consts_.find(name);
     const TypeSpec* rendered_enum_compatibility = ec != enum_consts_.end() ? &ec->second : nullptr;
+    const bool rendered_enum_has_structured_metadata =
+        name.find("::") == std::string::npos && structured_enum_const_names_.count(name) > 0;
     if (structured_key.has_value()) {
       const TypeSpec* structured_enum = nullptr;
       auto se = structured_enum_consts_.find(*structured_key);
@@ -901,7 +935,10 @@ class Validator {
       (void)compare_sema_lookup_ptrs(rendered_enum_compatibility, structured_enum);
       if (structured_enum) return ScopedSym{*structured_enum, true};
     }
-    if (rendered_enum_compatibility) return ScopedSym{*rendered_enum_compatibility, true};
+    if (rendered_enum_compatibility &&
+        !(has_unqualified_structured_symbol_key && rendered_enum_has_structured_metadata)) {
+      return ScopedSym{*rendered_enum_compatibility, true};
+    }
     return std::nullopt;
   }
 
@@ -988,6 +1025,7 @@ class Validator {
       auto [it, inserted] = enum_consts_.insert_or_assign(n->enum_names[i], its);
       (void)inserted;
       if (auto key = enum_variant_global_key(n, i); key.has_value() && key->valid()) {
+        structured_enum_const_names_.insert(n->enum_names[i]);
         structured_enum_consts_[*key] = &it->second;
       }
       if (n->enum_vals) {
