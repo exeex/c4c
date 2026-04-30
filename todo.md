@@ -8,44 +8,27 @@ Current Step Title: Validation and Acceptance
 
 ## Just Finished
 
-Completed Plan Step 5 `Make Struct Method and Member-Symbol Maps Structured-Primary`.
-Step 5 code slice is committed as `7ef61ccf`.
+Completed Plan Step 6 `Validation and Acceptance`.
 
-Member-symbol lookup now prefers `HirStructMemberLookupKey` owner/member identity
-when a structured carrier is available, including direct key lookup and
-`TypeSpec.record_def` plus member `TextId` routes from owned member-expression
-callers. Rendered `module_->member_symbols` lookup remains the compatibility
-fallback and parity source. Added focused HIR coverage for stale rendered owner
-and member spelling losing to structured member-symbol authority.
-
-Struct method and static-member maps already satisfied this Step 5 classification
-from prior packets: method mangled/link-name/return-type lookup and static
-member decl/const lookup already try owner-key maps first and retain rendered
-maps as explicit fallback/parity bridges.
+Ran the final selected acceptance subset for active idea 136 after the Step 1-5
+structured HIR lookup authority slices. The build targets completed and the
+selected CTest subset passed 43/43.
 
 ## Suggested Next
 
-Next coherent packet: execute Plan Step 6 `Validation and Acceptance`.
-
-Validation should prove the structured-primary HIR lookup authority across the
-completed Step 1-5 families: namespace-qualified records, out-of-class methods,
-scoped static members, template lookup, and member-symbol lookup. Record exact
-commands and results in this file and `test_after.log`.
+Next coherent packet: supervisor should run regression guard against the
+matching `test_before.log` baseline, then route lifecycle closure or any needed
+follow-up through the plan owner.
 
 ## Watchouts
 
-Member-symbol callers outside the owned files may still use the rendered string
-bridge, but that bridge now also prefers owner keys when `module_->struct_def_owner_index`
-can derive a complete `HirStructMemberLookupKey`. Direct `TypeSpec` routing
-currently uses `record_def`; template-origin-only carriers still depend on the
-resolved rendered owner tag fallback unless another packet adds a direct
-template-instance member key carrier.
+No current executor blocker. This packet performed validation and todo recording
+only; no implementation, test, plan, idea, review, or baseline files were
+changed.
 
 ## Proof
 
-Latest completed implementation proof from Step 5:
-
 Ran the supervisor-selected proof exactly:
-`cmake --build build --target c4cll frontend_hir_tests frontend_hir_lookup_tests frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests|frontend_parser_tests|cpp_hir_template_member_owner_resolution|cpp_hir_template_member_owner_chain|cpp_hir_template_member_owner_decl_and_cast|cpp_hir_template_alias_member_owner|cpp_hir_template_member_owner_field_and_local|cpp_hir_template_member_owner_signature_local|cpp_hir_expr_call_member_helper|cpp_hir_expr_operator_member_helper|cpp_hir_expr_object_materialization_helper|cpp_positive_sema_template_member_owner_resolution_cpp|cpp_positive_sema_template_struct_advanced_cpp|cpp_positive_sema_template_struct_nested_cpp|cpp_positive_sema_inherited_base_member_access_runtime_cpp|cpp_positive_sema_operator_deref_member_basic_cpp|cpp_positive_sema_operator_arrow_member_basic_cpp|cpp_positive_sema_operator_subscript_member_basic_cpp|cpp_positive_sema_inherited_static_member_lookup_runtime_cpp|cpp_positive_sema_unqualified_static_member_call_runtime_cpp)$' >> test_after.log 2>&1`
+`cmake --build build --target c4cll frontend_hir_tests frontend_hir_lookup_tests frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests|frontend_parser_tests|cpp_hir_template_origin|cpp_hir_template_struct_registry_primary_only|cpp_hir_template_member_owner_resolution|cpp_hir_template_struct_field_array_extent|cpp_hir_template_struct_inherited_method_binding|cpp_hir_template_member_owner_chain|cpp_hir_template_member_owner_decl_and_cast|cpp_hir_template_alias_member_owner|cpp_hir_template_member_owner_field_and_local|cpp_hir_template_member_owner_signature_local|cpp_hir_expr_call_member_helper|cpp_hir_expr_operator_member_helper|cpp_hir_expr_object_materialization_helper|cpp_hir_expr_scalar_control_helper|cpp_hir_stmt_local_decl_helper|cpp_hir_stmt_range_for_helper|cpp_hir_template_struct_body_instantiation|cpp_hir_template_struct_arg_materialization|cpp_hir_template_alias_deferred_nttp_static_member|cpp_hir_template_deferred_nttp_static_member_expr|cpp_hir_template_deferred_nttp_cast_static_member_expr|cpp_hir_template_value_arg_static_member_trait|cpp_positive_sema_namespaced_out_of_class_method_context_frontend_cpp|cpp_positive_sema_qualified_namespaced_out_of_class_method_context_frontend_cpp|cpp_positive_sema_out_of_class_member_owner_scope_parse_cpp|cpp_positive_sema_operator_this_out_of_class_runtime_cpp|cpp_positive_sema_using_namespace_struct_method_runtime_cpp|cpp_positive_sema_operator_shift_static_member_call_parse_cpp|cpp_positive_sema_inherited_static_member_lookup_runtime_cpp|cpp_positive_sema_inherited_static_member_lookup_simple_runtime_cpp|cpp_positive_sema_unqualified_static_member_call_runtime_cpp|cpp_positive_sema_namespace_template_struct_basic_cpp|cpp_positive_sema_template_struct_advanced_cpp|cpp_positive_sema_template_struct_nested_cpp|cpp_positive_sema_template_struct_specialization_runtime_cpp|cpp_positive_sema_template_member_owner_resolution_cpp|cpp_positive_sema_inherited_base_member_access_runtime_cpp|cpp_positive_sema_operator_deref_member_basic_cpp|cpp_positive_sema_operator_arrow_member_basic_cpp|cpp_positive_sema_operator_subscript_member_basic_cpp)$' >> test_after.log 2>&1`
 
-Result: passed, 21/21 tests green. Proof log: `test_after.log`.
+Result: passed, 43/43 tests green. Proof log: `test_after.log`.
