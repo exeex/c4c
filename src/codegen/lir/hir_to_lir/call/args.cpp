@@ -247,6 +247,14 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
     return out;
   }
 
+  if (fixed_param_ts && llvm_cc::aarch64_fixed_vector_passed_as_i32(*fixed_param_ts, mod_)) {
+    const std::string packed = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCastOp{packed, lir::LirCastKind::Bitcast,
+                                    lir::LirTypeRef(llvm_ty(out_arg_ts)), arg,
+                                    lir::LirTypeRef("i32")});
+    return {{{"i32", packed}}, false};
+  }
+
   const std::string out_llvm_ty = llvm_ty(out_arg_ts);
   PreparedCallArg out_arg{
       {{out_llvm_ty, arg, lir_call_type_ref(out_llvm_ty, module_, out_arg_ts)}},

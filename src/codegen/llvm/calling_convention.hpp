@@ -36,4 +36,7 @@ bool amd64_type_is_aggregate(const c4c::TypeSpec& ts);
 bool amd64_fixed_aggregate_passed_byval(const c4c::TypeSpec& ts,
                                         const c4c::hir::Module& mod);
 
+bool aarch64_fixed_vector_passed_as_i32(const c4c::TypeSpec& ts,
+                                        const c4c::hir::Module& mod);
+
 }  // namespace c4c::codegen::llvm_backend

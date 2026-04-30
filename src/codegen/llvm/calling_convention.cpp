@@ -1,4 +1,5 @@
 #include "calling_convention.hpp"
+#include "../shared/llvm_helpers.hpp"
 
 #include <algorithm>
 
@@ -268,6 +269,14 @@ bool amd64_fixed_aggregate_passed_byval(const TypeSpec& ts, const Module& mod) {
   if (!(ts.base == TypeBase::TB_STRUCT || ts.base == TypeBase::TB_UNION)) return false;
   const auto layout = classify_amd64_vararg(ts, mod);
   return layout.size_bytes > 0 && layout.needs_memory;
+}
+
+bool aarch64_fixed_vector_passed_as_i32(const TypeSpec& ts, const Module& mod) {
+  using namespace c4c::codegen::llvm_helpers;
+  return llvm_target_is_aarch64(mod.target_profile) &&
+         !llvm_target_is_apple(mod.target_profile) &&
+         is_vector_value(ts) &&
+         ts.vector_bytes == 4;
 }
 
 Amd64VarargInfo classify_amd64_vararg(const TypeSpec& ts, const Module& mod) {

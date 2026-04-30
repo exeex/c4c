@@ -455,7 +455,13 @@ std::string llvm_fn_type_suffix_str(const hir::Module& mod, const FnPtrSig& sig)
     if (void_param_list) break;
     if (i) out << ", ";
     const TypeSpec param_ts = sig_param_type(sig, i);
-    out << (amd64_fixed_aggregate_byval(mod, param_ts) ? "ptr" : llvm_ty(param_ts));
+    if (amd64_fixed_aggregate_byval(mod, param_ts)) {
+      out << "ptr";
+    } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+      out << "i32";
+    } else {
+      out << llvm_ty(param_ts);
+    }
   }
   if (sig_is_variadic(sig)) {
     if (sig_param_count(sig) > 0 && !void_param_list) out << ", ";
@@ -486,7 +492,13 @@ std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn) 
     if (void_param_list) break;
     if (i) out << ", ";
     const TypeSpec& param_ts = fn.params[i].type.spec;
-    out << (amd64_fixed_aggregate_byval(mod, param_ts) ? "ptr" : llvm_ty(param_ts));
+    if (amd64_fixed_aggregate_byval(mod, param_ts)) {
+      out << "ptr";
+    } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+      out << "i32";
+    } else {
+      out << llvm_ty(param_ts);
+    }
   }
   if (fn.attrs.variadic) {
     if (!fn.params.empty() && !void_param_list) out << ", ";

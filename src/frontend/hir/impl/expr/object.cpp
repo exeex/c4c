@@ -457,9 +457,8 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
   ExprId base_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
   if (init_list && (is_struct_or_union || is_array || is_vector)) {
     auto is_agg = [](const TypeSpec& ts) {
-      return ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 &&
-              ts.array_rank == 0) ||
-             is_vector_ty(ts);
+      return (ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 &&
+             ts.array_rank == 0;
     };
     auto append_assign = [&](ExprId lhs_id, const TypeSpec& lhs_ts, const Node* rhs_node) {
       if (!rhs_node) return;

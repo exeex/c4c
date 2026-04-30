@@ -96,6 +96,7 @@ std::string rendered_signature_param_type(const c4c::hir::Module& mod,
     return "ptr byval(" + llvm_ty(param_ts) + ") align " +
            std::to_string(std::max(8, object_align_bytes(mod, lir_module, param_ts)));
   }
+  if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) return "i32";
   return llvm_ty(param_ts);
 }
 
@@ -646,6 +647,8 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
           llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
         sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
                 << std::max(8, object_align_bytes(mod, lir_module, param_ts));
+      } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+        sig_out << "i32";
       } else {
         sig_out << llvm_ty(param_ts);
       }
@@ -682,6 +685,8 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
         llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
       sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
               << std::max(8, object_align_bytes(mod, lir_module, param_ts)) << " " << pname;
+    } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+      sig_out << "i32 " << pname << ".abi";
     } else {
       sig_out << llvm_ty(param_ts) << " " << pname;
     }
@@ -973,6 +978,12 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
     if (void_param_list) break;
     const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
     ctx.param_slots[static_cast<uint32_t>(i)] = pname;
+    const TypeSpec& param_ts = fn.params[i].type.spec;
+    if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+      ctx.alloca_insts.push_back(
+          LirCastOp{pname, LirCastKind::Bitcast, LirTypeRef("i32"), pname + ".abi",
+                    LirTypeRef(llvm_ty(param_ts))});
+    }
   }
 
   // Create entry block.
