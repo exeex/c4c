@@ -527,7 +527,7 @@ AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
   return layout;
 }
 
-AggregateTypeLayout lookup_backend_aggregate_type_layout(
+BackendAggregateLayoutLookup lookup_backend_aggregate_type_layout_result(
     std::string_view text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts) {
@@ -536,13 +536,31 @@ AggregateTypeLayout lookup_backend_aggregate_type_layout(
     const auto structured_it = structured_layouts.find(std::string(trimmed));
     if (structured_it != structured_layouts.end()) {
       const auto& entry = structured_it->second;
+      const bool mismatch = entry.parity_checked && !entry.parity_matches;
       if (entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid) {
-        return entry.structured_layout;
+        return BackendAggregateLayoutLookup{
+            .layout = entry.structured_layout,
+            .used_structured_layout = true,
+            .used_legacy_fallback = false,
+            .structured_text_mismatch = mismatch,
+        };
       }
     }
   }
 
-  return compute_aggregate_type_layout(trimmed, type_decls);
+  return BackendAggregateLayoutLookup{
+      .layout = compute_aggregate_type_layout(trimmed, type_decls),
+      .used_structured_layout = false,
+      .used_legacy_fallback = true,
+      .structured_text_mismatch = false,
+  };
+}
+
+AggregateTypeLayout lookup_backend_aggregate_type_layout(
+    std::string_view text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  return lookup_backend_aggregate_type_layout_result(text, type_decls, structured_layouts).layout;
 }
 
 }  // namespace c4c::backend::lir_to_bir_detail

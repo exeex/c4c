@@ -163,6 +163,13 @@ struct BackendStructuredLayoutEntry {
 
 using BackendStructuredLayoutTable = std::unordered_map<std::string, BackendStructuredLayoutEntry>;
 
+struct BackendAggregateLayoutLookup {
+  AggregateTypeLayout layout;
+  bool used_structured_layout = false;
+  bool used_legacy_fallback = false;
+  bool structured_text_mismatch = false;
+};
+
 struct IntegerArrayType {
   std::vector<std::size_t> extents;
   bir::TypeKind element_type = bir::TypeKind::Void;
@@ -195,6 +202,10 @@ std::optional<std::int64_t> resolve_index_operand(
     const ValueMap& value_aliases);
 AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
                                                   const TypeDeclMap& type_decls);
+BackendAggregateLayoutLookup lookup_backend_aggregate_type_layout_result(
+    std::string_view text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts);
 AggregateTypeLayout lookup_backend_aggregate_type_layout(
     std::string_view text,
     const TypeDeclMap& type_decls,

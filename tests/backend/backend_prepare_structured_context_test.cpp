@@ -335,6 +335,7 @@ int check_backend_layout_lookup_prefers_structured_table() {
   using c4c::backend::lir_to_bir_detail::AggregateTypeLayout;
   using c4c::backend::lir_to_bir_detail::build_backend_structured_layout_table;
   using c4c::backend::lir_to_bir_detail::build_type_decl_map;
+  using c4c::backend::lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
   using c4c::backend::lir_to_bir_detail::lookup_backend_aggregate_type_layout;
 
   lir::LirModule module;
@@ -352,8 +353,20 @@ int check_backend_layout_lookup_prefers_structured_table() {
   const auto matching_legacy_decls = build_type_decl_map({"%struct.Pair = type { i32, i32 }"});
   const auto matching_table = build_backend_structured_layout_table(
       module.struct_decls, module.struct_names, matching_legacy_decls);
+  const auto matching_lookup = lookup_backend_aggregate_type_layout_result(
+      "%struct.Pair", matching_legacy_decls, matching_table);
   const auto matching_layout =
       lookup_backend_aggregate_type_layout("%struct.Pair", matching_legacy_decls, matching_table);
+  if (!matching_lookup.used_structured_layout || matching_lookup.used_legacy_fallback ||
+      matching_lookup.structured_text_mismatch) {
+    return fail("structured-present matching layout lookup did not expose structured status");
+  }
+  if (matching_lookup.layout.kind != AggregateTypeLayout::Kind::Struct ||
+      matching_lookup.layout.size_bytes != matching_layout.size_bytes ||
+      matching_lookup.layout.align_bytes != matching_layout.align_bytes ||
+      matching_lookup.layout.fields.size() != matching_layout.fields.size()) {
+    return fail("structured-present matching layout lookup result diverged from compatibility layout");
+  }
   if (matching_layout.kind != AggregateTypeLayout::Kind::Struct ||
       matching_layout.size_bytes != 8 || matching_layout.align_bytes != 4 ||
       matching_layout.fields.size() != 2 || matching_layout.fields[1].byte_offset != 4) {
@@ -364,8 +377,20 @@ int check_backend_layout_lookup_prefers_structured_table() {
       build_type_decl_map({"%struct.Pair = type { i64, i64 }"});
   const auto mismatched_table = build_backend_structured_layout_table(
       module.struct_decls, module.struct_names, mismatched_legacy_decls);
+  const auto mismatched_lookup = lookup_backend_aggregate_type_layout_result(
+      "%struct.Pair", mismatched_legacy_decls, mismatched_table);
   const auto mismatched_layout = lookup_backend_aggregate_type_layout(
       "%struct.Pair", mismatched_legacy_decls, mismatched_table);
+  if (!mismatched_lookup.used_structured_layout || mismatched_lookup.used_legacy_fallback ||
+      !mismatched_lookup.structured_text_mismatch) {
+    return fail("structured-present mismatched layout lookup did not expose mismatch status");
+  }
+  if (mismatched_lookup.layout.kind != AggregateTypeLayout::Kind::Struct ||
+      mismatched_lookup.layout.size_bytes != mismatched_layout.size_bytes ||
+      mismatched_lookup.layout.align_bytes != mismatched_layout.align_bytes ||
+      mismatched_lookup.layout.fields.size() != mismatched_layout.fields.size()) {
+    return fail("structured-present mismatched layout lookup result diverged from compatibility layout");
+  }
   if (mismatched_layout.kind != AggregateTypeLayout::Kind::Struct ||
       mismatched_layout.size_bytes != 8 || mismatched_layout.align_bytes != 4 ||
       mismatched_layout.fields.size() != 2 || mismatched_layout.fields[1].byte_offset != 4) {
@@ -373,8 +398,20 @@ int check_backend_layout_lookup_prefers_structured_table() {
   }
 
   const c4c::backend::lir_to_bir_detail::BackendStructuredLayoutTable empty_structured_table;
+  const auto fallback_lookup = lookup_backend_aggregate_type_layout_result(
+      "%struct.Pair", mismatched_legacy_decls, empty_structured_table);
   const auto fallback_layout = lookup_backend_aggregate_type_layout(
       "%struct.Pair", mismatched_legacy_decls, empty_structured_table);
+  if (fallback_lookup.used_structured_layout || !fallback_lookup.used_legacy_fallback ||
+      fallback_lookup.structured_text_mismatch) {
+    return fail("structured-missing layout lookup did not expose legacy fallback status");
+  }
+  if (fallback_lookup.layout.kind != AggregateTypeLayout::Kind::Struct ||
+      fallback_lookup.layout.size_bytes != fallback_layout.size_bytes ||
+      fallback_lookup.layout.align_bytes != fallback_layout.align_bytes ||
+      fallback_lookup.layout.fields.size() != fallback_layout.fields.size()) {
+    return fail("structured-missing fallback lookup result diverged from compatibility layout");
+  }
   if (fallback_layout.kind != AggregateTypeLayout::Kind::Struct ||
       fallback_layout.size_bytes != 16 || fallback_layout.align_bytes != 8 ||
       fallback_layout.fields.size() != 2 || fallback_layout.fields[1].byte_offset != 8) {
