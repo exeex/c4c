@@ -8,19 +8,21 @@ Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Route
 
 ## Just Finished
 
-Step 3 removed rendered-name authority from Sema consteval function lookup
-after structured or `TextId` metadata makes a miss authoritative. The
-consteval interpreter and static-assert validator still prefer structured and
-`TextId` hits, but stale rendered-name consteval functions no longer survive
-when those metadata routes miss. Focused tests cover stale rendered disagreement
-being rejected after metadata misses and the no-metadata rendered compatibility
-fallback staying available.
+Step 3 removed rendered-name authority from Sema ordinary function/ref-overload/
+operator-overload lookup after structured function metadata makes a miss
+authoritative. `lookup_function_by_name`, `lookup_ref_overloads_by_name`, and
+`lookup_cpp_overloads_by_name` still prefer structured hits, but stale
+unqualified rendered candidates with structured metadata no longer survive when
+the reference's structured function key misses. Focused tests cover stale
+rendered overload disagreement being ignored after structured misses and
+rendered overload compatibility still being consulted when the reference has no
+structured carrier.
 
 ## Suggested Next
 
-Continue Step 3 with Sema function/overload rendered-name lookup routes,
-prioritizing helpers where structured metadata can make a miss authoritative
-without relying on namespace-qualified rendered bridges.
+Continue Step 3 with any remaining Sema rendered-name semantic lookup routes,
+prioritizing routes that already have structured or `TextId` metadata and do
+not rely on namespace-qualified rendered bridges.
 
 ## Watchouts
 
@@ -50,9 +52,13 @@ without relying on namespace-qualified rendered bridges.
   route, so this packet intentionally preserves those fallbacks.
 - Synthetic locals without structured metadata, such as predefined function
   name identifiers, must remain rendered fallback candidates.
+- Ordinary function/ref-overload/operator-overload lookup now suppresses stale
+  unqualified rendered candidates only when the rendered candidate was itself
+  mirrored from structured metadata. No-metadata references and
+  namespace-qualified rendered bridges remain compatibility fallbacks.
 
 ## Proof
 
 Ran the delegated proof command:
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval).*)$' --output-on-failure) > test_after.log 2>&1`.
-It passed with 453/453 tests green. Proof log: `test_after.log`.
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*)$' --output-on-failure) > test_after.log 2>&1`.
+It passed with 464/464 tests green. Proof log: `test_after.log`.

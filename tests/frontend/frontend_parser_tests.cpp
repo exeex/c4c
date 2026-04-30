@@ -4870,6 +4870,95 @@ void test_sema_overload_lookup_prefers_structured_key_over_rendered_spelling() {
               "overload lookup should use structured function keys before rendered names" + diag);
 }
 
+void test_sema_overload_lookup_ignores_stale_rendered_name_after_structured_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId missing_ref_text = texts.intern("missing_ref_overload");
+  const c4c::TextId missing_cpp_text = texts.intern("operator_missing_lookup");
+  c4c::TypeSpec int_value = make_sema_lookup_ts(c4c::TB_INT);
+  c4c::TypeSpec double_value = make_sema_lookup_ts(c4c::TB_DOUBLE);
+  c4c::TypeSpec stale_ret = make_sema_lookup_ts(c4c::TB_DOUBLE);
+  c4c::TypeSpec lvalue_int_ref = int_value;
+  lvalue_int_ref.is_lvalue_ref = true;
+  c4c::TypeSpec rvalue_int_ref = int_value;
+  rvalue_int_ref.is_rvalue_ref = true;
+
+  c4c::Node* stale_ref_lvalue = make_sema_lookup_function(
+      parser, arena, "stale_ref_overload", "stale_ref_overload",
+      texts.intern("stale_ref_overload"), stale_ret, lvalue_int_ref);
+  c4c::Node* stale_ref_rvalue = make_sema_lookup_function(
+      parser, arena, "stale_ref_overload", "stale_ref_overload",
+      texts.intern("stale_ref_overload"), stale_ret, rvalue_int_ref);
+  c4c::Node* stale_cpp_int = make_sema_lookup_function(
+      parser, arena, "operator_stale_lookup", "operator_stale_lookup",
+      texts.intern("operator_stale_lookup"), stale_ret, int_value);
+  c4c::Node* stale_cpp_double = make_sema_lookup_function(
+      parser, arena, "operator_stale_lookup", "operator_stale_lookup",
+      texts.intern("operator_stale_lookup"), stale_ret, double_value);
+
+  c4c::Node* ref_caller = make_sema_lookup_calling_function(
+      parser, arena, "call_missing_ref_overload", "stale_ref_overload",
+      "missing_ref_overload", missing_ref_text);
+  c4c::Node* cpp_caller = make_sema_lookup_calling_function(
+      parser, arena, "call_missing_cpp_overload", "operator_stale_lookup",
+      "operator_missing_lookup", missing_cpp_text);
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 6;
+  program->children = arena.alloc_array<c4c::Node*>(6);
+  program->children[0] = stale_ref_lvalue;
+  program->children[1] = stale_ref_rvalue;
+  program->children[2] = stale_cpp_int;
+  program->children[3] = stale_cpp_double;
+  program->children[4] = ref_caller;
+  program->children[5] = cpp_caller;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  const std::string diag =
+      result.diagnostics.empty() ? "" : (": " + result.diagnostics.front().message);
+  expect_true(result.ok,
+              "overload lookup should ignore stale rendered names after structured metadata misses" + diag);
+}
+
+void test_sema_overload_lookup_keeps_no_metadata_rendered_compatibility() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec int_value = make_sema_lookup_ts(c4c::TB_INT);
+  c4c::TypeSpec double_value = make_sema_lookup_ts(c4c::TB_DOUBLE);
+  c4c::TypeSpec stale_ret = make_sema_lookup_ts(c4c::TB_DOUBLE);
+
+  c4c::Node* stale_cpp_int = make_sema_lookup_function(
+      parser, arena, "operator_compat_lookup", "operator_compat_lookup",
+      texts.intern("operator_compat_lookup"), stale_ret, int_value);
+  c4c::Node* stale_cpp_double = make_sema_lookup_function(
+      parser, arena, "operator_compat_lookup", "operator_compat_lookup",
+      texts.intern("operator_compat_lookup"), stale_ret, double_value);
+
+  c4c::Node* caller = make_sema_lookup_calling_function(
+      parser, arena, "call_compat_cpp_overload", "operator_compat_lookup",
+      "operator_compat_lookup", c4c::kInvalidText);
+  caller->body->children[0]->left->left->unqualified_text_id = c4c::kInvalidText;
+  caller->body->children[0]->left->left->namespace_context_id = -1;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
+  program->children[0] = stale_cpp_int;
+  program->children[1] = stale_cpp_double;
+  program->children[2] = caller;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok && !result.diagnostics.empty() &&
+                  result.diagnostics.front().message == "incompatible return type",
+              "overload lookup should still consult rendered compatibility when references have no structured carrier");
+}
+
 void test_sema_namespace_owner_resolution_prefers_structured_owner_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6564,6 +6653,8 @@ int main() {
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_local_spelling();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_global_spelling();
   test_sema_overload_lookup_prefers_structured_key_over_rendered_spelling();
+  test_sema_overload_lookup_ignores_stale_rendered_name_after_structured_miss();
+  test_sema_overload_lookup_keeps_no_metadata_rendered_compatibility();
   test_sema_namespace_owner_resolution_prefers_structured_owner_key();
   test_sema_method_validation_prefers_structured_owner_key_for_fields();
   test_sema_method_validation_rejects_stale_rendered_field_spelling();

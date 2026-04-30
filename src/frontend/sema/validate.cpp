@@ -544,12 +544,15 @@ class Validator {
   std::unordered_map<std::string, FunctionSig> funcs_;
   std::unordered_map<SemaStructuredNameKey, const FunctionSig*, SemaStructuredNameKeyHash>
       structured_funcs_;
+  std::unordered_set<std::string> structured_function_names_;
   std::unordered_map<std::string, const Node*> consteval_funcs_;
   ConstEvalFunctionTextMap consteval_funcs_by_text_;
   ConstEvalFunctionStructuredMap consteval_funcs_by_key_;
   // Ref-overloaded function signatures: name → multiple overloads differing in ref-qualifier.
   std::unordered_map<std::string, std::vector<FunctionSig>> ref_overload_sigs_;
   std::unordered_map<std::string, std::vector<FunctionSig>> cpp_overload_sigs_;
+  std::unordered_set<std::string> structured_ref_overload_names_;
+  std::unordered_set<std::string> structured_cpp_overload_names_;
   std::unordered_map<SemaStructuredNameKey, const std::vector<FunctionSig>*,
                      SemaStructuredNameKeyHash>
       structured_ref_overload_sigs_;
@@ -663,15 +666,20 @@ class Validator {
     if (!key.has_value() || !key->valid()) return;
 
     auto fn = funcs_.find(n->name);
-    if (fn != funcs_.end()) structured_funcs_[*key] = &fn->second;
+    if (fn != funcs_.end()) {
+      structured_function_names_.insert(n->name);
+      structured_funcs_[*key] = &fn->second;
+    }
 
     auto ref_ov = ref_overload_sigs_.find(n->name);
     if (ref_ov != ref_overload_sigs_.end()) {
+      structured_ref_overload_names_.insert(n->name);
       structured_ref_overload_sigs_[*key] = &ref_ov->second;
     }
 
     auto cpp_ov = cpp_overload_sigs_.find(n->name);
     if (cpp_ov != cpp_overload_sigs_.end()) {
+      structured_cpp_overload_names_.insert(n->name);
       structured_cpp_overload_sigs_[*key] = &cpp_ov->second;
     }
   }
@@ -714,11 +722,14 @@ class Validator {
     auto it = funcs_.find(name);
     const FunctionSig* rendered_name_compatibility =
         it != funcs_.end() ? &it->second : nullptr;
+    const bool rendered_name_has_structured_metadata =
+        name.find("::") == std::string::npos && structured_function_names_.count(name) > 0;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const FunctionSig* structured = lookup_function_by_key(*key);
         (void)compare_sema_lookup_ptrs(rendered_name_compatibility, structured);
         if (structured) return structured;
+        if (rendered_name_has_structured_metadata) return nullptr;
       }
     }
     return rendered_name_compatibility;
@@ -729,12 +740,15 @@ class Validator {
     auto it = ref_overload_sigs_.find(name);
     const std::vector<FunctionSig>* legacy =
         it != ref_overload_sigs_.end() ? &it->second : nullptr;
+    const bool legacy_has_structured_metadata =
+        name.find("::") == std::string::npos && structured_ref_overload_names_.count(name) > 0;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const std::vector<FunctionSig>* structured =
             lookup_ref_overloads_by_key(*key);
         (void)compare_sema_lookup_ptrs(legacy, structured);
         if (structured) return structured;
+        if (legacy_has_structured_metadata) return nullptr;
       }
     }
     return legacy;
@@ -745,12 +759,15 @@ class Validator {
     auto it = cpp_overload_sigs_.find(name);
     const std::vector<FunctionSig>* legacy =
         it != cpp_overload_sigs_.end() ? &it->second : nullptr;
+    const bool legacy_has_structured_metadata =
+        name.find("::") == std::string::npos && structured_cpp_overload_names_.count(name) > 0;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const std::vector<FunctionSig>* structured =
             lookup_cpp_overloads_by_key(*key);
         (void)compare_sema_lookup_ptrs(legacy, structured);
         if (structured) return structured;
+        if (legacy_has_structured_metadata) return nullptr;
       }
     }
     return legacy;
