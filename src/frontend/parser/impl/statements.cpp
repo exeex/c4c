@@ -371,8 +371,11 @@ Node* parse_stmt(Parser& parser) {
                         Node* decl = parser.make_node(NK_DECL, ln);
                         decl->type = ts;
                         decl->name = vname;
+                        decl->unqualified_name = vname;
+                        decl->unqualified_text_id =
+                            parser.parser_text_id_for_token(vname_text_id, vname);
                         decl->init = init_node;
-                        parser.register_var_type_binding(parser.parser_text_id_for_token(vname_text_id, vname), ts);
+                        parser.register_var_type_binding(decl->unqualified_text_id, ts);
                         condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;
@@ -399,6 +402,8 @@ Node* parse_stmt(Parser& parser) {
             Node* cnd = nullptr;
             if (cond_decl) {
                 cnd = parser.make_var(cond_decl->name, cond_decl->line);
+                cnd->unqualified_name = cond_decl->unqualified_name;
+                cnd->unqualified_text_id = cond_decl->unqualified_text_id;
             } else {
                 cnd = parse_expr(parser);
             }
@@ -509,8 +514,11 @@ Node* parse_stmt(Parser& parser) {
                         Node* decl = parser.make_node(NK_DECL, ln);
                         decl->type = ts;
                         decl->name = vname;
+                        decl->unqualified_name = vname;
+                        decl->unqualified_text_id =
+                            parser.parser_text_id_for_token(vname_text_id, vname);
                         decl->init = init_node;
-                        parser.register_var_type_binding(parser.parser_text_id_for_token(vname_text_id, vname), ts);
+                        parser.register_var_type_binding(decl->unqualified_text_id, ts);
                         condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;
@@ -537,6 +545,8 @@ Node* parse_stmt(Parser& parser) {
             Node* cnd = nullptr;
             if (cond_decl) {
                 cnd = parser.make_var(cond_decl->name, cond_decl->line);
+                cnd->unqualified_name = cond_decl->unqualified_name;
+                cnd->unqualified_text_id = cond_decl->unqualified_text_id;
             } else {
                 cnd = parse_expr(parser);
             }
@@ -780,8 +790,11 @@ Node* parse_stmt(Parser& parser) {
                         Node* decl = parser.make_node(NK_DECL, ln);
                         decl->type = ts;
                         decl->name = vname;
+                        decl->unqualified_name = vname;
+                        decl->unqualified_text_id =
+                            parser.parser_text_id_for_token(vname_text_id, vname);
                         decl->init = init_node;
-                        parser.register_var_type_binding(parser.parser_text_id_for_token(vname_text_id, vname), ts);
+                        parser.register_var_type_binding(decl->unqualified_text_id, ts);
                         condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;
@@ -808,6 +821,8 @@ Node* parse_stmt(Parser& parser) {
             Node* cnd = nullptr;
             if (cond_decl) {
                 cnd = parser.make_var(cond_decl->name, cond_decl->line);
+                cnd->unqualified_name = cond_decl->unqualified_name;
+                cnd->unqualified_text_id = cond_decl->unqualified_text_id;
             } else {
                 cnd = parse_expr(parser);
             }

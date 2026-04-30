@@ -8,16 +8,18 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired the parser parameter metadata producer: `parse_param` now
-copies the declarator identifier `TextId` and unqualified source name onto the
-returned `NK_DECL` without adding namespace qualifiers. Focused consteval parser
-tests cover parsed function parameters and show parameter binding/readback still
-uses `TextId` metadata when rendered parameter/reference names are stale.
+Step 3.1 repaired the parser condition-declaration metadata producers: the
+`if`, `while`, and `switch` condition-local declaration paths now copy the
+declarator identifier `TextId` and unqualified source name onto their `NK_DECL`
+nodes without adding namespace qualifiers, and the synthetic condition
+reference receives the same unqualified metadata. Focused parser and consteval
+tests cover parsed condition locals and show binding/readback still uses
+`TextId` metadata when rendered declaration/reference names are stale.
 
 ## Suggested Next
 
-Continue Step 3.1 with one bounded metadata-producer packet for consteval
-locals, loop locals, synthetic locals, or `TypeSpec` intrinsic identifier
+Continue Step 3.1 with one bounded metadata-producer packet for remaining local
+declarations, loop locals, synthetic locals, or `TypeSpec` intrinsic identifier
 metadata before attempting any consteval rendered-fallback deletion.
 
 ## Watchouts

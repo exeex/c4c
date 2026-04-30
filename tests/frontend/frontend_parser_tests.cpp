@@ -2938,6 +2938,51 @@ void test_parser_if_condition_decl_uses_local_visible_typedef_scope() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_condition_decls_preserve_unqualified_text_metadata() {
+  struct Case {
+    const char* source;
+    c4c::NodeKind wrapper_kind;
+    const char* label;
+  };
+
+  for (const Case& c : {
+           Case{"if (int value = 1) { }\n", c4c::NK_IF, "if"},
+           Case{"while (int value = 1) { }\n", c4c::NK_WHILE, "while"},
+           Case{"switch (int value = 1) { case 1: break; }\n", c4c::NK_SWITCH,
+                "switch"},
+       }) {
+    c4c::Lexer lexer(c.source, c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    c4c::Node* stmt = c4c::parse_stmt(parser);
+    expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
+                std::string(c.label) +
+                    "-condition declaration should parse as a scoped block");
+    expect_true(stmt->n_children == 2 && stmt->children &&
+                    stmt->children[0] && stmt->children[0]->kind == c4c::NK_DECL &&
+                    stmt->children[1] && stmt->children[1]->kind == c.wrapper_kind,
+                std::string(c.label) +
+                    "-condition declaration should expose the declaration and statement");
+
+    c4c::Node* decl = stmt->children[0];
+    expect_eq(decl->name, "value",
+              std::string(c.label) +
+                  "-condition declaration should keep the rendered name");
+    expect_eq(decl->unqualified_name, "value",
+              std::string(c.label) +
+                  "-condition declaration should keep unqualified source metadata");
+    expect_true(decl->unqualified_text_id == lexer.text_table().intern("value"),
+                std::string(c.label) +
+                    "-condition declaration should keep the declarator TextId");
+    expect_true(decl->n_qualifier_segments == 0 && !decl->is_global_qualified,
+                std::string(c.label) +
+                    "-condition declaration metadata should stay unqualified");
+  }
+}
+
 void test_parser_if_condition_decl_scope_does_not_leak_bindings() {
   c4c::Lexer lexer("if (Alias value = 0) value = 1; else value = 2;\n"
                    "value = 3;\n",
@@ -6508,6 +6553,54 @@ void test_consteval_parameter_binding_uses_text_metadata_over_stale_rendered_nam
                 "stale rendered parameter names should not block TextId local lookup");
 }
 
+void test_consteval_condition_decl_binding_uses_text_metadata_over_stale_rendered_name() {
+  c4c::Lexer lexer("consteval int id() {\n"
+                   "  if (int value = 5) { return value; }\n"
+                   "  return 0;\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parse_top_level(parser);
+  expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION && fn->body &&
+                  fn->body->kind == c4c::NK_BLOCK && fn->body->n_children >= 1,
+              "consteval condition-local fixture should parse as a function");
+  c4c::Node* scoped_if = fn->body->children[0];
+  expect_true(scoped_if && scoped_if->kind == c4c::NK_BLOCK &&
+                  scoped_if->n_children == 2 && scoped_if->children[0] &&
+                  scoped_if->children[0]->kind == c4c::NK_DECL &&
+                  scoped_if->children[1] && scoped_if->children[1]->kind == c4c::NK_IF,
+              "consteval condition-local fixture should retain the condition declaration");
+  c4c::Node* decl = scoped_if->children[0];
+  c4c::Node* if_node = scoped_if->children[1];
+  expect_true(if_node->cond && if_node->cond->kind == c4c::NK_VAR &&
+                  if_node->then_ && if_node->then_->kind == c4c::NK_BLOCK &&
+                  if_node->then_->n_children == 1 &&
+                  if_node->then_->children[0] &&
+                  if_node->then_->children[0]->kind == c4c::NK_RETURN &&
+                  if_node->then_->children[0]->left &&
+                  if_node->then_->children[0]->left->kind == c4c::NK_VAR,
+              "consteval condition-local fixture should read the local in the condition and body");
+
+  c4c::Node* condition_ref = if_node->cond;
+  c4c::Node* returned_ref = if_node->then_->children[0]->left;
+  decl->name = arena.strdup("stale_condition_decl_rendering");
+  condition_ref->name = arena.strdup("stale_condition_ref_rendering");
+  returned_ref->name = arena.strdup("stale_return_ref_rendering");
+
+  std::unordered_map<std::string, const c4c::Node*> consteval_fns;
+  c4c::hir::ConstEvalEnv env{};
+  auto result = c4c::hir::evaluate_consteval_call(fn, {}, env, consteval_fns);
+
+  expect_true(result.ok(),
+              "consteval condition-local binding should evaluate through TextId metadata");
+  expect_eq_int(static_cast<int>(result.as_int()), 5,
+                "stale rendered condition-local names should not block TextId lookup");
+}
+
 void test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name() {
   c4c::TextTable texts;
   const c4c::TextId actual_text = texts.intern("Actual");
@@ -6999,6 +7092,7 @@ int main() {
   test_parser_using_type_import_prefers_structured_type_over_corrupt_rendered_name();
   test_parser_register_local_bindings_keep_flat_tables_empty();
   test_parser_if_condition_decl_uses_local_visible_typedef_scope();
+  test_parser_condition_decls_preserve_unqualified_text_metadata();
   test_parser_if_condition_decl_scope_does_not_leak_bindings();
   test_parser_for_init_decl_uses_loop_lifetime_local_scope();
   test_parser_while_condition_decl_uses_loop_lifetime_local_scope();
@@ -7069,6 +7163,7 @@ int main() {
   test_consteval_template_arg_expr_payload_ignores_stale_rendered_name();
   test_parser_consteval_parameter_preserves_unqualified_text_metadata();
   test_consteval_parameter_binding_uses_text_metadata_over_stale_rendered_name();
+  test_consteval_condition_decl_binding_uses_text_metadata_over_stale_rendered_name();
   test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name();
   test_consteval_value_lookup_keeps_no_metadata_rendered_compatibility();
   test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
