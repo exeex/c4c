@@ -8,17 +8,18 @@ Current Step Title: Add Structured Registration Paths
 
 ## Just Finished
 
-Completed the out-of-class operator Plan Step 2 packet. The qualified operator
-declaration path now records owner segment `TextId`s while consuming the owner
-and registers a structured `QualifiedNameKey` for the generated operator base
-name before any rendered `qualified_op_name` fallback. `qualified_op_name` and
-`fn->name` remain final spelling/display data.
+Completed the out-of-class constructor Plan Step 2 packet. The qualified
+constructor declaration path now records owner segment `TextId`s and global
+qualification while consuming the owner, then registers a structured
+`QualifiedNameKey` for the constructor before any rendered
+`qualified_ctor_name` fallback. `qualified_ctor_name` and `fn->name` remain
+final spelling/display data.
 
 ## Suggested Next
 
-Step 2 next packet: convert the out-of-class constructor declaration
-registration path away from rendered `qualified_ctor_name` authority while
-preserving final display spelling.
+Step 2 next packet: continue converting any remaining parser known-function
+registration path that still has structured identity available but reaches
+string-only registration first.
 
 ## Watchouts
 
@@ -26,16 +27,15 @@ preserving final display spelling.
 - Do not let rendered spelling decide disambiguation when structured identity
   is available.
 - Avoid testcase-shaped special cases.
-- Out-of-class constructor registration is still a follow-up packet; it needs
-  owner-name structure preserved instead of reparsing `qualified_ctor_name`.
 - Do not remove `fn->name` rendered spelling yet; it is final AST/display data,
   not the known-name authority store.
+- This packet intentionally did not fold in Step 3 lookup/disambiguation work.
 
 ## Proof
 
 Passed: `cmake --build build --target c4cll frontend_parser_tests >
 test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R
-'^(frontend_parser_tests|cpp_positive_sema_operator_conversion_out_of_class_parse_cpp|cpp_positive_sema_operator_conversion_template_id_refqual_parse_cpp|cpp_positive_sema_qualified_operator_template_owner_parse_cpp|cpp_positive_sema_operator_decl_bool_parse_cpp|cpp_positive_sema_operator_decl_shift_qualified_parse_cpp|cpp_positive_sema_operator_this_out_of_class_runtime_cpp|cpp_positive_sema_operator_arrow_explicit_member_call_parse_cpp|cpp_positive_sema_free_operator_eq_overload_frontend_cpp|cpp_positive_sema_friend_inline_operator_parse_cpp|cpp_positive_sema_friend_relational_operator_parse_cpp|cpp_positive_sema_friend_spaceship_operator_parse_cpp|cpp_positive_sema_member_spaceship_operator_parse_cpp)$'
+'^(frontend_parser_tests|cpp_positive_sema_constructor_basic_cpp|cpp_positive_sema_constructor_self_ref_param_parse_cpp|cpp_positive_sema_default_ctor_basic_cpp|cpp_positive_sema_delegating_ctor_basic_cpp|cpp_positive_sema_cpp20_out_of_class_trailing_requires_runtime_cpp|cpp_positive_sema_ctor_init_out_of_class_dependent_typename_index_tuple_parse_cpp|cpp_positive_sema_ctor_init_dependent_typename_index_tuple_parse_cpp|cpp_positive_sema_ctor_init_delegating_unqualified_template_runtime_cpp|cpp_positive_sema_ctor_init_member_typedef_ctor_runtime_cpp|cpp_parse_constructor_self_ref_param_dump|cpp_parser_debug_ctor_init_tentative_lite|cpp_negative_tests_parser_debug_ctor_init_tentative_lite)$'
 >> test_after.log 2>&1`. The proof rebuilt `c4cll` and
 `frontend_parser_tests`, then passed 13/13 selected tests. Proof log:
 `test_after.log`.

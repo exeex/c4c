@@ -2611,12 +2611,18 @@ Node* parse_top_level(Parser& parser) {
         }
 
         if (looks_like_qualified_ctor) {
+            std::vector<TextId> qualified_owner_text_ids;
+            bool qualified_owner_is_global = false;
             if (!consume_special_member_owner(/*stop_before_operator=*/false,
-                                              /*stop_before_ctor=*/true)) {
+                                              /*stop_before_ctor=*/true,
+                                              &qualified_owner_text_ids,
+                                              &qualified_owner_is_global)) {
                 parser.pos_ = saved_special_member_pos;
             }
             parser.expect(TokenKind::ColonColon);
             const std::string ctor_name = std::string(parser.token_spelling(parser.cur()));
+            const TextId ctor_name_text_id =
+                parser.parser_text_id_for_token(parser.cur().text_id, ctor_name);
             parser.consume();
             if (parser.check(TokenKind::LParen)) {
                 std::string qualified_ctor_name = qualified_owner;
@@ -2748,7 +2754,23 @@ Node* parse_top_level(Parser& parser) {
                 } else {
                     parser.match(TokenKind::Semi);
                 }
-                parser.register_known_fn_name(qualified_ctor_name);
+                bool registered_structured_ctor_name = false;
+                if (ctor_name_text_id != kInvalidText) {
+                    QualifiedNameKey ctor_key;
+                    ctor_key.context_id = 0;
+                    ctor_key.is_global_qualified = qualified_owner_is_global;
+                    ctor_key.base_text_id = ctor_name_text_id;
+                    if (!qualified_owner_text_ids.empty()) {
+                        ctor_key.qualifier_path_id =
+                            parser.shared_lookup_state_.parser_name_paths.intern(
+                                qualified_owner_text_ids);
+                    }
+                    parser.register_known_fn_name(ctor_key);
+                    registered_structured_ctor_name = true;
+                }
+                if (!registered_structured_ctor_name) {
+                    parser.register_known_fn_name(qualified_ctor_name);
+                }
                 restore_current_struct_tag(parser, saved_tag_ctor_text_id,
                                            saved_tag_ctor_fallback);
                 return fn;
