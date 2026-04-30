@@ -548,10 +548,12 @@ BackendAggregateLayoutLookup lookup_backend_aggregate_type_layout_result(
     }
   }
 
+  const auto layout = compute_aggregate_type_layout(trimmed, type_decls);
+  const bool used_legacy_fallback = resolve_type_decl_body(trimmed, type_decls).has_value();
   return BackendAggregateLayoutLookup{
-      .layout = compute_aggregate_type_layout(trimmed, type_decls),
+      .layout = layout,
       .used_structured_layout = false,
-      .used_legacy_fallback = true,
+      .used_legacy_fallback = used_legacy_fallback,
       .structured_text_mismatch = false,
   };
 }

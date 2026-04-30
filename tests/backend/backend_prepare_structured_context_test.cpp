@@ -418,6 +418,41 @@ int check_backend_layout_lookup_prefers_structured_table() {
     return fail("structured-missing layout lookup did not preserve legacy TypeDeclMap fallback");
   }
 
+  const auto scalar_lookup = lookup_backend_aggregate_type_layout_result(
+      "i32", matching_legacy_decls, empty_structured_table);
+  if (scalar_lookup.used_structured_layout || scalar_lookup.used_legacy_fallback ||
+      scalar_lookup.structured_text_mismatch ||
+      scalar_lookup.layout.kind != AggregateTypeLayout::Kind::Scalar ||
+      scalar_lookup.layout.size_bytes != 4) {
+    return fail("scalar layout lookup incorrectly reported legacy fallback status");
+  }
+
+  const auto inline_aggregate_lookup = lookup_backend_aggregate_type_layout_result(
+      "{ i32, i64 }", matching_legacy_decls, empty_structured_table);
+  if (inline_aggregate_lookup.used_structured_layout ||
+      inline_aggregate_lookup.used_legacy_fallback ||
+      inline_aggregate_lookup.structured_text_mismatch ||
+      inline_aggregate_lookup.layout.kind != AggregateTypeLayout::Kind::Struct ||
+      inline_aggregate_lookup.layout.size_bytes != 16) {
+    return fail("inline aggregate layout lookup incorrectly reported legacy fallback status");
+  }
+
+  const auto invalid_lookup = lookup_backend_aggregate_type_layout_result(
+      "{ i32, }", matching_legacy_decls, empty_structured_table);
+  if (invalid_lookup.used_structured_layout || invalid_lookup.used_legacy_fallback ||
+      invalid_lookup.structured_text_mismatch ||
+      invalid_lookup.layout.kind != AggregateTypeLayout::Kind::Invalid) {
+    return fail("invalid layout lookup incorrectly reported legacy fallback status");
+  }
+
+  const auto missing_lookup = lookup_backend_aggregate_type_layout_result(
+      "%struct.Missing", matching_legacy_decls, empty_structured_table);
+  if (missing_lookup.used_structured_layout || missing_lookup.used_legacy_fallback ||
+      missing_lookup.structured_text_mismatch ||
+      missing_lookup.layout.kind != AggregateTypeLayout::Kind::Invalid) {
+    return fail("unresolved named layout lookup incorrectly reported legacy fallback status");
+  }
+
   return 0;
 }
 

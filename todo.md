@@ -8,31 +8,29 @@ Current Step Title: Consolidate Fallback and Mismatch Reporting
 
 ## Just Finished
 
-Step 5 wrapper consolidation completed for the global initializer/global
-optional-table layout family. `global_initializers.cpp` now exposes
-`lookup_global_initializer_layout_result()` and `globals.cpp` now exposes
-`lookup_global_layout_result()`, both returning
-`BackendAggregateLayoutLookup` from `lookup_backend_aggregate_type_layout_result()`
-when a structured table is present and preserving explicit no-structured-table
-legacy fallback metadata. The existing selected-layout helpers remain as
-compatibility `.layout` adapters.
+Step 5 review finding fixed for `BackendAggregateLayoutLookup` fallback status.
+`lookup_backend_aggregate_type_layout_result()` now reports
+`used_legacy_fallback` only when the non-structured path resolves a named
+`%type` through the legacy `TypeDeclMap`; scalar, inline aggregate, invalid,
+and unresolved named layouts no longer over-report fallback use. Focused
+coverage was added to preserve existing structured/mismatch/fallback behavior
+and assert the corrected scalar/inline/invalid/missing status cases.
 
 ## Suggested Next
 
-Pause for supervisor review of Step 5 before any further implementation packet,
-unless the supervisor identifies a current blocker that needs a bounded executor
-follow-up.
+Supervisor can review and commit this Step 5 correction slice, then decide
+whether any remaining optional-table wrapper callers need the same status
+semantics in a separate bounded packet.
 
 ## Watchouts
 
-No focused tests were added; the change is a helper-surface consolidation and
-the existing compatibility wrappers preserve current selected-layout behavior.
-`aggregate.cpp` direct selected-layout calls remain outside this packet by
-delegation boundary.
+This packet intentionally did not touch `global_initializers.cpp`, `globals.cpp`,
+memory wrappers, or `aggregate.cpp`; the owned fix is the shared
+`BackendAggregateLayoutLookup` helper plus focused status coverage.
 
 ## Proof
 
-Proof for this Step 5 wrapper consolidation:
-`cmake --build build --target backend_prepare_structured_context_test backend_lir_to_bir_notes_test > test_after.log 2>&1 && ctest --test-dir build -R '^(backend_prepare_structured_context|backend_lir_to_bir_notes)$' --output-on-failure >> test_after.log 2>&1`.
+Proof for this Step 5 review correction:
+`cmake --build build --target backend_prepare_structured_context_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_prepare_structured_context$' --output-on-failure >> test_after.log 2>&1`.
 
 Result: passed. Proof log: `test_after.log`.
