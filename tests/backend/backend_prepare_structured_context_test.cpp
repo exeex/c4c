@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/bir/lir_to_bir/lowering.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/codegen/lir/ir.hpp"
 #include "src/shared/text_id_table.hpp"
@@ -313,6 +314,59 @@ int check_lir_to_bir_signature_lowering_prefers_structured_metadata() {
       function.params.front().size_bytes != 8 || function.params.front().align_bytes != 4) {
     return fail("BIR declaration lowering ignored structured byval parameter metadata");
   }
+  return 0;
+}
+
+int check_backend_layout_lookup_prefers_structured_table() {
+  using c4c::backend::lir_to_bir_detail::AggregateTypeLayout;
+  using c4c::backend::lir_to_bir_detail::build_backend_structured_layout_table;
+  using c4c::backend::lir_to_bir_detail::build_type_decl_map;
+  using c4c::backend::lir_to_bir_detail::lookup_backend_aggregate_type_layout;
+
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = pair_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+
+  const auto matching_legacy_decls = build_type_decl_map({"%struct.Pair = type { i32, i32 }"});
+  const auto matching_table = build_backend_structured_layout_table(
+      module.struct_decls, module.struct_names, matching_legacy_decls);
+  const auto matching_layout =
+      lookup_backend_aggregate_type_layout("%struct.Pair", matching_legacy_decls, matching_table);
+  if (matching_layout.kind != AggregateTypeLayout::Kind::Struct ||
+      matching_layout.size_bytes != 8 || matching_layout.align_bytes != 4 ||
+      matching_layout.fields.size() != 2 || matching_layout.fields[1].byte_offset != 4) {
+    return fail("structured-present matching layout lookup did not use the structured layout");
+  }
+
+  const auto mismatched_legacy_decls =
+      build_type_decl_map({"%struct.Pair = type { i64, i64 }"});
+  const auto mismatched_table = build_backend_structured_layout_table(
+      module.struct_decls, module.struct_names, mismatched_legacy_decls);
+  const auto mismatched_layout = lookup_backend_aggregate_type_layout(
+      "%struct.Pair", mismatched_legacy_decls, mismatched_table);
+  if (mismatched_layout.kind != AggregateTypeLayout::Kind::Struct ||
+      mismatched_layout.size_bytes != 8 || mismatched_layout.align_bytes != 4 ||
+      mismatched_layout.fields.size() != 2 || mismatched_layout.fields[1].byte_offset != 4) {
+    return fail("structured-present mismatched legacy shadow should keep structured layout authority");
+  }
+
+  const c4c::backend::lir_to_bir_detail::BackendStructuredLayoutTable empty_structured_table;
+  const auto fallback_layout = lookup_backend_aggregate_type_layout(
+      "%struct.Pair", mismatched_legacy_decls, empty_structured_table);
+  if (fallback_layout.kind != AggregateTypeLayout::Kind::Struct ||
+      fallback_layout.size_bytes != 16 || fallback_layout.align_bytes != 8 ||
+      fallback_layout.fields.size() != 2 || fallback_layout.fields[1].byte_offset != 8) {
+    return fail("structured-missing layout lookup did not preserve legacy TypeDeclMap fallback");
+  }
+
   return 0;
 }
 
@@ -631,6 +685,9 @@ int main() {
   }
   if (const int status = check_lir_to_bir_signature_lowering_prefers_structured_metadata();
       status != 0) {
+    return status;
+  }
+  if (const int status = check_backend_layout_lookup_prefers_structured_table(); status != 0) {
     return status;
   }
   if (const int status = check_block_label_rendering_prefers_structured_identity();

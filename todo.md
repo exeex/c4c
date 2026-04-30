@@ -8,61 +8,30 @@ Current Step Title: Make Backend Layout Lookup Structured-Primary
 
 ## Just Finished
 
-Step 1 trace completed for idea 138. Current aggregate layout authority routes:
-
-- Structured-primary: HIR-to-LIR populates `LirModule::struct_decls` with
-  `LirStructDecl` entries keyed by `StructNameId` while still emitting
-  `LirModule::type_decls` as legacy shadow text. BIR import builds
-  `module.structured_types` through `build_bir_structured_type_spelling_context()`
-  for final spelling/display, and builds `BackendStructuredLayoutTable` through
-  `build_backend_structured_layout_table()` for semantic layout. Most BIR
-  lowering consumers that receive `structured_layouts` call
-  `lookup_backend_aggregate_type_layout()` before falling back to
-  `compute_aggregate_type_layout()`, including byval aggregate ABI lowering,
-  local aggregate slots, aggregate leaf-slot expansion, global aggregate
-  storage sizing, aggregate initializers, and global-address initializer GEP
-  parsing.
-- Fallback-only: raw or hand-built LIR without `struct_decls` still flows
-  through `TypeDeclMap build_type_decl_map(context.lir_module.type_decls)` and
-  `compute_aggregate_type_layout()`, which resolves `%type` names through the
-  textual type-declaration body and recursively parses arrays/struct bodies.
-  This fallback is still required for legacy tests and compatibility fixtures.
-- Suspicious text-authority routes: `lookup_backend_aggregate_type_layout()`
-  returns structured layout only when the structured entry is valid and either
-  no legacy shadow exists or parity was checked and matches; on structured/text
-  mismatch it silently falls through to `compute_aggregate_type_layout(trimmed,
-  type_decls)`, making legacy text authoritative again. In
-  `memory/addressing.cpp`, `resolve_aggregate_byte_offset_projection()` and
-  `resolve_aggregate_child_index_projection()` call
-  `compute_aggregate_type_layout()` directly for parent and child layouts, so
-  projection helpers remain text-authority even when the caller has structured
-  layout data. `StructuredTypeSpellingContext` is display-only and should not be
-  promoted to semantic layout authority.
+Step 2 implementation completed for idea 138. `lookup_backend_aggregate_type_layout()`
+now returns a valid structured layout whenever a structured entry is present,
+including when the legacy `TypeDeclMap` shadow exists but parity mismatches.
+Structured-missing fallback still routes through `compute_aggregate_type_layout()`.
+Focused coverage in `backend_prepare_structured_context` now proves
+structured-present match, structured-present mismatch with corrupted legacy
+shadow text, and structured-missing fallback.
 
 ## Suggested Next
 
-Active Step 2 implementation packet: make
-`lookup_backend_aggregate_type_layout()` stop silently falling back to legacy
-`TypeDeclMap` when a structured declaration is present but its parity check
-against the legacy shadow mismatches. Keep structured-missing fallback intact,
-keep matched structured-present behavior structured-primary, and add focused
-coverage in `backend_prepare_structured_context` or
-`backend_lir_to_bir_notes` that corrupts the legacy shadow while structured
-layout is present.
-
-Supervisor-ready proof command for that packet:
-`cmake --build build --target backend_prepare_structured_context backend_lir_to_bir_notes && ctest --test-dir build -R '^(backend_prepare_structured_context|backend_lir_to_bir_notes)$' --output-on-failure`
+Next coherent packet: continue Step 2 by routing remaining aggregate projection
+helpers in `memory/addressing.cpp` away from direct legacy
+`compute_aggregate_type_layout()` calls when structured layout data is available.
 
 ## Watchouts
 
 Do not delete `LirModule::type_decls`; the fallback route is still needed when
 `struct_decls` is absent. Do not use `StructuredTypeSpellingContext` as a
 semantic layout table; it intentionally carries final spelling metadata for BIR
-printing. The first packet should avoid expectation downgrades and should prove
-same-feature behavior: structured-present match, structured-present mismatch,
-and structured-missing fallback.
+printing. Step 2's top-level lookup now treats valid structured entries as
+authoritative, but `memory/addressing.cpp` still has same-feature projection
+paths that need structured-primary cleanup in a separate packet.
 
 ## Proof
 
-No build or test required for this trace-only packet. Proof run:
-`git diff --check -- todo.md`.
+Proof passed and was written to `test_after.log`:
+`cmake --build build --target backend_prepare_structured_context_test backend_lir_to_bir_notes_test > test_after.log 2>&1 && ctest --test-dir build -R '^(backend_prepare_structured_context|backend_lir_to_bir_notes)$' --output-on-failure >> test_after.log 2>&1`.

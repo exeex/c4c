@@ -536,8 +536,7 @@ AggregateTypeLayout lookup_backend_aggregate_type_layout(
     const auto structured_it = structured_layouts.find(std::string(trimmed));
     if (structured_it != structured_layouts.end()) {
       const auto& entry = structured_it->second;
-      if (entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid &&
-          (!entry.legacy_found || (entry.parity_checked && entry.parity_matches))) {
+      if (entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid) {
         return entry.structured_layout;
       }
     }
