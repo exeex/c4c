@@ -108,16 +108,71 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   const bool use_array_init_fast_path =
       is_array_with_init_list && !d.type.spec.is_vector &&
       can_fast_path_scalar_array_init(n->init);
+  auto has_decl_structured_owner_identity = [](const TypeSpec& owner_ts) {
+    return owner_ts.record_def || owner_ts.tpl_struct_origin ||
+           (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0);
+  };
+  auto resolve_decl_structured_owner_tag =
+      [&](TypeSpec owner_ts,
+          const std::string& context_name) -> std::optional<std::string> {
+    while (resolve_struct_member_typedef_if_ready(&owner_ts)) {
+    }
+    resolve_typedef_to_struct(owner_ts);
+    if (owner_ts.base != TB_STRUCT || owner_ts.ptr_level != 0 ||
+        owner_ts.array_rank != 0) {
+      return std::nullopt;
+    }
+    if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
+      if (auto owner_key = make_struct_def_node_owner_key(owner_ts.record_def)) {
+        if (const SymbolName* owner_tag =
+                module_->find_struct_def_tag_by_owner(*owner_key)) {
+          if (module_->struct_defs.count(*owner_tag)) {
+            return std::string(*owner_tag);
+          }
+        }
+      }
+      if (owner_ts.record_def->name && owner_ts.record_def->name[0] &&
+          module_->struct_defs.count(owner_ts.record_def->name)) {
+        return std::string(owner_ts.record_def->name);
+      }
+    }
+    if (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) {
+      const std::string incoming_tag =
+          (owner_ts.tag && owner_ts.tag[0]) ? std::string(owner_ts.tag)
+                                            : std::string{};
+      if (!ctx.tpl_bindings.empty()) {
+        seed_and_resolve_pending_template_type_if_needed(
+            owner_ts, ctx.tpl_bindings, ctx.nttp_bindings, n,
+            PendingTemplateTypeKind::OwnerStruct, context_name);
+      } else {
+        TypeBindings empty_tb;
+        realize_template_struct_if_needed(owner_ts, empty_tb, ctx.nttp_bindings);
+      }
+      if (owner_ts.tag && owner_ts.tag[0] &&
+          (incoming_tag.empty() || incoming_tag != owner_ts.tag) &&
+          module_->struct_defs.count(owner_ts.tag)) {
+        return std::string(owner_ts.tag);
+      }
+    }
+    return std::nullopt;
+  };
   auto resolve_decl_member_symbol =
       [&](const TypeSpec& owner_ts, const std::string& member,
           MemberSymbolId fallback_id) -> std::pair<std::string, MemberSymbolId> {
-    const std::string* current_struct_tag =
-        !ctx.method_struct_tag.empty() ? &ctx.method_struct_tag : nullptr;
-    const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
-        owner_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings, current_struct_tag,
-        n, std::string("decl-init-member-owner:") + member);
-    std::string resolved_tag =
-        owner_tag.value_or(owner_ts.tag ? std::string(owner_ts.tag) : std::string{});
+    const std::optional<std::string> owner_tag =
+        has_decl_structured_owner_identity(owner_ts)
+            ? resolve_decl_structured_owner_tag(
+                  owner_ts, std::string("decl-init-member-owner:") + member)
+            : resolve_member_lookup_owner_tag(
+                  owner_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
+                  !ctx.method_struct_tag.empty() ? &ctx.method_struct_tag : nullptr,
+                  n, std::string("decl-init-member-owner:") + member);
+    std::string resolved_tag;
+    if (owner_tag) {
+      resolved_tag = *owner_tag;
+    } else if (!has_decl_structured_owner_identity(owner_ts) && owner_ts.tag) {
+      resolved_tag = owner_ts.tag;
+    }
     MemberSymbolId member_symbol_id = kInvalidMemberSymbol;
     if (!resolved_tag.empty()) {
       member_symbol_id = find_struct_member_symbol_id(resolved_tag, member);
@@ -134,17 +189,12 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         owner_ts.array_rank != 0) {
       return {};
     }
-    const bool has_structured_owner =
-        owner_ts.record_def || owner_ts.tpl_struct_origin ||
-        (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0);
-    if (has_structured_owner) {
-      const std::string* current_struct_tag =
-          !ctx.method_struct_tag.empty() ? &ctx.method_struct_tag : nullptr;
-      if (auto owner_tag = resolve_member_lookup_owner_tag(
-              owner_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
-              current_struct_tag, n, context_name)) {
+    if (has_decl_structured_owner_identity(owner_ts)) {
+      if (auto owner_tag =
+              resolve_decl_structured_owner_tag(owner_ts, context_name)) {
         return *owner_tag;
       }
+      return {};
     }
     return owner_ts.tag ? std::string(owner_ts.tag) : std::string{};
   };
@@ -157,7 +207,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
           -> std::pair<std::string, const HirStructDef*> {
     std::string owner_tag =
         resolve_decl_struct_owner_tag(owner_ts, context_name);
-    if (owner_tag.empty() && owner_ts.base == TB_UNION && owner_ts.tag) {
+    if (owner_tag.empty() && owner_ts.base == TB_UNION &&
+        !has_decl_structured_owner_identity(owner_ts) && owner_ts.tag) {
       owner_tag = owner_ts.tag;
     }
     if (owner_tag.empty()) return {{}, nullptr};

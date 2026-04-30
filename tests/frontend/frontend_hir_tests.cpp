@@ -3890,6 +3890,126 @@ void test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag() {
               "local declaration member symbol should prefer record_def owner over stale tag");
 }
 
+void test_hir_local_decl_structured_owner_failure_does_not_use_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* unresolved_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  unresolved_record->name = arena.strdup("UnresolvedStructuredDeclOwner");
+  unresolved_record->unqualified_name =
+      arena.strdup("UnresolvedStructuredDeclOwner");
+  unresolved_record->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+  const c4c::MemberSymbolId stale_id =
+      module.member_symbols.intern("StaleFailedDeclOwner::wrong_field");
+
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "wrong_field";
+  stale_field.field_text_id = module.link_name_texts->intern("wrong_field");
+  stale_field.elem_type = int_ts;
+  stale_field.member_symbol_id = stale_id;
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleFailedDeclOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleFailedDeclOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* stale_ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  stale_ctor->is_constructor = true;
+  stale_ctor->n_params = 0;
+  lowerer.struct_constructors_["StaleFailedDeclOwner"].push_back(
+      {"StaleFailedDeclOwner__ctor", stale_ctor});
+  c4c::Node* stale_dtor = parser.make_node(c4c::NK_FUNCTION, 1);
+  stale_dtor->is_destructor = true;
+  stale_dtor->type.base = c4c::TB_VOID;
+  lowerer.struct_destructors_["StaleFailedDeclOwner"] = {
+      "StaleFailedDeclOwner__dtor", stale_dtor};
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleFailedDeclOwner");
+  owner_ts.record_def = unresolved_record;
+
+  c4c::Node* value = parser.make_node(c4c::NK_INT_LIT, 1);
+  value->ival = 7;
+  value->type = int_ts;
+  c4c::Node* init = parser.make_node(c4c::NK_INIT_LIST, 1);
+  init->children = arena.alloc_array<c4c::Node*>(1);
+  init->children[0] = value;
+  init->n_children = 1;
+  c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
+  decl->name = arena.strdup("local");
+  decl->unqualified_name = arena.strdup("local");
+  decl->type = owner_ts;
+  decl->init = init;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  lowerer.lower_local_decl_stmt(ctx, decl);
+
+  bool used_stale_member = false;
+  bool used_stale_ctor = false;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    if (const auto* member = std::get_if<c4c::hir::MemberExpr>(&expr.payload);
+        member && (member->resolved_owner_tag == "StaleFailedDeclOwner" ||
+                   member->member_symbol_id == stale_id)) {
+      used_stale_member = true;
+    }
+    const auto* call = std::get_if<c4c::hir::CallExpr>(&expr.payload);
+    if (!call) continue;
+    const c4c::hir::Expr* callee_expr = module.find_expr(call->callee);
+    if (!callee_expr) continue;
+    if (const auto* ref = std::get_if<c4c::hir::DeclRef>(&callee_expr->payload);
+        ref && ref->name == "StaleFailedDeclOwner__ctor") {
+      used_stale_ctor = true;
+    }
+  }
+
+  expect_true(!used_stale_member,
+              "failed structured declaration owner resolution must not use stale rendered fields");
+  expect_true(ctx.dtor_stack.empty(),
+              "failed structured declaration owner resolution must not use stale rendered destructors");
+
+  c4c::Node* default_decl = parser.make_node(c4c::NK_DECL, 1);
+  default_decl->name = arena.strdup("default_local");
+  default_decl->unqualified_name = arena.strdup("default_local");
+  default_decl->type = owner_ts;
+  c4c::hir::Lowerer::FunctionCtx default_ctx;
+  c4c::hir::Function default_fn;
+  default_ctx.fn = &default_fn;
+  default_ctx.current_block = c4c::hir::BlockId{0};
+  lowerer.lower_local_decl_stmt(default_ctx, default_decl);
+
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* call = std::get_if<c4c::hir::CallExpr>(&expr.payload);
+    if (!call) continue;
+    const c4c::hir::Expr* callee_expr = module.find_expr(call->callee);
+    if (!callee_expr) continue;
+    if (const auto* ref = std::get_if<c4c::hir::DeclRef>(&callee_expr->payload);
+        ref && ref->name == "StaleFailedDeclOwner__ctor") {
+      used_stale_ctor = true;
+    }
+  }
+  expect_true(!used_stale_ctor,
+              "failed structured declaration owner resolution must not use stale rendered constructors");
+  expect_true(default_ctx.dtor_stack.empty(),
+              "failed structured default declaration owner resolution must not use stale rendered destructors");
+}
+
 void test_hir_compound_literal_member_symbol_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4470,6 +4590,7 @@ int main() {
   test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_member_dtor_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag();
+  test_hir_local_decl_structured_owner_failure_does_not_use_stale_tag();
   test_hir_compound_literal_member_symbol_prefers_record_def_over_stale_tag();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
