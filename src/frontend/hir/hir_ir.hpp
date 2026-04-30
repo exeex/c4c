@@ -579,6 +579,9 @@ struct InlineAsmStmt {
   std::optional<ExprId> output;
   bool output_is_readwrite = false;
   QualType output_type{};
+  std::vector<ExprId> outputs;
+  std::vector<QualType> output_types;
+  std::vector<bool> output_readwrite;
   std::vector<ExprId> inputs;
   bool has_side_effects = true;
 };

@@ -1336,7 +1336,10 @@ std::string ConstInitEmitter::emit_const_union(const TypeSpec& ts, const HirStru
   const int sz = sd.size_bytes;
   auto zero_union = [&]() -> std::string {
     if (sz == 0) return "zeroinitializer";
-    return "{ [" + std::to_string(sz) + " x i8] zeroinitializer }";
+    const char* open = sd.pack_align > 0 ? "<{ " : "{ ";
+    const char* close = sd.pack_align > 0 ? " }>" : " }";
+    return std::string(open) + "[" + std::to_string(sz) + " x i8] zeroinitializer" +
+           close;
   };
   auto copy_bytes = [](std::vector<unsigned char>& dst, size_t dst_off,
                        const std::vector<unsigned char>& src, size_t max_copy) -> void {
@@ -1464,7 +1467,9 @@ std::string ConstInitEmitter::emit_const_union(const TypeSpec& ts, const HirStru
       arr += "i8 " + std::to_string(static_cast<unsigned int>(bytes[i]));
     }
     arr += "]";
-    return "{ [" + std::to_string(sz) + " x i8] " + arr + " }";
+    const char* open = sd.pack_align > 0 ? "<{ " : "{ ";
+    const char* close = sd.pack_align > 0 ? " }>" : " }";
+    return std::string(open) + "[" + std::to_string(sz) + " x i8] " + arr + close;
   };
 
   if (const auto selected = try_select_canonical_union_field_init(sd, init)) {
@@ -1495,7 +1500,7 @@ std::string ConstInitEmitter::format_array_literal(const TypeSpec& elem_ts,
 
 std::string ConstInitEmitter::format_struct_literal(const HirStructDef& sd,
                                                      const std::vector<std::string>& field_vals) const {
-  std::string out = "{ ";
+  std::string out = sd.pack_align > 0 ? "<{ " : "{ ";
   bool first = true;
   int cur_offset = 0;
   int last_idx = -1;
@@ -1543,7 +1548,7 @@ std::string ConstInitEmitter::format_struct_literal(const HirStructDef& sd,
     if (!first) out += ", ";
     out += "[" + std::to_string(sd.size_bytes - cur_offset) + " x i8] zeroinitializer";
   }
-  out += " }";
+  out += sd.pack_align > 0 ? " }>" : " }";
   return out;
 }
 

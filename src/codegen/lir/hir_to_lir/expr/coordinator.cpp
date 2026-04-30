@@ -21,6 +21,10 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
 
 TypeSpec StmtEmitter::resolve_expr_type(FnCtx& ctx, ExprId id) {
   const Expr& e = get_expr(id);
+  if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
+    const TypeSpec member_ts = resolve_payload_type(ctx, *m);
+    if (has_concrete_type(member_ts)) return member_ts;
+  }
   const TypeSpec& ts = e.type.spec;
   if (ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0 || is_vector_value(ts)) {
     return ts;
@@ -29,6 +33,10 @@ TypeSpec StmtEmitter::resolve_expr_type(FnCtx& ctx, ExprId id) {
 }
 
 TypeSpec StmtEmitter::resolve_expr_type(FnCtx& ctx, const Expr& e) {
+  if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
+    const TypeSpec member_ts = resolve_payload_type(ctx, *m);
+    if (has_concrete_type(member_ts)) return member_ts;
+  }
   if (has_concrete_type(e.type.spec)) return e.type.spec;
   return std::visit([&](const auto& p) -> TypeSpec { return resolve_payload_type(ctx, p); }, e.payload);
 }

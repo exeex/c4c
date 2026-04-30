@@ -30,6 +30,58 @@ static std::string rewrite_asm_constraints(const std::string& raw) {
   return result;
 }
 
+static std::vector<std::string> split_asm_constraints(const std::string& constraints) {
+  std::vector<std::string> out;
+  std::string cur;
+  int brace_depth = 0;
+  for (char ch : constraints) {
+    if (ch == '{') ++brace_depth;
+    if (ch == '}' && brace_depth > 0) --brace_depth;
+    if (ch == ',' && brace_depth == 0) {
+      out.push_back(cur);
+      cur.clear();
+      continue;
+    }
+    cur += ch;
+  }
+  if (!cur.empty() || !constraints.empty()) out.push_back(cur);
+  return out;
+}
+
+static std::string join_asm_constraints(const std::vector<std::string>& constraints) {
+  std::string out;
+  for (const std::string& constraint : constraints) {
+    if (!out.empty()) out += ",";
+    out += constraint;
+  }
+  return out;
+}
+
+static bool asm_constraint_is_memory_operand(const std::string& constraint) {
+  return constraint.find('m') != std::string::npos;
+}
+
+static std::string llvm_output_constraint(std::string constraint) {
+  if (!constraint.empty() && constraint[0] == '+') constraint[0] = '=';
+  if (!constraint.empty() && constraint[0] != '=') constraint.insert(constraint.begin(), '=');
+  if (asm_constraint_is_memory_operand(constraint) &&
+      constraint.find('*') == std::string::npos) {
+    constraint.insert(1, "*");
+  }
+  return constraint;
+}
+
+static std::string llvm_memory_input_constraint(std::string constraint) {
+  if (!constraint.empty() && (constraint[0] == '+' || constraint[0] == '=')) {
+    constraint.erase(constraint.begin());
+  }
+  if (asm_constraint_is_memory_operand(constraint) &&
+      constraint.find('*') == std::string::npos) {
+    constraint.insert(constraint.begin(), '*');
+  }
+  return constraint;
+}
+
 static bool is_asm_word_char(char ch) {
   return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_' || ch == '.';
 }
@@ -158,41 +210,85 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
       rewrite_inline_asm_mnemonics(s.asm_template, mod_.target_profile.triple);
   const std::string asm_text = escape_llvm_c_bytes(aliased_template);
   const std::string constraints = rewrite_asm_constraints(escape_llvm_c_bytes(s.constraints));
+  const std::vector<std::string> constraint_parts = split_asm_constraints(constraints);
+  std::vector<ExprId> outputs = s.outputs;
+  std::vector<bool> output_readwrite = s.output_readwrite;
+  if (outputs.empty() && s.output) {
+    outputs.push_back(*s.output);
+    output_readwrite.push_back(s.output_is_readwrite);
+  }
   TypeSpec ret_ts{};
   std::string ret_ty = "void";
-  if (s.output) {
-    ret_ts = resolve_expr_type(ctx, *s.output);
+  const bool scalar_result_output =
+      outputs.size() == 1 &&
+      (constraint_parts.empty() || !asm_constraint_is_memory_operand(constraint_parts[0]));
+  if (scalar_result_output) {
+    ret_ts = resolve_expr_type(ctx, outputs[0]);
     ret_ty = llvm_ty(ret_ts);
   }
-  std::vector<std::string> arg_vals;
-  std::vector<TypeSpec> arg_tys;
-  if (s.output && s.output_is_readwrite) {
-    TypeSpec out_in_ts{};
-    arg_vals.push_back(emit_rval_id(ctx, *s.output, out_in_ts));
-    arg_tys.push_back(out_in_ts);
+  std::vector<std::string> rendered_constraints;
+  std::vector<std::string> asm_args;
+  if (scalar_result_output) {
+    const std::string output_constraint =
+        constraint_parts.empty() ? "=r" : llvm_output_constraint(constraint_parts[0]);
+    rendered_constraints.push_back(output_constraint);
+    if (!output_readwrite.empty() && output_readwrite[0]) {
+      TypeSpec out_in_ts{};
+      const std::string out_in = emit_rval_id(ctx, outputs[0], out_in_ts);
+      rendered_constraints.push_back("0");
+      asm_args.push_back(llvm_ty(out_in_ts) + " " + out_in);
+    }
+  } else {
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      const std::string raw_constraint =
+          i < constraint_parts.size() ? constraint_parts[i] : std::string("=m");
+      rendered_constraints.push_back(llvm_output_constraint(raw_constraint));
+      TypeSpec out_ts{};
+      const std::string out_ptr = emit_lval(ctx, outputs[i], out_ts);
+      asm_args.push_back("ptr elementtype(" + llvm_ty(out_ts) + ") " + out_ptr);
+    }
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      if (i >= output_readwrite.size() || !output_readwrite[i]) continue;
+      const std::string raw_constraint =
+          i < constraint_parts.size() ? constraint_parts[i] : std::string("m");
+      rendered_constraints.push_back(llvm_memory_input_constraint(raw_constraint));
+      TypeSpec out_ts{};
+      const std::string out_ptr = emit_lval(ctx, outputs[i], out_ts);
+      asm_args.push_back("ptr elementtype(" + llvm_ty(out_ts) + ") " + out_ptr);
+    }
   }
-  for (ExprId input : s.inputs) {
+  const size_t input_constraint_start = outputs.size();
+  for (size_t i = 0; i < s.inputs.size(); ++i) {
+    ExprId input = s.inputs[i];
+    const size_t constraint_index = input_constraint_start + i;
+    if (constraint_index < constraint_parts.size()) {
+      rendered_constraints.push_back(constraint_parts[constraint_index]);
+    }
     TypeSpec in_ts{};
-    arg_vals.push_back(emit_rval_id(ctx, input, in_ts));
-    arg_tys.push_back(in_ts);
+    const std::string in = emit_rval_id(ctx, input, in_ts);
+    asm_args.push_back(llvm_ty(in_ts) + " " + in);
   }
   std::string asm_args_str;
-  for (size_t i = 0; i < arg_vals.size(); ++i) {
+  for (size_t i = 0; i < asm_args.size(); ++i) {
     if (i) asm_args_str += ", ";
-    asm_args_str += llvm_ty(arg_tys[i]) + " " + arg_vals[i];
+    asm_args_str += asm_args[i];
   }
-  if (!s.output) {
+  const std::string rendered_constraint_text =
+      rendered_constraints.empty() ? constraints : join_asm_constraints(rendered_constraints);
+  if (!scalar_result_output) {
     emit_lir_op(ctx, lir::LirInlineAsmOp{
-                         {}, ret_ty, asm_text, constraints, s.has_side_effects, asm_args_str});
+                         {}, ret_ty, asm_text, rendered_constraint_text, s.has_side_effects,
+                         asm_args_str});
     return;
   }
 
   const std::string result = fresh_tmp(ctx);
   emit_lir_op(
       ctx,
-      lir::LirInlineAsmOp{result, ret_ty, asm_text, constraints, s.has_side_effects, asm_args_str});
+      lir::LirInlineAsmOp{result, ret_ty, asm_text, rendered_constraint_text, s.has_side_effects,
+                          asm_args_str});
   TypeSpec out_pointee_ts{};
-  const std::string out_ptr = emit_lval(ctx, *s.output, out_pointee_ts);
+  const std::string out_ptr = emit_lval(ctx, outputs[0], out_pointee_ts);
   const std::string coerced = coerce(ctx, result, ret_ts, out_pointee_ts);
   emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(out_pointee_ts), coerced, out_ptr});
 }

@@ -295,13 +295,24 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
       InlineAsmStmt s{};
       s.asm_template = rewrite_gcc_asm_template(decode_string_node(n->left));
       s.has_side_effects = true;
-      if (n->asm_num_outputs == 1 && n->children[0]) {
-        s.output = lower_expr(&ctx, n->children[0]);
-        s.output_type.spec = n->children[0]->type;
-        s.output_type.category = ValueCategory::LValue;
-        if (n->asm_n_constraints > 0 && n->asm_constraints && n->asm_constraints[0]) {
-          s.output_is_readwrite =
-              strip_quoted_string(n->asm_constraints[0]).find('+') != std::string::npos;
+      for (int i = 0; i < n->asm_num_outputs; ++i) {
+        const Node* output = n->children[i];
+        if (!output) continue;
+        ExprId output_id = lower_expr(&ctx, output);
+        QualType output_type{};
+        output_type.spec = output->type;
+        output_type.category = ValueCategory::LValue;
+        bool readwrite = false;
+        if (i < n->asm_n_constraints && n->asm_constraints && n->asm_constraints[i]) {
+          readwrite = strip_quoted_string(n->asm_constraints[i]).find('+') != std::string::npos;
+        }
+        s.outputs.push_back(output_id);
+        s.output_types.push_back(output_type);
+        s.output_readwrite.push_back(readwrite);
+        if (n->asm_num_outputs == 1) {
+          s.output = output_id;
+          s.output_type = output_type;
+          s.output_is_readwrite = readwrite;
         }
       }
       for (int i = 0; i < n->asm_num_inputs; ++i) {
