@@ -1,8 +1,8 @@
 # HIR Structured Record Template Lookup Authority Cleanup
 
-Status: Closed
+Status: Open
 Created: 2026-04-29
-Closed: 2026-04-30
+Reopened: 2026-04-30
 
 Parent Ideas:
 - [130_sema_hir_ast_ingress_boundary_audit.md](/workspaces/c4c/ideas/open/130_sema_hir_ast_ingress_boundary_audit.md)
@@ -60,13 +60,17 @@ Suspicious HIR paths:
   structured-primary where structured keys already exist.
 - Rendered lookup maps are removed, demoted to compatibility-only, or guarded
   so they cannot silently decide semantic resolution against structured keys.
+- Structured static-member const-value lookup preserves instantiated trait,
+  static-member evaluation, and inherited base-recursion semantics from the
+  legacy path.
 - Tests cover nearby same-feature cases rather than only one observed
   suspicious call path.
 
-## Closure
+## Reopen Note
 
-Closed after the active runbook completed classification, structured-primary
-out-of-class method lookup, scoped static-member lookup, template struct lookup,
-struct method/member-symbol lookup, and final validation. Acceptance proof used
-the selected 43-test HIR/frontend subset with regression guard comparing
-`test_before.log` and `test_after.log` at 43/43 before and 43/43 after.
+Closure on 2026-04-30 was rejected after baseline review. Reviewer report
+`review/idea136_baseline_regression_review.md` found five new failures versus
+the accepted baseline and identified the likely first bad commit as
+`ea92258d`, in structured static-member const lookup. Repair remains inside
+idea 136 because the regression is in the static-member/template lookup
+acceptance surface.
