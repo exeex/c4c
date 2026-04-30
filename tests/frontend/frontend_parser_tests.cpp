@@ -4917,6 +4917,102 @@ void test_sema_method_validation_prefers_structured_owner_key_for_fields() {
               "method validation should use structured owner and field keys before rendered spelling");
 }
 
+void test_sema_method_validation_rejects_stale_rendered_field_spelling() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base, int ptr_level = 0, const char* tag = nullptr) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    ts.ptr_level = ptr_level;
+    ts.tag = tag;
+    return ts;
+  };
+
+  const c4c::TextId real_ns_text = texts.intern("real");
+  const c4c::TextId wrong_ns_text = texts.intern("wrong");
+  const c4c::TextId owner_text = texts.intern("Owner");
+  const c4c::TextId actual_text = texts.intern("actual");
+  const c4c::TextId stale_text = texts.intern("stale");
+  const c4c::TextId get_text = texts.intern("get");
+  const int real_ns = parser.ensure_named_namespace_context(0, real_ns_text, "real");
+  const int wrong_ns = parser.ensure_named_namespace_context(0, wrong_ns_text, "wrong");
+
+  c4c::Node* wrong_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  wrong_owner->name = arena.strdup("Owner");
+  wrong_owner->unqualified_name = arena.strdup("Owner");
+  wrong_owner->unqualified_text_id = owner_text;
+  wrong_owner->namespace_context_id = wrong_ns;
+  wrong_owner->n_fields = 1;
+  wrong_owner->fields = arena.alloc_array<c4c::Node*>(1);
+
+  c4c::Node* stale = parser.make_node(c4c::NK_DECL, 1);
+  stale->name = arena.strdup("stale");
+  stale->unqualified_name = arena.strdup("stale");
+  stale->unqualified_text_id = stale_text;
+  stale->namespace_context_id = wrong_ns;
+  stale->type = make_ts(c4c::TB_INT);
+  wrong_owner->fields[0] = stale;
+
+  c4c::Node* real_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_owner->name = arena.strdup("Owner");
+  real_owner->unqualified_name = arena.strdup("Owner");
+  real_owner->unqualified_text_id = owner_text;
+  real_owner->namespace_context_id = real_ns;
+  real_owner->n_fields = 1;
+  real_owner->fields = arena.alloc_array<c4c::Node*>(1);
+
+  c4c::Node* actual = parser.make_node(c4c::NK_DECL, 1);
+  actual->name = arena.strdup("actual");
+  actual->unqualified_name = arena.strdup("actual");
+  actual->unqualified_text_id = actual_text;
+  actual->namespace_context_id = real_ns;
+  actual->type = make_ts(c4c::TB_INT);
+  real_owner->fields[0] = actual;
+
+  c4c::Node* field_ref = parser.make_node(c4c::NK_VAR, 2);
+  field_ref->name = arena.strdup("stale");
+  field_ref->unqualified_name = arena.strdup("stale");
+  field_ref->unqualified_text_id = stale_text;
+  field_ref->namespace_context_id = real_ns;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = field_ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("wrong::Owner::get");
+  fn->unqualified_name = arena.strdup("get");
+  fn->unqualified_text_id = get_text;
+  fn->namespace_context_id = real_ns;
+  fn->n_qualifier_segments = 1;
+  fn->qualifier_segments = arena.alloc_array<const char*>(1);
+  fn->qualifier_segments[0] = arena.strdup("Owner");
+  fn->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  fn->qualifier_text_ids[0] = owner_text;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
+  program->children[0] = wrong_owner;
+  program->children[1] = real_owner;
+  program->children[2] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "method validation should reject stale rendered field spelling when structured metadata misses");
+}
+
 void test_parser_template_instantiation_dedup_keys_skip_mark_on_failed_instantiation() {
   c4c::Arena arena;
   c4c::Parser parser({}, arena, nullptr, nullptr, c4c::SourceProfile::CppSubset);
@@ -6304,6 +6400,7 @@ int main() {
   test_sema_overload_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_namespace_owner_resolution_prefers_structured_owner_key();
   test_sema_method_validation_prefers_structured_owner_key_for_fields();
+  test_sema_method_validation_rejects_stale_rendered_field_spelling();
   test_parser_template_instantiation_dedup_keys_skip_mark_on_failed_instantiation();
   test_parser_template_instantiation_dedup_keys_structure_direct_emission();
   test_parser_template_substitution_preserves_record_definition_payloads();

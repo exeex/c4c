@@ -8,22 +8,24 @@ Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Route
 
 ## Just Finished
 
-Step 3 removed rendered-name authority from Sema consteval function lookup when
-TextId metadata is available. `lookup_consteval_function_by_name()` now returns
-structured lookup when present, then TextId lookup when present, and keeps the
-rendered-name map only as fallback when neither semantic route produces a
-result. A focused Sema parser static-assert test covers stale rendered-name
-disagreement where the reference has TextId metadata but no structured key.
+Step 3 removed rendered-name authority from Sema instance-field lookup when a
+structured owner key and member `TextId` have field metadata and miss.
+`has_struct_instance_field()` now treats structured field metadata as
+authoritative when present, while preserving rendered-name fallback only for
+routes where structured field metadata is absent. A focused Sema method-body
+test covers stale rendered field spelling being rejected instead of accepted.
 
 ## Suggested Next
 
 Continue Step 3 with the remaining Sema rendered-name owner/member/static
-lookup routes, prioritizing helpers where owner-key, declaration, `TextId`, or
-other structured metadata is already available and rendered maps can become
-fallback only.
+lookup routes after instance fields, prioritizing helpers where structured
+metadata is already available and rendered maps can become fallback only.
 
 ## Watchouts
 
+- Some existing parsed method-body positives still lack structured field
+  `TextId` metadata, so instance-field lookup must keep rendered compatibility
+  fallback when the structured field metadata chain is absent.
 - Do not delete the rendered-name `eval_const_int` compatibility overload while
   HIR still passes `NttpBindings` as `std::unordered_map<std::string, long long>`.
 - This packet intentionally kept rendered overload lookup as compatibility
@@ -43,5 +45,5 @@ fallback only.
 ## Proof
 
 Ran the delegated proof command:
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*consteval.*|cpp_hir_.*consteval.*|cpp_negative_tests_.*consteval.*)$' --output-on-failure) > test_after.log 2>&1`.
-It passed with 37/37 tests green. Proof log: `test_after.log`.
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(method|member|static|field).*|cpp_negative_tests_.*(method|member|static|field).*)$' --output-on-failure) > test_after.log 2>&1`.
+It passed with 264/264 tests green. Proof log: `test_after.log`.

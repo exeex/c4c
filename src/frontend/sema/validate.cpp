@@ -1205,20 +1205,25 @@ class Validator {
     return lookup_struct_static_member_type_legacy(tag, member);
   }
 
-  bool has_struct_instance_field_by_key(
+  std::optional<bool> has_struct_instance_field_by_key(
       const SemaStructuredNameKey& record_key, TextId member_text_id) const {
-    if (member_text_id == kInvalidText) return false;
+    if (member_text_id == kInvalidText) return std::nullopt;
+    bool has_structured_metadata = false;
     auto fit = struct_field_text_ids_by_key_.find(record_key);
-    if (fit != struct_field_text_ids_by_key_.end() && fit->second.count(member_text_id)) {
-      return true;
+    if (fit != struct_field_text_ids_by_key_.end()) {
+      has_structured_metadata = true;
+      if (fit->second.count(member_text_id)) return true;
     }
     auto bit = struct_base_keys_by_key_.find(record_key);
     if (bit != struct_base_keys_by_key_.end()) {
       for (const auto& base_key : bit->second) {
-        if (has_struct_instance_field_by_key(base_key, member_text_id)) return true;
+        auto from_base = has_struct_instance_field_by_key(base_key, member_text_id);
+        if (from_base.value_or(false)) return true;
+        if (from_base.has_value()) has_structured_metadata = true;
       }
     }
-    return false;
+    if (has_structured_metadata) return false;
+    return std::nullopt;
   }
 
   bool has_struct_instance_field_legacy(const std::string& tag,
@@ -1241,9 +1246,9 @@ class Validator {
     std::optional<SemaStructuredNameKey> record_key = current_method_struct_key_;
     if (!record_key.has_value()) record_key = structured_record_key_for_tag(tag);
     if (record_key.has_value() && member_text_id != kInvalidText) {
-      const bool structured = has_struct_instance_field_by_key(*record_key, member_text_id);
-      (void)compare_sema_lookup_presence(legacy, structured);
-      if (structured) return true;
+      const auto structured = has_struct_instance_field_by_key(*record_key, member_text_id);
+      (void)compare_sema_lookup_presence(legacy, structured.value_or(false));
+      if (structured.has_value()) return *structured;
     }
     return legacy;
   }
