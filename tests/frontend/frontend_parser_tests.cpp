@@ -1765,6 +1765,25 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
             "global using-import lookup should keep the global target spelling instead of introducing a leading scope bridge");
 }
 
+void test_parser_out_of_class_operator_registers_structured_global_key() {
+  c4c::Lexer lexer("::Owner::operator bool();\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parse_top_level(parser);
+
+  expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION,
+              "global-qualified out-of-class operator declarations should parse as functions");
+  expect_eq(fn->name, "Owner::operator_bool",
+            "out-of-class operator final spelling should keep the existing rendered display name");
+  expect_true(parser.has_known_fn_name("::Owner::operator_bool"),
+              "out-of-class operator registration should keep the structured global-qualified key");
+  expect_true(!parser.has_known_fn_name("Owner::operator_bool"),
+              "out-of-class operator registration should not fall back to stale non-global rendered spelling when structure is available");
+}
+
 void test_parser_namespace_lookup_demotes_legacy_rendered_name_bridges() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4903,6 +4922,7 @@ int main() {
   test_parser_using_value_import_keeps_structured_target_key();
   test_parser_using_value_import_prefers_structured_type_over_corrupt_rendered_name();
   test_parser_global_using_value_import_keeps_global_target_resolution();
+  test_parser_out_of_class_operator_registers_structured_global_key();
   test_parser_namespace_lookup_demotes_legacy_rendered_name_bridges();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();
   test_parser_using_value_alias_prefers_structured_target_type();

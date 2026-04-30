@@ -2388,15 +2388,27 @@ Node* parse_top_level(Parser& parser) {
             };
 
         auto consume_special_member_owner =
-            [&](bool stop_before_operator, bool stop_before_ctor) -> bool {
+            [&](bool stop_before_operator, bool stop_before_ctor,
+                std::vector<TextId>* out_owner_text_ids = nullptr,
+                bool* out_is_global_qualified = nullptr) -> bool {
                 parser.pos_ = saved_special_member_pos;
-                if (parser.check(TokenKind::ColonColon)) parser.consume();
+                if (out_owner_text_ids) out_owner_text_ids->clear();
+                if (out_is_global_qualified) *out_is_global_qualified = false;
+                if (parser.check(TokenKind::ColonColon)) {
+                    if (out_is_global_qualified) *out_is_global_qualified = true;
+                    parser.consume();
+                }
                 if (!parser.check(TokenKind::Identifier)) return false;
 
                 while (true) {
                     const std::string seg = std::string(parser.token_spelling(parser.cur()));
+                    const TextId seg_text_id =
+                        parser.parser_text_id_for_token(parser.cur().text_id, seg);
                     parser.consume();
                     if (!consume_optional_template_id()) return false;
+                    if (out_owner_text_ids && seg_text_id != kInvalidText) {
+                        out_owner_text_ids->push_back(seg_text_id);
+                    }
 
                     if (stop_before_operator &&
                         parser.check(TokenKind::ColonColon) &&
@@ -2433,8 +2445,12 @@ Node* parse_top_level(Parser& parser) {
                                    &looks_like_qualified_ctor);
 
         if (looks_like_qualified_operator) {
+            std::vector<TextId> qualified_owner_text_ids;
+            bool qualified_owner_is_global = false;
             if (!consume_special_member_owner(/*stop_before_operator=*/true,
-                                              /*stop_before_ctor=*/false)) {
+                                              /*stop_before_ctor=*/false,
+                                              &qualified_owner_text_ids,
+                                              &qualified_owner_is_global)) {
                 parser.pos_ = saved_special_member_pos;
             }
             parser.expect(TokenKind::ColonColon);
@@ -2474,13 +2490,15 @@ Node* parse_top_level(Parser& parser) {
 
             std::string qualified_op_name = qualified_owner;
             if (!qualified_op_name.empty()) qualified_op_name += "::";
+            std::string operator_base_name;
             if (conv_ts.base == TB_BOOL && conv_ts.ptr_level == 0 &&
                 !conv_ts.is_lvalue_ref && !conv_ts.is_rvalue_ref) {
-                qualified_op_name += "operator_bool";
+                operator_base_name = "operator_bool";
             } else {
-                qualified_op_name += "operator_conv_";
-                append_type_mangled_suffix_local(qualified_op_name, conv_ts);
+                operator_base_name = "operator_conv_";
+                append_type_mangled_suffix_local(operator_base_name, conv_ts);
             }
+            qualified_op_name += operator_base_name;
 
             parser.expect(TokenKind::LParen);
             std::vector<Node*> params;
@@ -2568,7 +2586,25 @@ Node* parse_top_level(Parser& parser) {
             } else {
                 parser.match(TokenKind::Semi);
             }
-            parser.register_known_fn_name(qualified_op_name);
+            bool registered_structured_operator_name = false;
+            const TextId operator_base_text_id =
+                parser.parser_text_id_for_token(kInvalidText, operator_base_name);
+            if (operator_base_text_id != kInvalidText) {
+                QualifiedNameKey operator_key;
+                operator_key.context_id = 0;
+                operator_key.is_global_qualified = qualified_owner_is_global;
+                operator_key.base_text_id = operator_base_text_id;
+                if (!qualified_owner_text_ids.empty()) {
+                    operator_key.qualifier_path_id =
+                        parser.shared_lookup_state_.parser_name_paths.intern(
+                            qualified_owner_text_ids);
+                }
+                parser.register_known_fn_name(operator_key);
+                registered_structured_operator_name = true;
+            }
+            if (!registered_structured_operator_name) {
+                parser.register_known_fn_name(qualified_op_name);
+            }
             restore_current_struct_tag(parser, saved_tag_op_text_id,
                                        saved_tag_op_fallback);
             return fn;
