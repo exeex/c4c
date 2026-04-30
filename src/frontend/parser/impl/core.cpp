@@ -1336,6 +1336,55 @@ QualifiedNameKey Parser::known_fn_name_key_in_context(
                                     fallback_name, false);
 }
 
+QualifiedNameKey Parser::current_record_member_name_key(
+    TextId member_text_id, std::string_view fallback_member_name) const {
+    QualifiedNameKey key;
+    key.context_id = 0;
+    if (!is_cpp_mode() || active_context_state_.current_struct_tag.empty()) {
+        return key;
+    }
+
+    const TextId base_text_id =
+        member_text_id != kInvalidText
+            ? member_text_id
+            : find_parser_text_id(fallback_member_name);
+    if (base_text_id == kInvalidText) return key;
+
+    const std::string_view record_name = current_struct_tag_text();
+    if (record_name.empty()) return key;
+
+    std::vector<TextId> qualifier_text_ids;
+    size_t segment_start = 0;
+    while (segment_start < record_name.size()) {
+        const size_t sep = record_name.find("::", segment_start);
+        const std::string_view segment =
+            sep == std::string_view::npos
+                ? record_name.substr(segment_start)
+                : record_name.substr(segment_start, sep - segment_start);
+        if (segment.empty()) return {};
+        TextId segment_text_id = kInvalidText;
+        if (sep == std::string_view::npos &&
+            segment_start == 0 &&
+            active_context_state_.current_struct_tag_text_id !=
+                kInvalidText) {
+            segment_text_id = active_context_state_.current_struct_tag_text_id;
+        } else {
+            segment_text_id = find_parser_text_id(segment);
+        }
+        if (segment_text_id == kInvalidText) return {};
+        qualifier_text_ids.push_back(segment_text_id);
+        if (sep == std::string_view::npos) break;
+        segment_start = sep + 2;
+    }
+    if (qualifier_text_ids.empty()) return key;
+
+    key.qualifier_path_id =
+        shared_lookup_state_.parser_name_paths.find(qualifier_text_ids);
+    if (key.qualifier_path_id == kInvalidNamePath) return {};
+    key.base_text_id = base_text_id;
+    return key;
+}
+
 QualifiedNameKey Parser::struct_typedef_key_in_context(
     int context_id, TextId name_text_id,
     std::string_view fallback_name) const {

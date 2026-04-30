@@ -457,6 +457,8 @@ class Parser {
   QualifiedNameKey known_fn_name_key_in_context(
       int context_id, TextId name_text_id,
       std::string_view fallback_name) const;
+  QualifiedNameKey current_record_member_name_key(
+      TextId member_text_id, std::string_view fallback_member_name) const;
   QualifiedNameKey struct_typedef_key_in_context(
       int context_id, TextId name_text_id,
       std::string_view fallback_name) const;

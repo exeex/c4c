@@ -314,23 +314,46 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
         const Token& head_tok = core_input_state_.tokens[pos];
         const std::string head_name = std::string(token_spelling(head_tok));
         if (find_visible_var_type(head_tok.text_id, head_name)) return 1;
-        if (has_known_fn_name(head_name)) return 1;
-        if (is_cpp_mode() && !current_struct_tag_text().empty()) {
-            std::string current_member_name(current_struct_tag_text());
-            current_member_name += "::";
-            current_member_name += head_name;
-            if (has_known_fn_name(current_member_name)) return 1;
+
+        bool saw_structured_known_fn_key = false;
+        const QualifiedNameKey direct_known_fn_key =
+            known_fn_name_key_in_context(current_namespace_context_id(),
+                                         head_tok.text_id, head_name);
+        if (direct_known_fn_key.base_text_id != kInvalidText) {
+            saw_structured_known_fn_key = true;
+            if (has_known_fn_name(direct_known_fn_key)) return 1;
+        }
+
+        const QualifiedNameKey current_member_key =
+            current_record_member_name_key(head_tok.text_id, head_name);
+        if (current_member_key.base_text_id != kInvalidText) {
+            saw_structured_known_fn_key = true;
+            if (has_known_fn_name(current_member_key)) return 1;
         }
 
         const VisibleNameResult resolved_value =
             resolve_visible_value(head_tok.text_id, head_name);
         if (resolved_value) {
-            if (has_known_fn_name(resolved_value.key)) return 1;
-            const std::string resolved_spelling =
-                visible_name_spelling(resolved_value);
-            if (!resolved_spelling.empty() &&
-                has_known_fn_name(resolved_spelling)) {
-                return 1;
+            if (resolved_value.key.base_text_id != kInvalidText) {
+                saw_structured_known_fn_key = true;
+                if (has_known_fn_name(resolved_value.key)) return 1;
+            } else {
+                const std::string resolved_spelling =
+                    visible_name_spelling(resolved_value);
+                if (!resolved_spelling.empty() &&
+                    has_known_fn_name(resolved_spelling)) {
+                    return 1;
+                }
+            }
+        }
+
+        if (!saw_structured_known_fn_key) {
+            if (has_known_fn_name(head_name)) return 1;
+            if (is_cpp_mode() && !current_struct_tag_text().empty()) {
+                std::string current_member_name(current_struct_tag_text());
+                current_member_name += "::";
+                current_member_name += head_name;
+                if (has_known_fn_name(current_member_name)) return 1;
             }
         }
 
