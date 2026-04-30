@@ -2702,7 +2702,6 @@ void test_parser_deferred_member_typedef_lookup_uses_member_text_id() {
   arg_ts.base = c4c::TB_STRUCT;
   arg_ts.tag = arena.strdup("Owner");
   arg_ts.record_def = owner;
-  arg_ts.deferred_member_type_name = arena.strdup("stale_rendered_member");
   arg_ts.deferred_member_type_text_id = alias_text;
   parser.register_typedef_binding(arg_token.text_id, arg_ts, true);
 
@@ -2717,7 +2716,7 @@ void test_parser_deferred_member_typedef_lookup_uses_member_text_id() {
   expect_true(box_ts.record_def != nullptr &&
                   box_ts.record_def->template_arg_types &&
                   box_ts.record_def->template_arg_types[0].base == c4c::TB_INT,
-              "deferred member typedef lookup should use member TextId before stale rendered member spelling");
+              "deferred member typedef lookup should use member TextId without rendered member spelling");
 }
 
 void test_parser_template_base_deferred_member_typedef_uses_member_text_id() {

@@ -2212,7 +2212,9 @@ TypeSpec Parser::parse_base_type() {
                     for (auto& arg : actual_args) {
                         if (arg.is_value) continue;
                         TypeSpec& arg_ts = arg.type;
-                        if (!arg_ts.deferred_member_type_name ||
+                        const std::string deferred_member_name =
+                            deferred_member_lookup_name(arg_ts);
+                        if (deferred_member_name.empty() ||
                             !arg_ts.tag || !arg_ts.tag[0]) {
                             continue;
                         }
@@ -2221,7 +2223,7 @@ TypeSpec Parser::parse_base_type() {
                             arg_ts.deferred_member_type_text_id;
                         if (!lookup_struct_member_typedef_recursive_for_type(
                                 arg_ts,
-                                arg_ts.deferred_member_type_name,
+                                deferred_member_name,
                                 deferred_member_text_id,
                                 &resolved_member)) {
                             continue;

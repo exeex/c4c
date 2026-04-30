@@ -8,13 +8,13 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired the parser template-instantiation base-type deferred
-owner-member consumer in `parse_base_type`: instantiated base `TypeSpec`
-resolution now derives the lookup member spelling from populated
+Step 3.1 repaired the earlier parser template-argument deferred owner-member
+consumer in `parse_base_type`: actual type-argument `TypeSpec` resolution now
+derives the lookup member spelling from populated
 `deferred_member_type_text_id` before falling back to rendered
-`deferred_member_type_name`. Focused parser coverage proves a deferred base
-member typedef carrier with member TextId metadata but no rendered member
-spelling still resolves through the structured member identity.
+`deferred_member_type_name`. Focused parser coverage proves a deferred member
+typedef carrier with member TextId metadata but no rendered member spelling
+still resolves through the structured member identity.
 
 ## Suggested Next
 
@@ -66,10 +66,11 @@ attempting any rendered-compatibility deletion.
 - `lookup_struct_member_typedef_recursive_for_type` member-name matching is now
   proven against stale rendered `deferred_member_type_name` when a valid member
   `TextId` is present.
-- Template-instantiation base-type deferred-member resolution now accepts the
-  member `TextId` as the lookup source even when the rendered deferred-member
-  spelling is absent; keep remaining rendered `$member` template-arg strings as
-  compatibility/debug payloads until a concrete semantic consumer is proven.
+- Template-instantiation type-argument deferred-member resolution now accepts
+  the member `TextId` as the lookup source even when the rendered
+  deferred-member spelling is absent; keep remaining rendered `$member`
+  template-arg strings as compatibility/debug payloads until a concrete
+  semantic consumer is proven.
 - `typespec_mentions_template_param` dependency classification is now proven
   against stale rendered `deferred_member_type_name` when a valid
   `deferred_member_type_text_id` is present. Remaining rendered deferred-member
