@@ -24,12 +24,10 @@ BackendAggregateLayoutLookup lookup_global_initializer_layout_result(
   if (structured_layouts != nullptr) {
     return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
   }
-  return BackendAggregateLayoutLookup{
-      .layout = compute_aggregate_type_layout(type_text, type_decls),
-      .used_structured_layout = false,
-      .used_legacy_fallback = true,
-      .structured_text_mismatch = false,
-  };
+  const BackendStructuredLayoutTable empty_structured_layouts;
+  return lookup_backend_aggregate_type_layout_result(type_text,
+                                                     type_decls,
+                                                     empty_structured_layouts);
 }
 
 AggregateTypeLayout lookup_global_initializer_layout(

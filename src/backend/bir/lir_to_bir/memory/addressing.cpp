@@ -18,7 +18,6 @@ using GlobalAddress = BirFunctionLowerer::GlobalAddress;
 using LocalPointerArrayBase = BirFunctionLowerer::LocalPointerArrayBase;
 using PointerAddress = BirFunctionLowerer::PointerAddress;
 using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
-using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
@@ -35,12 +34,10 @@ BackendAggregateLayoutLookup lookup_addressing_layout_result(
   if (structured_layouts != nullptr) {
     return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
   }
-  return BackendAggregateLayoutLookup{
-      .layout = compute_aggregate_type_layout(type_text, type_decls),
-      .used_structured_layout = false,
-      .used_legacy_fallback = true,
-      .structured_text_mismatch = false,
-  };
+  const BackendStructuredLayoutTable empty_structured_layouts;
+  return lookup_backend_aggregate_type_layout_result(type_text,
+                                                     type_decls,
+                                                     empty_structured_layouts);
 }
 
 BirFunctionLowerer::AggregateTypeLayout lookup_addressing_layout(

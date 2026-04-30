@@ -13,7 +13,6 @@ namespace c4c::backend {
 using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
 using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
-using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::is_known_raw_function_symbol;
 using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::lower_integer_type;
@@ -31,12 +30,10 @@ BackendAggregateLayoutLookup lookup_scalar_byte_offset_layout_result(
   if (structured_layouts != nullptr) {
     return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
   }
-  return BackendAggregateLayoutLookup{
-      .layout = compute_aggregate_type_layout(type_text, type_decls),
-      .used_structured_layout = false,
-      .used_legacy_fallback = true,
-      .structured_text_mismatch = false,
-  };
+  const BackendStructuredLayoutTable empty_structured_layouts;
+  return lookup_backend_aggregate_type_layout_result(type_text,
+                                                     type_decls,
+                                                     empty_structured_layouts);
 }
 
 BirFunctionLowerer::AggregateTypeLayout lookup_scalar_byte_offset_layout(

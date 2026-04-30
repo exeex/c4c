@@ -5,7 +5,7 @@
 namespace c4c::backend {
 
 using lir_to_bir_detail::compute_aggregate_type_layout;
-using lir_to_bir_detail::lookup_backend_aggregate_type_layout;
+using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::type_size_bytes;
 
@@ -83,6 +83,14 @@ std::string normalize_aggregate_param_type(std::string_view type_text) {
   return std::string(c4c::codegen::lir::trim_lir_arg_text(type_text));
 }
 
+BirFunctionLowerer::AggregateTypeLayout selected_aggregate_type_layout(
+    std::string_view type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
+  return lookup_backend_aggregate_type_layout_result(type_text, type_decls, structured_layouts)
+      .layout;
+}
+
 }  // namespace
 
 std::string BirFunctionLowerer::aggregate_param_slot_base(std::string_view param_name) {
@@ -108,9 +116,9 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower
     const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts) {
   const std::string normalized_type = normalize_aggregate_param_type(text);
   auto layout = structured_layouts != nullptr
-                    ? lookup_backend_aggregate_type_layout(normalized_type,
-                                                           type_decls,
-                                                           *structured_layouts)
+                    ? selected_aggregate_type_layout(normalized_type,
+                                                     type_decls,
+                                                     *structured_layouts)
                     : compute_aggregate_type_layout(normalized_type, type_decls);
   if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
        layout.kind != AggregateTypeLayout::Kind::Array) ||
@@ -123,9 +131,9 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower
 std::vector<std::pair<std::size_t, std::string>> BirFunctionLowerer::collect_sorted_leaf_slots(
     const LocalAggregateSlots& aggregate_slots) const {
   const auto layout =
-      lookup_backend_aggregate_type_layout(aggregate_slots.type_text,
-                                           type_decls_,
-                                           structured_layouts_);
+      selected_aggregate_type_layout(aggregate_slots.type_text,
+                                     type_decls_,
+                                     structured_layouts_);
   if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
        layout.kind != AggregateTypeLayout::Kind::Array) ||
       layout.size_bytes == 0 || layout.align_bytes == 0) {
@@ -201,9 +209,9 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
                                                              std::size_t byte_offset,
                                                              std::size_t align_bytes,
                                                              LocalAggregateSlots* aggregate_slots) {
-  const auto layout = lookup_backend_aggregate_type_layout(type_text,
-                                                           type_decls_,
-                                                           structured_layouts_);
+  const auto layout = selected_aggregate_type_layout(type_text,
+                                                     type_decls_,
+                                                     structured_layouts_);
   if (layout.kind == AggregateTypeLayout::Kind::Invalid ||
       layout.size_bytes == 0 || layout.align_bytes == 0) {
     return false;
@@ -226,9 +234,9 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
     }
     case AggregateTypeLayout::Kind::Array: {
       const auto element_layout =
-          lookup_backend_aggregate_type_layout(layout.element_type_text,
-                                               type_decls_,
-                                               structured_layouts_);
+          selected_aggregate_type_layout(layout.element_type_text,
+                                         type_decls_,
+                                         structured_layouts_);
       if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
           element_layout.size_bytes == 0) {
         return false;
@@ -263,9 +271,9 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
 bool BirFunctionLowerer::declare_local_aggregate_slots(std::string_view type_text,
                                                        std::string_view slot_name,
                                                        std::size_t align_bytes) {
-  const auto aggregate_layout = lookup_backend_aggregate_type_layout(type_text,
-                                                                     type_decls_,
-                                                                     structured_layouts_);
+  const auto aggregate_layout = selected_aggregate_type_layout(type_text,
+                                                               type_decls_,
+                                                               structured_layouts_);
   if (aggregate_layout.kind != AggregateTypeLayout::Kind::Struct &&
       aggregate_layout.kind != AggregateTypeLayout::Kind::Array) {
     return false;
