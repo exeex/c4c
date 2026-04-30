@@ -5489,6 +5489,106 @@ void test_parser_alias_template_member_typedef_substitution_uses_structured_carr
               "alias-template member typedef substitution should resolve through the structured carrier despite stale rendered/deferred TypeSpec spelling");
 }
 
+void test_parser_qualified_alias_template_member_typedef_substitution_uses_structured_carrier() {
+  c4c::Lexer lexer(
+      "namespace ns {\n"
+      "template<typename T> struct Owner { using type = T; };\n"
+      "template<typename T> using Alias = typename Owner<T>::type;\n"
+      "}\n",
+      c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  (void)parse_top_level(parser);
+
+  const c4c::TextId ns_text = parser.find_parser_text_id("ns");
+  const int ns_context = parser.find_named_namespace_child(0, ns_text);
+  expect_true(ns_context >= 0,
+              "qualified alias-template carrier test requires the namespace context");
+  const c4c::TextId alias_text = parser.find_parser_text_id("Alias");
+  const c4c::TextId owner_text = parser.find_parser_text_id("Owner");
+  const c4c::TextId member_text = parser.find_parser_text_id("type");
+  const c4c::QualifiedNameKey alias_key =
+      parser.alias_template_key_in_context(ns_context, alias_text);
+  const c4c::QualifiedNameKey owner_key =
+      parser.alias_template_key_in_context(ns_context, owner_text);
+  c4c::ParserAliasTemplateInfo& info =
+      parser.template_state_.alias_template_info[alias_key];
+  expect_true(info.member_typedef.valid &&
+                  info.member_typedef.owner_key == owner_key &&
+                  info.member_typedef.member_text_id == member_text,
+              "qualified alias-template member typedef test requires the structured carrier");
+  info.aliased_type.base = c4c::TB_STRUCT;
+  info.aliased_type.tag = arena.strdup("wrong::RenderedOwner");
+  info.aliased_type.tpl_struct_origin = info.aliased_type.tag;
+  info.aliased_type.deferred_member_type_name = arena.strdup("wrong_member");
+
+  const c4c::Token seed = tokens.empty() ? c4c::Token{} : tokens.front();
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ns"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  });
+
+  const c4c::TypeSpec resolved = parser.parse_type_name();
+  expect_true(resolved.base == c4c::TB_INT,
+              "qualified alias-template member typedef substitution should consume the structured carrier despite stale rendered/deferred spelling");
+}
+
+void test_parser_alias_of_alias_member_typedef_substitution_uses_structured_carrier() {
+  c4c::Lexer lexer(
+      "using Direct = int;\n"
+      "using AliasArg = Direct;\n"
+      "template<typename T> struct Owner { using type = T; };\n"
+      "template<typename T> using Alias = typename Owner<T>::type;\n",
+      c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  (void)parse_top_level(parser);
+  (void)parse_top_level(parser);
+  (void)parse_top_level(parser);
+  (void)parse_top_level(parser);
+
+  const c4c::TextId alias_text = parser.find_parser_text_id("Alias");
+  const c4c::TextId owner_text = parser.find_parser_text_id("Owner");
+  const c4c::TextId member_text = parser.find_parser_text_id("type");
+  const c4c::QualifiedNameKey alias_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), alias_text);
+  const c4c::QualifiedNameKey owner_key =
+      parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                           owner_text);
+  c4c::ParserAliasTemplateInfo& info =
+      parser.template_state_.alias_template_info[alias_key];
+  expect_true(info.member_typedef.valid &&
+                  info.member_typedef.owner_key == owner_key &&
+                  info.member_typedef.member_text_id == member_text,
+              "alias-of-alias member typedef test requires the structured carrier");
+  info.aliased_type.base = c4c::TB_STRUCT;
+  info.aliased_type.tag = arena.strdup("WrongRenderedOwner");
+  info.aliased_type.tpl_struct_origin = info.aliased_type.tag;
+  info.aliased_type.deferred_member_type_name = arena.strdup("wrong_member");
+
+  const c4c::Token seed = tokens.empty() ? c4c::Token{} : tokens.front();
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "AliasArg"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  });
+
+  const c4c::TypeSpec resolved = parser.parse_type_name();
+  expect_true(resolved.base == c4c::TB_INT,
+              "alias-template member typedef substitution should consume alias-of-alias arguments through the structured carrier despite stale rendered/deferred spelling");
+}
+
 void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches() {
   c4c::Arena arena;
 
@@ -5819,6 +5919,8 @@ int main() {
   test_parser_alias_template_substitution_does_not_require_param_name_spelling();
   test_parser_alias_template_member_typedef_carrier_uses_structured_rhs();
   test_parser_alias_template_member_typedef_substitution_uses_structured_carrier();
+  test_parser_qualified_alias_template_member_typedef_substitution_uses_structured_carrier();
+  test_parser_alias_of_alias_member_typedef_substitution_uses_structured_carrier();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
