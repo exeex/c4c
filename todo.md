@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/138_lir_bir_backend_aggregate_layout_type_decl_text_bridge_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Trace Current Aggregate Layout Authority
+Current Step ID: Step 2
+Current Step Title: Make Backend Layout Lookup Structured-Primary
 
 ## Just Finished
 
@@ -41,12 +41,13 @@ Step 1 trace completed for idea 138. Current aggregate layout authority routes:
 
 ## Suggested Next
 
-First implementation packet: make `lookup_backend_aggregate_type_layout()` stop
-silently falling back to legacy `TypeDeclMap` when a structured declaration is
-present but its parity check against the legacy shadow mismatches. Keep
-structured-missing fallback intact, keep matched structured-present behavior
-structured-primary, and add focused coverage in `backend_prepare_structured_context`
-or `backend_lir_to_bir_notes` that corrupts the legacy shadow while structured
+Active Step 2 implementation packet: make
+`lookup_backend_aggregate_type_layout()` stop silently falling back to legacy
+`TypeDeclMap` when a structured declaration is present but its parity check
+against the legacy shadow mismatches. Keep structured-missing fallback intact,
+keep matched structured-present behavior structured-primary, and add focused
+coverage in `backend_prepare_structured_context` or
+`backend_lir_to_bir_notes` that corrupts the legacy shadow while structured
 layout is present.
 
 Supervisor-ready proof command for that packet:
