@@ -1,7 +1,8 @@
 # LIR BIR Backend Aggregate Layout Type Decl Text Bridge Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-30
 
 Parent Ideas:
 - [131_cross_ir_string_authority_audit_and_followup_queue.md](/workspaces/c4c/ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md)
@@ -72,3 +73,16 @@ Suspicious paths:
   data is present.
 - Focused tests cover same-feature aggregate and initializer cases rather than
   proving only one named testcase.
+
+## Closure Notes
+
+Completed through active runbook Step 6. Backend aggregate lookup now reports
+structured layout selection, legacy fallback use, and structured/text mismatch
+state through the central lookup contract, with aggregate and global
+initializer consumers using that status-aware route while preserving explicit
+legacy fallback for raw or hand-built LIR.
+
+Close proof used the matching `^backend_` regression scope recorded in
+`test_before.log` and `test_after.log`: 109/109 runnable backend tests passed
+before and after, with 12 disabled MIR trace tests unchanged and no new
+failures under the regression guard.
