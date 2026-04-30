@@ -1,52 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/136_hir_structured_record_template_lookup_authority_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Preserve Instantiated Trait and Base Recursion Semantics
+Current Step ID: 3
+Current Step Title: Validate Idea 136 Static-Member and Template Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 2 repaired structured static-member const-value fallback semantics.
-`find_struct_static_member_const_value(HirStructMemberLookupKey, ...)` still
-returns direct `struct_static_member_const_values_by_owner_` hits first, but
-on by-owner miss it now derives fallback tag/member inputs from the structured
-owner key and member text when available, then reuses the legacy string path
-that performs instantiated trait/static-member evaluation and inherited base
-recursion. The template-global initializer route in `lower_global_init` also
-folds qualified template static-member const expressions with the rendered
-qualified member segment so stale structured member text does not block
-`is_reference<T>::value` style reduction.
+Plan Step 3 validated the repaired Idea 136 static-member and template coverage.
+The supervisor-selected build plus focused CTest subset passed 48/48, including
+the five repaired regressions:
+`cpp_positive_sema_template_variable_alias_inherited_member_typedef_runtime_cpp`,
+`cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`,
+`cpp_positive_sema_template_variable_member_typedef_normalization_runtime_cpp`,
+`cpp_positive_sema_template_variable_trait_runtime_cpp`, and
+`cpp_hir_template_inherited_member_typedef_trait`.
 
 ## Suggested Next
 
-Next coherent packet: supervisor should decide whether to accept Step 2 as
-the focused repair slice or move to Plan Step 3 broader idea-136
-static-member/template coverage. The next validation packet should include the
-five repaired regressions plus nearby static-member const lookup coverage that
-exercises direct structured hits, inherited base fallback, and template trait
-static-member folding.
+Next coherent packet: supervisor should run Step 4 acceptance routing, including
+regression-guard comparison against the existing `test_before.log`, then decide
+whether this validation slice is ready to commit or needs broader proof.
 
 ## Watchouts
 
-- The fix does not downgrade any expectations or add named-test shortcuts.
-- `tests/frontend/frontend_hir_tests.cpp` now includes a direct guard that a
-  structured by-owner miss uses owner-key base fallback before stale rendered
-  spelling.
-- The delegated proof is focused; Step 3 still owns broader nearby idea-136
-  validation and any baseline/full-suite decision.
+- This packet was validation and todo recording only; no implementation files,
+  tests, `plan.md`, idea files, review artifacts, or baseline logs were touched.
+- The proof covers repaired template typedef/trait regressions, deferred NTTP
+  static-member cases, member-owner HIR helpers, static-member lookup runtime
+  cases, namespace/out-of-class owner routing cases, and nearby operator/member
+  access coverage selected by the supervisor.
+- Lifecycle closure remains out of scope for this executor packet.
 
 ## Proof
 
 Proof command run to `test_after.log`:
 
 ```sh
-cmake --build build --target c4cll frontend_hir_tests frontend_hir_lookup_tests frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(cpp_positive_sema_template_variable_alias_inherited_member_typedef_runtime_cpp|cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp|cpp_positive_sema_template_variable_member_typedef_normalization_runtime_cpp|cpp_positive_sema_template_variable_trait_runtime_cpp|cpp_hir_template_inherited_member_typedef_trait)$' >> test_after.log 2>&1
+cmake --build build --target c4cll frontend_hir_tests frontend_hir_lookup_tests frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests|frontend_parser_tests|cpp_positive_sema_template_variable_alias_inherited_member_typedef_runtime_cpp|cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp|cpp_positive_sema_template_variable_member_typedef_normalization_runtime_cpp|cpp_positive_sema_template_variable_trait_runtime_cpp|cpp_hir_template_inherited_member_typedef_trait|cpp_hir_template_origin|cpp_hir_template_struct_registry_primary_only|cpp_hir_template_member_owner_resolution|cpp_hir_template_struct_field_array_extent|cpp_hir_template_struct_inherited_method_binding|cpp_hir_template_member_owner_chain|cpp_hir_template_member_owner_decl_and_cast|cpp_hir_template_alias_member_owner|cpp_hir_template_member_owner_field_and_local|cpp_hir_template_member_owner_signature_local|cpp_hir_expr_call_member_helper|cpp_hir_expr_operator_member_helper|cpp_hir_expr_object_materialization_helper|cpp_hir_expr_scalar_control_helper|cpp_hir_stmt_local_decl_helper|cpp_hir_stmt_range_for_helper|cpp_hir_template_struct_body_instantiation|cpp_hir_template_struct_arg_materialization|cpp_hir_template_alias_deferred_nttp_static_member|cpp_hir_template_deferred_nttp_static_member_expr|cpp_hir_template_deferred_nttp_cast_static_member_expr|cpp_hir_template_value_arg_static_member_trait|cpp_positive_sema_namespaced_out_of_class_method_context_frontend_cpp|cpp_positive_sema_qualified_namespaced_out_of_class_method_context_frontend_cpp|cpp_positive_sema_out_of_class_member_owner_scope_parse_cpp|cpp_positive_sema_operator_this_out_of_class_runtime_cpp|cpp_positive_sema_using_namespace_struct_method_runtime_cpp|cpp_positive_sema_operator_shift_static_member_call_parse_cpp|cpp_positive_sema_inherited_static_member_lookup_runtime_cpp|cpp_positive_sema_inherited_static_member_lookup_simple_runtime_cpp|cpp_positive_sema_unqualified_static_member_call_runtime_cpp|cpp_positive_sema_namespace_template_struct_basic_cpp|cpp_positive_sema_template_struct_advanced_cpp|cpp_positive_sema_template_struct_nested_cpp|cpp_positive_sema_template_struct_specialization_runtime_cpp|cpp_positive_sema_template_member_owner_resolution_cpp|cpp_positive_sema_inherited_base_member_access_runtime_cpp|cpp_positive_sema_operator_deref_member_basic_cpp|cpp_positive_sema_operator_arrow_member_basic_cpp|cpp_positive_sema_operator_subscript_member_basic_cpp)$' >> test_after.log 2>&1
 ```
 
-Result: passed. The build completed and the focused ctest subset passed 5/5:
-tests 761, 762, 763, 764, and 1362. `test_after.log` is the proof log.
-
-Additional local check: `./build/tests/frontend/frontend_hir_tests` passed,
-covering the new internal structured-miss/base-fallback guard.
+Result: passed. The build completed and the focused CTest subset passed 48/48
+with 0 failures. `test_after.log` is the proof log.
