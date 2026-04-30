@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4.1
-Current Step Title: Inventory Live Member-Typedef Mirror Consumers
+Current Step ID: Step 2.4.2
+Current Step Title: Prove Direct Record Member-Typedef Lookup
 
 ## Just Finished
 
@@ -85,14 +85,18 @@ Live readers that can observe that mirror are:
 
 ## Suggested Next
 
-First smallest code packet: convert only the two record-body writers in
-`src/frontend/parser/impl/types/struct.cpp` away from the rendered
-`owner::member` mirror by registering/storing through the existing member
-typedef arrays and a structured owner carrier available during record
-finalization. Keep the template-instantiation writer in
-`src/frontend/parser/impl/types/base.cpp:3223` and all readers unchanged for
-that first packet unless the record-finalization structured carrier is already
-available without widening the slice.
+Bounded executor packet for Step 2.4.2: convert only the two record-body
+member-typedef writers in `src/frontend/parser/impl/types/struct.cpp` away
+from the rendered `owner::member` mirror by carrying direct record/member
+metadata through record finalization and relying on the existing
+`member_typedef_names` / `member_typedef_types` arrays as the semantic source
+for direct record member-typedef lookup. Add or keep one focused parser proof
+that direct record/member metadata wins over stale rendered mirror authority.
+
+Keep the template-instantiation writer in
+`src/frontend/parser/impl/types/base.cpp:3223`, the remaining qualified/textual
+readers, and broad mirror deletion out of this packet unless a required
+record-finalization carrier is already available without widening the slice.
 
 ## Watchouts
 
