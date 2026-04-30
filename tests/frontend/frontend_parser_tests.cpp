@@ -136,13 +136,16 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
   var_ts.inner_rank = -1;
   var_ts.base = c4c::TB_DOUBLE;
 
-  parser.register_typedef_binding(parser_test_text_id(parser, "Value"), typedef_ts, true);
-  parser.register_var_type_binding(parser_test_text_id(parser, "counter"), var_ts);
+  const c4c::TextId value_text_id = parser_test_text_id(parser, "Value");
+  const c4c::TextId counter_text_id = parser_test_text_id(parser, "counter");
+
+  parser.register_typedef_binding(value_text_id, typedef_ts, true);
+  parser.register_var_type_binding(counter_text_id, var_ts);
 
   const c4c::Parser::SymbolId typedef_symbol =
-      parser.parser_symbol_tables().find_identifier("Value");
+      parser.parser_symbol_tables().find_identifier(value_text_id);
   const c4c::Parser::SymbolId var_symbol =
-      parser.parser_symbol_tables().find_identifier("counter");
+      parser.parser_symbol_tables().find_identifier(counter_text_id);
 
   expect_true(typedef_symbol != c4c::Parser::kInvalidSymbol,
               "typedef wrapper should intern a valid SymbolId");
@@ -509,8 +512,13 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
   const int symbol_count_before =
       static_cast<int>(parser.parser_symbol_count_for_testing());
 
-  parser.register_typedef_binding(parser_test_text_id(parser, "ns::Type"), typedef_ts, true);
-  parser.register_var_type_binding(parser_test_text_id(parser, "ns::value"), var_ts);
+  const c4c::TextId qualified_type_text_id =
+      parser_test_text_id(parser, "ns::Type");
+  const c4c::TextId qualified_value_text_id =
+      parser_test_text_id(parser, "ns::value");
+
+  parser.register_typedef_binding(qualified_type_text_id, typedef_ts, true);
+  parser.register_var_type_binding(qualified_value_text_id, var_ts);
 
   expect_true(parser.has_typedef_name(parser_test_text_id(parser, "ns::Type")),
               "qualified typedef membership should remain lookupable");
@@ -533,11 +541,11 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
                   parser.find_var_type(parser_test_text_id(parser, "ns::value"))->base == c4c::TB_DOUBLE,
               "qualified value lookup should recover the stored TypeSpec");
   expect_true(parser.parser_symbol_tables().find_identifier(
-                  "ns::Type") ==
+                  qualified_type_text_id) ==
                   c4c::Parser::kInvalidSymbol,
               "qualified typedef names should not intern composed strings");
   expect_true(parser.parser_symbol_tables().find_identifier(
-                  "ns::value") ==
+                  qualified_value_text_id) ==
                   c4c::Parser::kInvalidSymbol,
               "qualified value names should not intern composed strings");
   expect_eq_int(static_cast<int>(parser.parser_symbol_count_for_testing()),
@@ -584,6 +592,7 @@ void test_parser_structured_value_registration_avoids_string_bridge_and_legacy_m
   const c4c::QualifiedNameKey unqualified_value_key =
       parser.intern_semantic_name_key(parser_test_text_id(parser, "registered"));
   parser.register_structured_var_type_binding(unqualified_value_key, value_ts);
+  const c4c::TextId registered_text_id = parser.find_parser_text_id("registered");
 
   expect_true(parser.has_structured_var_type(value_key),
               "structured value registration should populate structured storage");
@@ -596,7 +605,7 @@ void test_parser_structured_value_registration_avoids_string_bridge_and_legacy_m
   expect_true(parser.find_var_type(parser_test_text_id(parser, "registered")) == nullptr,
               "unqualified string-facing value lookup should not bridge to structured-only storage");
   const c4c::Parser::SymbolId registered_symbol =
-      parser.parser_symbol_tables().find_identifier("registered");
+      parser.parser_symbol_tables().find_identifier(registered_text_id);
   expect_true(registered_symbol == c4c::Parser::kInvalidSymbol ||
                   parser.parser_symbol_tables().var_types.count(
                       registered_symbol) == 0,

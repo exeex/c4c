@@ -8,25 +8,24 @@ Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 
 ## Just Finished
 
-Step 2 removed the parser rendered-string conflict route
-`Parser::has_conflicting_user_typedef_binding(const std::string&, const TypeSpec&)`.
-The conflict predicate and its user-typedef predicate now take parser-owned
-`TextId` values, typedef declaration call sites pass the `parse_declarator`
-text IDs directly, and the parser fixture asserts through the same `TextId`
-authority.
+Step 2 removed the parser string lookup overload family
+`find_identifier(std::string_view)` from `ParserSymbolTable` and
+`ParserNameTables`. The remaining parser name-table lookup caller now uses its
+parser-owned `TextId`, and the parser fixture assertions check symbol lookup
+through `TextId` values instead of rendered strings.
 
 ## Suggested Next
 
 Supervisor can review and commit this Step 2 parser API slice, then choose the
-next parser rendered-string compatibility route still outside this conflict
-lookup path.
+next parser rendered-string compatibility route still outside the removed
+parser name-table lookup overload path.
 
 ## Watchouts
 
-`find_visible_typedef_type(TextId)` remains the conflict route's lookup
-authority, so local visible typedefs and structured/visible type resolution stay
-covered without reintroducing string-name semantic probing. Other projection
-bridges that intentionally accept rendered spelling were left untouched.
+`ParserSymbolTable::intern_identifier(std::string_view)` and
+`ParserNameTables::intern_identifier(std::string_view)` remain because this
+packet only owned removal of semantic lookup overloads. Other projection bridges
+that intentionally accept rendered spelling were left untouched.
 
 ## Proof
 

@@ -957,7 +957,7 @@ void Parser::unregister_typedef_binding(TextId name_text_id) {
         binding_state_.non_atom_typedef_types.erase(name_text_id);
         return;
     }
-    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
+    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name_text_id);
     if (id == kInvalidSymbol) return;
     shared_lookup_state_.parser_name_tables.typedefs.erase(id);
     shared_lookup_state_.parser_name_tables.user_typedefs.erase(id);

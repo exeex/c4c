@@ -29,11 +29,6 @@ struct ParserSymbolTable {
     return symbol_ids_.find(text_id);
   }
 
-  ParserSymbolId find_identifier(std::string_view text) const {
-    if (!texts_ || text.empty()) return kInvalidParserSymbol;
-    return find_identifier(texts_->find(text));
-  }
-
   ParserSymbolId intern_identifier(TextId text_id) {
     if (!texts_ || text_id == kInvalidText) return kInvalidParserSymbol;
     return symbol_ids_.intern(text_id);
@@ -64,10 +59,6 @@ struct ParserSymbolTable {
 struct ParserNameTables {
   ParserSymbolId find_identifier(TextId text_id) const {
     return symbols ? symbols->find_identifier(text_id) : kInvalidParserSymbol;
-  }
-
-  ParserSymbolId find_identifier(std::string_view text) const {
-    return symbols ? symbols->find_identifier(text) : kInvalidParserSymbol;
   }
 
   ParserSymbolId intern_identifier(TextId text_id) {
