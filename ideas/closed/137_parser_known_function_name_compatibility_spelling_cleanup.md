@@ -1,7 +1,8 @@
 # Parser Known Function Name Compatibility Spelling Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-30
 
 Parent Ideas:
 - [131_cross_ir_string_authority_audit_and_followup_queue.md](/workspaces/c4c/ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md)
@@ -68,3 +69,14 @@ Suspicious paths:
 - Focused parser/frontend tests cover namespace-qualified functions,
   out-of-class operators, out-of-class constructors, and visible-name
   disambiguation where rendered spelling previously bridged identity.
+
+## Closure Notes
+
+- Completed the active runbook through Step 5.
+- Broader parser confidence proof rebuilt `c4cll` and `frontend_parser_tests`
+  and passed the selected 44/44 parser/frontend tests.
+- Close-time regression guard passed with non-decreasing maintenance semantics:
+  `test_before.log` and `test_after.log` both report 44 passed, 0 failed.
+- Remaining rendered function spelling is retained only as final AST/display
+  data or explicit compatibility fallback, not as the normal known-name
+  semantic authority when structured identity is available.
