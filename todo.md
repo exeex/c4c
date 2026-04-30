@@ -8,55 +8,43 @@ Current Step Title: Add Template-Instantiation Member-Typedef Carrier
 
 ## Just Finished
 
-Lifecycle decision for Step 2.4.4.2: keep the blocker inside the active
-parser/Sema lookup-removal plan and widen this step to own the parser metadata
-carrier/API needed by the template-instantiation member-typedef writer.
+Step 2.4.4.2 implementation completed. Parser template state now has structured
+storage keyed by `TemplateInstantiationKey concrete_owner + TextId
+member_text_id`, exposed through parser register/find APIs.
 
-The blocked executor inspection found that the writer has the required
-non-rendered concrete-instantiation ingredients at the call site:
+The template-instantiation member-typedef writer in
+`src/frontend/parser/impl/types/base.cpp` now registers substituted member
+typedefs through that concrete-instantiation carrier instead of calling
+`register_struct_member_typedef_binding(mangled, member, type)`. The reader
+path for instantiated record owners reconstructs the same concrete owner key
+from the instantiated record's primary-template metadata and concrete argument
+payload, then queries by member `TextId` before consulting record member arrays.
 
-- primary template owner: `QualifiedNameKey template_key`
-- concrete arguments: `std::vector<TemplateInstantiationKey::Argument>`
-- member carrier: `inst->member_typedef_names[ti]` plus a parser `TextId`
-
-The missing piece is parser-owned storage/lookup keyed by
-`TemplateInstantiationKey concrete_owner + TextId member_text_id`.
-`binding_state_.struct_typedefs` is keyed by `QualifiedNameKey`, which cannot
-encode the concrete template argument vector. Writing there by rendering
-`mangled` keeps rendered instantiation text as owner identity; keying only the
-primary template aliases different instantiations of the same primary.
-
-`plan.md` now makes Step 2.4.4.2 explicitly own the minimal parser carrier/API,
-writer conversion, reader plumbing for concrete template owner plus member
-`TextId`, and focused disagreement proof. No implementation progress is
-accepted from the blocked packet, and no separate idea was opened because this
-is parser-owned metadata required to finish the active source idea.
+Focused parser coverage now corrupts stale rendered scoped typedef storage and
+the direct member array after instantiation, then proves
+`Box<PayloadAlias>::Alias` still resolves through the structured concrete-owner
+carrier.
 
 ## Suggested Next
 
-Next bounded packet: execute widened Step 2.4.4.2. Add the parser-owned
-structured member-typedef storage/API for
-`TemplateInstantiationKey concrete_owner + TextId member_text_id`, convert the
-template-instantiation writer in `src/frontend/parser/impl/types/base.cpp` to
-use it, add only the reader plumbing that starts from the same concrete owner
-carrier, and produce focused parser proof plus fresh `test_after.log`.
+Next bounded packet: Step 2.4.4.3 can re-audit whether any semantic
+`owner::member` typedef mirror consumers remain, then shrink or delete the
+rendered scoped mirror only if all reachable consumers have structured carriers
+or explicit blockers.
 
 ## Watchouts
 
-Do not convert this writer by setting `inst->unqualified_text_id` from
-`mangled` and calling `record_member_typedef_key_in_context`; that still uses
-rendered concrete instantiation text as owner identity and loses the structured
-argument vector. Do not key on the primary template alone; that would collide
-`Template<int>::member` with `Template<float>::member`.
+The new carrier is parser-local. Do not use it as proof that HIR/LIR/BIR or
+backend metadata boundaries can consume concrete-instantiation member typedefs
+without their own structured handoff.
 
-Do not add a generic helper that takes rendered `Template<Args>::member`,
-`owner::member`, `std::string`, or `std::string_view` and parses it back into
-semantic owner/member identity. If implementation discovers that the required
-reader crosses HIR, LIR, BIR, or backend metadata, stop and route that boundary
-as a separate open idea.
+`register_struct_member_typedef_binding(owner, member, type)` still exists for
+remaining mirror audit work; Step 2.4.4.3 should verify live semantic readers
+before deleting or narrowing it.
 
 ## Proof
 
-Lifecycle-only plan/todo rewrite. No implementation files or tests were
-changed, no code proof is claimed, and `test_after.log` was intentionally left
-unchanged.
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_parse_local_using_alias_statement_probe_dump|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
+
+Passed: build plus 928 selected frontend/parser/Sema tests. Proof log:
+`test_after.log`.

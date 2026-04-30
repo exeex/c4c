@@ -154,12 +154,39 @@ struct ParserTemplateState {
     }
   };
 
+  struct TemplateInstantiationMemberTypedefKey {
+    TemplateInstantiationKey concrete_owner;
+    TextId member_text_id = kInvalidText;
+
+    [[nodiscard]] bool operator==(
+        const TemplateInstantiationMemberTypedefKey& other) const {
+      return concrete_owner == other.concrete_owner &&
+             member_text_id == other.member_text_id;
+    }
+  };
+
+  struct TemplateInstantiationMemberTypedefKeyHash {
+    [[nodiscard]] size_t operator()(
+        const TemplateInstantiationMemberTypedefKey& key) const {
+      const size_t owner_hash = TemplateInstantiationKeyHash{}(
+          key.concrete_owner);
+      const size_t member_hash =
+          static_cast<size_t>(hash_id_words(
+              kIdHashSeed, static_cast<uint32_t>(key.member_text_id)));
+      return owner_hash ^ (member_hash + 0x9e3779b9U +
+                           (owner_hash << 6U) + (owner_hash >> 2U));
+    }
+  };
+
   std::unordered_map<QualifiedNameKey, Node*, QualifiedNameKeyHash>
       template_struct_defs_by_key;
   std::unordered_map<QualifiedNameKey, std::vector<Node*>, QualifiedNameKeyHash>
       template_struct_specializations_by_key;
   std::unordered_set<TemplateInstantiationKey, TemplateInstantiationKeyHash>
       instantiated_template_struct_keys_by_key;
+  std::unordered_map<TemplateInstantiationMemberTypedefKey, TypeSpec,
+                     TemplateInstantiationMemberTypedefKeyHash>
+      template_instantiation_member_typedefs_by_key;
   std::unordered_map<NttpDefaultExprKey, std::vector<Token>,
                      NttpDefaultExprKeyHash>
       nttp_default_expr_tokens_by_key;

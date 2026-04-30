@@ -42,6 +42,7 @@
 
 #include "arena.hpp"
 #include "ast.hpp"
+#include "impl/parser_state.hpp"
 #include "parser_types.hpp"
 #include "shared/qualified_name_table.hpp"
 #include "source_profile.hpp"
@@ -375,6 +376,9 @@ class Parser {
   void register_struct_member_typedef_binding(std::string_view owner_name,
                                               std::string_view member_name,
                                               const TypeSpec& type);
+  void register_template_instantiation_member_typedef_binding(
+      const ParserTemplateState::TemplateInstantiationKey& concrete_owner,
+      TextId member_text_id, const TypeSpec& type);
   void register_structured_typedef_binding(const QualifiedNameKey& key,
                                            const TypeSpec& type);
   void register_structured_typedef_binding_in_context(
@@ -420,6 +424,9 @@ class Parser {
       TextId member_text_id) const;
   QualifiedNameKey record_member_typedef_key_in_context(
       int context_id, TextId record_text_id, TextId member_text_id);
+  const TypeSpec* find_template_instantiation_member_typedef_type(
+      const ParserTemplateState::TemplateInstantiationKey& concrete_owner,
+      TextId member_text_id) const;
   QualifiedNameKey struct_typedef_key_in_context(
       int context_id, TextId name_text_id) const;
   QualifiedNameKey alias_template_key_in_context(

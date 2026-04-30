@@ -2396,6 +2396,111 @@ void test_parser_record_body_member_typedef_writers_register_direct_keys() {
               "qualified member typedef reader should use the direct record/member key before stale rendered storage");
 }
 
+void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+  const c4c::Token box_token =
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Box");
+  const c4c::Token payload_alias_token =
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "PayloadAlias");
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+
+  c4c::TypeSpec param_ts{};
+  param_ts.array_size = -1;
+  param_ts.inner_rank = -1;
+  param_ts.base = c4c::TB_TYPEDEF;
+  param_ts.tag = arena.strdup("T");
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->unqualified_text_id = box_token.text_id;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->n_template_args = 0;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = false;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+  primary->n_member_typedefs = 1;
+  primary->member_typedef_names = arena.alloc_array<const char*>(1);
+  primary->member_typedef_names[0] = arena.strdup("Alias");
+  primary->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  primary->member_typedef_types[0] = param_ts;
+  parser.register_template_struct_primary(
+      parser.current_namespace_context_id(), box_token.text_id, primary);
+  const c4c::QualifiedNameKey box_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), box_token.text_id);
+  parser.template_state_.template_struct_defs_by_key[box_key] = primary;
+  c4c::TypeSpec box_alias{};
+  box_alias.array_size = -1;
+  box_alias.inner_rank = -1;
+  box_alias.base = c4c::TB_STRUCT;
+  box_alias.tag = arena.strdup("Box");
+  parser.register_typedef_binding(box_token.text_id, box_alias, true);
+
+  c4c::Node* payload = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  payload->name = arena.strdup("Payload");
+  parser.register_struct_definition_for_testing("Payload", payload);
+  c4c::TypeSpec payload_alias{};
+  payload_alias.array_size = -1;
+  payload_alias.inner_rank = -1;
+  payload_alias.base = c4c::TB_STRUCT;
+  payload_alias.tag = arena.strdup("Payload");
+  payload_alias.record_def = payload;
+  parser.register_typedef_binding(payload_alias_token.text_id, payload_alias,
+                                  true);
+
+  parser.replace_token_stream_for_testing({
+      box_token,
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      payload_alias_token,
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+  });
+  const c4c::TypeSpec box_ts = parser.parse_base_type();
+  expect_true(box_ts.record_def != nullptr,
+              "template member typedef carrier test should instantiate Box");
+
+  c4c::Parser::TemplateArgParseResult concrete_arg{};
+  concrete_arg.is_value = false;
+  concrete_arg.type = payload_alias;
+  const c4c::ParserTemplateState::TemplateInstantiationKey concrete_owner{
+      box_key, c4c::make_template_instantiation_argument_keys({concrete_arg})};
+  const c4c::TypeSpec* stored_member =
+      parser.find_template_instantiation_member_typedef_type(concrete_owner,
+                                                             alias_text);
+  expect_true(stored_member != nullptr && stored_member->record_def == payload,
+              "template instantiation member typedef writer should store by concrete owner key plus member TextId");
+
+  c4c::TypeSpec stale_rendered_ts{};
+  stale_rendered_ts.array_size = -1;
+  stale_rendered_ts.inner_rank = -1;
+  stale_rendered_ts.base = c4c::TB_DOUBLE;
+  parser.register_struct_member_typedef_binding("Box_Payload", "Alias",
+                                                stale_rendered_ts);
+  box_ts.record_def->member_typedef_types[0] = stale_rendered_ts;
+
+  parser.replace_token_stream_for_testing({
+      box_token,
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      payload_alias_token,
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+  });
+  const c4c::TypeSpec alias_ts = parser.parse_base_type();
+  expect_true(alias_ts.record_def == payload,
+              "template instantiation member typedef reader should prefer the concrete owner carrier over stale rendered scoped storage");
+}
+
 void test_parser_namespace_typedef_registration_stays_namespace_scoped() {
   c4c::Lexer lexer("namespace ns {\n"
                    "typedef int Alias;\n"
@@ -5494,6 +5599,7 @@ int main() {
   test_parser_qualified_functional_cast_owner_requires_structured_authority();
   test_parser_qualified_member_typedef_lookup_requires_structured_metadata();
   test_parser_record_body_member_typedef_writers_register_direct_keys();
+  test_parser_template_instantiation_member_typedef_uses_concrete_key();
   test_parser_namespace_typedef_registration_stays_namespace_scoped();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();
   test_parser_using_value_alias_prefers_structured_target_type();

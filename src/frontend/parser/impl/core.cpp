@@ -1072,6 +1072,19 @@ void Parser::register_struct_member_typedef_binding(
                              type, false);
 }
 
+void Parser::register_template_instantiation_member_typedef_binding(
+    const ParserTemplateState::TemplateInstantiationKey& concrete_owner,
+    TextId member_text_id, const TypeSpec& type) {
+    if (concrete_owner.template_key.base_text_id == kInvalidText ||
+        member_text_id == kInvalidText) {
+        return;
+    }
+    ParserTemplateState::TemplateInstantiationMemberTypedefKey key;
+    key.concrete_owner = concrete_owner;
+    key.member_text_id = member_text_id;
+    template_state_.template_instantiation_member_typedefs_by_key[key] = type;
+}
+
 void Parser::register_structured_typedef_binding(
     const QualifiedNameKey& key, const TypeSpec& type) {
     if (key.base_text_id == kInvalidText) return;
@@ -1254,6 +1267,23 @@ QualifiedNameKey Parser::record_member_typedef_key_in_context(
         record_key.qualifier_path_id, record_key.base_text_id);
     key.base_text_id = member_text_id;
     return key;
+}
+
+const TypeSpec* Parser::find_template_instantiation_member_typedef_type(
+    const ParserTemplateState::TemplateInstantiationKey& concrete_owner,
+    TextId member_text_id) const {
+    if (concrete_owner.template_key.base_text_id == kInvalidText ||
+        member_text_id == kInvalidText) {
+        return nullptr;
+    }
+    ParserTemplateState::TemplateInstantiationMemberTypedefKey key;
+    key.concrete_owner = concrete_owner;
+    key.member_text_id = member_text_id;
+    const auto it =
+        template_state_.template_instantiation_member_typedefs_by_key.find(key);
+    return it == template_state_.template_instantiation_member_typedefs_by_key.end()
+               ? nullptr
+               : &it->second;
 }
 
 QualifiedNameKey Parser::struct_typedef_key_in_context(
