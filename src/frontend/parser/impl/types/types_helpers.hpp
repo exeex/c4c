@@ -147,39 +147,36 @@ bool visible_type_head_has_structured_record_definition(
 }
 
 bool visible_type_result_has_structured_record_definition(
-    const Parser& parser, const Parser::VisibleNameResult& result,
-    std::string_view resolved_name) {
+    const Parser& parser, const Parser::VisibleNameResult& result) {
     if (!result) return false;
-    if (type_spec_has_structured_record_definition(
-            parser, parser.find_structured_typedef_type(result.key))) {
-        return true;
-    }
-    if (resolved_name.empty()) return false;
     return type_spec_has_structured_record_definition(
-        parser,
-        parser.find_typedef_type(parser.find_parser_text_id(resolved_name)));
+        parser, parser.find_structured_typedef_type(result.key));
 }
 
 Node* qualified_type_structured_record_definition(
-    const Parser& parser, const Parser::QualifiedNameRef& qn,
-    std::string_view resolved_name = {}) {
+    const Parser& parser, const Parser::QualifiedNameRef& qn) {
     const Parser::VisibleNameResult result = parser.resolve_qualified_type(qn);
-    if (Node* def = type_spec_structured_record_definition(
-            parser, parser.find_structured_typedef_type(result.key))) {
-        return def;
-    }
-    if (resolved_name.empty()) {
-        resolved_name = parser.visible_name_spelling(result);
-    }
-    if (resolved_name.empty()) return nullptr;
     return type_spec_structured_record_definition(
-        parser,
-        parser.find_typedef_type(parser.find_parser_text_id(resolved_name)));
+        parser, parser.find_structured_typedef_type(result.key));
 }
 
 bool qualified_type_has_structured_record_definition(
     const Parser& parser, const Parser::QualifiedNameRef& qn) {
     return qualified_type_structured_record_definition(parser, qn) != nullptr;
+}
+
+Node* record_definition_in_context_by_text_id(const Parser& parser,
+                                              int context_id,
+                                              TextId name_text_id) {
+    if (context_id < 0 || name_text_id == kInvalidText) return nullptr;
+
+    for (const auto& entry : parser.definition_state_.struct_tag_def_map) {
+        Node* record = entry.second;
+        if (!record || record->kind != NK_STRUCT_DEF) continue;
+        if (record->namespace_context_id != context_id) continue;
+        if (record->unqualified_text_id == name_text_id) return record;
+    }
+    return nullptr;
 }
 
 Node* qualified_record_definition_in_context(
@@ -189,15 +186,8 @@ Node* qualified_record_definition_in_context(
         qn.qualifier_segments.empty()
             ? (qn.is_global_qualified ? 0 : parser.current_namespace_context_id())
             : parser.resolve_namespace_context(qn);
-    if (context_id < 0) return nullptr;
-
-    for (const auto& entry : parser.definition_state_.struct_tag_def_map) {
-        Node* record = entry.second;
-        if (!record || record->kind != NK_STRUCT_DEF) continue;
-        if (record->namespace_context_id != context_id) continue;
-        if (record->unqualified_text_id == qn.base_text_id) return record;
-    }
-    return nullptr;
+    return record_definition_in_context_by_text_id(parser, context_id,
+                                                   qn.base_text_id);
 }
 
 Node* qualified_type_record_definition_from_structured_authority(
@@ -507,17 +497,17 @@ bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
                                                            name)) {
         return true;
     }
+    if (record_definition_in_context_by_text_id(
+            parser, parser.current_namespace_context_id(), name_text_id)) {
+        return true;
+    }
     return parser.has_template_struct_primary(
                parser.current_namespace_context_id(), name_text_id) ||
            (!resolved.empty() &&
             parser.has_template_struct_primary(
                 parser.current_namespace_context_id(),
                 parser.parser_text_id_for_token(c4c::kInvalidText,
-                                                resolved))) ||
-           // Rendered-name compatibility for direct struct tags that do not
-           // yet carry a TypeSpec::record_def through this type-head probe.
-           parser.has_defined_struct_tag(name) ||
-           parser.has_defined_struct_tag(resolved);
+                                                resolved)));
 }
 
 bool is_known_simple_visible_type_head(const Parser& parser,
@@ -667,10 +657,9 @@ std::string resolve_qualified_known_type_name(
         resolved = parser.visible_name_spelling(resolved_type);
         if (!resolved.empty() &&
             (visible_type_result_has_structured_record_definition(
-                 parser, resolved_type, resolved) ||
+                 parser, resolved_type) ||
              parser.has_template_struct_primary(qn) ||
-             // Rendered-name compatibility for qualified direct record tags.
-             parser.has_defined_struct_tag(resolved))) {
+             qualified_record_definition_in_context(parser, qn))) {
             return resolved;
         }
     } else {
@@ -679,10 +668,11 @@ std::string resolve_qualified_known_type_name(
             (visible_type_head_has_structured_record_definition(
                  parser, qn.base_text_id,
                  parser.parser_text(qn.base_text_id, qn.base_name)) ||
+             record_definition_in_context_by_text_id(
+                 parser, parser.current_namespace_context_id(),
+                 qn.base_text_id) ||
              parser.has_template_struct_primary(
-                 parser.current_namespace_context_id(), qn.base_text_id) ||
-             // Rendered-name compatibility for direct record tags.
-             parser.has_defined_struct_tag(resolved))) {
+                 parser.current_namespace_context_id(), qn.base_text_id))) {
             return resolved;
         }
     }
@@ -694,10 +684,8 @@ std::string resolve_qualified_known_type_name(
     if (parser.has_template_struct_primary(
             parser.current_namespace_context_id(),
             parser.parser_text_id_for_token(c4c::kInvalidText, resolved)) ||
-        visible_type_result_has_structured_record_definition(parser, visible_type,
-                                                             resolved) ||
-        // Rendered-name compatibility for visible direct record tags.
-        parser.has_defined_struct_tag(resolved)) {
+        visible_type_result_has_structured_record_definition(parser,
+                                                             visible_type)) {
         return resolved;
     }
     return {};
@@ -721,7 +709,7 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
             (parser.find_structured_typedef_type(resolved_type.key) ||
              (resolved_type.source != Parser::VisibleNameSource::Fallback &&
               visible_type_result_has_structured_record_definition(
-                  parser, resolved_type, resolved)))) {
+                  parser, resolved_type)))) {
             probe.has_resolved_typedef = true;
             probe.resolved_typedef_name = resolved;
             return probe;
@@ -766,8 +754,7 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
             parser.parser_text_id_for_token(c4c::kInvalidText,
                                             probe.resolved_typedef_name)) ||
         qualified_type_has_structured_record_definition(parser, qn) ||
-        // Rendered-name compatibility for tag-only qualified probes.
-        parser.has_defined_struct_tag(probe.resolved_typedef_name)) {
+        qualified_record_definition_in_context(parser, qn)) {
         probe.has_resolved_typedef = true;
         return probe;
     }

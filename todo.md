@@ -8,35 +8,35 @@ Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 
 ## Just Finished
 
-Step 2 qualified declarator member-typedef cleanup removed rendered owner/member
-lookup authority from `parse_dependent_typename_specifier(...)`:
+Step 2 direct record/type-head cleanup removed rendered record-tag authority from
+`types_helpers.hpp` direct and qualified type-start probes:
 
-- replaced owner traversal through rendered `owner_tag`,
-  `find_typedef_type(find_parser_text_id(owner_tag))`, and rendered
-  `struct_tag_def_map.find(...)` fallbacks with
-  `QualifiedNameRef`-based structured owner resolution;
-- removed nested owner recovery through rendered field tags and rendered
-  qualified node names when `TypeSpec::record_def` is missing;
-- removed the rendered `scoped_name` member typedef fallback so direct
-  `owner->member_typedef_*` metadata is the member typedef authority;
-- added parser coverage showing legacy rendered owner typedef/tag storage and
-  rendered `owner::member` typedef storage alone do not authorize member typedef
-  lookup, while namespace-context record metadata plus direct member typedef
-  arrays still works.
+- removed `has_defined_struct_tag(...)` fallback checks from
+  `is_known_simple_type_head(...)`, `resolve_qualified_known_type_name(...)`,
+  and `probe_qualified_type(...)`;
+- replaced those direct/visible record checks with record-node metadata
+  matching on namespace context plus `unqualified_text_id`;
+- removed rendered `resolved_name` typedef re-entry from
+  `visible_type_result_has_structured_record_definition(...)` and
+  `qualified_type_structured_record_definition(...)`;
+- added parser coverage showing rendered-only tag storage no longer authorizes a
+  direct record type-head probe, while structured record metadata still does
+  even when the rendered map key/name disagrees.
 
 ## Suggested Next
 
-Next executor packet can continue Step 2 by auditing remaining parser
-qualified-type helpers outside this declarator member-typedef route, especially
-the compatibility comments in `types_helpers.hpp` that still explicitly allow
-rendered direct record-tag fallback for broader type-start probes.
+Next executor packet can continue Step 2 by auditing remaining parser semantic
+lookup bridges outside this direct record/type-start helper path, especially
+string projection overloads or `fallback`-named helpers that still feed parser
+semantic lookup after a structured key exists.
 
 ## Watchouts
 
-Older parser fixtures that expected member typedef lookup through a tag-only
-owner alias now need `TypeSpec::record_def` or namespace-context record
-metadata. That is intentional for this route; the implementation does not add
-a replacement rendered-string wrapper.
+`resolve_record_type_spec(...)` still keeps the documented tag-only
+sizeof/alignof/offsetof compatibility fallback in `support.cpp`; this packet
+did not remove that non-type-start layout bridge because the existing typed
+`TypeSpec::record_def` path already wins there and current tests still cover
+the tag-only fallback contract.
 
 ## Proof
 

@@ -4704,6 +4704,54 @@ c4c::Node* parser_test_record(c4c::Parser& parser, c4c::Arena& arena,
   return record;
 }
 
+void test_parser_direct_record_type_head_uses_structured_metadata() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId legacy_text =
+      parser_test_text_id(parser, "LegacyOnly");
+  c4c::Node* legacy_record =
+      parser_test_record(parser, arena, "LegacyOnly", {});
+  legacy_record->unqualified_text_id = c4c::kInvalidText;
+  legacy_record->namespace_context_id = -1;
+  parser.definition_state_.defined_struct_tags.insert("LegacyOnly");
+  parser.register_struct_definition_for_testing("LegacyOnly", legacy_record);
+
+  expect_true(!c4c::is_known_simple_type_head(parser, legacy_text,
+                                              "LegacyOnly"),
+              "rendered record-tag storage alone should not authorize a direct type-head probe");
+  c4c::Parser::QualifiedNameRef legacy_qn;
+  legacy_qn.base_name = "LegacyOnly";
+  legacy_qn.base_text_id = legacy_text;
+  const c4c::QualifiedTypeProbe legacy_probe =
+      c4c::probe_qualified_type(parser, legacy_qn);
+  expect_true(!legacy_probe.has_resolved_typedef,
+              "direct record probes should reject rendered-only tag compatibility");
+
+  const c4c::TextId structured_text =
+      parser_test_text_id(parser, "Structured");
+  c4c::Node* structured_record =
+      parser_test_record(parser, arena, "RenderedMismatch", {});
+  structured_record->unqualified_text_id = structured_text;
+  structured_record->namespace_context_id =
+      parser.current_namespace_context_id();
+  parser.register_struct_definition_for_testing("stale_rendered_key",
+                                                structured_record);
+
+  expect_true(c4c::is_known_simple_type_head(parser, structured_text,
+                                             "Structured"),
+              "direct type-head probes should use record TextId metadata when rendered storage disagrees");
+  c4c::Parser::QualifiedNameRef structured_qn;
+  structured_qn.base_name = "Structured";
+  structured_qn.base_text_id = structured_text;
+  const c4c::QualifiedTypeProbe structured_probe =
+      c4c::probe_qualified_type(parser, structured_qn);
+  expect_true(structured_probe.has_resolved_typedef,
+              "direct record probes should accept structured record metadata");
+}
+
 void test_parser_record_layout_const_eval_uses_record_definition_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5337,6 +5385,7 @@ int main() {
   test_parser_template_substitution_preserves_record_definition_payloads();
   test_parser_direct_record_types_carry_record_definition();
   test_parser_tag_only_record_types_keep_null_record_definition();
+  test_parser_direct_record_type_head_uses_structured_metadata();
   test_parser_record_layout_const_eval_uses_record_definition_authority();
   test_parser_record_layout_const_eval_keeps_final_spelling_fallback();
   test_parser_incomplete_decl_checks_prefer_record_definition();
