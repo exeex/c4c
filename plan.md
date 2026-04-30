@@ -507,42 +507,96 @@ Completion check:
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.4.4.5A: Add Alias-Template Member-Typedef Carrier
+### Step 2.4.4.5A.1: Construct Alias-Template Member-Typedef Carrier Before TypeSpec Flattening
 
 Goal: make alias templates for `typename Owner<Args>::member` preserve
-structured owner/member metadata so alias instantiation can resolve template
-primary/specialization member typedefs without the rendered bridge.
+structured owner/member metadata at the parser production site, before that
+identity is flattened into rendered or deferred `TypeSpec` fields.
 
-Primary target: `ParserAliasTemplateInfo` and the parser/Sema alias-template
-registration and instantiation path that currently carries only
-`TypeSpec aliased_type` for dependent member typedef aliases.
+Primary target: the parser alias-template RHS path that recognizes
+`typename Owner<Args>::member` and fills `ParserAliasTemplateInfo` or an
+equivalent parser/Sema-owned alias-template metadata surface.
 
 Actions:
 
-- Extend the alias-template metadata path for
-  `typename Owner<Args>::member` with a structured owner
-  `QualifiedNameKey`, substituted template argument refs/keys, and member
-  `TextId`.
-- Populate that carrier while parsing alias templates, before the dependent
-  owner/member identity is flattened into rendered/deferred `TypeSpec` fields
-  such as `tag`, `tpl_struct_origin`, template-arg refs, or
-  `deferred_member_type_name`.
-- Make alias instantiation resolve the selected template
-  primary/specialization member typedef from this structured carrier before
-  consulting any compatibility bridge.
+- Add a first-class alias-template member-typedef carrier for
+  `typename Owner<Args>::member` containing the owner `QualifiedNameKey`, the
+  parsed/substitutable argument refs or keys, and the member `TextId`.
+- Populate the carrier from parser structures while the alias RHS is being
+  parsed, before constructing or copying any flattened `TypeSpec` spelling
+  fields.
+- Preserve the exact owner `QualifiedNameKey` already known to the parser; do
+  not render the owner and recover it through `qualified_name_from_text`,
+  `tpl_struct_origin`, `TypeSpec::tag`, `qualified_alias_name`, or
+  `debug_text`.
+- Preserve member identity as `TextId` from the parsed member token; do not
+  recover it from `deferred_member_type_name` or a split rendered
+  `Owner::member` spelling.
+- Preserve argument identity as structured template-argument refs/keys from
+  the parser path; do not synthesize the normal route by reparsing saved token
+  text or `TemplateArgRef::debug_text`.
 - Keep rendered owner/member spelling only for diagnostics, display, debug
   output, mangling, or final emitted text.
 - Do not replace the missing carrier with a helper that renders, splits, or
   reparses `Owner::member`, rendered `mangled` spelling, `std::string`,
   `std::string_view`, or fallback spelling.
+- Treat a qualified alias path such as `ns::alias_t<...>` as structured only
+  if it carries the qualified alias `QualifiedNameKey` or equivalent parser
+  key directly; a rendered qualified alias name relay is not progress.
 
 Completion check:
 
 - `ParserAliasTemplateInfo` or an equivalent parser/Sema-owned alias-template
   carrier preserves structured owner `QualifiedNameKey`, argument refs/keys,
   and member `TextId` for dependent member typedef aliases.
+- The normal producer path does not seed or recover that carrier from
+  rendered/deferred `TypeSpec` fields including `tpl_struct_origin`,
+  `deferred_member_type_name`, `TypeSpec::tag`, `qualified_name_from_text`,
+  `qualified_alias_name`, or `debug_text`.
+- No narrow local alias-of-alias parser duplicates type parsing or substitutes
+  template arguments by concatenating token spelling.
+- Focused parser/Sema tests prove the carrier survives a drifted rendered or
+  deferred spelling disagreement.
+- Narrow parser/Sema tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.4.4.5A.2: Resolve Alias Instantiation Through The Structured Carrier
+
+Goal: make alias instantiation use the carrier from Step 2.4.4.5A.1 to resolve
+template primary/specialization member typedefs before any compatibility
+bridge is consulted.
+
+Primary target: the parser/Sema alias-template instantiation path that
+currently carries only `TypeSpec aliased_type` for dependent member typedef
+aliases and later relies on rendered/deferred owner/member fields.
+
+Actions:
+
+- Thread the Step 2.4.4.5A.1 carrier through alias instantiation without
+  converting the owner, member, or arguments to rendered spelling and back.
+- Resolve `typename Owner<Args>::member` by selecting the template primary or
+  specialization from the carrier's owner key and argument refs/keys, then
+  finding the member typedef by member `TextId`.
+- Keep any existing rendered/deferred `TypeSpec` bridge reachable only as a
+  temporary fallback for behavior preservation in this step; do not use it as
+  the success criterion.
+- Delete or quarantine normal-route calls that infer alias member typedef
+  identity from `tpl_struct_origin`, `deferred_member_type_name`,
+  `TypeSpec::tag`, `qualified_name_from_text`, `qualified_alias_name`, or
+  `debug_text`.
+- Do not introduce a narrow alias-of-alias token parser in `parse_top_level` or
+  another local parser block to compensate for missing structured carrier data.
+- Add or keep focused tests where a structured carrier resolves the alias even
+  when rendered/deferred spelling is stale or intentionally disagrees.
+
+Completion check:
+
 - Alias instantiation can resolve `typename Owner<Args>::member` through that
   structured carrier for template primary/specialization member typedefs.
+- Qualified alias-template cases do not hand off through rendered qualified
+  alias spelling before reaching the carrier lookup.
+- The normal structured route does not depend on `TemplateArgRef::debug_text`
+  parsing or on reconstructing a `QualifiedNameKey` from text.
 - The four known bridge-deletion regressions are examined as same-feature
   coverage, not solved through named-test shortcuts:
   `cpp_positive_sema_eastl_slice7_piecewise_ctor_parse_cpp`,
@@ -551,6 +605,38 @@ Completion check:
   `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`.
 - Narrow parser/Sema tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
+
+### Step 2.4.4.5A.3: Review Alias-Template Carrier Route Before Bridge Deletion
+
+Goal: prove the Step 2.4.4.5A route is structurally ready for Step 2.4.4.5B
+and does not repeat the rejected rendered/deferred TypeSpec recovery path.
+
+Primary target: the complete Step 2.4.4.5A diff and proof logs.
+
+Actions:
+
+- Review the carrier producer and consumer against
+  `review/step2_4_5a_alias_template_carrier_review.md`.
+- Confirm carrier data is constructed before rendered/deferred `TypeSpec`
+  flattening and then passed through instantiation as structured metadata.
+- Confirm retained rendered strings are diagnostic/display/debug/mangling/final
+  output only, or are explicitly marked as temporary compatibility fallback
+  that Step 2.4.4.5B owns deleting.
+- Confirm tests include same-feature disagreement coverage for direct alias,
+  qualified alias, and alias-of-alias member-typedef routes.
+- If the review still finds string-derived carrier seeding, rendered qualified
+  alias relay, debug-text argument parsing, or a narrow local alias-of-alias
+  parser, rewrite or split this route again before Step 2.4.4.5B.
+
+Completion check:
+
+- Reviewer/supervisor accepts Step 2.4.4.5A as structured metadata progress,
+  not as rendered-string rewrapping.
+- `todo.md` records which compatibility bridge paths remain for
+  Step 2.4.4.5B.
+- No Step 2.4.4.5B bridge deletion is attempted until this review checkpoint is
+  satisfied.
+- Fresh narrow proof remains available in canonical `test_after.log`.
 
 ### Step 2.4.4.5B: Replace The Dependent/Template Member-Typedef Bridge
 
@@ -565,7 +651,7 @@ primary/specialization member typedef metadata is being completed.
 Actions:
 
 - Re-attempt deletion of the dependent/template compatibility bridge after
-  Step 2.4.4.5A lands.
+  Steps 2.4.4.5A.1 through 2.4.4.5A.3 land and pass review.
 - Route all remaining template primary, specialization, and alias
   member-typedef readers through structured parser/Sema metadata.
 - If another missing carrier is discovered, record that exact carrier as a

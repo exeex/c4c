@@ -3,56 +3,60 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4.4.5A
-Current Step Title: Add Alias-Template Member-Typedef Carrier
+Current Step ID: Step 2.4.4.5A.1
+Current Step Title: Construct Alias-Template Member-Typedef Carrier Before TypeSpec Flattening
 
 ## Just Finished
 
-Lifecycle review split Step 2.4.4.5 because the bridge deletion found a
-parser/Sema-owned missing carrier rather than an outside metadata boundary.
-The failed execution attempt deleted the remaining dependent/template
-member-typedef compatibility bridge in
-`register_record_member_typedef_bindings`, but the exact missing structured
-carrier is still at alias-template registration: `ParserAliasTemplateInfo`
-stores only `TypeSpec aliased_type` for
-`typename Owner<Args>::member`, and that `TypeSpec` preserves the dependent
-owner/member through rendered/deferred fields (`tag`/`tpl_struct_origin`,
-template-arg refs, and `deferred_member_type_name`) instead of a structured
-owner `QualifiedNameKey`, concrete argument keys/refs, and member `TextId`.
-Deleting the bridge leaves alias instantiation unable to resolve
-primary/specialization member typedefs for `Owner<Args>::member` without
-falling back to rendered `Owner::member`. The active next route is now
-Step 2.4.4.5A, which adds structured alias-template member-typedef metadata;
-bridge deletion moves to Step 2.4.4.5B after that carrier lands.
+Reviewer rejected the attempted Step 2.4.4.5A route in
+`review/step2_4_5a_alias_template_carrier_review.md`. The implementation was
+reverted, so the remaining lifecycle action is route repair. The rejected
+attempt added real carrier storage, but seeded and recovered it from
+rendered/deferred `TypeSpec` strings (`tpl_struct_origin`,
+`deferred_member_type_name`, `TypeSpec::tag`, `qualified_name_from_text`,
+`qualified_alias_name`, and `debug_text`) plus a narrow local alias-of-alias
+token parser. That is route drift for the active source idea because semantic
+owner/member/argument identity still came from rendered spelling.
+
+`plan.md` now splits the old Step 2.4.4.5A into smaller checkpoints:
+Step 2.4.4.5A.1 constructs the alias-template member-typedef carrier before
+`TypeSpec` flattening, Step 2.4.4.5A.2 consumes it during alias instantiation,
+and Step 2.4.4.5A.3 reviews the route before Step 2.4.4.5B bridge deletion.
 
 ## Suggested Next
 
-Execute Step 2.4.4.5A: add a structured alias member-typedef carrier to
+Execute Step 2.4.4.5A.1 only: add a structured alias member-typedef carrier to
 `ParserAliasTemplateInfo` or an equivalent parser/Sema alias-template metadata
-surface for `typename Owner<Args>::member`: owner `QualifiedNameKey`,
-substituted template argument refs/keys, and member `TextId`. Populate it
-while parsing alias templates, then make alias instantiation resolve the
-selected primary/specialization member typedef from that carrier. Do not retry
-bridge deletion until this carrier is proven.
+surface for `typename Owner<Args>::member`. Populate it directly from parser
+structures while the alias RHS is parsed, before rendered/deferred `TypeSpec`
+flattening. Preserve owner `QualifiedNameKey`, argument refs/keys, and member
+`TextId`. Do not consume the carrier for bridge deletion in this packet except
+for minimal producer proof; Step 2.4.4.5A.2 owns normal alias-instantiation
+consumption.
 
 ## Watchouts
 
-Deleting the dependent/template bridge still regresses
-`cpp_positive_sema_eastl_slice7_piecewise_ctor_parse_cpp`,
-`cpp_positive_sema_step3_timeout_probe_baseline_parse_cpp`,
-`cpp_positive_sema_tuple_element_alias_mix_parse_cpp`, and
-`cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`.
-An exploratory attempt to let the alias resolver consume the existing deferred
-`TypeSpec` owner/member fields did not change that failure set, confirming the
-blocker is the missing structured alias carrier rather than a single skipped
-reader branch. Do not replace this with a helper that renders, splits, or
-reparses `Owner::member`.
+- Do not seed or recover the carrier from `tpl_struct_origin`,
+  `deferred_member_type_name`, `TypeSpec::tag`, `qualified_name_from_text`,
+  `qualified_alias_name`, rendered `Owner::member`, rendered `mangled`
+  spelling, `std::string`, `std::string_view`, fallback spelling, or
+  `TemplateArgRef::debug_text`.
+- Do not add a narrow local alias-of-alias parser that reparses saved RHS token
+  text or concatenates token spelling into semantic identity.
+- Qualified alias-template paths such as `ns::alias_t<...>` must carry a
+  structured qualified alias key or equivalent parser key directly; a rendered
+  qualified alias spelling relay is the rejected route.
+- Deleting the dependent/template bridge still belongs to Step 2.4.4.5B after
+  Steps 2.4.4.5A.1 through 2.4.4.5A.3 land and pass review. The known bridge
+  regression coverage remains
+  `cpp_positive_sema_eastl_slice7_piecewise_ctor_parse_cpp`,
+  `cpp_positive_sema_step3_timeout_probe_baseline_parse_cpp`,
+  `cpp_positive_sema_tuple_element_alias_mix_parse_cpp`, and
+  `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`.
 
 ## Proof
 
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_parse_local_using_alias_statement_probe_dump|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
 
-Exploratory bridge-deletion proof failed with the four regressions listed in
-Watchouts; source changes were reverted because Step 2.4.4.5 is blocked on the
-missing structured alias carrier. No acceptance proof is claimed for this
-blocked todo-only handoff.
+No acceptance proof is claimed for the rejected route. The next executor should
+produce fresh `test_after.log` for the delegated Step 2.4.4.5A.1 proof command.
