@@ -1006,6 +1006,9 @@ class Lowerer {
 
   // ── template registry and lowering-owned caches ──────────────────────────
   const Node* find_template_struct_primary(const std::string& name) const;
+  const Node* find_template_struct_primary(
+      const Node* declaration,
+      const std::string& rendered_name = {}) const;
   const std::vector<const Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
   void record_template_struct_primary_lookup_parity(

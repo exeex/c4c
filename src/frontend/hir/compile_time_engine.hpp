@@ -1260,8 +1260,15 @@ struct CompileTimeState {
       return false;
     PendingTemplateTypeWorkItem item;
     const Node* canonical_owner_primary_def = owner_primary_def;
-    if (!canonical_owner_primary_def && pending_type.tpl_struct_origin) {
-      canonical_owner_primary_def = find_template_struct_def(pending_type.tpl_struct_origin);
+    if (!canonical_owner_primary_def) {
+      const std::string rendered_origin =
+          pending_type.tpl_struct_origin ? pending_type.tpl_struct_origin : "";
+      if (pending_type.record_def && pending_type.record_def->kind == NK_STRUCT_DEF) {
+        canonical_owner_primary_def =
+            find_template_struct_def(pending_type.record_def, rendered_origin);
+      } else if (!rendered_origin.empty()) {
+        canonical_owner_primary_def = find_template_struct_def(rendered_origin);
+      }
     }
     TypeSpec canonical_pending_type = pending_type;
     if (canonical_owner_primary_def && canonical_owner_primary_def->name &&

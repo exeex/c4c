@@ -445,22 +445,55 @@ const Node* Lowerer::find_template_struct_primary(const std::string& name) const
   return rendered_primary;
 }
 
+const Node* Lowerer::find_template_struct_primary(
+    const Node* declaration,
+    const std::string& rendered_name) const {
+  const Node* primary = nullptr;
+  if (auto key = make_struct_def_node_owner_key(declaration)) {
+    auto owner_it = template_struct_defs_by_owner_.find(*key);
+    if (owner_it != template_struct_defs_by_owner_.end()) {
+      primary = owner_it->second;
+    }
+  }
+  if (!primary) {
+    primary = ct_state_->find_template_struct_def(declaration);
+  }
+  if (!primary && !rendered_name.empty()) {
+    primary = find_template_struct_primary(rendered_name);
+  } else {
+    record_template_struct_primary_lookup_parity(primary);
+  }
+  return primary;
+}
+
 const std::vector<const Node*>* Lowerer::find_template_struct_specializations(
     const Node* primary_tpl) const {
   if (!primary_tpl || !primary_tpl->name) return nullptr;
-  const std::vector<const Node*>* rendered_specializations = nullptr;
-  if (const auto* specializations =
-          ct_state_->find_template_struct_specializations(primary_tpl,
-                                                          primary_tpl->name)) {
-    rendered_specializations = specializations;
-  } else {
-    auto it = template_struct_specializations_.find(primary_tpl->name);
-    rendered_specializations =
-        it != template_struct_specializations_.end() ? &it->second : nullptr;
+  const std::vector<const Node*>* selected_specializations = nullptr;
+  if (auto key = make_struct_def_node_owner_key(primary_tpl)) {
+    auto owner_it = template_struct_specializations_by_owner_.find(*key);
+    if (owner_it != template_struct_specializations_by_owner_.end()) {
+      selected_specializations = &owner_it->second;
+    }
+  }
+  if (!selected_specializations) {
+    selected_specializations =
+        ct_state_->find_template_struct_specializations(primary_tpl);
+  }
+  if (!selected_specializations) {
+    if (const auto* specializations =
+            ct_state_->find_template_struct_specializations(primary_tpl,
+                                                            primary_tpl->name)) {
+      selected_specializations = specializations;
+    } else {
+      auto it = template_struct_specializations_.find(primary_tpl->name);
+      selected_specializations =
+          it != template_struct_specializations_.end() ? &it->second : nullptr;
+    }
   }
   record_template_struct_specialization_lookup_parity(
-      primary_tpl, rendered_specializations);
-  return rendered_specializations;
+      primary_tpl, selected_specializations);
+  return selected_specializations;
 }
 
 void Lowerer::record_template_struct_primary_lookup_parity(
@@ -542,8 +575,7 @@ void Lowerer::seed_pending_template_type(const TypeSpec& ts,
                                          PendingTemplateTypeKind kind,
                                          const std::string& context_name) {
   if (!ts.tpl_struct_origin && !ts.deferred_member_type_name) return;
-  const Node* owner_primary_def =
-      ts.tpl_struct_origin ? find_template_struct_primary(ts.tpl_struct_origin) : nullptr;
+  const Node* owner_primary_def = canonical_template_struct_primary(ts, nullptr);
   TypeSpec canonical_ts = ts;
   if (owner_primary_def && owner_primary_def->name && canonical_ts.tpl_struct_origin) {
     canonical_ts.tpl_struct_origin = owner_primary_def->name;
@@ -557,7 +589,17 @@ const Node* Lowerer::canonical_template_struct_primary(
     const TypeSpec& ts,
     const Node* primary_tpl) const {
   if (primary_tpl) return primary_tpl;
-  if (!ts.tpl_struct_origin) return nullptr;
+  const std::string rendered_origin =
+      (ts.tpl_struct_origin && ts.tpl_struct_origin[0])
+          ? std::string(ts.tpl_struct_origin)
+          : std::string{};
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    if (const Node* primary =
+            find_template_struct_primary(ts.record_def, rendered_origin)) {
+      return primary;
+    }
+  }
+  if (rendered_origin.empty()) return nullptr;
   if (const Node* primary = find_template_struct_primary(ts.tpl_struct_origin)) {
     return primary;
   }

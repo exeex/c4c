@@ -1864,6 +1864,89 @@ void test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag() {
               "template-origin owner lookup should return a realized HIR struct tag");
 }
 
+void test_hir_template_struct_primary_lookup_prefers_record_def_over_stale_origin() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node stale_primary{};
+  stale_primary.kind = c4c::NK_STRUCT_DEF;
+  stale_primary.name = "StalePrimary";
+  stale_primary.unqualified_name = "StalePrimary";
+  stale_primary.n_template_params = 1;
+
+  c4c::Node structured_primary{};
+  structured_primary.kind = c4c::NK_STRUCT_DEF;
+  structured_primary.name = "StructuredPrimary";
+  structured_primary.unqualified_name = "StructuredPrimary";
+  structured_primary.n_template_params = 1;
+
+  lowerer.register_template_struct_primary("StalePrimary", &stale_primary);
+  lowerer.register_template_struct_primary("StructuredPrimary",
+                                           &structured_primary);
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tpl_struct_origin = "StalePrimary";
+  ts.record_def = &structured_primary;
+
+  expect_true(lowerer.canonical_template_struct_primary(ts) ==
+                  &structured_primary,
+              "template struct primary lookup should prefer record_def identity over stale rendered origin");
+
+  c4c::Node unregistered_primary{};
+  unregistered_primary.kind = c4c::NK_STRUCT_DEF;
+  unregistered_primary.name = "UnregisteredPrimary";
+  unregistered_primary.unqualified_name = "UnregisteredPrimary";
+  unregistered_primary.n_template_params = 1;
+  ts.record_def = &unregistered_primary;
+  expect_true(lowerer.canonical_template_struct_primary(ts) ==
+                  &stale_primary,
+              "template struct primary lookup should preserve rendered fallback when record_def has no structured entry");
+}
+
+void test_hir_template_struct_specialization_lookup_prefers_owner_key_over_stale_primary_name() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node stale_primary{};
+  stale_primary.kind = c4c::NK_STRUCT_DEF;
+  stale_primary.name = "StalePrimary";
+  stale_primary.unqualified_name = "StalePrimary";
+  stale_primary.n_template_params = 1;
+
+  c4c::Node structured_primary{};
+  structured_primary.kind = c4c::NK_STRUCT_DEF;
+  structured_primary.name = "StalePrimary";
+  structured_primary.unqualified_name = "StructuredPrimary";
+  structured_primary.n_template_params = 1;
+
+  c4c::Node stale_spec{};
+  stale_spec.kind = c4c::NK_STRUCT_DEF;
+  stale_spec.name = "StalePrimary<int>";
+  stale_spec.unqualified_name = "StalePrimary";
+  c4c::Node structured_spec{};
+  structured_spec.kind = c4c::NK_STRUCT_DEF;
+  structured_spec.name = "StructuredPrimary<int>";
+  structured_spec.unqualified_name = "StructuredPrimary";
+
+  lowerer.register_template_struct_primary("StalePrimary", &stale_primary);
+  lowerer.register_template_struct_primary("StructuredPrimary",
+                                           &structured_primary);
+  lowerer.register_template_struct_specialization(&stale_primary, &stale_spec);
+  lowerer.register_template_struct_specialization(&structured_primary,
+                                                  &structured_spec);
+
+  const std::vector<const c4c::Node*>* specializations =
+      lowerer.find_template_struct_specializations(&structured_primary);
+  expect_true(specializations && specializations->size() == 1 &&
+                  (*specializations)[0] == &structured_spec,
+              "template struct specialization lookup should prefer owner-key identity over stale rendered primary name");
+}
+
 void test_hir_member_owner_lookup_record_def_failure_does_not_use_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4910,6 +4993,8 @@ int main() {
   test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag();
   test_hir_member_owner_lookup_prefers_record_def_over_stale_tag();
   test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag();
+  test_hir_template_struct_primary_lookup_prefers_record_def_over_stale_origin();
+  test_hir_template_struct_specialization_lookup_prefers_owner_key_over_stale_primary_name();
   test_hir_member_owner_lookup_record_def_failure_does_not_use_stale_tag();
   test_hir_member_owner_lookup_generated_record_def_without_key_keeps_tag_fallback();
   test_hir_member_owner_lookup_template_args_failure_does_not_use_stale_tag();
