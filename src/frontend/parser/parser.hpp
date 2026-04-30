@@ -375,6 +375,8 @@ class Parser {
   void register_struct_member_typedef_binding(std::string_view owner_name,
                                               std::string_view member_name,
                                               const TypeSpec& type);
+  void register_structured_typedef_binding(const QualifiedNameKey& key,
+                                           const TypeSpec& type);
   void register_structured_typedef_binding_in_context(
       int context_id, TextId name_text_id, const TypeSpec& type);
   const TypeSpec* find_var_type(TextId name_text_id) const;
@@ -416,6 +418,8 @@ class Parser {
                                                 TextId name_text_id) const;
   QualifiedNameKey current_record_member_name_key(
       TextId member_text_id) const;
+  QualifiedNameKey record_member_typedef_key_in_context(
+      int context_id, TextId record_text_id, TextId member_text_id);
   QualifiedNameKey struct_typedef_key_in_context(
       int context_id, TextId name_text_id) const;
   QualifiedNameKey alias_template_key_in_context(

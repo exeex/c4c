@@ -759,10 +759,6 @@ bool try_parse_record_using_member(
         parser.register_typedef_binding(alias_name_text_id, alias_ts, false);
         member_typedef_names->push_back(parser.arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
-        if (!parser.current_struct_tag_text().empty()) {
-            parser.register_struct_member_typedef_binding(parser.current_struct_tag_text(),
-                                                   alias_name, alias_ts);
-        }
         return true;
     }
 
@@ -799,10 +795,6 @@ bool try_parse_record_typedef_member(
         }
         member_typedef_names->push_back(name);
         member_typedef_types->push_back(type);
-        if (!parser.current_struct_tag_text().empty()) {
-            parser.register_struct_member_typedef_binding(parser.current_struct_tag_text(),
-                                                   name, type);
-        }
     };
 
     const char* tdname = nullptr;
@@ -2315,6 +2307,40 @@ void register_record_definition(Parser& parser,
     }
 }
 
+void register_record_member_typedef_bindings(Parser& parser, Node* sd,
+                                             const char* source_tag) {
+    if (!sd || sd->n_member_typedefs <= 0 || !sd->member_typedef_names ||
+        !sd->member_typedef_types) {
+        return;
+    }
+
+    const int context_id =
+        sd->namespace_context_id >= 0 ? sd->namespace_context_id
+                                      : parser.current_namespace_context_id();
+    for (int i = 0; i < sd->n_member_typedefs; ++i) {
+        const char* member_name = sd->member_typedef_names[i];
+        if (!(member_name && member_name[0])) continue;
+        if (sd->n_template_params == 0 &&
+            sd->unqualified_text_id != kInvalidText) {
+            const TextId member_text_id =
+                parser.parser_text_id_for_token(kInvalidText, member_name);
+            const QualifiedNameKey key =
+                parser.record_member_typedef_key_in_context(
+                    context_id, sd->unqualified_text_id, member_text_id);
+            parser.register_structured_typedef_binding(
+                key, sd->member_typedef_types[i]);
+        }
+        if (source_tag && source_tag[0]) {
+            std::string scoped_name(source_tag);
+            scoped_name += "::";
+            scoped_name += member_name;
+            parser.register_typedef_binding(
+                parser.parser_text_id_for_token(kInvalidText, scoped_name),
+                sd->member_typedef_types[i], false);
+        }
+    }
+}
+
 void finalize_record_definition(
     Parser& parser,
     Node* sd,
@@ -2324,6 +2350,7 @@ void finalize_record_definition(
     apply_record_trailing_type_attributes(parser, sd);
     store_record_body_members(parser, sd, body_state);
     register_record_definition(parser, sd, is_union, source_tag);
+    register_record_member_typedef_bindings(parser, sd, source_tag);
     parser.definition_state_.struct_defs.push_back(sd);
 }
 

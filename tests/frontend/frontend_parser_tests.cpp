@@ -2328,6 +2328,61 @@ void test_parser_qualified_member_typedef_lookup_requires_structured_metadata() 
               "direct member typedef arrays should remain the member typedef authority");
 }
 
+void test_parser_record_body_member_typedef_writers_register_direct_keys() {
+  c4c::Lexer lexer("namespace ns {\n"
+                   "struct Owner {\n"
+                   "  using UsingMember = int;\n"
+                   "  typedef long TypedefMember;\n"
+                   "};\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "record-body member typedef writer regression should parse");
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context =
+      parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const c4c::TextId owner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Owner");
+  const c4c::TextId using_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "UsingMember");
+  const c4c::TextId typedef_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "TypedefMember");
+
+  c4c::TypeSpec stale_rendered_ts{};
+  stale_rendered_ts.array_size = -1;
+  stale_rendered_ts.inner_rank = -1;
+  stale_rendered_ts.base = c4c::TB_DOUBLE;
+  parser.register_typedef_binding(
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "ns::Owner::UsingMember"),
+      stale_rendered_ts, true);
+  parser.register_typedef_binding(
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "ns::Owner::TypedefMember"),
+      stale_rendered_ts, true);
+
+  const c4c::QualifiedNameKey using_key =
+      parser.record_member_typedef_key_in_context(ns_context, owner_text,
+                                                  using_text);
+  const c4c::QualifiedNameKey typedef_key =
+      parser.record_member_typedef_key_in_context(ns_context, owner_text,
+                                                  typedef_text);
+  const c4c::TypeSpec* using_type = parser.find_typedef_type(using_key);
+  const c4c::TypeSpec* typedef_type = parser.find_typedef_type(typedef_key);
+  expect_true(using_type != nullptr && using_type->base == c4c::TB_INT,
+              "record-body using member typedef writer should register a direct record/member key");
+  expect_true(typedef_type != nullptr && typedef_type->base == c4c::TB_LONG,
+              "record-body typedef member writer should register a direct record/member key");
+}
+
 void test_parser_namespace_typedef_registration_stays_namespace_scoped() {
   c4c::Lexer lexer("namespace ns {\n"
                    "typedef int Alias;\n"
@@ -5425,6 +5480,7 @@ int main() {
   test_parser_qualified_type_parse_fallback_requires_structured_type();
   test_parser_qualified_functional_cast_owner_requires_structured_authority();
   test_parser_qualified_member_typedef_lookup_requires_structured_metadata();
+  test_parser_record_body_member_typedef_writers_register_direct_keys();
   test_parser_namespace_typedef_registration_stays_namespace_scoped();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();
   test_parser_using_value_alias_prefers_structured_target_type();

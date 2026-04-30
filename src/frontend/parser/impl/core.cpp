@@ -1028,12 +1028,17 @@ void Parser::register_struct_member_typedef_binding(
                              type, false);
 }
 
+void Parser::register_structured_typedef_binding(
+    const QualifiedNameKey& key, const TypeSpec& type) {
+    if (key.base_text_id == kInvalidText) return;
+    binding_state_.struct_typedefs[key] = type;
+}
+
 void Parser::register_structured_typedef_binding_in_context(
     int context_id, TextId name_text_id, const TypeSpec& type) {
     const QualifiedNameKey key = qualified_key_in_context(
         *this, context_id, name_text_id, true);
-    if (key.base_text_id == kInvalidText) return;
-    binding_state_.struct_typedefs[key] = type;
+    register_structured_typedef_binding(key, type);
 }
 
 const TypeSpec* Parser::find_var_type(TextId name_text_id) const {
@@ -1186,6 +1191,24 @@ QualifiedNameKey Parser::current_record_member_name_key(
         shared_lookup_state_.parser_name_paths.find(qualifier_text_ids);
     if (key.qualifier_path_id == kInvalidNamePath) return {};
     key.base_text_id = base_text_id;
+    return key;
+}
+
+QualifiedNameKey Parser::record_member_typedef_key_in_context(
+    int context_id, TextId record_text_id, TextId member_text_id) {
+    QualifiedNameKey key;
+    if (record_text_id == kInvalidText || member_text_id == kInvalidText)
+        return key;
+
+    const QualifiedNameKey record_key =
+        qualified_key_in_context(*this, context_id, record_text_id, true);
+    if (record_key.base_text_id == kInvalidText) return key;
+
+    key.context_id = 0;
+    key.is_global_qualified = record_key.is_global_qualified;
+    key.qualifier_path_id = shared_lookup_state_.parser_name_paths.append(
+        record_key.qualifier_path_id, record_key.base_text_id);
+    key.base_text_id = member_text_id;
     return key;
 }
 
