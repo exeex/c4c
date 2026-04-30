@@ -708,13 +708,16 @@ class Validator {
   const FunctionSig* lookup_function_by_name(const std::string& name,
                                              const Node* reference = nullptr) const {
     auto it = funcs_.find(name);
-    const FunctionSig* legacy = it != funcs_.end() ? &it->second : nullptr;
+    const FunctionSig* rendered_name_compatibility =
+        it != funcs_.end() ? &it->second : nullptr;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
-        (void)compare_sema_lookup_ptrs(legacy, lookup_function_by_key(*key));
+        const FunctionSig* structured = lookup_function_by_key(*key);
+        (void)compare_sema_lookup_ptrs(rendered_name_compatibility, structured);
+        if (structured) return structured;
       }
     }
-    return legacy;
+    return rendered_name_compatibility;
   }
 
   const std::vector<FunctionSig>* lookup_ref_overloads_by_name(
@@ -854,22 +857,24 @@ class Validator {
 
   std::optional<ScopedSym> lookup_symbol(const std::string& name,
                                          const Node* reference = nullptr) const {
-    const ScopedSym* local = lookup_local_symbol_by_name(name);
+    const ScopedSym* rendered_local_compatibility = lookup_local_symbol_by_name(name);
     const auto local_key = reference ? sema_local_name_key(reference) : std::nullopt;
     if (local_key.has_value()) {
       const ScopedSym* structured = lookup_local_symbol_by_key(*local_key);
-      (void)compare_sema_lookup_ptrs(local, structured);
+      (void)compare_sema_lookup_ptrs(rendered_local_compatibility, structured);
       if (structured) return *structured;
     }
-    if (local) return *local;
+    if (rendered_local_compatibility) return *rendered_local_compatibility;
 
     const auto structured_key = reference ? sema_symbol_name_key(reference) : std::nullopt;
     auto g = globals_.find(name);
-    const TypeSpec* legacy_global = g != globals_.end() ? &g->second : nullptr;
+    const TypeSpec* rendered_global_compatibility = g != globals_.end() ? &g->second : nullptr;
     if (structured_key.has_value()) {
-      (void)compare_sema_lookup_ptrs(legacy_global, lookup_global_by_key(*structured_key));
+      const TypeSpec* structured_global = lookup_global_by_key(*structured_key);
+      (void)compare_sema_lookup_ptrs(rendered_global_compatibility, structured_global);
+      if (structured_global) return ScopedSym{*structured_global, true};
     }
-    if (legacy_global) return ScopedSym{*legacy_global, true};
+    if (rendered_global_compatibility) return ScopedSym{*rendered_global_compatibility, true};
 
     const FunctionSig* fn = lookup_function_by_name(name, reference);
     if (fn) {
@@ -878,14 +883,15 @@ class Validator {
       return ScopedSym{fts, true};
     }
     auto ec = enum_consts_.find(name);
-    const TypeSpec* legacy_enum = ec != enum_consts_.end() ? &ec->second : nullptr;
+    const TypeSpec* rendered_enum_compatibility = ec != enum_consts_.end() ? &ec->second : nullptr;
     if (structured_key.has_value()) {
       const TypeSpec* structured_enum = nullptr;
       auto se = structured_enum_consts_.find(*structured_key);
       if (se != structured_enum_consts_.end()) structured_enum = se->second;
-      (void)compare_sema_lookup_ptrs(legacy_enum, structured_enum);
+      (void)compare_sema_lookup_ptrs(rendered_enum_compatibility, structured_enum);
+      if (structured_enum) return ScopedSym{*structured_enum, true};
     }
-    if (legacy_enum) return ScopedSym{*legacy_enum, true};
+    if (rendered_enum_compatibility) return ScopedSym{*rendered_enum_compatibility, true};
     return std::nullopt;
   }
 
@@ -2126,10 +2132,8 @@ class Validator {
             n->n_qualifier_segments == 0 && n->unqualified_name &&
             n->unqualified_name[0] &&
             std::string(n->unqualified_name) != n->name) {
-          // The parser may canonicalize unqualified identifiers to a visible
-          // namespace value spelling (for example `eastl::size`) before sema
-          // has bound function parameters and locals. Fall back to the source
-          // spelling for truly unqualified ids so local scope wins.
+          // Compatibility for producers that still render unqualified ids as a
+          // visible namespace spelling before sema has bound locals.
           sym = lookup_symbol(n->unqualified_name, n);
         }
         if (!sym.has_value()) {

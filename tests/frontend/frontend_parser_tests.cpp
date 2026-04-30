@@ -3736,6 +3736,66 @@ void test_sema_static_member_type_lookup_prefers_structured_member_key() {
               "Sema static member lookup should use structured member TextId over rendered member spelling");
 }
 
+void test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId actual_text = texts.intern("actual");
+
+  c4c::Node* actual = parser.make_node(c4c::NK_DECL, 1);
+  actual->name = arena.strdup("actual");
+  actual->unqualified_name = arena.strdup("actual");
+  actual->unqualified_text_id = actual_text;
+  actual->namespace_context_id = parser.current_namespace_context_id();
+  actual->type = make_ts(c4c::TB_INT);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("wrong::stale");
+  ref->unqualified_name = arena.strdup("stale");
+  ref->unqualified_text_id = actual_text;
+  ref->namespace_context_id = actual->namespace_context_id;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("returns_actual");
+  fn->unqualified_name = arena.strdup("returns_actual");
+  fn->unqualified_text_id = texts.intern("returns_actual");
+  fn->namespace_context_id = actual->namespace_context_id;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->n_params = 1;
+  fn->params = arena.alloc_array<c4c::Node*>(1);
+  fn->params[0] = actual;
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 1;
+  program->children = arena.alloc_array<c4c::Node*>(1);
+  program->children[0] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  const std::string diag =
+      result.diagnostics.empty() ? "" : (": " + result.diagnostics.front().message);
+  expect_true(result.ok,
+              "unqualified symbol lookup should use structured TextId before rendered names" + diag);
+}
+
 void test_sema_namespace_owner_resolution_prefers_structured_owner_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4885,6 +4945,7 @@ int main() {
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
   test_parser_template_static_member_lookup_prefers_record_definition();
   test_sema_static_member_type_lookup_prefers_structured_member_key();
+  test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_namespace_owner_resolution_prefers_structured_owner_key();
   test_sema_method_validation_prefers_structured_owner_key_for_fields();
   test_parser_template_instantiation_dedup_keys_demote_rendered_sync();
