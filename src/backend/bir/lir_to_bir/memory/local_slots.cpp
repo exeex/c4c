@@ -11,10 +11,11 @@
 namespace c4c::backend {
 
 using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
+using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::is_known_raw_function_symbol;
-using lir_to_bir_detail::lookup_backend_aggregate_type_layout;
+using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::parse_typed_operand;
@@ -23,13 +24,26 @@ using lir_to_bir_detail::type_size_bytes;
 
 namespace {
 
+BackendAggregateLayoutLookup lookup_scalar_byte_offset_layout_result(
+    std::string_view type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  if (structured_layouts != nullptr) {
+    return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
+  }
+  return BackendAggregateLayoutLookup{
+      .layout = compute_aggregate_type_layout(type_text, type_decls),
+      .used_structured_layout = false,
+      .used_legacy_fallback = true,
+      .structured_text_mismatch = false,
+  };
+}
+
 BirFunctionLowerer::AggregateTypeLayout lookup_scalar_byte_offset_layout(
     std::string_view type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
-  return structured_layouts != nullptr
-             ? lookup_backend_aggregate_type_layout(type_text, type_decls, *structured_layouts)
-             : compute_aggregate_type_layout(type_text, type_decls);
+  return lookup_scalar_byte_offset_layout_result(type_text, type_decls, structured_layouts).layout;
 }
 
 static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_byte_offset(
