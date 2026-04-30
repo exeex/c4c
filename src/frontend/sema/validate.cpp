@@ -1394,6 +1394,10 @@ class Validator {
   std::optional<std::string> enclosing_method_owner_struct_compatibility(const Node* fn) const {
     if (const Node* record = enclosing_method_owner_record(fn)) return std::string(record->name);
     if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
+      if (auto key = method_owner_key_from_qualifier(fn, *owner);
+          key.has_value() && key->valid()) {
+        return std::nullopt;
+      }
       if (complete_structs_.count(*owner) || complete_unions_.count(*owner)) return owner;
       // Do not guess across namespaces once direct contextual and canonical-tag
       // lookup has failed. Unqualified owners must resolve through the
