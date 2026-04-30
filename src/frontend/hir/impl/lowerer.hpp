@@ -359,9 +359,17 @@ class Lowerer {
 
   const Node* find_struct_static_member_decl(const std::string& tag,
                                              const std::string& member) const;
+  const Node* find_struct_static_member_decl(
+      const HirStructMemberLookupKey& key,
+      const std::string* rendered_tag = nullptr,
+      const std::string* rendered_member = nullptr) const;
 
   std::optional<long long> find_struct_static_member_const_value(
       const std::string& tag, const std::string& member) const;
+  std::optional<long long> find_struct_static_member_const_value(
+      const HirStructMemberLookupKey& key,
+      const std::string* rendered_tag = nullptr,
+      const std::string* rendered_member = nullptr) const;
   MemberSymbolId find_struct_member_symbol_id(
       const std::string& tag, const std::string& member) const;
   std::optional<long long> try_eval_instantiated_struct_static_member_const(
@@ -398,6 +406,9 @@ class Lowerer {
   std::optional<HirStructMemberLookupKey> make_struct_member_lookup_key(
       const std::string& tag,
       const std::string& member) const;
+  std::optional<HirStructMemberLookupKey> make_struct_member_lookup_key(
+      const HirRecordOwnerKey& owner_key,
+      TextId member_text_id) const;
   void record_struct_method_mangled_lookup_parity(
       const std::string& tag,
       const std::string& method,

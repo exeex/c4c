@@ -87,9 +87,22 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
     size_t scope_pos = qname.rfind("::");
     if (scope_pos != std::string::npos) {
       std::string struct_tag = qname.substr(0, scope_pos);
-      std::string member = qname.substr(scope_pos + 2);
+      std::string rendered_member = qname.substr(scope_pos + 2);
+      const std::string structured_member =
+          (n->unqualified_name && n->unqualified_name[0])
+              ? std::string(n->unqualified_name)
+              : rendered_member;
+      TextId structured_member_text_id = n->unqualified_text_id;
+      if (structured_member_text_id == kInvalidText && module_ &&
+          module_->link_name_texts && !structured_member.empty()) {
+        structured_member_text_id = module_->link_name_texts->intern(structured_member);
+      }
       const bool has_template_args = n->has_template_args || n->n_template_args > 0;
-      auto resolve_static_owner_tag = [&]() -> std::optional<std::string> {
+      struct ScopedStaticMemberLookup {
+        std::optional<std::string> owner_tag;
+        std::optional<HirStructMemberLookupKey> member_key;
+      };
+      auto resolve_static_owner_lookup = [&]() -> ScopedStaticMemberLookup {
         TypeSpec owner_ts{};
         owner_ts.base = TB_STRUCT;
         owner_ts.array_size = -1;
@@ -109,28 +122,64 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
                 "nameref-static-owner-arg");
           }
         }
-        if (!owner_ts.record_def && !owner_ts.tpl_struct_origin) return std::nullopt;
+        if (!owner_ts.record_def && !owner_ts.tpl_struct_origin) return {};
+        std::optional<HirRecordOwnerKey> record_owner_key =
+            (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF)
+                ? make_struct_def_node_owner_key(owner_ts.record_def)
+                : std::nullopt;
         const std::string* current_struct_tag =
             (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
-        return resolve_member_lookup_owner_tag(
+        ScopedStaticMemberLookup out;
+        out.owner_tag = resolve_member_lookup_owner_tag(
             owner_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
             ctx ? &ctx->nttp_bindings : nullptr, current_struct_tag, n,
-            std::string("nameref-static-member:") + member);
+            std::string("nameref-static-member:") + structured_member);
+        if (record_owner_key && structured_member_text_id != kInvalidText) {
+          out.member_key =
+              make_struct_member_lookup_key(*record_owner_key, structured_member_text_id);
+        }
+        if (!out.member_key && out.owner_tag) {
+          out.member_key =
+              make_struct_member_lookup_key(*out.owner_tag, structured_member);
+        }
+        return out;
       };
-      const std::optional<std::string> structured_owner_tag = resolve_static_owner_tag();
+      const ScopedStaticMemberLookup structured_lookup =
+          resolve_static_owner_lookup();
       const std::string lookup_struct_tag =
-          structured_owner_tag.value_or(struct_tag);
+          structured_lookup.owner_tag.value_or(struct_tag);
+      auto find_static_member_decl = [&](const std::string& lookup_tag) -> const Node* {
+        if (structured_lookup.member_key) {
+          if (const Node* decl = find_struct_static_member_decl(
+                  *structured_lookup.member_key, &lookup_tag, &rendered_member)) {
+            return decl;
+          }
+        }
+        return find_struct_static_member_decl(lookup_tag, rendered_member);
+      };
+      auto find_static_member_const_value =
+          [&](const std::string& lookup_tag) -> std::optional<long long> {
+        if (structured_lookup.member_key) {
+          if (auto value = find_struct_static_member_const_value(
+                  *structured_lookup.member_key, &lookup_tag, &rendered_member)) {
+            return value;
+          }
+        }
+        return find_struct_static_member_const_value(lookup_tag, rendered_member);
+      };
       if (has_template_args) {
-        if (auto v = try_eval_template_static_member_const(ctx, struct_tag, n, member)) {
+        if (auto v = try_eval_template_static_member_const(
+                ctx, struct_tag, n, structured_member)) {
           TypeSpec ts{};
-          if (const Node* decl = find_struct_static_member_decl(lookup_struct_tag, member)) {
+          if (const Node* decl = find_static_member_decl(lookup_struct_tag)) {
             ts = decl->type;
           }
           if (ts.base == TB_VOID) ts.base = TB_INT;
           return append_expr(n, IntLiteral{*v, false}, ts);
         }
       }
-      if (!structured_owner_tag && has_template_args && find_template_struct_primary(struct_tag)) {
+      if (!structured_lookup.owner_tag && has_template_args &&
+          find_template_struct_primary(struct_tag)) {
         TypeSpec pending_ts{};
         pending_ts.base = TB_STRUCT;
         pending_ts.array_size = -1;
@@ -149,16 +198,16 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
         if (pending_ts.tag && pending_ts.tag[0]) struct_tag = pending_ts.tag;
       }
       const std::string final_lookup_struct_tag =
-          structured_owner_tag.value_or(struct_tag);
-      if (auto v = find_struct_static_member_const_value(final_lookup_struct_tag, member)) {
+          structured_lookup.owner_tag.value_or(struct_tag);
+      if (auto v = find_static_member_const_value(final_lookup_struct_tag)) {
         TypeSpec ts{};
-        if (const Node* decl = find_struct_static_member_decl(final_lookup_struct_tag, member)) {
+        if (const Node* decl = find_static_member_decl(final_lookup_struct_tag)) {
           ts = decl->type;
         }
         if (ts.base == TB_VOID) ts.base = TB_INT;
         return append_expr(n, IntLiteral{*v, false}, ts);
       }
-      if (const Node* decl = find_struct_static_member_decl(final_lookup_struct_tag, member)) {
+      if (const Node* decl = find_static_member_decl(final_lookup_struct_tag)) {
         if (decl->init) {
           long long v = static_eval_int(decl->init, enum_consts_);
           TypeSpec ts = decl->type;

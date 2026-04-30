@@ -2189,15 +2189,17 @@ void test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag() 
   real_decl.type = int_ts;
 
   lowerer.struct_def_nodes_["StaleRenderedStaticOwner"] = &real_record;
-  lowerer.struct_static_member_decls_["StaleRenderedStaticOwner"]["value"] =
+  lowerer.struct_static_member_decls_["StaleRenderedStaticOwner"]["stale_value"] =
       &stale_decl;
-  lowerer.struct_static_member_const_values_["StaleRenderedStaticOwner"]["value"] =
+  lowerer.struct_static_member_const_values_["StaleRenderedStaticOwner"]["stale_value"] =
       11;
   lowerer.register_struct_static_member_owner_lookup(*owner_key, &real_decl, 23);
 
   c4c::Node ref{};
   ref.kind = c4c::NK_VAR;
-  ref.name = "StaleRenderedStaticOwner::value";
+  ref.name = "StaleRenderedStaticOwner::stale_value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id = module.link_name_texts->intern("value");
   ref.type = int_ts;
 
   const c4c::hir::ExprId value_id = lowerer.lower_var_expr(nullptr, &ref);
@@ -2206,7 +2208,7 @@ void test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag() 
   expect_true(literal != nullptr,
               "scoped static member lookup should lower to a constexpr literal");
   expect_eq_int(static_cast<int>(literal->value), 23,
-                "scoped static member lowering should prefer record_def owner over stale rendered tag");
+                "scoped static member lowering should prefer record_def/member identity over stale rendered spelling");
 }
 
 void test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag() {

@@ -418,6 +418,16 @@ std::optional<HirStructMemberLookupKey> Lowerer::make_struct_member_lookup_key(
   return std::nullopt;
 }
 
+std::optional<HirStructMemberLookupKey> Lowerer::make_struct_member_lookup_key(
+    const HirRecordOwnerKey& owner_key,
+    TextId member_text_id) const {
+  HirStructMemberLookupKey key;
+  key.owner_key = owner_key;
+  key.member_text_id = member_text_id;
+  if (!hir_struct_member_lookup_key_has_complete_metadata(key)) return std::nullopt;
+  return key;
+}
+
 std::string Lowerer::resolve_struct_method_lookup_owner_tag(
     const TypeSpec& owner_ts,
     bool is_arrow,
@@ -1333,6 +1343,26 @@ const Node* Lowerer::find_struct_static_member_decl(
   return nullptr;
 }
 
+const Node* Lowerer::find_struct_static_member_decl(
+    const HirStructMemberLookupKey& key,
+    const std::string* rendered_tag,
+    const std::string* rendered_member) const {
+  if (!hir_struct_member_lookup_key_has_complete_metadata(key)) return nullptr;
+  const auto owner_it = struct_static_member_decls_by_owner_.find(key);
+  if (owner_it == struct_static_member_decls_by_owner_.end()) return nullptr;
+  if (rendered_tag && rendered_member) {
+    auto sit = struct_static_member_decls_.find(*rendered_tag);
+    if (sit != struct_static_member_decls_.end()) {
+      auto mit = sit->second.find(*rendered_member);
+      if (mit != sit->second.end()) {
+        record_struct_static_member_decl_lookup_parity(
+            *rendered_tag, *rendered_member, mit->second);
+      }
+    }
+  }
+  return owner_it->second;
+}
+
 std::optional<long long> Lowerer::find_struct_static_member_const_value(
     const std::string& tag, const std::string& member) const {
   const auto owner_key = make_struct_member_lookup_key(tag, member);
@@ -1370,6 +1400,30 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
     }
   }
   return std::nullopt;
+}
+
+std::optional<long long> Lowerer::find_struct_static_member_const_value(
+    const HirStructMemberLookupKey& key,
+    const std::string* rendered_tag,
+    const std::string* rendered_member) const {
+  if (!hir_struct_member_lookup_key_has_complete_metadata(key)) {
+    return std::nullopt;
+  }
+  const auto owner_it = struct_static_member_const_values_by_owner_.find(key);
+  if (owner_it == struct_static_member_const_values_by_owner_.end()) {
+    return std::nullopt;
+  }
+  if (rendered_tag && rendered_member) {
+    auto sit = struct_static_member_const_values_.find(*rendered_tag);
+    if (sit != struct_static_member_const_values_.end()) {
+      auto mit = sit->second.find(*rendered_member);
+      if (mit != sit->second.end()) {
+        record_struct_static_member_const_value_lookup_parity(
+            *rendered_tag, *rendered_member, mit->second);
+      }
+    }
+  }
+  return owner_it->second;
 }
 
 MemberSymbolId Lowerer::find_struct_member_symbol_id(
