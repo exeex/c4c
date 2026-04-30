@@ -822,7 +822,12 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
 
     const QualifiedTypeProbe probe = probe_qualified_type(parser, qn);
     if (probe.has_resolved_typedef) {
-        out_ts->tag = parser.arena_.strdup(probe.resolved_typedef_name.c_str());
+        if (probe.record_member_typedef_type) {
+            *out_ts = *probe.record_member_typedef_type;
+        } else {
+            out_ts->tag =
+                parser.arena_.strdup(probe.resolved_typedef_name.c_str());
+        }
         if (probe.record_def) {
             out_ts->base = probe.record_def->is_union ? TB_UNION : TB_STRUCT;
             out_ts->record_def = probe.record_def;

@@ -2396,6 +2396,58 @@ void test_parser_record_body_member_typedef_writers_register_direct_keys() {
               "qualified member typedef reader should use the direct record/member key before stale rendered storage");
 }
 
+void test_parser_c_style_cast_member_typedef_uses_structured_metadata() {
+  c4c::Lexer lexer("struct Box {\n"
+                   "  using AliasL = int&;\n"
+                   "  typedef int&& AliasR;\n"
+                   "};\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "member typedef cast fixture should parse the record body");
+
+  parser.unregister_typedef_binding(
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Box::AliasL"));
+  parser.unregister_typedef_binding(
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Box::AliasR"));
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Box"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "AliasL"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "x"),
+  });
+  c4c::Node* lvalue_cast = c4c::parse_unary(parser);
+  expect_true(lvalue_cast != nullptr && lvalue_cast->kind == c4c::NK_CAST,
+              "C-style casts should parse member typedefs through structured record/member metadata");
+  expect_true(lvalue_cast->type.base == c4c::TB_INT &&
+                  lvalue_cast->type.is_lvalue_ref,
+              "structured AliasL metadata should recover the lvalue-reference target type");
+
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Box"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "AliasR"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "x"),
+  });
+  c4c::Node* rvalue_cast = c4c::parse_unary(parser);
+  expect_true(rvalue_cast != nullptr && rvalue_cast->kind == c4c::NK_CAST,
+              "C-style casts should parse typedef members after rendered mirrors are removed");
+  expect_true(rvalue_cast->type.base == c4c::TB_INT &&
+                  rvalue_cast->type.is_rvalue_ref,
+              "structured AliasR metadata should recover the rvalue-reference target type");
+}
+
 void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5599,6 +5651,7 @@ int main() {
   test_parser_qualified_functional_cast_owner_requires_structured_authority();
   test_parser_qualified_member_typedef_lookup_requires_structured_metadata();
   test_parser_record_body_member_typedef_writers_register_direct_keys();
+  test_parser_c_style_cast_member_typedef_uses_structured_metadata();
   test_parser_template_instantiation_member_typedef_uses_concrete_key();
   test_parser_namespace_typedef_registration_stays_namespace_scoped();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();

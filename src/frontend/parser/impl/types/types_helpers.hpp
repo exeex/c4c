@@ -605,6 +605,7 @@ struct QualifiedTypeProbe {
     bool has_resolved_typedef = false;
     int namespace_context_id = -1;
     Node* record_def = nullptr;
+    const TypeSpec* record_member_typedef_type = nullptr;
     std::string resolved_typedef_name;
     std::string spelled_name;
 };
@@ -700,6 +701,31 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
     if (is_qualified) {
         probe.spelled_name = qualified_name_text(parser, qn);
         probe.namespace_context_id = parser.resolve_namespace_context(qn);
+
+        if (!qn.qualifier_segments.empty()) {
+            const Parser::QualifiedNameRef owner_qn =
+                qualified_owner_name(parser, qn);
+            if (const Node* owner =
+                    qualified_type_record_definition_from_structured_authority(
+                        parser, owner_qn)) {
+                if (owner->n_template_params == 0 &&
+                    owner->n_member_typedefs > 0 &&
+                    owner->member_typedef_names &&
+                    owner->member_typedef_types) {
+                    const std::string_view member_name =
+                        parser.parser_text(qn.base_text_id, qn.base_name);
+                    for (int i = 0; i < owner->n_member_typedefs; ++i) {
+                        const char* candidate = owner->member_typedef_names[i];
+                        if (!candidate || member_name != candidate) continue;
+                        probe.has_resolved_typedef = true;
+                        probe.record_member_typedef_type =
+                            &owner->member_typedef_types[i];
+                        probe.resolved_typedef_name = probe.spelled_name;
+                        return probe;
+                    }
+                }
+            }
+        }
 
         const Parser::VisibleNameResult resolved_type =
             parser.resolve_qualified_type(qn);

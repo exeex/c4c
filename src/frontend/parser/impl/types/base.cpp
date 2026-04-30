@@ -1347,7 +1347,11 @@ TypeSpec Parser::parse_base_type() {
                             try_parse_cpp_scoped_base_type(*this,
                                                            already_have_base,
                                                            &ts)) {
-                            has_typedef = true;
+                            if (ts.base == TB_TYPEDEF || ts.tag) {
+                                has_typedef = true;
+                            } else {
+                                base_set = true;
+                            }
                             done = true;
                             break;
                         }
