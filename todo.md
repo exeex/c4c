@@ -9,29 +9,31 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-by narrowing declaration owner fallback in `decl.cpp`. Local declaration owner
-resolution now separates structured carrier presence from successful structured
-resolution, so rendered `TypeSpec::tag` is used only when no structured carrier
-is present. Failed structured declaration owner resolution now fails closed for
-aggregate field/member-symbol lookup, default constructor lookup, and
-destructor/member-dtor tracking instead of silently using stale rendered tags.
+by narrowing compound-literal aggregate owner fallback in `object.cpp`.
+Compound-literal aggregate initialization now separates structured carrier
+presence from successful structured resolution, so rendered `TypeSpec::tag` is
+used only when no structured owner identity is present. Failed structured
+compound-literal owner resolution now fails closed for aggregate field and
+member-symbol lookup instead of silently using stale rendered tags.
 
 Added focused HIR coverage for an unresolved structured `record_def` paired with
-a stale rendered tag that still has stale field/constructor/destructor entries;
-the test proves declaration lowering does not consume those stale entries.
+a stale rendered tag that still has stale aggregate fields; the test proves
+compound-literal lowering does not consume those stale entries.
 
 ## Suggested Next
 
-Continue Step 4 with supervisor review of the declaration-side fail-closed
-slice and decide whether the remaining rendered-tag compatibility paths outside
-local declaration struct ownership need another bounded packet.
+Continue Step 4 with supervisor review of the declaration-side and
+compound-literal fail-closed slices, then decide whether remaining rendered-tag
+compatibility paths outside local declaration and compound-literal aggregate
+ownership need another bounded packet.
 
 ## Watchouts
 
-The narrowed helper is local to `lower_local_decl_stmt`; shared
-`resolve_member_lookup_owner_tag` still preserves its legacy final rendered-tag
-fallback for other callers. Union fallback remains rendered-tag based only when
-no structured owner carrier is present.
+The narrowed helpers are local to `lower_local_decl_stmt` and
+`lower_compound_literal_expr`; shared `resolve_member_lookup_owner_tag` still
+preserves its legacy final rendered-tag fallback for other callers. Union
+fallback remains rendered-tag based only when no structured owner carrier is
+present.
 
 ## Proof
 

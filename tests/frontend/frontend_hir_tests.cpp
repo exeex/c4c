@@ -4102,6 +4102,79 @@ void test_hir_compound_literal_member_symbol_prefers_record_def_over_stale_tag()
               "compound literal member symbol should prefer record_def owner over stale tag");
 }
 
+void test_hir_compound_literal_structured_owner_failure_does_not_use_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* unresolved_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  unresolved_record->name = arena.strdup("UnresolvedCompoundOwner");
+  unresolved_record->unqualified_name = arena.strdup("UnresolvedCompoundOwner");
+  unresolved_record->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+  const c4c::MemberSymbolId stale_id =
+      module.member_symbols.intern("StaleFailedCompoundOwner::wrong_field");
+
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "wrong_field";
+  stale_field.field_text_id = module.link_name_texts->intern("wrong_field");
+  stale_field.elem_type = int_ts;
+  stale_field.member_symbol_id = stale_id;
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleFailedCompoundOwner";
+  stale_def.tag_text_id =
+      module.link_name_texts->intern("StaleFailedCompoundOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleFailedCompoundOwner");
+  owner_ts.record_def = unresolved_record;
+
+  c4c::Node* value = parser.make_node(c4c::NK_INT_LIT, 1);
+  value->ival = 7;
+  value->type = int_ts;
+  c4c::Node* init = parser.make_node(c4c::NK_INIT_LIST, 1);
+  init->children = arena.alloc_array<c4c::Node*>(1);
+  init->children[0] = value;
+  init->n_children = 1;
+  c4c::Node* compound = parser.make_node(c4c::NK_COMPOUND_LIT, 1);
+  compound->type = owner_ts;
+  compound->left = init;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  const c4c::hir::ExprId expr_id =
+      lowerer.lower_compound_literal_expr(&ctx, compound);
+  expect_true(expr_id.valid(), "compound literal lowering should produce a base expression");
+
+  bool used_stale_member = false;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    if (const auto* member = std::get_if<c4c::hir::MemberExpr>(&expr.payload);
+        member && (member->resolved_owner_tag == "StaleFailedCompoundOwner" ||
+                   member->member_symbol_id == stale_id)) {
+      used_stale_member = true;
+    }
+  }
+
+  expect_true(!used_stale_member,
+              "failed structured compound-literal owner resolution must not use stale rendered fields");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -4592,6 +4665,7 @@ int main() {
   test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_local_decl_structured_owner_failure_does_not_use_stale_tag();
   test_hir_compound_literal_member_symbol_prefers_record_def_over_stale_tag();
+  test_hir_compound_literal_structured_owner_failure_does_not_use_stale_tag();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

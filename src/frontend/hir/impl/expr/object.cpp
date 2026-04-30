@@ -521,21 +521,74 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
       std::string tag;
       const HirStructDef* def = nullptr;
     };
+    auto has_aggregate_structured_owner_identity = [](const TypeSpec& owner_ts) {
+      return owner_ts.record_def || owner_ts.tpl_struct_origin ||
+             (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0);
+    };
+    auto resolve_structured_aggregate_owner_tag =
+        [&](TypeSpec owner_ts,
+            const char* context) -> std::optional<std::string> {
+      while (resolve_struct_member_typedef_if_ready(&owner_ts)) {
+      }
+      resolve_typedef_to_struct(owner_ts);
+      if (!is_agg(owner_ts)) return std::nullopt;
+      if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
+        if (auto owner_key = make_struct_def_node_owner_key(owner_ts.record_def)) {
+          if (const SymbolName* owner_tag =
+                  module_->find_struct_def_tag_by_owner(*owner_key)) {
+            if (module_->struct_defs.count(*owner_tag)) {
+              return std::string(*owner_tag);
+            }
+          }
+        }
+        if (owner_ts.record_def->name && owner_ts.record_def->name[0] &&
+            module_->struct_defs.count(owner_ts.record_def->name)) {
+          return std::string(owner_ts.record_def->name);
+        }
+      }
+      if (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) {
+        const std::string incoming_tag =
+            (owner_ts.tag && owner_ts.tag[0]) ? std::string(owner_ts.tag)
+                                              : std::string{};
+        if (ctx && !ctx->tpl_bindings.empty()) {
+          seed_and_resolve_pending_template_type_if_needed(
+              owner_ts, ctx->tpl_bindings, ctx->nttp_bindings, n,
+              PendingTemplateTypeKind::OwnerStruct, context);
+        } else {
+          TypeBindings empty_tb;
+          NttpBindings empty_nttp;
+          realize_template_struct_if_needed(
+              owner_ts, empty_tb, ctx ? ctx->nttp_bindings : empty_nttp);
+        }
+        if (owner_ts.tag && owner_ts.tag[0] &&
+            (incoming_tag.empty() || incoming_tag != owner_ts.tag) &&
+            module_->struct_defs.count(owner_ts.tag)) {
+          return std::string(owner_ts.tag);
+        }
+      }
+      return std::nullopt;
+    };
     auto resolve_aggregate_owner = [&](const TypeSpec& owner_ts,
                                        const char* context) -> std::optional<AggregateOwner> {
       if (!is_agg(owner_ts)) return std::nullopt;
-      const std::string* current_struct_tag =
-          ctx && !ctx->method_struct_tag.empty() ? &ctx->method_struct_tag : nullptr;
-      const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
-          owner_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
-          ctx ? &ctx->nttp_bindings : nullptr, current_struct_tag, n, context);
+      const bool has_structured_owner =
+          has_aggregate_structured_owner_identity(owner_ts);
+      const std::optional<std::string> owner_tag =
+          has_structured_owner
+              ? resolve_structured_aggregate_owner_tag(owner_ts, context)
+              : resolve_member_lookup_owner_tag(
+                    owner_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
+                    ctx ? &ctx->nttp_bindings : nullptr,
+                    ctx && !ctx->method_struct_tag.empty() ? &ctx->method_struct_tag
+                                                           : nullptr,
+                    n, context);
       if (owner_tag) {
         const auto sit = module_->struct_defs.find(*owner_tag);
         if (sit != module_->struct_defs.end()) {
           return AggregateOwner{*owner_tag, &sit->second};
         }
       }
-      if (owner_ts.tag && owner_ts.tag[0]) {
+      if (!has_structured_owner && owner_ts.tag && owner_ts.tag[0]) {
         const auto sit = module_->struct_defs.find(owner_ts.tag);
         if (sit != module_->struct_defs.end()) {
           return AggregateOwner{std::string(owner_ts.tag), &sit->second};
