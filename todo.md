@@ -1,53 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/135_sema_structured_owner_static_member_lookup_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Make Static-Member Lookup Structured-Primary
+Current Step ID: 2
+Current Step Title: Make Namespace Owner Resolution Structured-Primary
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 4 `Make Static-Member Lookup Structured-Primary` completed for
-`lookup_struct_static_member_type`.
+Plan Step 2 `Make Namespace Owner Resolution Structured-Primary` completed for
+`resolve_owner_in_namespace_context` and out-of-class method owner setup.
 
-`lookup_struct_static_member_type(tag, member, reference)` now returns the
-`struct_static_member_types_by_key_` / `struct_base_keys_by_key_` result when
-`reference->unqualified_text_id` is present and `structured_record_key_for_tag`
-resolves a non-ambiguous owner key. It still computes the rendered
-`tag/member` result for comparison in that structured-primary path, but the
-rendered result is returned only when structured member or owner identity is
-absent.
+Namespace owner resolution now indexes record definitions by
+`SemaStructuredNameKey`, derives an owner key from the method qualifier
+`TextId` when the qualifier segment matches the parsed owner, and returns the
+structured record match before considering the rendered-name path. The old
+unqualified-name/suffix comparison path remains isolated as
+`resolve_owner_by_rendered_name_fallback` and is used only when structured
+owner identity is absent.
 
-Added `test_sema_static_member_type_lookup_prefers_structured_member_key` to
-`frontend_parser_tests`. The fixture gives a static-member reference stale
-rendered member spelling (`Owner::stale`) while carrying the structured
-member `TextId` for `actual`; stale rendered authority would infer `float` and
-fail an `int*` return check, while structured-primary lookup validates.
+`validate_function` now seeds `current_method_struct_key_` from the resolved
+owner record when available, so namespace owner context and `this` binding can
+use the AST/TextId-derived record identity rather than reparsed owner spelling.
+
+Added `test_sema_namespace_owner_resolution_prefers_structured_owner_key` to
+`frontend_parser_tests`. The fixture gives an out-of-class method a misleading
+rendered owner spelling (`wrong::Owner::self`) while its structured qualifier
+`TextId` points at `real::Owner`; rendered-primary resolution would fail to
+bind `this`, while structured-primary resolution validates.
 
 ## Suggested Next
 
-Next coherent packet: route the remaining Sema owner helpers toward structured
-owner identity, starting with `resolve_owner_in_namespace_context` or
-`enclosing_method_owner_struct`, so `current_method_struct_key_` and owner
-resolution do not depend on reparsed rendered names.
+Next coherent packet: continue with the next supervisor-selected owner cleanup
+slice, likely the remaining HIR or downstream owner paths that still depend on
+rendered owner strings after sema has selected a structured record.
 
 ## Watchouts
 
-This packet intentionally changes structured misses to return `nullopt` when
-both owner key and member `TextId` are available; that is the point of making
-structured identity authoritative. Compatibility fallback remains for missing
-`reference`, missing member `TextId`, or ambiguous/missing owner key.
+`method_owner_key_from_qualifier` deliberately refuses to build a key if the
+last qualifier segment does not name the parsed owner. This preserves the
+existing compatibility path for parsed operator/function shapes where qualifier
+metadata is present but is not an owner carrier.
 
-`resolve_owner_in_namespace_context` and `enclosing_method_owner_struct` still
-return rendered owner strings and should not be expanded with more rendered
-parsing in follow-up work.
+`enclosing_method_owner_struct` still returns rendered strings for legacy
+callers; the structured record path is carried separately through
+`enclosing_method_owner_record` and `current_method_struct_key_`.
 
 ## Proof
 
 Ran the supervisor-selected proof exactly:
 
-`cmake --build build --target c4cll frontend_parser_tests frontend_hir_tests frontend_hir_lookup_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests|frontend_hir_lookup_tests|cpp_positive_sema_operator_shift_static_member_call_parse_cpp|cpp_positive_sema_inherited_static_member_lookup_runtime_cpp|cpp_positive_sema_inherited_static_member_lookup_simple_runtime_cpp|cpp_positive_sema_unqualified_static_member_call_runtime_cpp|cpp_positive_sema_template_member_owner_resolution_cpp|cpp_positive_sema_template_struct_advanced_cpp|cpp_positive_sema_template_struct_nested_cpp|cpp_hir_template_alias_deferred_nttp_static_member|cpp_hir_template_deferred_nttp_static_member_expr|cpp_hir_template_deferred_nttp_cast_static_member_expr|cpp_hir_template_value_arg_static_member_trait)$' >> test_after.log 2>&1`
+`cmake --build build --target c4cll frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_namespaced_out_of_class_method_context_frontend_cpp|cpp_positive_sema_qualified_namespaced_out_of_class_method_context_frontend_cpp|cpp_positive_sema_out_of_class_member_owner_scope_parse_cpp|cpp_positive_sema_namespace_cross_namespace_lookup_parse_cpp|cpp_positive_sema_namespace_cross_type_reference_runtime_cpp|cpp_positive_sema_namespace_nested_runtime_cpp|cpp_positive_sema_namespace_struct_collision_runtime_cpp|cpp_positive_sema_namespace_struct_runtime_cpp|cpp_positive_sema_namespace_struct_type_basic_cpp|cpp_positive_sema_namespace_template_struct_basic_cpp|cpp_positive_sema_template_member_owner_resolution_cpp|cpp_positive_sema_inherited_static_member_lookup_runtime_cpp|cpp_positive_sema_unqualified_static_member_call_runtime_cpp)$' >> test_after.log 2>&1`
 
 Result: build succeeded and CTest reported 14/14 passing. Proof log:
 `test_after.log`.

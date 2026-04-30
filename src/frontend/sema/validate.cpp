@@ -561,6 +561,8 @@ class Validator {
   std::unordered_set<SemaStructuredNameKey, SemaStructuredNameKeyHash> complete_structs_by_key_;
   std::unordered_set<SemaStructuredNameKey, SemaStructuredNameKeyHash> complete_unions_by_key_;
   std::unordered_map<const Node*, const Node*> method_owner_records_;
+  std::unordered_map<SemaStructuredNameKey, const Node*, SemaStructuredNameKeyHash>
+      struct_defs_by_key_;
   std::unordered_map<std::string, std::vector<const Node*>> struct_defs_by_unqualified_name_;
   // Struct field names for implicit member lookup in out-of-class method bodies.
   std::unordered_map<std::string, std::unordered_set<std::string>> struct_field_names_;
@@ -1100,6 +1102,7 @@ class Validator {
       note_structured_record_key_for_tag(tag, *record_key);
     }
     struct_defs_by_unqualified_name_[unqualified_name(tag)].push_back(n);
+    if (record_key.has_value() && record_key->valid()) struct_defs_by_key_[*record_key] = n;
     if (n->is_union) {
       complete_unions_.insert(tag);
       if (record_key.has_value() && record_key->valid()) complete_unions_by_key_.insert(*record_key);
@@ -1228,12 +1231,30 @@ class Validator {
     return legacy;
   }
 
-  std::optional<std::string> resolve_owner_in_namespace_context(
+  std::optional<SemaStructuredNameKey> method_owner_key_from_qualifier(
+      const Node* fn, const std::string& owner) const {
+    if (!fn || fn->namespace_context_id < 0 || fn->n_qualifier_segments <= 0 ||
+        !fn->qualifier_text_ids) {
+      return std::nullopt;
+    }
+    if (fn->qualifier_segments && fn->qualifier_segments[fn->n_qualifier_segments - 1]) {
+      const std::string qualifier_owner(fn->qualifier_segments[fn->n_qualifier_segments - 1]);
+      if (qualifier_owner != unqualified_name(owner)) return std::nullopt;
+    }
+    const TextId owner_text_id = fn->qualifier_text_ids[fn->n_qualifier_segments - 1];
+    if (owner_text_id == kInvalidText) return std::nullopt;
+    SemaStructuredNameKey key;
+    key.namespace_context_id = fn->namespace_context_id;
+    key.base_text_id = owner_text_id;
+    return key;
+  }
+
+  const Node* resolve_owner_by_rendered_name_fallback(
       const std::string& owner, int namespace_context_id) const {
-    if (owner.empty() || namespace_context_id < 0) return std::nullopt;
+    if (owner.empty() || namespace_context_id < 0) return nullptr;
 
     auto it = struct_defs_by_unqualified_name_.find(unqualified_name(owner));
-    if (it == struct_defs_by_unqualified_name_.end()) return std::nullopt;
+    if (it == struct_defs_by_unqualified_name_.end()) return nullptr;
 
     const Node* match = nullptr;
     for (const Node* candidate : it->second) {
@@ -1248,20 +1269,47 @@ class Validator {
           continue;
         }
       }
-      if (match && match != candidate) return std::nullopt;
+      if (match && match != candidate) return nullptr;
       match = candidate;
     }
-    if (!match) return std::nullopt;
-    return std::string(match->name);
+    return match;
+  }
+
+  const Node* resolve_owner_in_namespace_context(
+      const std::string& owner, int namespace_context_id,
+      const std::optional<SemaStructuredNameKey>& structured_owner_key) const {
+    if (owner.empty() || namespace_context_id < 0) return nullptr;
+    const Node* rendered_fallback =
+        resolve_owner_by_rendered_name_fallback(owner, namespace_context_id);
+    if (structured_owner_key.has_value() && structured_owner_key->valid()) {
+      auto it = struct_defs_by_key_.find(*structured_owner_key);
+      const Node* structured = it != struct_defs_by_key_.end() ? it->second : nullptr;
+      (void)compare_sema_lookup_ptrs(rendered_fallback, structured);
+      return structured;
+    }
+    return rendered_fallback;
+  }
+
+  const Node* enclosing_method_owner_record(const Node* fn) const {
+    if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
+      if (const Node* contextual = resolve_owner_in_namespace_context(
+              *owner, fn ? fn->namespace_context_id : -1,
+              method_owner_key_from_qualifier(fn, *owner))) {
+        return contextual;
+      }
+      return nullptr;
+    }
+    auto it = method_owner_records_.find(fn);
+    if (it == method_owner_records_.end() || !it->second || !it->second->name ||
+        !it->second->name[0]) {
+      return nullptr;
+    }
+    return it->second;
   }
 
   std::optional<std::string> enclosing_method_owner_struct(const Node* fn) const {
+    if (const Node* record = enclosing_method_owner_record(fn)) return std::string(record->name);
     if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
-      if (auto contextual =
-              resolve_owner_in_namespace_context(*owner, fn ? fn->namespace_context_id : -1);
-          contextual.has_value()) {
-        return contextual;
-      }
       if (complete_structs_.count(*owner) || complete_unions_.count(*owner)) return owner;
       // Do not guess across namespaces once direct contextual and canonical-tag
       // lookup has failed. Unqualified owners must resolve through the
@@ -1269,12 +1317,7 @@ class Validator {
       if (owner->find("::") != std::string::npos) return owner;
       return std::nullopt;
     }
-    auto it = method_owner_records_.find(fn);
-    if (it == method_owner_records_.end() || !it->second || !it->second->name ||
-        !it->second->name[0]) {
-      return std::nullopt;
-    }
-    return std::string(it->second->name);
+    return std::nullopt;
   }
 
   bool can_defer_owner_qualified_cast_typedef(const TypeSpec& ts) const {
@@ -1683,9 +1726,14 @@ class Validator {
       if (!p || !p->name || !p->name[0]) continue;
       bind_local(p->name, p->type, true, p->line, sema_local_name_key(p));
     }
-    if (auto owner = enclosing_method_owner_struct(fn); owner.has_value()) {
+    if (const Node* owner_record = enclosing_method_owner_record(fn)) {
+      current_method_struct_tag_ = owner_record->name ? owner_record->name : "";
+      current_method_struct_key_ = sema_symbol_name_key(owner_record);
+    } else if (auto owner = enclosing_method_owner_struct(fn); owner.has_value()) {
       current_method_struct_tag_ = *owner;
       current_method_struct_key_ = structured_record_key_for_tag(*owner);
+    }
+    if (!current_method_struct_tag_.empty()) {
       TypeSpec this_ts{};
       this_ts.base = TB_STRUCT;
       this_ts.tag = current_method_struct_tag_.c_str();
