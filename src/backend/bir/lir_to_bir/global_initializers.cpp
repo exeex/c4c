@@ -17,13 +17,26 @@ std::optional<std::string> parse_global_symbol_initializer(std::string_view text
   return std::string(trimmed.substr(1));
 }
 
+BackendAggregateLayoutLookup lookup_global_initializer_layout_result(
+    std::string_view type_text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  if (structured_layouts != nullptr) {
+    return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
+  }
+  return BackendAggregateLayoutLookup{
+      .layout = compute_aggregate_type_layout(type_text, type_decls),
+      .used_structured_layout = false,
+      .used_legacy_fallback = true,
+      .structured_text_mismatch = false,
+  };
+}
+
 AggregateTypeLayout lookup_global_initializer_layout(
     std::string_view type_text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
-  return structured_layouts != nullptr
-             ? lookup_backend_aggregate_type_layout(type_text, type_decls, *structured_layouts)
-             : compute_aggregate_type_layout(type_text, type_decls);
+  return lookup_global_initializer_layout_result(type_text, type_decls, structured_layouts).layout;
 }
 
 std::optional<GlobalAddress> parse_global_gep_initializer(std::string_view text,
