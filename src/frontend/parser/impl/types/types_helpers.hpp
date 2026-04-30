@@ -200,6 +200,28 @@ Node* qualified_record_definition_in_context(
     return nullptr;
 }
 
+Node* qualified_type_record_definition_from_structured_authority(
+    const Parser& parser, const Parser::QualifiedNameRef& qn) {
+    if (qn.base_text_id == kInvalidText) return nullptr;
+
+    if (Node* record = qualified_record_definition_in_context(parser, qn)) {
+        return record;
+    }
+
+    const bool is_qualified = !qn.qualifier_segments.empty() ||
+                              qn.is_global_qualified;
+    if (!is_qualified) {
+        return type_spec_structured_record_definition(
+            parser, parser.find_visible_typedef_type(qn.base_text_id));
+    }
+
+    const Parser::VisibleNameResult resolved_type =
+        parser.resolve_qualified_type(qn);
+    if (!resolved_type) return nullptr;
+    return type_spec_structured_record_definition(
+        parser, parser.find_structured_typedef_type(resolved_type.key));
+}
+
 bool qualified_type_owner_has_structured_authority(
     const Parser& parser, const Parser::QualifiedNameRef& owner_qn) {
     if (owner_qn.base_text_id == kInvalidText) return false;

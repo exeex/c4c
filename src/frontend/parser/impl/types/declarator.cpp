@@ -669,45 +669,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                            owner_name.qualifier_segments[index]);
                     };
 
-                    auto qualified_node_name = [&](const Node* node) -> std::string {
-                        if (!node) return {};
-
-                        std::string qualified;
-                        for (int i = 0; i < node->n_qualifier_segments; ++i) {
-                            if (!qualified.empty()) qualified += "::";
-                            const TextId segment_text_id =
-                                node->qualifier_text_ids &&
-                                        i < node->n_qualifier_segments
-                                    ? node->qualifier_text_ids[i]
-                                    : kInvalidText;
-                            const char* segment_name =
-                                node->qualifier_segments &&
-                                        node->qualifier_segments[i]
-                                    ? node->qualifier_segments[i]
-                                    : "";
-                            qualified += std::string(
-                                parser_text(segment_text_id, segment_name));
-                        }
-
-                        const char* base_name =
-                            node->unqualified_name && node->unqualified_name[0]
-                                ? node->unqualified_name
-                                : (node->name && node->name[0] ? node->name
-                                                                : node->type.tag);
-                        if (!base_name || !base_name[0]) return qualified;
-                        if (!qualified.empty()) qualified += "::";
-                        const TextId base_text_id =
-                            node->unqualified_text_id != kInvalidText
-                                ? node->unqualified_text_id
-                                : parser_text_id_for_token(kInvalidText, base_name);
-                        qualified += std::string(parser_text(base_text_id, base_name));
-                        return qualified;
-                    };
-
                     for (size_t owner_start = 0;
                          owner_start < owner_name.qualifier_segments.size();
                          ++owner_start) {
-                        std::string owner_tag(owner_segment_text(owner_start));
                         QualifiedNameRef owner_qn;
                         owner_qn.is_global_qualified =
                             owner_name.is_global_qualified;
@@ -719,35 +683,12 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                             owner_qn.qualifier_text_ids.push_back(
                                 owner_segment_text_id(i));
                         }
-                        owner_qn.base_name = owner_tag;
+                        owner_qn.base_name =
+                            std::string(owner_segment_text(owner_start));
                         owner_qn.base_text_id = owner_segment_text_id(owner_start);
-                        const std::string resolved_owner_tag =
-                            resolve_qualified_known_type_name(*this, owner_qn);
-                        if (!resolved_owner_tag.empty()) owner_tag = resolved_owner_tag;
-                        const TypeSpec* owner_typedef =
-                            owner_tag.find("::") == std::string::npos
-                                ? find_visible_typedef_type(owner_qn.base_text_id)
-                                : find_typedef_type(find_parser_text_id(owner_tag));
                         const Node* owner =
-                            qualified_type_structured_record_definition(
-                                *this, owner_qn, owner_tag);
-                        if (owner_typedef) {
-                            TypeSpec owner_ts =
-                                resolve_struct_like_typedef_type(*owner_typedef);
-                            if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
-                            if (!owner) {
-                                owner = resolve_record_type_spec(owner_ts, nullptr);
-                            }
-                        }
-                        if (!owner) {
-                            // Rendered-tag map lookup is a compatibility fallback
-                            // for owner paths without structured record identity.
-                            auto owner_it =
-                                definition_state_.struct_tag_def_map.find(owner_tag);
-                            if (owner_it != definition_state_.struct_tag_def_map.end()) {
-                                owner = owner_it->second;
-                            }
-                        }
+                            qualified_type_record_definition_from_structured_authority(
+                                *this, owner_qn);
                         if (!owner)
                             continue;
 
@@ -823,35 +764,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                             const Node* resolved_nested_owner =
                                 resolve_record_type_spec(nested_decl->type, nullptr);
                             if (!resolved_nested_owner) {
-                                if (!nested_decl->type.tag ||
-                                    !nested_decl->type.tag[0]) {
-                                    ok = false;
-                                    break;
-                                }
-                                std::string nested_owner_tag =
-                                    nested_decl->type.tag;
-                                // Rendered-tag map lookup is a compatibility
-                                // fallback for nested owner declarations whose
-                                // TypeSpec did not carry record_def.
-                                auto owner_it =
-                                    definition_state_.struct_tag_def_map.find(
-                                        nested_owner_tag);
-                                if (owner_it ==
-                                        definition_state_.struct_tag_def_map.end() ||
-                                    !owner_it->second) {
-                                    nested_owner_tag =
-                                        qualified_node_name(nested_decl);
-                                    owner_it =
-                                        definition_state_.struct_tag_def_map.find(
-                                            nested_owner_tag);
-                                }
-                                if (owner_it ==
-                                        definition_state_.struct_tag_def_map.end() ||
-                                    !owner_it->second) {
-                                    ok = false;
-                                    break;
-                                }
-                                resolved_nested_owner = owner_it->second;
+                                ok = false;
+                                break;
                             }
                             owner = resolved_nested_owner;
                         }
@@ -863,17 +777,6 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                 TypeSpec resolved_member{};
                 if (const Node* owner = follow_nested_owner(qn)) {
                     bool found_member = false;
-                    if (owner->name && owner->name[0]) {
-                        const std::string scoped_name =
-                            std::string(owner->name) + "::" +
-                            std::string(parser_text(qn.base_text_id,
-                                                    qn.base_name));
-                        if (const TypeSpec* scoped_type =
-                                find_typedef_type(find_parser_text_id(scoped_name))) {
-                            resolved_member = *scoped_type;
-                            found_member = true;
-                        }
-                    }
                     for (int i = 0; !found_member && i < owner->n_member_typedefs; ++i) {
                         const char* name = owner->member_typedef_names[i];
                         if (!name ||

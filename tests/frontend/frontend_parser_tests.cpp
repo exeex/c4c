@@ -1147,6 +1147,7 @@ void test_parser_dependent_typename_uses_local_visible_owner_alias() {
   alias_ts.inner_rank = -1;
   alias_ts.base = c4c::TB_STRUCT;
   alias_ts.tag = arena.strdup("Box");
+  alias_ts.record_def = owner;
 
   const c4c::TextId alias_text = texts.intern("Alias");
   parser.push_local_binding_scope();
@@ -1335,6 +1336,8 @@ void test_parser_nested_dependent_typename_prefers_record_definition() {
 
   c4c::Node* root = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   root->name = arena.strdup("Root");
+  root->unqualified_text_id = parser_test_text_id(parser, "Root");
+  root->namespace_context_id = 0;
   root->n_fields = 1;
   root->fields = arena.alloc_array<c4c::Node*>(1);
   root->fields[0] = nested_field;
@@ -1390,6 +1393,8 @@ void test_parser_nested_dependent_typename_uses_tagless_record_definition() {
 
   c4c::Node* root = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   root->name = arena.strdup("Root");
+  root->unqualified_text_id = parser_test_text_id(parser, "Root");
+  root->namespace_context_id = 0;
   root->n_fields = 1;
   root->fields = arena.alloc_array<c4c::Node*>(1);
   root->fields[0] = nested_field;
@@ -2085,6 +2090,151 @@ void test_parser_qualified_functional_cast_owner_requires_structured_authority()
   expect_true(c4c::qualified_type_owner_has_structured_authority(
                   structured_parser, owner_qn),
               "structured record metadata should authorize the qualified owner");
+}
+
+void test_parser_qualified_member_typedef_lookup_requires_structured_metadata() {
+  c4c::Token seed{};
+
+  c4c::Arena legacy_arena;
+  c4c::TextTable legacy_texts;
+  c4c::FileTable legacy_files;
+  c4c::Parser legacy_parser({}, legacy_arena, &legacy_texts, &legacy_files,
+                            c4c::SourceProfile::CppSubset);
+  const c4c::TextId legacy_ns_text =
+      parser_test_text_id(legacy_parser, "ns");
+  legacy_parser.ensure_named_namespace_context(0, legacy_ns_text, "ns");
+  c4c::Node* legacy_owner =
+      legacy_parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  legacy_owner->name = legacy_arena.strdup("ns::LegacyOwner");
+  legacy_owner->n_member_typedefs = 1;
+  legacy_owner->member_typedef_names =
+      legacy_arena.alloc_array<const char*>(1);
+  legacy_owner->member_typedef_types =
+      legacy_arena.alloc_array<c4c::TypeSpec>(1);
+  legacy_owner->member_typedef_names[0] = legacy_arena.strdup("Member");
+  legacy_owner->member_typedef_types[0].array_size = -1;
+  legacy_owner->member_typedef_types[0].inner_rank = -1;
+  legacy_owner->member_typedef_types[0].base = c4c::TB_INT;
+  legacy_parser.register_struct_definition_for_testing("ns::LegacyOwner",
+                                                       legacy_owner);
+  c4c::TypeSpec legacy_owner_ts{};
+  legacy_owner_ts.array_size = -1;
+  legacy_owner_ts.inner_rank = -1;
+  legacy_owner_ts.base = c4c::TB_STRUCT;
+  legacy_owner_ts.tag = legacy_arena.strdup("ns::LegacyOwner");
+  legacy_parser.register_typedef_binding(
+      parser_test_text_id(legacy_parser, "ns::LegacyOwner"),
+      legacy_owner_ts, true);
+  legacy_parser.replace_token_stream_for_testing({
+      legacy_parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
+      legacy_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ns"),
+      legacy_parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      legacy_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "LegacyOwner"),
+      legacy_parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      legacy_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Member"),
+  });
+
+  std::string legacy_name;
+  expect_true(legacy_parser.parse_dependent_typename_specifier(&legacy_name),
+              "dependent typename spelling should still be consumed");
+  expect_true(legacy_parser.find_typedef_type(
+                  legacy_parser.find_parser_text_id(legacy_name)) == nullptr,
+              "legacy rendered owner typedef/tag storage alone should not resolve member typedefs");
+
+  c4c::Arena rendered_member_arena;
+  c4c::TextTable rendered_member_texts;
+  c4c::FileTable rendered_member_files;
+  c4c::Parser rendered_member_parser(
+      {}, rendered_member_arena, &rendered_member_texts,
+      &rendered_member_files, c4c::SourceProfile::CppSubset);
+  const c4c::TextId rendered_ns_text =
+      parser_test_text_id(rendered_member_parser, "ns");
+  const int rendered_ns_context =
+      rendered_member_parser.ensure_named_namespace_context(
+          0, rendered_ns_text, "ns");
+  const c4c::TextId rendered_owner_text =
+      parser_test_text_id(rendered_member_parser, "Owner");
+  c4c::Node* rendered_owner =
+      rendered_member_parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  rendered_owner->name = rendered_member_arena.strdup("RenderedOwner");
+  rendered_owner->unqualified_text_id = rendered_owner_text;
+  rendered_owner->namespace_context_id = rendered_ns_context;
+  rendered_owner->n_member_typedefs = 0;
+  rendered_member_parser.register_struct_definition_for_testing("ns::Owner",
+                                                                rendered_owner);
+  c4c::TypeSpec rendered_member_ts{};
+  rendered_member_ts.array_size = -1;
+  rendered_member_ts.inner_rank = -1;
+  rendered_member_ts.base = c4c::TB_LONG;
+  rendered_member_parser.register_typedef_binding(
+      parser_test_text_id(rendered_member_parser, "RenderedOwner::Member"),
+      rendered_member_ts, true);
+  rendered_member_parser.replace_token_stream_for_testing({
+      rendered_member_parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
+      rendered_member_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ns"),
+      rendered_member_parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      rendered_member_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Owner"),
+      rendered_member_parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      rendered_member_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Member"),
+  });
+
+  std::string rendered_member_name;
+  expect_true(rendered_member_parser.parse_dependent_typename_specifier(
+                  &rendered_member_name),
+              "structured owners should still be consumable without member metadata");
+  expect_true(rendered_member_parser.find_typedef_type(
+                  rendered_member_parser.find_parser_text_id(
+                      rendered_member_name)) == nullptr,
+              "rendered owner::member typedef storage should not replace direct member typedef metadata");
+
+  c4c::Arena structured_arena;
+  c4c::TextTable structured_texts;
+  c4c::FileTable structured_files;
+  c4c::Parser structured_parser({}, structured_arena, &structured_texts,
+                                &structured_files,
+                                c4c::SourceProfile::CppSubset);
+  const c4c::TextId structured_ns_text =
+      parser_test_text_id(structured_parser, "ns");
+  const int structured_ns_context =
+      structured_parser.ensure_named_namespace_context(
+          0, structured_ns_text, "ns");
+  const c4c::TextId structured_owner_text =
+      parser_test_text_id(structured_parser, "Owner");
+  c4c::Node* structured_owner =
+      structured_parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  structured_owner->name = structured_arena.strdup("ns::Owner");
+  structured_owner->unqualified_text_id = structured_owner_text;
+  structured_owner->namespace_context_id = structured_ns_context;
+  structured_owner->n_member_typedefs = 1;
+  structured_owner->member_typedef_names =
+      structured_arena.alloc_array<const char*>(1);
+  structured_owner->member_typedef_types =
+      structured_arena.alloc_array<c4c::TypeSpec>(1);
+  structured_owner->member_typedef_names[0] =
+      structured_arena.strdup("Member");
+  structured_owner->member_typedef_types[0].array_size = -1;
+  structured_owner->member_typedef_types[0].inner_rank = -1;
+  structured_owner->member_typedef_types[0].base = c4c::TB_INT;
+  structured_parser.register_struct_definition_for_testing("ns::Owner",
+                                                           structured_owner);
+  structured_parser.replace_token_stream_for_testing({
+      structured_parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
+      structured_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ns"),
+      structured_parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      structured_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Owner"),
+      structured_parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      structured_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Member"),
+  });
+
+  std::string structured_name;
+  expect_true(structured_parser.parse_dependent_typename_specifier(
+                  &structured_name),
+              "structured record metadata should authorize member typedef lookup");
+  const c4c::TypeSpec* structured_type =
+      structured_parser.find_typedef_type(
+          structured_parser.find_parser_text_id(structured_name));
+  expect_true(structured_type != nullptr && structured_type->base == c4c::TB_INT,
+              "direct member typedef arrays should remain the member typedef authority");
 }
 
 void test_parser_namespace_typedef_registration_stays_namespace_scoped() {
@@ -5136,6 +5286,7 @@ int main() {
   test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_value_bridges();
   test_parser_qualified_type_parse_fallback_requires_structured_type();
   test_parser_qualified_functional_cast_owner_requires_structured_authority();
+  test_parser_qualified_member_typedef_lookup_requires_structured_metadata();
   test_parser_namespace_typedef_registration_stays_namespace_scoped();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();
   test_parser_using_value_alias_prefers_structured_target_type();
