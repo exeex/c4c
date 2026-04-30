@@ -355,31 +355,94 @@ Completion check:
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.4.4: Shrink Or Delete The Member-Typedef Mirror
+### Step 2.4.4.1: Re-Audit Member-Typedef Mirror Writers And Readers
+
+Goal: re-establish the live `owner::member` typedef mirror inventory after the
+Step 2.4.3 reader conversions, before deleting APIs or changing mirror storage.
+
+Primary target: the record-body writer, template-instantiation writer, and any
+remaining lookup path backed by rendered scoped typedef storage.
+
+Actions:
+
+- Re-run the Step 2.4.1 inventory and classify each remaining writer and
+  reader by its real structured carrier: direct record/member metadata,
+  `QualifiedNameKey`, namespace context plus `TextId`, template-instantiation
+  metadata, or missing metadata.
+- Confirm whether `src/frontend/parser/impl/types/base.cpp` has a structured
+  owner/member carrier available at the template-instantiation call site before
+  any API deletion is attempted.
+- Treat local reconstruction from a rendered `mangled` or `owner::member`
+  string as the same rejected route as a wrapper accepting rendered qualified
+  text.
+- Record missing carrier cases in `todo.md` as blockers or separate metadata
+  idea candidates; do not delete the mirror while semantic consumers still need
+  rendered scoped storage.
+
+Completion check:
+
+- `todo.md` lists each live writer/reader and names the next single structural
+  conversion or metadata blocker.
+- No wrapper deletion, helper rename, or local rendered-string split is counted
+  as progress.
+- Lifecycle-only inventory rewrite does not claim code proof.
+
+### Step 2.4.4.2: Convert Or Block The Template-Instantiation Writer
+
+Goal: make the template-instantiation member-typedef writer use a caller-owned
+structured owner/member carrier, or record the missing metadata as a blocker.
+
+Primary target: the template-instantiation path in
+`src/frontend/parser/impl/types/base.cpp` that currently reaches member typedef
+registration through rendered instantiation spelling.
+
+Actions:
+
+- If a structured carrier exists, pass that carrier directly to the member
+  typedef storage route without splitting rendered `mangled`,
+  `owner::member`, or fallback spelling.
+- If the structured carrier does not exist, stop and create or request a
+  metadata blocker idea instead of reconstructing identity from rendered text.
+- Keep rendered instantiation spelling only for mangling, diagnostics, debug
+  output, or final emitted names.
+- Add or keep a focused disagreement test proving the writer does not let stale
+  rendered scoped typedef storage decide semantic lookup.
+
+Completion check:
+
+- The covered writer no longer builds semantic `QualifiedNameKey` or
+  owner/member identity by parsing rendered instantiation text.
+- Any missing template-instantiation metadata is represented as a blocker
+  rather than a new string rediscovery route.
+- Narrow parser tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.4.4.3: Shrink Or Delete The Member-Typedef Mirror
 
 Goal: delete the live `owner::member` typedef mirror, or shrink it to a
 non-semantic compatibility cache only after all reachable semantic consumers
-have structured carriers.
+have structured carriers or recorded blockers.
 
 Primary target: `register_struct_member_typedef_binding(owner, member, type)`
 and any remaining lookup path backed by the rendered scoped mirror.
 
 Actions:
 
-- Re-run the Step 2.4.1 inventory and confirm each semantic consumer has been
-  converted, blocked by a recorded metadata idea, or proven non-semantic.
-- Delete the mirror writer and storage if no semantic consumer remains.
+- Confirm Steps 2.4.4.1 and 2.4.4.2 have removed, converted, or blocked every
+  semantic writer/reader that depended on rendered scoped storage.
+- Delete the mirror writer and storage only if no semantic consumer remains.
 - If a narrow compatibility cache must remain, make its non-semantic purpose
   explicit and ensure it cannot decide parser/Sema semantic identity.
 - Search for helper-only renames, wrappers around rendered lookup, fallback
-  spelling parameters, and `std::string_view` qualified lookup APIs introduced
-  during Step 2.4.
+  spelling parameters, local rendered-string reconstruction, and
+  `std::string_view` qualified lookup APIs introduced during Step 2.4.
 
 Completion check:
 
 - No covered parser type/tag/member route uses rendered scoped spelling as
   alternate semantic authority after structured metadata exists.
-- No helper-only rename or wrapper-only packet is counted as removal progress.
+- No helper-only rename, wrapper-only packet, or moved rendered-key
+  reconstruction is counted as removal progress.
 - Any remaining metadata blockers are represented as separate open ideas.
 - Narrow parser tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
