@@ -4733,6 +4733,111 @@ c4c::TypeSpec make_sema_lookup_ts(c4c::TypeBase base, int ptr_level = 0) {
   return ts;
 }
 
+c4c::Node* make_sema_template_param_holder(c4c::Parser& parser,
+                                           c4c::Arena& arena,
+                                           const char* fn_name,
+                                           const char* param_name,
+                                           c4c::TextId param_text_id) {
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->name = arena.strdup(fn_name);
+  fn->unqualified_name = arena.strdup(fn_name);
+  fn->unqualified_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, fn_name);
+  fn->namespace_context_id = parser.current_namespace_context_id();
+  fn->type = make_sema_lookup_ts(c4c::TB_INT);
+  fn->n_template_params = 1;
+  fn->template_param_names = arena.alloc_array<const char*>(1);
+  fn->template_param_names[0] = arena.strdup(param_name);
+  if (param_text_id != c4c::kInvalidText) {
+    fn->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+    fn->template_param_name_text_ids[0] = param_text_id;
+  }
+  fn->template_param_is_nttp = arena.alloc_array<bool>(1);
+  fn->template_param_is_nttp[0] = false;
+  return fn;
+}
+
+c4c::Node* make_sema_cast_expr_function(c4c::Parser& parser,
+                                        c4c::Arena& arena,
+                                        const char* fn_name,
+                                        const char* cast_tag) {
+  c4c::Node* literal = parser.make_node(c4c::NK_INT_LIT, 1);
+  literal->ival = 0;
+
+  c4c::Node* cast = parser.make_node(c4c::NK_CAST, 1);
+  cast->type = make_sema_lookup_ts(c4c::TB_TYPEDEF, 1);
+  cast->type.tag = arena.strdup(cast_tag);
+  cast->left = literal;
+
+  c4c::Node* stmt = parser.make_node(c4c::NK_EXPR_STMT, 1);
+  stmt->left = cast;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 1);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = stmt;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->name = arena.strdup(fn_name);
+  fn->unqualified_name = arena.strdup(fn_name);
+  fn->unqualified_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, fn_name);
+  fn->namespace_context_id = parser.current_namespace_context_id();
+  fn->type = make_sema_lookup_ts(c4c::TB_VOID);
+  fn->body = body;
+  return fn;
+}
+
+void test_sema_template_type_param_lookup_rejects_stale_rendered_name_after_text_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* first_template = make_sema_template_param_holder(
+      parser, arena, "first_template", "tp", texts.intern("first_tp"));
+  c4c::Node* second_template = make_sema_template_param_holder(
+      parser, arena, "second_template", "tp", texts.intern("second_tp"));
+  c4c::Node* stale_cast =
+      make_sema_cast_expr_function(parser, arena, "uses_stale_tp", "tp");
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
+  program->children[0] = first_template;
+  program->children[1] = second_template;
+  program->children[2] = stale_cast;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok && !result.diagnostics.empty() &&
+                  result.diagnostics.front().message == "cast to unknown type name 'tp'",
+              "template type-parameter lookup should reject stale rendered spelling after TextId disagreement");
+}
+
+void test_sema_template_type_param_lookup_keeps_no_metadata_rendered_compatibility() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* legacy_template = make_sema_template_param_holder(
+      parser, arena, "legacy_template", "legacytp", c4c::kInvalidText);
+  c4c::Node* legacy_cast =
+      make_sema_cast_expr_function(parser, arena, "uses_legacytp", "legacytp");
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = legacy_template;
+  program->children[1] = legacy_cast;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  const std::string diag =
+      result.diagnostics.empty() ? "" : (": " + result.diagnostics.front().message);
+  expect_true(result.ok,
+              "template type-parameter lookup should keep rendered fallback when TextId metadata is absent" + diag);
+}
+
 c4c::Node* make_sema_lookup_function(c4c::Parser& parser, c4c::Arena& arena,
                                      const char* rendered_name,
                                      const char* structured_name,
@@ -6725,6 +6830,8 @@ int main() {
   test_parser_template_instantiation_dedup_keys_structure_specialization_reuse();
   test_parser_template_static_member_lookup_prefers_record_definition();
   test_sema_static_member_type_lookup_prefers_structured_member_key();
+  test_sema_template_type_param_lookup_rejects_stale_rendered_name_after_text_miss();
+  test_sema_template_type_param_lookup_keeps_no_metadata_rendered_compatibility();
   test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_local_spelling();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_global_spelling();

@@ -1454,9 +1454,9 @@ class Validator {
     if (!name || !name[0]) return false;
     const bool legacy = template_type_params_.count(name) > 0;
     const bool structured = template_type_param_mirror_matches_name(name);
-    if (structured || template_type_param_text_id_by_name_.count(name) > 0) {
+    if (template_type_param_text_id_by_name_.count(name) > 0) {
       (void)compare_sema_lookup_presence(legacy, structured);
-      if (structured) return true;
+      return structured;
     }
     return legacy;
   }
@@ -1465,7 +1465,7 @@ class Validator {
     if (!current_fn_node_ || !name || !name[0]) return false;
     bool legacy = false;
     bool structured = false;
-    bool saw_structured_input = false;
+    bool saw_structured_candidate = false;
     for (int i = 0; i < current_fn_node_->n_template_params; ++i) {
       if (!sema_template_param_is_type_param(current_fn_node_, i)) continue;
       const char* param_name = current_fn_node_->template_param_names[i];
@@ -1473,15 +1473,15 @@ class Validator {
       legacy = legacy || name_matches;
 
       const TextId text_id = sema_template_param_name_text_id(current_fn_node_, i);
-      if (text_id == kInvalidText) continue;
-      saw_structured_input = true;
-      if (name_matches && template_type_param_text_ids_.count(text_id) > 0) {
+      if (!name_matches || text_id == kInvalidText) continue;
+      saw_structured_candidate = true;
+      if (template_type_param_text_ids_.count(text_id) > 0) {
         structured = true;
       }
     }
-    if (saw_structured_input) {
+    if (saw_structured_candidate) {
       (void)compare_sema_lookup_presence(legacy, structured);
-      if (structured) return true;
+      return structured;
     }
     return legacy;
   }

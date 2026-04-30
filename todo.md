@@ -8,21 +8,22 @@ Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Route
 
 ## Just Finished
 
-Step 3 removed the Sema rendered owner-name compatibility route after a valid
-structured method-owner qualifier key misses. `enclosing_method_owner_struct_compatibility`
-now stops instead of re-authorizing the rendered owner string when
-`method_owner_key_from_qualifier` produced a valid key. Compatibility remains
-only for genuinely unstructured method-owner references that lack qualifier
-`TextId` metadata. Focused frontend coverage now corrupts the structured owner
-qualifier `TextId` while keeping the rendered `Owner::method` spelling valid,
-and verifies Sema rejects the stale rendered owner fallback.
+Step 3 made Sema template type-parameter recognition treat recorded
+`TextId` metadata as authoritative. `is_known_template_type_param_name` now
+stops after a structured name-to-`TextId` mirror miss, including stale rendered
+parameter names whose mirror was poisoned by disagreeing `TextId`s, instead of
+re-authorizing the rendered parameter-name set. `is_current_template_type_param_name`
+keeps rendered compatibility only for matching parameters without structured
+metadata. Focused frontend coverage now corrupts same-spelling template
+type-parameter `TextId` metadata and verifies Sema rejects the stale rendered
+fallback while preserving no-metadata rendered compatibility.
 
 ## Suggested Next
 
 Continue Step 3 with the next remaining Sema rendered-name semantic lookup
-route that already has structured or `TextId` metadata; prefer a route where the
-compatibility fallback can be bounded to no-metadata references without touching
-HIR or backend carriers.
+route that already has structured or `TextId` metadata; prefer a route where
+the compatibility fallback can be bounded to no-metadata references without
+touching HIR or backend carriers.
 
 ## Watchouts
 
@@ -39,9 +40,9 @@ HIR or backend carriers.
 - Namespace-qualified rendered bridges and synthetic locals without structured
   metadata remain compatibility candidates; do not collapse those routes until
   their producers carry equivalent structured metadata.
-- The owner fallback retained by this packet is only for method definitions
-  whose qualifier metadata is absent or invalid, not for valid structured-key
-  misses.
+- `TypeSpec` cast targets still do not carry their own `TextId`; the current
+  template-parameter route can only use the current function parameter metadata
+  and the global recorded mirror.
 
 ## Proof
 
