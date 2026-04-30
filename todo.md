@@ -8,53 +8,37 @@ Current Step Title: Validation and Acceptance
 
 ## Just Finished
 
-Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` is
-committed through `e244511a preserve anonymous aggregate owner fallback`.
-The completed repair keeps named/resolvable structured owner keys fail-closed
-when the owner index cannot resolve them, while preserving rendered-tag
-compatibility for generated anonymous aggregate `record_def` carriers such as
-`_anon_N`.
+Plan Step 5 `Validation and Acceptance` is complete. The final focused
+acceptance proof rebuilt the default preset and ran the delegated parser, Sema,
+HIR, C++ parser/debug, negative, and selected C torture regression subset.
 
-The Step 4 repair slice added focused HIR coverage for generated anonymous
-aggregate `record_def` compatibility where the rendered tag exists but the
-generated record identity is not a semantic owner key. Existing stale
-named/resolvable owner coverage continues to prove fail-closed behavior for
-shared, local declaration, and compound-literal paths.
+Result: passed, 1066/1066 delegated tests green in `test_after.log`.
 
 ## Suggested Next
 
-Execute Plan Step 5 `Validation and Acceptance`.
-
-Suggested supervisor packet: run the final focused build/test proof for the
-parser/Sema/HIR payload families touched by idea 134, including
-`frontend_parser_tests`, the targeted alias-template, NTTP/template-argument,
-deferred-member-type, template-origin, and AST/Sema/HIR ingress selectors, and
-the recently repaired C/HIR regressions from Step 4. Escalate to broader
-frontend or full CTest validation if the supervisor treats this as the idea
-acceptance milestone.
-
-Record fresh acceptance proof in the supervisor-designated proof artifact
-(`test_after.log` unless superseded), and summarize any remaining
-fallback-only string payload paths before the plan owner is asked to judge
-closure.
+Ask the plan owner to judge whether idea 134 can close or whether any
+remaining fallback-only compatibility paths need a follow-up idea.
 
 ## Watchouts
 
-Source idea 134 remains open until the final validation/acceptance packet
-proves the source acceptance criteria, not merely Step 4 completion.
+Remaining string-payload paths are fallback-only compatibility or display/debug
+carriers, not silent semantic authority:
 
-No current Step 4 blocker. The helper distinction intentionally treats
-complete, non-generated `record_def` owner keys as semantic identity and
-generated `_anon_` records as rendered-tag compatibility carriers.
+- TextId-less parser compatibility for legacy typedef, value, known-function,
+  namespace, import, using-alias, and template rendered-name mirrors.
+- Parser record-layout const-eval final-spelling fallback when no structured
+  record carrier is available.
+- HIR invalid-link-name builtin alias fallback when no semantic callee carrier
+  exists.
+- HIR legacy zero-valued or forwarded NTTP `debug_text` fallback paths.
+- Generated anonymous aggregate rendered-tag compatibility for `_anon_N`
+  `record_def` carriers.
+
+No current Step 5 blocker.
 
 ## Proof
 
-Step 4 proof was run and rolled forward before `e244511a`:
-`cmake --build build --target c4cll frontend_hir_tests frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_hir_tests$|^frontend_parser_tests$|positive_sema_linux_stage2_repro_04_typeof_stmt_expr_combo_c|llvm_gcc_c_torture_src_20180131_1_c|llvm_gcc_c_torture_src_pr33631_c|cpp_hir_template_origin|cpp_hir_template_struct_registry_primary_only|cpp_hir_template_member_owner_resolution|cpp_hir_template_inherited_member_typedef_trait|cpp_hir_template_member_owner_chain|cpp_hir_template_member_owner_decl_and_cast|cpp_hir_template_alias_member_owner|cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp|cpp_positive_sema_template_struct_nested_cpp|cpp_positive_sema_template_struct_advanced_cpp|cpp_parse_record_member_typedef_using_dump' --output-on-failure >> test_after.log 2>&1`
+Step 5 proof was run exactly as delegated:
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_parser_tests|frontend_hir_lookup_tests|positive_sema_.*|cpp_positive_sema_.*|cpp_hir_.*|cpp_parse_.*|cpp_parser_debug_.*|cpp_negative_tests_.*(template|member|qualified|alias|typename|record)|llvm_gcc_c_torture_src_20180131_1_c|llvm_gcc_c_torture_src_pr33631_c)$' >> test_after.log 2>&1`
 
-Result: passed, 16/16 delegated tests green before commit, including the three
-repaired C regressions:
-`positive_sema_linux_stage2_repro_04_typeof_stmt_expr_combo_c`,
-`llvm_gcc_c_torture_src_20180131_1_c`, and
-`llvm_gcc_c_torture_src_pr33631_c`. The current rolled-forward baseline log is
-`test_before.log`; a fresh Step 5 acceptance proof is still needed.
+Result: passed, 1066/1066 tests green. Proof log: `test_after.log`.
