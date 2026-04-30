@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/136_hir_structured_record_template_lookup_authority_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Validate Idea 136 Static-Member and Template Coverage
+Current Step ID: 4
+Current Step Title: Acceptance Review and Baseline Decision
 
 # Current Packet
 
@@ -17,21 +17,27 @@ the five repaired regressions:
 `cpp_positive_sema_template_variable_trait_runtime_cpp`, and
 `cpp_hir_template_inherited_member_typedef_trait`.
 
+Supervisor acceptance guard for commit `6d6ece99` also passed with 48/48 before
+and 48/48 after, so the active lifecycle pointer is advanced to Plan Step 4.
+
 ## Suggested Next
 
-Next coherent packet: supervisor should run Step 4 acceptance routing, including
-regression-guard comparison against the existing `test_before.log`, then decide
-whether this validation slice is ready to commit or needs broader proof.
+Next coherent packet: supervisor should make the Step 4 acceptance review and
+baseline decision for Idea 136. Decide whether the repaired slice can be
+accepted and committed under the rejected baseline context, or whether broader
+proof / additional repair is still required before closure.
 
 ## Watchouts
 
-- This packet was validation and todo recording only; no implementation files,
-  tests, `plan.md`, idea files, review artifacts, or baseline logs were touched.
+- This lifecycle update only advances the canonical Step pointer; no
+  implementation files, tests, `plan.md`, idea files, review artifacts, or
+  baseline logs were touched.
 - The proof covers repaired template typedef/trait regressions, deferred NTTP
   static-member cases, member-owner HIR helpers, static-member lookup runtime
   cases, namespace/out-of-class owner routing cases, and nearby operator/member
   access coverage selected by the supervisor.
-- Lifecycle closure remains out of scope for this executor packet.
+- Lifecycle closure remains out of scope until the Step 4 acceptance and
+  baseline decision passes.
 
 ## Proof
 
@@ -43,3 +49,6 @@ cmake --build build --target c4cll frontend_hir_tests frontend_hir_lookup_tests 
 
 Result: passed. The build completed and the focused CTest subset passed 48/48
 with 0 failures. `test_after.log` is the proof log.
+
+Supervisor guard result for validation commit `6d6ece99`: passed 48/48 before
+and 48/48 after.
