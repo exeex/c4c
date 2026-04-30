@@ -3,32 +3,36 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4.4.3
-Current Step Title: Convert C-Style Cast Type-Id Member-Typedef Consumer
+Current Step ID: Step 2.4.4.4
+Current Step Title: Shrink Or Delete The Member-Typedef Mirror
 
 ## Just Finished
 
-Step 2.4.4.3 converted the C-style cast/type-id qualified typedef consumer for
-non-template record-body member typedefs to structured record/member metadata.
-`probe_qualified_type` now recognizes `Owner::Member` through the resolved
-record definition's member typedef arrays, and `try_parse_qualified_base_type`
-materializes that `TypeSpec` directly instead of feeding the rendered
-`owner::member` spelling back through the generic typedef table. A focused
-parser regression removes the rendered `Box::AliasL` / `Box::AliasR` mirrors
-before parsing `(Box::AliasL)x` and `(Box::AliasR)x`.
+Step 2.4.4.4 deleted the obsolete public
+`register_struct_member_typedef_binding` rendered writer/helper and its private
+key builder. `register_record_member_typedef_bindings` no longer creates
+generic rendered `owner::member` typedef storage for ordinary non-template
+record-body member typedefs; those now publish through the structured
+record/member key only. The record-body writer retains an explicit, commented
+dependent/template compatibility bridge because deleting that path regressed
+template alias/member-typedef parse/runtime cases.
 
 ## Suggested Next
 
-Proceed to Step 2.4.4.4: retry deleting the record-body rendered scoped typedef
-writer in `register_record_member_typedef_bindings`, then prove the previous
-`Box::AliasL` / `Box::AliasR` failure mode remains green without the mirror.
+Proceed to the next member-typedef mirror shrink by replacing the remaining
+dependent/template compatibility bridge with a structured metadata carrier for
+template primary/specialization member typedef lookup.
 
 ## Watchouts
 
-The new consumer is deliberately limited to non-template record definitions.
-Dependent/template member typedef paths still use their existing deferred and
-template-instantiation routes; do not broaden this probe while deleting the
-record-body mirror.
+Deleting the rendered writer for all records regressed
+`cpp_positive_sema_eastl_slice7_piecewise_ctor_parse_cpp`,
+`cpp_positive_sema_step3_timeout_probe_baseline_parse_cpp`,
+`cpp_positive_sema_tuple_element_alias_mix_parse_cpp`, and
+`cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`.
+The remaining semantic consumer is the dependent/template member-typedef path:
+template records need a structured carrier available during body finalization
+before the post-parse template parameter attachment runs.
 
 ## Proof
 

@@ -2330,7 +2330,13 @@ void register_record_member_typedef_bindings(Parser& parser, Node* sd,
             parser.register_structured_typedef_binding(
                 key, sd->member_typedef_types[i]);
         }
-        if (source_tag && source_tag[0]) {
+        const bool has_template_dependent_context =
+            sd->n_template_params > 0 ||
+            (sd->template_origin_name && sd->template_origin_name[0]) ||
+            !parser.template_state_.template_scope_stack.empty();
+        if (has_template_dependent_context && source_tag && source_tag[0]) {
+            // Legacy dependent/template compatibility bridge. Non-template
+            // record member typedefs are published through the structured key.
             std::string scoped_name(source_tag);
             scoped_name += "::";
             scoped_name += member_name;

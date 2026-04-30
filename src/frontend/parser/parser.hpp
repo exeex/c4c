@@ -373,9 +373,6 @@ class Parser {
                                  const char* tag,
                                  TypeBase enum_underlying_base = TB_VOID);
   void cache_typedef_type(const std::string& name, const TypeSpec& type);
-  void register_struct_member_typedef_binding(std::string_view owner_name,
-                                              std::string_view member_name,
-                                              const TypeSpec& type);
   void register_template_instantiation_member_typedef_binding(
       const ParserTemplateState::TemplateInstantiationKey& concrete_owner,
       TextId member_text_id, const TypeSpec& type);

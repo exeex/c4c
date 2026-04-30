@@ -2360,6 +2360,16 @@ void test_parser_record_body_member_typedef_writers_register_direct_keys() {
   stale_rendered_ts.array_size = -1;
   stale_rendered_ts.inner_rank = -1;
   stale_rendered_ts.base = c4c::TB_DOUBLE;
+  expect_true(parser.binding_state_.non_atom_typedef_types.count(
+                  parser.parser_text_id_for_token(c4c::kInvalidText,
+                                                  "ns::Owner::UsingMember")) ==
+                  0,
+              "record-body member typedef writer should not create rendered using-member storage");
+  expect_true(parser.binding_state_.non_atom_typedef_types.count(
+                  parser.parser_text_id_for_token(c4c::kInvalidText,
+                                                  "ns::Owner::TypedefMember")) ==
+                  0,
+              "record-body member typedef writer should not create rendered typedef-member storage");
   parser.register_typedef_binding(
       parser.parser_text_id_for_token(c4c::kInvalidText,
                                       "ns::Owner::UsingMember"),
@@ -2411,10 +2421,14 @@ void test_parser_c_style_cast_member_typedef_uses_structured_metadata() {
   expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
               "member typedef cast fixture should parse the record body");
 
-  parser.unregister_typedef_binding(
-      parser.parser_text_id_for_token(c4c::kInvalidText, "Box::AliasL"));
-  parser.unregister_typedef_binding(
-      parser.parser_text_id_for_token(c4c::kInvalidText, "Box::AliasR"));
+  expect_true(parser.binding_state_.non_atom_typedef_types.count(
+                  parser.parser_text_id_for_token(c4c::kInvalidText,
+                                                  "Box::AliasL")) == 0,
+              "record-body member typedef writer should not create rendered AliasL storage");
+  expect_true(parser.binding_state_.non_atom_typedef_types.count(
+                  parser.parser_text_id_for_token(c4c::kInvalidText,
+                                                  "Box::AliasR")) == 0,
+              "record-body member typedef writer should not create rendered AliasR storage");
 
   c4c::Token seed{};
   parser.replace_token_stream_for_testing({
@@ -2535,8 +2549,10 @@ void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
   stale_rendered_ts.array_size = -1;
   stale_rendered_ts.inner_rank = -1;
   stale_rendered_ts.base = c4c::TB_DOUBLE;
-  parser.register_struct_member_typedef_binding("Box_Payload", "Alias",
-                                                stale_rendered_ts);
+  parser.register_typedef_binding(
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "Box_Payload::Alias"),
+      stale_rendered_ts, true);
   box_ts.record_def->member_typedef_types[0] = stale_rendered_ts;
 
   parser.replace_token_stream_for_testing({
