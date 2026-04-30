@@ -220,6 +220,10 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
   if (base_ts.base != TB_STRUCT || base_ts.ptr_level != 0 || base_ts.array_rank != 0) {
     return std::nullopt;
   }
+  const bool has_structured_owner_identity =
+      base_ts.record_def ||
+      (base_ts.tpl_struct_origin && base_ts.tpl_struct_origin[0]) ||
+      (base_ts.tpl_struct_args.data && base_ts.tpl_struct_args.size > 0);
 
   auto try_structured_record_owner_tag = [&]() -> std::optional<std::string> {
     if (!base_ts.record_def || base_ts.record_def->kind != NK_STRUCT_DEF) {
@@ -271,7 +275,8 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
   if (auto owner_tag = try_structured_record_owner_tag()) return owner_tag;
   if (auto owner_tag = try_structured_template_owner_tag()) return owner_tag;
 
-  if ((!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) &&
+  if (!has_structured_owner_identity &&
+      (!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) &&
       base_ts.tag && base_ts.tag[0] &&
       current_struct_tag && !current_struct_tag->empty()) {
     const std::string raw_tag = base_ts.tag;
@@ -293,7 +298,8 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
     realize_template_struct_if_needed(base_ts, empty_tb, empty_nb);
   }
 
-  if (base_ts.tag && base_ts.tag[0] && module_->struct_defs.count(base_ts.tag)) {
+  if (!has_structured_owner_identity &&
+      base_ts.tag && base_ts.tag[0] && module_->struct_defs.count(base_ts.tag)) {
     return std::string(base_ts.tag);
   }
   return std::nullopt;

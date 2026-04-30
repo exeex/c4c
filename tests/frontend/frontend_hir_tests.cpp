@@ -1864,6 +1864,147 @@ void test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag() {
               "template-origin owner lookup should return a realized HIR struct tag");
 }
 
+void test_hir_member_owner_lookup_record_def_failure_does_not_use_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleFailedOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleFailedOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* unresolved_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  unresolved_record->name = arena.strdup("UnresolvedOwner");
+  unresolved_record->unqualified_name = arena.strdup("UnresolvedOwner");
+  unresolved_record->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::TypeSpec base{};
+  base.array_size = -1;
+  base.inner_rank = -1;
+  base.base = c4c::TB_STRUCT;
+  base.tag = arena.strdup("StaleFailedOwner");
+  base.record_def = unresolved_record;
+
+  const std::optional<std::string> owner_tag =
+      lowerer.resolve_member_lookup_owner_tag(
+          base, false, nullptr, nullptr, nullptr, nullptr,
+          "member-owner-record-def-failure-test");
+
+  expect_true(!owner_tag.has_value(),
+              "member owner lookup must not return a stale rendered tag when record_def identity fails to resolve");
+}
+
+void test_hir_member_owner_lookup_template_args_failure_does_not_use_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleTemplateArgsOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleTemplateArgsOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec base{};
+  base.array_size = -1;
+  base.inner_rank = -1;
+  base.base = c4c::TB_STRUCT;
+  base.tag = arena.strdup("StaleTemplateArgsOwner");
+  base.tpl_struct_args.size = 1;
+  base.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  base.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
+  base.tpl_struct_args.data[0].type.array_size = -1;
+  base.tpl_struct_args.data[0].type.inner_rank = -1;
+  base.tpl_struct_args.data[0].type.base = c4c::TB_INT;
+
+  const std::optional<std::string> owner_tag =
+      lowerer.resolve_member_lookup_owner_tag(
+          base, false, nullptr, nullptr, nullptr, nullptr,
+          "member-owner-template-args-failure-test");
+
+  expect_true(!owner_tag.has_value(),
+              "member owner lookup must not return a stale rendered tag when structured template args fail to resolve");
+}
+
+void test_hir_member_expr_owner_failure_does_not_use_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* unresolved_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  unresolved_record->name = arena.strdup("UnresolvedMemberExprOwner");
+  unresolved_record->unqualified_name = arena.strdup("UnresolvedMemberExprOwner");
+  unresolved_record->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+  const c4c::MemberSymbolId stale_id =
+      module.member_symbols.intern("StaleMemberExprOwner::field");
+
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "field";
+  stale_field.field_text_id = module.link_name_texts->intern("field");
+  stale_field.elem_type = int_ts;
+  stale_field.member_symbol_id = stale_id;
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleMemberExprOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleMemberExprOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleMemberExprOwner");
+  owner_ts.record_def = unresolved_record;
+
+  c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
+  obj->name = arena.strdup("obj");
+  obj->type = owner_ts;
+  c4c::Node* member = parser.make_node(c4c::NK_MEMBER, 1);
+  member->left = obj;
+  member->name = arena.strdup("field");
+  member->type = int_ts;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  const c4c::hir::LocalId obj_local{0};
+  ctx.locals["obj"] = obj_local;
+  ctx.local_types.insert(obj_local, owner_ts);
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_expr(&ctx, member);
+  expect_true(expr_id.valid(), "member expression lowering should produce an expression");
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  expect_true(expr != nullptr, "member expression lowering should append an expression");
+  const c4c::hir::MemberExpr* member_expr =
+      expr ? std::get_if<c4c::hir::MemberExpr>(&expr->payload) : nullptr;
+  expect_true(member_expr != nullptr,
+              "member expression lowering should produce a MemberExpr payload");
+  expect_true(member_expr->resolved_owner_tag != "StaleMemberExprOwner" &&
+                  member_expr->member_symbol_id != stale_id,
+              "member expression lowering must not select stale rendered owner metadata after structured owner failure");
+}
+
 void test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -4635,6 +4776,9 @@ int main() {
   test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag();
   test_hir_member_owner_lookup_prefers_record_def_over_stale_tag();
   test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag();
+  test_hir_member_owner_lookup_record_def_failure_does_not_use_stale_tag();
+  test_hir_member_owner_lookup_template_args_failure_does_not_use_stale_tag();
+  test_hir_member_expr_owner_failure_does_not_use_stale_tag();
   test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag();
