@@ -2406,6 +2406,80 @@ void test_parser_record_body_member_typedef_writers_register_direct_keys() {
               "qualified member typedef reader should use the direct record/member key before stale rendered storage");
 }
 
+void test_parser_template_record_member_typedef_writer_registers_dependent_key() {
+  c4c::Lexer lexer("namespace ns {\n"
+                   "template <typename T>\n"
+                   "struct Owner {\n"
+                   "  using Member = T;\n"
+                   "};\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "template record member typedef carrier fixture should parse");
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context =
+      parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const c4c::TextId owner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Owner");
+  const c4c::TextId member_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Member");
+  const c4c::TextId param_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "T");
+  const c4c::QualifiedNameKey member_key =
+      parser.record_member_typedef_key_in_context(ns_context, owner_text,
+                                                  member_text);
+
+  const c4c::TypeSpec* dependent_member =
+      parser.find_dependent_record_member_typedef_type(member_key);
+  expect_true(dependent_member != nullptr &&
+                  dependent_member->base == c4c::TB_TYPEDEF &&
+                  dependent_member->tag != nullptr &&
+                  parser.find_parser_text_id(dependent_member->tag) ==
+                      param_text,
+              "template record member typedef writer should register a dependent record/member key");
+
+  c4c::TypeSpec stale_rendered_ts{};
+  stale_rendered_ts.array_size = -1;
+  stale_rendered_ts.inner_rank = -1;
+  stale_rendered_ts.base = c4c::TB_DOUBLE;
+  parser.register_typedef_binding(
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "ns::Owner::Member"),
+      stale_rendered_ts, true);
+
+  const c4c::TypeSpec* resolved_member = parser.find_typedef_type(member_key);
+  expect_true(resolved_member != nullptr &&
+                  resolved_member->base == c4c::TB_TYPEDEF &&
+                  resolved_member->tag != nullptr &&
+                  parser.find_parser_text_id(resolved_member->tag) ==
+                      param_text,
+              "dependent record/member carrier should win over stale rendered typedef storage");
+
+  c4c::Parser::QualifiedNameRef member_qn;
+  member_qn.qualifier_segments = {"ns", "Owner"};
+  member_qn.qualifier_text_ids = {ns_text, owner_text};
+  member_qn.base_name = "Member";
+  member_qn.base_text_id = member_text;
+  const c4c::Parser::VisibleNameResult visible_member =
+      parser.resolve_qualified_type(member_qn);
+  const c4c::TypeSpec* visible_member_type =
+      parser.find_typedef_type(visible_member.key);
+  expect_true(visible_member_type != nullptr &&
+                  visible_member_type->base == c4c::TB_TYPEDEF &&
+                  visible_member_type->tag != nullptr &&
+                  parser.find_parser_text_id(visible_member_type->tag) ==
+                      param_text,
+              "qualified type lookup should consume the dependent record/member carrier");
+}
+
 void test_parser_c_style_cast_member_typedef_uses_structured_metadata() {
   c4c::Lexer lexer("struct Box {\n"
                    "  using AliasL = int&;\n"
@@ -5856,6 +5930,7 @@ int main() {
   test_parser_qualified_functional_cast_owner_requires_structured_authority();
   test_parser_qualified_member_typedef_lookup_requires_structured_metadata();
   test_parser_record_body_member_typedef_writers_register_direct_keys();
+  test_parser_template_record_member_typedef_writer_registers_dependent_key();
   test_parser_c_style_cast_member_typedef_uses_structured_metadata();
   test_parser_template_instantiation_member_typedef_uses_concrete_key();
   test_parser_namespace_typedef_registration_stays_namespace_scoped();

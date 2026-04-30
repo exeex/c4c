@@ -649,7 +649,7 @@ bool Parser::has_typedef_type(TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
     if (name.find("::") != std::string_view::npos) {
         const QualifiedNameKey key = known_fn_name_key(0, name_text_id);
-        if (has_structured_typedef_type(key)) return true;
+        if (find_typedef_type(key)) return true;
     }
     if (!uses_symbol_identity(name)) {
         return name_text_id != kInvalidText &&
@@ -664,7 +664,7 @@ const TypeSpec* Parser::find_typedef_type(TextId name_text_id) const {
     if (name.empty()) return nullptr;
     if (name.find("::") != std::string_view::npos) {
         const QualifiedNameKey key = known_fn_name_key(0, name_text_id);
-        if (const TypeSpec* structured = find_structured_typedef_type(key)) {
+        if (const TypeSpec* structured = find_typedef_type(key)) {
             return structured;
         }
     }
@@ -681,6 +681,10 @@ const TypeSpec* Parser::find_typedef_type(TextId name_text_id) const {
 const TypeSpec* Parser::find_typedef_type(const QualifiedNameKey& key) const {
     if (const TypeSpec* structured = find_structured_typedef_type(key)) {
         return structured;
+    }
+    if (const TypeSpec* dependent_member =
+            find_dependent_record_member_typedef_type(key)) {
+        return dependent_member;
     }
     return nullptr;
 }
@@ -1027,6 +1031,12 @@ void Parser::register_template_instantiation_member_typedef_binding(
     template_state_.template_instantiation_member_typedefs_by_key[key] = type;
 }
 
+void Parser::register_dependent_record_member_typedef_binding(
+    const QualifiedNameKey& key, const TypeSpec& type) {
+    if (key.base_text_id == kInvalidText) return;
+    template_state_.dependent_record_member_typedefs_by_key[key] = type;
+}
+
 void Parser::register_structured_typedef_binding(
     const QualifiedNameKey& key, const TypeSpec& type) {
     if (key.base_text_id == kInvalidText) return;
@@ -1209,6 +1219,16 @@ QualifiedNameKey Parser::record_member_typedef_key_in_context(
         record_key.qualifier_path_id, record_key.base_text_id);
     key.base_text_id = member_text_id;
     return key;
+}
+
+const TypeSpec* Parser::find_dependent_record_member_typedef_type(
+    const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    const auto it =
+        template_state_.dependent_record_member_typedefs_by_key.find(key);
+    return it == template_state_.dependent_record_member_typedefs_by_key.end()
+               ? nullptr
+               : &it->second;
 }
 
 const TypeSpec* Parser::find_template_instantiation_member_typedef_type(
@@ -2709,7 +2729,7 @@ Parser::VisibleNameResult Parser::resolve_qualified_type(
     }
 
     const QualifiedNameKey direct_key = find_qualified_name_key(*this, name);
-    if (find_structured_typedef_type(direct_key)) {
+    if (find_typedef_type(direct_key)) {
         VisibleNameResult result;
         result.found = true;
         result.kind = VisibleNameKind::Type;
@@ -2879,7 +2899,7 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
     if (name_text_id == kInvalidText) return false;
     const QualifiedNameKey candidate_key =
         struct_typedef_key_in_context(context_id, name_text_id);
-    if (find_structured_typedef_type(candidate_key)) {
+    if (find_typedef_type(candidate_key)) {
         resolved->found = true;
         resolved->kind = VisibleNameKind::Type;
         resolved->key = candidate_key;

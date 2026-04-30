@@ -732,7 +732,7 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
         const std::string resolved =
             parser.visible_name_spelling(resolved_type);
         if (resolved_type &&
-            (parser.find_structured_typedef_type(resolved_type.key) ||
+            (parser.find_typedef_type(resolved_type.key) ||
              (resolved_type.source != Parser::VisibleNameSource::Fallback &&
               visible_type_result_has_structured_record_definition(
                   parser, resolved_type)))) {
