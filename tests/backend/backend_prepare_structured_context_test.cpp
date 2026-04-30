@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 namespace {
@@ -448,6 +449,62 @@ int check_aggregate_projection_prefers_structured_layout_table() {
   return 0;
 }
 
+int check_aggregate_initializer_prefers_structured_layout_table() {
+  using c4c::backend::lir_to_bir_detail::BackendStructuredLayoutTable;
+  using c4c::backend::lir_to_bir_detail::GlobalAddress;
+  using c4c::backend::lir_to_bir_detail::build_backend_structured_layout_table;
+  using c4c::backend::lir_to_bir_detail::build_type_decl_map;
+  using c4c::backend::lir_to_bir_detail::lower_aggregate_initializer;
+
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = pair_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+
+  const auto mismatched_legacy_decls =
+      build_type_decl_map({"%struct.Pair = type { i64, i64 }"});
+  const auto structured_table = build_backend_structured_layout_table(
+      module.struct_decls, module.struct_names, mismatched_legacy_decls);
+
+  std::unordered_map<std::size_t, GlobalAddress> structured_pointer_offsets;
+  const auto structured_initializer = lower_aggregate_initializer(
+      "{ i32 1, i32 2 }",
+      "%struct.Pair",
+      mismatched_legacy_decls,
+      structured_table,
+      &structured_pointer_offsets);
+  if (!structured_initializer.has_value() || structured_initializer->size() != 2 ||
+      (*structured_initializer)[0] != bir::Value::immediate_i32(1) ||
+      (*structured_initializer)[1] != bir::Value::immediate_i32(2) ||
+      !structured_pointer_offsets.empty()) {
+    return fail("structured-present aggregate initializer did not use structured layout authority");
+  }
+
+  const BackendStructuredLayoutTable empty_structured_table;
+  std::unordered_map<std::size_t, GlobalAddress> fallback_pointer_offsets;
+  const auto fallback_initializer = lower_aggregate_initializer(
+      "{ i64 1, i64 2 }",
+      "%struct.Pair",
+      mismatched_legacy_decls,
+      empty_structured_table,
+      &fallback_pointer_offsets);
+  if (!fallback_initializer.has_value() || fallback_initializer->size() != 2 ||
+      (*fallback_initializer)[0] != bir::Value::immediate_i64(1) ||
+      (*fallback_initializer)[1] != bir::Value::immediate_i64(2) ||
+      !fallback_pointer_offsets.empty()) {
+    return fail("structured-missing aggregate initializer did not preserve legacy fallback");
+  }
+
+  return 0;
+}
+
 int check_block_label_rendering_prefers_structured_identity() {
   bir::Module module;
   const c4c::BlockLabelId entry_id = module.names.block_labels.intern("entry");
@@ -769,6 +826,10 @@ int main() {
     return status;
   }
   if (const int status = check_aggregate_projection_prefers_structured_layout_table();
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_aggregate_initializer_prefers_structured_layout_table();
       status != 0) {
     return status;
   }
