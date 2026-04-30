@@ -8,28 +8,29 @@ Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 
 ## Just Finished
 
-Step 2 removed the parser string lookup overload family
-`find_identifier(std::string_view)` from `ParserSymbolTable` and
-`ParserNameTables`. The remaining parser name-table lookup caller now uses its
-parser-owned `TextId`, and the parser fixture assertions check symbol lookup
-through `TextId` values instead of rendered strings.
+Step 2 collapsed the parser template-scope type-parameter semantic lookup to
+`Parser::is_template_scope_type_param(TextId)`. Production and test callers now
+pass existing parser-owned `TextId` values, and the rendered `TypeSpec`/debug
+text scan no longer recovers template-parameter identity from spelling.
 
 ## Suggested Next
 
 Supervisor can review and commit this Step 2 parser API slice, then choose the
-next parser rendered-string compatibility route still outside the removed
-parser name-table lookup overload path.
+next parser rendered-string semantic lookup route still outside the removed
+template-scope type-parameter lookup path.
 
 ## Watchouts
 
-`ParserSymbolTable::intern_identifier(std::string_view)` and
-`ParserNameTables::intern_identifier(std::string_view)` remain because this
-packet only owned removal of semantic lookup overloads. Other projection bridges
-that intentionally accept rendered spelling were left untouched.
+The revised slice touched two additional parser call-site files
+(`src/frontend/parser/impl/declarations.cpp` and
+`src/frontend/parser/impl/types/types_helpers.hpp`) because collapsing the API
+signature required updating all production callers. The delegated subset stayed
+green after removing the rendered-text scan.
 
 ## Proof
 
 Ran delegated proof:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
 
-Result: passed, 927/927 tests green. Proof log: `test_after.log`.
+Result: passed, 927/927 tests green after the one-argument API revision. Proof
+log: `test_after.log`.

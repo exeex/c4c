@@ -419,7 +419,7 @@ bool instantiate_template_struct_via_injected_parse(
 bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
                                std::string_view name) {
     if (match_floatn_keyword_base(name, nullptr)) return true;
-    if (parser.is_template_scope_type_param(name_text_id, name)) return true;
+    if (parser.is_template_scope_type_param(name_text_id)) return true;
     if (parser.is_typedef_name(name_text_id)) return true;
     if (parser.has_visible_typedef_type(name_text_id)) return true;
     const std::string resolved =
@@ -445,7 +445,7 @@ bool is_known_simple_visible_type_head(const Parser& parser,
                                        TextId name_text_id,
                                        std::string_view name) {
     return parser.is_typedef_name(name_text_id) ||
-           parser.is_template_scope_type_param(name_text_id, name) ||
+           parser.is_template_scope_type_param(name_text_id) ||
            parser.has_visible_typedef_type(name_text_id);
 }
 

@@ -2789,7 +2789,7 @@ Node* parse_top_level(Parser& parser) {
             if (parser.check(TokenKind::Identifier)) {
                 const TextId name_text_id = parser.cur().text_id;
                 const std::string spelled = std::string(parser.token_spelling(parser.cur()));
-                if (parser.is_template_scope_type_param(name_text_id, spelled)) {
+                if (parser.is_template_scope_type_param(name_text_id)) {
                     base_ts.array_size = -1;
                     base_ts.array_rank = 0;
                     for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;

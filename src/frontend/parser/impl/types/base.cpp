@@ -1904,39 +1904,8 @@ TypeSpec Parser::parse_base_type() {
                                     };
                                 auto type_mentions_template_scope_param =
                                     [&](const TypeSpec& type) -> bool {
-                                        auto text_mentions_template_scope_param =
-                                            [&](const char* text) -> bool {
-                                                if (!text || !text[0]) return false;
-                                                const char* cur = text;
-                                                while (*cur) {
-                                                    if (std::isalpha(
-                                                            static_cast<unsigned char>(*cur)) ||
-                                                        *cur == '_') {
-                                                        const char* start = cur++;
-                                                        while (std::isalnum(
-                                                                   static_cast<unsigned char>(*cur)) ||
-                                                               *cur == '_') {
-                                                            ++cur;
-                                                        }
-                                                        if (is_template_scope_type_param(
-                                                                std::string(
-                                                                    start,
-                                                                    static_cast<size_t>(cur - start)))) {
-                                                            return true;
-                                                        }
-                                                        continue;
-                                                    }
-                                                    ++cur;
-                                                }
-                                                return false;
-                                            };
                                         std::function<bool(const TypeSpec&)> type_mentions_dep_params =
                                             [&](const TypeSpec& inner) -> bool {
-                                                if (text_mentions_template_scope_param(inner.tag) ||
-                                                    text_mentions_template_scope_param(
-                                                        inner.deferred_member_type_name)) {
-                                                    return true;
-                                                }
                                                 if (!inner.tpl_struct_args.data ||
                                                     inner.tpl_struct_args.size <= 0) {
                                                     return false;
@@ -1947,10 +1916,6 @@ TypeSpec Parser::parse_base_type() {
                                                         inner.tpl_struct_args.data[ai];
                                                     if (arg.kind == TemplateArgKind::Type &&
                                                         type_mentions_dep_params(arg.type)) {
-                                                        return true;
-                                                    }
-                                                    if (text_mentions_template_scope_param(
-                                                            arg.debug_text)) {
                                                         return true;
                                                     }
                                                 }
@@ -2412,7 +2377,7 @@ TypeSpec Parser::parse_base_type() {
                 // We only need to consume the argument list and keep the
                 // dependent name as a placeholder type for later stages.
                 if (is_cpp_mode() && tname &&
-                    is_template_scope_type_param(tname) &&
+                    is_template_scope_type_param(tname_text_id) &&
                     check(TokenKind::Less)) {
                     std::vector<TemplateArgParseResult> ignored_args;
                     if (parse_template_argument_list(&ignored_args)) {

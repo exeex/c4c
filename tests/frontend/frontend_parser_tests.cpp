@@ -2951,9 +2951,10 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
+  const c4c::TextId param_text = texts.intern("T");
   parser.push_template_scope(
       c4c::Parser::TemplateScopeKind::FreeFunctionTemplate,
-      {{.name = "T", .is_nttp = false}});
+      {{.name_text_id = param_text, .name = "T", .is_nttp = false}});
   parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "T"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
@@ -2984,17 +2985,12 @@ void test_parser_template_scope_type_param_prefers_text_id_over_spelling() {
       c4c::Parser::TemplateScopeKind::FreeFunctionTemplate,
       {{.name_text_id = param_text, .name = "corrupted"}});
 
-  expect_true(parser.is_template_scope_type_param(param_text, "corrupted"),
-              "template-scope lookup should match the semantic TextId even when spelling is stale");
-  expect_true(!parser.is_template_scope_type_param(other_text, "T"),
-              "template-scope lookup should not fall back to spelling when a TextId is already available");
-  parser.pop_template_scope();
-
-  parser.push_template_scope(
-      c4c::Parser::TemplateScopeKind::FreeFunctionTemplate,
-      {{.name = "T"}});
-  expect_true(parser.is_template_scope_type_param("T"),
-              "spelling-only template-scope lookups should still work when no TextId is available");
+  expect_true(parser.is_template_scope_type_param(param_text),
+              "template-scope lookup should match the semantic TextId");
+  expect_true(!parser.is_template_scope_type_param(other_text),
+              "template-scope lookup should not recover identity from spelling");
+  expect_true(!parser.is_template_scope_type_param(c4c::kInvalidText),
+              "template-scope lookup should reject missing structured metadata");
   parser.pop_template_scope();
 }
 

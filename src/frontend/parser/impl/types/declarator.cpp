@@ -28,38 +28,17 @@ void Parser::pop_template_scope() {
         template_state_.template_scope_stack.pop_back();
 }
 
-bool Parser::is_template_scope_type_param(TextId name_text_id,
-                                          std::string_view name) const {
-    bool saw_text_id_param = false;
+bool Parser::is_template_scope_type_param(TextId name_text_id) const {
+    if (name_text_id == kInvalidText) return false;
     // Walk from innermost scope to outermost.
     for (int i = static_cast<int>(template_state_.template_scope_stack.size()) - 1;
          i >= 0; --i) {
         for (const auto& p : template_state_.template_scope_stack[i].params) {
             if (p.is_nttp) continue;
-            if (p.name_text_id != kInvalidText) {
-                saw_text_id_param = true;
-                if (name_text_id != kInvalidText && p.name_text_id == name_text_id) {
-                    return true;
-                }
-            }
-        }
-    }
-    if (name_text_id != kInvalidText && saw_text_id_param) return false;
-    if (name.empty()) return false;
-    // Only spelling-based params remain in scope, so keep the legacy holdout
-    // path available for callers that do not have a semantic TextId.
-    for (int i = static_cast<int>(template_state_.template_scope_stack.size()) - 1;
-         i >= 0; --i) {
-        for (const auto& p : template_state_.template_scope_stack[i].params) {
-            if (p.is_nttp) continue;
-            if (p.name && name == p.name) return true;
+            if (p.name_text_id == name_text_id) return true;
         }
     }
     return false;
-}
-
-bool Parser::is_template_scope_type_param(std::string_view name) const {
-    return is_template_scope_type_param(find_parser_text_id(name), name);
 }
 
 bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
@@ -171,7 +150,7 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
                 token_spelling(core_input_state_.tokens[start_pos]);
             if (!is_typedef_name(start_text_id) &&
                 !has_visible_typedef_type(start_text_id) &&
-                !is_template_scope_type_param(start_text_id, start_name)) {
+                !is_template_scope_type_param(start_text_id)) {
                 return false;
             }
         }
