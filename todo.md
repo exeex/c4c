@@ -8,20 +8,22 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired a bounded consteval `TypeSpec` metadata producer route:
-`TypeSpec` now carries parser-owned `tag_text_id` metadata for typedef/template
-parameter names, synthesized template-parameter typedef bindings populate that
-carrier, and consteval type binding resolution can use `TypeSpec::tag_text_id`
-directly against `type_bindings_by_text` without rendered-name-to-`TextId`
-mirror maps for `sizeof(T)`-style template parameter TypeSpecs. Focused tests
-cover parser preservation of the carrier and consteval lookup with a stale
-rendered `TypeSpec::tag` while no rendered-name text mirror is installed.
+Step 3.1 repaired the bounded structured consteval `TypeSpec` carrier route
+for function-template type parameters: `TypeSpec` now carries the owning
+template namespace, owner `TextId`, parameter index, and parameter `TextId`
+for parsed `sizeof(T)`-style template parameter references, and consteval type
+binding resolution can build `TypeBindingStructuredKey` directly from that
+intrinsic carrier before consulting rendered-name-to-key mirrors. Focused tests
+cover parser preservation of the owner/index carrier and consteval lookup with
+a stale rendered `TypeSpec::tag`, no `type_binding_keys_by_name`, and no
+`type_bindings_by_text` map.
 
 ## Suggested Next
 
 Continue Step 3.1 with one bounded metadata-producer packet for any remaining
-synthetic local or qualified/structured `TypeSpec` carrier gap before
-attempting broad consteval rendered-fallback deletion.
+synthetic local or qualified `TypeSpec` carrier gap not covered by the
+function-template type-parameter owner/index route before attempting broad
+consteval rendered-fallback deletion.
 
 ## Watchouts
 
@@ -41,10 +43,10 @@ attempting broad consteval rendered-fallback deletion.
   metadata remain compatibility candidates; do not collapse those routes until
   their producers carry equivalent structured metadata.
 - Consteval `TypeSpec` resolution no longer needs rendered-name-to-`TextId`
-  mirror maps for the covered unqualified template-parameter `sizeof(T)` route,
-  but structured-key lookup still uses the existing rendered-name-to-key mirror
-  because `TypeSpec` does not yet carry the function-template owner/parameter
-  index needed to build `TypeBindingStructuredKey` intrinsically.
+  mirror maps or rendered-name-to-key mirrors for the covered unqualified
+  function-template type-parameter `sizeof(T)` route, but compatibility
+  remains for routes whose `TypeSpec` producers do not yet carry equivalent
+  owner/index metadata.
 - Consteval interpreter locals may still need same-spelling rendered
   compatibility for synthetic local producers not covered by parameter,
   condition-local, ordinary-local, or `for`-init local declaration metadata.

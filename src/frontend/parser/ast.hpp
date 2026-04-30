@@ -102,6 +102,10 @@ struct TypeSpec {
     // exists yet.
     const char* tag;         // struct/union/enum tag or typedef name (may be null)
     TextId tag_text_id;      // parser-owned identity for tag/typedef names when available
+    int template_param_owner_namespace_context_id = -1; // owning template namespace for type params
+    TextId template_param_owner_text_id = kInvalidText; // owning function/template TextId for type params
+    int template_param_index = -1; // owning template parameter index, or -1 when not a type param
+    TextId template_param_text_id = kInvalidText; // parser-owned identity for the template parameter
 
     // Cross-stage type contract: parser-owned record identity for structured
     // type names.

@@ -128,15 +128,40 @@ TypeBindingLookupResult lookup_type_binding_by_key(const ConstEvalEnv& env,
   return {TypeBindingLookupStatus::Found, &it->second};
 }
 
+TypeBindingLookupResult lookup_type_binding_by_typespec_key(const ConstEvalEnv& env,
+                                                            const TypeSpec& ts) {
+  if (!env.type_bindings_by_key ||
+      ts.template_param_owner_text_id == kInvalidText ||
+      ts.template_param_index < 0) {
+    return {};
+  }
+  TypeBindingStructuredKey key;
+  key.namespace_context_id = ts.template_param_owner_namespace_context_id;
+  key.template_text_id = ts.template_param_owner_text_id;
+  key.param_index = ts.template_param_index;
+  key.param_text_id = ts.template_param_text_id;
+  auto it = env.type_bindings_by_key->find(key);
+  if (it == env.type_bindings_by_key->end()) {
+    return {TypeBindingLookupStatus::Miss, nullptr};
+  }
+  return {TypeBindingLookupStatus::Found, &it->second};
+}
+
 // Resolve a TypeSpec through type_bindings if it's a TB_TYPEDEF with a known substitution.
 TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (ts.base != TB_TYPEDEF || !ts.tag) return ts;
   const std::string name = ts.tag;
 
+  const TypeBindingLookupResult intrinsic_key =
+      lookup_type_binding_by_typespec_key(env, ts);
+  if (intrinsic_key.status == TypeBindingLookupStatus::Found) return *intrinsic_key.type;
+  bool has_authoritative_metadata =
+      intrinsic_key.status == TypeBindingLookupStatus::Miss;
+
   const TypeBindingLookupResult structured = lookup_type_binding_by_key(env, name);
   if (structured.status == TypeBindingLookupStatus::Found) return *structured.type;
-  bool has_authoritative_metadata =
-      structured.status == TypeBindingLookupStatus::Miss;
+  has_authoritative_metadata =
+      has_authoritative_metadata || structured.status == TypeBindingLookupStatus::Miss;
 
   const TypeBindingLookupResult intrinsic_text =
       lookup_type_binding_by_text_id(env, ts.tag_text_id);

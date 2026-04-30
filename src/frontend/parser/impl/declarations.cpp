@@ -22,6 +22,70 @@
 
 namespace c4c {
 
+static void annotate_template_param_typespec(TypeSpec* ts, const Node* owner) {
+    if (!ts || !owner || ts->base != TB_TYPEDEF ||
+        ts->tag_text_id == kInvalidText || owner->unqualified_text_id == kInvalidText ||
+        owner->n_template_params <= 0 || !owner->template_param_name_text_ids ||
+        !owner->template_param_is_nttp) {
+        return;
+    }
+    for (int i = 0; i < owner->n_template_params; ++i) {
+        if (owner->template_param_is_nttp[i]) continue;
+        if (owner->template_param_name_text_ids[i] != ts->tag_text_id) continue;
+        ts->template_param_owner_namespace_context_id = owner->namespace_context_id;
+        ts->template_param_owner_text_id = owner->unqualified_text_id;
+        ts->template_param_index = i;
+        ts->template_param_text_id = owner->template_param_name_text_ids[i];
+        return;
+    }
+}
+
+static void annotate_template_param_type_refs(TypeSpec* ts, const Node* owner);
+
+static void annotate_template_arg_refs(TemplateArgRefList* refs, const Node* owner) {
+    if (!refs || !refs->data) return;
+    for (int i = 0; i < refs->size; ++i) {
+        if (refs->data[i].kind == TemplateArgKind::Type) {
+            annotate_template_param_type_refs(&refs->data[i].type, owner);
+        }
+    }
+}
+
+static void annotate_template_param_type_refs(TypeSpec* ts, const Node* owner) {
+    if (!ts) return;
+    annotate_template_param_typespec(ts, owner);
+    annotate_template_arg_refs(&ts->tpl_struct_args, owner);
+}
+
+static void annotate_template_param_type_refs(Node* node, const Node* owner) {
+    if (!node) return;
+    annotate_template_param_type_refs(&node->type, owner);
+    if (node->template_param_default_types) {
+        for (int i = 0; i < node->n_template_params; ++i) {
+            annotate_template_param_type_refs(&node->template_param_default_types[i], owner);
+        }
+    }
+    if (node->template_arg_types) {
+        for (int i = 0; i < node->n_template_args; ++i) {
+            annotate_template_param_type_refs(&node->template_arg_types[i], owner);
+        }
+    }
+    for (int i = 0; i < node->n_params; ++i) {
+        annotate_template_param_type_refs(node->params ? node->params[i] : nullptr, owner);
+    }
+    for (int i = 0; i < node->n_children; ++i) {
+        annotate_template_param_type_refs(node->children ? node->children[i] : nullptr, owner);
+    }
+    annotate_template_param_type_refs(node->left, owner);
+    annotate_template_param_type_refs(node->right, owner);
+    annotate_template_param_type_refs(node->cond, owner);
+    annotate_template_param_type_refs(node->then_, owner);
+    annotate_template_param_type_refs(node->else_, owner);
+    annotate_template_param_type_refs(node->body, owner);
+    annotate_template_param_type_refs(node->init, owner);
+    annotate_template_param_type_refs(node->update, owner);
+}
+
 struct ParserFunctionParamScopeGuard {
     Parser* parser = nullptr;
     bool active = false;
@@ -2185,6 +2249,7 @@ Node* parse_top_level(Parser& parser) {
                         idx, std::move(toks));
                 }
             }
+            annotate_template_param_type_refs(n, n);
         };
 
         if (templated && templated->kind == NK_BLOCK) {
