@@ -8,26 +8,35 @@ Current Step Title: Audit Parser Type, Tag, And Member-Typedef Routes
 
 ## Just Finished
 
-Step 2.4 is complete for this packet. The parser type/tag/member-typedef audit
-covered the delegated parser-owned files and found one removable compatibility
-wrapper: the unused `register_struct_member_typedef_binding(const std::string&,
-const TypeSpec&)` overload that split a rendered scoped name into owner/member
-semantic identity. That overload was deleted from `parser.hpp` and `core.cpp`.
+Step 2.4 remains active. The accepted checkpoint at commit `e139897a` removed
+only the unused
+`register_struct_member_typedef_binding(const std::string&, const TypeSpec&)`
+overload that split rendered scoped text into owner/member identity. The live
+`register_struct_member_typedef_binding(owner, member, type)` rendered
+`owner::member` typedef mirror is still reachable and remains the blocker.
 
-The broader `register_struct_member_typedef_binding(owner, member, type)`
-rendered `owner::member` typedef mirror was tested as a possible removal, but
-the delegated proof exposed reachable dependence: removing it caused parser
-timeouts in `eastl_slice7_piecewise_ctor_parse`,
-`step3_timeout_probe_baseline_parse`, and `tuple_element_alias_mix_parse`, plus
-a runtime failure in `template_variable_alias_member_typedef_runtime`. That
-route remains a real Step 2.4 blocker until those consumers are structurally
-routed through owner/member metadata.
+The pending Step 2.4 member-typedef conversion was rejected by
+`review/step2_4_member_typedef_conversion_review.md` and its worktree diff was
+discarded. That rejected route added
+`find_structured_member_typedef_type(std::string_view qualified_name)`, parsed
+rendered qualified text back into owner/member identity, and then tried to
+recover structured record/member lookup from that rendered input. The reviewer
+classified that as route drift because it preserves rendered-string semantic
+rediscovery behind a new wrapper.
 
 ## Suggested Next
 
-Delegate a narrow follow-up for the remaining member-typedef blocker: replace
-the live `owner::member` typedef mirror consumers with structured owner/member
-lookup in parser type parsing before deleting the mirror.
+Delegate a narrow Step 2.4 follow-up for the remaining member-typedef blocker:
+replace the live `owner::member` typedef mirror consumers with lookup that
+starts from an existing structured carrier, then delete or shrink the mirror
+only after the structured route owns those consumers.
+
+Acceptable starting carriers include owner `TypeSpec::record_def`, direct
+record or declaration metadata, member typedef arrays, namespace context id,
+or an already-available `QualifiedNameKey`. The next packet must not introduce
+or rely on a semantic helper that takes rendered `owner::member` text,
+`std::string`, or `std::string_view` and parses it back into owner/member
+identity.
 
 ## Watchouts
 
@@ -40,6 +49,11 @@ typedef maps remain the authority where present.
 Do not remove the live `owner::member` mirror as a standalone deletion; the
 failed exploratory proof showed it is still protecting parser progress and one
 runtime member-typedef case.
+
+Do not revive the rejected route under a different name. A helper such as
+`find_structured_member_typedef_type(std::string_view qualified_name)` is not
+structured progress if its first semantic step is parsing rendered qualified
+lookup text or reconstructing owner/member identity from spelling.
 
 ## Proof
 
