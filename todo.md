@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
 Current Step ID: Step 2.3
@@ -8,25 +8,21 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the value-alias to visible-type rendered-spelling semantic
-re-entry in `resolve_visible_type(...)`. The alias branch now keeps
-`lookup_using_value_alias(...)` results as structured `QualifiedNameKey` and
-target `TextId` metadata, then checks structured typedef, alias-template,
-local typedef, or direct target `TextId` typedef state without projecting
-through `visible_name_spelling(...)` or recovering a `TextId` from rendered
-output.
+Step 2.3 removed the remaining fallback spelling authority from
+`lookup_using_value_alias(...)`. The helper now requires callers to provide an
+existing alias `TextId`, has no `std::string_view` fallback parameter, and no
+longer recovers a missing key with `find_parser_text_id(...)`.
 
-`frontend_parser_tests` now makes a stale rendered `ns::Target` typedef
-disagree with the structured namespace typedef target, proving the structured
-alias metadata wins over the rendered-spelling fallback.
+Production and focused parser-test call sites now pass only `context_id`, the
+alias `TextId`, and the result pointer. `frontend_parser_tests` still covers
+structured alias rejection when the target has no semantic binding, explicit
+valid-`TextId` no-key compatibility aliases, and invalid-`TextId` rejection.
 
 ## Suggested Next
 
-Continue Step 2.3 with the remaining parser semantic lookup APIs that still
-accept spelling/fallback parameters, starting with the smallest route where
-`lookup_value_in_context`, `lookup_type_in_context`, or
-`lookup_concept_in_context` can consume existing structured carriers without
-changing source intent.
+Supervisor can commit this parser API contraction slice, then continue Step
+2.3 with the remaining parser semantic lookup APIs that still accept spelling
+parameters if the active route stays in parser-owned scope.
 
 ## Watchouts
 
@@ -38,9 +34,9 @@ migration into this parser packet; route that through
 `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a narrower HIR
 metadata idea if the supervisor switches scope.
 
-The alias-template metadata check added to the value-alias/type branch is
-structured-key based; do not replace it with a rendered-name probe when
-continuing fallback removal.
+`lookup_using_value_alias(...)` now intentionally rejects `kInvalidText`;
+future callers that lack a valid alias `TextId` need carrier repair rather
+than a rendered spelling lookup path.
 
 ## Proof
 

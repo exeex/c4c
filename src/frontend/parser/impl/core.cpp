@@ -2243,8 +2243,7 @@ Parser::VisibleNameResult Parser::resolve_visible_value(
          i >= 0; --i) {
         const int context_id = namespace_state_.namespace_stack[i];
         VisibleNameResult alias_result;
-        if (lookup_using_value_alias(context_id, name_text_id, spelled,
-                                     &alias_result)) {
+        if (lookup_using_value_alias(context_id, name_text_id, &alias_result)) {
             return alias_result;
         }
         if (lookup_value_in_context(context_id, name_text_id, spelled,
@@ -2330,7 +2329,7 @@ Parser::VisibleNameResult Parser::resolve_visible_type(
          i >= 0; --i) {
         const int context_id = namespace_state_.namespace_stack[i];
         VisibleNameResult resolved_alias_result;
-        if (lookup_using_value_alias(context_id, name_text_id, spelled,
+        if (lookup_using_value_alias(context_id, name_text_id,
                                      &resolved_alias_result)) {
             const QualifiedNameKey& target_key = resolved_alias_result.key;
             const TextId target_text_id = target_key.base_text_id;
@@ -2657,7 +2656,7 @@ Parser::VisibleNameResult Parser::resolve_qualified_value(
 
     VisibleNameResult result;
     VisibleNameResult alias_result;
-    if (lookup_using_value_alias(context_id, name.base_text_id, base_name,
+    if (lookup_using_value_alias(context_id, name.base_text_id,
                                  &alias_result)) {
         return alias_result;
     }
@@ -2710,12 +2709,8 @@ std::string Parser::resolve_qualified_type_name(
 }
 
 bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
-                                      std::string_view fallback_name,
                                       VisibleNameResult* resolved) const {
     if (!resolved) return false;
-    if (name_text_id == kInvalidText) {
-        name_text_id = find_parser_text_id(fallback_name);
-    }
     if (name_text_id == kInvalidText) return false;
 
     const auto alias_it = namespace_state_.using_value_aliases.find(context_id);

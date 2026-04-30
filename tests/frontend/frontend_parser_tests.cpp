@@ -2416,9 +2416,11 @@ void test_parser_using_value_alias_rejects_missing_structured_target_bridge() {
       0, alias_text, target_key, "Bridge");
 
   c4c::Parser::VisibleNameResult resolved;
-  expect_true(!parser.lookup_using_value_alias(0, alias_text, "Alias",
-                                               &resolved),
+  expect_true(!parser.lookup_using_value_alias(0, alias_text, &resolved),
               "structured using value aliases should not resolve through a compatibility bridge when the target key has no value/function binding");
+  resolved = {};
+  expect_true(!parser.lookup_using_value_alias(0, c4c::kInvalidText, &resolved),
+              "using value aliases should require an existing alias TextId instead of recovering one from rendered spelling");
   expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "Alias")) == nullptr,
               "structured using value aliases should not project a compatibility bridge type when the target key is missing");
 
@@ -2437,7 +2439,7 @@ void test_parser_using_value_alias_rejects_missing_structured_target_bridge() {
 
   resolved = {};
   expect_true(parser.lookup_using_value_alias(0, compat_alias_text,
-                                             "CompatAlias", &resolved) &&
+                                             &resolved) &&
                   parser.visible_name_spelling(resolved) == "ExplicitBridge",
               "using value aliases should preserve explicit compatibility-name resolution");
   const c4c::TypeSpec* compat_alias =
