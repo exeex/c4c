@@ -351,22 +351,24 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
               "invalid-key value lookup should not preserve TextId-less fallback compatibility");
   expect_true(parser.find_visible_var_type(c4c::kInvalidText) == nullptr,
               "TextId-less visible value lookup should not preserve legacy cache compatibility");
-  std::string resolved_value_name;
+  c4c::Parser::VisibleNameResult resolved_value;
   expect_true(parser.lookup_value_in_context(0, lookup_value_id,
                                              "valueLookupBridge",
-                                             &resolved_value_name) &&
-                  resolved_value_name == "idFirstLookupValue",
+                                             &resolved_value) &&
+                  parser.visible_name_spelling(resolved_value) ==
+                      "idFirstLookupValue",
               "namespace-visible value lookup should report the TextId spelling over a mismatched fallback");
-  resolved_value_name.clear();
+  resolved_value = {};
   expect_true(!parser.lookup_value_in_context(0, missing_value_id,
                                               "valueLookupBridge",
-                                              &resolved_value_name),
+                                              &resolved_value),
               "namespace-visible value lookup should not promote fallback spelling when a valid TextId lookup misses");
-  resolved_value_name.clear();
+  resolved_value = {};
   expect_true(parser.lookup_value_in_context(0, c4c::kInvalidText,
                                              "valueLookupBridge",
-                                             &resolved_value_name) &&
-                  resolved_value_name == "valueLookupBridge",
+                                             &resolved_value) &&
+                  parser.visible_name_spelling(resolved_value) ==
+                      "valueLookupBridge",
               "namespace-visible value lookup should preserve TextId-less compatibility fallback");
   const c4c::TypeSpec* string_visible_var =
       parser.find_visible_var_type(parser_test_text_id(parser, "valueLookupBridge"));
@@ -395,17 +397,18 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
                                              "namespaceTypeBridge",
                                              &resolved_type_name),
               "namespace-scoped typedef lookup should reject TextId-less rendered fallback storage");
-  resolved_value_name.clear();
+  resolved_value = {};
   expect_true(!parser.lookup_value_in_context(ns_context,
                                               missing_namespace_value_id,
                                               "namespaceValueBridge",
-                                              &resolved_value_name),
+                                              &resolved_value),
               "namespace-scoped value lookup should not promote fallback spelling when a valid TextId lookup misses");
-  resolved_value_name.clear();
+  resolved_value = {};
   expect_true(parser.lookup_value_in_context(ns_context, c4c::kInvalidText,
                                              "namespaceValueBridge",
-                                             &resolved_value_name) &&
-                  resolved_value_name == "idFirstNs::namespaceValueBridge",
+                                             &resolved_value) &&
+                  parser.visible_name_spelling(resolved_value) ==
+                      "idFirstNs::namespaceValueBridge",
               "namespace-scoped value lookup should preserve TextId-less compatibility fallback");
 
   const c4c::QualifiedNameKey value_key =
@@ -1941,13 +1944,17 @@ void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_va
                                              "LegacyOnlyType", &resolved),
               "namespace type lookup should reject TextId-less rendered typedef storage");
 
+  c4c::Parser::VisibleNameResult resolved_value;
   expect_true(!parser.lookup_value_in_context(ns_context, value_text,
-                                              "LegacyOnlyValue", &resolved),
+                                              "LegacyOnlyValue",
+                                              &resolved_value),
               "namespace value lookup should not promote legacy-only rendered names when a valid TextId lookup misses structured storage");
-  resolved.clear();
+  resolved_value = {};
   expect_true(parser.lookup_value_in_context(ns_context, c4c::kInvalidText,
-                                             "LegacyOnlyValue", &resolved) &&
-                  resolved == "ns::LegacyOnlyValue",
+                                             "LegacyOnlyValue",
+                                             &resolved_value) &&
+                  parser.visible_name_spelling(resolved_value) ==
+                      "ns::LegacyOnlyValue",
               "namespace value lookup should preserve TextId-less rendered-name compatibility");
 
   c4c::Parser::QualifiedNameRef qn;
@@ -1966,11 +1973,11 @@ void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_va
   expect_true(!parser.resolve_qualified_value(qn),
               "qualified value resolution should not promote legacy-only rendered names for valid TextIds");
   qn.base_text_id = c4c::kInvalidText;
-  const c4c::Parser::VisibleNameResult resolved_value =
+  const c4c::Parser::VisibleNameResult qualified_value =
       parser.resolve_qualified_value(qn);
-  expect_true(static_cast<bool>(resolved_value),
+  expect_true(static_cast<bool>(qualified_value),
               "qualified value resolution should preserve explicit TextId-less compatibility");
-  expect_eq(parser.visible_name_spelling(resolved_value), "ns::LegacyOnlyValue",
+  expect_eq(parser.visible_name_spelling(qualified_value), "ns::LegacyOnlyValue",
             "qualified value resolution should project explicit TextId-less compatibility spelling");
 
   parser.namespace_state_.using_namespace_contexts[0].push_back(ns_context);
@@ -1979,14 +1986,17 @@ void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_va
                                              "LegacyOnlyType", &resolved),
               "namespace-import type lookup should reject imported legacy rendered typedef storage");
 
-  resolved.clear();
+  resolved_value = {};
   expect_true(!parser.lookup_value_in_context(0, value_text,
-                                              "LegacyOnlyValue", &resolved),
+                                              "LegacyOnlyValue",
+                                              &resolved_value),
               "namespace-import value lookup should not promote imported legacy-only rendered names for valid TextIds");
-  resolved.clear();
+  resolved_value = {};
   expect_true(parser.lookup_value_in_context(0, c4c::kInvalidText,
-                                             "LegacyOnlyValue", &resolved) &&
-                  resolved == "ns::LegacyOnlyValue",
+                                             "LegacyOnlyValue",
+                                             &resolved_value) &&
+                  parser.visible_name_spelling(resolved_value) ==
+                      "ns::LegacyOnlyValue",
               "namespace-import value lookup should preserve TextId-less imported compatibility");
 
   parser.register_structured_typedef_binding_in_context(ns_context, type_text,
@@ -2387,7 +2397,7 @@ void test_parser_using_value_alias_rejects_missing_structured_target_bridge() {
   parser.register_using_value_alias_for_testing(
       0, alias_text, target_key, "Bridge");
 
-  std::string resolved;
+  c4c::Parser::VisibleNameResult resolved;
   expect_true(!parser.lookup_using_value_alias(0, alias_text, "Alias",
                                                &resolved),
               "structured using value aliases should not resolve through a compatibility bridge when the target key has no value/function binding");
@@ -2407,10 +2417,10 @@ void test_parser_using_value_alias_rejects_missing_structured_target_bridge() {
   parser.register_using_value_alias_for_testing(
       0, compat_alias_text, c4c::QualifiedNameKey{}, "ExplicitBridge");
 
-  resolved.clear();
+  resolved = {};
   expect_true(parser.lookup_using_value_alias(0, compat_alias_text,
                                              "CompatAlias", &resolved) &&
-                  resolved == "ExplicitBridge",
+                  parser.visible_name_spelling(resolved) == "ExplicitBridge",
               "using value aliases should preserve explicit compatibility-name resolution");
   const c4c::TypeSpec* compat_alias =
       parser.find_visible_var_type(parser_test_text_id(parser, "CompatAlias"));

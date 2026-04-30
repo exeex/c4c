@@ -2329,9 +2329,12 @@ Parser::VisibleNameResult Parser::resolve_visible_type(
     for (int i = static_cast<int>(namespace_state_.namespace_stack.size()) - 1;
          i >= 0; --i) {
         const int context_id = namespace_state_.namespace_stack[i];
-        std::string resolved_alias;
+        VisibleNameResult resolved_alias_result;
         if (lookup_using_value_alias(context_id, name_text_id, spelled,
-                                     &resolved_alias)) {
+                                     &resolved_alias_result)) {
+            const std::string resolved_alias =
+                visible_name_spelling(resolved_alias_result);
+            if (resolved_alias.empty()) continue;
             const TextId resolved_text_id = find_parser_text_id(resolved_alias);
             if (resolved_alias.find("::") != std::string::npos) {
                 if (has_typedef_type(resolved_text_id)) {
@@ -2777,21 +2780,6 @@ bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
     return !alias.compatibility_name.empty();
 }
 
-// String output overloads are projection bridges over the VisibleNameResult
-// overloads; they do not perform independent semantic lookup.
-bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
-                                      std::string_view fallback_name,
-                                      std::string* resolved) const {
-    if (!resolved) return false;
-    VisibleNameResult result;
-    if (!lookup_using_value_alias(context_id, name_text_id, fallback_name,
-                                  &result)) {
-        return false;
-    }
-    *resolved = visible_name_spelling(result);
-    return !resolved->empty();
-}
-
 bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
                                      std::string_view name,
                                      VisibleNameResult* resolved) const {
@@ -2893,20 +2881,6 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
         return true;
     }
     return false;
-}
-
-// String output overloads are projection bridges over the VisibleNameResult
-// overloads; they do not perform independent semantic lookup.
-bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
-                                     std::string_view name,
-                                     std::string* resolved) const {
-    if (!resolved) return false;
-    VisibleNameResult result;
-    if (!lookup_value_in_context(context_id, name_text_id, name, &result)) {
-        return false;
-    }
-    *resolved = visible_name_spelling(result);
-    return !resolved->empty();
 }
 
 bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,

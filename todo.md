@@ -8,18 +8,19 @@ Current Step Title: Remove Parser Declarator And Known-Function Rendered Recover
 
 ## Just Finished
 
-Step 2.2 deleted the parser qualified-value string projection API
-`resolve_qualified_value_name(const QualifiedNameRef&)` after `rg` found only a
-white-box test caller. The compatibility check in `frontend_parser_tests` now
-asserts the structured `resolve_qualified_value(...)` result and projects
-display text with `visible_name_spelling(...)` only where the test checks the
-TextId-less compatibility spelling.
+Step 2.2 deleted the remaining parser value-lookup string projection overloads
+`lookup_using_value_alias(..., std::string*)` and
+`lookup_value_in_context(..., std::string*)`. The production alias bridge in
+`resolve_visible_type(...)` now carries `VisibleNameResult` until the explicit
+display-name projection point, and focused `frontend_parser_tests` call sites
+assert structured value results plus `visible_name_spelling(...)` only where a
+compatibility spelling is the behavior under test.
 
 ## Suggested Next
 
-Supervisor can review and commit this focused Step 2.2 API deletion slice, then
-continue with the next parser-owned rendered recovery cleanup that already has
-a structured key carrier available without touching HIR/LIR/backend files.
+Supervisor can review and commit this focused Step 2.2 value lookup API deletion
+slice. The remaining parser lookup string projection overloads found nearby are
+type/concept bridges and should be handled only by a separately delegated packet.
 
 ## Watchouts
 
@@ -31,10 +32,11 @@ migration into this parser packet; route that through
 `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a narrower HIR
 metadata idea if the supervisor switches scope.
 
-No remaining `resolve_qualified_value_name` declaration, definition, or caller
-was found after this packet. Production parser call sites remain on
-`resolve_qualified_value(...)` and explicit `visible_name_spelling(...)`
-projection where display text is genuinely needed.
+No remaining value-side `lookup_using_value_alias(..., std::string*)` or
+`lookup_value_in_context(..., std::string*)` declaration, definition, or caller
+was found after this packet. Production parser value lookup call sites remain on
+`VisibleNameResult`, with explicit `visible_name_spelling(...)` projection only
+where display text is genuinely needed.
 
 ## Proof
 
