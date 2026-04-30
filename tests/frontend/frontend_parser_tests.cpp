@@ -5400,6 +5400,57 @@ void test_parser_alias_template_substitution_does_not_require_param_name_spellin
               "alias-template substitution should use structured parameter metadata without rendered param_names");
 }
 
+void test_parser_alias_template_member_typedef_carrier_uses_structured_rhs() {
+  c4c::Lexer lexer(
+      "template<typename T> struct Owner { using type = T; };\n"
+      "template<typename T> using Alias = typename Owner<T>::type;\n",
+      c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  (void)parse_top_level(parser);
+  (void)parse_top_level(parser);
+
+  const c4c::TextId alias_text = parser.find_parser_text_id("Alias");
+  const c4c::TextId owner_text = parser.find_parser_text_id("Owner");
+  const c4c::TextId member_text = parser.find_parser_text_id("type");
+  const c4c::TextId param_text = parser.find_parser_text_id("T");
+  const c4c::QualifiedNameKey alias_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), alias_text);
+  const c4c::QualifiedNameKey owner_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), owner_text);
+
+  const c4c::ParserAliasTemplateInfo* info =
+      parser.find_alias_template_info(alias_key);
+  expect_true(info != nullptr,
+              "parsed alias templates should register structured alias metadata");
+  expect_true(info->member_typedef.valid,
+              "alias-template member typedef carrier should be populated from the parsed RHS");
+  expect_true(info->member_typedef.owner_key == owner_key,
+              "alias-template member typedef carrier should preserve the structured owner key");
+  expect_true(info->member_typedef.member_text_id == member_text,
+              "alias-template member typedef carrier should preserve the member TextId");
+  expect_eq_int(static_cast<int>(info->member_typedef.owner_args.size()), 1,
+                "alias-template member typedef carrier should preserve parsed owner args");
+  expect_true(!info->member_typedef.owner_args[0].is_value &&
+                  info->member_typedef.owner_args[0].type.base == c4c::TB_TYPEDEF &&
+                  info->member_typedef.owner_args[0].type.tag != nullptr &&
+                  parser.find_parser_text_id(
+                      info->member_typedef.owner_args[0].type.tag) == param_text,
+              "alias-template member typedef carrier should keep substitutable type args structured");
+
+  c4c::ParserAliasTemplateInfo& mutable_info =
+      parser.template_state_.alias_template_info[alias_key];
+  mutable_info.aliased_type.tag = arena.strdup("CorruptRenderedOwner");
+  mutable_info.aliased_type.deferred_member_type_name =
+      arena.strdup("corrupt_member");
+  expect_true(mutable_info.member_typedef.owner_key == owner_key &&
+                  mutable_info.member_typedef.member_text_id == member_text,
+              "alias-template member typedef carrier should survive rendered/deferred TypeSpec spelling drift");
+}
+
 void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches() {
   c4c::Arena arena;
 
@@ -5728,6 +5779,7 @@ int main() {
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_alias_template_substitution_prefers_param_text_id();
   test_parser_alias_template_substitution_does_not_require_param_name_spelling();
+  test_parser_alias_template_member_typedef_carrier_uses_structured_rhs();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();

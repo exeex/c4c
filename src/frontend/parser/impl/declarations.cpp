@@ -77,6 +77,71 @@ static void finalize_pending_operator_name(std::string& name, size_t param_count
     }
 }
 
+static QualifiedNameKey alias_template_member_owner_key(
+    Parser& parser, const Parser::QualifiedNameRef& owner_qn) {
+    if (Node* primary = parser.find_template_struct_primary(owner_qn)) {
+        int context_id = primary->namespace_context_id >= 0
+                             ? primary->namespace_context_id
+                             : parser.current_namespace_context_id();
+        TextId name_text_id = primary->unqualified_text_id;
+        if (name_text_id == kInvalidText && primary->unqualified_name) {
+            name_text_id = parser.parser_text_id_for_token(
+                kInvalidText, primary->unqualified_name);
+        }
+        return parser.alias_template_key_in_context(context_id, name_text_id);
+    }
+
+    const int context_id =
+        owner_qn.qualifier_segments.empty()
+            ? (owner_qn.is_global_qualified ? 0 : parser.current_namespace_context_id())
+            : parser.resolve_namespace_context(owner_qn);
+    if (context_id < 0) return {};
+    return parser.alias_template_key_in_context(context_id, owner_qn.base_text_id);
+}
+
+static ParserAliasTemplateMemberTypedefInfo
+try_parse_alias_template_member_typedef_info(Parser& parser) {
+    ParserAliasTemplateMemberTypedefInfo info;
+    Parser::TentativeParseGuard guard(parser);
+
+    if (!parser.match(TokenKind::KwTypename)) return info;
+
+    Parser::QualifiedNameRef owner_qn;
+    if (!parser.consume_qualified_type_spelling_with_typename(
+            /*require_typename=*/false,
+            /*allow_global=*/true,
+            /*consume_final_template_args=*/false,
+            nullptr,
+            &owner_qn)) {
+        return info;
+    }
+    if (owner_qn.base_text_id == kInvalidText || !parser.check(TokenKind::Less)) {
+        return info;
+    }
+
+    std::vector<Parser::TemplateArgParseResult> owner_args;
+    if (!parser.parse_template_argument_list(&owner_args)) return info;
+    if (!parser.match(TokenKind::ColonColon)) return info;
+    if (parser.check(TokenKind::KwTemplate)) parser.consume();
+    if (!parser.check(TokenKind::Identifier)) return info;
+
+    const std::string_view member_name = parser.token_spelling(parser.cur());
+    const TextId member_text_id =
+        parser.parser_text_id_for_token(parser.cur().text_id, member_name);
+    parser.consume();
+    if (member_text_id == kInvalidText) return info;
+
+    const QualifiedNameKey owner_key =
+        alias_template_member_owner_key(parser, owner_qn);
+    if (owner_key.base_text_id == kInvalidText) return info;
+
+    info.valid = true;
+    info.owner_key = owner_key;
+    info.owner_args = std::move(owner_args);
+    info.member_text_id = member_text_id;
+    return info;
+}
+
 static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& ts) {
     switch (ts.base) {
         case TB_INT: out += "int"; break;
@@ -1303,6 +1368,8 @@ Node* parse_top_level(Parser& parser) {
 
             if (parser.match(TokenKind::Assign)) {
                 const int alias_type_pos = parser.pos_;
+                const ParserAliasTemplateMemberTypedefInfo member_typedef_info =
+                    try_parse_alias_template_member_typedef_info(parser);
                 TypeSpec alias_ts{};
                 try {
                     alias_ts = parser.parse_type_name();
@@ -1601,6 +1668,8 @@ Node* parse_top_level(Parser& parser) {
                     parser.register_typedef_binding(alias_name_text_id, alias_ts, true);
                 }
                 parser.set_last_using_alias_name(alias_key);
+                parser.active_context_state_.last_using_alias_member_typedef =
+                    member_typedef_info;
                 return nullptr;
             }
             target_name.base_name = std::move(first_name);
@@ -2063,6 +2132,8 @@ Node* parse_top_level(Parser& parser) {
                     ati.param_default_values.push_back(template_param_default_values[i]);
                 }
                 ati.aliased_type = *aliased_type;
+                ati.member_typedef =
+                    parser.active_context_state_.last_using_alias_member_typedef;
                 parser.template_state_.alias_template_info[alias_key] = std::move(ati);
             }
             parser.clear_last_using_alias_name();

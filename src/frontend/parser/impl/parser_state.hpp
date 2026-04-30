@@ -237,6 +237,7 @@ struct ParserLexicalScopeState {
 // These fields are restored by snapshots or cleared by the matching pop path.
 struct ParserActiveContextState {
   QualifiedNameKey last_using_alias_key;
+  ParserAliasTemplateMemberTypedefInfo last_using_alias_member_typedef;
   std::string last_using_alias_name;
   TextId last_using_alias_name_text_id = kInvalidText;
   std::string last_resolved_typedef;

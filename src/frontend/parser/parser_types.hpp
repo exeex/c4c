@@ -9,6 +9,7 @@
 
 #include "ast.hpp"
 #include "token.hpp"
+#include "../../shared/qualified_name_table.hpp"
 
 namespace c4c {
 
@@ -148,6 +149,15 @@ struct ParserTemplateArgParseResult {
   Node* expr = nullptr;
 };
 
+// Boundary role: parser-owned structured source for alias-template RHS forms
+// like `typename Owner<Args>::member`, captured before TypeSpec flattening.
+struct ParserAliasTemplateMemberTypedefInfo {
+  bool valid = false;
+  QualifiedNameKey owner_key;
+  std::vector<ParserTemplateArgParseResult> owner_args;
+  TextId member_text_id = kInvalidText;
+};
+
 // Boundary role: parser-local state tag for template scope tracking.
 enum class ParserTemplateScopeKind {
   EnclosingClass,
@@ -250,6 +260,7 @@ struct ParserAliasTemplateInfo {
   std::vector<TypeSpec> param_default_types;
   std::vector<long long> param_default_values;
   TypeSpec aliased_type;
+  ParserAliasTemplateMemberTypedefInfo member_typedef;
 };
 
 // Boundary role: parser-local state/table for enum constant bindings.

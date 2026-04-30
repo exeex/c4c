@@ -67,6 +67,7 @@ void Parser::set_last_resolved_typedef(std::string_view name) {
 
 void Parser::clear_last_using_alias_name() {
     active_context_state_.last_using_alias_key = {};
+    active_context_state_.last_using_alias_member_typedef = {};
     active_context_state_.last_using_alias_name.clear();
     active_context_state_.last_using_alias_name_text_id = kInvalidText;
 }
