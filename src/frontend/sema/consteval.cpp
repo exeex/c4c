@@ -644,7 +644,11 @@ const Node* lookup_consteval_function(
   auto it = consteval_fns.find(callee->name);
   const Node* legacy = it != consteval_fns.end() ? it->second : nullptr;
   (void)compare_ptrs(legacy, lookup_consteval_function_by_text(consteval_fns_by_text, callee));
-  (void)compare_ptrs(legacy, lookup_consteval_function_by_key(consteval_fns_by_key, callee));
+  if (auto key = consteval_symbol_key(callee); key.has_value() && key->valid()) {
+    const Node* structured = lookup_consteval_function_by_key(consteval_fns_by_key, callee);
+    (void)compare_ptrs(legacy, structured);
+    if (structured) return structured;
+  }
   return legacy;
 }
 

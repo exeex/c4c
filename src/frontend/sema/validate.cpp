@@ -767,7 +767,9 @@ class Validator {
     if (reference) {
       (void)compare_sema_lookup_ptrs(legacy, lookup_consteval_function_by_text(reference));
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
-        (void)compare_sema_lookup_ptrs(legacy, lookup_consteval_function_by_key(*key));
+        const Node* structured = lookup_consteval_function_by_key(*key);
+        (void)compare_sema_lookup_ptrs(legacy, structured);
+        if (structured) return structured;
       }
     }
     return legacy;
