@@ -103,6 +103,20 @@ Parser and Sema lookup should follow this order:
   testcase.
 - Update `todo.md` for packet progress; rewrite this runbook only when the
   route contract changes.
+- Step 2 is now split into numbered parser substeps. Execute one substep per
+  packet unless the supervisor explicitly delegates a broader review-only or
+  lifecycle-only action.
+
+## Known Blockers
+
+- Parser const-int cleanup is parked at the HIR metadata boundary found in
+  commit `28c1e5c5`: deleting the rendered-name
+  `eval_const_int(..., const std::unordered_map<std::string, long long>*)`
+  compatibility overload requires HIR `NttpBindings` metadata migration.
+  Keep parser-owned callers on the `TextId`/structured map route, but do not
+  pull `src/frontend/hir` carrier migration into this plan. Route that work
+  through `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a
+  narrower HIR metadata idea if the supervisor switches scope.
 
 ## Steps
 
@@ -134,43 +148,131 @@ Completion check:
 - The inventory identifies overload families to collapse and fallback/legacy
   API names to remove.
 
-### Step 2: Remove Parser Rendered-String Semantic Lookup Routes
+### Step 2.1: Remove Parser Template And NTTP Default Rendered Mirrors
 
-Goal: parser lookup must not render a structured key and then use the rendered
-spelling as semantic authority.
+Goal: parser template and NTTP-default lookup must prefer `QualifiedNameKey`,
+`TextId`, and structured token caches without consulting rendered mirror keys
+as semantic authority.
 
-Primary target: parser typedef, value, tag, template, NTTP-default, and
-known-function lookup paths with existing structured alternatives.
+Primary target: `src/frontend/parser/impl/types/template.cpp` and parser
+template-state APIs.
 
 Actions:
 
-- Convert lookups to `TextId`, namespace context ids, `QualifiedNameKey`,
-  direct AST links, or `TypeSpec::record_def` where those carriers already
-  exist.
-- Delete parser lookup APIs that take `std::string`, `std::string_view`, or
-  fallback spelling arguments.
-- Collapse parser overload families so a semantic lookup has one `TextId` or
-  domain-key route, not both string and structured routes.
-- Use `map<TextId>` or `set<TextId>` when text identity is the intended lookup
-  table key.
-- Delete string re-entry after structured-key misses when the caller supplied a
-  valid structured carrier.
-- Remove parser semantic helpers whose `fallback` or `legacy` names preserve
-  rendered-spelling compatibility.
-- Where deletion exposes missing producer metadata, create a new open idea
-  instead of keeping string rediscovery.
-- Add focused parser tests for drifted rendered spelling where structured
-  metadata must win.
+- Inspect `template_instantiation_name_key`, template primary/specialization
+  registration, NTTP-default token caching, and deferred NTTP-default
+  evaluation.
+- Delete rendered mirror lookups when the caller already has a
+  `QualifiedNameKey`, namespace context id, template `TextId`, or structured
+  NTTP-default key.
+- Collapse overloads that take both a structured template key and a rendered
+  template name when the rendered argument is used for lookup.
+- Keep rendered template spelling only for mangling, diagnostics, debug text,
+  or final emitted names.
+- Add focused parser tests where drifted rendered template spelling must not
+  affect template lookup or NTTP-default evaluation.
 
 Completion check:
 
-- Covered parser paths no longer use rendered spelling as alternate semantic
-  authority.
-- Covered parser semantic lookup APIs no longer accept string/string_view or
-  fallback spelling parameters.
-- Covered parser overload families are collapsed to `TextId` or domain-key APIs.
-- New metadata blockers, if any, are represented as separate open ideas.
-- Narrow parser tests and a fresh build pass.
+- Covered template and NTTP-default paths no longer use rendered mirror keys as
+  alternate semantic authority after a valid structured key exists.
+- Covered parser template lookup APIs no longer accept rendered spelling for
+  semantic lookup.
+- Tests prove structured template metadata wins over drifted rendered spelling.
+- Narrow parser tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.2: Remove Parser Declarator And Known-Function Rendered Recovery
+
+Goal: parser declarator, value, and known-function lookup must not recover
+semantic identity by parsing or searching rendered qualified names after token
+or namespace metadata exists.
+
+Primary target: parser declaration and statement paths that register or query
+values, function declarations, known functions, and qualified declarator names.
+
+Actions:
+
+- Inspect qualified declarator parsing, known-function registration, static
+  member/value lookup, and expression owner lookup call sites.
+- Convert lookup authority to `TextId`, namespace context ids,
+  `QualifiedNameKey`, direct AST links, or declaration objects where available.
+- Delete string re-entry after a structured key, declaration name `TextId`, or
+  namespace-aware key was supplied.
+- Collapse parser overload families that keep both rendered-name and
+  structured lookup routes for the same value/function query.
+- Keep rendered names only for source spelling, diagnostics, mangling, ABI/link
+  names, or final emitted text.
+- Add focused parser tests for drifted rendered qualified names in the covered
+  value/function route.
+
+Completion check:
+
+- Covered declarator/value/known-function paths no longer use rendered
+  spelling as alternate semantic authority.
+- Covered APIs no longer accept string/string_view or fallback spelling
+  parameters for semantic lookup.
+- Tests prove structured metadata wins over drifted rendered spelling.
+- Narrow parser tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.3: Audit Parser Type, Tag, And Member-Typedef Routes
+
+Goal: verify the already-converted parser typedef, tag, record type-head, and
+member-typedef routes did not leave a reachable rendered-string authority
+behind a renamed helper or compatibility wrapper.
+
+Primary target: parser type parsing, record lookup, structured typedef
+bindings, `TypeSpec::record_def`, member typedef arrays, and tag lookup routes.
+
+Actions:
+
+- Inspect the completed Step 2 parser changes for helper-only renames,
+  comment-only classification, or new wrappers around rendered lookup.
+- Search for string/string_view semantic lookup parameters, fallback spelling
+  parameters, `resolved_tag + "::" + member` lookup, and
+  `struct_tag_def_map.find(rendered-name)` after a structured miss.
+- Confirm `TextId` is used only for text identity and richer domain keys are
+  used when namespace, owner, record, template, or declaration identity matters.
+- Add or preserve focused parser disagreement tests for typedef, tag, record
+  type-head, and member-typedef behavior.
+- If the audit finds missing producer metadata outside parser/Sema ownership,
+  record a metadata idea instead of restoring rendered lookup.
+
+Completion check:
+
+- No covered parser type/tag/member route uses rendered spelling as alternate
+  semantic authority after structured metadata exists.
+- No helper-only rename or wrapper-only packet is counted as removal progress.
+- Any new metadata blockers are represented as separate open ideas.
+- Narrow parser tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 2.4: Preserve Parser Const-Int Boundary And HIR Blocker
+
+Goal: keep parser-owned const-int lookup on structured maps while preventing
+the Step 2 parser route from absorbing HIR `NttpBindings` carrier migration.
+
+Primary target: parser const-int callers and the parked HIR blocker recorded in
+commit `28c1e5c5`.
+
+Actions:
+
+- Verify parser-owned named constants continue to flow through `TextId` or
+  structured maps where available.
+- Keep the rendered-name `eval_const_int` compatibility overload only for
+  callers whose metadata carrier is outside parser/Sema ownership.
+- Do not edit `src/frontend/hir` as part of this plan. If the supervisor wants
+  to delete the overload, switch to the HIR metadata idea first.
+- Keep `todo.md` watchouts explicit when this blocker affects packet choice.
+
+Completion check:
+
+- Parser-owned const-int lookup does not regress to rendered-name authority.
+- The HIR `NttpBindings` blocker remains visible in lifecycle state and is not
+  silently treated as completed parser work.
+- Any code-changing packet has fresh build proof and fresh canonical
+  `test_after.log`; todo-only blocker bookkeeping does not claim a code proof.
 
 ### Step 3: Remove Sema Rendered-String Owner And Consteval Lookup Routes
 
