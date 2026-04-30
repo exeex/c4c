@@ -207,6 +207,8 @@ struct ConstEvalEnv {
     const std::optional<long long> structured = lookup_by_key(n);
     (void)compare_optional(legacy, text);
     (void)compare_optional(legacy, structured);
+    if (structured.has_value()) return structured;
+    if (text.has_value()) return text;
     return legacy;
   }
 

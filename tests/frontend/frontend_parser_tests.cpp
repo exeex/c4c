@@ -5823,6 +5823,144 @@ void test_consteval_template_arg_expr_payload_ignores_stale_rendered_name() {
                 "stale rendered $expr text must not select the NTTP value");
 }
 
+void test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name() {
+  c4c::TextTable texts;
+  const c4c::TextId actual_text = texts.intern("Actual");
+  const c4c::TextId text_only_text = texts.intern("TextOnly");
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "stale";
+  ref.unqualified_name = "Actual";
+  ref.unqualified_text_id = actual_text;
+  ref.namespace_context_id = 7;
+
+  c4c::hir::ConstMap rendered;
+  rendered["stale"] = 1;
+  c4c::hir::ConstTextMap by_text;
+  by_text[actual_text] = 2;
+  c4c::hir::ConstStructuredMap by_key;
+  c4c::hir::ConstEvalStructuredNameKey key;
+  key.namespace_context_id = 7;
+  key.base_text_id = actual_text;
+  by_key[key] = 3;
+
+  c4c::hir::ConstEvalEnv env{};
+  env.named_consts = &rendered;
+  env.named_consts_by_text = &by_text;
+  env.named_consts_by_key = &by_key;
+
+  auto structured = c4c::hir::evaluate_constant_expr(&ref, env);
+  expect_true(structured.ok(), "structured consteval value lookup should produce a value");
+  expect_eq_int(static_cast<int>(structured.as_int()), 3,
+                "consteval value lookup should prefer structured metadata over stale rendered names");
+
+  c4c::Node text_ref = ref;
+  text_ref.name = "stale_text_only";
+  text_ref.unqualified_name = "TextOnly";
+  text_ref.unqualified_text_id = text_only_text;
+  text_ref.namespace_context_id = -1;
+  rendered["stale_text_only"] = 4;
+  by_text[text_only_text] = 5;
+
+  auto text = c4c::hir::evaluate_constant_expr(&text_ref, env);
+  expect_true(text.ok(), "TextId consteval value lookup should produce a value");
+  expect_eq_int(static_cast<int>(text.as_int()), 5,
+                "consteval value lookup should prefer TextId metadata over stale rendered names");
+}
+
+c4c::Node* make_consteval_returning(c4c::Parser& parser, c4c::Arena& arena,
+                                    const char* name, c4c::TextId text_id,
+                                    long long value) {
+  c4c::Node* literal = parser.make_node(c4c::NK_INT_LIT, 1);
+  literal->ival = value;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 1);
+  ret->left = literal;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 1);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->name = arena.strdup(name);
+  fn->unqualified_name = arena.strdup(name);
+  fn->unqualified_text_id = text_id;
+  fn->namespace_context_id = 11;
+  fn->is_consteval = true;
+  fn->body = body;
+  return fn;
+}
+
+c4c::Node* make_consteval_calling(c4c::Parser& parser, c4c::Arena& arena,
+                                  c4c::Node* callee) {
+  c4c::Node* call = parser.make_node(c4c::NK_CALL, 1);
+  call->left = callee;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 1);
+  ret->left = call;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 1);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->name = arena.strdup("caller");
+  fn->unqualified_name = arena.strdup("caller");
+  fn->unqualified_text_id = parser.parser_text_id_for_token(c4c::kInvalidText, "caller");
+  fn->namespace_context_id = 11;
+  fn->is_consteval = true;
+  fn->body = body;
+  return fn;
+}
+
+void test_consteval_function_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId stale_text = texts.intern("stale_consteval");
+  const c4c::TextId actual_text = texts.intern("actual_consteval");
+  c4c::Node* stale_fn = make_consteval_returning(parser, arena, "stale_consteval",
+                                                 stale_text, 10);
+  c4c::Node* actual_fn = make_consteval_returning(parser, arena, "actual_consteval",
+                                                  actual_text, 7);
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
+  callee->name = arena.strdup("stale_consteval");
+  callee->unqualified_name = arena.strdup("actual_consteval");
+  callee->unqualified_text_id = actual_text;
+  callee->namespace_context_id = 11;
+  c4c::Node* caller = make_consteval_calling(parser, arena, callee);
+
+  std::unordered_map<std::string, const c4c::Node*> rendered;
+  rendered["stale_consteval"] = stale_fn;
+  c4c::hir::ConstEvalFunctionTextMap by_text;
+  by_text[actual_text] = actual_fn;
+  c4c::hir::ConstEvalFunctionStructuredMap by_key;
+  c4c::hir::ConstEvalStructuredNameKey key;
+  key.namespace_context_id = 11;
+  key.base_text_id = actual_text;
+  by_key[key] = actual_fn;
+
+  c4c::hir::ConstEvalEnv env{};
+  auto structured = c4c::hir::evaluate_consteval_call(
+      caller, {}, env, rendered, 0, &by_text, &by_key);
+  expect_true(structured.ok(), "structured consteval function lookup should evaluate");
+  expect_eq_int(static_cast<int>(structured.as_int()), 7,
+                "consteval function lookup should prefer structured metadata over stale rendered names");
+
+  c4c::hir::ConstEvalFunctionStructuredMap empty_key;
+  auto text = c4c::hir::evaluate_consteval_call(
+      caller, {}, env, rendered, 0, &by_text, &empty_key);
+  expect_true(text.ok(), "TextId consteval function lookup should evaluate");
+  expect_eq_int(static_cast<int>(text.as_int()), 7,
+                "consteval function lookup should prefer TextId metadata over stale rendered names");
+}
+
 void test_parser_typename_template_parameter_probe_uses_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6000,6 +6138,8 @@ int main() {
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
   test_consteval_template_arg_expr_payload_ignores_stale_rendered_name();
+  test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name();
+  test_consteval_function_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
   test_parser_qualified_declarator_name_uses_token_spelling();

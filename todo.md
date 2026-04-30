@@ -8,26 +8,27 @@ Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Route
 
 ## Just Finished
 
-Step 2.5 verified the parser/Sema const-int boundary. Parser-owned named
-constant evaluation stays on `TextId`/structured storage through
-`Parser::eval_const_int_with_parser_tables()` and direct
-`binding_state_.const_int_bindings` calls. The remaining rendered-name
-`eval_const_int` compatibility overload is not a parser-owned route to convert
-in this packet; its live named-constant use is HIR-backed `NttpBindings`
-metadata and remains parked outside this parser/Sema plan.
+Step 3 removed rendered-name authority from the Sema consteval value and
+function lookup helpers when structured or `TextId` metadata is available.
+`ConstEvalEnv::lookup(const Node*)` now returns structured, then `TextId`, then
+rendered fallback values, and consteval function lookup uses the same
+structured/`TextId` preference before falling back to `consteval_fns` by name.
+Focused stale-rendered tests cover both value lookup and nested consteval
+function lookup disagreement.
 
 ## Suggested Next
 
-Delegate Step 3 to inventory and remove one Sema rendered-string
-owner/member/static/consteval lookup route. Start with the consteval lookup
-helpers and owner/static call sites that still compare or recover semantic
-identity through rendered names after a `Node*`, declaration, owner key,
-`TextId`, or structured map is available.
+Continue Step 3 with the remaining Sema rendered-name owner/member/static
+lookup routes outside the consteval helpers, starting from owner/member/static
+call sites that already have declaration, owner-key, `TextId`, or structured
+metadata.
 
 ## Watchouts
 
 - Do not delete the rendered-name `eval_const_int` compatibility overload while
   HIR still passes `NttpBindings` as `std::unordered_map<std::string, long long>`.
+- This packet intentionally kept rendered consteval lookup as compatibility
+  fallback when neither structured nor `TextId` metadata produces a result.
 - Parser `eval_const_int` callers that have named constants already use
   `std::unordered_map<TextId, long long>`; parser three-argument layout calls
   do not perform named-constant lookup.
@@ -39,7 +40,6 @@ identity through rendered names after a `Node*`, declaration, owner key,
 
 ## Proof
 
-Lifecycle-only reset after Step 2.5 completion. No code proof was run or
-claimed for this reset. Latest code proof remains the Step 2.5 focused
-NTTP/const-int subset in `test_after.log`; regenerate matching regression logs
-before using `test_before.log` and `test_after.log` as a close gate.
+Ran the delegated proof command:
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*consteval.*|cpp_hir_.*consteval.*|cpp_hir_template_deferred_nttp.*|cpp_hir_template_alias_deferred_nttp_static_member)$' --output-on-failure) > test_after.log 2>&1`.
+It passed with 38/38 tests green. Proof log: `test_after.log`.
