@@ -1,14 +1,14 @@
 ---
 name: c4c-reviewer
-description: "c4c review specialist. Use when a delegated message starts with `to_subagent: c4c-reviewer` or when the supervisor needs an independent review of whether the current implementation path is still aligned with the active plan by comparing the git diff from the relevant `plan.md` history point to `HEAD`."
+description: "c4c review specialist. Use when a delegated message starts with `to_subagent: c4c-reviewer` or when the supervisor needs an independent review of whether the current implementation path is still aligned with the active source idea by comparing the git diff from the relevant active-idea history point to `HEAD`."
 ---
 
 # C4C Reviewer
 
 Use this skill only for delegated review work.
 
-This role reviews plan alignment, route drift, and technical debt. It does not
-edit code, rewrite lifecycle files, or create the final commit.
+This role reviews source-idea alignment, route drift, and technical debt. It
+does not edit code, rewrite lifecycle files, or create the final commit.
 
 Reviewer payload should be written into repo-local transient files under
 `review/`.
@@ -19,15 +19,16 @@ Reviewer payload should be written into repo-local transient files under
 2. Read [`AGENTS.md`](/workspaces/c4c/AGENTS.md).
 3. If the delegated packet says to use `c4c-clang-tools`, use that skill first
    for AST-backed C++ queries before opening large implementation files.
-4. Read the current [`plan.md`](/workspaces/c4c/plan.md) and
-   [`todo.md`](/workspaces/c4c/todo.md) so you know the active goal,
-   guardrails, and current slice.
-5. Read the source idea linked from [`plan.md`](/workspaces/c4c/plan.md).
+4. Read the source idea linked from [`plan.md`](/workspaces/c4c/plan.md). Treat
+   that active idea as the primary review contract.
+5. Read the current [`plan.md`](/workspaces/c4c/plan.md) and
+   [`todo.md`](/workspaces/c4c/todo.md) as execution/transcription context, not
+   as the final source of truth when they disagree with the source idea.
 6. Use `scripts/plan_review_state.py show` only when you need the local
    `.plan_review_state.json` context behind the mirrored review metadata in
    [`todo.md`](/workspaces/c4c/todo.md).
-7. Determine the review base from git history on `plan.md`, not from metadata
-   written inside `plan.md`.
+7. Determine the review base from git history for the active source idea and
+   lifecycle activation, not from metadata written inside `plan.md`.
 
 Assume delegated packets may include:
 
@@ -45,34 +46,42 @@ If Blocked: stop and report the exact history ambiguity
 
 The review base must come from git history.
 
-1. Inspect
-   `git log --oneline --extended-regexp --grep='\[[^]]*plan[^]]*\]' -- plan.md todo.md ideas/open/`.
-2. Prefer commits whose subjects use the canonical compact lifecycle scope tags
-   such as `[plan]`, `[plan+idea]`, and `[todo_only]`, then use the remaining
-   subject text to find the commit that began the current active plan or the
-   last reviewer checkpoint for that same plan.
-3. If `plan.md` was later edited for housekeeping, do not use the latest
-   `plan.md` commit blindly; keep walking history until you find the commit
-   that actually reset, activated, or reviewer-checkpointed the current plan.
-4. If commit messages are ambiguous, inspect the candidate commits with
-   `git show <commit> -- plan.md` and choose the one whose message and
-   historical plan content match the current activation.
-5. Once the base commit is chosen, review `git diff <base_commit>..HEAD`.
-6. Also compute how many commits have landed since that base with
+1. Identify the active source idea path from the current `plan.md`. If
+   `plan.md` does not clearly link one source idea, report a blocker instead of
+   reviewing only against the runbook.
+2. Inspect lifecycle history for that idea and active execution state:
+   `git log --oneline --extended-regexp --grep='\[[^]]*(idea|plan|todo)[^]]*\]' -- <active_idea_path> plan.md todo.md ideas/open/`.
+3. Prefer commits whose subjects use canonical compact lifecycle scope tags
+   such as `[plan+idea]`, `[idea]`, `[plan]`, and `[todo_only]`, then use the
+   remaining subject text and changed files to find the commit that activated
+   the current source idea, materially changed that source idea, or recorded
+   the last reviewer checkpoint for that same source idea.
+4. If `plan.md` was later edited for transcription, housekeeping, or packet
+   shaping, do not use the latest `plan.md` commit blindly; keep walking
+   history until you find the commit that actually reset, activated, or
+   reviewer-checkpointed the active source idea.
+5. If commit messages are ambiguous, inspect candidate commits with
+   `git show <commit> -- <active_idea_path> plan.md todo.md` and choose the one
+   whose message and historical source-idea content match the current
+   activation.
+6. Once the base commit is chosen, review `git diff <base_commit>..HEAD`.
+7. Also compute how many commits have landed since that base with
    `git rev-list --count <base_commit>..HEAD`.
 
 Do not derive the review base from any hash written inside `plan.md`.
 
 ## What To Review
 
-Judge the current branch against the active runbook and linked source idea:
+Judge the current branch primarily against the active source idea. Use
+`plan.md` and `todo.md` to understand the intended execution route and current
+packet state, but treat them as possibly lossy transcriptions of the idea:
 
-- whether the actual diff still matches the purpose, goal, current item, and
-  guardrails in `plan.md`
-- whether `plan.md` still faithfully represents the linked source idea, or
-  whether plan drift happened before code drift
-- whether the current implementation path has drifted away from the planned
-  route
+- whether the actual diff still matches the durable purpose, scope, constraints,
+  and success criteria in the active source idea
+- whether `plan.md` faithfully represents that source idea, or whether a bad
+  runbook transcription is steering execution away from the real intent
+- whether the current implementation path has drifted away from the source
+  idea, even if it still appears to satisfy the current `plan.md`
 - whether the diff is accumulating technical debt that now justifies changing
   the route
 - whether tests and logs are proving the right thing or only proving narrow
@@ -81,7 +90,7 @@ Judge the current branch against the active runbook and linked source idea:
   adding testcase-shaped backend shortcuts instead of repairing the underlying
   capability
 - whether the next step should continue the current packet sequence, narrow it,
-  or rewrite the plan/todo state
+  or rewrite the plan/todo state to realign with the source idea
 - whether a lifecycle rewrite really belongs in `todo.md`, `plan.md`, or the
   source idea, preferring the lowest layer that solves the problem
 - whether the recent commit history shows excessive `plan_change` churn that
@@ -90,11 +99,11 @@ Judge the current branch against the active runbook and linked source idea:
 ## Review Cadence
 
 - this is not a fixed every-5-commits loop
-- commit count since the chosen `plan.md` checkpoint is only a weak signal,
+- commit count since the chosen active-idea checkpoint is only a weak signal,
   because once that count crosses a threshold it stays above the threshold
   until another checkpoint lands
 - the supervisor should normally request this review only after substantial
-  churn, roughly 10 or more commits since the chosen `plan.md` checkpoint, and
+  churn, roughly 10 or more commits since the chosen active-idea checkpoint, and
   only when the recent history suggests route ambiguity, repeated lifecycle
   repairs, or packet-boundary drift
 - repeated `plan_change` commits only 1 to 3 implementation commits apart are
@@ -157,12 +166,15 @@ Write the formal review report to a file under `review/`.
 
 Return concise review notes with:
 
-- chosen base commit and why it is the right `plan.md` checkpoint
+- active source idea path
+- chosen base commit and why it is the right active-idea checkpoint
 - commit count since that base
 - findings ordered by severity with file/line references when possible
-- plan-alignment judgment: `on track`, `drifting`, or `route reset needed`
 - idea-alignment judgment: `matches source idea`, `drifting from source idea`,
   or `source idea split needed`
+- runbook-transcription judgment: `plan matches idea`,
+  `plan is lossy but usable`, or `plan rewrite needed`
+- route-alignment judgment: `on track`, `drifting`, or `route reset needed`
 - technical-debt judgment: `acceptable`, `watch`, or `action needed`
 - validation sufficiency: `narrow proof sufficient`, `needs broader proof`, or
   `needs full acceptance pass`
