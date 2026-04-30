@@ -18,8 +18,9 @@ themselves do not authoritatively miss.
 
 ## Suggested Next
 
-Run supervisor-side route review for Step 3 completion and choose the next
-bounded rendered-lookup removal packet from the remaining watchouts.
+Choose the next bounded Step 3 rendered-lookup removal packet from the
+remaining watchouts, keeping it to one concrete producer gap or one proven
+consumer deletion route.
 
 ## Watchouts
 
@@ -88,4 +89,4 @@ bounded rendered-lookup removal packet from the remaining watchouts.
 Passed:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*)$' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: `test_after.log` (464 tests passed).
+Proof log: regenerated canonical `test_after.log` (464 tests passed).
