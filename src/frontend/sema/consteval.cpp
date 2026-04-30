@@ -645,12 +645,19 @@ const Node* lookup_consteval_function(
   const Node* legacy = it != consteval_fns.end() ? it->second : nullptr;
   const Node* text = lookup_consteval_function_by_text(consteval_fns_by_text, callee);
   (void)compare_ptrs(legacy, text);
+  bool has_authoritative_metadata = text != nullptr;
   if (auto key = consteval_symbol_key(callee); key.has_value() && key->valid()) {
+    has_authoritative_metadata = has_authoritative_metadata || consteval_fns_by_key != nullptr;
     const Node* structured = lookup_consteval_function_by_key(consteval_fns_by_key, callee);
     (void)compare_ptrs(legacy, structured);
     if (structured) return structured;
   }
+  if (consteval_fns_by_text && callee->unqualified_text_id != kInvalidText &&
+      !callee->is_global_qualified && callee->n_qualifier_segments == 0) {
+    has_authoritative_metadata = true;
+  }
   if (text) return text;
+  if (has_authoritative_metadata) return nullptr;
   return legacy;
 }
 

@@ -777,12 +777,19 @@ class Validator {
     if (reference) {
       const Node* text = lookup_consteval_function_by_text(reference);
       (void)compare_sema_lookup_ptrs(legacy, text);
+      bool has_authoritative_metadata = text != nullptr;
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
+        has_authoritative_metadata = true;
         const Node* structured = lookup_consteval_function_by_key(*key);
         (void)compare_sema_lookup_ptrs(legacy, structured);
         if (structured) return structured;
       }
+      if (reference->unqualified_text_id != kInvalidText &&
+          !reference->is_global_qualified && reference->n_qualifier_segments == 0) {
+        has_authoritative_metadata = true;
+      }
       if (text) return text;
+      if (has_authoritative_metadata) return nullptr;
     }
     return legacy;
   }
