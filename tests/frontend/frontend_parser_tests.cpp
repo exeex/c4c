@@ -6826,6 +6826,39 @@ void test_parser_consteval_sizeof_type_preserves_typedef_text_metadata() {
               "sizeof(T) TypeSpec should carry intrinsic template parameter TextId metadata");
 }
 
+void test_parser_qualified_typespec_preserves_text_metadata_over_rendered_spelling() {
+  c4c::Lexer lexer("ns::Alias value;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId ns_text = lexer.text_table().intern("ns");
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  c4c::TypeSpec alias_type = make_sema_lookup_ts(c4c::TB_INT);
+  alias_type.tag = arena.strdup("rendered_alias_payload");
+  parser.register_structured_typedef_binding_in_context(ns_context, alias_text,
+                                                        alias_type);
+
+  c4c::TypeSpec parsed = parser.parse_base_type();
+  expect_true(parsed.tag_text_id == alias_text,
+              "qualified TypeSpec should carry the base-name TextId metadata");
+  expect_true(parsed.namespace_context_id == ns_context,
+              "qualified TypeSpec should carry the resolved namespace context");
+  expect_true(parsed.n_qualifier_segments == 1 && parsed.qualifier_text_ids,
+              "qualified TypeSpec should carry qualifier TextId metadata");
+  expect_true(parsed.qualifier_text_ids[0] == ns_text,
+              "qualified TypeSpec qualifier metadata should come from the token TextId");
+
+  parsed.tag = arena.strdup("stale_rendered_alias");
+  parsed.qualifier_segments[0] = arena.strdup("stale_rendered_namespace");
+  expect_true(parsed.tag_text_id == alias_text,
+              "stale rendered TypeSpec tag should not overwrite base TextId metadata");
+  expect_true(parsed.qualifier_text_ids[0] == ns_text,
+              "stale rendered TypeSpec qualifier should not overwrite qualifier TextId metadata");
+}
+
 void test_consteval_type_binding_lookup_uses_typespec_text_metadata_without_name_mirrors() {
   c4c::Lexer lexer("template<typename T>\n"
                    "consteval int width() { return sizeof(T); }\n",
@@ -7380,6 +7413,7 @@ int main() {
   test_consteval_value_lookup_prefers_structured_metadata_over_stale_rendered_name();
   test_consteval_value_lookup_keeps_no_metadata_rendered_compatibility();
   test_parser_consteval_sizeof_type_preserves_typedef_text_metadata();
+  test_parser_qualified_typespec_preserves_text_metadata_over_rendered_spelling();
   test_consteval_type_binding_lookup_uses_typespec_text_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_uses_typespec_structured_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();

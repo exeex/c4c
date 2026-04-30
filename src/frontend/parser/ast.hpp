@@ -114,8 +114,10 @@ struct TypeSpec {
     // Compatibility/display spelling: qualified source name path attached to
     // tagged/typedef names until all consumers use structured identity.
     const char** qualifier_segments; // structured qualifier path for tagged/typedef names
+    TextId* qualifier_text_ids;       // parser-owned text identity for qualifier_segments
     int n_qualifier_segments;        // qualifier segment count (excludes base name)
     bool is_global_qualified;        // true when the source type started with ::
+    int namespace_context_id = -1;    // resolved namespace context for qualified type names
 
     // Cross-stage type contract: declarator shape attached to the base type.
     int ptr_level;           // 0 = not a pointer; 1 = *; 2 = **; ...

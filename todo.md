@@ -8,22 +8,20 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired the bounded structured consteval `TypeSpec` carrier route
-for function-template type parameters: `TypeSpec` now carries the owning
-template namespace, owner `TextId`, parameter index, and parameter `TextId`
-for parsed `sizeof(T)`-style template parameter references, and consteval type
-binding resolution can build `TypeBindingStructuredKey` directly from that
-intrinsic carrier before consulting rendered-name-to-key mirrors. Focused tests
-cover parser preservation of the owner/index carrier and consteval lookup with
-a stale rendered `TypeSpec::tag`, no `type_binding_keys_by_name`, and no
-`type_bindings_by_text` map.
+Step 3.1 repaired one bounded qualified `TypeSpec` producer gap:
+qualified base-type parsing now records the resolved namespace context,
+base-name `TextId`, and qualifier segment `TextId`s directly on `TypeSpec`
+for resolved qualified typedef and dependent qualified typedef branches.
+Focused parser coverage mutates stale rendered `TypeSpec::tag` and qualifier
+segment spelling while asserting the structured base and qualifier metadata
+remain intact.
 
 ## Suggested Next
 
-Continue Step 3.1 with one bounded metadata-producer packet for any remaining
-synthetic local or qualified `TypeSpec` carrier gap not covered by the
-function-template type-parameter owner/index route before attempting broad
-consteval rendered-fallback deletion.
+Continue Step 3.1 with one narrow metadata-producer packet for any remaining
+qualified `TypeSpec` production site that still carries only rendered
+qualifier spelling, or for a synthetic consteval local producer not covered by
+parameter, condition-local, ordinary-local, or `for`-init metadata.
 
 ## Watchouts
 
@@ -52,6 +50,10 @@ consteval rendered-fallback deletion.
   condition-local, ordinary-local, or `for`-init local declaration metadata.
   Treat removal of that compatibility as a metadata-producer packet, not a
   lookup-only packet.
+- Qualified `TypeSpec` now has a parser-owned carrier for qualifier `TextId`s
+  and namespace context on the covered qualified base-type parser path, but
+  retained rendered qualifier strings are still compatibility/display payloads
+  until each downstream consumer is proven against the structured fields.
 
 ## Proof
 

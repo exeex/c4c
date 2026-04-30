@@ -971,6 +971,28 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
     Parser::QualifiedNameRef qn;
     if (!parser.peek_qualified_name(&qn, true)) return false;
 
+    auto attach_qualified_typespec_metadata = [&]() {
+        out_ts->tag_text_id = qn.base_text_id;
+        out_ts->is_global_qualified = qn.is_global_qualified;
+        out_ts->namespace_context_id = parser.resolve_namespace_context(qn);
+        out_ts->n_qualifier_segments =
+            static_cast<int>(qn.qualifier_segments.size());
+        if (out_ts->n_qualifier_segments > 0) {
+            out_ts->qualifier_segments =
+                parser.arena_.alloc_array<const char*>(out_ts->n_qualifier_segments);
+            out_ts->qualifier_text_ids =
+                parser.arena_.alloc_array<TextId>(out_ts->n_qualifier_segments);
+            for (int i = 0; i < out_ts->n_qualifier_segments; ++i) {
+                out_ts->qualifier_segments[i] =
+                    parser.arena_.strdup(qn.qualifier_segments[i].c_str());
+                out_ts->qualifier_text_ids[i] =
+                    i < static_cast<int>(qn.qualifier_text_ids.size())
+                        ? qn.qualifier_text_ids[i]
+                        : kInvalidText;
+            }
+        }
+    };
+
     const QualifiedTypeProbe probe = probe_qualified_type(parser, qn);
     if (probe.has_resolved_typedef) {
         if (probe.record_member_typedef_type) {
@@ -983,17 +1005,7 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
             out_ts->base = probe.record_def->is_union ? TB_UNION : TB_STRUCT;
             out_ts->record_def = probe.record_def;
         }
-        out_ts->is_global_qualified = qn.is_global_qualified;
-        out_ts->n_qualifier_segments =
-            static_cast<int>(qn.qualifier_segments.size());
-        if (out_ts->n_qualifier_segments > 0) {
-            out_ts->qualifier_segments =
-                parser.arena_.alloc_array<const char*>(out_ts->n_qualifier_segments);
-            for (int i = 0; i < out_ts->n_qualifier_segments; ++i) {
-                out_ts->qualifier_segments[i] =
-                    parser.arena_.strdup(qn.qualifier_segments[i].c_str());
-            }
-        }
+        attach_qualified_typespec_metadata();
         parser.consume_qualified_type_spelling_with_typename(
             /*require_typename=*/false,
             /*allow_global=*/true,
@@ -1036,18 +1048,9 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
 
         out_ts->base = TB_TYPEDEF;
         out_ts->tag = parser.arena_.strdup(qualified_name.c_str());
+        out_ts->tag_text_id = qn.base_text_id;
         out_ts->tpl_struct_origin = parser.arena_.strdup(qualified_name.c_str());
-        out_ts->is_global_qualified = qn.is_global_qualified;
-        out_ts->n_qualifier_segments =
-            static_cast<int>(qn.qualifier_segments.size());
-        if (out_ts->n_qualifier_segments > 0) {
-            out_ts->qualifier_segments =
-                parser.arena_.alloc_array<const char*>(out_ts->n_qualifier_segments);
-            for (int i = 0; i < out_ts->n_qualifier_segments; ++i) {
-                out_ts->qualifier_segments[i] =
-                    parser.arena_.strdup(qn.qualifier_segments[i].c_str());
-            }
-        }
+        attach_qualified_typespec_metadata();
         guard.commit();
         return true;
     }
