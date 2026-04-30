@@ -1,10 +1,10 @@
 # Current Packet
 
-Status: Complete
+Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.5
-Current Step Title: Preserve Parser Const-Int Boundary And HIR Blocker
+Current Step ID: Step 3
+Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Routes
 
 ## Just Finished
 
@@ -18,9 +18,11 @@ metadata and remains parked outside this parser/Sema plan.
 
 ## Suggested Next
 
-Supervisor should decide whether the parser/Sema rendered-string lookup-removal
-runbook is exhausted and route any deletion of the rendered-name
-`eval_const_int` compatibility overload through a HIR metadata plan first.
+Delegate Step 3 to inventory and remove one Sema rendered-string
+owner/member/static/consteval lookup route. Start with the consteval lookup
+helpers and owner/static call sites that still compare or recover semantic
+identity through rendered names after a `Node*`, declaration, owner key,
+`TextId`, or structured map is available.
 
 ## Watchouts
 
@@ -29,11 +31,15 @@ runbook is exhausted and route any deletion of the rendered-name
 - Parser `eval_const_int` callers that have named constants already use
   `std::unordered_map<TextId, long long>`; parser three-argument layout calls
   do not perform named-constant lookup.
-- No HIR files were edited for this parser/Sema packet.
+- Route deletion of the rendered-name `eval_const_int` compatibility overload
+  through `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a
+  narrower HIR metadata idea before treating it as parser/Sema closure work.
+- Step 3 must not count diagnostics, display, mangle/final spelling, or
+  comment-only classification as semantic lookup removal.
 
 ## Proof
 
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_positive_sema_deferred_consteval_nttp_cpp|cpp_positive_sema_template_nttp_default_runtime_cpp|cpp_hir_template_deferred_nttp_expr|cpp_hir_template_deferred_nttp_arith_expr|cpp_hir_template_deferred_nttp_paren_expr|cpp_hir_template_deferred_nttp_bool_expr|cpp_hir_template_deferred_nttp_logic_expr|cpp_hir_template_deferred_nttp_true_expr|cpp_hir_template_deferred_nttp_number_expr|cpp_hir_template_alias_deferred_nttp_static_member|cpp_hir_template_deferred_nttp_static_member_expr|cpp_hir_template_deferred_nttp_cast_static_member_expr|cpp_hir_template_deferred_nttp_sizeof_pack_expr)$' --output-on-failure) > test_after.log 2>&1`
-
-Passed: build succeeded and CTest reported 14/14 matching tests passed.
-Canonical proof log: `test_after.log`.
+Lifecycle-only reset after Step 2.5 completion. No code proof was run or
+claimed for this reset. Latest code proof remains the Step 2.5 focused
+NTTP/const-int subset in `test_after.log`; regenerate matching regression logs
+before using `test_before.log` and `test_after.log` as a close gate.
