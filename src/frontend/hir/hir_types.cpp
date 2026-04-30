@@ -1418,13 +1418,14 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
     const std::string* rendered_tag,
     const std::string* rendered_member) const {
   if (!hir_struct_member_lookup_key_has_complete_metadata(key)) {
+    if (rendered_tag && rendered_member) {
+      return find_struct_static_member_const_value(*rendered_tag, *rendered_member);
+    }
     return std::nullopt;
   }
   const auto owner_it = struct_static_member_const_values_by_owner_.find(key);
-  if (owner_it == struct_static_member_const_values_by_owner_.end()) {
-    return std::nullopt;
-  }
-  if (rendered_tag && rendered_member) {
+  if (owner_it != struct_static_member_const_values_by_owner_.end() &&
+      rendered_tag && rendered_member) {
     auto sit = struct_static_member_const_values_.find(*rendered_tag);
     if (sit != struct_static_member_const_values_.end()) {
       auto mit = sit->second.find(*rendered_member);
@@ -1434,7 +1435,34 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
       }
     }
   }
-  return owner_it->second;
+  if (owner_it != struct_static_member_const_values_by_owner_.end()) {
+    return owner_it->second;
+  }
+
+  const std::string* fallback_tag = rendered_tag;
+  if (module_) {
+    if (const std::string* owner_tag =
+            module_->find_struct_def_tag_by_owner(key.owner_key)) {
+      fallback_tag = owner_tag;
+    }
+  }
+
+  std::string member_from_key;
+  const std::string* fallback_member = rendered_member;
+  if (module_ && module_->link_name_texts &&
+      key.member_text_id != kInvalidText) {
+    const std::string_view member_text =
+        module_->link_name_texts->lookup(key.member_text_id);
+    if (!member_text.empty()) {
+      member_from_key = std::string(member_text);
+      fallback_member = &member_from_key;
+    }
+  }
+
+  if (fallback_tag && fallback_member) {
+    return find_struct_static_member_const_value(*fallback_tag, *fallback_member);
+  }
+  return std::nullopt;
 }
 
 MemberSymbolId Lowerer::find_struct_member_symbol_id(
@@ -1662,6 +1690,22 @@ GlobalInit Lowerer::lower_global_init(const Node* n,
       if (ts.base == TB_VOID) ts.base = TB_INT;
       s.expr = append_expr(n, IntLiteral{r.as_int(), false}, ts);
       return s;
+    }
+  }
+  if (ctx && allow_named_const_fold && n->kind == NK_VAR && n->name &&
+      n->name[0] && (n->has_template_args || n->n_template_args > 0)) {
+    const std::string qname = n->name;
+    const size_t scope_pos = qname.rfind("::");
+    if (scope_pos != std::string::npos) {
+      const std::string owner_name = qname.substr(0, scope_pos);
+      const std::string member_name = qname.substr(scope_pos + 2);
+      if (auto v = try_eval_template_static_member_const(
+              ctx, owner_name, n, member_name)) {
+        TypeSpec ts = n->type;
+        if (ts.base == TB_VOID) ts.base = TB_INT;
+        s.expr = append_expr(n, IntLiteral{*v, false}, ts);
+        return s;
+      }
     }
   }
   s.expr = lower_expr(ctx, n);

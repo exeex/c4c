@@ -2174,6 +2174,45 @@ void test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_k
               "static member const lookup should preserve rendered fallback when no owner key exists");
 }
 
+void test_hir_static_member_const_lookup_structured_miss_keeps_base_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::NamespaceQualifier ns;
+  ns.context_id = 12;
+  const c4c::TextId owner_text_id = module.link_name_texts->intern("Derived");
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(ns, owner_text_id);
+  module.index_struct_def_owner(owner_key, "Derived", true);
+
+  c4c::hir::HirStructDef base_def;
+  base_def.tag = "Base";
+  module.struct_defs[base_def.tag] = base_def;
+
+  c4c::hir::HirStructDef derived_def;
+  derived_def.tag = "Derived";
+  derived_def.base_tags.push_back("Base");
+  module.struct_defs[derived_def.tag] = derived_def;
+
+  const c4c::TextId member_text_id = module.link_name_texts->intern("value");
+  c4c::hir::HirStructMemberLookupKey member_key;
+  member_key.owner_key = owner_key;
+  member_key.member_text_id = member_text_id;
+
+  lowerer.struct_static_member_const_values_["Base"]["value"] = 41;
+  lowerer.struct_static_member_const_values_["StaleRendered"]["value"] = 7;
+
+  const std::string stale_tag = "StaleRendered";
+  const std::string rendered_member = "value";
+  const std::optional<long long> value =
+      lowerer.find_struct_static_member_const_value(
+          member_key, &stale_tag, &rendered_member);
+
+  expect_true(value.has_value() && *value == 41,
+              "structured static member const miss should use owner-key base fallback before stale rendered spelling");
+}
+
 void test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -5055,6 +5094,7 @@ int main() {
   test_hir_member_expr_owner_failure_does_not_use_stale_tag();
   test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_static_member_const_lookup_structured_miss_keeps_base_fallback();
   test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spelling();
