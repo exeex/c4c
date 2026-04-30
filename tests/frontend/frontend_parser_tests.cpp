@@ -1732,10 +1732,23 @@ void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
   target_ts.inner_rank = -1;
   target_ts.base = c4c::TB_INT;
 
+  c4c::TypeSpec stale_rendered_ts{};
+  stale_rendered_ts.array_size = -1;
+  stale_rendered_ts.inner_rank = -1;
+  stale_rendered_ts.base = c4c::TB_DOUBLE;
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const c4c::TextId target_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Target");
   const c4c::TextId alias_text = texts.intern("Alias");
-  parser.register_typedef_binding(parser_test_text_id(parser, "ns::Target"), target_ts, true);
+  parser.register_structured_typedef_binding_in_context(ns_context, target_text,
+                                                        target_ts);
+  parser.register_typedef_binding(parser_test_text_id(parser, "ns::Target"),
+                                  stale_rendered_ts, true);
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Target"));
+      parser.struct_typedef_key_in_context(ns_context, target_text);
   parser.register_known_fn_name(target_key);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "corrupted");
@@ -1744,7 +1757,7 @@ void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
             "qualified value aliases should keep namespace-qualified typedef resolution intact");
   const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
-              "qualified value aliases should still resolve through the existing namespace-visible path");
+              "qualified value aliases should use structured target metadata instead of the rendered typedef spelling");
 }
 
 void test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup() {

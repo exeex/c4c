@@ -2332,51 +2332,19 @@ Parser::VisibleNameResult Parser::resolve_visible_type(
         VisibleNameResult resolved_alias_result;
         if (lookup_using_value_alias(context_id, name_text_id, spelled,
                                      &resolved_alias_result)) {
-            const std::string resolved_alias =
-                visible_name_spelling(resolved_alias_result);
-            if (resolved_alias.empty()) continue;
-            const TextId resolved_text_id = find_parser_text_id(resolved_alias);
-            if (resolved_alias.find("::") != std::string::npos) {
-                if (has_typedef_type(resolved_text_id)) {
-                    result.found = true;
-                    result.kind = VisibleNameKind::Type;
-                    result.base_text_id = resolved_text_id;
-                    result.context_id = context_id;
-                    result.source = VisibleNameSource::UsingAlias;
-                    result.compatibility_spelling = resolved_alias;
-                    return result;
-                }
-                if (lookup_type_in_context(context_id, resolved_text_id,
-                                           resolved_alias, &result)) {
-                    result.source = VisibleNameSource::UsingAlias;
-                    return result;
-                }
-            } else {
-                if (lookup_type_in_context(context_id, resolved_text_id,
-                                           resolved_alias, &result)) {
-                    result.source = VisibleNameSource::UsingAlias;
-                    return result;
-                }
-                if (resolved_text_id != kInvalidText &&
-                    find_local_visible_typedef_type(resolved_text_id)) {
-                    result.found = true;
-                    result.kind = VisibleNameKind::Type;
-                    result.base_text_id = resolved_text_id;
-                    result.context_id = current_namespace_context_id();
-                    result.source = VisibleNameSource::UsingAlias;
-                    result.compatibility_spelling = resolved_alias;
-                    return result;
-                }
-                if (probe_visible_typedef_name(*this, resolved_text_id,
-                                               resolved_alias)) {
-                    result.found = true;
-                    result.kind = VisibleNameKind::Type;
-                    result.base_text_id = resolved_text_id;
-                    result.context_id = context_id;
-                    result.source = VisibleNameSource::UsingAlias;
-                    result.compatibility_spelling = resolved_alias;
-                    return result;
-                }
+            const QualifiedNameKey& target_key = resolved_alias_result.key;
+            const TextId target_text_id = target_key.base_text_id;
+            if (target_text_id != kInvalidText &&
+                (find_structured_typedef_type(target_key) ||
+                 find_alias_template_info(target_key) ||
+                 find_local_visible_typedef_type(target_text_id) ||
+                 find_typedef_type(target_text_id))) {
+                result = resolved_alias_result;
+                result.kind = VisibleNameKind::Type;
+                result.base_text_id = target_text_id;
+                result.context_id = target_key.context_id;
+                result.source = VisibleNameSource::UsingAlias;
+                return result;
             }
         }
         if (lookup_type_in_context(context_id, name_text_id, spelled, &result)) {
