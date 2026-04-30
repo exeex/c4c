@@ -3331,14 +3331,17 @@ top_level_base_ready:
     const char* scoped_decl_name =
         parser.qualify_name_arena(decl_name_text_id, decl_name);
     auto register_decl_known_fn_name = [&]() {
-        if (decl_name && std::string_view(decl_name).find("::") ==
-                             std::string_view::npos) {
-            parser.register_known_fn_name_in_context(
+        if (decl_name) {
+            if (parser.register_known_fn_name_in_context(
                 parser.current_namespace_context_id(), decl_name_text_id,
-                decl_name);
+                decl_name)) {
+                return;
+            }
+        }
+        if (scoped_decl_name && scoped_decl_name[0]) {
+            parser.register_known_fn_name(scoped_decl_name);
             return;
         }
-        parser.register_known_fn_name(scoped_decl_name);
     };
 
     // Handle function-returning-fptr: int (* f1(a, b))(c, d) { body }
