@@ -375,8 +375,6 @@ class Parser {
   void register_struct_member_typedef_binding(std::string_view owner_name,
                                               std::string_view member_name,
                                               const TypeSpec& type);
-  void register_struct_member_typedef_binding(const std::string& scoped_name,
-                                              const TypeSpec& type);
   void register_structured_typedef_binding_in_context(
       int context_id, TextId name_text_id, const TypeSpec& type);
   const TypeSpec* find_var_type(TextId name_text_id) const;

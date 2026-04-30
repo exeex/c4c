@@ -1028,21 +1028,6 @@ void Parser::register_struct_member_typedef_binding(
                              type, false);
 }
 
-void Parser::register_struct_member_typedef_binding(
-    const std::string& scoped_name, const TypeSpec& type) {
-    const size_t sep = scoped_name.rfind("::");
-    if (sep == std::string::npos) {
-        register_struct_member_typedef_binding(std::string_view{}, scoped_name,
-                                               type);
-        return;
-    }
-    register_struct_member_typedef_binding(
-        std::string_view(scoped_name.data(), sep),
-        std::string_view(scoped_name.data() + sep + 2,
-                         scoped_name.size() - sep - 2),
-        type);
-}
-
 void Parser::register_structured_typedef_binding_in_context(
     int context_id, TextId name_text_id, const TypeSpec& type) {
     const QualifiedNameKey key = qualified_key_in_context(

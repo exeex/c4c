@@ -8,43 +8,38 @@ Current Step Title: Audit Parser Type, Tag, And Member-Typedef Routes
 
 ## Just Finished
 
-Step 2.3 is complete. The committed parser lookup API contractions removed the
-value-alias visible-type rendered re-entry, removed fallback spelling from
-`lookup_using_value_alias(...)`, and removed spelling/fallback parameters from
-`lookup_value_in_context(...)`, `lookup_type_in_context(...)`, and
-`lookup_concept_in_context(...)`. The helpers now accept only `context_id`, the
-structured `TextId`, and `VisibleNameResult*`, and they reject `kInvalidText`
-instead of recovering lookup authority from rendered spellings.
+Step 2.4 is complete for this packet. The parser type/tag/member-typedef audit
+covered the delegated parser-owned files and found one removable compatibility
+wrapper: the unused `register_struct_member_typedef_binding(const std::string&,
+const TypeSpec&)` overload that split a rendered scoped name into owner/member
+semantic identity. That overload was deleted from `parser.hpp` and `core.cpp`.
 
-Production recursive and qualified/visible lookup call sites were updated to
-use the contracted APIs. Focused parser tests now cover the existing drifted
-string cases for value, type, and concept lookup while asserting invalid
-`TextId` rejection for the formerly preserved rendered fallback routes.
+The broader `register_struct_member_typedef_binding(owner, member, type)`
+rendered `owner::member` typedef mirror was tested as a possible removal, but
+the delegated proof exposed reachable dependence: removing it caused parser
+timeouts in `eastl_slice7_piecewise_ctor_parse`,
+`step3_timeout_probe_baseline_parse`, and `tuple_element_alias_mix_parse`, plus
+a runtime failure in `template_variable_alias_member_typedef_runtime`. That
+route remains a real Step 2.4 blocker until those consumers are structurally
+routed through owner/member metadata.
 
 ## Suggested Next
 
-Delegate Step 2.4: audit parser type, tag, and member-typedef routes for
-renamed helpers, compatibility wrappers, string/string_view semantic lookup
-parameters, fallback spelling parameters, and rendered-name lookup after a
-structured miss. The packet should preserve or add focused parser disagreement
-tests and produce a fresh canonical `test_after.log`.
+Delegate a narrow follow-up for the remaining member-typedef blocker: replace
+the live `owner::member` typedef mirror consumers with structured owner/member
+lookup in parser type parsing before deleting the mirror.
 
 ## Watchouts
 
-The const-int blocker from commit `28c1e5c5` remains parked: deleting the
-rendered-name `eval_const_int(...)` compatibility overload requires HIR
-`NttpBindings` metadata migration. Parser-owned callers should stay on
-`TextId` or structured maps, but do not pull `src/frontend/hir` carrier
-migration into this parser packet; route that through
-`ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a narrower HIR
-metadata idea if the supervisor switches scope.
+Non-semantic string uses remain in token-spelling/rendering helpers,
+diagnostics/debug bridges, namespace compatibility projection, template debug
+arg rendering, and final spelling projection. `TypeSpec::record_def`,
+qualified record/tag probes, member typedef arrays, and existing structured
+typedef maps remain the authority where present.
 
-`lookup_using_value_alias(...)` now intentionally rejects `kInvalidText`;
-future callers that lack a valid alias `TextId` need carrier repair rather
-than a rendered spelling lookup path.
-
-The three contracted parser lookup helpers now follow the same rule: callers
-without a valid `TextId` must repair metadata before invoking the helper.
+Do not remove the live `owner::member` mirror as a standalone deletion; the
+failed exploratory proof showed it is still protecting parser progress and one
+runtime member-typedef case.
 
 ## Proof
 
