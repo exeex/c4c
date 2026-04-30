@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/137_parser_known_function_name_compatibility_spelling_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Quarantine or Remove String Compatibility Overloads
+Current Step ID: 5
+Current Step Title: Broader Parser Confidence Check
 
 # Current Packet
 
@@ -21,9 +21,11 @@ when no structured known-function key was available.
 
 ## Suggested Next
 
-Supervisor should review whether Step 4 is complete enough to close or whether
-another narrow packet should migrate public/test-only string callers to the
-named compatibility helpers while preserving source compatibility.
+Run Plan Step 5 broader parser confidence validation. Cover the focused
+parser/frontend same-feature set for namespace-qualified functions,
+out-of-class operators, out-of-class constructors, and visible-name
+disambiguation, then run the supervisor-selected broader parser checkpoint
+before treating the idea as closure-ready.
 
 ## Watchouts
 
@@ -36,6 +38,8 @@ named compatibility helpers while preserving source compatibility.
 - Remaining compatibility fallback storage is intentional for TextId-less
   rendered bridges and public string API compatibility; new parser-owned
   semantic paths should continue to use `QualifiedNameKey`/`TextId` identity.
+- Leave adjacent parser string cleanup outside known-function-name authority as
+  a separate idea instead of absorbing it into this plan.
 
 ## Proof
 
