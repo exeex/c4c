@@ -341,19 +341,25 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
                 const std::string resolved_spelling =
                     visible_name_spelling(resolved_value);
                 if (!resolved_spelling.empty() &&
-                    has_known_fn_name(resolved_spelling)) {
+                    has_known_fn_name_compatibility_fallback(
+                        resolved_spelling)) {
                     return 1;
                 }
             }
         }
 
         if (!saw_structured_known_fn_key) {
-            if (has_known_fn_name(head_name)) return 1;
+            if (has_known_fn_name_compatibility_fallback(head_name)) {
+                return 1;
+            }
             if (is_cpp_mode() && !current_struct_tag_text().empty()) {
                 std::string current_member_name(current_struct_tag_text());
                 current_member_name += "::";
                 current_member_name += head_name;
-                if (has_known_fn_name(current_member_name)) return 1;
+                if (has_known_fn_name_compatibility_fallback(
+                        current_member_name)) {
+                    return 1;
+                }
             }
         }
 

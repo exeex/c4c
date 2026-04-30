@@ -8,22 +8,22 @@ Current Step Title: Quarantine or Remove String Compatibility Overloads
 
 ## Just Finished
 
-Completed Plan Step 3 lookup/disambiguation work. Unqualified
-visible value/type-head classification now probes structured direct
-known-function keys, structured current-record member keys, and structured
-`VisibleNameResult` keys before falling back to rendered `head_name`,
-`current_member_name`, or visible-name spelling. Rendered string lookup remains
-an explicit compatibility fallback only when no structured known-function key
-was available. Qualified lookup now flows through structured
-`resolve_qualified_value` before compatibility spelling fallback.
+Completed Plan Step 4 known-function string compatibility quarantine.
+Production parser callers now use `has_known_fn_name_compatibility_fallback`
+and `register_known_fn_name_compatibility_fallback` for rendered-spelling
+known-function fallback paths. The original `std::string` overloads remain as
+public compatibility shims only, delegating to the named compatibility helpers.
+Fallback behavior remains for TextId-less rendered qualified names in
+`register_known_fn_name_in_context`, declaration recovery for scoped function
+names, out-of-class operator/constructor registration when structured keys
+cannot be built, and unqualified visible value/type-head classification only
+when no structured known-function key was available.
 
 ## Suggested Next
 
-Step 4 next packet: quarantine or remove remaining string compatibility
-overloads. Start with the rendered known-function checks in
-`classify_visible_value_or_type_head`, treat them as compatibility fallbacks
-only, and then remove any string overloads whose call sites already have
-structured replacements.
+Supervisor should review whether Step 4 is complete enough to close or whether
+another narrow packet should migrate public/test-only string callers to the
+named compatibility helpers while preserving source compatibility.
 
 ## Watchouts
 
@@ -33,17 +33,15 @@ structured replacements.
 - Avoid testcase-shaped special cases.
 - Do not remove `fn->name` rendered spelling yet; it is final AST/display data,
   not the known-name authority store.
-- `current_record_member_name_key` intentionally uses existing parser-owned
-  record/member `TextId`s and existing qualifier paths; it does not intern a new
-  path just to make a rendered current-member spelling authoritative.
-- Step 4 should not remove a compatibility fallback until structured-present
-  and fallback-supported behavior are both covered by focused proof.
+- Remaining compatibility fallback storage is intentional for TextId-less
+  rendered bridges and public string API compatibility; new parser-owned
+  semantic paths should continue to use `QualifiedNameKey`/`TextId` identity.
 
 ## Proof
 
 Passed: `cmake --build build --target c4cll frontend_parser_tests >
 test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R
-'^(frontend_parser_tests|cpp_positive_sema_qualified_known_type_arg_fast_path_parse_cpp|cpp_positive_sema_qualified_type_start_probe_parse_cpp|cpp_positive_sema_qualified_type_resolution_dispatch_parse_cpp|cpp_positive_sema_qualified_type_spelling_shared_parse_cpp|cpp_positive_sema_qualified_type_start_shared_probe_parse_cpp|cpp_positive_sema_qualified_global_type_start_shared_probe_parse_cpp|cpp_positive_sema_qualified_template_call_expr_parse_cpp|cpp_positive_sema_template_known_type_arg_fast_path_parse_cpp|cpp_positive_sema_template_visible_typedef_type_arg_parse_cpp|cpp_positive_sema____generated_parser_disambiguation_matrix_parse_only_owner_global_qualified__decl_function_lvalue_ref__ctx_ambiguous_statement_context__parse_only_cpp|cpp_positive_sema____generated_parser_disambiguation_matrix_parse_only_owner_qualified__decl_function_lvalue_ref__ctx_ambiguous_statement_context__parse_only_cpp|cpp_positive_sema____generated_parser_disambiguation_matrix_parse_only_owner_simple__decl_function_lvalue_ref__ctx_ambiguous_statement_context__parse_only_cpp)$'
+'^(frontend_parser_tests|cpp_positive_sema_qualified_known_type_arg_fast_path_parse_cpp|cpp_positive_sema_qualified_type_start_probe_parse_cpp|cpp_positive_sema_qualified_type_resolution_dispatch_parse_cpp|cpp_positive_sema_qualified_template_call_expr_parse_cpp|cpp_positive_sema_template_known_type_arg_fast_path_parse_cpp|cpp_positive_sema_namespace_function_call_runtime_cpp|cpp_positive_sema_operator_conversion_out_of_class_parse_cpp|cpp_positive_sema_cpp20_out_of_class_trailing_requires_runtime_cpp)$'
 >> test_after.log 2>&1`. The proof rebuilt `c4cll` and
-`frontend_parser_tests`, then passed 13/13 selected tests. Proof log:
+`frontend_parser_tests`, then passed 9/9 selected tests. Proof log:
 `test_after.log`.

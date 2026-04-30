@@ -2603,7 +2603,8 @@ Node* parse_top_level(Parser& parser) {
                 registered_structured_operator_name = true;
             }
             if (!registered_structured_operator_name) {
-                parser.register_known_fn_name(qualified_op_name);
+                parser.register_known_fn_name_compatibility_fallback(
+                    qualified_op_name);
             }
             restore_current_struct_tag(parser, saved_tag_op_text_id,
                                        saved_tag_op_fallback);
@@ -2769,7 +2770,8 @@ Node* parse_top_level(Parser& parser) {
                     registered_structured_ctor_name = true;
                 }
                 if (!registered_structured_ctor_name) {
-                    parser.register_known_fn_name(qualified_ctor_name);
+                    parser.register_known_fn_name_compatibility_fallback(
+                        qualified_ctor_name);
                 }
                 restore_current_struct_tag(parser, saved_tag_ctor_text_id,
                                            saved_tag_ctor_fallback);
@@ -3397,7 +3399,8 @@ top_level_base_ready:
             }
         }
         if (scoped_decl_name && scoped_decl_name[0]) {
-            parser.register_known_fn_name(scoped_decl_name);
+            parser.register_known_fn_name_compatibility_fallback(
+                scoped_decl_name);
             return;
         }
     };

@@ -1419,8 +1419,7 @@ bool Parser::has_known_fn_name(const QualifiedNameKey& key) const {
 }
 
 bool Parser::has_known_fn_name(const std::string& name) const {
-    return has_known_fn_name(
-        known_fn_name_key(0, parser_text_id_for_token(kInvalidText, name), name));
+    return has_known_fn_name_compatibility_fallback(name);
 }
 
 void Parser::register_known_fn_name(const QualifiedNameKey& key) {
@@ -1428,8 +1427,21 @@ void Parser::register_known_fn_name(const QualifiedNameKey& key) {
 }
 
 void Parser::register_known_fn_name(const std::string& name) {
+    register_known_fn_name_compatibility_fallback(name);
+}
+
+bool Parser::has_known_fn_name_compatibility_fallback(
+    std::string_view rendered_name) const {
+    return has_known_fn_name(known_fn_name_key(
+        0, parser_text_id_for_token(kInvalidText, rendered_name),
+        rendered_name));
+}
+
+void Parser::register_known_fn_name_compatibility_fallback(
+    std::string_view rendered_name) {
     register_known_fn_name(intern_known_fn_name_key_from_spelling(
-        *this, 0, parser_text_id_for_token(kInvalidText, name), name));
+        *this, 0, parser_text_id_for_token(kInvalidText, rendered_name),
+        rendered_name));
 }
 
 bool Parser::register_known_fn_name_in_context(int context_id,
@@ -1455,7 +1467,7 @@ bool Parser::register_known_fn_name_in_context(int context_id,
     }
 
     if (fallback_name.find("::") != std::string_view::npos) {
-        register_known_fn_name(std::string(fallback_name));
+        register_known_fn_name_compatibility_fallback(fallback_name);
         return true;
     }
     return false;
