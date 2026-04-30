@@ -41,6 +41,11 @@ void expect_eq_int(int actual, int expected, const std::string& msg) {
   }
 }
 
+c4c::TextId parser_test_text_id(c4c::Parser& parser,
+                                std::string_view spelling) {
+  return parser.parser_text_id_for_token(c4c::kInvalidText, spelling);
+}
+
 void test_link_name_table_reuses_text_table_storage() {
   c4c::TextTable texts;
   c4c::LinkNameTable link_names(&texts);
@@ -131,8 +136,8 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
   var_ts.inner_rank = -1;
   var_ts.base = c4c::TB_DOUBLE;
 
-  parser.register_typedef_binding("Value", typedef_ts, true);
-  parser.register_var_type_binding("counter", var_ts);
+  parser.register_typedef_binding(parser_test_text_id(parser, "Value"), typedef_ts, true);
+  parser.register_var_type_binding(parser_test_text_id(parser, "counter"), var_ts);
 
   const c4c::Parser::SymbolId typedef_symbol =
       parser.parser_symbol_tables().find_identifier("Value");
@@ -146,12 +151,12 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
   expect_true(parser.parser_symbol_tables().user_typedefs.count(
                   typedef_symbol) == 1,
               "user typedef wrapper should track user typedef membership by SymbolId");
-  expect_true(parser.has_typedef_name("Value"),
+  expect_true(parser.has_typedef_name(parser_test_text_id(parser, "Value")),
               "string-facing typedef lookup should still work");
-  expect_true(parser.has_typedef_type("Value"),
+  expect_true(parser.has_typedef_type(parser_test_text_id(parser, "Value")),
               "typedef type wrapper should still resolve through string lookup");
-  expect_true(parser.find_typedef_type("Value") != nullptr &&
-                  parser.find_typedef_type("Value")->base == c4c::TB_INT,
+  expect_true(parser.find_typedef_type(parser_test_text_id(parser, "Value")) != nullptr &&
+                  parser.find_typedef_type(parser_test_text_id(parser, "Value"))->base == c4c::TB_INT,
               "typedef type wrapper should recover the stored TypeSpec");
   expect_true(parser.parser_symbol_tables().lookup_typedef_type(
                   typedef_symbol) != nullptr &&
@@ -164,13 +169,14 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
               "var-type wrapper should intern a valid SymbolId");
   expect_true(parser.parser_symbol_tables().var_types.count(var_symbol) == 1,
               "var-type wrapper should store var bindings by SymbolId");
-  expect_true(parser.has_var_type("counter"),
-              "string-facing var-type lookup should still work");
-  expect_true(parser.find_var_type("counter") != nullptr &&
-                  parser.find_var_type("counter")->base == c4c::TB_DOUBLE,
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "counter")) !=
+                  nullptr,
+              "TextId-facing var-type lookup should still work");
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "counter")) != nullptr &&
+                  parser.find_var_type(parser_test_text_id(parser, "counter"))->base == c4c::TB_DOUBLE,
               "var-type wrapper should recover the stored TypeSpec");
   const c4c::QualifiedNameKey counter_key =
-      parser.intern_semantic_name_key("counter");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "counter"));
   expect_true(parser.has_structured_var_type(counter_key),
               "var-type wrapper should also populate structured value storage");
   expect_true(parser.find_structured_var_type(counter_key) != nullptr &&
@@ -209,21 +215,20 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
   const int ns_context =
       parser.ensure_named_namespace_context(0, ns_id, "wrong_ns_fallback");
 
-  parser.register_typedef_binding(typedef_id, "wrong_type_fallback",
-                                  typedef_ts, true);
-  parser.register_var_type_binding(value_id, "wrong_value_fallback", var_ts);
-  parser.register_known_fn_name_in_context(ns_context, fn_id,
-                                           "wrong_fn_fallback");
-  parser.register_known_fn_name_in_context(ns_context, qualified_fn_id,
-                                           "wrongNs::wrong_qualified_fn_fallback");
+  parser.register_typedef_binding(typedef_id, typedef_ts, true);
+  parser.register_var_type_binding(value_id, var_ts);
+  parser.register_known_fn_name_in_context(ns_context, fn_id);
+  parser.register_known_fn_name_in_context(ns_context, qualified_fn_id);
 
-  expect_true(parser.has_typedef_type("IdFirstType"),
+  expect_true(parser.has_typedef_type(parser_test_text_id(parser, "IdFirstType")),
               "ID-first typedef registration should use the TextId spelling");
-  expect_true(!parser.has_typedef_type("wrong_type_fallback"),
+  expect_true(!parser.has_typedef_type(parser_test_text_id(parser, "wrong_type_fallback")),
               "ID-first typedef registration should not prefer fallback spelling");
-  expect_true(parser.has_var_type("idFirstValue"),
+  expect_true(parser.find_var_type(value_id) != nullptr,
               "ID-first value registration should use the TextId spelling");
-  expect_true(!parser.has_var_type("wrong_value_fallback"),
+  expect_true(parser.find_var_type(
+                  parser_test_text_id(parser, "wrong_value_fallback")) ==
+                  nullptr,
               "ID-first value registration should not prefer fallback spelling");
 
   c4c::TypeSpec fallback_typedef_ts{};
@@ -240,48 +245,45 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
       parser.parser_text_id_for_token(c4c::kInvalidText, "IdFirstLookupType");
   const c4c::TextId lookup_value_id =
       parser.parser_text_id_for_token(c4c::kInvalidText, "idFirstLookupValue");
-  parser.register_typedef_binding(lookup_typedef_id, "typedefLookupBridge",
-                                  typedef_ts, true);
-  parser.register_typedef_binding("typedefLookupBridge", fallback_typedef_ts,
+  parser.register_typedef_binding(lookup_typedef_id, typedef_ts, true);
+  parser.register_typedef_binding(parser_test_text_id(parser, "typedefLookupBridge"), fallback_typedef_ts,
                                   true);
-  parser.register_var_type_binding(lookup_value_id, "valueLookupBridge",
-                                   var_ts);
-  parser.register_var_type_binding("valueLookupBridge", fallback_var_ts);
+  parser.register_var_type_binding(lookup_value_id, var_ts);
+  parser.register_var_type_binding(parser_test_text_id(parser, "valueLookupBridge"), fallback_var_ts);
 
   const c4c::TypeSpec* id_typedef =
-      parser.find_typedef_type(lookup_typedef_id, "typedefLookupBridge");
+      parser.find_typedef_type(lookup_typedef_id);
   expect_true(id_typedef != nullptr && id_typedef->base == c4c::TB_INT,
               "ID-first typedef lookup should prefer the TextId spelling over a mismatched fallback");
   const c4c::TypeSpec* visible_typedef =
-      parser.find_visible_typedef_type(lookup_typedef_id,
-                                       "typedefLookupBridge");
+      parser.find_visible_typedef_type(lookup_typedef_id);
   expect_true(visible_typedef != nullptr && visible_typedef->base == c4c::TB_INT,
               "visible typedef lookup should prefer the TextId-backed global binding before fallback spelling");
   const c4c::TextId missing_typedef_id =
       parser.parser_text_id_for_token(c4c::kInvalidText,
                                       "MissingTextIdTypedef");
-  expect_true(parser.find_visible_typedef_type(missing_typedef_id,
-                                               "typedefLookupBridge") == nullptr,
+  expect_true(parser.find_visible_typedef_type(missing_typedef_id) == nullptr,
               "visible typedef lookup should not promote fallback spelling when a valid TextId lookup misses");
   const c4c::QualifiedNameKey direct_typedef_key =
-      parser.struct_typedef_key_in_context(0, lookup_typedef_id,
-                                           "typedefLookupBridge");
+      parser.struct_typedef_key_in_context(0, lookup_typedef_id);
   const c4c::TypeSpec* direct_typedef =
-      parser.find_typedef_type(direct_typedef_key, "typedefLookupBridge");
+      parser.find_typedef_type(direct_typedef_key);
+  expect_true(direct_typedef == nullptr,
+              "direct qualified-key typedef lookup should require explicitly structured storage");
+  parser.register_structured_typedef_binding_in_context(0, lookup_typedef_id,
+                                                        typedef_ts);
+  direct_typedef = parser.find_typedef_type(direct_typedef_key);
   expect_true(direct_typedef != nullptr && direct_typedef->base == c4c::TB_INT,
-              "direct qualified-key typedef lookup should prefer the TextId spelling over a mismatched fallback");
+              "direct qualified-key typedef lookup should use explicitly structured storage");
   const c4c::QualifiedNameKey stale_typedef_key =
-      parser.struct_typedef_key_in_context(0, missing_typedef_id,
-                                           "typedefLookupBridge");
-  expect_true(parser.find_typedef_type(stale_typedef_key,
-                                       "typedefLookupBridge") == nullptr,
+      parser.struct_typedef_key_in_context(0, missing_typedef_id);
+  expect_true(parser.find_typedef_type(stale_typedef_key) == nullptr,
               "direct qualified-key typedef lookup should not promote fallback spelling when a valid TextId lookup misses");
   const c4c::QualifiedNameKey invalid_key{};
   const c4c::TypeSpec* fallback_typedef =
-      parser.find_typedef_type(invalid_key, "typedefLookupBridge");
-  expect_true(fallback_typedef != nullptr &&
-                  fallback_typedef->base == c4c::TB_DOUBLE,
-              "direct qualified-key typedef lookup should preserve invalid-key fallback compatibility");
+      parser.find_typedef_type(invalid_key);
+  expect_true(fallback_typedef == nullptr,
+              "direct qualified-key typedef lookup should not use invalid-key fallback compatibility");
   std::string resolved_type_name;
   expect_true(parser.lookup_type_in_context(0, lookup_typedef_id,
                                             "typedefLookupBridge",
@@ -300,35 +302,31 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
                   resolved_type_name == "typedefLookupBridge",
               "namespace-visible typedef lookup should preserve TextId-less compatibility fallback");
   const c4c::TypeSpec* id_var =
-      parser.find_var_type(lookup_value_id, "valueLookupBridge");
+      parser.find_var_type(lookup_value_id);
   expect_true(id_var != nullptr && id_var->base == c4c::TB_LONG,
               "ID-first value lookup should prefer the TextId spelling over a mismatched fallback");
   const c4c::TypeSpec* visible_var =
-      parser.find_visible_var_type(lookup_value_id, "valueLookupBridge");
+      parser.find_visible_var_type(lookup_value_id);
   expect_true(visible_var != nullptr && visible_var->base == c4c::TB_LONG,
               "visible value lookup should prefer the TextId-backed global binding before fallback spelling");
   const c4c::TextId missing_value_id =
       parser.parser_text_id_for_token(c4c::kInvalidText, "MissingTextIdValue");
-  expect_true(parser.find_visible_var_type(missing_value_id,
-                                           "valueLookupBridge") == nullptr,
+  expect_true(parser.find_visible_var_type(missing_value_id) == nullptr,
               "visible value lookup should not promote fallback spelling when a valid TextId lookup misses");
   const c4c::QualifiedNameKey direct_value_key =
-      parser.known_fn_name_key_in_context(0, lookup_value_id,
-                                          "valueLookupBridge");
+      parser.known_fn_name_key_in_context(0, lookup_value_id);
   const c4c::TypeSpec* direct_var =
-      parser.find_var_type(direct_value_key, "valueLookupBridge");
+      parser.find_var_type(direct_value_key);
   expect_true(direct_var != nullptr && direct_var->base == c4c::TB_LONG,
               "direct qualified-key value lookup should prefer the TextId spelling over a mismatched fallback");
   const c4c::QualifiedNameKey stale_value_key =
-      parser.known_fn_name_key_in_context(0, missing_value_id,
-                                          "valueLookupBridge");
-  expect_true(parser.find_var_type(stale_value_key, "valueLookupBridge") ==
-                  nullptr,
+      parser.known_fn_name_key_in_context(0, missing_value_id);
+  expect_true(parser.find_var_type(stale_value_key) == nullptr,
               "direct qualified-key value lookup should not promote fallback spelling when a valid TextId lookup misses");
   const c4c::TypeSpec* fallback_var =
-      parser.find_var_type(invalid_key, "valueLookupBridge");
-  expect_true(fallback_var != nullptr && fallback_var->base == c4c::TB_FLOAT,
-              "direct qualified-key value lookup should preserve invalid-key fallback compatibility");
+      parser.find_var_type(invalid_key);
+  expect_true(fallback_var == nullptr,
+              "direct qualified-key value lookup should not use invalid-key fallback compatibility");
   c4c::TypeSpec legacy_only_var_ts{};
   legacy_only_var_ts.array_size = -1;
   legacy_only_var_ts.inner_rank = -1;
@@ -340,25 +338,17 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
   parser.parser_symbol_tables().var_types[legacy_only_symbol] =
       legacy_only_var_ts;
   const c4c::QualifiedNameKey legacy_only_key =
-      parser.known_fn_name_key_in_context(0, legacy_only_value_id,
-                                          "legacyOnlyValue");
-  expect_true(parser.find_var_type(legacy_only_key, "legacyOnlyValue") ==
-                  nullptr,
+      parser.known_fn_name_key_in_context(0, legacy_only_value_id);
+  expect_true(parser.find_var_type(legacy_only_key) == nullptr,
               "direct qualified-key value lookup should not promote legacy-only rendered cache entries");
-  expect_true(parser.find_var_type("legacyOnlyValue") != nullptr &&
-                  parser.find_var_type("legacyOnlyValue")->base ==
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "legacyOnlyValue")) != nullptr &&
+                  parser.find_var_type(parser_test_text_id(parser, "legacyOnlyValue"))->base ==
                       c4c::TB_SHORT,
               "string value lookup should preserve explicit legacy cache compatibility");
-  expect_true(parser.find_var_type(invalid_key, "legacyOnlyValue") != nullptr &&
-                  parser.find_var_type(invalid_key, "legacyOnlyValue")->base ==
-                      c4c::TB_SHORT,
-              "invalid-key value lookup should preserve TextId-less fallback compatibility");
-  expect_true(parser.find_visible_var_type(c4c::kInvalidText,
-                                           "legacyOnlyValue") != nullptr &&
-                  parser.find_visible_var_type(c4c::kInvalidText,
-                                               "legacyOnlyValue")
-                          ->base == c4c::TB_SHORT,
-              "TextId-less visible value lookup should preserve legacy cache compatibility");
+  expect_true(parser.find_var_type(invalid_key) == nullptr,
+              "invalid-key value lookup should not preserve TextId-less fallback compatibility");
+  expect_true(parser.find_visible_var_type(c4c::kInvalidText) == nullptr,
+              "TextId-less visible value lookup should not preserve legacy cache compatibility");
   std::string resolved_value_name;
   expect_true(parser.lookup_value_in_context(0, lookup_value_id,
                                              "valueLookupBridge",
@@ -377,14 +367,14 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
                   resolved_value_name == "valueLookupBridge",
               "namespace-visible value lookup should preserve TextId-less compatibility fallback");
   const c4c::TypeSpec* string_visible_var =
-      parser.find_visible_var_type("valueLookupBridge");
+      parser.find_visible_var_type(parser_test_text_id(parser, "valueLookupBridge"));
   expect_true(string_visible_var != nullptr &&
                   string_visible_var->base == c4c::TB_FLOAT,
               "string visible value lookup should preserve TextId-less compatibility");
 
-  parser.register_typedef_binding("idFirstNs::namespaceTypeBridge",
+  parser.register_typedef_binding(parser_test_text_id(parser, "idFirstNs::namespaceTypeBridge"),
                                   fallback_typedef_ts, true);
-  parser.register_var_type_binding("idFirstNs::namespaceValueBridge",
+  parser.register_var_type_binding(parser_test_text_id(parser, "idFirstNs::namespaceValueBridge"),
                                    fallback_var_ts);
   const c4c::TextId missing_namespace_type_id =
       parser.parser_text_id_for_token(c4c::kInvalidText,
@@ -418,7 +408,7 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
               "namespace-scoped value lookup should preserve TextId-less compatibility fallback");
 
   const c4c::QualifiedNameKey value_key =
-      parser.intern_semantic_name_key("idFirstValue");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "idFirstValue"));
   expect_true(parser.has_structured_var_type(value_key),
               "ID-first value registration should populate structured value storage");
   expect_true(parser.find_structured_var_type(value_key) != nullptr &&
@@ -426,21 +416,21 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
                       c4c::TB_LONG,
               "structured value storage should agree with the ID-first registration");
 
-  expect_true(parser.has_known_fn_name("idFirstNs::idFirstFn"),
+  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "idFirstNs::idFirstFn"))),
               "ID-first known-function registration should use the TextId spelling");
-  expect_true(!parser.has_known_fn_name("idFirstNs::wrong_fn_fallback"),
+  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "idFirstNs::wrong_fn_fallback"))),
               "ID-first known-function registration should not prefer fallback spelling");
-  expect_true(parser.has_known_fn_name("idFirstNs::idFirstQualifiedFn"),
+  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "idFirstNs::idFirstQualifiedFn"))),
               "ID-first qualified known-function registration should use the namespace context and TextId spelling");
-  expect_true(!parser.has_known_fn_name("wrongNs::wrong_qualified_fn_fallback"),
+  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "wrongNs::wrong_qualified_fn_fallback"))),
               "ID-first qualified known-function registration should not promote rendered fallback spelling");
-  parser.register_known_fn_name("stringBridgeNs::stringBridgeFn");
-  expect_true(parser.has_known_fn_name("stringBridgeNs::stringBridgeFn"),
+  parser.register_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "stringBridgeNs::stringBridgeFn")));
+  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "stringBridgeNs::stringBridgeFn"))),
               "public string known-function lookup should preserve rendered bridge compatibility");
   parser.register_known_fn_name_in_context(
-      0, c4c::kInvalidText, "legacyKnownBridgeNs::legacyKnownBridgeFn");
-  expect_true(parser.has_known_fn_name("legacyKnownBridgeNs::legacyKnownBridgeFn"),
-              "TextId-less known-function registration should preserve rendered fallback compatibility");
+      0, parser_test_text_id(parser, "legacyKnownBridgeNs::legacyKnownBridgeFn"));
+  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "legacyKnownBridgeNs::legacyKnownBridgeFn"))),
+              "context known-function registration should not recreate rendered qualified-name fallback routes");
 }
 
 void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
@@ -459,22 +449,22 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
   temp_ts.inner_rank = -1;
   temp_ts.base = c4c::TB_FLOAT;
 
-  parser.register_typedef_binding("Keep", keep_ts, false);
+  parser.register_typedef_binding(parser_test_text_id(parser, "Keep"), keep_ts, false);
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
   const size_t typedef_count_before =
       parser.parser_symbol_tables().typedefs.size();
   const auto snapshot = parser.save_state();
   const c4c::QualifiedNameKey scratch_key =
-      parser.intern_semantic_name_key("scratch");
-  parser.register_typedef_binding("Temp", temp_ts, true);
-  parser.register_var_type_binding("scratch", temp_ts);
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "scratch"));
+  parser.register_typedef_binding(parser_test_text_id(parser, "Temp"), temp_ts, true);
+  parser.register_var_type_binding(parser_test_text_id(parser, "scratch"), temp_ts);
   parser.restore_state(snapshot);
 
-  expect_true(parser.has_typedef_name("Keep"),
+  expect_true(parser.has_typedef_name(parser_test_text_id(parser, "Keep")),
               "restore_state should preserve typedefs that existed before the snapshot");
-  expect_true(!parser.has_typedef_name("Temp"),
+  expect_true(!parser.has_typedef_name(parser_test_text_id(parser, "Temp")),
               "restore_state should roll back typedefs added after the snapshot");
-  expect_true(!parser.has_var_type("scratch"),
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "scratch")) == nullptr,
               "restore_state should roll back var bindings added after the snapshot");
   expect_true(!parser.has_structured_var_type(scratch_key),
               "restore_state should roll back structured var bindings added after the snapshot");
@@ -483,7 +473,7 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
                 static_cast<int>(typedef_count_before),
                 "heavy snapshot restore should reset typedef membership to the snapshot");
 #else
-  expect_true(parser.has_typedef_name("Keep"),
+  expect_true(parser.has_typedef_name(parser_test_text_id(parser, "Keep")),
               "test fixture should preserve the baseline typedef when heavy snapshots are off");
 #endif
 }
@@ -519,28 +509,28 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
   const int symbol_count_before =
       static_cast<int>(parser.parser_symbol_count_for_testing());
 
-  parser.register_typedef_binding("ns::Type", typedef_ts, true);
-  parser.register_var_type_binding("ns::value", var_ts);
+  parser.register_typedef_binding(parser_test_text_id(parser, "ns::Type"), typedef_ts, true);
+  parser.register_var_type_binding(parser_test_text_id(parser, "ns::value"), var_ts);
 
-  expect_true(parser.has_typedef_name("ns::Type"),
+  expect_true(parser.has_typedef_name(parser_test_text_id(parser, "ns::Type")),
               "qualified typedef membership should remain lookupable");
-  expect_true(parser.has_typedef_type("ns::Type"),
+  expect_true(parser.has_typedef_type(parser_test_text_id(parser, "ns::Type")),
               "qualified typedef types should remain lookupable");
-  expect_true(parser.find_typedef_type("ns::Type") != nullptr &&
-                  parser.find_typedef_type("ns::Type")->base == c4c::TB_INT,
+  expect_true(parser.find_typedef_type(parser_test_text_id(parser, "ns::Type")) != nullptr &&
+                  parser.find_typedef_type(parser_test_text_id(parser, "ns::Type"))->base == c4c::TB_INT,
               "qualified typedef type lookup should recover the stored TypeSpec");
   const c4c::QualifiedNameKey value_key =
-      parser.intern_semantic_name_key("ns::value");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::value"));
   expect_true(parser.has_structured_var_type(value_key),
               "qualified value bindings should populate structured storage");
   expect_true(parser.find_structured_var_type(value_key) != nullptr &&
                   parser.find_structured_var_type(value_key)->base ==
                       c4c::TB_DOUBLE,
               "qualified structured value lookup should recover the stored TypeSpec");
-  expect_true(parser.has_var_type("ns::value"),
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "ns::value")) != nullptr,
               "qualified value bindings should remain string-lookupable");
-  expect_true(parser.find_var_type("ns::value") != nullptr &&
-                  parser.find_var_type("ns::value")->base == c4c::TB_DOUBLE,
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "ns::value")) != nullptr &&
+                  parser.find_var_type(parser_test_text_id(parser, "ns::value"))->base == c4c::TB_DOUBLE,
               "qualified value lookup should recover the stored TypeSpec");
   expect_true(parser.parser_symbol_tables().find_identifier(
                   "ns::Type") ==
@@ -557,27 +547,27 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
   const auto snapshot = parser.save_state();
   const c4c::QualifiedNameKey scratch_key =
-      parser.intern_semantic_name_key("ns::scratch");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::scratch"));
 
   c4c::TypeSpec temp_ts{};
   temp_ts.array_size = -1;
   temp_ts.inner_rank = -1;
   temp_ts.base = c4c::TB_FLOAT;
 
-  parser.register_typedef_binding("ns::Temp", temp_ts, true);
-  parser.register_var_type_binding("ns::scratch", temp_ts);
+  parser.register_typedef_binding(parser_test_text_id(parser, "ns::Temp"), temp_ts, true);
+  parser.register_var_type_binding(parser_test_text_id(parser, "ns::scratch"), temp_ts);
   parser.restore_state(snapshot);
 
-  expect_true(!parser.has_typedef_type("ns::Temp"),
+  expect_true(!parser.has_typedef_type(parser_test_text_id(parser, "ns::Temp")),
               "restore_state should roll back qualified typedefs from fallback storage");
-  expect_true(!parser.has_var_type("ns::scratch"),
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "ns::scratch")) == nullptr,
               "restore_state should roll back qualified values from fallback storage");
   expect_true(!parser.has_structured_var_type(scratch_key),
               "restore_state should roll back qualified values from structured storage");
 #endif
 }
 
-void test_parser_structured_value_registration_uses_string_bridge_without_legacy_mirror() {
+void test_parser_structured_value_registration_avoids_string_bridge_and_legacy_mirror() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -589,10 +579,10 @@ void test_parser_structured_value_registration_uses_string_bridge_without_legacy
   value_ts.base = c4c::TB_LONG;
 
   const c4c::QualifiedNameKey value_key =
-      parser.intern_semantic_name_key("ns::registered");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::registered"));
   parser.register_structured_var_type_binding(value_key, value_ts);
   const c4c::QualifiedNameKey unqualified_value_key =
-      parser.intern_semantic_name_key("registered");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "registered"));
   parser.register_structured_var_type_binding(unqualified_value_key, value_ts);
 
   expect_true(parser.has_structured_var_type(value_key),
@@ -601,17 +591,10 @@ void test_parser_structured_value_registration_uses_string_bridge_without_legacy
                   parser.find_structured_var_type(value_key)->base ==
                       c4c::TB_LONG,
               "structured value registration should recover the stored TypeSpec");
-  expect_true(parser.has_var_type("ns::registered"),
-              "string-facing value lookup should bridge to structured storage");
-  expect_true(parser.find_var_type("ns::registered") != nullptr &&
-                  parser.find_var_type("ns::registered")->base ==
-                      c4c::TB_LONG,
-              "string-facing value lookup should agree with structured value storage");
-  expect_true(parser.has_var_type("registered"),
-              "unqualified string-facing value lookup should bridge to structured storage");
-  expect_true(parser.find_var_type("registered") != nullptr &&
-                  parser.find_var_type("registered")->base == c4c::TB_LONG,
-              "unqualified string-facing lookup should recover structured storage");
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "ns::registered")) == nullptr,
+              "string-facing value lookup should not bridge to structured-only storage");
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "registered")) == nullptr,
+              "unqualified string-facing value lookup should not bridge to structured-only storage");
   const c4c::Parser::SymbolId registered_symbol =
       parser.parser_symbol_tables().find_identifier("registered");
   expect_true(registered_symbol == c4c::Parser::kInvalidSymbol ||
@@ -619,20 +602,20 @@ void test_parser_structured_value_registration_uses_string_bridge_without_legacy
                       registered_symbol) == 0,
               "direct structured value registration should not populate the legacy symbol cache");
   expect_true(parser.find_var_type(
-                  parser.find_parser_text_id("registered"), "registered") ==
+                  parser.find_parser_text_id("registered")) ==
                   nullptr,
               "direct TextId value lookup should not observe a legacy mirror for structured-only registrations");
 
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
   const auto snapshot = parser.save_state();
   const c4c::QualifiedNameKey temp_key =
-      parser.intern_semantic_name_key("ns::temporary_registered");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::temporary_registered"));
   parser.register_structured_var_type_binding(temp_key, value_ts);
   parser.restore_state(snapshot);
 
   expect_true(!parser.has_structured_var_type(temp_key),
               "restore_state should roll back direct structured value bindings");
-  expect_true(!parser.has_var_type("ns::temporary_registered"),
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "ns::temporary_registered")) == nullptr,
               "restore_state should roll back the string bridge for direct structured value bindings");
 #endif
 }
@@ -643,7 +626,7 @@ void test_parser_last_using_alias_name_prefers_text_id_storage() {
   c4c::FileTable files;
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
-  parser.set_last_using_alias_name(parser.intern_semantic_name_key("ns::Alias"));
+  parser.set_last_using_alias_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Alias")));
   expect_true(parser.has_last_using_alias_name_text_id_for_testing(),
               "using-alias bookkeeping should retain a valid TextId");
   expect_eq(parser.last_using_alias_name_text(), "Alias",
@@ -805,7 +788,7 @@ void test_parser_type_start_probes_use_token_spelling() {
   typedef_ts.array_size = -1;
   typedef_ts.inner_rank = -1;
   typedef_ts.base = c4c::TB_INT;
-  parser.register_typedef_binding("TypeAlias", typedef_ts, true);
+  parser.register_typedef_binding(parser_test_text_id(parser, "TypeAlias"), typedef_ts, true);
 
   c4c::Token seed{};
   parser.replace_token_stream_for_testing({
@@ -832,10 +815,19 @@ void test_parser_type_start_probes_use_token_spelling() {
   const c4c::TextId qualified_concept_text_id =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ScopedConcept");
   parser.register_concept_name_in_context(ns_context_id,
-                                          qualified_concept_text_id,
-                                          "ScopedConcept");
-  expect_true(parser.is_concept_name("ns::ScopedConcept"),
+                                          qualified_concept_text_id);
+  const c4c::QualifiedNameKey qualified_concept_key =
+      parser.known_fn_name_key_in_context(ns_context_id,
+                                          qualified_concept_text_id);
+  expect_true(parser.has_structured_concept_name(qualified_concept_key),
               "qualified concept lookup should use structured concept keys");
+  std::string resolved_concept_name;
+  expect_true(parser.lookup_concept_in_context(ns_context_id,
+                                               qualified_concept_text_id,
+                                               "ScopedConcept",
+                                               &resolved_concept_name) &&
+                  resolved_concept_name == "ns::ScopedConcept",
+              "qualified concept lookup should project structured concept keys");
 }
 
 void test_parser_exception_specs_and_attributes_use_token_spelling() {
@@ -905,13 +897,13 @@ void test_parser_typeof_like_probes_use_token_spelling() {
   typedef_ts.array_size = -1;
   typedef_ts.inner_rank = -1;
   typedef_ts.base = c4c::TB_INT;
-  parser.register_typedef_binding("TypeAlias", typedef_ts, true);
+  parser.register_typedef_binding(parser_test_text_id(parser, "TypeAlias"), typedef_ts, true);
 
   c4c::TypeSpec value_ts{};
   value_ts.array_size = -1;
   value_ts.inner_rank = -1;
   value_ts.base = c4c::TB_DOUBLE;
-  parser.register_var_type_binding("value", value_ts);
+  parser.register_var_type_binding(parser_test_text_id(parser, "value"), value_ts);
 
   parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "__underlying_type"),
@@ -988,7 +980,7 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   typedef_ts.array_size = -1;
   typedef_ts.inner_rank = -1;
   typedef_ts.base = c4c::TB_INT;
-  parser.register_typedef_binding("TypeAlias", typedef_ts, true);
+  parser.register_typedef_binding(parser_test_text_id(parser, "TypeAlias"), typedef_ts, true);
 
   parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
@@ -1165,8 +1157,8 @@ void test_parser_dependent_typename_uses_local_visible_owner_alias() {
 
   expect_eq(resolved_name, "Alias::type",
             "dependent typename parsing should preserve the cached alias-member spelling");
-  expect_true(parser.find_typedef_type(resolved_name) != nullptr &&
-                  parser.find_typedef_type(resolved_name)->base == c4c::TB_INT,
+  expect_true(parser.find_typedef_type(parser.find_parser_text_id(resolved_name)) != nullptr &&
+                  parser.find_typedef_type(parser.find_parser_text_id(resolved_name))->base == c4c::TB_INT,
               "dependent typename parsing should resolve a scope-local owner alias through the visible typedef facade");
   expect_true(parser.pop_local_binding_scope(),
               "test fixture should balance the local visible typedef scope");
@@ -1217,7 +1209,8 @@ void test_parser_dependent_typename_owner_alias_prefers_record_definition() {
 
   expect_eq(resolved_name, "Alias::type",
             "dependent typename parsing should preserve alias-member spelling");
-  const c4c::TypeSpec* resolved_type = parser.find_typedef_type(resolved_name);
+  const c4c::TypeSpec* resolved_type =
+      parser.find_typedef_type(parser.find_parser_text_id(resolved_name));
   expect_true(resolved_type != nullptr && resolved_type->base == c4c::TB_INT,
               "record_def owner lookup should recover the real member typedef");
   expect_true(parser.pop_local_binding_scope(),
@@ -1252,7 +1245,7 @@ void test_parser_member_typedef_suffix_prefers_record_definition() {
   alias_ts.base = c4c::TB_STRUCT;
   alias_ts.tag = arena.strdup("StaleBox");
   alias_ts.record_def = real_owner;
-  parser.register_typedef_binding("Alias", alias_ts, true);
+  parser.register_typedef_binding(parser_test_text_id(parser, "Alias"), alias_ts, true);
 
   parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
@@ -1287,7 +1280,7 @@ void test_parser_member_typedef_suffix_uses_tagless_record_definition() {
   alias_ts.inner_rank = -1;
   alias_ts.base = c4c::TB_STRUCT;
   alias_ts.record_def = real_owner;
-  parser.register_typedef_binding("Alias", alias_ts, true);
+  parser.register_typedef_binding(parser_test_text_id(parser, "Alias"), alias_ts, true);
 
   parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
@@ -1355,7 +1348,8 @@ void test_parser_nested_dependent_typename_prefers_record_definition() {
 
   expect_eq(resolved_name, "Root::Nested::type",
             "nested dependent typename parsing should preserve nested spelling");
-  const c4c::TypeSpec* resolved_type = parser.find_typedef_type(resolved_name);
+  const c4c::TypeSpec* resolved_type =
+      parser.find_typedef_type(parser.find_parser_text_id(resolved_name));
   expect_true(resolved_type != nullptr && resolved_type->base == c4c::TB_LONG,
               "nested record_def owner lookup should recover the real nested member typedef");
 }
@@ -1407,7 +1401,8 @@ void test_parser_nested_dependent_typename_uses_tagless_record_definition() {
   expect_true(parser.parse_dependent_typename_specifier(&resolved_name),
               "nested dependent typename owners should use tagless field record_def");
 
-  const c4c::TypeSpec* resolved_type = parser.find_typedef_type(resolved_name);
+  const c4c::TypeSpec* resolved_type =
+      parser.find_typedef_type(parser.find_parser_text_id(resolved_name));
   expect_true(resolved_type != nullptr && resolved_type->base == c4c::TB_LONG,
               "tagless nested record_def owner lookup should recover the real member typedef");
 }
@@ -1433,7 +1428,7 @@ void test_parser_record_ctor_probe_prefers_record_definition() {
   alias_ts.base = c4c::TB_STRUCT;
   alias_ts.tag = arena.strdup("StaleBox");
   alias_ts.record_def = real_owner;
-  parser.register_typedef_binding("Alias", alias_ts, true);
+  parser.register_typedef_binding(parser_test_text_id(parser, "Alias"), alias_ts, true);
 
   c4c::TypeSpec probe{};
   probe.array_size = -1;
@@ -1465,7 +1460,7 @@ void test_parser_is_typedef_name_uses_local_visible_scope_lookup() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
 
-  expect_true(parser.is_typedef_name("Alias"),
+  expect_true(parser.is_typedef_name(parser_test_text_id(parser, "Alias")),
               "typedef-name probes should treat parser-local visible bindings as typedefs");
 
   expect_true(parser.pop_local_binding_scope(),
@@ -1517,7 +1512,7 @@ void test_parser_record_body_context_keeps_visible_template_origin_lookup_local(
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
 
-  expect_true(parser.find_typedef_type("Alias") == nullptr,
+  expect_true(parser.find_typedef_type(parser_test_text_id(parser, "Alias")) == nullptr,
               "local visible typedef fixtures should not populate the flat typedef table");
 
   std::string saved_struct_tag;
@@ -1527,9 +1522,9 @@ void test_parser_record_body_context_keeps_visible_template_origin_lookup_local(
 
   expect_eq(struct_source_name, "Alias",
             "record body setup should preserve the template origin spelling");
-  expect_true(parser.find_typedef_type("Alias") == nullptr,
+  expect_true(parser.find_typedef_type(parser_test_text_id(parser, "Alias")) == nullptr,
               "record body setup should not synthesize a flat typedef binding when a visible local alias already exists");
-  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "record body setup should continue resolving the template origin through the visible typedef facade");
   expect_true(parser.pop_local_binding_scope(),
@@ -1552,7 +1547,7 @@ void test_parser_visible_type_alias_uses_scope_local_typedef_facade() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(target_text, target_ts);
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key("Target");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "Target"));
   parser.register_known_fn_name(target_key);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "corrupted");
@@ -1580,12 +1575,12 @@ void test_parser_visible_type_alias_resolves_scope_local_target_type() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(target_text, target_ts);
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key("Target");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "Target"));
   parser.register_known_fn_name(target_key);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "corrupted");
 
-  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "visible typedef aliases should resolve scope-local target types through the visible facade");
 
@@ -1609,13 +1604,13 @@ void test_parser_visible_type_alias_uses_token_text_id_scope_lookup() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(target_text, target_ts);
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key("Target");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "Target"));
   parser.register_known_fn_name(target_key);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "corrupted");
 
   const c4c::TypeSpec* visible_alias =
-      parser.find_visible_typedef_type(alias_text, "Alias");
+      parser.find_visible_typedef_type(alias_text);
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "token TextId visible typedef probes should consult the local lexical scope first");
   expect_eq(parser.resolve_visible_type_name(alias_text, "Alias"), "Target",
@@ -1637,16 +1632,16 @@ void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
   target_ts.base = c4c::TB_INT;
 
   const c4c::TextId alias_text = texts.intern("Alias");
-  parser.register_typedef_binding("ns::Target", target_ts, true);
+  parser.register_typedef_binding(parser_test_text_id(parser, "ns::Target"), target_ts, true);
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key("ns::Target");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Target"));
   parser.register_known_fn_name(target_key);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "corrupted");
 
   expect_eq(parser.resolve_visible_type_name("Alias"), "ns::Target",
             "qualified value aliases should keep namespace-qualified typedef resolution intact");
-  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "qualified value aliases should still resolve through the existing namespace-visible path");
 }
@@ -1691,7 +1686,7 @@ void test_parser_using_value_import_keeps_structured_target_key() {
   target_ts.array_size = -1;
   target_ts.inner_rank = -1;
   target_ts.base = c4c::TB_INT;
-  parser.register_var_type_binding("ns::Target", target_ts);
+  parser.register_var_type_binding(parser_test_text_id(parser, "ns::Target"), target_ts);
 
   (void)parse_top_level(parser);
 
@@ -1723,8 +1718,8 @@ void test_parser_using_value_import_prefers_structured_type_over_corrupt_rendere
   bridge_ts.base = c4c::TB_DOUBLE;
 
   parser.register_structured_var_type_binding(
-      parser.intern_semantic_name_key("ns::Target"), target_ts);
-  parser.register_var_type_binding("corrupted", bridge_ts);
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Target")), target_ts);
+  parser.register_var_type_binding(parser_test_text_id(parser, "corrupted"), bridge_ts);
 
   (void)parse_top_level(parser);
 
@@ -1735,7 +1730,7 @@ void test_parser_using_value_import_prefers_structured_type_over_corrupt_rendere
                   0, alias_text, "corrupted"),
               "using-import fixture should record a value-alias entry");
 
-  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type("Target");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type(parser_test_text_id(parser, "Target"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "using value imports should prefer the structured target type before rendered fallback names");
 }
@@ -1751,7 +1746,7 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
   target_ts.array_size = -1;
   target_ts.inner_rank = -1;
   target_ts.base = c4c::TB_INT;
-  parser.register_var_type_binding("Target", target_ts);
+  parser.register_var_type_binding(parser_test_text_id(parser, "Target"), target_ts);
 
   (void)parse_top_level(parser);
 
@@ -1778,9 +1773,9 @@ void test_parser_out_of_class_operator_registers_structured_global_key() {
               "global-qualified out-of-class operator declarations should parse as functions");
   expect_eq(fn->name, "Owner::operator_bool",
             "out-of-class operator final spelling should keep the existing rendered display name");
-  expect_true(parser.has_known_fn_name("::Owner::operator_bool"),
+  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "::Owner::operator_bool"))),
               "out-of-class operator registration should keep the structured global-qualified key");
-  expect_true(!parser.has_known_fn_name("Owner::operator_bool"),
+  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "Owner::operator_bool"))),
               "out-of-class operator registration should not fall back to stale non-global rendered spelling when structure is available");
 }
 
@@ -1797,13 +1792,13 @@ void test_parser_out_of_class_constructor_registers_structured_global_key() {
               "global-qualified out-of-class constructor declarations should parse as functions");
   expect_eq(fn->name, "Owner::Owner",
             "out-of-class constructor final spelling should keep the existing rendered display name");
-  expect_true(parser.has_known_fn_name("::Owner::Owner"),
+  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "::Owner::Owner"))),
               "out-of-class constructor registration should keep the structured global-qualified key");
-  expect_true(!parser.has_known_fn_name("Owner::Owner"),
+  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "Owner::Owner"))),
               "out-of-class constructor registration should not fall back to stale non-global rendered spelling when structure is available");
 }
 
-void test_parser_namespace_lookup_demotes_legacy_rendered_name_bridges() {
+void test_parser_namespace_lookup_keeps_type_projection_bridges_and_demotes_value_bridges() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -1838,9 +1833,10 @@ void test_parser_namespace_lookup_demotes_legacy_rendered_name_bridges() {
   parser.binding_state_.non_atom_var_types[qualified_value_text] = legacy_ts;
 
   std::string resolved;
-  expect_true(!parser.lookup_type_in_context(ns_context, type_text,
-                                             "LegacyOnlyType", &resolved),
-              "namespace type lookup should not promote legacy-only rendered names when a valid TextId lookup misses structured storage");
+  expect_true(parser.lookup_type_in_context(ns_context, type_text,
+                                            "LegacyOnlyType", &resolved) &&
+                  resolved == "ns::LegacyOnlyType",
+              "namespace type projection lookup should preserve rendered-name compatibility");
   resolved.clear();
   expect_true(parser.lookup_type_in_context(ns_context, c4c::kInvalidText,
                                             "LegacyOnlyType", &resolved) &&
@@ -1861,8 +1857,8 @@ void test_parser_namespace_lookup_demotes_legacy_rendered_name_bridges() {
   qn.qualifier_text_ids.push_back(ns_text);
   qn.base_name = "LegacyOnlyType";
   qn.base_text_id = type_text;
-  expect_true(!parser.resolve_qualified_type(qn),
-              "qualified type resolution should not promote legacy-only rendered names for valid TextIds");
+  expect_eq(parser.resolve_qualified_type_name(qn), "ns::LegacyOnlyType",
+            "qualified type resolution should preserve rendered-name compatibility");
   qn.base_text_id = c4c::kInvalidText;
   expect_eq(parser.resolve_qualified_type_name(qn), "ns::LegacyOnlyType",
             "qualified type resolution should preserve explicit TextId-less compatibility");
@@ -1877,9 +1873,10 @@ void test_parser_namespace_lookup_demotes_legacy_rendered_name_bridges() {
 
   parser.namespace_state_.using_namespace_contexts[0].push_back(ns_context);
   resolved.clear();
-  expect_true(!parser.lookup_type_in_context(0, type_text,
-                                             "LegacyOnlyType", &resolved),
-              "namespace-import type lookup should not promote imported legacy-only rendered names for valid TextIds");
+  expect_true(parser.lookup_type_in_context(0, type_text,
+                                            "LegacyOnlyType", &resolved) &&
+                  resolved == "LegacyOnlyType",
+              "namespace-import type projection lookup should preserve the queried TextId spelling");
 
   resolved.clear();
   expect_true(!parser.lookup_value_in_context(0, value_text,
@@ -1902,12 +1899,12 @@ void test_parser_using_value_alias_rejects_missing_structured_target_bridge() {
   bridge_ts.array_size = -1;
   bridge_ts.inner_rank = -1;
   bridge_ts.base = c4c::TB_DOUBLE;
-  parser.register_var_type_binding("Bridge", bridge_ts);
+  parser.register_var_type_binding(parser_test_text_id(parser, "Bridge"), bridge_ts);
 
   const c4c::TextId alias_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key("RenderedTarget");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "RenderedTarget"));
   parser.register_using_value_alias_for_testing(
       0, alias_text, target_key, "Bridge");
 
@@ -1915,7 +1912,7 @@ void test_parser_using_value_alias_rejects_missing_structured_target_bridge() {
   expect_true(!parser.lookup_using_value_alias(0, alias_text, "Alias",
                                                &resolved),
               "structured using value aliases should not resolve through a compatibility bridge when the target key has no value/function binding");
-  expect_true(parser.find_visible_var_type("Alias") == nullptr,
+  expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "Alias")) == nullptr,
               "structured using value aliases should not project a compatibility bridge type when the target key is missing");
 
   c4c::TypeSpec explicit_ts{};
@@ -1937,9 +1934,9 @@ void test_parser_using_value_alias_rejects_missing_structured_target_bridge() {
                   resolved == "ExplicitBridge",
               "using value aliases should preserve explicit compatibility-name resolution");
   const c4c::TypeSpec* compat_alias =
-      parser.find_visible_var_type("CompatAlias");
-  expect_true(compat_alias != nullptr && compat_alias->base == c4c::TB_DOUBLE,
-              "using value aliases should keep explicit compatibility-name value lookup");
+      parser.find_visible_var_type(parser_test_text_id(parser, "CompatAlias"));
+  expect_true(compat_alias == nullptr,
+              "using value aliases should not use explicit compatibility names as semantic value lookup authority");
 }
 
 void test_parser_using_value_alias_prefers_structured_target_type() {
@@ -1960,13 +1957,13 @@ void test_parser_using_value_alias_prefers_structured_target_type() {
 
   const c4c::TextId alias_text = texts.intern("Alias");
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key("ns::Target");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Target"));
   parser.register_structured_var_type_binding(target_key, target_ts);
-  parser.register_var_type_binding("Bridge", bridge_ts);
+  parser.register_var_type_binding(parser_test_text_id(parser, "Bridge"), bridge_ts);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "Bridge");
 
-  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type("Alias");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "using value aliases should prefer the structured target key over the compatibility bridge type");
   expect_eq(parser.resolve_visible_value_name("Alias"), "ns::Target",
@@ -1991,14 +1988,14 @@ void test_parser_using_value_alias_respects_local_shadowing() {
 
   const c4c::TextId alias_text = texts.intern("Alias");
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key("ns::Target");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Target"));
   parser.register_structured_var_type_binding(target_key, target_ts);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "corrupted");
 
   parser.push_local_binding_scope();
   parser.bind_local_value(alias_text, local_ts);
-  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type("Alias");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_DOUBLE,
               "local value bindings should shadow using value aliases before structured alias resolution");
   expect_true(parser.pop_local_binding_scope(),
@@ -2021,9 +2018,9 @@ void test_parser_visible_value_alias_rejects_scope_local_target_bridge() {
   parser.push_local_binding_scope();
   parser.bind_local_value(target_text, target_ts);
   parser.register_using_value_alias_for_testing(
-      0, alias_text, parser.intern_semantic_name_key("Target"), "corrupted");
+      0, alias_text, parser.intern_semantic_name_key(parser_test_text_id(parser, "Target")), "corrupted");
 
-  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type("Alias");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias == nullptr,
               "structured using value aliases should not validate through a scope-local target spelling");
   expect_eq(parser.resolve_visible_value_name("Alias"), "Alias",
@@ -2056,13 +2053,13 @@ void test_parser_using_type_import_prefers_structured_type_over_corrupt_rendered
   const c4c::TextId alias_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
   parser.register_structured_typedef_binding_in_context(
-      ns_context, alias_text, "corrupted", target_ts);
-  parser.register_typedef_binding("corrupted", bridge_ts, true);
+      ns_context, alias_text, target_ts);
+  parser.register_typedef_binding(parser_test_text_id(parser, "corrupted"), bridge_ts, true);
 
   (void)parse_top_level(parser);
 
   const c4c::TypeSpec* visible_alias =
-      parser.find_visible_typedef_type("Alias");
+      parser.find_visible_typedef_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "using type imports should prefer the structured target type before rendered fallback names");
 }
@@ -2084,25 +2081,25 @@ void test_parser_register_local_bindings_keep_flat_tables_empty() {
   value_ts.base = c4c::TB_DOUBLE;
 
   parser.push_local_binding_scope();
-  parser.register_typedef_binding("Alias", alias_ts, true);
-  parser.register_var_type_binding("value", value_ts);
+  parser.register_typedef_binding(parser_test_text_id(parser, "Alias"), alias_ts, true);
+  parser.register_var_type_binding(parser_test_text_id(parser, "value"), value_ts);
 
-  expect_true(parser.find_typedef_type("Alias") == nullptr,
+  expect_true(parser.find_typedef_type(parser_test_text_id(parser, "Alias")) == nullptr,
               "local typedef registration should keep the flat typedef table empty");
-  expect_true(parser.find_visible_typedef_type("Alias") != nullptr &&
-                  parser.find_visible_typedef_type("Alias")->base == c4c::TB_INT,
+  expect_true(parser.find_visible_typedef_type(parser_test_text_id(parser, "Alias")) != nullptr &&
+                  parser.find_visible_typedef_type(parser_test_text_id(parser, "Alias"))->base == c4c::TB_INT,
               "local typedef registration should resolve through lexical scope storage");
-  expect_true(parser.find_var_type("value") == nullptr,
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "value")) == nullptr,
               "local value registration should keep the flat value table empty");
-  expect_true(parser.find_visible_var_type("value") != nullptr &&
-                  parser.find_visible_var_type("value")->base == c4c::TB_DOUBLE,
+  expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "value")) != nullptr &&
+                  parser.find_visible_var_type(parser_test_text_id(parser, "value"))->base == c4c::TB_DOUBLE,
               "local value registration should resolve through lexical scope storage");
 
   expect_true(parser.pop_local_binding_scope(),
               "test fixture should balance the local binding scope");
-  expect_true(parser.find_visible_typedef_type("Alias") == nullptr,
+  expect_true(parser.find_visible_typedef_type(parser_test_text_id(parser, "Alias")) == nullptr,
               "popping the local scope should remove lexical typedef visibility");
-  expect_true(parser.find_visible_var_type("value") == nullptr,
+  expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "value")) == nullptr,
               "popping the local scope should remove lexical value visibility");
 }
 
@@ -2166,9 +2163,9 @@ void test_parser_if_condition_decl_scope_does_not_leak_bindings() {
   expect_true(stmt->children[1] != nullptr &&
                   stmt->children[1]->kind == c4c::NK_IF,
               "if-condition declaration scope should keep the wrapped if node");
-  expect_true(parser.find_var_type("value") == nullptr,
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "value")) == nullptr,
               "if-condition declarations should not leak through the flat var table");
-  expect_true(parser.find_visible_var_type("value") == nullptr,
+  expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "value")) == nullptr,
               "if-condition declaration scope should pop after the statement finishes");
 
   c4c::Node* trailing = c4c::parse_stmt(parser);
@@ -2204,7 +2201,7 @@ void test_parser_for_init_decl_uses_loop_lifetime_local_scope() {
               "for init declarations should materialize a declaration node");
   expect_true(stmt->body != nullptr && stmt->body->kind == c4c::NK_BLOCK,
               "for init declarations should keep the loop body attached");
-  expect_true(parser.find_visible_var_type("value") == nullptr,
+  expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "value")) == nullptr,
               "for init declaration bindings should not leak after the loop");
 
   c4c::Node* trailing = c4c::parse_stmt(parser);
@@ -2247,7 +2244,7 @@ void test_parser_while_condition_decl_uses_loop_lifetime_local_scope() {
   expect_true(stmt->children[1]->body != nullptr &&
                   stmt->children[1]->body->kind == c4c::NK_BLOCK,
               "while-condition declarations should keep the loop body attached");
-  expect_true(parser.find_visible_var_type("value") == nullptr,
+  expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "value")) == nullptr,
               "while-condition declaration bindings should not leak after the loop");
 
   c4c::Node* trailing = c4c::parse_stmt(parser);
@@ -2283,7 +2280,7 @@ void test_parser_range_for_decl_uses_loop_lifetime_local_scope() {
               "range-for declarations should materialize a declaration node");
   expect_true(stmt->body != nullptr && stmt->body->kind == c4c::NK_BLOCK,
               "range-for declarations should keep the loop body attached");
-  expect_true(parser.find_visible_var_type("value") == nullptr,
+  expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "value")) == nullptr,
               "range-for declaration bindings should not leak after the loop");
 
   c4c::Node* trailing = c4c::parse_stmt(parser);
@@ -2326,7 +2323,7 @@ void test_parser_switch_condition_decl_uses_case_scope_without_leaking() {
   expect_true(stmt->children[1]->body != nullptr &&
                   stmt->children[1]->body->kind == c4c::NK_BLOCK,
               "switch-condition declarations should keep the switch body attached");
-  expect_true(parser.find_visible_var_type("value") == nullptr,
+  expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "value")) == nullptr,
               "switch-condition declaration bindings should not leak after the statement finishes");
 
   c4c::Node* trailing = c4c::parse_stmt(parser);
@@ -2349,7 +2346,7 @@ void test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback
   expect_true(decl == nullptr,
               "top-level typedef fallback should stay bookkeeping-only after registering the alias");
 
-  const c4c::TypeSpec* alias_ts = parser.find_typedef_type("Alias");
+  const c4c::TypeSpec* alias_ts = parser.find_typedef_type(parser_test_text_id(parser, "Alias"));
   expect_true(alias_ts != nullptr && alias_ts->base == c4c::TB_TYPEDEF,
               "top-level typedef fallback should register the alias in the parser typedef table");
   expect_eq(alias_ts->tag, "ForwardDecl",
@@ -2919,7 +2916,9 @@ void test_parser_template_member_suffix_probe_uses_token_spelling() {
                      c4c::SourceProfile::CppSubset);
 
   (void)parse_top_level(parser);
-  expect_true(parser.find_template_struct_primary("Trait") != nullptr,
+  expect_true(parser.find_template_struct_primary(
+                  parser.current_namespace_context_id(),
+                  lexer.text_table().intern("Trait")) != nullptr,
               "template struct fixture should register before injected suffix probing");
 
   c4c::Token seed{};
@@ -3084,7 +3083,7 @@ void test_parser_template_type_arg_uses_visible_scope_local_alias() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(target_text, target_ts);
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key("Target");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "Target"));
   parser.register_known_fn_name(target_key);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "corrupted");
@@ -3116,22 +3115,22 @@ void test_parser_synthesized_typedef_binding_unregisters_by_text_id() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
   const c4c::TextId synth_text_id = texts.intern("SynthParam");
-  parser.register_synthesized_typedef_binding(synth_text_id, "corrupted");
-  expect_true(parser.is_typedef_name(synth_text_id, "SynthParam"),
+  parser.register_synthesized_typedef_binding(synth_text_id);
+  expect_true(parser.is_typedef_name(synth_text_id),
               "synthesized typedef registration should prefer the semantic TextId");
   const c4c::TypeSpec* synthesized_type =
-      parser.find_typedef_type("SynthParam");
+      parser.find_typedef_type(parser_test_text_id(parser, "SynthParam"));
   expect_true(synthesized_type != nullptr,
               "synthesized typedef registration should store the TextId binding");
   expect_true(synthesized_type->base == c4c::TB_TYPEDEF,
               "synthesized typedef registration should store a typedef type");
   expect_eq(synthesized_type->tag ? synthesized_type->tag : "", "SynthParam",
             "synthesized typedef registration should store the TextId spelling");
-  expect_true(!parser.has_typedef_name("corrupted"),
+  expect_true(!parser.has_typedef_name(parser_test_text_id(parser, "corrupted")),
               "synthesized typedef registration should not store the fallback spelling");
 
-  parser.unregister_typedef_binding(synth_text_id, "still_corrupted");
-  expect_true(!parser.is_typedef_name(synth_text_id, "SynthParam"),
+  parser.unregister_typedef_binding(synth_text_id);
+  expect_true(!parser.is_typedef_name(synth_text_id),
               "synthesized typedef cleanup should remove the semantic TextId binding");
 }
 
@@ -3146,7 +3145,7 @@ void test_parser_template_type_arg_prefers_local_visible_typedef_text_id() {
   global_alias_ts.array_size = -1;
   global_alias_ts.inner_rank = -1;
   global_alias_ts.base = c4c::TB_CHAR;
-  parser.register_typedef_binding("Alias", global_alias_ts, true);
+  parser.register_typedef_binding(parser_test_text_id(parser, "Alias"), global_alias_ts, true);
 
   c4c::TypeSpec local_alias_ts{};
   local_alias_ts.array_size = -1;
@@ -3222,7 +3221,9 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
   c4c::Token seed{};
 
   (void)parse_top_level(parser);
-  expect_true(parser.find_template_struct_primary("Trait") != nullptr,
+  expect_true(parser.find_template_struct_primary(
+                  parser.current_namespace_context_id(),
+                  lexer.text_table().intern("Trait")) != nullptr,
               "template member lookup fixture should register the template primary");
 
   c4c::TypeSpec alias_ts{};
@@ -3261,7 +3262,7 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
               "test fixture should balance the local visible typedef scope");
 }
 
-void test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors() {
+void test_parser_template_lookup_uses_structured_template_keys() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -3275,94 +3276,44 @@ void test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors() {
   primary->namespace_context_id = parser.current_namespace_context_id();
   primary->n_template_params = 1;
 
-  parser.template_state_.template_struct_defs["Trait"] = primary;
   expect_true(parser.find_template_struct_primary(
-                  parser.current_namespace_context_id(), trait_text,
-                  "Trait") == nullptr,
-              "template primary lookup should keep the QualifiedNameKey table authoritative over rendered-name mirrors");
-  expect_eq_int(
-      static_cast<int>(parser.template_state_
-                           .template_struct_primary_rendered_mirror_mismatch_count),
-      1,
-      "structured template primary lookup should report stale rendered mirrors");
+                  parser.current_namespace_context_id(), trait_text) == nullptr,
+              "template primary lookup should require the QualifiedNameKey table");
   expect_true(parser.find_template_struct_primary(
-                  parser.current_namespace_context_id(), c4c::kInvalidText,
-                  "Trait") == primary,
-              "TextId-less template primary lookup should preserve the rendered-name compatibility mirror");
-  expect_eq_int(
-      static_cast<int>(parser.template_state_
-                           .template_struct_primary_rendered_mirror_fallback_count),
-      1,
-      "TextId-less template primary lookup should report rendered mirror fallback use");
+                  parser.current_namespace_context_id(),
+                  c4c::kInvalidText) == nullptr,
+              "template primary lookup should not have a TextId-less rendered-name fallback");
 
   c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
   specialization->name = arena.strdup("Trait_T_int");
   specialization->unqualified_name = arena.strdup("Trait");
   specialization->unqualified_text_id = trait_text;
   specialization->namespace_context_id = parser.current_namespace_context_id();
-  parser.template_state_.template_struct_specializations["Trait"].push_back(
-      specialization);
   expect_true(parser.find_template_struct_specializations(primary) == nullptr,
-              "template specialization lookup should keep primary QualifiedNameKey state authoritative over rendered-name mirrors");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_
-              .template_struct_specialization_rendered_mirror_mismatch_count),
-      1,
-      "structured template specialization lookup should report stale rendered mirrors");
+              "template specialization lookup should require structured registration");
   expect_true(parser.find_template_struct_specializations(
-                  parser.current_namespace_context_id(), trait_text, "Trait",
-                  nullptr) == nullptr,
-              "template specialization lookup should keep direct QualifiedNameKey state authoritative over rendered-name mirrors");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_
-              .template_struct_specialization_rendered_mirror_mismatch_count),
-      2,
-      "direct structured template specialization lookup should report stale rendered mirrors");
-  const std::vector<c4c::Node*>* compatibility_specializations =
-      parser.find_template_struct_specializations(
-          parser.current_namespace_context_id(), c4c::kInvalidText, "Trait",
-          nullptr);
-  expect_true(compatibility_specializations != nullptr &&
-                  compatibility_specializations->size() == 1 &&
-                  (*compatibility_specializations)[0] == specialization,
-              "TextId-less template specialization lookup should preserve the rendered-name compatibility mirror");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_
-              .template_struct_specialization_rendered_mirror_fallback_count),
-      1,
-      "TextId-less template specialization lookup should report rendered mirror fallback use");
+                  parser.current_namespace_context_id(), trait_text) == nullptr,
+              "direct template specialization lookup should require structured registration");
+  expect_true(parser.find_template_struct_specializations(
+                  parser.current_namespace_context_id(),
+                  c4c::kInvalidText) == nullptr,
+              "template specialization lookup should not have a TextId-less rendered-name fallback");
 
   const c4c::QualifiedNameKey trait_key = parser.alias_template_key_in_context(
-      parser.current_namespace_context_id(), trait_text, "Trait");
+      parser.current_namespace_context_id(), trait_text);
   parser.template_state_.template_struct_defs_by_key[trait_key] = primary;
   parser.template_state_.template_struct_specializations_by_key[trait_key] = {
       specialization};
   expect_true(parser.find_template_struct_primary(
-                  parser.current_namespace_context_id(), trait_text,
-                  "Trait") == primary,
-              "structured template primary lookup should keep matching rendered mirrors secondary");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_
-              .template_struct_primary_rendered_mirror_compatibility_count),
-      1,
-      "matching rendered template primary mirrors should be visible as compatibility mirrors");
+                  parser.current_namespace_context_id(), trait_text) == primary,
+              "structured template primary lookup should use QualifiedNameKey state");
   const std::vector<c4c::Node*>* structured_specializations =
       parser.find_template_struct_specializations(
-          parser.current_namespace_context_id(), trait_text, "Trait", nullptr);
+          parser.current_namespace_context_id(), trait_text);
   expect_true(structured_specializations != nullptr &&
                   structured_specializations->size() == 1 &&
                   (*structured_specializations)[0] == specialization,
-              "structured template specialization lookup should keep matching rendered mirrors secondary");
-  expect_eq_int(
-      static_cast<int>(
-          parser.template_state_
-              .template_struct_specialization_rendered_mirror_compatibility_count),
-      1,
-      "matching rendered template specialization mirrors should be visible as compatibility mirrors");
+              "structured template specialization lookup should use QualifiedNameKey state");
 }
 
 void test_parser_nttp_default_cache_keeps_rendered_mirror_secondary() {
@@ -3377,7 +3328,7 @@ void test_parser_nttp_default_cache_keeps_rendered_mirror_secondary() {
   const c4c::QualifiedNameKey parsed_trait_key =
       parsed_parser.alias_template_key_in_context(
           parsed_parser.current_namespace_context_id(),
-          parsed_parser.find_parser_text_id("ParsedTrait"), "ParsedTrait");
+          parsed_parser.find_parser_text_id("ParsedTrait"));
   const c4c::ParserTemplateState::NttpDefaultExprKey parsed_cache_key{
       parsed_trait_key, 0};
   expect_true(parsed_parser.template_state_.nttp_default_expr_tokens_by_key.find(
@@ -3397,7 +3348,7 @@ void test_parser_nttp_default_cache_keeps_rendered_mirror_secondary() {
 
   const c4c::TextId trait_text = texts.intern("Trait");
   const c4c::QualifiedNameKey trait_key = parser.alias_template_key_in_context(
-      parser.current_namespace_context_id(), trait_text, "Trait");
+      parser.current_namespace_context_id(), trait_text);
   std::vector<c4c::Token> structured_tokens = {
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "2"),
   };
@@ -3477,7 +3428,7 @@ void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse()
   primary->template_param_is_pack = arena.alloc_array<bool>(1);
   primary->template_param_is_pack[0] = false;
   parser.register_template_struct_primary(
-      parser.current_namespace_context_id(), trait_text, "Trait", primary);
+      parser.current_namespace_context_id(), trait_text, primary);
 
   c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
   specialization->name = arena.strdup("Trait_T_int");
@@ -3500,10 +3451,10 @@ void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse()
   specialization->fields = arena.alloc_array<c4c::Node*>(1);
   specialization->fields[0] = value_field;
   parser.register_template_struct_specialization(
-      parser.current_namespace_context_id(), trait_text, "Trait",
-      specialization);
+      parser.current_namespace_context_id(), trait_text, specialization);
 
-  primary = parser.find_template_struct_primary("Trait");
+  primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), trait_text);
   expect_true(primary != nullptr,
               "template specialization fixture should register the primary");
   expect_true(parser.find_template_struct_specializations(primary) != nullptr,
@@ -3628,7 +3579,7 @@ void test_parser_template_static_member_lookup_prefers_record_definition() {
   primary->template_param_is_pack = arena.alloc_array<bool>(1);
   primary->template_param_is_pack[0] = false;
   parser.register_template_struct_primary(
-      parser.current_namespace_context_id(), trait_text, "Trait", primary);
+      parser.current_namespace_context_id(), trait_text, primary);
 
   c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
   specialization->name = arena.strdup("Trait_T_int");
@@ -3651,8 +3602,7 @@ void test_parser_template_static_member_lookup_prefers_record_definition() {
   specialization->base_types[0].tag = arena.strdup("SharedBase");
   specialization->base_types[0].record_def = real_base;
   parser.register_template_struct_specialization(
-      parser.current_namespace_context_id(), trait_text, "Trait",
-      specialization);
+      parser.current_namespace_context_id(), trait_text, specialization);
 
   c4c::Parser::TemplateArgParseResult arg{};
   arg.is_value = false;
@@ -4011,7 +3961,7 @@ void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
   primary->template_param_is_pack[0] = false;
   parser.register_template_struct_primary(
       parser.current_namespace_context_id(), primary->unqualified_text_id,
-      "Broken", primary);
+      primary);
 
   parser.template_state_.instantiated_template_struct_keys.insert(
       "Broken<T=int>");
@@ -4041,8 +3991,8 @@ void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
   expect_eq_int(
       static_cast<int>(
           parser.template_state_.template_struct_instantiation_key_mismatch_count),
-      1,
-      "demoted legacy-only template instantiation sync should still record the mismatch");
+      0,
+      "no-text-table template instantiation failure should not promote rendered de-dup mismatch telemetry");
 }
 
 void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
@@ -4057,7 +4007,9 @@ void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
   c4c::Token seed{};
 
   (void)parse_top_level(parser);
-  expect_true(parser.find_template_struct_primary("Box") != nullptr,
+  expect_true(parser.find_template_struct_primary(
+                  parser.current_namespace_context_id(),
+                  lexer.text_table().intern("Box")) != nullptr,
               "direct emission fixture should register the template primary");
 
   auto parse_box_int = [&]() {
@@ -4202,17 +4154,16 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
   method->params[0]->type = param_ts;
   primary->children[0] = method;
   parser.register_template_struct_primary(
-      parser.current_namespace_context_id(), box_text, "Box", primary);
+      parser.current_namespace_context_id(), box_text, primary);
   const c4c::QualifiedNameKey box_key = parser.alias_template_key_in_context(
-      parser.current_namespace_context_id(), box_text, "Box");
+      parser.current_namespace_context_id(), box_text);
   parser.template_state_.template_struct_defs_by_key[box_key] = primary;
-  parser.template_state_.template_struct_defs["Box"] = primary;
   c4c::TypeSpec box_alias{};
   box_alias.base = c4c::TB_STRUCT;
   box_alias.tag = arena.strdup("Box");
   box_alias.array_size = -1;
   box_alias.inner_rank = -1;
-  parser.register_typedef_binding(box_text, "Box", box_alias, true);
+  parser.register_typedef_binding(box_text, box_alias, true);
 
   c4c::Node* payload = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   payload->name = arena.strdup("Payload");
@@ -4224,8 +4175,8 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
   payload_alias.array_size = -1;
   payload_alias.inner_rank = -1;
   payload_alias.record_def = payload;
-  parser.register_typedef_binding(payload_alias_token.text_id, "PayloadAlias",
-                                  payload_alias, true);
+  parser.register_typedef_binding(payload_alias_token.text_id, payload_alias,
+                                  true);
   c4c::Node* stale_payload = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   stale_payload->name = arena.strdup("Payload");
   stale_payload->n_fields = 0;
@@ -4490,7 +4441,7 @@ void test_parser_incomplete_decl_checks_prefer_record_definition() {
     stale->name = arena.strdup("Stale");
     stale->n_fields = -1;
     parser.definition_state_.struct_tag_def_map["Shared"] = stale;
-    parser.register_typedef_binding("Alias", make_alias_type(arena, real), true);
+    parser.register_typedef_binding(parser_test_text_id(parser, "Alias"), make_alias_type(arena, real), true);
 
     c4c::Node* decl = parse_top_level(parser);
     expect_true(decl != nullptr && decl->kind == c4c::NK_GLOBAL_VAR,
@@ -4533,10 +4484,12 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
+  const c4c::TextId direct_alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
   parser.register_alias_template_info_for_testing(
       parser.alias_template_key_in_context(
           parser.current_namespace_context_id(),
-          parser.find_parser_text_id("Alias"), "Alias"),
+          direct_alias_text),
       {});
   parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
@@ -4558,16 +4511,16 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   alias_ts.inner_rank = -1;
   alias_ts.base = c4c::TB_INT;
   const c4c::TextId alias_text = resolved_texts.intern("Alias");
-  resolved_parser.register_typedef_binding("ns::Alias", alias_ts, true);
+  resolved_parser.register_typedef_binding(parser_test_text_id(resolved_parser, "ns::Alias"), alias_ts, true);
   const c4c::QualifiedNameKey resolved_alias_key =
-      resolved_parser.intern_semantic_name_key("ns::Alias");
+      resolved_parser.intern_semantic_name_key(parser_test_text_id(resolved_parser, "ns::Alias"));
   resolved_parser.register_known_fn_name(resolved_alias_key);
   resolved_parser.register_using_value_alias_for_testing(
       0, alias_text, resolved_alias_key, "corrupted");
   resolved_parser.register_alias_template_info_for_testing(
       resolved_parser.alias_template_key_in_context(
           resolved_parser.current_namespace_context_id(),
-          resolved_parser.find_parser_text_id("ns::Alias"), "ns::Alias"),
+          resolved_parser.find_parser_text_id("ns::Alias")),
       {});
   resolved_parser.replace_token_stream_for_testing({
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
@@ -4589,7 +4542,7 @@ void test_parser_alias_template_info_prefers_structured_key_over_recovery() {
 
   const c4c::TextId alias_text = texts.intern("Alias");
   const c4c::QualifiedNameKey alias_key = parser.alias_template_key_in_context(
-      parser.current_namespace_context_id(), alias_text, "Alias");
+      parser.current_namespace_context_id(), alias_text);
   c4c::ParserAliasTemplateInfo info;
   info.param_names = {"T"};
   info.aliased_type.array_size = -1;
@@ -4597,14 +4550,14 @@ void test_parser_alias_template_info_prefers_structured_key_over_recovery() {
   info.aliased_type.base = c4c::TB_INT;
   parser.register_alias_template_info_for_testing(alias_key, info);
   const c4c::QualifiedNameKey bridge_key =
-      parser.intern_semantic_name_key("Bridge");
+      parser.intern_semantic_name_key(parser_test_text_id(parser, "Bridge"));
   parser.register_known_fn_name(bridge_key);
   parser.register_using_value_alias_for_testing(
       0, alias_text, bridge_key, "Bridge");
 
   const c4c::ParserAliasTemplateInfo* found =
       parser.find_alias_template_info_in_context(
-          parser.current_namespace_context_id(), alias_text, "Alias");
+          parser.current_namespace_context_id(), alias_text);
   expect_true(found != nullptr && found->aliased_type.base == c4c::TB_INT,
               "alias-template info lookup should prefer the structured key before any rendered-name recovery");
 }
@@ -4624,7 +4577,7 @@ void test_parser_alias_template_substitution_prefers_param_text_id() {
 
   const c4c::TextId alias_text = lexer.text_table().intern("Alias");
   const c4c::TextId param_text = lexer.text_table().intern("T");
-  parser.register_typedef_binding(alias_text, "Alias", alias_placeholder, true);
+  parser.register_typedef_binding(alias_text, alias_placeholder, true);
 
   c4c::ParserAliasTemplateInfo info;
   info.param_names = {"StaleRenderedT"};
@@ -4638,7 +4591,7 @@ void test_parser_alias_template_substitution_prefers_param_text_id() {
   info.aliased_type.tag = arena.strdup("T");
   parser.register_alias_template_info_for_testing(
       parser.alias_template_key_in_context(
-          parser.current_namespace_context_id(), alias_text, "Alias"),
+          parser.current_namespace_context_id(), alias_text),
       info);
 
   const c4c::TypeSpec resolved = parser.parse_type_name();
@@ -4661,7 +4614,7 @@ void test_parser_alias_template_substitution_does_not_require_param_name_spellin
 
   const c4c::TextId alias_text = lexer.text_table().intern("Alias");
   const c4c::TextId param_text = lexer.text_table().intern("T");
-  parser.register_typedef_binding(alias_text, "Alias", alias_placeholder, true);
+  parser.register_typedef_binding(alias_text, alias_placeholder, true);
 
   c4c::ParserAliasTemplateInfo info;
   info.param_name_text_ids = {param_text};
@@ -4674,7 +4627,7 @@ void test_parser_alias_template_substitution_does_not_require_param_name_spellin
   info.aliased_type.tag = arena.strdup("T");
   parser.register_alias_template_info_for_testing(
       parser.alias_template_key_in_context(
-          parser.current_namespace_context_id(), alias_text, "Alias"),
+          parser.current_namespace_context_id(), alias_text),
       info);
 
   const c4c::TypeSpec resolved = parser.parse_type_name();
@@ -4756,14 +4709,14 @@ void test_parser_template_arg_ref_rendering_prefers_structured_nested_arg() {
   outer->template_param_is_pack = arena.alloc_array<bool>(1);
   outer->template_param_is_pack[0] = true;
   parser.register_template_struct_primary(
-      parser.current_namespace_context_id(), outer_text, "Outer", outer);
+      parser.current_namespace_context_id(), outer_text, outer);
 
   c4c::TypeSpec outer_alias{};
   outer_alias.array_size = -1;
   outer_alias.inner_rank = -1;
   outer_alias.base = c4c::TB_STRUCT;
   outer_alias.tag = arena.strdup("Outer");
-  parser.register_typedef_binding(outer_text, "Outer", outer_alias, true);
+  parser.register_typedef_binding(outer_text, outer_alias, true);
 
   c4c::TypeSpec inner_alias{};
   inner_alias.array_size = -1;
@@ -4777,7 +4730,7 @@ void test_parser_template_arg_ref_rendering_prefers_structured_nested_arg() {
   inner_alias.tpl_struct_args.data[0].value = 7;
   inner_alias.tpl_struct_args.data[0].debug_text = arena.strdup("StaleRenderedN");
   const c4c::TextId inner_alias_text = lexer.text_table().intern("InnerAlias");
-  parser.register_typedef_binding(inner_alias_text, "InnerAlias", inner_alias, true);
+  parser.register_typedef_binding(inner_alias_text, inner_alias, true);
 
   const c4c::TypeSpec parsed = parser.parse_base_type();
   expect_true(parsed.tpl_struct_args.size == 1 && parsed.tpl_struct_args.data,
@@ -4909,7 +4862,7 @@ int main() {
   test_parser_id_first_binding_helpers_prefer_text_ids();
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
   test_parser_keeps_qualified_bindings_string_keyed();
-  test_parser_structured_value_registration_uses_string_bridge_without_legacy_mirror();
+  test_parser_structured_value_registration_avoids_string_bridge_and_legacy_mirror();
   test_parser_last_using_alias_name_prefers_text_id_storage();
   test_parser_parse_qualified_name_populates_atom_symbol_ids();
   test_parser_apply_qualified_name_preserves_text_ids_on_ast_nodes();
@@ -4943,7 +4896,7 @@ int main() {
   test_parser_global_using_value_import_keeps_global_target_resolution();
   test_parser_out_of_class_operator_registers_structured_global_key();
   test_parser_out_of_class_constructor_registers_structured_global_key();
-  test_parser_namespace_lookup_demotes_legacy_rendered_name_bridges();
+  test_parser_namespace_lookup_keeps_type_projection_bridges_and_demotes_value_bridges();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();
   test_parser_using_value_alias_prefers_structured_target_type();
   test_parser_using_value_alias_respects_local_shadowing();
@@ -4980,7 +4933,7 @@ int main() {
   test_parser_template_type_arg_prefers_local_visible_typedef_text_id();
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
-  test_parser_template_lookup_demotes_rendered_name_compatibility_mirrors();
+  test_parser_template_lookup_uses_structured_template_keys();
   test_parser_nttp_default_cache_keeps_rendered_mirror_secondary();
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
   test_parser_template_static_member_lookup_prefers_record_definition();

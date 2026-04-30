@@ -882,7 +882,9 @@ bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
     // carried structured record identity through the parser yet.
     return definition_state_.defined_struct_tags.count(ts.tag) > 0 ||
            definition_state_.struct_tag_def_map.count(ts.tag) > 0 ||
-           has_template_struct_primary(ts.tag);
+           has_template_struct_primary(
+               current_namespace_context_id(),
+               parser_text_id_for_token(kInvalidText, ts.tag));
 }
 
 bool Parser::is_user_typedef_name(const std::string& name) const {

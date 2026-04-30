@@ -2023,7 +2023,8 @@ void parse_record_definition_prelude(
                     } else {
                         primary_tpl = parser.find_template_struct_primary(
                             parser.current_namespace_context_id(),
-                            parser.find_parser_text_id(*tag), *tag);
+                            parser.parser_text_id_for_token(kInvalidText,
+                                                            *tag));
                     }
                     if (!parser.parse_template_argument_list(
                             specialization_args, primary_tpl)) {

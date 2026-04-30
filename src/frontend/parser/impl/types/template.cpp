@@ -5,7 +5,6 @@
 #include <climits>
 #include <cstring>
 #include <functional>
-#include <initializer_list>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
@@ -76,171 +75,42 @@ void mark_template_instantiation_dedup_keys(
     }
 }
 
-std::vector<std::string> unique_nonempty_names(
-    std::initializer_list<std::string_view> names) {
-    std::vector<std::string> result;
-    for (std::string_view name : names) {
-        if (name.empty()) continue;
-        bool seen = false;
-        for (const std::string& existing : result) {
-            if (existing == name) {
-                seen = true;
-                break;
-            }
-        }
-        if (!seen) result.emplace_back(name);
-    }
-    return result;
-}
-
-void record_template_primary_rendered_mirror_visibility(
-    ParserTemplateState& state,
-    const std::vector<std::string>& names,
-    Node* structured_result) {
-    for (const std::string& name : names) {
-        auto mirror_it = state.template_struct_defs.find(name);
-        if (mirror_it == state.template_struct_defs.end()) continue;
-        if (structured_result && mirror_it->second == structured_result) {
-            ++state.template_struct_primary_rendered_mirror_compatibility_count;
-        } else {
-            ++state.template_struct_primary_rendered_mirror_mismatch_count;
-        }
-        return;
-    }
-}
-
-Node* find_template_primary_rendered_mirror(
-    ParserTemplateState& state,
-    const std::vector<std::string>& names) {
-    for (const std::string& name : names) {
-        auto mirror_it = state.template_struct_defs.find(name);
-        if (mirror_it != state.template_struct_defs.end()) {
-            ++state.template_struct_primary_rendered_mirror_fallback_count;
-            return mirror_it->second;
-        }
-    }
-    return nullptr;
-}
-
-bool same_template_specializations(const std::vector<Node*>& lhs,
-                                   const std::vector<Node*>* rhs) {
-    if (!rhs || lhs.size() != rhs->size()) return false;
-    for (size_t i = 0; i < lhs.size(); ++i) {
-        if (lhs[i] != (*rhs)[i]) return false;
-    }
-    return true;
-}
-
-void record_template_specialization_rendered_mirror_visibility(
-    ParserTemplateState& state,
-    const std::vector<std::string>& names,
-    const std::vector<Node*>* structured_result) {
-    for (const std::string& name : names) {
-        auto mirror_it = state.template_struct_specializations.find(name);
-        if (mirror_it == state.template_struct_specializations.end()) continue;
-        if (same_template_specializations(mirror_it->second,
-                                          structured_result)) {
-            ++state
-                  .template_struct_specialization_rendered_mirror_compatibility_count;
-        } else {
-            ++state
-                  .template_struct_specialization_rendered_mirror_mismatch_count;
-        }
-        return;
-    }
-}
-
-const std::vector<Node*>* find_template_specialization_rendered_mirror(
-    ParserTemplateState& state,
-    const std::vector<std::string>& names) {
-    for (const std::string& name : names) {
-        auto mirror_it = state.template_struct_specializations.find(name);
-        if (mirror_it != state.template_struct_specializations.end()) {
-            ++state
-                  .template_struct_specialization_rendered_mirror_fallback_count;
-            return &mirror_it->second;
-        }
-    }
-    return nullptr;
-}
-
 }  // namespace
 
-bool Parser::has_template_struct_primary(
-    int context_id, TextId name_text_id, std::string_view fallback_name) const {
-    return find_template_struct_primary(context_id, name_text_id, fallback_name) !=
-           nullptr;
+bool Parser::has_template_struct_primary(const QualifiedNameKey& key) const {
+    return find_template_struct_primary(key) != nullptr;
 }
 
-bool Parser::has_template_struct_primary(std::string_view name) const {
+bool Parser::has_template_struct_primary(int context_id,
+                                         TextId name_text_id) const {
     return has_template_struct_primary(
-        current_namespace_context_id(), find_parser_text_id(name), name);
+        alias_template_key_in_context(context_id, name_text_id));
 }
 
 bool Parser::has_template_struct_primary(const QualifiedNameRef& name) const {
     return find_template_struct_primary(name) != nullptr;
 }
 
-Node* Parser::find_template_struct_primary(
-    int context_id, TextId name_text_id, std::string_view fallback_name) const {
-    if (context_id < 0) return nullptr;
-    const bool has_structured_name = name_text_id != kInvalidText;
-    bool structured_lookup_possible = false;
-
-    auto lookup_structured = [&](const QualifiedNameKey& key) -> Node* {
-        if (key.base_text_id == kInvalidText) return nullptr;
-        auto it = template_state_.template_struct_defs_by_key.find(key);
-        return it != template_state_.template_struct_defs_by_key.end()
-                   ? it->second
-                   : nullptr;
-    };
-
-    Node* structured_result = nullptr;
-    const QualifiedNameKey key =
-        alias_template_key_in_context(context_id, name_text_id);
-    structured_lookup_possible = has_structured_name;
-    structured_result = lookup_structured(key);
-
-    const VisibleNameResult resolved_type =
-        resolve_visible_type(name_text_id, fallback_name);
-    const std::string resolved = visible_name_spelling(resolved_type);
-    if (!structured_result && resolved_type && !resolved.empty() &&
-        resolved != fallback_name) {
-        const QualifiedNameKey resolved_key = alias_template_key_in_context(
-            resolved_type.context_id, resolved_type.base_text_id);
-        structured_lookup_possible =
-            structured_lookup_possible ||
-            resolved_key.base_text_id != kInvalidText;
-        structured_result = lookup_structured(resolved_key);
-    }
-
-    if (structured_lookup_possible) {
-        record_template_primary_rendered_mirror_visibility(
-            template_state_,
-            unique_nonempty_names({fallback_name, std::string_view(resolved)}),
-            structured_result);
-        return structured_result;
-    }
-
-    if (!has_structured_name) {
-        if (Node* mirror = find_template_primary_rendered_mirror(
-                template_state_, unique_nonempty_names({fallback_name}))) {
-            return mirror;
-        }
-    }
-    if (resolved_type.base_text_id == kInvalidText && !resolved.empty() &&
-        resolved != fallback_name) {
-        if (Node* mirror = find_template_primary_rendered_mirror(
-                template_state_, unique_nonempty_names({resolved}))) {
-            return mirror;
-        }
-    }
-    return nullptr;
+Node* Parser::find_template_struct_primary(const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    auto it = template_state_.template_struct_defs_by_key.find(key);
+    return it != template_state_.template_struct_defs_by_key.end() ? it->second
+                                                                   : nullptr;
 }
 
-Node* Parser::find_template_struct_primary(const std::string& name) const {
-    return find_template_struct_primary(
-        current_namespace_context_id(), find_parser_text_id(name), name);
+Node* Parser::find_template_struct_primary(int context_id,
+                                           TextId name_text_id) const {
+    if (context_id < 0 || name_text_id == kInvalidText) return nullptr;
+    if (Node* direct = find_template_struct_primary(
+            alias_template_key_in_context(context_id, name_text_id))) {
+        return direct;
+    }
+    const std::string_view name = parser_text(name_text_id, {});
+    const VisibleNameResult resolved_type =
+        resolve_visible_type(name_text_id, name);
+    if (!resolved_type) return nullptr;
+    return find_template_struct_primary(alias_template_key_in_context(
+        resolved_type.context_id, resolved_type.base_text_id));
 }
 
 Node* Parser::find_template_struct_primary(const QualifiedNameRef& name) const {
@@ -248,111 +118,31 @@ Node* Parser::find_template_struct_primary(const QualifiedNameRef& name) const {
         name.qualifier_segments.empty()
             ? (name.is_global_qualified ? 0 : current_namespace_context_id())
             : resolve_namespace_context(name);
-    return find_template_struct_primary(
-        context_id, name.base_text_id, parser_text(name.base_text_id, name.base_name));
+    return find_template_struct_primary(context_id, name.base_text_id);
 }
 
 const std::vector<Node*>* Parser::find_template_struct_specializations(
-    int context_id, TextId name_text_id, std::string_view fallback_name,
-    const Node* primary_tpl) const {
-    const bool has_structured_name = name_text_id != kInvalidText;
-    bool structured_lookup_possible = false;
-    auto lookup_structured =
-        [&](const QualifiedNameKey& key) -> const std::vector<Node*>* {
-        if (key.base_text_id == kInvalidText) return nullptr;
-        auto it = template_state_.template_struct_specializations_by_key.find(key);
-        return it != template_state_.template_struct_specializations_by_key.end()
-                   ? &it->second
-                   : nullptr;
-    };
+    const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    auto it = template_state_.template_struct_specializations_by_key.find(key);
+    return it != template_state_.template_struct_specializations_by_key.end()
+               ? &it->second
+               : nullptr;
+}
 
-    bool primary_has_structured_name = false;
-    const char* primary_lookup_name = nullptr;
-    const std::vector<Node*>* structured_result = nullptr;
-    if (primary_tpl && primary_tpl->namespace_context_id >= 0) {
-        const char* primary_name = primary_tpl->unqualified_name;
-        TextId primary_name_text_id = primary_tpl->unqualified_text_id;
-        primary_has_structured_name = primary_name_text_id != kInvalidText;
-        if ((!primary_name || !primary_name[0]) && primary_tpl->name) {
-            primary_name = std::strrchr(primary_tpl->name, ':');
-            primary_name = primary_name ? primary_name + 1 : primary_tpl->name;
-        }
-        if (primary_name && primary_name[0]) {
-            if (primary_name_text_id == kInvalidText) {
-                primary_name_text_id =
-                    parser_text_id_for_token(kInvalidText, primary_name);
-            }
-            const QualifiedNameKey primary_key = alias_template_key_in_context(
-                primary_tpl->namespace_context_id, primary_name_text_id);
-            primary_lookup_name = primary_name;
-            if (!(primary_key == alias_template_key_in_context(
-                      context_id, name_text_id))) {
-                structured_lookup_possible =
-                    structured_lookup_possible ||
-                    primary_has_structured_name;
-                structured_result = lookup_structured(primary_key);
-            }
-        }
+const std::vector<Node*>* Parser::find_template_struct_specializations(
+    int context_id, TextId name_text_id) const {
+    if (context_id < 0 || name_text_id == kInvalidText) return nullptr;
+    if (const auto* direct = find_template_struct_specializations(
+            alias_template_key_in_context(context_id, name_text_id))) {
+        return direct;
     }
-
-    const QualifiedNameKey key =
-        alias_template_key_in_context(context_id, name_text_id);
-    if (!structured_result) {
-        structured_lookup_possible =
-            structured_lookup_possible || has_structured_name;
-        structured_result = lookup_structured(key);
-    }
-
+    const std::string_view name = parser_text(name_text_id, {});
     const VisibleNameResult resolved_type =
-        resolve_visible_type(name_text_id, fallback_name);
-    const std::string resolved = visible_name_spelling(resolved_type);
-    if (!structured_result && resolved_type && !resolved.empty() &&
-        resolved != fallback_name) {
-        const QualifiedNameKey resolved_key = alias_template_key_in_context(
-            resolved_type.context_id, resolved_type.base_text_id);
-        if (!(resolved_key == key)) {
-            structured_lookup_possible =
-                structured_lookup_possible ||
-                resolved_key.base_text_id != kInvalidText;
-            structured_result = lookup_structured(resolved_key);
-        }
-    }
-
-    if (structured_lookup_possible) {
-        const std::vector<std::string> mirror_names = unique_nonempty_names(
-            {primary_tpl && primary_tpl->name ? std::string_view(primary_tpl->name)
-                                              : std::string_view(),
-             primary_lookup_name ? std::string_view(primary_lookup_name)
-                                 : std::string_view(),
-             fallback_name, std::string_view(resolved)});
-        record_template_specialization_rendered_mirror_visibility(
-            template_state_, mirror_names, structured_result);
-        return structured_result;
-    }
-
-    if (primary_tpl && !primary_has_structured_name && primary_tpl->name &&
-        primary_tpl->name[0]) {
-        if (const auto* mirror = find_template_specialization_rendered_mirror(
-                template_state_,
-                unique_nonempty_names({std::string_view(primary_tpl->name)}))) {
-            return mirror;
-        }
-    }
-
-    if (!has_structured_name) {
-        if (const auto* mirror = find_template_specialization_rendered_mirror(
-                template_state_, unique_nonempty_names({fallback_name}))) {
-            return mirror;
-        }
-    }
-    if (resolved_type.base_text_id == kInvalidText && !resolved.empty() &&
-        resolved != fallback_name) {
-        if (const auto* mirror = find_template_specialization_rendered_mirror(
-                template_state_, unique_nonempty_names({resolved}))) {
-            return mirror;
-        }
-    }
-    return nullptr;
+        resolve_visible_type(name_text_id, name);
+    if (!resolved_type) return nullptr;
+    return find_template_struct_specializations(alias_template_key_in_context(
+        resolved_type.context_id, resolved_type.base_text_id));
 }
 
 const std::vector<Node*>* Parser::find_template_struct_specializations(
@@ -365,24 +155,23 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
                 ? primary_tpl->unqualified_text_id
                 : parser_text_id_for_token(kInvalidText,
                                            primary_tpl->unqualified_name);
-        return find_template_struct_specializations(
-            primary_tpl->namespace_context_id, name_text_id,
-            primary_tpl->unqualified_name, primary_tpl);
+        return find_template_struct_specializations(primary_tpl->namespace_context_id,
+                                                    name_text_id);
     }
-    return find_template_struct_specializations(
-        current_namespace_context_id(), find_parser_text_id(primary_tpl->name),
-        primary_tpl->name, primary_tpl);
+    return find_template_struct_specializations(current_namespace_context_id(),
+                                                parser_text_id_for_token(
+                                                    kInvalidText,
+                                                    primary_tpl->name));
 }
 
 const std::vector<Node*>* Parser::find_template_struct_specializations(
     const QualifiedNameRef& name, const Node* primary_tpl) const {
+    (void)primary_tpl;
     const int context_id =
         name.qualifier_segments.empty()
             ? (name.is_global_qualified ? 0 : current_namespace_context_id())
             : resolve_namespace_context(name);
-    return find_template_struct_specializations(
-        context_id, name.base_text_id, parser_text(name.base_text_id, name.base_name),
-        primary_tpl);
+    return find_template_struct_specializations(context_id, name.base_text_id);
 }
 
 const Node* Parser::select_template_struct_pattern_for_args(
@@ -396,75 +185,37 @@ const Node* Parser::select_template_struct_pattern_for_args(
                                           out_nttp_bindings);
 }
 
-void Parser::register_template_struct_primary(const std::string& name, Node* node) {
-    register_template_struct_primary(
-        current_namespace_context_id(), parser_text_id_for_token(kInvalidText, name),
-        name, node);
-}
-
-void Parser::register_template_struct_primary(
-    int context_id, TextId name_text_id, std::string_view fallback_name,
-    Node* node) {
+void Parser::register_template_struct_primary(const QualifiedNameKey& key,
+                                              Node* node) {
     if (!node || node->kind != NK_STRUCT_DEF || node->n_template_params <= 0 ||
         node->n_template_args != 0) {
         return;
     }
-
-    const QualifiedNameKey key =
-        alias_template_key_in_context(context_id, name_text_id);
     if (key.base_text_id != kInvalidText) {
         template_state_.template_struct_defs_by_key[key] = node;
     }
-
-    const std::string rendered_primary_name(fallback_name);
-    if (!rendered_primary_name.empty()) {
-        template_state_.template_struct_defs[rendered_primary_name] = node;
-    }
-
-    const std::string rendered_qualified_bridge =
-        bridge_name_in_context(context_id, name_text_id, fallback_name);
-    if (!rendered_qualified_bridge.empty() &&
-        rendered_qualified_bridge != rendered_primary_name) {
-        template_state_.template_struct_defs[rendered_qualified_bridge] = node;
-    }
 }
 
-void Parser::register_template_struct_specialization(const char* primary_name, Node* node) {
-    register_template_struct_specialization(
-        current_namespace_context_id(),
-        parser_text_id_for_token(kInvalidText, primary_name), primary_name,
-        node);
+void Parser::register_template_struct_primary(int context_id,
+                                              TextId name_text_id,
+                                              Node* node) {
+    register_template_struct_primary(
+        alias_template_key_in_context(context_id, name_text_id), node);
 }
 
-void Parser::register_template_struct_specialization(
-    int context_id, TextId primary_name_text_id, std::string_view primary_name,
-    Node* node) {
-    if (primary_name.empty() || !node) return;
-    const QualifiedNameKey key = alias_template_key_in_context(
-        context_id, primary_name_text_id);
+void Parser::register_template_struct_specialization(const QualifiedNameKey& key,
+                                                     Node* node) {
+    if (!node) return;
     if (key.base_text_id != kInvalidText) {
         template_state_.template_struct_specializations_by_key[key].push_back(
             node);
     }
+}
 
-    template_state_.template_struct_specializations[std::string(primary_name)]
-        .push_back(node);
-    if (!node->name) return;
-    if (primary_name.find("::") != std::string_view::npos) return;
-    std::string specialization_final_spelling = node->name;
-    const size_t scope_sep = specialization_final_spelling.rfind("::");
-    if (scope_sep == std::string::npos) return;
-    std::string rendered_qualified_primary =
-        specialization_final_spelling.substr(0, scope_sep + 2) +
-        std::string(primary_name);
-    const QualifiedNameKey qualified_key = alias_template_key_in_context(
-        context_id, find_parser_text_id(rendered_qualified_primary));
-    if (qualified_key.base_text_id != kInvalidText && !(qualified_key == key)) {
-        template_state_.template_struct_specializations_by_key[qualified_key]
-            .push_back(node);
-    }
-    template_state_.template_struct_specializations[rendered_qualified_primary]
-        .push_back(node);
+void Parser::register_template_struct_specialization(
+    int context_id, TextId primary_name_text_id, Node* node) {
+    register_template_struct_specialization(
+        alias_template_key_in_context(context_id, primary_name_text_id), node);
 }
 
 bool Parser::ensure_template_struct_instantiated_from_args(
@@ -983,7 +734,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         std::string resolved_ref_tpl_name = ref_tpl_name;
         const Node* ref_primary = find_template_struct_primary(
             current_namespace_context_id(),
-            find_parser_text_id(resolved_ref_tpl_name), resolved_ref_tpl_name);
+            parser_text_id_for_token(kInvalidText, resolved_ref_tpl_name));
         if (!ref_primary) {
             if (const TypeSpec* visible_type =
                     find_visible_typedef_type(ref_tpl_name_text_id)) {
@@ -991,8 +742,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     resolved_ref_tpl_name = visible_type->tag;
                     ref_primary = find_template_struct_primary(
                         current_namespace_context_id(),
-                        find_parser_text_id(resolved_ref_tpl_name),
-                        resolved_ref_tpl_name);
+                        parser_text_id_for_token(kInvalidText,
+                                                 resolved_ref_tpl_name));
                 }
             }
         }
@@ -1004,8 +755,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 resolved_ref_tpl_name = visible_name;
                 ref_primary = find_template_struct_primary(
                     visible_type.context_id,
-                    visible_type.base_text_id,
-                    resolved_ref_tpl_name);
+                    visible_type.base_text_id);
             }
         }
         if (!ref_primary) {
@@ -1015,8 +765,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     tpl_name.substr(0, scope_pos + 2) + ref_tpl_name;
                 ref_primary = find_template_struct_primary(
                     current_namespace_context_id(),
-                    find_parser_text_id(resolved_ref_tpl_name),
-                    resolved_ref_tpl_name);
+                    parser_text_id_for_token(kInvalidText,
+                                             resolved_ref_tpl_name));
             }
         }
         if (!ref_primary) { ti = saved_ti; return false; }

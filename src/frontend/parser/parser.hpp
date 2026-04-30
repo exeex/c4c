@@ -540,17 +540,16 @@ class Parser {
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,
       long long* out);
-  bool has_template_struct_primary(int context_id, TextId name_text_id,
-                                   std::string_view fallback_name) const;
-  bool has_template_struct_primary(std::string_view name) const;
+  bool has_template_struct_primary(const QualifiedNameKey& key) const;
+  bool has_template_struct_primary(int context_id, TextId name_text_id) const;
   bool has_template_struct_primary(const QualifiedNameRef& name) const;
-  Node* find_template_struct_primary(int context_id, TextId name_text_id,
-                                     std::string_view fallback_name) const;
-  Node* find_template_struct_primary(const std::string& name) const;
+  Node* find_template_struct_primary(const QualifiedNameKey& key) const;
+  Node* find_template_struct_primary(int context_id, TextId name_text_id) const;
   Node* find_template_struct_primary(const QualifiedNameRef& name) const;
   const std::vector<Node*>* find_template_struct_specializations(
-      int context_id, TextId name_text_id, std::string_view fallback_name,
-      const Node* primary_tpl = nullptr) const;
+      const QualifiedNameKey& key) const;
+  const std::vector<Node*>* find_template_struct_specializations(
+      int context_id, TextId name_text_id) const;
   const std::vector<Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
   const std::vector<Node*>* find_template_struct_specializations(
@@ -561,14 +560,13 @@ class Parser {
       const std::vector<Node*>* specializations,
       std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
       std::vector<std::pair<std::string, long long>>* out_nttp_bindings) const;
+  void register_template_struct_primary(const QualifiedNameKey& key, Node* node);
   void register_template_struct_primary(int context_id, TextId name_text_id,
-                                        std::string_view fallback_name,
                                         Node* node);
-  void register_template_struct_primary(const std::string& name, Node* node);
   void register_template_struct_specialization(
-      int context_id, TextId primary_name_text_id,
-      std::string_view primary_name, Node* node);
-  void register_template_struct_specialization(const char* primary_name, Node* node);
+      const QualifiedNameKey& key, Node* node);
+  void register_template_struct_specialization(
+      int context_id, TextId primary_name_text_id, Node* node);
   bool parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl, int arg_idx,
                                     bool* out_has_more,

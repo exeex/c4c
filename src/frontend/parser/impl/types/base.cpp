@@ -160,11 +160,11 @@ bool Parser::is_type_start() const {
             core_input_state_.tokens[core_input_state_.pos + 1].kind ==
                 TokenKind::Less &&
             (find_template_struct_primary(current_namespace_context_id(),
-                                          name_text_id, name) ||
+                                          name_text_id) ||
              find_template_struct_primary(
                  current_namespace_context_id(),
-                 find_parser_text_id(visible_type_head_name(*this, name)),
-                 visible_type_head_name(*this, name)) ||
+                 parser_text_id_for_token(
+                     kInvalidText, visible_type_head_name(*this, name))) ||
              !current_struct_tag_text().empty())) return true;
         // Keep declaration probes aligned with parse_base_type(): even when
         // template-type registration was lost, `Identifier<...>` should still
@@ -898,14 +898,16 @@ TypeSpec Parser::parse_base_type() {
                         if (owner->template_origin_name && owner->template_origin_name[0]) {
                             primary_tpl = find_template_struct_primary(
                                 current_namespace_context_id(),
-                                find_parser_text_id(owner->template_origin_name),
-                                owner->template_origin_name);
+                                parser_text_id_for_token(
+                                    kInvalidText,
+                                    owner->template_origin_name));
                         } else if (is_primary_template_struct_def(owner)) {
                             primary_tpl = owner;
                         } else if (owner->name && owner->name[0]) {
                             primary_tpl = find_template_struct_primary(
                                 current_namespace_context_id(),
-                                find_parser_text_id(owner->name), owner->name);
+                                parser_text_id_for_token(kInvalidText,
+                                                         owner->name));
                         }
                         if (!primary_tpl) return false;
 
@@ -1441,7 +1443,8 @@ TypeSpec Parser::parse_base_type() {
         // code below instead of returning immediately.
         if (!(is_cpp_mode() && ts.tag &&
               find_template_struct_primary(current_namespace_context_id(),
-                                           find_parser_text_id(ts.tag), ts.tag) &&
+                                           parser_text_id_for_token(
+                                               kInvalidText, ts.tag)) &&
               check(TokenKind::Less))) {
             return ts;
         }
@@ -1477,7 +1480,8 @@ TypeSpec Parser::parse_base_type() {
     // ts.base is already TB_STRUCT and ts.tag is the template name.
     if (has_struct && is_cpp_mode() && ts.tag &&
         find_template_struct_primary(current_namespace_context_id(),
-                                     find_parser_text_id(ts.tag), ts.tag) &&
+                                     parser_text_id_for_token(kInvalidText,
+                                                              ts.tag)) &&
         check(TokenKind::Less)) {
         // Reuse the typedef-path template instantiation by setting has_typedef and
         // preparing ts as if the typedef had been resolved.
@@ -2120,9 +2124,9 @@ TypeSpec Parser::parse_base_type() {
                                                       *owner_lookup_qn_ptr)
                                                 : find_template_struct_primary(
                                                       current_namespace_context_id(),
-                                                      find_parser_text_id(
-                                                          owner_lookup_name),
-                                                      owner_lookup_name);
+                                                      parser_text_id_for_token(
+                                                          kInvalidText,
+                                                          owner_lookup_name));
                                         std::string resolved_owner;
                                         if (!primary_tpl && owner_lookup_qn_ptr) {
                                             resolved_owner =
@@ -2132,9 +2136,9 @@ TypeSpec Parser::parse_base_type() {
                                                 primary_tpl =
                                                     find_template_struct_primary(
                                                         current_namespace_context_id(),
-                                                        find_parser_text_id(
-                                                            resolved_owner),
-                                                        resolved_owner);
+                                                        parser_text_id_for_token(
+                                                            kInvalidText,
+                                                            resolved_owner));
                                             }
                                         } else if (!primary_tpl) {
                                             const TextId owner_lookup_text_id =
@@ -2152,8 +2156,7 @@ TypeSpec Parser::parse_base_type() {
                                                 primary_tpl =
                                                     find_template_struct_primary(
                                                         visible_owner.context_id,
-                                                        visible_owner.base_text_id,
-                                                        resolved_owner);
+                                                        visible_owner.base_text_id);
                                             }
                                         }
                                         if (!primary_tpl &&
@@ -2169,9 +2172,9 @@ TypeSpec Parser::parse_base_type() {
                                             primary_tpl =
                                                 find_template_struct_primary(
                                                     current_namespace_context_id(),
-                                                    find_parser_text_id(
-                                                        canonical_owner),
-                                                    canonical_owner);
+                                                    parser_text_id_for_token(
+                                                        kInvalidText,
+                                                        canonical_owner));
                                         }
                                         if (!primary_tpl) return false;
 
@@ -2372,8 +2375,7 @@ TypeSpec Parser::parse_base_type() {
             } else if (is_cpp_mode() &&
                        find_template_struct_primary(current_namespace_context_id(),
                                                     active_context_state_
-                                                        .last_resolved_typedef_text_id,
-                                                    tname)) {
+                                                        .last_resolved_typedef_text_id)) {
                 // Qualified names such as `ns::Template<T>` may resolve directly
                 // to a template primary without first passing through typedef
                 // registration. Reuse the existing template-struct
@@ -2425,12 +2427,12 @@ TypeSpec Parser::parse_base_type() {
                 if (is_cpp_mode() && ts.base == TB_STRUCT && ts.tag &&
                     find_template_struct_primary(
                         current_namespace_context_id(),
-                        find_parser_text_id(ts.tag), ts.tag) &&
+                        parser_text_id_for_token(kInvalidText, ts.tag)) &&
                     check(TokenKind::Less)) {
                     std::string tpl_name = ts.tag;
                     const Node* primary_tpl = find_template_struct_primary(
                         current_namespace_context_id(),
-                        find_parser_text_id(tpl_name), tpl_name);
+                        parser_text_id_for_token(kInvalidText, tpl_name));
                     std::vector<ParsedTemplateArg> actual_args;
                     if (!parse_template_argument_list(&actual_args, primary_tpl)) return ts;
                     for (auto& arg : actual_args) {
@@ -2781,7 +2783,8 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         return find_template_struct_primary(
                                             current_namespace_context_id(),
-                                            find_parser_text_id(origin), origin);
+                                            parser_text_id_for_token(
+                                                kInvalidText, origin));
                                     };
                                     auto type_mentions_bound_param =
                                         [&](const TypeSpec& candidate) -> bool {

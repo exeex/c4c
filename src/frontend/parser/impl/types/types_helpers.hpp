@@ -429,11 +429,12 @@ bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
         return true;
     }
     return parser.has_template_struct_primary(
-               parser.current_namespace_context_id(), name_text_id, name) ||
+               parser.current_namespace_context_id(), name_text_id) ||
            (!resolved.empty() &&
             parser.has_template_struct_primary(
                 parser.current_namespace_context_id(),
-                parser.find_parser_text_id(resolved), resolved)) ||
+                parser.parser_text_id_for_token(c4c::kInvalidText,
+                                                resolved))) ||
            // Rendered-name compatibility for direct struct tags that do not
            // yet carry a TypeSpec::record_def through this type-head probe.
            parser.has_defined_struct_tag(name) ||
@@ -600,8 +601,7 @@ std::string resolve_qualified_known_type_name(
                  parser, qn.base_text_id,
                  parser.parser_text(qn.base_text_id, qn.base_name)) ||
              parser.has_template_struct_primary(
-                 parser.current_namespace_context_id(), qn.base_text_id,
-                 parser.parser_text(qn.base_text_id, qn.base_name)) ||
+                 parser.current_namespace_context_id(), qn.base_text_id) ||
              // Rendered-name compatibility for direct record tags.
              parser.has_defined_struct_tag(resolved))) {
             return resolved;
@@ -614,7 +614,7 @@ std::string resolve_qualified_known_type_name(
     resolved = parser.visible_name_spelling(visible_type);
     if (parser.has_template_struct_primary(
             parser.current_namespace_context_id(),
-            parser.find_parser_text_id(resolved), resolved) ||
+            parser.parser_text_id_for_token(c4c::kInvalidText, resolved)) ||
         visible_type_result_has_structured_record_definition(parser, visible_type,
                                                              resolved) ||
         // Rendered-name compatibility for visible direct record tags.
@@ -636,8 +636,8 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
     }
     if (parser.has_template_struct_primary(
             parser.current_namespace_context_id(),
-            parser.find_parser_text_id(probe.resolved_typedef_name),
-            probe.resolved_typedef_name) ||
+            parser.parser_text_id_for_token(c4c::kInvalidText,
+                                            probe.resolved_typedef_name)) ||
         qualified_type_has_structured_record_definition(parser, qn) ||
         // Rendered-name compatibility for tag-only qualified probes.
         parser.has_defined_struct_tag(probe.resolved_typedef_name)) {
