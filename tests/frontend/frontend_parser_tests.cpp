@@ -3867,15 +3867,22 @@ void test_parser_nttp_default_cache_uses_structured_key_only() {
                 "ambiguous rendered-name NTTP defaults should follow the supplied primary template key");
 
   parser.template_state_.nttp_default_expr_tokens_by_key.erase(cache_key);
-  expect_true(!parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),
+  expect_true(!parser.eval_deferred_nttp_default(trait_key, 0, {}, {}, &value),
               "valid-TextId NTTP default cache lookup should not promote a legacy-only rendered mirror");
 
   parser.template_state_.nttp_default_expr_tokens["LegacyTrait:0"] = {
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "5"),
   };
-  expect_true(!parser.eval_deferred_nttp_default("LegacyTrait", 0, {}, {},
-                                                 &value),
-              "TextId-less NTTP default cache lookup should reject rendered-name mirror compatibility");
+  const c4c::TextId legacy_trait_text =
+      parser.find_parser_text_id("LegacyTrait");
+  expect_true(legacy_trait_text == c4c::kInvalidText,
+              "rendered-only NTTP default cache entries should not create template identity metadata");
+  const c4c::ParserTemplateState::NttpDefaultExprKey legacy_cache_key{
+      c4c::QualifiedNameKey{}, 0};
+  expect_true(parser.template_state_.nttp_default_expr_tokens_by_key.find(
+                  legacy_cache_key) ==
+                  parser.template_state_.nttp_default_expr_tokens_by_key.end(),
+              "TextId-less NTTP default cache mirrors should remain outside structured lookup");
 }
 
 void test_parser_template_instantiation_dedup_keys_structure_specialization_reuse() {

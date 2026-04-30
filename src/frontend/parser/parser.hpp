@@ -523,11 +523,6 @@ class Parser {
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,
       long long* out);
-  bool eval_deferred_nttp_default(
-      const std::string& tpl_name, int param_idx,
-      const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
-      const std::vector<std::pair<std::string, long long>>& nttp_bindings,
-      long long* out);
   void cache_nttp_default_expr_tokens(
       const QualifiedNameKey& template_key,
       int param_idx,

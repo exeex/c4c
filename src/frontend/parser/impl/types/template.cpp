@@ -998,21 +998,6 @@ bool Parser::eval_deferred_nttp_default(
                                           type_bindings, nttp_bindings, out);
 }
 
-bool Parser::eval_deferred_nttp_default(
-    const std::string& tpl_name, int param_idx,
-    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
-    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
-    long long* out) {
-    const TextId template_text_id = find_parser_text_id(tpl_name);
-    QualifiedNameKey structured_key;
-    if (template_text_id != kInvalidText) {
-        structured_key = alias_template_key_in_context(
-            current_namespace_context_id(), template_text_id);
-    }
-    return eval_deferred_nttp_default(structured_key, param_idx, type_bindings,
-                                      nttp_bindings, out);
-}
-
 void Parser::cache_nttp_default_expr_tokens(
     const QualifiedNameKey& template_key,
     int param_idx,
