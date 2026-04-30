@@ -3,24 +3,23 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.2
-Current Step Title: Remove Parser Declarator And Known-Function Rendered Recovery
+Current Step ID: Step 2.3
+Current Step Title: Audit Parser Type, Tag, And Member-Typedef Routes
 
 ## Just Finished
 
-Step 2.2 deleted the remaining parser value-lookup string projection overloads
-`lookup_using_value_alias(..., std::string*)` and
-`lookup_value_in_context(..., std::string*)`. The production alias bridge in
-`resolve_visible_type(...)` now carries `VisibleNameResult` until the explicit
-display-name projection point, and focused `frontend_parser_tests` call sites
-assert structured value results plus `visible_name_spelling(...)` only where a
-compatibility spelling is the behavior under test.
+Step 2.3 deleted the remaining parser type/concept lookup string projection
+overloads `lookup_type_in_context(..., std::string*)` and
+`lookup_concept_in_context(..., std::string*)`. Production parser lookup stays
+on `VisibleNameResult`, and focused `frontend_parser_tests` call sites now keep
+structured type/concept results until explicit display assertions through
+`visible_name_spelling(...)`.
 
 ## Suggested Next
 
-Supervisor can review and commit this focused Step 2.2 value lookup API deletion
-slice. The remaining parser lookup string projection overloads found nearby are
-type/concept bridges and should be handled only by a separately delegated packet.
+Supervisor can review and commit this focused Step 2.3 parser type/concept
+lookup API deletion slice. A next packet should remain outside this slice unless
+the supervisor chooses to continue the broader rendered-name cleanup plan.
 
 ## Watchouts
 
@@ -32,11 +31,10 @@ migration into this parser packet; route that through
 `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a narrower HIR
 metadata idea if the supervisor switches scope.
 
-No remaining value-side `lookup_using_value_alias(..., std::string*)` or
-`lookup_value_in_context(..., std::string*)` declaration, definition, or caller
-was found after this packet. Production parser value lookup call sites remain on
-`VisibleNameResult`, with explicit `visible_name_spelling(...)` projection only
-where display text is genuinely needed.
+No remaining parser-owned type/concept `lookup_*_in_context(..., std::string*)`
+declaration, definition, or caller was found after this packet. Explicit
+`visible_name_spelling(...)` projection remains only in tests and production
+paths that need rendered spelling for display/diagnostics/output.
 
 ## Proof
 

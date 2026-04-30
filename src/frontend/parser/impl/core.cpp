@@ -2953,20 +2953,6 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
     return false;
 }
 
-// String output overloads are projection bridges over the VisibleNameResult
-// overloads; they do not perform independent semantic lookup.
-bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
-                                    std::string_view name,
-                                    std::string* resolved) const {
-    if (!resolved) return false;
-    VisibleNameResult result;
-    if (!lookup_type_in_context(context_id, name_text_id, name, &result)) {
-        return false;
-    }
-    *resolved = visible_name_spelling(result);
-    return !resolved->empty();
-}
-
 bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
                                        std::string_view name,
                                        VisibleNameResult* resolved) const {
@@ -3028,20 +3014,6 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
         }
     }
     return false;
-}
-
-// String output overloads are projection bridges over the VisibleNameResult
-// overloads; they do not perform independent semantic lookup.
-bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
-                                       std::string_view name,
-                                       std::string* resolved) const {
-    if (!resolved) return false;
-    VisibleNameResult result;
-    if (!lookup_concept_in_context(context_id, name_text_id, name, &result)) {
-        return false;
-    }
-    *resolved = visible_name_spelling(result);
-    return !resolved->empty();
 }
 
 bool Parser::peek_qualified_name(QualifiedNameRef* out, bool allow_global) const {

@@ -445,17 +445,9 @@ class Parser {
   bool lookup_type_in_context(int context_id, TextId name_text_id,
                               std::string_view name,
                               VisibleNameResult* resolved) const;
-  // Projection bridge over the VisibleNameResult overload.
-  bool lookup_type_in_context(int context_id, TextId name_text_id,
-                              std::string_view name,
-                              std::string* resolved) const;
   bool lookup_concept_in_context(int context_id, TextId name_text_id,
                                  std::string_view name,
                                  VisibleNameResult* resolved) const;
-  // Projection bridge over the VisibleNameResult overload.
-  bool lookup_concept_in_context(int context_id, TextId name_text_id,
-                                 std::string_view name,
-                                 std::string* resolved) const;
   std::string qualify_name(TextId name_text_id, std::string_view name) const;
   std::string qualify_name(const std::string& name) const;
   const char* qualify_name_arena(TextId name_text_id, const char* name);
