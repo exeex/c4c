@@ -3,23 +3,23 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.1
-Current Step Title: Remove Parser Template And NTTP Default Rendered Mirrors
+Current Step ID: Step 2.2
+Current Step Title: Remove Parser Declarator And Known-Function Rendered Recovery
 
 ## Just Finished
 
-Step 2.1 completed for the parser NTTP-default cleanup: the legacy
-`eval_deferred_nttp_default(std::string, ...)` declaration and definition were
-deleted, and the two direct legacy string-only assertions in
-`tests/frontend/frontend_parser_tests.cpp` were converted to preserve
-structured-key-only rendered-mirror disagreement coverage without calling the
-removed API.
+Step 2.2 started and completed the parser visible-value string-only API cleanup:
+`resolve_visible_value(std::string_view)` and
+`resolve_visible_value_name(const std::string&)` were deleted from the parser
+header/implementation, and the four parser tests that still called the rendered
+compatibility projection now pass explicit `TextId` values into the structured
+`resolve_visible_value_name(TextId, std::string_view)` overload.
 
 ## Suggested Next
 
-Run supervisor-side review/validation for Step 2.1 and decide whether the
-remaining const-int rendered-name compatibility blocker should stay parked for
-the HIR metadata idea or become the next packet.
+Continue Step 2.2 with the next parser-owned rendered recovery cleanup,
+prioritizing any remaining declarator or known-function compatibility path that
+has a structured key carrier available without touching HIR/LIR/backend files.
 
 ## Watchouts
 
@@ -31,9 +31,13 @@ migration into this parser packet; route that through
 `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a narrower HIR
 metadata idea if the supervisor switches scope.
 
-No remaining direct `eval_deferred_nttp_default(std::string, ...)` callers were
-found after deletion; remaining parser call sites use the structured
-`QualifiedNameKey` overload.
+No remaining direct string-only `resolve_visible_value(...)` or
+`resolve_visible_value_name(...)` parser/test callers were found after deletion;
+production parser call sites already use the `TextId` structured overload.
+
+The clang caller query was attempted as requested, but the current
+`build/compile_commands.json` did not load `src/frontend/parser/impl/core.cpp`;
+the small API surface was verified with `rg` instead.
 
 ## Proof
 

@@ -472,13 +472,8 @@ class Parser {
   const char* qualify_name_arena(const char* name);
   VisibleNameResult resolve_visible_value(TextId name_text_id,
                                           std::string_view name) const;
-  // String-only visible-name resolution is a compatibility entry point for
-  // callers that only have spelling; token/semantic callers should pass TextId.
-  VisibleNameResult resolve_visible_value(std::string_view name) const;
   std::string resolve_visible_value_name(TextId name_text_id,
                                          std::string_view name) const;
-  // Final spelling projection over resolve_visible_value(...).
-  std::string resolve_visible_value_name(const std::string& name) const;
   VisibleNameResult resolve_visible_type(TextId name_text_id,
                                          std::string_view name) const;
   // String-only visible type resolution is compatibility/fallback only; prefer

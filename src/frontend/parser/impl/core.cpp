@@ -2255,13 +2255,6 @@ Parser::VisibleNameResult Parser::resolve_visible_value(
     return {};
 }
 
-// String-only visible resolution is a compatibility entry point. It immediately
-// recovers parser text identity when possible, then uses the structured path.
-Parser::VisibleNameResult Parser::resolve_visible_value(
-    std::string_view name) const {
-    return resolve_visible_value(find_parser_text_id(name), name);
-}
-
 std::string Parser::resolve_visible_value_name(TextId name_text_id,
                                                std::string_view name) const {
     const VisibleNameResult result = resolve_visible_value(name_text_id, name);
@@ -2270,11 +2263,6 @@ std::string Parser::resolve_visible_value_name(TextId name_text_id,
         if (!spelling.empty()) return spelling;
     }
     return std::string(name);
-}
-
-// Final spelling projection over structured visible-value resolution.
-std::string Parser::resolve_visible_value_name(const std::string& name) const {
-    return resolve_visible_value_name(find_parser_text_id(name), name);
 }
 
 Parser::VisibleNameResult Parser::resolve_visible_type(
