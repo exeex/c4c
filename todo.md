@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/138_lir_bir_backend_aggregate_layout_type_decl_text_bridge_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Consolidate Fallback and Mismatch Reporting
+Current Step ID: Step 6
+Current Step Title: Final Coverage and Regression Check
 
 ## Just Finished
 
@@ -19,8 +19,12 @@ layouts no longer over-report legacy fallback.
 
 ## Suggested Next
 
-Supervisor should ask the plan owner to advance to Step 6 final coverage and
-regression check.
+Execute Step 6 final coverage and regression check. Prove structured-present,
+structured-missing fallback, mismatch, aggregate initializer, and global
+initializer paths with focused tests, then run the supervisor-selected broader
+validation or matching regression-guard scope. Inspect the diff for expectation
+downgrades and testcase-overfit patterns before deciding whether the source
+idea is close-ready or needs another runbook.
 
 ## Watchouts
 
