@@ -1,27 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/137_parser_known_function_name_compatibility_spelling_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Structured Lookup and Disambiguation Paths
+Current Step ID: 4
+Current Step Title: Quarantine or Remove String Compatibility Overloads
 
 # Current Packet
 
 ## Just Finished
 
-Completed the first Plan Step 3 lookup/disambiguation packet. Unqualified
+Completed Plan Step 3 lookup/disambiguation work. Unqualified
 visible value/type-head classification now probes structured direct
 known-function keys, structured current-record member keys, and structured
 `VisibleNameResult` keys before falling back to rendered `head_name`,
 `current_member_name`, or visible-name spelling. Rendered string lookup remains
 an explicit compatibility fallback only when no structured known-function key
-was available.
+was available. Qualified lookup now flows through structured
+`resolve_qualified_value` before compatibility spelling fallback.
 
 ## Suggested Next
 
-Step 3 next packet: inspect the remaining visible value/type and qualified
-lookup paths for string projection bridges that still make type/value
-classification decisions, then convert the next narrow site to structured key
-authority before spelling fallback.
+Step 4 next packet: quarantine or remove remaining string compatibility
+overloads. Start with the rendered known-function checks in
+`classify_visible_value_or_type_head`, treat them as compatibility fallbacks
+only, and then remove any string overloads whose call sites already have
+structured replacements.
 
 ## Watchouts
 
@@ -34,6 +36,8 @@ authority before spelling fallback.
 - `current_record_member_name_key` intentionally uses existing parser-owned
   record/member `TextId`s and existing qualifier paths; it does not intern a new
   path just to make a rendered current-member spelling authoritative.
+- Step 4 should not remove a compatibility fallback until structured-present
+  and fallback-supported behavior are both covered by focused proof.
 
 ## Proof
 
