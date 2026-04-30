@@ -8,36 +8,36 @@ Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 
 ## Just Finished
 
-Step 2 qualified-type parse fallback repair completed the reviewer-blocked
-route cleanup from `review/qualified_type_parse_fallback_review.md` by removing
-the remaining `Parser::lookup_type_in_context` projected rendered typedef
-fallback:
+Step 2 expression qualified type-owner disambiguation cleanup removed rendered
+owner-name semantic authority from
+`qualified_name_starts_from_type_owner(...)`:
 
-- removed the `bridge_name_in_context(...)` / rendered `find_typedef_type(...)`
-  semantic authority path after structured namespace typedef lookup misses;
-- kept direct namespace, imported namespace, and global visible type lookup
-  working when the typedef authority comes from structured keys;
-- updated focused parser tests so legacy rendered `ns::T` typedef storage alone
-  cannot drive `lookup_type_in_context` or qualified type resolution, while
-  parsed namespace-scope typedefs still resolve and block-local typedefs do not
-  leak through `ns::T`.
+- replaced the rendered `owner_name` route through
+  `has_typedef_type(find_parser_text_id(owner_name))` and
+  `defined_struct_tags.count(owner_name)` with structured owner authority from
+  the owner `QualifiedNameRef`;
+- added `qualified_type_owner_has_structured_authority(...)` so owner checks
+  accept direct visible unqualified typedefs, structured namespace typedef keys,
+  template struct metadata, specializations, and namespace-context record
+  definitions without re-querying rendered owner spelling;
+- added parser coverage showing legacy rendered `ns::LegacyOwner` typedef/tag
+  storage alone no longer authorizes a qualified functional-cast parse, while
+  structured owner record metadata still authorizes the owner route.
 
 ## Suggested Next
 
 Next executor packet can continue Step 2 by auditing the remaining parser
-rendered-string semantic lookup routes outside the repaired qualified-type and
-namespace typedef lookup paths, using the same rule: structured metadata may
-authorize parsing; rendered spelling alone may not.
+rendered-string semantic lookup routes in qualified type/member parsing helpers,
+especially compatibility fallbacks that still consult `struct_tag_def_map` or
+rendered typedef names after structured owner resolution misses.
 
 ## Watchouts
 
-The dependent-template placeholder intentionally accepts `Q::T<U>` only when a
-parsed template argument is an active template type parameter. Unknown
-namespace-qualified template ids with concrete arguments, such as
-`ns::Missing<int>`, remain rejected. `lookup_type_in_context(0, T)` can still
-report the queried visible spelling for an imported structured typedef through
-the existing global visible typedef facade; non-global imported namespace lookup
-projects the structured `ns::T` spelling.
+The new focused expression test keeps the positive structured-owner assertion
+at the owner-authority layer because the adjacent member-template functional
+cast parse path still has separate member-type resolution constraints. That
+appears to be a follow-on parser helper cleanup rather than a reason to keep
+rendered owner authority in expression disambiguation.
 
 ## Proof
 

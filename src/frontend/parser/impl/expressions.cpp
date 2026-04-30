@@ -1391,24 +1391,8 @@ Node* parse_primary(Parser& parser) {
 
             const Parser::QualifiedNameRef owner_qn =
                 qualified_owner_name(parser, type_qn);
-            const std::string owner_name =
-                resolve_qualified_owner_type_name(parser, type_qn);
-            if (owner_name.empty()) return false;
-
-            if (owner_qn.qualifier_segments.empty() &&
-                !owner_qn.is_global_qualified &&
-                parser.has_visible_typedef_type(owner_qn.base_text_id)) {
-                return true;
-            }
-
-            return parser.has_template_struct_primary(owner_qn) ||
-                   qualified_type_has_structured_record_definition(parser,
-                                                                   owner_qn) ||
-                   parser.has_typedef_type(parser.find_parser_text_id(owner_name)) ||
-                   // Rendered-name compatibility for owner tags that have not
-                   // carried structured record identity to this expression
-                   // disambiguation path.
-                   parser.definition_state_.defined_struct_tags.count(owner_name) > 0;
+            return qualified_type_owner_has_structured_authority(parser,
+                                                                 owner_qn);
         };
         if (parser.is_cpp_mode() && (parser.check(TokenKind::Less) || parser.check(TokenKind::LParen))) {
             const QualifiedTypeProbe type_probe = probe_qualified_type(parser, qn);

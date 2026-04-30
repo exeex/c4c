@@ -200,6 +200,28 @@ Node* qualified_record_definition_in_context(
     return nullptr;
 }
 
+bool qualified_type_owner_has_structured_authority(
+    const Parser& parser, const Parser::QualifiedNameRef& owner_qn) {
+    if (owner_qn.base_text_id == kInvalidText) return false;
+
+    if (owner_qn.qualifier_segments.empty() &&
+        !owner_qn.is_global_qualified &&
+        parser.has_visible_typedef_type(owner_qn.base_text_id)) {
+        return true;
+    }
+
+    if (parser.has_template_struct_primary(owner_qn) ||
+        parser.find_template_struct_specializations(owner_qn) != nullptr ||
+        qualified_record_definition_in_context(parser, owner_qn)) {
+        return true;
+    }
+
+    const Parser::VisibleNameResult resolved_type =
+        parser.resolve_qualified_type(owner_qn);
+    return resolved_type &&
+           parser.find_structured_typedef_type(resolved_type.key) != nullptr;
+}
+
 Node* qualified_enum_definition_in_context(
     const Parser& parser, const Parser::QualifiedNameRef& qn) {
     if (qn.base_text_id == kInvalidText) return nullptr;
