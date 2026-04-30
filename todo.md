@@ -8,63 +8,37 @@ Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 
 ## Just Finished
 
-Step 2 qualified-type parse fallback slice was reviewed in
-`review/qualified_type_parse_fallback_review.md` and rejected as route drift,
-not accepted progress. The explicit unresolved qualified fallback bit was
-removed, but the dirty implementation still preserves equivalent rendered
-semantic authority through replacement paths:
+Step 2 qualified-type parse fallback repair completed the reviewer-blocked
+route cleanup from `review/qualified_type_parse_fallback_review.md`:
 
-- qualified enum probing still renders `Q::E`, converts it back through parser
-  text lookup, and accepts the resulting enum `TypeSpec`;
-- unresolved qualified template-id parsing still accepts rendered `Q::T<...>`
-  spelling without structured template/dependent authority;
-- local typedef producer changes can leak block-local typedefs into namespace
-  structured lookup authority.
-
-This packet is incomplete until those replacement paths are removed, converted
-to real structured metadata, or split into a metadata blocker idea. The source
-idea's no-rendered-semantic-authority rule remains controlling: if structured
-metadata is absent, do not infer parser type authority from rendered spelling.
+- removed rendered qualified enum lookup from `probe_qualified_type`; qualified
+  enum authority now comes from parsed enum definition metadata in namespace
+  context, not `find_typedef_type(find_parser_text_id("Q::E"))`;
+- removed the spelling-only unresolved `Q::T<...>` type path and kept only the
+  existing dependent-template placeholder case when parsed template arguments
+  reference an active template type parameter;
+- kept structured typedef registration on namespace-scope typedef producers and
+  removed the block-local registration leak;
+- added focused parser tests for legacy rendered enum storage, unknown
+  namespace-qualified template ids, parsed namespace-scope typedef
+  registration, and block-local typedef non-visibility through `ns::T`.
 
 ## Suggested Next
 
-Next executor packet stays on Step 2 and repairs qualified-type parsing before
-any broader parser route is attempted:
-
-1. Remove rendered qualified enum authority from `probe_qualified_type`; enum
-   acceptance must come from structured qualified metadata, an already attached
-   record/tag carrier, or a clearly scoped metadata-producer repair.
-2. Remove or narrow the unresolved qualified template-id side path so
-   `Q::T<...>` is not accepted from spelling alone. Accept only cases backed by
-   structured template/dependent authority, or split the missing carrier into a
-   new open metadata idea.
-3. Repair typedef structured registration so namespace-scope typedefs are
-   registered without making block-local typedefs visible through namespace
-   qualified lookup.
-4. Add same-feature tests for legacy rendered enum storage, unknown
-   namespace-qualified template ids, parsed namespace-scope typedef
-   registration, and block-local typedef non-visibility through `ns::T`.
-
-Do not commit the current dirty implementation slice as completed Step 2
-progress unless these points are addressed and the proof is rerun.
+Next executor packet can continue Step 2 by auditing the remaining parser
+rendered-string semantic lookup routes outside the repaired qualified-type parse
+path, using the same rule: structured metadata may authorize parsing; rendered
+spelling alone may not.
 
 ## Watchouts
 
-Reject over-broad replacement paths even if they make the focused testcase
-green. A helper rename, a moved parse fallback, or a new structured-looking
-registration that authorizes the wrong scope is not lookup removal.
-
-`TextId` by itself is only text identity. Qualified type parsing that needs
-namespace, tag, typedef, template, dependent, or declaration meaning must use a
-domain carrier such as `QualifiedNameKey`, namespace context id, declaration or
-record/tag identity, or explicit dependent/template metadata.
+The dependent-template placeholder intentionally accepts `Q::T<U>` only when a
+parsed template argument is an active template type parameter. Unknown
+namespace-qualified template ids with concrete arguments, such as
+`ns::Missing<int>`, remain rejected.
 
 ## Proof
 
-Rejected dirty slice proof, not acceptance proof:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
 
-Result reported by the rejected executor slice: passed, 927/927 tests green.
-Reviewer judgment: green subset is insufficient because the implementation
-preserves rendered semantic authority through replacement paths. The next
-executor must rerun the delegated proof after the route repairs.
+Result: passed, 927/927 tests green. Proof log: `test_after.log`.

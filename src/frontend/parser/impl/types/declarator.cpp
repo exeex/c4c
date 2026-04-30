@@ -918,9 +918,12 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
     if (!parser.peek_qualified_name(&qn, true)) return false;
 
     const QualifiedTypeProbe probe = probe_qualified_type(parser, qn);
-    if (!has_qualified_type_parse_fallback(probe)) return false;
     if (probe.has_resolved_typedef) {
         out_ts->tag = parser.arena_.strdup(probe.resolved_typedef_name.c_str());
+        if (probe.record_def) {
+            out_ts->base = probe.record_def->is_union ? TB_UNION : TB_STRUCT;
+            out_ts->record_def = probe.record_def;
+        }
         out_ts->is_global_qualified = qn.is_global_qualified;
         out_ts->n_qualifier_segments =
             static_cast<int>(qn.qualifier_segments.size());
@@ -940,13 +943,57 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         return true;
     }
 
-    out_ts->tag = parser.arena_.strdup(probe.spelled_name.c_str());
-    parser.consume_qualified_type_spelling_with_typename(
-        /*require_typename=*/false,
-        /*allow_global=*/true,
-        /*consume_final_template_args=*/false,
-        nullptr, nullptr);
-    return true;
+    const bool is_qualified =
+        qn.is_global_qualified || !qn.qualifier_segments.empty();
+    const int after_pos =
+        parser.core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
+        2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
+    if (is_qualified &&
+        after_pos < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+        parser.core_input_state_.tokens[after_pos].kind == TokenKind::Less) {
+        Parser::TentativeParseGuard guard(parser);
+        std::string qualified_name;
+        if (!parser.consume_qualified_type_spelling_with_typename(
+                /*require_typename=*/false,
+                /*allow_global=*/true,
+                /*consume_final_template_args=*/false,
+                &qualified_name, nullptr)) {
+            return false;
+        }
+        std::vector<Parser::TemplateArgParseResult> parsed_args;
+        if (!parser.parse_template_argument_list(&parsed_args)) return false;
+
+        bool has_dependent_type_arg = false;
+        for (const Parser::TemplateArgParseResult& arg : parsed_args) {
+            if (arg.is_value || arg.type.base != TB_TYPEDEF || !arg.type.tag)
+                continue;
+            const TextId arg_text_id = parser.find_parser_text_id(arg.type.tag);
+            if (parser.is_template_scope_type_param(arg_text_id)) {
+                has_dependent_type_arg = true;
+                break;
+            }
+        }
+        if (!has_dependent_type_arg) return false;
+
+        out_ts->base = TB_TYPEDEF;
+        out_ts->tag = parser.arena_.strdup(qualified_name.c_str());
+        out_ts->tpl_struct_origin = parser.arena_.strdup(qualified_name.c_str());
+        out_ts->is_global_qualified = qn.is_global_qualified;
+        out_ts->n_qualifier_segments =
+            static_cast<int>(qn.qualifier_segments.size());
+        if (out_ts->n_qualifier_segments > 0) {
+            out_ts->qualifier_segments =
+                parser.arena_.alloc_array<const char*>(out_ts->n_qualifier_segments);
+            for (int i = 0; i < out_ts->n_qualifier_segments; ++i) {
+                out_ts->qualifier_segments[i] =
+                    parser.arena_.strdup(qn.qualifier_segments[i].c_str());
+            }
+        }
+        guard.commit();
+        return true;
+    }
+
+    return false;
 }
 
 bool Parser::parse_operator_declarator_name(std::string* out_name) {

@@ -182,6 +182,41 @@ bool qualified_type_has_structured_record_definition(
     return qualified_type_structured_record_definition(parser, qn) != nullptr;
 }
 
+Node* qualified_record_definition_in_context(
+    const Parser& parser, const Parser::QualifiedNameRef& qn) {
+    if (qn.base_text_id == kInvalidText) return nullptr;
+    const int context_id =
+        qn.qualifier_segments.empty()
+            ? (qn.is_global_qualified ? 0 : parser.current_namespace_context_id())
+            : parser.resolve_namespace_context(qn);
+    if (context_id < 0) return nullptr;
+
+    for (const auto& entry : parser.definition_state_.struct_tag_def_map) {
+        Node* record = entry.second;
+        if (!record || record->kind != NK_STRUCT_DEF) continue;
+        if (record->namespace_context_id != context_id) continue;
+        if (record->unqualified_text_id == qn.base_text_id) return record;
+    }
+    return nullptr;
+}
+
+Node* qualified_enum_definition_in_context(
+    const Parser& parser, const Parser::QualifiedNameRef& qn) {
+    if (qn.base_text_id == kInvalidText) return nullptr;
+    const int context_id =
+        qn.qualifier_segments.empty()
+            ? (qn.is_global_qualified ? 0 : parser.current_namespace_context_id())
+            : parser.resolve_namespace_context(qn);
+    if (context_id < 0) return nullptr;
+
+    for (Node* def : parser.definition_state_.struct_defs) {
+        if (!def || def->kind != NK_ENUM_DEF) continue;
+        if (def->namespace_context_id != context_id) continue;
+        if (def->unqualified_text_id == qn.base_text_id) return def;
+    }
+    return nullptr;
+}
+
 bool qualified_name_from_text(const Parser& parser, std::string_view text,
                               Parser::QualifiedNameRef* out) {
     if (!out || text.empty()) return false;
@@ -534,8 +569,8 @@ bool starts_with_value_like_template_expr(const Parser& parser,
 
 struct QualifiedTypeProbe {
     bool has_resolved_typedef = false;
-    bool has_unresolved_qualified_fallback = false;
     int namespace_context_id = -1;
+    Node* record_def = nullptr;
     std::string resolved_typedef_name;
     std::string spelled_name;
 };
@@ -627,10 +662,58 @@ std::string resolve_qualified_known_type_name(
 QualifiedTypeProbe probe_qualified_type(const Parser& parser,
                                         const Parser::QualifiedNameRef& qn) {
     QualifiedTypeProbe probe;
+    const bool is_qualified = !qn.qualifier_segments.empty() ||
+                              qn.is_global_qualified;
+
+    if (is_qualified) {
+        probe.spelled_name = qualified_name_text(parser, qn);
+        probe.namespace_context_id = parser.resolve_namespace_context(qn);
+
+        const Parser::VisibleNameResult resolved_type =
+            parser.resolve_qualified_type(qn);
+        const std::string resolved =
+            parser.visible_name_spelling(resolved_type);
+        if (resolved_type &&
+            (parser.find_structured_typedef_type(resolved_type.key) ||
+             (resolved_type.source != Parser::VisibleNameSource::Fallback &&
+              visible_type_result_has_structured_record_definition(
+                  parser, resolved_type, resolved)))) {
+            probe.has_resolved_typedef = true;
+            probe.resolved_typedef_name = resolved;
+            return probe;
+        }
+
+        if (Node* record = qualified_record_definition_in_context(parser, qn)) {
+            probe.has_resolved_typedef = true;
+            probe.record_def = record;
+            probe.resolved_typedef_name =
+                record->name && record->name[0]
+                    ? std::string(record->name)
+                    : qualified_name_text(parser, qn,
+                                          /*include_global_prefix=*/false);
+            return probe;
+        }
+
+        if (Node* enum_def = qualified_enum_definition_in_context(parser, qn)) {
+            probe.has_resolved_typedef = true;
+            probe.resolved_typedef_name =
+                enum_def->name && enum_def->name[0]
+                    ? std::string(enum_def->name)
+                    : qualified_name_text(parser, qn,
+                                          /*include_global_prefix=*/false);
+            return probe;
+        }
+
+        if (parser.has_template_struct_primary(qn) ||
+            parser.find_template_struct_specializations(qn) != nullptr) {
+            probe.has_resolved_typedef = true;
+            probe.resolved_typedef_name = probe.spelled_name;
+        }
+        return probe;
+    }
+
     probe.resolved_typedef_name = resolve_qualified_known_type_name(parser, qn);
-    if ((!qn.qualifier_segments.empty() || qn.is_global_qualified)
-            ? parser.has_typedef_type(parser.find_parser_text_id(probe.resolved_typedef_name))
-            : parser.has_visible_typedef_type(qn.base_text_id)) {
+    if (parser.has_visible_typedef_type(qn.base_text_id)) {
         probe.has_resolved_typedef = true;
         return probe;
     }
@@ -645,23 +728,11 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
         return probe;
     }
 
-    if (qn.qualifier_segments.empty() && !qn.is_global_qualified) return probe;
-
-    probe.has_unresolved_qualified_fallback = true;
-    probe.spelled_name = qualified_name_text(parser, qn);
-    probe.namespace_context_id = parser.resolve_namespace_context(qn);
-    if (parser.has_template_struct_primary(qn) ||
-        parser.find_template_struct_specializations(qn) != nullptr) {
-        probe.has_resolved_typedef = true;
-        probe.resolved_typedef_name = probe.spelled_name;
-        probe.has_unresolved_qualified_fallback = false;
-    }
     return probe;
 }
 
 bool has_qualified_type_parse_fallback(const QualifiedTypeProbe& probe) {
-    return probe.has_resolved_typedef ||
-           probe.has_unresolved_qualified_fallback;
+    return probe.has_resolved_typedef;
 }
 
 bool starts_parenthesized_member_pointer_declarator(const Parser& parser,
@@ -741,17 +812,11 @@ bool can_start_qualified_type_declaration(const Parser& parser,
                                           const QualifiedTypeProbe& probe,
                                           int after_pos,
                                           TokenKind trailing_kind) {
+    (void)parser;
+    (void)after_pos;
+    (void)trailing_kind;
     if (probe.has_resolved_typedef) return true;
-    if (!probe.has_unresolved_qualified_fallback || !parser.is_cpp_mode()) {
-        return false;
-    }
-    if (trailing_kind == TokenKind::LParen &&
-        starts_parenthesized_member_pointer_declarator(parser, after_pos)) {
-        return true;
-    }
-    if (probe.namespace_context_id < 0)
-        return trailing_kind == TokenKind::Less;
-    return trailing_kind != TokenKind::LParen;
+    return false;
 }
 
 std::function<void(const char*)> make_record_field_duplicate_checker(

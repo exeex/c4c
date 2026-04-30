@@ -187,13 +187,6 @@ bool Parser::is_type_start() const {
                 after_pos < static_cast<int>(core_input_state_.tokens.size())
                     ? core_input_state_.tokens[after_pos].kind
                     : TokenKind::EndOfFile;
-            if (!probe.has_resolved_typedef &&
-                probe.has_unresolved_qualified_fallback &&
-                trailing_kind == TokenKind::Less &&
-                starts_with_value_like_template_expr(*this, core_input_state_.tokens,
-                                                     core_input_state_.pos)) {
-                return false;
-            }
             if (trailing_kind == TokenKind::LParen &&
                 starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
                 return true;
@@ -218,13 +211,6 @@ bool Parser::is_type_start() const {
                 after_pos < static_cast<int>(core_input_state_.tokens.size())
                     ? core_input_state_.tokens[after_pos].kind
                     : TokenKind::EndOfFile;
-            if (!probe.has_resolved_typedef &&
-                probe.has_unresolved_qualified_fallback &&
-                trailing_kind == TokenKind::Less &&
-                starts_with_value_like_template_expr(*this, core_input_state_.tokens,
-                                                     core_input_state_.pos)) {
-                return false;
-            }
             if (trailing_kind == TokenKind::LParen &&
                 starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
                 return true;
@@ -3490,6 +3476,10 @@ TypeSpec Parser::parse_base_type() {
                 }
                 return ts;
             }
+        }
+        if (ts.record_def &&
+            (ts.base == TB_STRUCT || ts.base == TB_UNION)) {
+            return ts;
         }
         ts.base = TB_TYPEDEF;
         // tag already set above

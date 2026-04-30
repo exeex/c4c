@@ -2916,6 +2916,11 @@ top_level_base_ready:
             parser.register_typedef_binding(
                 tdname_text_id, ts_copy,
                 !is_internal_typedef_name(tdname));
+            if (parser.is_cpp_mode() && !is_internal_typedef_name(tdname)) {
+                parser.register_structured_typedef_binding_in_context(
+                    parser.current_namespace_context_id(), tdname_text_id,
+                    ts_copy);
+            }
             if (scoped_tdname != tdname) {
                 parser.register_typedef_binding(
                     parser.parser_text_id_for_token(kInvalidText, scoped_tdname),
@@ -2952,6 +2957,11 @@ top_level_base_ready:
                 parser.register_typedef_binding(
                     tdn2_text_id, ts2,
                     !is_internal_typedef_name(tdn2));
+                if (parser.is_cpp_mode() && !is_internal_typedef_name(tdn2)) {
+                    parser.register_structured_typedef_binding_in_context(
+                        parser.current_namespace_context_id(), tdn2_text_id,
+                        ts2);
+                }
                 if (scoped_tdn2 != tdn2) {
                     parser.register_typedef_binding(
                         parser.parser_text_id_for_token(kInvalidText, scoped_tdn2),

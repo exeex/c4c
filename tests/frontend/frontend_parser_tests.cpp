@@ -1898,6 +1898,123 @@ void test_parser_namespace_lookup_keeps_type_projection_bridges_and_demotes_valu
               "namespace-import value lookup should preserve TextId-less imported compatibility");
 }
 
+void test_parser_qualified_type_parse_fallback_requires_structured_type() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+
+  c4c::Parser::QualifiedNameRef qn;
+  qn.qualifier_segments.push_back("ns");
+  qn.qualifier_text_ids.push_back(ns_text);
+  qn.base_name = "Alias";
+  qn.base_text_id = alias_text;
+
+  c4c::QualifiedTypeProbe unresolved_probe =
+      c4c::probe_qualified_type(parser, qn);
+  expect_true(!unresolved_probe.has_resolved_typedef,
+              "unresolved qualified type probes should not claim structured type authority");
+  expect_true(!c4c::has_qualified_type_parse_fallback(unresolved_probe),
+              "qualified type parse fallback should not accept rendered unresolved spelling");
+  expect_true(!c4c::can_start_qualified_type_declaration(
+                  parser, unresolved_probe, 3, c4c::TokenKind::Less),
+              "qualified type declaration starts should not use rendered unresolved spelling");
+
+  parser.register_typedef_binding(
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns::Alias"),
+      alias_ts, true);
+  unresolved_probe = c4c::probe_qualified_type(parser, qn);
+  expect_true(!c4c::has_qualified_type_parse_fallback(unresolved_probe),
+              "qualified type parse fallback should ignore legacy rendered typedef storage");
+
+  c4c::TypeSpec enum_ts{};
+  enum_ts.array_size = -1;
+  enum_ts.inner_rank = -1;
+  enum_ts.base = c4c::TB_ENUM;
+  parser.register_typedef_binding(
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns::Alias"),
+      enum_ts, true);
+  unresolved_probe = c4c::probe_qualified_type(parser, qn);
+  expect_true(!c4c::has_qualified_type_parse_fallback(unresolved_probe),
+              "qualified type parse fallback should ignore legacy rendered enum storage");
+
+  c4c::Lexer missing_tpl_lexer("ns::Missing<int> value;\n",
+                               c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> missing_tpl_tokens =
+      missing_tpl_lexer.scan_all();
+  c4c::Arena missing_tpl_arena;
+  c4c::Parser missing_tpl_parser(
+      missing_tpl_tokens, missing_tpl_arena, &missing_tpl_lexer.text_table(),
+      &missing_tpl_lexer.file_table(), c4c::SourceProfile::CppSubset);
+  c4c::TypeSpec missing_tpl_ts{};
+  expect_true(!c4c::try_parse_qualified_base_type(missing_tpl_parser,
+                                                  &missing_tpl_ts),
+              "unknown namespace-qualified template ids should not parse as types from spelling alone");
+
+  parser.register_structured_typedef_binding_in_context(ns_context, alias_text,
+                                                        alias_ts);
+  const c4c::QualifiedTypeProbe structured_probe =
+      c4c::probe_qualified_type(parser, qn);
+  expect_true(structured_probe.has_resolved_typedef,
+              "structured qualified typedef probes should keep type authority");
+  expect_true(c4c::has_qualified_type_parse_fallback(structured_probe),
+              "qualified type parse fallback should accept structured type probes");
+}
+
+void test_parser_namespace_typedef_registration_stays_namespace_scoped() {
+  c4c::Lexer lexer("namespace ns {\n"
+                   "typedef int Alias;\n"
+                   "}\n"
+                   "ns::Alias value;\n"
+                   "int main() {\n"
+                   "  typedef int Local;\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "namespace typedef registration regression should parse as a program");
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  const c4c::TextId local_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Local");
+
+  c4c::Parser::QualifiedNameRef qn;
+  qn.qualifier_segments.push_back("ns");
+  qn.qualifier_text_ids.push_back(ns_text);
+  qn.base_name = "Alias";
+  qn.base_text_id = alias_text;
+  const c4c::QualifiedTypeProbe alias_probe =
+      c4c::probe_qualified_type(parser, qn);
+  expect_true(alias_probe.has_resolved_typedef,
+              "parsed namespace-scope typedefs should register structured qualified type authority");
+
+  qn.base_name = "Local";
+  qn.base_text_id = local_text;
+  const c4c::QualifiedTypeProbe local_probe =
+      c4c::probe_qualified_type(parser, qn);
+  expect_true(!local_probe.has_resolved_typedef,
+              "block-local typedefs should not become visible through namespace qualified lookup");
+}
+
 void test_parser_using_value_alias_rejects_missing_structured_target_bridge() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4902,6 +5019,8 @@ int main() {
   test_parser_out_of_class_operator_registers_structured_global_key();
   test_parser_out_of_class_constructor_registers_structured_global_key();
   test_parser_namespace_lookup_keeps_type_projection_bridges_and_demotes_value_bridges();
+  test_parser_qualified_type_parse_fallback_requires_structured_type();
+  test_parser_namespace_typedef_registration_stays_namespace_scoped();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();
   test_parser_using_value_alias_prefers_structured_target_type();
   test_parser_using_value_alias_respects_local_shadowing();
