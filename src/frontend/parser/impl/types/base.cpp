@@ -1519,7 +1519,6 @@ TypeSpec Parser::parse_base_type() {
                             current_namespace_context_id(), active_context_state_.last_resolved_typedef_text_id);
                     }
                     if (ati) {
-                        const std::string alias_template_name(tname);
                         TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
                         const size_t alias_param_count = std::max({
@@ -1776,130 +1775,6 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         return updated_refs;
                                     };
-                                std::function<bool(const std::string&,
-                                                   ParsedTemplateArg*)>
-                                    parse_template_arg_ref =
-                                    [&](const std::string& ref,
-                                        ParsedTemplateArg* out) -> bool {
-                                        if (!out || ref.empty()) return false;
-                                        ParsedTemplateArg parsed{};
-                                        char* end = nullptr;
-                                        const long long numeric =
-                                            std::strtoll(ref.c_str(), &end, 10);
-                                        if (end && *end == '\0') {
-                                            parsed.is_value = true;
-                                            parsed.value = numeric;
-                                            *out = parsed;
-                                            return true;
-                                        }
-                                        if (ref.rfind("$expr:", 0) == 0) {
-                                            parsed.is_value = true;
-                                            parsed.nttp_name = arena_.strdup(ref.c_str());
-                                            parsed.value = 0;
-                                            *out = parsed;
-                                            return true;
-                                        }
-                                        parsed.is_value = false;
-                                        if (ref[0] == '@') {
-                                            const size_t sep = ref.find(':', 1);
-                                            if (sep == std::string::npos) return false;
-                                            parsed.type.array_size = -1;
-                                            parsed.type.inner_rank = -1;
-                                            parsed.type.base = TB_STRUCT;
-                                            const std::string origin =
-                                                ref.substr(1, sep - 1);
-                                            const size_t member_sep =
-                                                ref.find('$', sep + 1);
-                                            const std::string nested_refs =
-                                                member_sep == std::string::npos
-                                                    ? ref.substr(sep + 1)
-                                                    : ref.substr(
-                                                          sep + 1,
-                                                          member_sep - (sep + 1));
-                                            parsed.type.tag =
-                                                arena_.strdup(origin.c_str());
-                                            parsed.type.tpl_struct_origin =
-                                                parsed.type.tag;
-                                            if (!nested_refs.empty()) {
-                                                std::vector<ParsedTemplateArg>
-                                                    nested_args;
-                                                const auto nested_parts =
-                                                    split_template_arg_refs(
-                                                        nested_refs);
-                                                nested_args.reserve(
-                                                    nested_parts.size());
-                                                for (const auto& nested_part :
-                                                     nested_parts) {
-                                                    ParsedTemplateArg nested_arg{};
-                                                    if (!parse_template_arg_ref(
-                                                            nested_part,
-                                                            &nested_arg)) {
-                                                        return false;
-                                                    }
-                                                    nested_args.push_back(
-                                                        nested_arg);
-                                                }
-                                                set_template_arg_refs_from_parsed_args(
-                                                    &parsed.type, nested_args);
-                                            }
-                                            if (member_sep != std::string::npos &&
-                                                member_sep + 1 < ref.size()) {
-                                                parsed.type.deferred_member_type_name =
-                                                    arena_.strdup(
-                                                        ref.substr(member_sep + 1).c_str());
-                                            }
-                                            *out = parsed;
-                                            return true;
-                                        }
-                                        const TypeSpec* typedef_type =
-                                            ref.find("::") == std::string::npos
-                                                ? find_visible_typedef_type(find_parser_text_id(ref))
-                                                : find_typedef_type(find_parser_text_id(ref));
-                                        if (typedef_type) {
-                                            parsed.type = *typedef_type;
-                                            *out = parsed;
-                                            return true;
-                                        }
-                                        if (decode_type_ref_text(ref, &parsed.type)) {
-                                            *out = parsed;
-                                            return true;
-                                        }
-                                        parsed.type.array_size = -1;
-                                        parsed.type.inner_rank = -1;
-                                        parsed.type.base = TB_STRUCT;
-                                        parsed.type.tag = arena_.strdup(ref.c_str());
-                                        *out = parsed;
-                                        return true;
-                                    };
-                                auto build_transformed_owner_args =
-                                    [&](const std::string& owner_name,
-                                        std::vector<ParsedTemplateArg>* out_args)
-                                    -> bool {
-                                        if (!out_args) return false;
-                                        out_args->clear();
-                                        if (!ts.tpl_struct_origin ||
-                                            ts.tpl_struct_args.size <= 0 ||
-                                            owner_name != ts.tpl_struct_origin) {
-                                            for (const auto& arg : resolved_alias_args) {
-                                                ParsedTemplateArg actual = arg;
-                                                out_args->push_back(actual);
-                                            }
-                                            return true;
-                                        }
-                                        const std::string updated_refs =
-                                            substitute_template_arg_refs(
-                                                template_arg_refs_text(ts).c_str());
-                                        if (updated_refs.empty()) return false;
-                                        const auto parts =
-                                            split_template_arg_refs(updated_refs);
-                                        for (const auto& part : parts) {
-                                            ParsedTemplateArg actual{};
-                                            if (!parse_template_arg_ref(part, &actual))
-                                                return false;
-                                            out_args->push_back(actual);
-                                            }
-                                            return true;
-                                        };
                                     auto alias_param_index_for_text_id =
                                         [&](TextId param_text_id) -> size_t {
                                             if (param_text_id == kInvalidText) {
@@ -2081,6 +1956,7 @@ TypeSpec Parser::parse_base_type() {
                                             actual_args.reserve(
                                                 ati->member_typedef.owner_args
                                                     .size());
+                                            bool has_dependent_arg = false;
                                             for (const ParsedTemplateArg& carrier_arg :
                                                  ati->member_typedef.owner_args) {
                                                 ParsedTemplateArg actual{};
@@ -2091,9 +1967,37 @@ TypeSpec Parser::parse_base_type() {
                                                 if (!actual.is_value &&
                                                     type_mentions_template_scope_param(
                                                         actual.type)) {
-                                                    return false;
+                                                    has_dependent_arg = true;
                                                 }
                                                 actual_args.push_back(actual);
+                                            }
+                                            if (has_dependent_arg) {
+                                                const std::string owner_name =
+                                                    bridge_name_in_context(
+                                                        ati->member_typedef.owner_key
+                                                            .context_id,
+                                                        ati->member_typedef.owner_key
+                                                            .base_text_id,
+                                                        {});
+                                                const std::string member_name =
+                                                    std::string(parser_text(
+                                                        ati->member_typedef
+                                                            .member_text_id,
+                                                        {}));
+                                                if (owner_name.empty() ||
+                                                    member_name.empty()) {
+                                                    return false;
+                                                }
+                                                ts.base = TB_STRUCT;
+                                                ts.tag = arena_.strdup(
+                                                    owner_name.c_str());
+                                                ts.tpl_struct_origin = ts.tag;
+                                                set_template_arg_refs_from_parsed_args(
+                                                    &ts, actual_args);
+                                                ts.deferred_member_type_name =
+                                                    arena_.strdup(
+                                                        member_name.c_str());
+                                                return true;
                                             }
 
                                             const ParserTemplateState::
@@ -2155,370 +2059,9 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                             return false;
                                         };
-                                    auto has_dependent_owner_args =
-                                        [&](const std::string& owner_name) -> bool {
-                                        std::vector<ParsedTemplateArg> actual_args;
-                                        if (!build_transformed_owner_args(
-                                                owner_name, &actual_args)) {
-                                            return false;
-                                        }
-                                        for (const auto& actual : actual_args) {
-                                            if (!actual.is_value &&
-                                                type_mentions_template_scope_param(
-                                                    actual.type)) {
-                                                return true;
-                                            }
-                                        }
-                                        return false;
-                                    };
-                                auto preserve_deferred_alias_member =
-                                    [&](const std::string& owner_name,
-                                        const std::string& member_name) -> bool {
-                                        if (owner_name.empty() || member_name.empty())
-                                            return false;
-                                        std::vector<ParsedTemplateArg> actual_args;
-                                        if (!build_transformed_owner_args(
-                                                owner_name, &actual_args)) {
-                                            return false;
-                                        }
-                                        ts.base = TB_STRUCT;
-                                        ts.tag = arena_.strdup(owner_name.c_str());
-                                        ts.tpl_struct_origin = ts.tag;
-                                        set_template_arg_refs_from_parsed_args(
-                                            &ts, actual_args);
-                                        ts.deferred_member_type_name =
-                                            arena_.strdup(member_name.c_str());
-                                        return true;
-                                    };
                                 bool resolved_alias_member = false;
-                                {
-                                    QualifiedNameRef owner_qn;
-                                    QualifiedNameRef derived_owner_qn;
-                                    std::string owner_name;
-                                    std::string member_name;
-                                    auto derive_alias_owner_and_member =
-                                        [&](const std::string& alias_name)
-                                        -> std::pair<std::string, std::string> {
-                                            QualifiedNameRef alias_qn;
-                                            if (!qualified_name_from_text(
-                                                    *this, alias_name, &alias_qn)) {
-                                                return {"", ""};
-                                            }
-                                            std::string alias_base =
-                                                std::string(parser_text(
-                                                    alias_qn.base_text_id,
-                                                    alias_qn.base_name));
-                                            if (alias_base.size() > 2 &&
-                                                alias_base.substr(alias_base.size() - 2) == "_t") {
-                                                // Compatibility bridge: map legacy `_t`
-                                                // spellings back onto `foo::type` when a
-                                                // structured owner/member spelling is not
-                                                // already available.
-                                                alias_qn.base_name = alias_base.substr(
-                                                    0, alias_base.size() - 2);
-                                                alias_qn.base_text_id =
-                                                    parser_text_id_for_token(
-                                                        kInvalidText,
-                                                        alias_qn.base_name);
-                                                derived_owner_qn = alias_qn;
-                                                return {
-                                                    derived_owner_qn.spelled(
-                                                        derived_owner_qn
-                                                            .is_global_qualified),
-                                                    "type"};
-                                            }
-                                            return {"", ""};
-                                        };
-                                    auto apply_unary_alias_transform =
-                                        [&](const std::string& owner_name,
-                                            const std::string& member_name) -> bool {
-                                            auto alias_matches_trait_family =
-                                                [&](const char* suffix) -> bool {
-                                                    const size_t suffix_len =
-                                                        std::strlen(suffix);
-                                                    if (owner_name == suffix)
-                                                        return true;
-                                                    if (owner_name.size() <=
-                                                        suffix_len + 2) {
-                                                        return false;
-                                                    }
-                                                    return owner_name.compare(
-                                                               owner_name.size() - suffix_len,
-                                                               suffix_len,
-                                                               suffix) == 0 &&
-                                                           owner_name.compare(
-                                                               owner_name.size() -
-                                                                   suffix_len - 2,
-                                                               2,
-                                                               "::") == 0;
-                                                };
-                                            if (member_name != "type" ||
-                                                resolved_alias_args.size() != 1 ||
-                                                resolved_alias_args[0].is_value) {
-                                                return false;
-                                            }
-                                            ts = resolved_alias_args[0].type;
-                                            if (alias_matches_trait_family("remove_const")) {
-                                                ts.is_const = false;
-                                                return true;
-                                            }
-                                            if (alias_matches_trait_family("remove_volatile")) {
-                                                ts.is_volatile = false;
-                                                return true;
-                                            }
-                                            if (alias_matches_trait_family("remove_cv")) {
-                                                ts.is_const = false;
-                                                ts.is_volatile = false;
-                                                return true;
-                                            }
-                                            if (alias_matches_trait_family("remove_reference")) {
-                                                ts.is_lvalue_ref = false;
-                                                ts.is_rvalue_ref = false;
-                                                return true;
-                                            }
-                                            return false;
-                                        };
-                                    auto resolve_alias_member_type =
-                                        [&](const std::string& owner_name,
-                                            const QualifiedNameRef* owner_name_qn,
-                                            const std::string& member_name) -> bool {
-                                        if (owner_name.empty() || member_name.empty())
-                                            return false;
-                                        const std::string owner_lookup_name =
-                                            (ts.tpl_struct_origin &&
-                                             ts.deferred_member_type_name &&
-                                             member_name == ts.deferred_member_type_name)
-                                                ? std::string(ts.tpl_struct_origin)
-                                                : owner_name;
-                                        QualifiedNameRef owner_lookup_qn;
-                                        const QualifiedNameRef* owner_lookup_qn_ptr =
-                                            nullptr;
-                                        if (ts.tpl_struct_origin &&
-                                            ts.deferred_member_type_name &&
-                                            member_name == ts.deferred_member_type_name) {
-                                            if (qualified_name_from_text(
-                                                    *this, owner_lookup_name,
-                                                    &owner_lookup_qn)) {
-                                                owner_lookup_qn_ptr =
-                                                    &owner_lookup_qn;
-                                            }
-                                        } else if (owner_name_qn &&
-                                                   owner_name_qn->base_text_id !=
-                                                       kInvalidText) {
-                                            owner_lookup_qn = *owner_name_qn;
-                                            owner_lookup_qn_ptr =
-                                                &owner_lookup_qn;
-                                        } else if (qualified_name_from_text(
-                                                       *this, owner_lookup_name,
-                                                       &owner_lookup_qn)) {
-                                            owner_lookup_qn_ptr =
-                                                &owner_lookup_qn;
-                                        }
-
-                                        const Node* primary_tpl =
-                                            owner_lookup_qn_ptr
-                                                ? find_template_struct_primary(
-                                                      *owner_lookup_qn_ptr)
-                                                : find_template_struct_primary(
-                                                      current_namespace_context_id(),
-                                                      parser_text_id_for_token(
-                                                          kInvalidText,
-                                                          owner_lookup_name));
-                                        std::string resolved_owner;
-                                        if (!primary_tpl && owner_lookup_qn_ptr) {
-                                            resolved_owner =
-                                                resolve_qualified_known_type_name(
-                                                    *this, *owner_lookup_qn_ptr);
-                                            if (!resolved_owner.empty()) {
-                                                primary_tpl =
-                                                    find_template_struct_primary(
-                                                        current_namespace_context_id(),
-                                                        parser_text_id_for_token(
-                                                            kInvalidText,
-                                                            resolved_owner));
-                                            }
-                                        } else if (!primary_tpl) {
-                                            const TextId owner_lookup_text_id =
-                                                find_parser_text_id(
-                                                    owner_lookup_name);
-                                            const VisibleNameResult visible_owner =
-                                                resolve_visible_type(
-                                                    owner_lookup_text_id,
-                                                    owner_lookup_name);
-                                            resolved_owner =
-                                                visible_name_spelling(
-                                                    visible_owner);
-                                            if (visible_owner &&
-                                                !resolved_owner.empty()) {
-                                                primary_tpl =
-                                                    find_template_struct_primary(
-                                                        visible_owner.context_id,
-                                                        visible_owner.base_text_id);
-                                            }
-                                        }
-                                        if (!primary_tpl &&
-                                            owner_lookup_name.find("::") ==
-                                                std::string::npos) {
-                                            const std::string canonical_owner =
-                                                bridge_name_in_context(
-                                                    current_namespace_context_id(),
-                                                    parser_text_id_for_token(
-                                                        kInvalidText,
-                                                        owner_lookup_name),
-                                                    owner_lookup_name);
-                                            primary_tpl =
-                                                find_template_struct_primary(
-                                                    current_namespace_context_id(),
-                                                    parser_text_id_for_token(
-                                                        kInvalidText,
-                                                        canonical_owner));
-                                        }
-                                        if (!primary_tpl) return false;
-
-                                        std::vector<ParsedTemplateArg> actual_args;
-                                        if (!build_transformed_owner_args(
-                                                owner_lookup_name, &actual_args))
-                                            return false;
-
-                                        std::vector<std::pair<std::string, TypeSpec>>
-                                            type_bindings;
-                                        std::vector<std::pair<std::string, long long>>
-                                            nttp_bindings;
-                                        const std::vector<Node*>* specializations =
-                                            find_template_struct_specializations(
-                                                primary_tpl);
-                                        const Node* selected =
-                                            select_template_struct_pattern_for_args(
-                                                actual_args, primary_tpl,
-                                                specializations, &type_bindings,
-                                                &nttp_bindings);
-                                        if (!selected || selected->n_member_typedefs <=
-                                                             0)
-                                            return false;
-                                        for (int mi = 0;
-                                             mi < selected->n_member_typedefs; ++mi) {
-                                            const char* member =
-                                                selected->member_typedef_names[mi];
-                                            if (!member || member_name != member)
-                                                continue;
-                                            ts = selected->member_typedef_types[mi];
-                                            bool substituted = false;
-                                            for (const auto& [pname, pts] :
-                                                 type_bindings) {
-                                                if (ts.base == TB_TYPEDEF &&
-                                                    ts.tag &&
-                                                    std::string(ts.tag) == pname) {
-                                                    const int outer_ptr_level =
-                                                        ts.ptr_level;
-                                                    const bool outer_lref =
-                                                        ts.is_lvalue_ref;
-                                                    const bool outer_rref =
-                                                        ts.is_rvalue_ref;
-                                                    const bool outer_const =
-                                                        ts.is_const;
-                                                    const bool outer_volatile =
-                                                        ts.is_volatile;
-                                                    ts = pts;
-                                                    ts.ptr_level +=
-                                                        outer_ptr_level;
-                                                    ts.is_lvalue_ref =
-                                                        ts.is_lvalue_ref ||
-                                                        outer_lref;
-                                                    ts.is_rvalue_ref =
-                                                        !ts.is_lvalue_ref &&
-                                                        (ts.is_rvalue_ref ||
-                                                         outer_rref);
-                                                    ts.is_const =
-                                                        ts.is_const ||
-                                                        outer_const;
-                                                    ts.is_volatile =
-                                                        ts.is_volatile ||
-                                                        outer_volatile;
-                                                    substituted = true;
-                                                    break;
-                                                }
-                                            }
-                                            if (!substituted &&
-                                                ts.base == TB_TYPEDEF && ts.tag &&
-                                                member_name == "type" &&
-                                                type_bindings.size() == 1) {
-                                                ts = type_bindings.front().second;
-                                            }
-                                            return true;
-                                        }
-                                        return false;
-                                    };
-                                        if (ts.base == TB_TYPEDEF && ts.tag) {
-                                            if (split_qualified_member_type_name(
-                                                    *this, ts.tag, &owner_qn,
-                                                    &member_name)) {
-                                                owner_name = owner_qn.spelled(
-                                                    owner_qn.is_global_qualified);
-                                            }
-                                        }
-                                        resolved_alias_member =
-                                            resolve_structured_alias_member_type();
-                                        if (!owner_name.empty() && !member_name.empty())
-                                            resolved_alias_member =
-                                                resolved_alias_member ||
-                                                (has_dependent_owner_args(owner_name) &&
-                                                 preserve_deferred_alias_member(
-                                                     owner_name, member_name)) ||
-                                                resolve_alias_member_type(
-                                                owner_name, &owner_qn,
-                                                member_name) ||
-                                            apply_unary_alias_transform(
-                                                owner_name, member_name);
-                                    if (!resolved_alias_member &&
-                                        ts.deferred_member_type_name &&
-                                        ((ts.tpl_struct_origin &&
-                                          ts.tpl_struct_origin[0]) ||
-                                         (ts.tag && ts.tag[0]))) {
-                                        // Preserve explicit aliased `Owner<...>::type`
-                                        // spellings for later HIR resolution instead of
-                                        // replacing them with alias-name-derived `_t`
-                                        // heuristics.
-                                        resolved_alias_member = true;
-                                    }
-                                    const bool can_try_derived_alias_member =
-                                        (ts.base == TB_TYPEDEF && ts.tag) ||
-                                        ts.base == TB_STRUCT ||
-                                        (!owner_name.empty() && !member_name.empty());
-                                    if (!resolved_alias_member &&
-                                        can_try_derived_alias_member) {
-                                        // Bridge-only fallback for legacy alias-name
-                                        // recovery once the structured owner/member path
-                                        // has already failed.
-                                        auto [derived_owner, derived_member] =
-                                            derive_alias_owner_and_member(alias_template_name);
-                                        if (!derived_owner.empty() && !derived_member.empty())
-                                            resolved_alias_member =
-                                                (has_dependent_owner_args(
-                                                     derived_owner) &&
-                                                 preserve_deferred_alias_member(
-                                                     derived_owner,
-                                                     derived_member)) ||
-                                                apply_unary_alias_transform(
-                                                    derived_owner, derived_member) ||
-                                                resolve_alias_member_type(
-                                                    derived_owner,
-                                                    &derived_owner_qn,
-                                                    derived_member);
-                                        if (!resolved_alias_member &&
-                                            !derived_owner.empty() &&
-                                            !derived_member.empty()) {
-                                            ts.base = TB_STRUCT;
-                                            ts.tag =
-                                                arena_.strdup(derived_owner.c_str());
-                                            ts.tpl_struct_origin = ts.tag;
-                                            set_template_arg_refs_from_parsed_args(
-                                                &ts, resolved_alias_args);
-                                            ts.deferred_member_type_name =
-                                                arena_.strdup(derived_member.c_str());
-                                            resolved_alias_member = true;
-                                        }
-                                    }
-                                }
+                                resolved_alias_member =
+                                    resolve_structured_alias_member_type();
                                 if (!resolved_alias_member) {
                                     for (size_t ai = 0;
                                          ai < resolved_alias_args.size() &&
