@@ -1010,82 +1010,36 @@ bool Parser::eval_deferred_nttp_expr_tokens(
 
 bool Parser::eval_deferred_nttp_default(
     const QualifiedNameKey& template_key,
+    int param_idx,
+    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+    long long* out) {
+    if (template_key.base_text_id == kInvalidText || param_idx < 0) {
+        return false;
+    }
+    const ParserTemplateState::NttpDefaultExprKey key{template_key, param_idx};
+    auto structured_it =
+        template_state_.nttp_default_expr_tokens_by_key.find(key);
+    if (structured_it == template_state_.nttp_default_expr_tokens_by_key.end()) {
+        return false;
+    }
+
+    const std::string template_name = bridge_name_in_context(
+        template_key.context_id, template_key.base_text_id, {});
+    return eval_deferred_nttp_expr_tokens(template_name, structured_it->second,
+                                          type_bindings, nttp_bindings, out);
+}
+
+bool Parser::eval_deferred_nttp_default(
+    const QualifiedNameKey& template_key,
     std::string_view rendered_template_name,
     int param_idx,
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
     long long* out) {
-    std::string rendered_name(rendered_template_name);
-    const std::string rendered_mirror_key =
-        rendered_name + ":" + std::to_string(param_idx);
-    auto rendered_mirror_it =
-        template_state_.nttp_default_expr_tokens.find(rendered_mirror_key);
-
-    const std::vector<Token>* structured_tokens = nullptr;
-    if (template_key.base_text_id != kInvalidText) {
-        const ParserTemplateState::NttpDefaultExprKey key{
-            template_key, param_idx};
-        auto structured_it =
-            template_state_.nttp_default_expr_tokens_by_key.find(key);
-        if (structured_it !=
-            template_state_.nttp_default_expr_tokens_by_key.end()) {
-            structured_tokens = &structured_it->second;
-        }
-    }
-
-    if (template_key.base_text_id != kInvalidText) {
-        if (!structured_tokens) return false;
-
-        long long structured_value = 0;
-        const bool structured_ok = eval_deferred_nttp_expr_tokens(
-            rendered_name, *structured_tokens, type_bindings, nttp_bindings,
-            &structured_value);
-        if (rendered_mirror_it !=
-            template_state_.nttp_default_expr_tokens.end()) {
-            long long rendered_mirror_value = 0;
-            const bool rendered_mirror_ok = eval_deferred_nttp_expr_tokens(
-                rendered_name, rendered_mirror_it->second, type_bindings,
-                nttp_bindings, &rendered_mirror_value);
-            if (structured_ok != rendered_mirror_ok ||
-                (structured_ok && rendered_mirror_ok &&
-                 structured_value != rendered_mirror_value)) {
-                ++template_state_.nttp_default_expr_cache_mismatch_count;
-            }
-        }
-        if (!structured_ok) return false;
-        *out = structured_value;
-        return true;
-    }
-
-    if (rendered_mirror_it != template_state_.nttp_default_expr_tokens.end()) {
-        long long rendered_mirror_value = 0;
-        const bool rendered_mirror_ok = eval_deferred_nttp_expr_tokens(
-            rendered_name, rendered_mirror_it->second, type_bindings,
-            nttp_bindings, &rendered_mirror_value);
-
-        if (structured_tokens) {
-            long long structured_value = 0;
-            const bool structured_ok = eval_deferred_nttp_expr_tokens(
-                rendered_name, *structured_tokens, type_bindings, nttp_bindings,
-                &structured_value);
-            if (structured_ok != rendered_mirror_ok ||
-                (structured_ok && rendered_mirror_ok &&
-                 structured_value != rendered_mirror_value)) {
-                ++template_state_.nttp_default_expr_cache_mismatch_count;
-            }
-        }
-
-        if (!rendered_mirror_ok) return false;
-        *out = rendered_mirror_value;
-        return true;
-    }
-
-    if (!structured_tokens) {
-        return false;
-    }
-
-    return eval_deferred_nttp_expr_tokens(rendered_name, *structured_tokens,
-                                          type_bindings, nttp_bindings, out);
+    (void)rendered_template_name;
+    return eval_deferred_nttp_default(template_key, param_idx, type_bindings,
+                                      nttp_bindings, out);
 }
 
 bool Parser::eval_deferred_nttp_default(
@@ -1099,27 +1053,28 @@ bool Parser::eval_deferred_nttp_default(
         structured_key = alias_template_key_in_context(
             current_namespace_context_id(), template_text_id);
     }
-    return eval_deferred_nttp_default(structured_key, tpl_name, param_idx,
-                                      type_bindings, nttp_bindings, out);
+    return eval_deferred_nttp_default(structured_key, param_idx, type_bindings,
+                                      nttp_bindings, out);
 }
 
 void Parser::cache_nttp_default_expr_tokens(
     const QualifiedNameKey& template_key,
-    std::string_view rendered_template_name,
     int param_idx,
     std::vector<Token> toks) {
     if (template_key.base_text_id != kInvalidText && param_idx >= 0) {
         template_state_.nttp_default_expr_tokens_by_key
             [ParserTemplateState::NttpDefaultExprKey{template_key, param_idx}] =
-                toks;
-    }
-    if (!rendered_template_name.empty() && param_idx >= 0) {
-        std::string rendered_mirror_key(rendered_template_name);
-        rendered_mirror_key += ":";
-        rendered_mirror_key += std::to_string(param_idx);
-        template_state_.nttp_default_expr_tokens[rendered_mirror_key] =
             std::move(toks);
     }
+}
+
+void Parser::cache_nttp_default_expr_tokens(
+    const QualifiedNameKey& template_key,
+    std::string_view legacy_template_name,
+    int param_idx,
+    std::vector<Token> toks) {
+    (void)legacy_template_name;
+    cache_nttp_default_expr_tokens(template_key, param_idx, std::move(toks));
 }
 
 }  // namespace c4c

@@ -8,19 +8,19 @@ Current Step Title: Remove Parser Template And NTTP Default Rendered Mirrors
 
 ## Just Finished
 
-Plan review split the oversized parser Step 2 route after
-`review/step2_parser_lookup_removal_review.md` found the implementation
-source-aligned but too broad for the next executor packet. The runbook now
-breaks parser cleanup into numbered Step 2 substeps and keeps the next route
-focused on template and NTTP-default rendered mirrors.
+Step 2.1 removed parser NTTP-default rendered-name cache/evaluation mirror
+authority for the structured template-key route. Deferred NTTP default tokens
+are now cached and evaluated through
+`ParserTemplateState::NttpDefaultExprKey`, owned parsing code no longer passes
+the rendered node name into the cache API, and focused parser tests prove stale
+or TextId-less rendered mirror entries cannot override or authorize default
+evaluation.
 
 ## Suggested Next
 
-Execute Step 2.1 only: inspect parser template-state lookup and NTTP-default
-token/evaluation paths, remove rendered mirror authority where
-`QualifiedNameKey`, namespace context, `TextId`, or structured NTTP-default
-keys are already available, and add focused drifted-rendered-spelling parser
-tests for that route.
+Continue with the supervisor-selected next Step 2 parser cleanup packet. The
+remaining parser rendered mirrors should be handled as separate narrow slices
+unless the supervisor asks for a plan review first.
 
 ## Watchouts
 
@@ -32,11 +32,14 @@ migration into this parser packet; route that through
 `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a narrower HIR
 metadata idea if the supervisor switches scope.
 
-The missing canonical proof log noted by the reviewer is not accepted by this
-lifecycle rewrite. The next code slice must produce a fresh `test_after.log`
-for its delegated proof command before acceptance.
+The legacy string overloads for `eval_deferred_nttp_default(...)` and
+`cache_nttp_default_expr_tokens(...)` still exist for callers outside this owned
+packet, but they now delegate to structured-key lookup and ignore the rendered
+name as semantic authority.
 
 ## Proof
 
-Not run. This was a lifecycle-only plan/todo rewrite and does not claim a
-fresh build or CTest result.
+Passed:
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
+
+Result: 927/927 tests passed. Proof log: `test_after.log`.

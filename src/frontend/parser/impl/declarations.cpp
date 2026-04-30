@@ -2107,7 +2107,7 @@ Node* parse_top_level(Parser& parser) {
                     parser.cache_nttp_default_expr_tokens(
                         parser.alias_template_key_in_context(
                             key_context_id, key_text_id),
-                        n->name, idx, std::move(toks));
+                        idx, std::move(toks));
                 }
             }
         };

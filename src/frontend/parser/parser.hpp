@@ -519,6 +519,12 @@ class Parser {
   // Returns true if evaluation succeeded and writes the result to *out.
   bool eval_deferred_nttp_default(
       const QualifiedNameKey& template_key,
+      int param_idx,
+      const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+      const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+      long long* out);
+  bool eval_deferred_nttp_default(
+      const QualifiedNameKey& template_key,
       std::string_view rendered_template_name,
       int param_idx,
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
@@ -529,6 +535,10 @@ class Parser {
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,
       long long* out);
+  void cache_nttp_default_expr_tokens(
+      const QualifiedNameKey& template_key,
+      int param_idx,
+      std::vector<Token> toks);
   void cache_nttp_default_expr_tokens(
       const QualifiedNameKey& template_key,
       std::string_view legacy_template_name,
