@@ -675,6 +675,53 @@ Completion check:
 - Narrow parser/Sema tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
+### Step 2.4.4.5C: Add Dependent/Template Record Member-Typedef Carrier
+
+Goal: replace the remaining record-body bridge that publishes
+template/dependent record member typedefs as rendered `source_tag::member`
+typedef bindings with a parser/Sema structured carrier.
+
+Primary target: `register_record_member_typedef_bindings()` in
+`src/frontend/parser/impl/types/struct.cpp` and the parser route exercised by
+`cpp_positive_sema_eastl_slice7_piecewise_ctor_parse_cpp`,
+`cpp_positive_sema_step3_timeout_probe_baseline_parse_cpp`, and
+`cpp_positive_sema_tuple_element_alias_mix_parse_cpp`.
+
+Actions:
+
+- Identify the structured owner identity available while record member
+  typedefs are registered for template/dependent records; use direct record,
+  template owner, namespace-aware, or dependent-owner metadata instead of
+  rendered `source_tag` spelling.
+- Add or thread a parser/Sema-owned carrier for template/dependent record
+  member typedef availability keyed by that owner identity plus member
+  `TextId`.
+- Route the three timed-out positive parse fixtures through the structured
+  carrier before consulting the rendered `source_tag::member` publication.
+- Treat the existing concrete-instantiation carrier
+  `template_instantiation_member_typedefs_by_key` and alias-template
+  `ParserAliasTemplateInfo::member_typedef` as already insufficient for this
+  route; do not retry deletion by assuming those carriers cover it.
+- Do not replace the bridge with a helper that renders, splits, or reparses
+  `owner::member` text, rendered `source_tag` spelling, `std::string`,
+  `std::string_view`, or fallback spelling.
+- Keep rendered owner/member spelling only for diagnostics, display, debug
+  output, mangling, or final emitted text.
+
+Completion check:
+
+- Template/dependent record member typedef availability has a structured
+  parser/Sema route that covers the three timed-out positive parse fixtures
+  without relying on rendered `source_tag::member` typedef binding.
+- `register_record_member_typedef_bindings()` no longer needs to publish
+  semantic typedef bindings through rendered `source_tag::member`, or any
+  remaining uncovered reader is recorded as a new explicit blocker before
+  Step 2.4.4.6.
+- No local rendered-key reconstruction, helper-only rename, or named-test
+  shortcut is counted as progress.
+- Narrow parser/Sema tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
 ### Step 2.4.4.6: Delete Or Park The Remaining Member-Typedef Mirror
 
 Goal: delete the live `owner::member` typedef mirror, or park only a
@@ -686,7 +733,7 @@ member-typedef storage.
 
 Actions:
 
-- Confirm Steps 2.4.4.1 through 2.4.4.5B have removed, converted, or blocked
+- Confirm Steps 2.4.4.1 through 2.4.4.5C have removed, converted, or blocked
   every semantic writer/reader that depended on rendered scoped storage.
 - Delete the mirror writer and storage only if no semantic consumer remains.
 - If a narrow compatibility cache must remain, make its non-semantic purpose
