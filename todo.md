@@ -8,30 +8,32 @@ Current Step Title: Make Backend Layout Lookup Structured-Primary
 
 ## Just Finished
 
-Step 2 projection-helper cleanup completed for idea 138. The aggregate
-byte-offset and child-index projection helpers in `memory/addressing.cpp` now
-route parent and child layout resolution through the structured-aware lookup
-path, with the no-structured overload preserving legacy fallback through an
-empty structured table. Focused coverage in
-`backend_prepare_structured_context` now proves structured-present projection
-behavior with mismatched legacy shadow text and structured-missing fallback for
-both byte-offset and child-index projections.
+Step 2 backend aggregate layout lookup scan completed for idea 138. The direct
+`lookup_backend_aggregate_type_layout()` consumers in `aggregate.cpp`,
+`memory/addressing.cpp`, and the local/global wrapper helpers all route through
+the structured-aware overload when a `BackendStructuredLayoutTable` is
+available; the remaining direct `compute_aggregate_type_layout()` paths are the
+legacy no-structured overloads or the internal structured/text parity and
+fallback implementation. No remaining Step 2 implementation packet was found.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 2 by scanning the remaining aggregate layout
-consumers in `memory/addressing.cpp` for any direct legacy fallback routes that
-should prefer structured layout data when the caller has a structured table.
+Next coherent packet: advance to Step 3 by making aggregate initializer layout
+coverage prove structured-present behavior and structured-missing fallback
+through `lower_aggregate_initializer()` in `global_initializers.cpp`.
+
+Suggested proof for that packet:
+`cmake --build build --target backend_prepare_structured_context_test backend_lir_to_bir_notes_test > test_after.log 2>&1 && ctest --test-dir build -R '^(backend_prepare_structured_context|backend_lir_to_bir_notes)$' --output-on-failure >> test_after.log 2>&1`.
 
 ## Watchouts
 
-Do not delete `LirModule::type_decls`; the fallback route is still needed when
-`struct_decls` is absent. Do not use `StructuredTypeSpellingContext` as a
-semantic layout table; it intentionally carries final spelling metadata for BIR
-printing. `lookup_addressing_layout()` still owns the actual structured-present
-versus structured-missing decision for memory addressing helpers.
+Step 3 and Step 4 are still expected to cover aggregate and global initializer
+consumers, but the Step 2 lookup primitive and addressing/local/global wrapper
+routes already prefer structured layout data whenever the caller supplies the
+structured table. Do not delete `LirModule::type_decls`; the fallback route is
+still needed when `struct_decls` is absent.
 
 ## Proof
 
-Proof passed and was written to `test_after.log`:
-`cmake --build build --target backend_prepare_structured_context_test backend_lir_to_bir_notes_test > test_after.log 2>&1 && ctest --test-dir build -R '^(backend_prepare_structured_context|backend_lir_to_bir_notes)$' --output-on-failure >> test_after.log 2>&1`.
+Proof passed for this todo-only scan packet:
+`git diff --check -- todo.md`.
