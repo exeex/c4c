@@ -2381,6 +2381,19 @@ void test_parser_record_body_member_typedef_writers_register_direct_keys() {
               "record-body using member typedef writer should register a direct record/member key");
   expect_true(typedef_type != nullptr && typedef_type->base == c4c::TB_LONG,
               "record-body typedef member writer should register a direct record/member key");
+
+  c4c::Parser::QualifiedNameRef using_qn;
+  using_qn.qualifier_segments = {"ns", "Owner"};
+  using_qn.qualifier_text_ids = {ns_text, owner_text};
+  using_qn.base_name = "UsingMember";
+  using_qn.base_text_id = using_text;
+  const c4c::Parser::VisibleNameResult resolved_using =
+      parser.resolve_qualified_type(using_qn);
+  const c4c::TypeSpec* resolved_using_type =
+      parser.find_typedef_type(resolved_using.key);
+  expect_true(resolved_using_type != nullptr &&
+                  resolved_using_type->base == c4c::TB_INT,
+              "qualified member typedef reader should use the direct record/member key before stale rendered storage");
 }
 
 void test_parser_namespace_typedef_registration_stays_namespace_scoped() {

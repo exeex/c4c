@@ -222,6 +222,50 @@ std::string render_value_binding_name(const Parser& parser,
     return render_structured_name(parser, key);
 }
 
+QualifiedNameKey find_qualified_name_key(const Parser& parser,
+                                         const Parser::QualifiedNameRef& name) {
+    QualifiedNameKey key;
+    key.context_id = 0;
+    key.is_global_qualified = name.is_global_qualified;
+    key.base_text_id =
+        name.base_text_id != kInvalidText
+            ? name.base_text_id
+            : parser.find_parser_text_id(name.base_name);
+    if (key.base_text_id == kInvalidText) return key;
+
+    if (name.qualifier_segments.empty() && name.qualifier_text_ids.empty()) {
+        return key;
+    }
+
+    std::vector<TextId> qualifier_text_ids;
+    qualifier_text_ids.reserve(
+        std::max(name.qualifier_text_ids.size(),
+                 name.qualifier_segments.size()));
+    for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
+        TextId text_id = i < name.qualifier_text_ids.size()
+                             ? name.qualifier_text_ids[i]
+                             : kInvalidText;
+        if (text_id == kInvalidText) {
+            text_id = parser.find_parser_text_id(name.qualifier_segments[i]);
+        }
+        if (text_id == kInvalidText) return {};
+        qualifier_text_ids.push_back(text_id);
+    }
+    for (size_t i = name.qualifier_segments.size();
+         i < name.qualifier_text_ids.size(); ++i) {
+        if (name.qualifier_text_ids[i] == kInvalidText) return {};
+        qualifier_text_ids.push_back(name.qualifier_text_ids[i]);
+    }
+
+    if (!qualifier_text_ids.empty()) {
+        key.qualifier_path_id =
+            parser.shared_lookup_state_.parser_name_paths.find(
+                qualifier_text_ids);
+        if (key.qualifier_path_id == kInvalidNamePath) return {};
+    }
+    return key;
+}
+
 std::string render_lookup_name_in_context(const Parser& parser, int context_id,
                                           TextId name_text_id,
                                           std::string_view fallback_name) {
@@ -2689,6 +2733,24 @@ Parser::VisibleNameResult Parser::resolve_qualified_type(
         result.context_id = 0;
         result.source = VisibleNameSource::Fallback;
         result.compatibility_spelling = base_name;
+        return result;
+    }
+
+    const QualifiedNameKey direct_key = find_qualified_name_key(*this, name);
+    if (find_structured_typedef_type(direct_key)) {
+        VisibleNameResult result;
+        result.found = true;
+        result.kind = VisibleNameKind::Type;
+        result.key = direct_key;
+        result.base_text_id = direct_key.base_text_id;
+        result.context_id = direct_key.context_id;
+        result.source = VisibleNameSource::Namespace;
+        result.compatibility_spelling =
+            render_structured_name(*this, direct_key);
+        if (result.compatibility_spelling.empty()) {
+            result.compatibility_spelling =
+                qualified_name_text(name, /*include_global_prefix=*/true);
+        }
         return result;
     }
 

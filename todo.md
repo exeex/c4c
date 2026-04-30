@@ -8,56 +8,38 @@ Current Step Title: Prove Qualified Key Or Namespace-Context Lookup
 
 ## Just Finished
 
-Step 2.4.2 converted the record-body member-typedef writer route for
-non-template finalized records. The `using Alias = ...;` and `typedef ...`
-record-body parse sites no longer call
-`register_struct_member_typedef_binding(current_struct_tag_text(), member,
-type)`. Finalization now copies the member typedef arrays to the record `Node`,
-uses `namespace_context_id` + `unqualified_text_id` + member `TextId` to build
-a direct record/member `QualifiedNameKey`, and registers that structured typedef
-binding.
+Step 2.4.3 converted the qualified-type reader route backed by
+`Parser::resolve_qualified_type(const QualifiedNameRef&)`. Qualified type
+resolution now builds a direct key from the existing `QualifiedNameRef`
+segment/TextId carrier and checks structured typedef storage before falling
+back to namespace-context lookup, allowing finalized record-body member
+typedefs such as `ns::Owner::UsingMember` to resolve through the direct
+record/member key without rendering or reparsing `owner::member` spelling.
 
-The rendered compatibility mirror is intentionally preserved from finalization
-for remaining readers and template-primary behavior. Template-instantiation
-registration in `src/frontend/parser/impl/types/base.cpp` was left unchanged.
-A focused parser test now proves both record-body writer forms produce direct
-record/member keys and that stale rendered storage does not override those
-direct keys.
+The compatibility mirror and `find_typedef_type(TextId)` qualified-spelling
+branch remain in place. A focused parser assertion extends the Step 2.4.2
+record-body member typedef test to prove the reader prefers the direct
+record/member key over stale rendered fallback storage.
 
 ## Suggested Next
 
-Bounded Step 2.4.3 executor packet: convert one qualified-key or
-namespace-context member-typedef reader, preferably `lookup_type_in_context`
-or a nearby qualified-type probe path that already has `context_id` plus
-member `TextId` / `QualifiedNameKey`, so it reads direct structured typedef
-authority without rendering `owner::member` text or reparsing qualified
-spelling.
-
-Keep `find_typedef_type(TextId)`'s qualified-spelling branch and the
-current-record sibling fallback as later/removal candidates unless the executor
-first identifies an upstream caller that can pass an existing
-`QualifiedNameKey`, namespace context, or parser qualified-name carrier. Do not
-count a local rewrite of those TextId-only boundaries as Step 2.4.3 progress if
-it still starts from rendered qualified text.
+Next bounded packet: convert another reader that already starts from structured
+authority, preferably a namespace-context or `QualifiedNameRef` path feeding
+`probe_qualified_type` / functional-cast owner checks, and prove it does not
+consult rendered qualified typedef storage before direct structured typedef
+metadata.
 
 ## Watchouts
 
-Do not remove the rendered compatibility mirror yet: the delegated proof showed
-template-primary alias behavior still depends on remaining compatibility
-readers while the template-instantiation writer is out of scope. The direct
-record/member registration is deliberately limited to non-template finalized
-records; template member typedef semantics should be handled in a dedicated
-template-instantiation packet.
+The new reader helper intentionally uses existing qualifier/base `TextId`s and
+`NamePathTable::find`; it does not split rendered qualified spelling or create
+new path authority during lookup. Global-qualified record/member typedef
+spellings may need an explicit canonical-key decision in a later packet because
+the current direct writer stores non-global canonical qualified paths.
 
-Do not add a helper that accepts rendered `owner::member`, `std::string`, or
-`std::string_view` qualified text and splits or reparses it into owner/member
-identity. This packet added only a key builder from namespace context,
-record `TextId`, and member `TextId`.
-
-For Step 2.4.3, reject any route that merely moves the rendered qualified-text
-lookup behind a new wrapper. The converted reader should start from an existing
-structured carrier supplied by the caller: `QualifiedNameKey`,
-`QualifiedNameRef`, namespace context plus `TextId`, or record/tag metadata.
+Do not remove the rendered compatibility mirror yet. Template-instantiation
+member typedef registration in `src/frontend/parser/impl/types/base.cpp`
+still uses the compatibility writer and remains out of scope for this packet.
 
 ## Proof
 
