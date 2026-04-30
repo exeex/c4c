@@ -13,6 +13,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -23,6 +24,17 @@ namespace prepare = c4c::backend::prepare;
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
+}
+
+bool contains_note(const std::vector<c4c::backend::BirLoweringNote>& notes,
+                   std::string_view phase,
+                   std::string_view needle) {
+  for (const auto& note : notes) {
+    if (note.phase == phase && note.message.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const prepare::PreparedControlFlowFunction* find_control_flow_function(
@@ -505,6 +517,75 @@ int check_aggregate_initializer_prefers_structured_layout_table() {
   return 0;
 }
 
+int check_global_initializer_lowering_prefers_structured_layout_table() {
+  auto make_module = [](bool include_structured_decl) {
+    lir::LirModule module;
+    module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+
+    if (include_structured_decl) {
+      const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
+      module.record_struct_decl(lir::LirStructDecl{
+          .name_id = pair_id,
+          .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                     lir::LirStructField{lir::LirTypeRef("i32")}},
+      });
+    }
+
+    module.type_decls.push_back("%struct.Pair = type { i64, i64 }");
+
+    lir::LirGlobal global;
+    global.name = include_structured_decl ? "pair_structured" : "pair_fallback";
+    global.llvm_type = "%struct.Pair";
+    global.init_text = include_structured_decl ? "{ i32 1, i32 2 }" : "{ i64 1, i64 2 }";
+    module.globals.push_back(std::move(global));
+    return module;
+  };
+
+  const auto structured_result =
+      c4c::backend::try_lower_to_bir_with_options(make_module(true),
+                                                  c4c::backend::BirLoweringOptions{});
+  if (!structured_result.module.has_value()) {
+    return fail("structured-present global initializer fixture did not lower to BIR");
+  }
+  if (!contains_note(structured_result.notes,
+                     "module",
+                     "structured backend layout parity mismatch for %struct.Pair") ||
+      !contains_note(structured_result.notes, "module", "legacy size 16") ||
+      !contains_note(structured_result.notes, "module", "structured size 8")) {
+    return fail("structured-present global initializer mismatch did not remain visible in notes");
+  }
+  const auto& structured_global = structured_result.module->globals.front();
+  if (structured_global.name != "pair_structured" ||
+      structured_global.type != bir::TypeKind::I8 ||
+      structured_global.size_bytes != 8 ||
+      structured_global.initializer_elements.size() != 2 ||
+      structured_global.initializer_elements[0] != bir::Value::immediate_i32(1) ||
+      structured_global.initializer_elements[1] != bir::Value::immediate_i32(2)) {
+    return fail("structured-present global initializer did not use structured layout authority");
+  }
+
+  const auto fallback_result =
+      c4c::backend::try_lower_to_bir_with_options(make_module(false),
+                                                  c4c::backend::BirLoweringOptions{});
+  if (!fallback_result.module.has_value()) {
+    return fail("structured-missing global initializer fixture did not lower to BIR");
+  }
+  const auto& fallback_global = fallback_result.module->globals.front();
+  if (fallback_global.name != "pair_fallback" ||
+      fallback_global.type != bir::TypeKind::I8 ||
+      fallback_global.size_bytes != 16 ||
+      fallback_global.initializer_elements.size() != 2 ||
+      fallback_global.initializer_elements[0] != bir::Value::immediate_i64(1) ||
+      fallback_global.initializer_elements[1] != bir::Value::immediate_i64(2)) {
+    return fail("structured-missing global initializer did not preserve legacy fallback");
+  }
+
+  return 0;
+}
+
 int check_block_label_rendering_prefers_structured_identity() {
   bir::Module module;
   const c4c::BlockLabelId entry_id = module.names.block_labels.intern("entry");
@@ -830,6 +911,10 @@ int main() {
     return status;
   }
   if (const int status = check_aggregate_initializer_prefers_structured_layout_table();
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_global_initializer_lowering_prefers_structured_layout_table();
       status != 0) {
     return status;
   }
