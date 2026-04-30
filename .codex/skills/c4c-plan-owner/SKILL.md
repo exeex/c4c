@@ -18,8 +18,10 @@ does not perform implementation work.
 3. Load and follow `plan-lifecycle` as the authoritative lifecycle workflow.
 4. If the task will create or rewrite `plan.md`, also load and follow
    `idea-to-runbook-plan`.
-5. Read only the lifecycle files needed for the assigned operation.
-6. If the supervisor provides a reviewer report path under `review/`, read that
+5. If the task will create a new file under `ideas/open/`, use the source idea
+   creation format below.
+6. Read only the lifecycle files needed for the assigned operation.
+7. If the supervisor provides a reviewer report path under `review/`, read that
    report before rewriting `plan.md` or `todo.md`.
 
 ## Required Workflow
@@ -48,9 +50,47 @@ When activation or repair requires writing `plan.md`:
    the rewritten step metadata and resetting the local hook-managed
    plan-review counter state
 
+## Source Idea Creation Format
+
+When a delegated lifecycle task requires creating a new `ideas/open/*.md` file,
+write the idea as a durable review contract, not a loose summary. The exact
+section names may vary when a more specific skill such as `phoenix-rebuild`
+requires its own template, but every new idea must include these concepts:
+
+- goal or intent
+- why the idea exists
+- in-scope work
+- out-of-scope work
+- acceptance or completion criteria
+- reviewer reject signals
+
+The reviewer reject section is mandatory. Prefer the heading:
+
+```markdown
+## Reviewer Reject Signals
+```
+
+That section must explicitly tell `c4c-reviewer` what evidence should cause
+the slice or route to be rejected instead of accepted as progress. Make the
+signals concrete and tied to the idea's domain. Include reject signals for:
+
+- testcase-shaped shortcuts or named-case-only fixes
+- unsupported expectation downgrades or weaker test contracts without explicit
+  user approval
+- helper renames, expectation rewrites, or classification-only changes claimed
+  as capability progress
+- broad rewrites outside the idea's scope
+- retaining the exact old failure mode behind a new abstraction name
+
+Do not leave the section generic. A reviewer should be able to read it and
+know which concrete diffs, tests, logs, or route choices must block acceptance
+for this idea.
+
 ## Responsibilities
 
 - activate one idea from `ideas/open/` into `plan.md`
+- create new source ideas under `ideas/open/` when delegated by the supervisor
+  or by a higher-level lifecycle skill
 - create, repair, or reset `todo.md` during activation, switch, repair, or
   close flows
 - keep `todo.md` creation/reset limited to metadata plus executor-compatible
@@ -99,6 +139,8 @@ When activation or repair requires writing `plan.md`:
 10. Only rewrite the linked source idea during normal execution when the source
    intent itself changed, a durable deactivation/closure note is required, or
    the work must be split into a separate initiative under `ideas/open/`.
+    When creating that separate initiative, include `## Reviewer Reject
+    Signals`.
 11. Do not rewrite `plan.md` just because one executor packet completed. A real
     plan rewrite should usually represent a route checkpoint after several
     implementation commits, roughly 5 to 10, unless blocked sooner by repair,
