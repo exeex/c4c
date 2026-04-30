@@ -8,28 +8,28 @@ Current Step Title: Make Backend Layout Lookup Structured-Primary
 
 ## Just Finished
 
-Step 2 implementation completed for idea 138. `lookup_backend_aggregate_type_layout()`
-now returns a valid structured layout whenever a structured entry is present,
-including when the legacy `TypeDeclMap` shadow exists but parity mismatches.
-Structured-missing fallback still routes through `compute_aggregate_type_layout()`.
-Focused coverage in `backend_prepare_structured_context` now proves
-structured-present match, structured-present mismatch with corrupted legacy
-shadow text, and structured-missing fallback.
+Step 2 projection-helper cleanup completed for idea 138. The aggregate
+byte-offset and child-index projection helpers in `memory/addressing.cpp` now
+route parent and child layout resolution through the structured-aware lookup
+path, with the no-structured overload preserving legacy fallback through an
+empty structured table. Focused coverage in
+`backend_prepare_structured_context` now proves structured-present projection
+behavior with mismatched legacy shadow text and structured-missing fallback for
+both byte-offset and child-index projections.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 2 by routing remaining aggregate projection
-helpers in `memory/addressing.cpp` away from direct legacy
-`compute_aggregate_type_layout()` calls when structured layout data is available.
+Next coherent packet: continue Step 2 by scanning the remaining aggregate layout
+consumers in `memory/addressing.cpp` for any direct legacy fallback routes that
+should prefer structured layout data when the caller has a structured table.
 
 ## Watchouts
 
 Do not delete `LirModule::type_decls`; the fallback route is still needed when
 `struct_decls` is absent. Do not use `StructuredTypeSpellingContext` as a
 semantic layout table; it intentionally carries final spelling metadata for BIR
-printing. Step 2's top-level lookup now treats valid structured entries as
-authoritative, but `memory/addressing.cpp` still has same-feature projection
-paths that need structured-primary cleanup in a separate packet.
+printing. `lookup_addressing_layout()` still owns the actual structured-present
+versus structured-missing decision for memory addressing helpers.
 
 ## Proof
 

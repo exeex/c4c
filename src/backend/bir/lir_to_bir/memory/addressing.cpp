@@ -238,121 +238,16 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_proje
     std::string_view type_text,
     std::size_t target_offset,
     const BirFunctionLowerer::TypeDeclMap& type_decls) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
-  if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
-      target_offset >= layout.size_bytes) {
-    return std::nullopt;
-  }
-
-  switch (layout.kind) {
-    case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
-      const auto element_layout =
-          compute_aggregate_type_layout(layout.element_type_text, type_decls);
-      if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
-          element_layout.size_bytes == 0) {
-        return std::nullopt;
-      }
-      const auto element_index = target_offset / element_layout.size_bytes;
-      if (element_index >= layout.array_count) {
-        return std::nullopt;
-      }
-      return AggregateByteOffsetProjection{
-          .kind = AggregateByteOffsetProjection::Kind::ArrayElement,
-          .layout = layout,
-          .child_layout = element_layout,
-          .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
-              layout.element_type_text)),
-          .child_index = element_index,
-          .byte_offset_within_child = target_offset % element_layout.size_bytes,
-          .target_byte_offset = target_offset,
-          .child_start_byte_offset = element_index * element_layout.size_bytes,
-          .child_stride_bytes = element_layout.size_bytes,
-      };
-    }
-    case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
-      for (std::size_t index = 0; index < layout.fields.size(); ++index) {
-        const auto field_begin = layout.fields[index].byte_offset;
-        const auto field_end =
-            index + 1 < layout.fields.size() ? layout.fields[index + 1].byte_offset
-                                             : layout.size_bytes;
-        if (target_offset < field_begin || target_offset >= field_end) {
-          continue;
-        }
-        const auto child_layout =
-            compute_aggregate_type_layout(layout.fields[index].type_text, type_decls);
-        return AggregateByteOffsetProjection{
-            .kind = AggregateByteOffsetProjection::Kind::StructField,
-            .layout = layout,
-            .child_layout = child_layout,
-            .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
-                layout.fields[index].type_text)),
-            .child_index = index,
-            .byte_offset_within_child = target_offset - field_begin,
-            .target_byte_offset = target_offset,
-            .child_start_byte_offset = field_begin,
-            .child_stride_bytes = child_layout.size_bytes,
-        };
-      }
-      return std::nullopt;
-    default:
-      return std::nullopt;
-  }
+  return resolve_aggregate_byte_offset_projection(
+      type_text, target_offset, type_decls, BackendStructuredLayoutTable{});
 }
 
 std::optional<AggregateByteOffsetProjection> resolve_aggregate_child_index_projection(
     std::string_view type_text,
     std::size_t child_index,
     const BirFunctionLowerer::TypeDeclMap& type_decls) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
-  if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
-      layout.size_bytes == 0) {
-    return std::nullopt;
-  }
-
-  switch (layout.kind) {
-    case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
-      const auto element_layout =
-          compute_aggregate_type_layout(layout.element_type_text, type_decls);
-      if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
-          child_index >= layout.array_count) {
-        return std::nullopt;
-      }
-      const auto child_start_byte_offset = child_index * element_layout.size_bytes;
-      return AggregateByteOffsetProjection{
-          .kind = AggregateByteOffsetProjection::Kind::ArrayElement,
-          .layout = layout,
-          .child_layout = element_layout,
-          .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
-              layout.element_type_text)),
-          .child_index = child_index,
-          .byte_offset_within_child = 0,
-          .target_byte_offset = child_start_byte_offset,
-          .child_start_byte_offset = child_start_byte_offset,
-          .child_stride_bytes = element_layout.size_bytes,
-      };
-    }
-    case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct: {
-      if (child_index >= layout.fields.size()) {
-        return std::nullopt;
-      }
-      const auto child_layout =
-          compute_aggregate_type_layout(layout.fields[child_index].type_text, type_decls);
-      return AggregateByteOffsetProjection{
-          .kind = AggregateByteOffsetProjection::Kind::StructField,
-          .layout = layout,
-          .child_layout = child_layout,
-          .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
-              layout.fields[child_index].type_text)),
-          .child_index = child_index,
-          .byte_offset_within_child = 0,
-          .target_byte_offset = layout.fields[child_index].byte_offset,
-          .child_start_byte_offset = layout.fields[child_index].byte_offset,
-          .child_stride_bytes = child_layout.size_bytes,
-      };
-    }
-    default:
-      return std::nullopt;
-  }
+  return resolve_aggregate_child_index_projection(
+      type_text, child_index, type_decls, BackendStructuredLayoutTable{});
 }
 
 namespace {
