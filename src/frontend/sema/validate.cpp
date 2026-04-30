@@ -771,12 +771,14 @@ class Validator {
     auto it = consteval_funcs_.find(name);
     const Node* legacy = it != consteval_funcs_.end() ? it->second : nullptr;
     if (reference) {
-      (void)compare_sema_lookup_ptrs(legacy, lookup_consteval_function_by_text(reference));
+      const Node* text = lookup_consteval_function_by_text(reference);
+      (void)compare_sema_lookup_ptrs(legacy, text);
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const Node* structured = lookup_consteval_function_by_key(*key);
         (void)compare_sema_lookup_ptrs(legacy, structured);
         if (structured) return structured;
       }
+      if (text) return text;
     }
     return legacy;
   }
