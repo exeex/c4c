@@ -2442,7 +2442,7 @@ TypeSpec Parser::parse_base_type() {
                             if (da.is_value && primary_tpl->template_param_default_values[sz] == LLONG_MIN) {
                                 long long ev = 0;
                                 if (eval_deferred_nttp_default(
-                                        primary_template_key, tpl_name, sz,
+                                        primary_template_key, sz,
                                         prelim_tb, prelim_nb, &ev)) {
                                     da.value = ev;
                                     actual_args.push_back(da);
@@ -2506,7 +2506,7 @@ TypeSpec Parser::parse_base_type() {
                                     template_instantiation_name_key_for_direct_emit(
                                         *this, primary_tpl, tpl_name);
                                 if (eval_deferred_nttp_default(
-                                        primary_template_key, tpl_name, i,
+                                        primary_template_key, i,
                                         type_bindings, nttp_bindings,
                                         &eval_val)) {
                                     arg.value = eval_val;
@@ -2786,7 +2786,7 @@ TypeSpec Parser::parse_base_type() {
                                                                 origin);
                                                     if (eval_deferred_nttp_default(
                                                             base_template_key,
-                                                            origin, bsz,
+                                                            bsz,
                                                             base_prelim_tb, base_prelim_nb,
                                                             &ev)) {
                                                         da.value = ev;
@@ -3015,7 +3015,7 @@ TypeSpec Parser::parse_base_type() {
                                                         template_instantiation_name_key_for_direct_emit(
                                                             *this, base_primary, origin);
                                                     if (eval_deferred_nttp_default(
-                                                            base_template_key, origin, bsz,
+                                                            base_template_key, bsz,
                                                             base_prelim_tb, base_prelim_nb,
                                                             &ev)) {
                                                         da.value = ev;

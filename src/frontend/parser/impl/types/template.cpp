@@ -999,18 +999,6 @@ bool Parser::eval_deferred_nttp_default(
 }
 
 bool Parser::eval_deferred_nttp_default(
-    const QualifiedNameKey& template_key,
-    std::string_view rendered_template_name,
-    int param_idx,
-    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
-    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
-    long long* out) {
-    (void)rendered_template_name;
-    return eval_deferred_nttp_default(template_key, param_idx, type_bindings,
-                                      nttp_bindings, out);
-}
-
-bool Parser::eval_deferred_nttp_default(
     const std::string& tpl_name, int param_idx,
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
@@ -1034,15 +1022,6 @@ void Parser::cache_nttp_default_expr_tokens(
             [ParserTemplateState::NttpDefaultExprKey{template_key, param_idx}] =
             std::move(toks);
     }
-}
-
-void Parser::cache_nttp_default_expr_tokens(
-    const QualifiedNameKey& template_key,
-    std::string_view legacy_template_name,
-    int param_idx,
-    std::vector<Token> toks) {
-    (void)legacy_template_name;
-    cache_nttp_default_expr_tokens(template_key, param_idx, std::move(toks));
 }
 
 }  // namespace c4c

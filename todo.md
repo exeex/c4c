@@ -8,17 +8,18 @@ Current Step Title: Remove Parser Template And NTTP Default Rendered Mirrors
 
 ## Just Finished
 
-Step 2.1 removed the now-unused rendered
-`make_template_struct_instance_key(...)` helper from parser type helpers. No
-rendered template-instantiation de-dup helper remains reachable under that
-name; parser de-dup authority stays on
-`ParserTemplateState::TemplateInstantiationKey` /
-`instantiated_template_struct_keys_by_key`.
+Step 2.1 deleted the rendered-name compatibility mirrors for parser NTTP
+defaults: the `eval_deferred_nttp_default(QualifiedNameKey, string_view, ...)`
+and `cache_nttp_default_expr_tokens(QualifiedNameKey, string_view, ...)`
+overloads are gone. Parser call sites that already carry
+`QualifiedNameKey` now call the structured-key NTTP default API directly, and
+the cache path remains keyed by `ParserTemplateState::NttpDefaultExprKey`.
 
 ## Suggested Next
 
-Continue with the supervisor-selected next Step 2 parser cleanup packet, or
-route through plan review if the supervisor considers Step 2.1 exhausted.
+Route through supervisor review of Step 2.1 exhaustion, or continue with the
+next parser cleanup packet that removes a remaining string-only compatibility
+path without crossing into HIR metadata migration.
 
 ## Watchouts
 
@@ -30,15 +31,15 @@ migration into this parser packet; route that through
 `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a narrower HIR
 metadata idea if the supervisor switches scope.
 
-The legacy string overloads for `eval_deferred_nttp_default(...)` and
-`cache_nttp_default_expr_tokens(...)` still exist for callers outside this owned
-packet, but they now delegate to structured-key lookup and ignore the rendered
-name as semantic authority.
+The string-only `eval_deferred_nttp_default(std::string, ...)` path still
+exists outside this packet. It maps text to a structured key before lookup, but
+removing it should be handled as a separate cleanup packet unless the supervisor
+explicitly widens parser API ownership.
 
 ## Proof
 
 Passed:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|cpp_(positive_parser|positive_sema|negative_tests))' --output-on-failure) > test_after.log 2>&1`
 
-Result: build succeeded and 927/927 tests passed. Proof log:
+Result: build succeeded and 927/927 selected tests passed. Proof log:
 `test_after.log`.
