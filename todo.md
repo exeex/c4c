@@ -8,21 +8,20 @@ Current Step Title: Remove Sema Rendered-String Owner And Consteval Lookup Route
 
 ## Just Finished
 
-Step 3 removed rendered-name authority from consteval `TypeSpec`
-type-binding resolution when structured or `TextId` binding metadata is
-available. `resolve_type` now tries the structured binding key first, then the
-`TextId` mirror, treats either metadata miss as authoritative, and only uses the
-legacy rendered `type_bindings` map when no binding metadata is present.
-Focused frontend coverage now verifies structured and `TextId` metadata win
-over stale rendered names, metadata misses reject the stale rendered fallback,
-and no-metadata rendered compatibility still works.
+Step 3 removed stale rendered-name authority from inline consteval value lookup.
+`ConstEvalEnv::lookup(const Node*)` now probes structured metadata first, then
+`TextId` metadata, tracks populated metadata misses, rejects stale rendered
+fallback when metadata misses, and keeps rendered compatibility only for
+no-metadata or same-spelling compatibility cases. Focused frontend coverage now
+verifies structured miss -> `TextId` hit, metadata miss rejection for stale
+rendered names, and no-metadata rendered compatibility.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing the remaining Sema/consteval rendered semantic
-lookup routes that already have structured or `TextId` metadata, then delegate
-one bounded route where fallback can be limited to no-metadata compatibility
-without touching HIR or backend carriers.
+Continue Step 3 by reviewing remaining Sema rendered semantic lookup routes
+that still consult rendered names after structured or `TextId` misses, then
+delegate one bounded route where the producing metadata is complete enough to
+make the miss authoritative without touching HIR or backend carriers.
 
 ## Watchouts
 
@@ -43,6 +42,10 @@ without touching HIR or backend carriers.
   to structured/`TextId` mirror maps to find metadata for a `TypeSpec` tag;
   this packet made those mirrors authoritative but did not add intrinsic
   `TypeSpec` identifier metadata.
+- Consteval interpreter locals still need same-spelling rendered compatibility
+  because some existing parameter/loop-local references do not have complete
+  matching local `TextId`/structured mirrors. Treat removal of that compatibility
+  as a metadata-producer packet, not a lookup-only packet.
 
 ## Proof
 

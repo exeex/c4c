@@ -122,6 +122,17 @@ using TypeBindingNameTextMap = std::unordered_map<std::string, TextId>;
 using TypeBindingNameStructuredMap =
     std::unordered_map<std::string, TypeBindingStructuredKey>;
 
+enum class ConstEvalValueLookupStatus {
+  NoMetadata,
+  Miss,
+  Found,
+};
+
+struct ConstEvalValueLookupResult {
+  ConstEvalValueLookupStatus status = ConstEvalValueLookupStatus::NoMetadata;
+  long long value = 0;
+};
+
 struct ConstEvalEnv {
   // Flat maps (used by hir.cpp where scoping is managed externally).
   const ConstMap* enum_consts = nullptr;
@@ -202,21 +213,31 @@ struct ConstEvalEnv {
   std::optional<long long> lookup(const Node* n) const {
     if (!n || !n->name || !n->name[0]) return std::nullopt;
 
-    const std::optional<long long> legacy = lookup(n->name);
-    const std::optional<long long> text = lookup_by_text(n);
-    const std::optional<long long> structured = lookup_by_key(n);
-    (void)compare_optional(legacy, text);
-    (void)compare_optional(legacy, structured);
-    if (structured.has_value()) return structured;
-    if (text.has_value()) return text;
-    return legacy;
+    const ConstEvalValueLookupResult structured = lookup_by_key(n);
+    if (structured.status == ConstEvalValueLookupStatus::Found) {
+      return structured.value;
+    }
+    bool has_authoritative_metadata =
+        structured.status == ConstEvalValueLookupStatus::Miss;
+
+    const ConstEvalValueLookupResult text = lookup_by_text(n);
+    if (text.status == ConstEvalValueLookupStatus::Found) {
+      return text.value;
+    }
+    has_authoritative_metadata =
+        has_authoritative_metadata ||
+        text.status == ConstEvalValueLookupStatus::Miss;
+    if (has_authoritative_metadata && has_stale_rendered_name(n)) {
+      return std::nullopt;
+    }
+
+    return lookup(n->name);
   }
 
  private:
-  static bool compare_optional(std::optional<long long> legacy,
-                               std::optional<long long> structured) {
-    if (!structured.has_value()) return true;
-    return legacy.has_value() && *legacy == *structured;
+  static bool has_stale_rendered_name(const Node* n) {
+    if (!n || !n->name || !n->unqualified_name) return false;
+    return std::string(n->name) != std::string(n->unqualified_name);
   }
 
   static std::optional<ConstEvalStructuredNameKey> local_key(const Node* n) {
@@ -238,66 +259,131 @@ struct ConstEvalEnv {
     return key;
   }
 
-  static std::optional<long long> lookup_text_map(const ConstTextMap* map,
-                                                  TextId text_id) {
-    if (!map || text_id == kInvalidText) return std::nullopt;
+  static ConstEvalValueLookupResult lookup_text_map_status(
+      const ConstTextMap* map,
+      TextId text_id) {
+    if (!map || map->empty() || text_id == kInvalidText) return {};
     auto it = map->find(text_id);
-    if (it == map->end()) return std::nullopt;
-    return it->second;
+    if (it == map->end()) return {ConstEvalValueLookupStatus::Miss, 0};
+    return {ConstEvalValueLookupStatus::Found, it->second};
   }
 
-  static std::optional<long long> lookup_key_map(
+  static ConstEvalValueLookupResult lookup_key_map_status(
       const ConstStructuredMap* map,
       const std::optional<ConstEvalStructuredNameKey>& key) {
-    if (!map || !key.has_value() || !key->valid()) return std::nullopt;
+    if (!map || map->empty() || !key.has_value() || !key->valid()) return {};
     auto it = map->find(*key);
-    if (it == map->end()) return std::nullopt;
-    return it->second;
+    if (it == map->end()) return {ConstEvalValueLookupStatus::Miss, 0};
+    return {ConstEvalValueLookupStatus::Found, it->second};
   }
 
-  std::optional<long long> lookup_by_text(const Node* n) const {
+  ConstEvalValueLookupResult lookup_by_text(const Node* n) const {
     if (n && (n->is_global_qualified || n->n_qualifier_segments > 0)) {
-      return std::nullopt;
+      return {};
     }
     const TextId text_id = n ? n->unqualified_text_id : kInvalidText;
-    if (text_id == kInvalidText) return std::nullopt;
+    if (text_id == kInvalidText) return {};
+    bool saw_metadata = false;
     if (enum_scopes_by_text) {
       for (auto it = enum_scopes_by_text->rbegin(); it != enum_scopes_by_text->rend(); ++it) {
-        if (auto v = lookup_text_map(&*it, text_id)) return v;
+        ConstEvalValueLookupResult result = lookup_text_map_status(&*it, text_id);
+        if (result.status == ConstEvalValueLookupStatus::Found) return result;
+        saw_metadata =
+            saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
       }
     }
-    if (auto v = lookup_text_map(enum_consts_by_text, text_id)) return v;
+    if (auto result = lookup_text_map_status(enum_consts_by_text, text_id);
+        result.status == ConstEvalValueLookupStatus::Found) {
+      return result;
+    } else {
+      saw_metadata =
+          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+    }
     if (local_const_scopes_by_text) {
       for (auto it = local_const_scopes_by_text->rbegin();
            it != local_const_scopes_by_text->rend(); ++it) {
-        if (auto v = lookup_text_map(&*it, text_id)) return v;
+        ConstEvalValueLookupResult result = lookup_text_map_status(&*it, text_id);
+        if (result.status == ConstEvalValueLookupStatus::Found) return result;
+        saw_metadata =
+            saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
       }
     }
-    if (auto v = lookup_text_map(local_consts_by_text, text_id)) return v;
-    if (auto v = lookup_text_map(named_consts_by_text, text_id)) return v;
-    if (auto v = lookup_text_map(nttp_bindings_by_text, text_id)) return v;
-    return std::nullopt;
+    if (auto result = lookup_text_map_status(local_consts_by_text, text_id);
+        result.status == ConstEvalValueLookupStatus::Found) {
+      return result;
+    } else {
+      saw_metadata =
+          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+    }
+    if (auto result = lookup_text_map_status(named_consts_by_text, text_id);
+        result.status == ConstEvalValueLookupStatus::Found) {
+      return result;
+    } else {
+      saw_metadata =
+          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+    }
+    if (auto result = lookup_text_map_status(nttp_bindings_by_text, text_id);
+        result.status == ConstEvalValueLookupStatus::Found) {
+      return result;
+    } else {
+      saw_metadata =
+          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+    }
+    if (saw_metadata) return {ConstEvalValueLookupStatus::Miss, 0};
+    return {};
   }
 
-  std::optional<long long> lookup_by_key(const Node* n) const {
+  ConstEvalValueLookupResult lookup_by_key(const Node* n) const {
     const auto local = local_key(n);
     const auto symbol = symbol_key(n);
+    bool saw_metadata = false;
     if (enum_scopes_by_key) {
       for (auto it = enum_scopes_by_key->rbegin(); it != enum_scopes_by_key->rend(); ++it) {
-        if (auto v = lookup_key_map(&*it, local)) return v;
+        ConstEvalValueLookupResult result = lookup_key_map_status(&*it, local);
+        if (result.status == ConstEvalValueLookupStatus::Found) return result;
+        saw_metadata =
+            saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
       }
     }
-    if (auto v = lookup_key_map(enum_consts_by_key, symbol)) return v;
+    if (auto result = lookup_key_map_status(enum_consts_by_key, symbol);
+        result.status == ConstEvalValueLookupStatus::Found) {
+      return result;
+    } else {
+      saw_metadata =
+          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+    }
     if (local_const_scopes_by_key) {
       for (auto it = local_const_scopes_by_key->rbegin();
            it != local_const_scopes_by_key->rend(); ++it) {
-        if (auto v = lookup_key_map(&*it, local)) return v;
+        ConstEvalValueLookupResult result = lookup_key_map_status(&*it, local);
+        if (result.status == ConstEvalValueLookupStatus::Found) return result;
+        saw_metadata =
+            saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
       }
     }
-    if (auto v = lookup_key_map(local_consts_by_key, local)) return v;
-    if (auto v = lookup_key_map(named_consts_by_key, symbol)) return v;
-    if (auto v = lookup_key_map(nttp_bindings_by_key, local)) return v;
-    return std::nullopt;
+    if (auto result = lookup_key_map_status(local_consts_by_key, local);
+        result.status == ConstEvalValueLookupStatus::Found) {
+      return result;
+    } else {
+      saw_metadata =
+          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+    }
+    if (auto result = lookup_key_map_status(named_consts_by_key, symbol);
+        result.status == ConstEvalValueLookupStatus::Found) {
+      return result;
+    } else {
+      saw_metadata =
+          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+    }
+    if (auto result = lookup_key_map_status(nttp_bindings_by_key, local);
+        result.status == ConstEvalValueLookupStatus::Found) {
+      return result;
+    } else {
+      saw_metadata =
+          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+    }
+    if (saw_metadata) return {ConstEvalValueLookupStatus::Miss, 0};
+    return {};
   }
 };
 
