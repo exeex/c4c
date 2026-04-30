@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/138_lir_bir_backend_aggregate_layout_type_decl_text_bridge_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Move Global Initializer Layout Consumers Off Text Authority
+Current Step ID: Step 5
+Current Step Title: Consolidate Fallback and Mismatch Reporting
 
 ## Just Finished
 
@@ -18,9 +18,24 @@ structured declaration exists.
 
 ## Suggested Next
 
-Next packet should move to the next supervisor-selected idea 138 consumer or ask
-plan-owner/reviewer whether Step 4 is exhausted, since no production code change
-was needed for the global initializer route.
+Execute Step 5 by consolidating aggregate layout fallback and mismatch reporting
+around the shared lookup/text-parsing helpers. Start from the Step 4 finding
+that global lowering already routes structured layout data through
+`BackendStructuredLayoutTable` into `lower_aggregate_initializer()`, while the
+empty-table case must keep the legacy `TypeDeclMap` fallback for raw or
+hand-built LIR.
+
+Suggested first packet:
+
+- Inspect the aggregate layout lookup helper APIs and callers for duplicated
+  fallback or mismatch handling.
+- Tighten names or result shapes so callers can distinguish
+  structured-primary, fallback-used, and structured/text mismatch cases without
+  reparsing final `%type` text.
+- Preserve final emitted text, diagnostics, and dumps as display/emission
+  concerns only.
+- Prove focused mismatch/fallback visibility, then run the broader backend/LIR
+  checkpoint selected by the supervisor.
 
 ## Watchouts
 
