@@ -1,7 +1,8 @@
 # Parser AST Template Payload String Bridge Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-30
 
 Parent Ideas:
 - [129_parser_intermediate_carrier_boundary_labeling.md](/workspaces/c4c/ideas/open/129_parser_intermediate_carrier_boundary_labeling.md)
@@ -66,3 +67,11 @@ Suspicious AST boundary fields populated by parser code:
   from rendered AST spelling where parser structured identity is available.
 - Focused tests prove the cleanup across alias-template parameters, NTTP
   payloads, deferred member types, and template-origin names.
+
+## Closure Notes
+
+Closed after active plan Step 5 validation. Focused acceptance rebuilt the
+default preset and passed 1066/1066 delegated parser, Sema, HIR, C++ parser,
+negative, and selected C torture tests. Remaining string-payload paths are
+documented as fallback-only compatibility or display/debug carriers, not silent
+semantic authority.
