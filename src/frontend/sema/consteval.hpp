@@ -131,6 +131,7 @@ enum class ConstEvalValueLookupStatus {
 struct ConstEvalValueLookupResult {
   ConstEvalValueLookupStatus status = ConstEvalValueLookupStatus::NoMetadata;
   long long value = 0;
+  bool local_binding_metadata_miss = false;
 };
 
 struct ConstEvalEnv {
@@ -228,7 +229,11 @@ struct ConstEvalEnv {
         has_authoritative_metadata ||
         text.status == ConstEvalValueLookupStatus::Miss;
     if (has_authoritative_metadata) {
-      if (auto nttp = lookup_rendered_nttp_compatibility(n)) return nttp;
+      if (auto nttp = lookup_rendered_nttp_compatibility(
+              n, structured.local_binding_metadata_miss ||
+                     text.local_binding_metadata_miss)) {
+        return nttp;
+      }
       return std::nullopt;
     }
 
@@ -237,7 +242,11 @@ struct ConstEvalEnv {
 
  private:
   std::optional<long long> lookup_rendered_nttp_compatibility(
-      const Node* n) const {
+      const Node* n,
+      bool local_binding_metadata_miss) const {
+    // Step 3.1 exposes the structured/TextId local-miss predicate here.
+    // Step 3.2 owns consuming it to delete the covered rendered fallback.
+    (void)local_binding_metadata_miss;
     if (!n || !n->name || !nttp_bindings) return std::nullopt;
     const auto local = local_key(n);
     if (auto result = lookup_key_map_status(nttp_bindings_by_key, local);
@@ -304,52 +313,64 @@ struct ConstEvalEnv {
     const TextId text_id = n ? n->unqualified_text_id : kInvalidText;
     if (text_id == kInvalidText) return {};
     bool saw_metadata = false;
+    bool local_binding_metadata_miss = false;
     if (enum_scopes_by_text) {
       for (auto it = enum_scopes_by_text->rbegin(); it != enum_scopes_by_text->rend(); ++it) {
         ConstEvalValueLookupResult result = lookup_text_map_status(&*it, text_id);
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
-        saw_metadata =
-            saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+        if (result.status == ConstEvalValueLookupStatus::Miss) {
+          saw_metadata = true;
+        }
       }
     }
     if (auto result = lookup_text_map_status(enum_consts_by_text, text_id);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
-      saw_metadata =
-          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+      if (result.status == ConstEvalValueLookupStatus::Miss) {
+        saw_metadata = true;
+      }
     }
     if (local_const_scopes_by_text) {
       for (auto it = local_const_scopes_by_text->rbegin();
            it != local_const_scopes_by_text->rend(); ++it) {
         ConstEvalValueLookupResult result = lookup_text_map_status(&*it, text_id);
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
-        saw_metadata =
-            saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+        if (result.status == ConstEvalValueLookupStatus::Miss) {
+          saw_metadata = true;
+          local_binding_metadata_miss = true;
+        }
       }
     }
     if (auto result = lookup_text_map_status(local_consts_by_text, text_id);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
-      saw_metadata =
-          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+      if (result.status == ConstEvalValueLookupStatus::Miss) {
+        saw_metadata = true;
+        local_binding_metadata_miss = true;
+      }
     }
     if (auto result = lookup_text_map_status(named_consts_by_text, text_id);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
-      saw_metadata =
-          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+      if (result.status == ConstEvalValueLookupStatus::Miss) {
+        saw_metadata = true;
+      }
     }
     if (auto result = lookup_text_map_status(nttp_bindings_by_text, text_id);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
-      saw_metadata =
-          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+      if (result.status == ConstEvalValueLookupStatus::Miss) {
+        saw_metadata = true;
+      }
     }
-    if (saw_metadata) return {ConstEvalValueLookupStatus::Miss, 0};
+    if (saw_metadata) {
+      return {ConstEvalValueLookupStatus::Miss, 0,
+              local_binding_metadata_miss};
+    }
     return {};
   }
 
@@ -357,36 +378,43 @@ struct ConstEvalEnv {
     const auto local = local_key(n);
     const auto symbol = symbol_key(n);
     bool saw_metadata = false;
+    bool local_binding_metadata_miss = false;
     if (enum_scopes_by_key) {
       for (auto it = enum_scopes_by_key->rbegin(); it != enum_scopes_by_key->rend(); ++it) {
         ConstEvalValueLookupResult result = lookup_key_map_status(&*it, local);
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
-        saw_metadata =
-            saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+        if (result.status == ConstEvalValueLookupStatus::Miss) {
+          saw_metadata = true;
+        }
       }
     }
     if (auto result = lookup_key_map_status(enum_consts_by_key, symbol);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
-      saw_metadata =
-          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+      if (result.status == ConstEvalValueLookupStatus::Miss) {
+        saw_metadata = true;
+      }
     }
     if (local_const_scopes_by_key) {
       for (auto it = local_const_scopes_by_key->rbegin();
            it != local_const_scopes_by_key->rend(); ++it) {
         ConstEvalValueLookupResult result = lookup_key_map_status(&*it, local);
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
-        saw_metadata =
-            saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+        if (result.status == ConstEvalValueLookupStatus::Miss) {
+          saw_metadata = true;
+          local_binding_metadata_miss = true;
+        }
       }
     }
     if (auto result = lookup_key_map_status(local_consts_by_key, local);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
-      saw_metadata =
-          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+      if (result.status == ConstEvalValueLookupStatus::Miss) {
+        saw_metadata = true;
+        local_binding_metadata_miss = true;
+      }
     }
     if (auto result = lookup_key_map_status(named_consts_by_key, symbol);
         result.status == ConstEvalValueLookupStatus::Found) {
@@ -402,7 +430,10 @@ struct ConstEvalEnv {
       saw_metadata =
           saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
     }
-    if (saw_metadata) return {ConstEvalValueLookupStatus::Miss, 0};
+    if (saw_metadata) {
+      return {ConstEvalValueLookupStatus::Miss, 0,
+              local_binding_metadata_miss};
+    }
     return {};
   }
 };
