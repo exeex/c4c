@@ -2350,11 +2350,6 @@ void register_record_member_typedef_bindings(Parser& parser, Node* sd,
                 ? parser.record_member_typedef_key_in_context(
                       context_id, sd->unqualified_text_id, member_text_id)
                 : QualifiedNameKey{};
-        if (sd->n_template_params == 0 &&
-            sd->unqualified_text_id != kInvalidText) {
-            parser.register_structured_typedef_binding(
-                member_key, sd->member_typedef_types[i]);
-        }
         const bool has_template_dependent_context =
             sd->n_template_params > 0 ||
             (sd->template_origin_name && sd->template_origin_name[0]) ||
