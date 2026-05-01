@@ -8,22 +8,23 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Continued Step 3.3 by narrowing `lookup_symbol()` global/enum rendered
-compatibility after structured metadata misses. Rendered global and enum
-fallbacks now reject stale reference metadata unless the remaining compatibility
-binding has no structured metadata or the binding's own structured global
-metadata agrees with its rendered spelling.
+Completed the local-symbol portion of Step 3.3 by adding structured metadata
+for injected predefined locals when their function body or constructor
+initializer arguments carry a parser TextId reference. `__func__`,
+`__FUNCTION__`, `__PRETTY_FUNCTION__`, and injected `this` now bind through the
+same local structured map used by normal declarations when such a carrier is
+available.
 
-Added focused `frontend_parser_lookup_authority_tests` coverage for stale
-rendered global and enum lookups where the reference carries structured
-metadata but the rendered binding cannot satisfy that structured key.
+Added focused `frontend_parser_lookup_authority_tests` coverage showing stale
+rendered local references to `__func__` and `this` are rejected after a
+structured local key miss when an earlier structured producer carrier exists.
 
 ## Suggested Next
 
-Continue Step 3.3 by deciding whether the local-symbol rendered fallback after
-a structured local miss can be removed without breaking textless injected
-predefined locals such as `__func__`, or route a producer packet to give those
-locals structured metadata first.
+Continue Step 3.3 by having the supervisor/reviewer decide whether the
+remaining no-metadata local rendered compatibility is acceptable for textless
+or synthetic bindings, or whether the route should split any truly textless
+producer into a separate metadata-carrier packet.
 
 ## Watchouts
 
@@ -37,19 +38,14 @@ locals structured metadata first.
   rendered globals whose metadata names another symbol remain rejected.
 - `c4c-clang-tools` was not needed for this packet; the candidate route was
   localized in `src/frontend/sema/validate.cpp::lookup_symbol()`.
+- Injected predefined locals still have no structured key when no matching
+  parser TextId reference is present in the function body or constructor
+  initializer arguments; the rendered compatibility path remains limited to
+  that no-carrier case.
 
 ## Proof
 
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_positive_sema_)' >> test_after.log 2>&1`
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)' >> test_after.log 2>&1`
 
-Result: completed with the same pre-existing `frontend_parser_tests` failure
-present in both before and after logs. `test_after.log` contains a fresh
-successful build, passing `frontend_parser_lookup_authority_tests`, and 884/884
-passing `cpp_positive_sema_` tests. The shared failure is `FAIL: record-body
-using member typedef writer should register a direct record/member key`.
-
-Supervisor-side regression guard:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-
-Result: passed with before=885 passed/1 failed/886 total and after=885
-passed/1 failed/886 total; no new failures.
+Result: passed. `test_after.log` contains a fresh successful build and 885/885
+passing focused tests.

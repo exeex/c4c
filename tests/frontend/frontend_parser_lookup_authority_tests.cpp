@@ -555,6 +555,144 @@ void test_sema_global_lookup_rejects_stale_qualified_rendered_reentry() {
               "fallback after structured global key miss");
 }
 
+void test_sema_func_local_lookup_rejects_rendered_after_metadata_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base, int ptr_level = 0) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    ts.ptr_level = ptr_level;
+    return ts;
+  };
+
+  const c4c::TextId func_text = texts.intern("__func__");
+  const c4c::TextId missing_text = texts.intern("missing_func");
+
+  c4c::Node* canonical_ref = parser.make_node(c4c::NK_VAR, 2);
+  canonical_ref->name = arena.strdup("__func__");
+  canonical_ref->unqualified_name = arena.strdup("__func__");
+  canonical_ref->unqualified_text_id = func_text;
+
+  c4c::Node* canonical_ret = parser.make_node(c4c::NK_RETURN, 2);
+  canonical_ret->left = canonical_ref;
+
+  c4c::Node* stale_ref = parser.make_node(c4c::NK_VAR, 3);
+  stale_ref->name = arena.strdup("__func__");
+  stale_ref->unqualified_name = arena.strdup("__func__");
+  stale_ref->unqualified_text_id = missing_text;
+
+  c4c::Node* stale_ret = parser.make_node(c4c::NK_RETURN, 3);
+  stale_ret->left = stale_ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 2;
+  body->children = arena.alloc_array<c4c::Node*>(2);
+  body->children[0] = canonical_ret;
+  body->children[1] = stale_ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->name = arena.strdup("f");
+  fn->unqualified_name = arena.strdup("f");
+  fn->unqualified_text_id = texts.intern("f");
+  fn->namespace_context_id = parser.current_namespace_context_id();
+  fn->type = make_ts(c4c::TB_CHAR, 1);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 1;
+  program->children = arena.alloc_array<c4c::Node*>(1);
+  program->children[0] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema __func__ lookup should reject stale rendered local "
+              "fallback after structured local key miss");
+}
+
+void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base, int ptr_level = 0, const char* tag = nullptr) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    ts.ptr_level = ptr_level;
+    ts.tag = tag;
+    return ts;
+  };
+
+  const c4c::TextId owner_text = texts.intern("Owner");
+  const c4c::TextId method_text = texts.intern("self");
+  const c4c::TextId this_text = texts.intern("this");
+  const c4c::TextId missing_text = texts.intern("missing_this");
+  const int namespace_context = parser.current_namespace_context_id();
+
+  c4c::Node* owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner->name = arena.strdup("Owner");
+  owner->unqualified_name = arena.strdup("Owner");
+  owner->unqualified_text_id = owner_text;
+  owner->namespace_context_id = namespace_context;
+
+  c4c::Node* canonical_ref = parser.make_node(c4c::NK_VAR, 2);
+  canonical_ref->name = arena.strdup("this");
+  canonical_ref->unqualified_name = arena.strdup("this");
+  canonical_ref->unqualified_text_id = this_text;
+  canonical_ref->namespace_context_id = namespace_context;
+
+  c4c::Node* canonical_ret = parser.make_node(c4c::NK_RETURN, 2);
+  canonical_ret->left = canonical_ref;
+
+  c4c::Node* stale_ref = parser.make_node(c4c::NK_VAR, 3);
+  stale_ref->name = arena.strdup("this");
+  stale_ref->unqualified_name = arena.strdup("this");
+  stale_ref->unqualified_text_id = missing_text;
+  stale_ref->namespace_context_id = namespace_context;
+
+  c4c::Node* stale_ret = parser.make_node(c4c::NK_RETURN, 3);
+  stale_ret->left = stale_ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 2;
+  body->children = arena.alloc_array<c4c::Node*>(2);
+  body->children[0] = canonical_ret;
+  body->children[1] = stale_ret;
+
+  c4c::Node* method = parser.make_node(c4c::NK_FUNCTION, 1);
+  method->name = arena.strdup("Owner::self");
+  method->unqualified_name = arena.strdup("self");
+  method->unqualified_text_id = method_text;
+  method->namespace_context_id = namespace_context;
+  method->n_qualifier_segments = 1;
+  method->qualifier_segments = arena.alloc_array<const char*>(1);
+  method->qualifier_segments[0] = arena.strdup("Owner");
+  method->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  method->qualifier_text_ids[0] = owner_text;
+  method->type = make_ts(c4c::TB_STRUCT, 1, "Owner");
+  method->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = owner;
+  program->children[1] = method;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema this lookup should reject stale rendered local fallback "
+              "after structured local key miss");
+}
+
 void test_sema_global_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -680,6 +818,8 @@ int main() {
   test_parsed_record_fields_carry_member_text_ids_into_sema();
   test_parsed_nested_record_fields_carry_member_text_ids();
   test_sema_global_lookup_rejects_stale_qualified_rendered_reentry();
+  test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
+  test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";

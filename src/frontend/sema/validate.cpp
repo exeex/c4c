@@ -51,6 +51,66 @@ std::optional<SemaStructuredNameKey> sema_local_name_key(const Node* node) {
   return key;
 }
 
+static bool sema_plain_var_ref_spells(const Node* node, const char* spelling) {
+  return node && node->kind == NK_VAR && spelling && spelling[0] && node->name &&
+         std::strcmp(node->name, spelling) == 0 && node->unqualified_name &&
+         std::strcmp(node->unqualified_name, spelling) == 0 &&
+         node->unqualified_text_id != kInvalidText && !node->is_global_qualified &&
+         node->n_qualifier_segments == 0;
+}
+
+static TextId first_plain_var_ref_text_id(const Node* node, const char* spelling) {
+  if (!node) return kInvalidText;
+  if (sema_plain_var_ref_spells(node, spelling)) return node->unqualified_text_id;
+
+  const Node* scalar_children[] = {
+      node->left, node->right, node->cond, node->then_, node->else_,
+      node->body, node->init, node->update,
+  };
+  for (const Node* child : scalar_children) {
+    if (TextId text_id = first_plain_var_ref_text_id(child, spelling);
+        text_id != kInvalidText) {
+      return text_id;
+    }
+  }
+  for (int i = 0; node->children && i < node->n_children; ++i) {
+    if (TextId text_id = first_plain_var_ref_text_id(node->children[i], spelling);
+        text_id != kInvalidText) {
+      return text_id;
+    }
+  }
+  for (int i = 0; node->params && i < node->n_params; ++i) {
+    if (TextId text_id = first_plain_var_ref_text_id(node->params[i], spelling);
+        text_id != kInvalidText) {
+      return text_id;
+    }
+  }
+  for (int i = 0; node->template_arg_exprs && i < node->n_template_args; ++i) {
+    if (TextId text_id = first_plain_var_ref_text_id(node->template_arg_exprs[i], spelling);
+        text_id != kInvalidText) {
+      return text_id;
+    }
+  }
+  for (int i = 0; node->ctor_init_args && node->ctor_init_nargs && i < node->n_ctor_inits; ++i) {
+    for (int j = 0; node->ctor_init_args[i] && j < node->ctor_init_nargs[i]; ++j) {
+      if (TextId text_id = first_plain_var_ref_text_id(node->ctor_init_args[i][j], spelling);
+          text_id != kInvalidText) {
+        return text_id;
+      }
+    }
+  }
+  return kInvalidText;
+}
+
+static std::optional<SemaStructuredNameKey> sema_injected_local_name_key(
+    const Node* fn, const char* spelling) {
+  const TextId text_id = first_plain_var_ref_text_id(fn, spelling);
+  if (text_id == kInvalidText) return std::nullopt;
+  SemaStructuredNameKey key;
+  key.base_text_id = text_id;
+  return key;
+}
+
 std::optional<SemaStructuredNameKey> sema_structured_name_key(const Node* node) {
   if (!node || node->unqualified_text_id == kInvalidText) return std::nullopt;
   if (node->n_qualifier_segments < 0) return std::nullopt;
@@ -1818,9 +1878,12 @@ class Validator {
       func_ts.base = TB_CHAR;
       func_ts.ptr_level = 1;
       func_ts.is_const = true;
-      bind_local("__func__", func_ts, true, 0);
-      bind_local("__FUNCTION__", func_ts, true, 0);
-      bind_local("__PRETTY_FUNCTION__", func_ts, true, 0);
+      bind_local("__func__", func_ts, true, 0,
+                 sema_injected_local_name_key(fn, "__func__"));
+      bind_local("__FUNCTION__", func_ts, true, 0,
+                 sema_injected_local_name_key(fn, "__FUNCTION__"));
+      bind_local("__PRETTY_FUNCTION__", func_ts, true, 0,
+                 sema_injected_local_name_key(fn, "__PRETTY_FUNCTION__"));
     }
     // Inject non-type template parameter names so dependent expressions in
     // templated function and method bodies can validate before instantiation.
@@ -1850,7 +1913,8 @@ class Validator {
       this_ts.inner_rank = -1;
       // In this codebase, is_const with ptr_level>0 models pointee constness.
       this_ts.is_const = fn->is_const_method;
-      bind_local("this", this_ts, true, fn->line);
+      bind_local("this", this_ts, true, fn->line,
+                 sema_injected_local_name_key(fn, "this"));
     }
 
     // Validate constructor initializer list expressions.
