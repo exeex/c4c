@@ -730,17 +730,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
         if (visible_dep_typedef) {
             resolved_type_payload = visible_dep_typedef;
         }
-        if (!visible_dep_typedef &&
-            !has_visible_typedef_type(qn.base_text_id)) {
-            const VisibleNameResult visible_type =
-                resolve_visible_type(qn.base_text_id);
-            if (visible_type) {
-                resolved = visible_name_spelling(visible_type);
-            }
-        }
-        if (!visible_dep_typedef &&
-            !has_structured_typedef &&
-            !has_typedef_type(find_parser_text_id(resolved))) {
+        if (!visible_dep_typedef && !has_structured_typedef) {
             bool preserved_template_owner_member = false;
             if (spelled_name.find('<') != std::string::npos &&
                 parser_text(qn.base_text_id, qn.base_name) == "type") {
@@ -799,9 +789,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                 return true;
             }
             resolved = dep_name;
-            if (!has_structured_typedef &&
-                !has_typedef_type(find_parser_text_id(resolved)) &&
-                !qn.qualifier_segments.empty()) {
+            if (!qn.qualifier_segments.empty()) {
                 auto follow_nested_owner =
                     [&](const QualifiedNameRef& owner_name) -> const Node* {
                     if (owner_name.qualifier_segments.empty()) return nullptr;

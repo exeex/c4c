@@ -184,6 +184,73 @@ void test_qualified_typedef_name_uses_structured_result_not_rendered_reentry() {
               "qualified result, not a rendered-spelling TextId re-entry");
 }
 
+void test_dependent_typename_rejects_visible_type_rendered_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "StructuredNs");
+  const c4c::TextId target_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Target");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  expect_true(ns_context > 0, "test namespace context should be created");
+
+  const c4c::QualifiedNameKey target_key =
+      parser.alias_template_key_in_context(ns_context, target_text);
+  c4c::ParserAliasTemplateInfo info;
+  info.aliased_type.array_size = -1;
+  info.aliased_type.inner_rank = -1;
+  info.aliased_type.base = c4c::TB_INT;
+  parser.register_alias_template_info_for_testing(target_key, info);
+  parser.register_known_fn_name(target_key);
+  parser.register_using_value_alias_for_testing(
+      parser.current_namespace_context_id(), alias_text, target_key);
+
+  c4c::TypeSpec legacy_rendered_type{};
+  legacy_rendered_type.array_size = -1;
+  legacy_rendered_type.inner_rank = -1;
+  legacy_rendered_type.base = c4c::TB_LONG;
+  const c4c::TextId rendered_target_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "StructuredNs::Target");
+  parser.register_typedef_binding(rendered_target_text, legacy_rendered_type,
+                                  true);
+
+  const c4c::Parser::VisibleNameResult visible_type =
+      parser.resolve_visible_type(alias_text);
+  const std::string rendered = parser.visible_name_spelling(visible_type);
+  expect_true(rendered == "StructuredNs::Target",
+              "test visible type should render a qualified target spelling");
+  expect_true(parser.has_typedef_type(parser.find_parser_text_id(rendered)),
+              "test should seed the old full-rendered typedef bridge");
+  expect_true(parser.find_visible_typedef_type(alias_text) == nullptr,
+              "test should not provide direct visible typedef authority for "
+              "the alias name");
+
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+  });
+
+  std::string resolved_name;
+  bool has_resolved_type = true;
+  expect_true(parser.parse_dependent_typename_specifier(
+                  &resolved_name, nullptr, &has_resolved_type),
+              "dependent typename spelling should still be consumed");
+  expect_true(resolved_name == "Alias",
+              "dependent typename parsing should not replace an alias with "
+              "visible-type rendered spelling");
+  expect_true(!has_resolved_type,
+              "legacy full-rendered typedef storage should not provide "
+              "structured dependent typename type authority");
+}
+
 }  // namespace
 
 int main() {
@@ -191,6 +258,7 @@ int main() {
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
+  test_dependent_typename_rejects_visible_type_rendered_reentry();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";
   return 0;
 }
