@@ -1,20 +1,17 @@
 # Current Packet
 
-Status: Complete
+Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Review Artifact Path: review/step3_2_function_body_value_fallback_review.md
-Current Step ID: Step 3.2
-Current Step Title: Delete Consteval Rendered Compatibility After Metadata Completion
+Current Step ID: Step 3.3
+Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Completed Step 3.2 consteval function-body value fallback deletion:
-`ConstEvalEnv::lookup(const Node*)` now consumes
-`local_binding_metadata_miss` inside `lookup_rendered_nttp_compatibility()`.
-Structured-key and `TextId` NTTP metadata lookups still run first, but an
-authoritative local/parameter/loop metadata miss now blocks the final rendered
-NTTP name-map recovery when NTTP metadata exists for the call.
+Completed Step 3.2 consteval function-body value fallback deletion. The final
+rendered-name NTTP recovery is now blocked when populated local/parameter/loop
+metadata records an authoritative structured-key or `TextId` miss and NTTP
+metadata exists for the call.
 
 Updated `consteval_local_binding_metadata.cpp` with a mixed local + NTTP
 consteval case so direct NTTP metadata/producer-incomplete compatibility stays
@@ -22,9 +19,24 @@ covered while the rendered local-map predicate remains absent.
 
 ## Suggested Next
 
-Supervisor should review/commit the completed Step 3.2 function-body value
-slice, then decide whether the active plan needs reviewer scrutiny or the next
-Step 3 cleanup packet.
+Execute Step 3.3 with one focused Sema owner/member/static rendered-route
+packet outside the consteval value/type metadata route.
+
+Recommended first packet:
+
+- Inventory the live Sema owner/member/static semantic lookup helpers that
+  still consult rendered names, especially `fallback`, `legacy`,
+  `compatibility`, `lookup_struct_static_member_*`, instance-field legacy
+  probes, owner-by-rendered-name fallback, and rendered global/enum
+  compatibility indexes.
+- Select the smallest route where the call site already has an owner key, AST
+  node, declaration, `TextId`, or structured map carrier.
+- Delete or collapse that rendered semantic route to the structured/domain-key
+  API. Do not keep a string/string_view overload beside the structured route.
+- Add focused same-feature Sema coverage proving structured metadata wins over
+  stale or disagreeing rendered spelling.
+- Produce a fresh build plus narrow Sema/frontend proof in canonical
+  `test_after.log`.
 
 ## Watchouts
 
@@ -38,7 +50,13 @@ Step 3 cleanup packet.
 - The `local_binding_metadata_miss` deletion is intentionally limited to final
   rendered-name NTTP recovery. Direct structured/TextId NTTP hits still win, and
   producer-incomplete routes with no NTTP metadata remain compatible.
-- Non-body/global consteval value routes remain outside the next packet.
+- Step 3.3 is outside the consteval value/type metadata producer route. Do not
+  reopen Step 3.1/3.2 unless the selected Sema owner/member/static path depends
+  on that same metadata boundary.
+- Keep no-metadata rendered compatibility only when the exact missing producer
+  is recorded here or split into a separate open idea.
+- Treat helper renames, wrapper extraction, local rendered-key reconstruction,
+  fallback/legacy relabeling, and expectation downgrades as non-progress.
 - HIR-owned metadata carriers and `src/frontend/hir/*` remain untouched and out
   of scope.
 
