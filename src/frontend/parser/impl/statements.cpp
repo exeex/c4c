@@ -372,8 +372,7 @@ Node* parse_stmt(Parser& parser) {
                         decl->type = ts;
                         decl->name = vname;
                         decl->unqualified_name = vname;
-                        decl->unqualified_text_id =
-                            parser.parser_text_id_for_token(vname_text_id, vname);
+                        decl->unqualified_text_id = vname_text_id;
                         decl->init = init_node;
                         parser.register_var_type_binding(decl->unqualified_text_id, ts);
                         condition_scope_guard = std::move(pending_scope);
@@ -515,8 +514,7 @@ Node* parse_stmt(Parser& parser) {
                         decl->type = ts;
                         decl->name = vname;
                         decl->unqualified_name = vname;
-                        decl->unqualified_text_id =
-                            parser.parser_text_id_for_token(vname_text_id, vname);
+                        decl->unqualified_text_id = vname_text_id;
                         decl->init = init_node;
                         parser.register_var_type_binding(decl->unqualified_text_id, ts);
                         condition_scope_guard = std::move(pending_scope);
@@ -645,7 +643,7 @@ Node* parse_stmt(Parser& parser) {
                             LexicalBindingScopeGuard loop_scope(&parser);
                             if (decl && decl->name) {
                                 const TextId decl_name_text_id =
-                                    parser.find_parser_text_id(decl->name);
+                                    decl->unqualified_text_id;
                                 parser.bind_local_value(decl_name_text_id, decl->type);
                             }
                             Node* bd = parse_stmt(parser);
@@ -791,8 +789,7 @@ Node* parse_stmt(Parser& parser) {
                         decl->type = ts;
                         decl->name = vname;
                         decl->unqualified_name = vname;
-                        decl->unqualified_text_id =
-                            parser.parser_text_id_for_token(vname_text_id, vname);
+                        decl->unqualified_text_id = vname_text_id;
                         decl->init = init_node;
                         parser.register_var_type_binding(decl->unqualified_text_id, ts);
                         condition_scope_guard = std::move(pending_scope);

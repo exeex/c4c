@@ -8,15 +8,17 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 classified the `ParserFunctionParamScopeGuard` call family for
+Step 2.3 classified the local variable declaration producer family for
 `parser_text_id_for_token(TextId token_text_id, std::string_view fallback)`.
-Those calls were semantic parameter-binding producers: they registered local
-parameter type bindings by reinterning `param->name` through
-`parser_text_id_for_token(kInvalidText, param->name)`. `parse_param` already
-materializes `Node::unqualified_text_id` from the declarator token/structured
-metadata, so both duplicated guards now register only the existing
-`param->unqualified_text_id` and skip genuinely metadata-less params instead
-of using a rendered-name fallback as binding authority.
+The `parse_local_decl` and `if`/`while`/`switch` condition-declaration sites
+were semantic value-binding producers: they copied declarator names into
+`Node::unqualified_text_id` and immediately registered local value/type
+bindings from that field. `parse_declarator` already returns the token-backed
+`out_name_text_id` for unqualified declarator names, so these declarations now
+store only `vname_text_id`; metadata-less or non-unqualified declarators remain
+unbound instead of reinterning the rendered `vname`. The range-for rebinding
+path also now reuses `decl->unqualified_text_id` instead of recovering a
+`TextId` with `find_parser_text_id(decl->name)`.
 
 ## Suggested Next
 
@@ -34,6 +36,11 @@ family as display-only, synthetic/prelude, or blocked by missing metadata.
   lacks `Node::unqualified_text_id`, treat that as missing producer metadata
   instead of restoring `parser_text_id_for_token(kInvalidText, param->name)` in
   the binding guard.
+- Local declaration and condition-declaration value binding now depends on the
+  declarator-produced `vname_text_id`. If a future parser-owned local needs a
+  binding but arrives with `vname_text_id == kInvalidText`, fix the declarator
+  metadata producer instead of restoring `parser_text_id_for_token(kInvalidText,
+  vname)` or `find_parser_text_id(decl->name)`.
 - `cache_typedef_type(const std::string& name, ...)` still exists, but its
   remaining direct callers are the synthetic/prelude typedef aliases registered
   in `core.cpp` (`va_list`, fixed-width integer aliases, `std::__true_type`,

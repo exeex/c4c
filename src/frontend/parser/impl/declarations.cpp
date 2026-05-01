@@ -1183,8 +1183,7 @@ Node* parse_local_decl(Parser& parser) {
         if (is_constexpr) d->type.is_const = true;
         d->name      = vname;
         d->unqualified_name = vname;
-        d->unqualified_text_id =
-            parser.parser_text_id_for_token(vname_text_id, vname);
+        d->unqualified_text_id = vname_text_id;
         d->init      = init_node;
         d->is_ctor_init = is_ctor_init;
         if (is_ctor_init && !ctor_args.empty()) {
