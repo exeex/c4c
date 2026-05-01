@@ -8,23 +8,29 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the remaining `UsingValueAlias` rendered compatibility-name
-storage and mutation hook. Using-value alias lookup now requires a structured
-target `QualifiedNameKey` and validates that key against known function or
-structured value bindings; no-key rendered aliases no longer resolve.
+Step 2.3 removed the unqualified global-scope `::name` fallback authority from
+`resolve_qualified_value` and `resolve_qualified_type`. Missing `::LegacyOnly*`
+lookups now return no `VisibleNameResult` instead of manufacturing a semantic
+result from rendered spelling.
 
-The focused parser tests now seed corrupt rendered bridge storage outside the
-alias entry and prove both value and type alias lookup ignore that text, while
-no-key aliases are rejected.
+Focused parser coverage in `test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_value_bridges`
+now checks TextId-backed and TextId-less global-qualified misses for both type
+and value resolution.
 
 ## Suggested Next
 
-Continue Step 2.3 with a focused review of remaining parser-owned rendered
-`compatibility_spelling` paths and remove only those that still act as semantic
-lookup authority instead of display/fallback text.
+Continue Step 2.3 with a focused review of the remaining
+`compatibility_spelling` assignments in `resolve_visible_*`,
+`lookup_*_in_context`, and `lookup_using_value_alias`; remove only a route that
+still decides lookup success from rendered spelling rather than from TextId or
+structured key metadata.
 
 ## Watchouts
 
+- Declaration-side qualified-name classification still intentionally keeps
+  unresolved qualified heads on the type side unless structured value lookup
+  proves an expression. The removed route was only the semantic lookup success
+  result for missing unqualified global `::name`.
 - Do not restore string/string_view parser state setter authority. The setters
   are now `TextId`-based; display strings passed to them are fallback/display
   payloads only.
@@ -63,7 +69,8 @@ lookup authority instead of display/fallback text.
   string mutation; corrupt rendered bridge coverage should be represented by
   legacy rendered tables outside the alias entry.
 - A direct `frontend_parser_tests` binary run is outside the delegated proof and
-  currently still stops later on qualified `TypeSpec` metadata expectations; the
+  currently still stops on qualified `TypeSpec` metadata expectations
+  (`qualified TypeSpec should carry the base-name TextId metadata`); the
   required C++ parser/sema/negative ctest subset is green.
 
 ## Proof
@@ -72,7 +79,11 @@ Passed:
 `(cmake --build build --target c4cll && ctest --test-dir build -R 'cpp_(positive_parser|positive_sema|negative_tests)' --output-on-failure) > test_after.log 2>&1`
 
 Proof log: regenerated canonical `test_after.log` after removing the
-using-value alias compatibility-name bridge (926 tests passed).
+unqualified global `::name` fallback semantic success route (926 tests passed).
 
 Additional compile check passed for the edited unit-test source:
 `cmake --build build --target frontend_parser_tests`.
+
+Additional direct binary check attempted and blocked by pre-existing later
+qualified `TypeSpec` metadata assertion:
+`./build/tests/frontend/frontend_parser_tests`.

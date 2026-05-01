@@ -2026,6 +2026,24 @@ void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_va
   expect_true(!static_cast<bool>(qualified_value),
               "qualified value resolution should reject explicit TextId-less compatibility");
 
+  c4c::Parser::QualifiedNameRef global_qn;
+  global_qn.is_global_qualified = true;
+  global_qn.base_name = "LegacyOnlyType";
+  global_qn.base_text_id = type_text;
+  expect_true(!parser.resolve_qualified_type(global_qn),
+              "global-qualified type resolution should not manufacture semantic authority from unresolved spelling");
+  global_qn.base_text_id = c4c::kInvalidText;
+  expect_true(!parser.resolve_qualified_type(global_qn),
+              "global-qualified type resolution should reject TextId-less rendered fallback spelling");
+
+  global_qn.base_name = "LegacyOnlyValue";
+  global_qn.base_text_id = value_text;
+  expect_true(!parser.resolve_qualified_value(global_qn),
+              "global-qualified value resolution should not manufacture semantic authority from unresolved spelling");
+  global_qn.base_text_id = c4c::kInvalidText;
+  expect_true(!parser.resolve_qualified_value(global_qn),
+              "global-qualified value resolution should reject TextId-less rendered fallback spelling");
+
   parser.namespace_state_.using_namespace_contexts[0].push_back(ns_context);
   resolved_type = {};
   expect_true(!parser.lookup_type_in_context(0, type_text,

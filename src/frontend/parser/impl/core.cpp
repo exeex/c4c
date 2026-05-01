@@ -2597,8 +2597,6 @@ std::string Parser::qualified_name_text(const QualifiedNameRef& name,
 
 Parser::VisibleNameResult Parser::resolve_qualified_value(
     const QualifiedNameRef& name) const {
-    const std::string base_name =
-        std::string(parser_text(name.base_text_id, name.base_name));
     if (name.qualifier_segments.empty()) {
         if (!name.is_global_qualified) {
             return resolve_visible_value(name.base_text_id);
@@ -2607,13 +2605,7 @@ Parser::VisibleNameResult Parser::resolve_qualified_value(
         if (lookup_value_in_context(0, name.base_text_id, &result)) {
             return result;
         }
-        result.found = true;
-        result.kind = VisibleNameKind::Value;
-        result.base_text_id = name.base_text_id;
-        result.context_id = 0;
-        result.source = VisibleNameSource::Fallback;
-        result.compatibility_spelling = base_name;
-        return result;
+        return {};
     }
 
     const int context_id = resolve_namespace_context(name);
@@ -2634,8 +2626,6 @@ Parser::VisibleNameResult Parser::resolve_qualified_value(
 
 Parser::VisibleNameResult Parser::resolve_qualified_type(
     const QualifiedNameRef& name) const {
-    const std::string base_name =
-        std::string(parser_text(name.base_text_id, name.base_name));
     if (name.qualifier_segments.empty()) {
         if (!name.is_global_qualified) {
             return resolve_visible_type(name.base_text_id);
@@ -2644,13 +2634,7 @@ Parser::VisibleNameResult Parser::resolve_qualified_type(
         if (lookup_type_in_context(0, name.base_text_id, &result)) {
             return result;
         }
-        result.found = true;
-        result.kind = VisibleNameKind::Type;
-        result.base_text_id = name.base_text_id;
-        result.context_id = 0;
-        result.source = VisibleNameSource::Fallback;
-        result.compatibility_spelling = base_name;
-        return result;
+        return {};
     }
 
     const QualifiedNameKey direct_key = find_qualified_name_key(*this, name);
