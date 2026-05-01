@@ -2488,9 +2488,7 @@ Node* parse_enum(Parser& parser) {
     while (!parser.at_end() && !parser.check(TokenKind::RBrace)) {
         parser.skip_attributes();
         if (!parser.check(TokenKind::Identifier)) { parser.consume(); continue; }
-        const TextId vname_text_id =
-            parser.parser_text_id_for_token(parser.cur().text_id,
-                                            parser.token_spelling(parser.cur()));
+        const TextId vname_text_id = parser.cur().text_id;
         const char* vname =
             parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
         std::string vname_s(vname ? vname : "");

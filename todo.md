@@ -8,21 +8,19 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 classified the local variable declaration producer family for
+Step 2.3 classified the enum enumerator producer family for
 `parser_text_id_for_token(TextId token_text_id, std::string_view fallback)`.
-The `parse_local_decl` and `if`/`while`/`switch` condition-declaration sites
-were semantic value-binding producers: they copied declarator names into
-`Node::unqualified_text_id` and immediately registered local value/type
-bindings from that field. `parse_declarator` already returns the token-backed
-`out_name_text_id` for unqualified declarator names, so these declarations now
-store only `vname_text_id`; metadata-less or non-unqualified declarators remain
-unbound instead of reinterning the rendered `vname`. The range-for rebinding
-path also now reuses `decl->unqualified_text_id` instead of recovering a
-`TextId` with `find_parser_text_id(decl->name)`.
+`parse_enum` uses enumerator identities for duplicate checks, enum initializer
+evaluation, `Node::enum_name_text_ids`, and unscoped enum constant binding.
+The producer already requires an identifier token and immediately projects final
+display spelling through `token_spelling`, which itself requires valid token
+`TextId` metadata. The semantic identity now comes directly from
+`parser.cur().text_id`; the rendered enumerator spelling remains display/AST
+payload and is no longer a fallback source for enum semantic binding.
 
 ## Suggested Next
 
-Continue Step 2.3 by classifying the next `parser_text_id_for_token` producer
+Continue Step 2.3 by classifying another `parser_text_id_for_token` producer
 family. Good candidates are the remaining `kInvalidText` call sites in
 `declarations.cpp`, `types/struct.cpp`, `types/template.cpp`, and
 `types/types_helpers.hpp`; remove or narrow only a semantic fallback use where
@@ -41,6 +39,11 @@ family as display-only, synthetic/prelude, or blocked by missing metadata.
   binding but arrives with `vname_text_id == kInvalidText`, fix the declarator
   metadata producer instead of restoring `parser_text_id_for_token(kInvalidText,
   vname)` or `find_parser_text_id(decl->name)`.
+- Enum enumerator semantic binding now depends on the identifier token's
+  `text_id`. Since `token_spelling` throws when a non-EOF token lacks valid text
+  metadata, missing enum metadata should be fixed at token production rather
+  than by restoring `parser_text_id_for_token(parser.cur().text_id,
+  parser.token_spelling(parser.cur()))`.
 - `cache_typedef_type(const std::string& name, ...)` still exists, but its
   remaining direct callers are the synthetic/prelude typedef aliases registered
   in `core.cpp` (`va_list`, fixed-width integer aliases, `std::__true_type`,
@@ -181,5 +184,5 @@ family as display-only, synthetic/prelude, or blocked by missing metadata.
 Passed:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_positive_sema_using_global_scope_decl_parse_cpp)$' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: regenerated canonical `test_after.log` after this packet (465 tests
-passed).
+Proof log: regenerated canonical `test_after.log` after this enum enumerator
+packet (465 tests passed).
