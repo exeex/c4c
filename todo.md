@@ -4,38 +4,50 @@ Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
 Review Artifact Path: none
-Current Step ID: Step 3.1
-Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
+Current Step ID: Step 3.2
+Current Step Title: Delete Consteval Rendered Compatibility After Metadata Completion
 
 ## Just Finished
 
-Step 3.1 audited the consteval function-body value producer route for
-parameters, local declarations, assignment targets, and `for` initializers.
-The covered route already populates metadata before rendered-name compatibility
-can matter: `parse_param()` gives parameter declarations `unqualified_text_id`,
-`parse_local_decl()` gives local and `for` declaration nodes
-`unqualified_text_id`, expression parsing applies qualified-name metadata to
-identifier references through `Parser::apply_qualified_name()`, and
-`InterpreterBindings::bind()` records the resulting value in `by_text` and
-`by_key` alongside the rendered-name map.
+Step 3.2 deleted the first covered consteval TypeSpec rendered-compatibility
+fallback: `resolve_type()` now treats
+`lookup_type_binding_by_typespec_key()` returning `Miss` for an intrinsic
+template-parameter `TB_TYPEDEF` TypeSpec as authoritative and returns the
+unresolved TypeSpec instead of consulting structured-name, text-id,
+rendered-name, or legacy type-binding mirror routes.
 
-No focused producer repair was needed for this function-body value slice.
+Follow-up testability check: a focused C++ miss-authority test is not directly
+expressible for the covered intrinsic TypeSpec-key route in the current harness.
+The smallest stale-rendered candidate,
+`Box<char>::Alias` inside an outer `template <typename T> consteval` function,
+still reaches consteval as a non-intrinsic metadata TypeSpec and incorrectly
+recovers the caller's rendered `T`; adding that as a Step 3.2 test would fail
+for a producer-completeness gap outside this fallback-deletion slice rather
+than proving the covered intrinsic-key miss branch. The existing
+`consteval_typespec_member_alias.cpp` remains the focused same-feature C++
+coverage for the accepted covered route because it proves metadata-bearing
+member-alias TypeSpecs still resolve through the intrinsic key `Found` path
+after the miss fallback deletion; direct miss-branch coverage needs either a
+producer repair that makes the stale candidate carry owner/index/text metadata
+or a lower-level consteval unit harness that can construct a mismatched
+metadata-bearing `TypeSpec`.
 
 ## Suggested Next
 
-Route the covered consteval function-body value lookup path to Step 3.2 for
-fallback deletion, while leaving non-body/global consteval value routes and the
-already-covered TypeSpec route to the supervisor's Step 3.2 packet selection.
+Delete the next accepted Step 3.2 fallback route for consteval function-body
+value lookups now that the corresponding producer audit has been completed,
+leaving non-body/global consteval value routes for a separate packet.
 
 ## Watchouts
 
-- This packet did not delete `ConstEvalEnv` rendered compatibility; Step 3.2
-  still owns removing the rendered fallback after producer completeness is
-  accepted.
-- The audit was scoped to function-body interpreter bindings:
-  `evaluate_consteval_call()` parameter binding, `NK_DECL` locals including
-  `for` initializers, and `NK_ASSIGN` targets. It did not claim completeness
-  for unrelated global/named const or enum consteval value maps.
+- This packet only deleted the intrinsic TypeSpec-key miss fallback in
+  `resolve_type()`. It did not remove the structured-name, text-id,
+  rendered-name, or legacy type-binding mirror routes for TypeSpecs that do not
+  carry intrinsic template-parameter metadata.
+- A same-feature stale-rendered C++ candidate exists but is not yet covered by
+  intrinsic TypeSpec metadata, so it should be routed as a producer repair
+  before it becomes the miss-authority regression test.
+- Non-body/global consteval value routes remain outside this packet.
 - HIR-owned metadata carriers and `src/frontend/hir/*` remain untouched and out
   of scope.
 

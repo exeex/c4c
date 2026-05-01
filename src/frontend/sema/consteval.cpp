@@ -155,8 +155,8 @@ TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   const TypeBindingLookupResult intrinsic_key =
       lookup_type_binding_by_typespec_key(env, ts);
   if (intrinsic_key.status == TypeBindingLookupStatus::Found) return *intrinsic_key.type;
-  bool has_authoritative_metadata =
-      intrinsic_key.status == TypeBindingLookupStatus::Miss;
+  if (intrinsic_key.status == TypeBindingLookupStatus::Miss) return ts;
+  bool has_authoritative_metadata = false;
 
   const TypeBindingLookupResult structured = lookup_type_binding_by_key(env, name);
   if (structured.status == TypeBindingLookupStatus::Found) return *structured.type;
