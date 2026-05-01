@@ -8,41 +8,18 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-The parser public API cleanup reviewed under idea 139's strict parser API rule
-has landed in commit `56f7735f5` (`remove name+textid lookup`).
-
-That committed slice collapsed the visible-name public API family to
-`TextId`-only routes:
-`qualify_name(TextId)`, `qualify_name_arena(TextId)`,
-`resolve_visible_value(TextId)`, `resolve_visible_value_name(TextId)`,
-`resolve_visible_type(TextId)`, `resolve_visible_type_name(TextId)`,
-`resolve_visible_concept(TextId)`, `resolve_visible_concept_name(TextId)`, and
-`is_concept_name(TextId)`.
-
-The string/string_view/fallback overloads that were explicitly reviewed and are
-now removed from `parser.hpp` are:
-`qualify_name(TextId, std::string_view)`, `qualify_name(const std::string&)`,
-`qualify_name_arena(TextId, const char*)`, `qualify_name_arena(const char*)`,
-`resolve_visible_value(TextId, std::string_view)`,
-`resolve_visible_value_name(TextId, std::string_view)`,
-`resolve_visible_type(TextId, std::string_view)`,
-`resolve_visible_type(std::string_view)`,
-`resolve_visible_type_name(TextId, std::string_view)`,
-`resolve_visible_type_name(std::string_view)`,
-`resolve_visible_concept(TextId, std::string_view)`,
-`resolve_visible_concept(std::string_view)`,
-`resolve_visible_concept_name(TextId, std::string_view)`,
-`resolve_visible_concept_name(const std::string&)`, and
-`is_concept_name(const std::string&)`.
+Step 2.3 removed `compatibility_namespace_name_in_context(int, TextId,
+std::string_view fallback_name)` from the `Parser` class surface. The only
+remaining call path was `render_lookup_name_in_context`, so the same namespace
+rendering behavior now lives inside that file-local rendering bridge instead of
+being exposed as parser semantic/fallback API.
 
 ## Suggested Next
 
-Continue Step 2.3 from the committed parser API cleanup. Inspect the next
-same-shape `parser.hpp` candidates and either remove them in a bounded Step 2.3
-packet or record why they are non-semantic/output-only:
+Continue Step 2.3 from the namespace compatibility API removal. Inspect the
+next same-shape `parser.hpp` candidate and either remove it in a bounded Step
+2.3 packet or record why it is non-semantic/output-only:
 
-- `compatibility_namespace_name_in_context(int, TextId, std::string_view
-  fallback_name)`: name and signature both indicate compatibility/fallback.
 - `bridge_name_in_context(int, TextId, std::string_view fallback_name)`:
   `TextId + fallback spelling` shape; decide whether it should become
   `TextId`-only plus a separate final-spelling projection helper.
@@ -63,6 +40,10 @@ packet or record why they are non-semantic/output-only:
   deleting or renaming them.
 - `visible_name_spelling(const VisibleNameResult&)` is intentionally the final
   spelling/display projection boundary, not a semantic lookup route.
+- `compatibility_namespace_name_in_context` no longer exists as parser API.
+  Its final-spelling compatibility behavior is confined to
+  `render_lookup_name_in_context`; do not reintroduce it as a public/class
+  fallback helper.
 - Do not accept a parser public semantic API that keeps `std::string`,
   `std::string_view`, `const char*`, `fallback_name`, `compatibility`, or
   `legacy` as a lookup key/escape hatch when `TextId` or a domain key exists.

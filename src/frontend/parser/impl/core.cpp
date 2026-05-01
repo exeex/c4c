@@ -275,8 +275,39 @@ std::string render_lookup_name_in_context(const Parser& parser, int context_id,
         !structured.empty()) {
         return structured;
     }
-    return parser.compatibility_namespace_name_in_context(context_id, name_text_id,
-                                                          fallback_name);
+
+    std::string name(parser.parser_text(name_text_id, fallback_name));
+    if (name.empty() || context_id <= 0) return name;
+
+    std::vector<int> ancestry;
+    for (int walk = context_id; walk > 0;
+         walk = parser.namespace_state_.namespace_contexts[walk].parent_id) {
+        ancestry.push_back(walk);
+    }
+
+    std::string qualified;
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it) {
+        const Parser::NamespaceContext& ctx =
+            parser.namespace_state_.namespace_contexts[*it];
+        if (ctx.is_anonymous) {
+            if (ctx.canonical_name && ctx.canonical_name[0]) {
+                qualified.assign(ctx.canonical_name);
+            }
+            continue;
+        }
+
+        const std::string_view segment =
+            parser.parser_text(ctx.text_id,
+                               ctx.display_name ? ctx.display_name : "");
+        if (segment.empty()) continue;
+        if (!qualified.empty()) qualified += "::";
+        qualified += segment;
+    }
+
+    if (qualified.empty()) return name;
+    qualified += "::";
+    qualified += name;
+    return qualified;
 }
 
 void cache_legacy_var_type_binding(Parser& parser, std::string_view name,
@@ -2539,40 +2570,6 @@ std::string Parser::canonical_name_in_context(int context_id, const std::string&
     const NamespaceContext& ctx = namespace_state_.namespace_contexts[context_id];
     if (!ctx.canonical_name || !ctx.canonical_name[0]) return name;
     return std::string(ctx.canonical_name) + "::" + name;
-}
-
-std::string Parser::compatibility_namespace_name_in_context(
-    int context_id, TextId name_text_id, std::string_view fallback_name) const {
-    std::string name(parser_text(name_text_id, fallback_name));
-    if (name.empty() || context_id <= 0) return name;
-
-    std::vector<int> ancestry;
-    for (int walk = context_id; walk > 0;
-         walk = namespace_state_.namespace_contexts[walk].parent_id) {
-        ancestry.push_back(walk);
-    }
-
-    std::string qualified;
-    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it) {
-        const NamespaceContext& ctx = namespace_state_.namespace_contexts[*it];
-        if (ctx.is_anonymous) {
-            if (ctx.canonical_name && ctx.canonical_name[0]) {
-                qualified.assign(ctx.canonical_name);
-            }
-            continue;
-        }
-
-        const std::string_view segment =
-            parser_text(ctx.text_id, ctx.display_name ? ctx.display_name : "");
-        if (segment.empty()) continue;
-        if (!qualified.empty()) qualified += "::";
-        qualified += segment;
-    }
-
-    if (qualified.empty()) return name;
-    qualified += "::";
-    qualified += name;
-    return qualified;
 }
 
 std::string Parser::bridge_name_in_context(int context_id, TextId name_text_id,
