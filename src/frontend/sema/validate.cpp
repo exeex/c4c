@@ -926,6 +926,8 @@ class Validator {
     }
 
     const auto structured_key = reference ? sema_symbol_name_key(reference) : std::nullopt;
+    const bool has_unqualified_or_global_structured_symbol_key =
+        structured_key.has_value() && reference && reference->n_qualifier_segments == 0;
     auto g = globals_.find(name);
     const TypeSpec* rendered_global_compatibility = g != globals_.end() ? &g->second : nullptr;
     const bool rendered_global_has_structured_metadata =
@@ -937,7 +939,8 @@ class Validator {
       if (structured_global) return ScopedSym{*structured_global, true};
     }
     if (rendered_global_compatibility &&
-        !(structured_key.has_value() && rendered_global_has_structured_metadata)) {
+        !(has_unqualified_or_global_structured_symbol_key &&
+          rendered_global_has_structured_metadata)) {
       return ScopedSym{*rendered_global_compatibility, true};
     }
 
@@ -960,7 +963,8 @@ class Validator {
       if (structured_enum) return ScopedSym{*structured_enum, true};
     }
     if (rendered_enum_compatibility &&
-        !(structured_key.has_value() && rendered_enum_has_structured_metadata)) {
+        !(has_unqualified_or_global_structured_symbol_key &&
+          rendered_enum_has_structured_metadata)) {
       return ScopedSym{*rendered_enum_compatibility, true};
     }
     return std::nullopt;

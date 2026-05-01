@@ -5,16 +5,17 @@ Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
 Current Step ID: Step 3.3
 Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
+你該做test baseline review了
 
 ## Just Finished
 
-Step 3.3 narrowed Sema global value and enum-constant lookup so a valid
-structured symbol key miss blocks rendered compatibility for unqualified and
-global-qualified (`::...`) rendered entries that have structured metadata. The
-retained rendered fallback remains explicit no-metadata compatibility, and
-namespace-qualified rendered bridges remain outside this packet. Focused
-frontend parser tests now cover stale global-qualified rendered global and enum
-constant spellings versus structured reference keys.
+Step 3.3 fixed the `e0b01f49` Sema symbol-lookup regression by keeping rendered
+global/enum fallback rejection limited to references with no qualifier segments:
+unqualified names and global-qualified (`::name`) references still reject stale
+rendered entries when structured metadata exists, while namespace/owner-qualified
+rendered bridges such as the global-scope using-declaration path retain
+compatibility. The existing focused stale global-qualified rendered global and
+enum tests remain covered.
 
 ## Suggested Next
 
@@ -106,6 +107,6 @@ their producer metadata is equivalent.
 ## Proof
 
 Passed:
-`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*)$' --output-on-failure) > test_after.log 2>&1`
+`(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_positive_sema_using_global_scope_decl_parse_cpp)$' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: regenerated canonical `test_after.log` (464 tests passed).
+Proof log: regenerated canonical `test_after.log` (465 tests passed).
