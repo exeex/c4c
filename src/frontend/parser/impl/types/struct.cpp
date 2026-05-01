@@ -780,16 +780,15 @@ bool try_parse_record_typedef_member(
     parser.consume(); // eat 'typedef'
     TypeSpec td_base = parser.parse_base_type();
     parser.parse_attributes(&td_base);
-    auto register_record_typedef = [&](const char* name, const TypeSpec& type,
+    auto register_record_typedef = [&](const char* name, TextId name_text_id,
+                                       const TypeSpec& type,
                                        Node** fn_ptr_params,
                                        int n_fn_ptr_params,
                                        bool fn_ptr_variadic) {
-        const TextId typedef_name_id =
-            parser.parser_text_id_for_token(kInvalidText, name);
-        parser.register_typedef_binding(typedef_name_id, type, true);
+        parser.register_typedef_binding(name_text_id, type, true);
         if (type.is_fn_ptr && (n_fn_ptr_params > 0 || fn_ptr_variadic)) {
-            if (typedef_name_id != kInvalidText) {
-                parser.binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
+            if (name_text_id != kInvalidText) {
+                parser.binding_state_.typedef_fn_ptr_info[name_text_id] = {
                     fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic};
             }
         }
@@ -798,27 +797,33 @@ bool try_parse_record_typedef_member(
     };
 
     const char* tdname = nullptr;
+    TextId tdname_text_id = kInvalidText;
     TypeSpec ts_copy = td_base;
     Node** td_fn_ptr_params = nullptr;
     int td_n_fn_ptr_params = 0;
     bool td_fn_ptr_variadic = false;
     parser.parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
-                     &td_n_fn_ptr_params, &td_fn_ptr_variadic);
+                            &td_n_fn_ptr_params, &td_fn_ptr_variadic, nullptr,
+                            nullptr, nullptr, nullptr, &tdname_text_id);
     if (tdname) {
-        register_record_typedef(tdname, ts_copy, td_fn_ptr_params,
-                                td_n_fn_ptr_params, td_fn_ptr_variadic);
+        register_record_typedef(tdname, tdname_text_id, ts_copy,
+                                td_fn_ptr_params, td_n_fn_ptr_params,
+                                td_fn_ptr_variadic);
     }
 
     while (parser.match(TokenKind::Comma)) {
         TypeSpec ts2 = td_base;
         const char* tdn2 = nullptr;
+        TextId tdn2_text_id = kInvalidText;
         Node** td2_fn_ptr_params = nullptr;
         int td2_n_fn_ptr_params = 0;
         bool td2_fn_ptr_variadic = false;
         parser.parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
-                         &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
+                                &td2_n_fn_ptr_params, &td2_fn_ptr_variadic,
+                                nullptr, nullptr, nullptr, nullptr,
+                                &tdn2_text_id);
         if (tdn2) {
-            register_record_typedef(tdn2, ts2, td2_fn_ptr_params,
+            register_record_typedef(tdn2, tdn2_text_id, ts2, td2_fn_ptr_params,
                                     td2_n_fn_ptr_params, td2_fn_ptr_variadic);
         }
     }

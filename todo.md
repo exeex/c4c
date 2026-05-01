@@ -8,15 +8,13 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 classified the enum enumerator producer family for
-`parser_text_id_for_token(TextId token_text_id, std::string_view fallback)`.
-`parse_enum` uses enumerator identities for duplicate checks, enum initializer
-evaluation, `Node::enum_name_text_ids`, and unscoped enum constant binding.
-The producer already requires an identifier token and immediately projects final
-display spelling through `token_spelling`, which itself requires valid token
-`TextId` metadata. The semantic identity now comes directly from
-`parser.cur().text_id`; the rendered enumerator spelling remains display/AST
-payload and is no longer a fallback source for enum semantic binding.
+Step 2.3 classified the record-member typedef producer family in
+`try_parse_record_typedef_member`. Record typedef names feed semantic typedef
+binding and function-pointer typedef metadata, but those names are produced by
+`parse_declarator`, which already exposes parser-owned token `TextId` metadata
+through `out_name_text_id`. The record typedef registration path now carries
+that declarator `TextId` directly and no longer interns the rendered member
+typedef spelling through `parser_text_id_for_token(kInvalidText, name)`.
 
 ## Suggested Next
 
@@ -29,6 +27,11 @@ family as display-only, synthetic/prelude, or blocked by missing metadata.
 
 ## Watchouts
 
+- Record-member typedef semantic binding now depends on `parse_declarator`
+  producing `out_name_text_id`. If a future record typedef arrives with a name
+  but `name_text_id == kInvalidText`, fix the declarator metadata producer
+  instead of restoring `parser_text_id_for_token(kInvalidText, name)` in
+  `try_parse_record_typedef_member`.
 - The function-parameter scope guard fallback route is removed for the covered
   parser-owned parameter declarations. If a future parameter-like producer
   lacks `Node::unqualified_text_id`, treat that as missing producer metadata
@@ -184,5 +187,5 @@ family as display-only, synthetic/prelude, or blocked by missing metadata.
 Passed:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_positive_sema_using_global_scope_decl_parse_cpp)$' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: regenerated canonical `test_after.log` after this enum enumerator
-packet (465 tests passed).
+Proof log: regenerated canonical `test_after.log` after this record-member
+typedef packet (465 tests passed).
