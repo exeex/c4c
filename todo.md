@@ -3,40 +3,42 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Review Artifact Path: none
-Current Step ID: Step 3.2
-Current Step Title: Delete Consteval Rendered Compatibility After Metadata Completion
+Review Artifact Path: review/step3_2_function_body_value_fallback_review.md
+Current Step ID: Step 3.1
+Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.2 deleted the first covered consteval TypeSpec rendered-compatibility
-fallback: `resolve_type()` now treats
-`lookup_type_binding_by_typespec_key()` returning `Miss` for an intrinsic
-template-parameter `TB_TYPEDEF` TypeSpec as authoritative and returns the
-unresolved TypeSpec instead of consulting structured-name, text-id,
-rendered-name, or legacy type-binding mirror routes.
+Accepted Step 3.2 progress remains limited to the TypeSpec fallback deletion:
+`resolve_type()` now treats `lookup_type_binding_by_typespec_key()` returning
+`Miss` for an intrinsic template-parameter `TB_TYPEDEF` TypeSpec as
+authoritative and returns the unresolved TypeSpec instead of consulting
+structured-name, text-id, rendered-name, or legacy type-binding mirror routes.
 
-Follow-up testability check: a focused C++ miss-authority test is not directly
-expressible for the covered intrinsic TypeSpec-key route in the current harness.
-The smallest stale-rendered candidate,
-`Box<char>::Alias` inside an outer `template <typename T> consteval` function,
-still reaches consteval as a non-intrinsic metadata TypeSpec and incorrectly
-recovers the caller's rendered `T`; adding that as a Step 3.2 test would fail
-for a producer-completeness gap outside this fallback-deletion slice rather
-than proving the covered intrinsic-key miss branch. The existing
-`consteval_typespec_member_alias.cpp` remains the focused same-feature C++
-coverage for the accepted covered route because it proves metadata-bearing
-member-alias TypeSpecs still resolve through the intrinsic key `Found` path
-after the miss fallback deletion; direct miss-branch coverage needs either a
-producer repair that makes the stale candidate carry owner/index/text metadata
-or a lower-level consteval unit harness that can construct a mismatched
-metadata-bearing `TypeSpec`.
+Rejected route: `review/step3_2_function_body_value_fallback_review.md`
+rejected the attempted Step 3.2 function-body value deletion that used
+`has_rendered_local_binding()` /
+`suppress_rendered_nttp_for_local_binding_metadata_miss`. That route is drift
+because it asks rendered local-binding maps whether a structured or `TextId`
+miss should suppress rendered NTTP compatibility. Do not continue or repeat
+that predicate.
 
 ## Suggested Next
 
-Delete the next accepted Step 3.2 fallback route for consteval function-body
-value lookups now that the corresponding producer audit has been completed,
-leaving non-body/global consteval value routes for a separate packet.
+Return to Step 3.1 for one producer/metadata repair packet before any further
+Step 3.2 function-body value fallback deletion:
+
+- Identify how `ConstEvalEnv::lookup(const Node*)` can observe an
+  authoritative local/parameter/loop binding miss from structured or `TextId`
+  metadata itself, without consulting rendered local-binding maps.
+- Repair or expose that parser/Sema-owned producer metadata if the ownership
+  boundary is clear.
+- If the metadata cannot be made authoritative inside parser/Sema scope, park
+  the exact direct NTTP producer-completeness gap here and leave that rendered
+  compatibility fallback out of the next deletion packet.
+
+Only after that producer/metadata result is recorded should a Step 3.2 packet
+delete the covered function-body value fallback.
 
 ## Watchouts
 
@@ -44,10 +46,15 @@ leaving non-body/global consteval value routes for a separate packet.
   `resolve_type()`. It did not remove the structured-name, text-id,
   rendered-name, or legacy type-binding mirror routes for TypeSpecs that do not
   carry intrinsic template-parameter metadata.
+- Do not use `has_rendered_local_binding()`, rendered local maps, or an
+  equivalent rendered-name predicate as the authority boundary for local
+  metadata misses.
 - A same-feature stale-rendered C++ candidate exists but is not yet covered by
   intrinsic TypeSpec metadata, so it should be routed as a producer repair
   before it becomes the miss-authority regression test.
-- Non-body/global consteval value routes remain outside this packet.
+- Direct NTTP rendered compatibility remains producer-incomplete unless the
+  next packet can prove the function-body local-binding miss from metadata.
+- Non-body/global consteval value routes remain outside the next packet.
 - HIR-owned metadata carriers and `src/frontend/hir/*` remain untouched and out
   of scope.
 

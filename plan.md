@@ -927,6 +927,10 @@ Actions:
   maps.
 - Add or repair parser/Sema-owned metadata producers where the owner and
   consumer contract is clear.
+- For consteval function-body local/parameter/loop value lookup, expose the
+  authoritative structured or `TextId` local-binding miss from producer-backed
+  metadata itself. Do not derive producer completeness by consulting rendered
+  local-binding maps.
 - If a required producer lives outside parser/Sema ownership or has no clear
   source carrier, record that exact blocker in `todo.md` at the lowest correct
   layer before attempting another lookup-deletion packet.
@@ -961,6 +965,10 @@ Actions:
 
 - Block rendered fallback after any populated structured or `TextId` metadata
   miss, including same-spelling local names.
+- Do not use a rendered-name local-binding probe, rendered local map, or helper
+  equivalent to decide whether a structured or `TextId` miss is authoritative.
+  If the metadata cannot identify that covered miss without rendered lookup,
+  return to Step 3.1 producer repair or park the gap before deleting fallback.
 - Delete or collapse consteval semantic lookup APIs that take `std::string`,
   `std::string_view`, rendered names, or fallback spelling once the route has a
   structured/domain key.
