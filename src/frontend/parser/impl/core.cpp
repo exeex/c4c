@@ -1032,9 +1032,17 @@ void Parser::register_template_instantiation_member_typedef_binding(
 }
 
 void Parser::register_dependent_record_member_typedef_binding(
-    const QualifiedNameKey& key, const TypeSpec& type) {
-    if (key.base_text_id == kInvalidText) return;
-    template_state_.dependent_record_member_typedefs_by_key[key] = type;
+    const QualifiedNameKey& owner_key,
+    TextId member_text_id,
+    const TypeSpec& type) {
+    if (owner_key.base_text_id == kInvalidText ||
+        member_text_id == kInvalidText) {
+        return;
+    }
+    ParserTemplateState::DependentRecordMemberTypedefKey key;
+    key.owner_key = owner_key;
+    key.member_text_id = member_text_id;
+    template_state_.dependent_record_member_typedefs_by_owner[key] = type;
 }
 
 void Parser::register_record_member_typedef_info(
@@ -1227,12 +1235,64 @@ QualifiedNameKey Parser::record_member_typedef_key_in_context(
     return key;
 }
 
+QualifiedNameKey Parser::record_member_typedef_owner_key_from_member_key(
+    const QualifiedNameKey& key) const {
+    QualifiedNameKey owner_key;
+    if (key.base_text_id == kInvalidText ||
+        key.qualifier_path_id == kInvalidNamePath) {
+        return owner_key;
+    }
+
+    const NamePathTable::View path =
+        shared_lookup_state_.parser_name_paths.lookup(key.qualifier_path_id);
+    if (path.empty()) return owner_key;
+
+    owner_key.context_id = key.context_id;
+    owner_key.is_global_qualified = key.is_global_qualified;
+    owner_key.base_text_id = path[path.size - 1];
+    if (owner_key.base_text_id == kInvalidText) return {};
+
+    if (path.size > 1) {
+        owner_key.qualifier_path_id =
+            shared_lookup_state_.parser_name_paths.find(path.data,
+                                                        path.size - 1);
+        if (owner_key.qualifier_path_id == kInvalidNamePath) return {};
+    }
+    return owner_key;
+}
+
 const TypeSpec* Parser::find_dependent_record_member_typedef_type(
     const QualifiedNameKey& key) const {
     if (key.base_text_id == kInvalidText) return nullptr;
+    const QualifiedNameKey owner_key =
+        record_member_typedef_owner_key_from_member_key(key);
+    if (const TypeSpec* structured =
+            find_dependent_record_member_typedef_type(owner_key,
+                                                      key.base_text_id)) {
+        return structured;
+    }
     const auto it =
         template_state_.dependent_record_member_typedefs_by_key.find(key);
     return it == template_state_.dependent_record_member_typedefs_by_key.end()
+               ? nullptr
+               : &it->second;
+}
+
+const TypeSpec* Parser::find_dependent_record_member_typedef_type(
+    const QualifiedNameKey& owner_key,
+    TextId member_text_id) const {
+    if (owner_key.base_text_id == kInvalidText ||
+        member_text_id == kInvalidText) {
+        return nullptr;
+    }
+    ParserTemplateState::DependentRecordMemberTypedefKey key;
+    key.owner_key = owner_key;
+    key.member_text_id = member_text_id;
+    const auto it =
+        template_state_.dependent_record_member_typedefs_by_owner.find(key);
+    return it ==
+                   template_state_.dependent_record_member_typedefs_by_owner
+                       .end()
                ? nullptr
                : &it->second;
 }

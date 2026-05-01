@@ -2442,6 +2442,7 @@ void register_record_member_typedef_bindings(
     Node* sd,
     const char* source_tag,
     const Parser::RecordBodyState& body_state) {
+    (void)source_tag;
     if (!sd || sd->n_member_typedefs <= 0 || !sd->member_typedef_names ||
         !sd->member_typedef_types) {
         return;
@@ -2450,6 +2451,20 @@ void register_record_member_typedef_bindings(
     const int context_id =
         sd->namespace_context_id >= 0 ? sd->namespace_context_id
                                       : parser.current_namespace_context_id();
+    TextId record_text_id = kInvalidText;
+    if (sd->template_origin_name && sd->template_origin_name[0]) {
+        record_text_id = parser.parser_text_id_for_token(
+            kInvalidText, sd->template_origin_name);
+    }
+    if (record_text_id == kInvalidText) record_text_id = sd->unqualified_text_id;
+    if (record_text_id == kInvalidText && sd->unqualified_name) {
+        record_text_id = parser.parser_text_id_for_token(
+            kInvalidText, sd->unqualified_name);
+    }
+    const QualifiedNameKey owner_key =
+        record_text_id != kInvalidText
+            ? parser.alias_template_key_in_context(context_id, record_text_id)
+            : QualifiedNameKey{};
     for (int i = 0; i < sd->n_member_typedefs; ++i) {
         const char* member_name = sd->member_typedef_names[i];
         if (!(member_name && member_name[0])) continue;
@@ -2465,9 +2480,9 @@ void register_record_member_typedef_bindings(
             (sd->template_origin_name && sd->template_origin_name[0]) ||
             !parser.template_state_.template_scope_stack.empty();
         if (has_template_dependent_context &&
-            member_key.base_text_id != kInvalidText) {
+            owner_key.base_text_id != kInvalidText) {
             parser.register_dependent_record_member_typedef_binding(
-                member_key, sd->member_typedef_types[i]);
+                owner_key, member_text_id, sd->member_typedef_types[i]);
         }
         if (member_key.base_text_id != kInvalidText &&
             i < static_cast<int>(body_state.member_typedef_infos.size()) &&

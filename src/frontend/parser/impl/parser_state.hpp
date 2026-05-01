@@ -178,6 +178,29 @@ struct ParserTemplateState {
     }
   };
 
+  struct DependentRecordMemberTypedefKey {
+    QualifiedNameKey owner_key;
+    TextId member_text_id = kInvalidText;
+
+    [[nodiscard]] bool operator==(
+        const DependentRecordMemberTypedefKey& other) const {
+      return owner_key == other.owner_key &&
+             member_text_id == other.member_text_id;
+    }
+  };
+
+  struct DependentRecordMemberTypedefKeyHash {
+    [[nodiscard]] size_t operator()(
+        const DependentRecordMemberTypedefKey& key) const {
+      const size_t owner_hash = QualifiedNameKeyHash{}(key.owner_key);
+      const size_t member_hash =
+          static_cast<size_t>(hash_id_words(
+              kIdHashSeed, static_cast<uint32_t>(key.member_text_id)));
+      return owner_hash ^ (member_hash + 0x9e3779b9U +
+                           (owner_hash << 6U) + (owner_hash >> 2U));
+    }
+  };
+
   std::unordered_map<QualifiedNameKey, Node*, QualifiedNameKeyHash>
       template_struct_defs_by_key;
   std::unordered_map<QualifiedNameKey, std::vector<Node*>, QualifiedNameKeyHash>
@@ -187,6 +210,9 @@ struct ParserTemplateState {
   std::unordered_map<TemplateInstantiationMemberTypedefKey, TypeSpec,
                      TemplateInstantiationMemberTypedefKeyHash>
       template_instantiation_member_typedefs_by_key;
+  std::unordered_map<DependentRecordMemberTypedefKey, TypeSpec,
+                     DependentRecordMemberTypedefKeyHash>
+      dependent_record_member_typedefs_by_owner;
   std::unordered_map<QualifiedNameKey, TypeSpec, QualifiedNameKeyHash>
       dependent_record_member_typedefs_by_key;
   std::unordered_map<QualifiedNameKey, ParserAliasTemplateMemberTypedefInfo,
