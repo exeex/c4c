@@ -3,17 +3,16 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
+Current Step ID: Step 2.3
+Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Authority
 
 ## Just Finished
 
-Folded back the executor-written `todo.md` completion note for the in-progress
-parser public API cleanup and re-reviewed `src/frontend/parser/parser.hpp` under
-idea 139's strict parser API rule.
+The parser public API cleanup reviewed under idea 139's strict parser API rule
+has landed in commit `56f7735f5` (`remove name+textid lookup`).
 
-The current dirty implementation diff has already collapsed the visible-name
-public API family to `TextId`-only routes:
+That committed slice collapsed the visible-name public API family to
+`TextId`-only routes:
 `qualify_name(TextId)`, `qualify_name_arena(TextId)`,
 `resolve_visible_value(TextId)`, `resolve_visible_value_name(TextId)`,
 `resolve_visible_type(TextId)`, `resolve_visible_type_name(TextId)`,
@@ -21,7 +20,7 @@ public API family to `TextId`-only routes:
 `is_concept_name(TextId)`.
 
 The string/string_view/fallback overloads that were explicitly reviewed and are
-now removed from `parser.hpp` in the dirty diff are:
+now removed from `parser.hpp` are:
 `qualify_name(TextId, std::string_view)`, `qualify_name(const std::string&)`,
 `qualify_name_arena(TextId, const char*)`, `qualify_name_arena(const char*)`,
 `resolve_visible_value(TextId, std::string_view)`,
@@ -38,9 +37,9 @@ now removed from `parser.hpp` in the dirty diff are:
 
 ## Suggested Next
 
-Before accepting or committing the current parser API cleanup, inspect the next
-same-shape `parser.hpp` candidates and either remove them in the same Step 2
-slice or record why they are non-semantic/output-only:
+Continue Step 2.3 from the committed parser API cleanup. Inspect the next
+same-shape `parser.hpp` candidates and either remove them in a bounded Step 2.3
+packet or record why they are non-semantic/output-only:
 
 - `compatibility_namespace_name_in_context(int, TextId, std::string_view
   fallback_name)`: name and signature both indicate compatibility/fallback.
@@ -74,8 +73,8 @@ slice or record why they are non-semantic/output-only:
 - Do not delete the rendered-name `eval_const_int` compatibility overload while
   HIR still passes `NttpBindings` as `std::unordered_map<std::string, long long>`.
 - Route deletion of the rendered-name `eval_const_int` compatibility overload
-  through `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a
-  narrower HIR metadata idea before treating it as parser/Sema closure work.
+  through `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` before
+  treating it as parser/Sema closure work.
 - The `ConstEvalEnv::lookup(const Node*)` NTTP string bridge is intentionally
   retained only for HIR-owned `nttp_bindings` compatibility when the NTTP
   structured/TextId metadata maps themselves have not missed.
