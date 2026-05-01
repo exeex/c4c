@@ -8,13 +8,12 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.3 narrowed Sema static-member type lookup so qualified references use
-structured owner/member `TextId` metadata before rendered owner/member strings.
-Rendered static-member lookup and the complete-record optimistic acceptance path
-now remain only as no-metadata compatibility when the structured static-member
-table/base chain has no authoritative metadata for the reference. The focused
-frontend parser test now proves stale rendered owner and member spellings do not
-override structured static-member metadata.
+Step 3.3 narrowed Sema function, ref-overload, and C++ overload lookup so a
+valid structured function key miss blocks rendered-name compatibility even when
+the rendered spelling is qualified. The retained rendered fallback now remains
+explicitly tied to legacy entries that have no structured metadata. The focused
+frontend parser test now covers stale global-qualified rendered function,
+ref-overload, and C++ overload spellings versus structured reference keys.
 
 ## Suggested Next
 
@@ -88,6 +87,14 @@ deletion route.
   owner/member `TextId`s; keep rendered compatibility there until that producer
   gap is closed. The retained path is explicitly no-metadata compatibility, not
   a rendered-string authority after structured static-member metadata exists.
+- Function/ref-overload/C++ overload rendered-name compatibility now treats
+  structured metadata on qualified rendered legacy entries as authoritative
+  after a valid structured reference key misses. Do not reintroduce an
+  unqualified-only rendered-name guard for these helpers.
+- `supports_cpp_overload_set` now accepts global-qualified `::operator_*`
+  spellings so the qualified rendered C++ overload path is exercised; broader
+  owner-qualified operator registration remains outside this packet because
+  owner-qualified function names are still routed as method-owner forms.
 
 ## Proof
 

@@ -5180,6 +5180,7 @@ void test_sema_overload_lookup_ignores_stale_rendered_name_after_structured_miss
   c4c::FileTable files;
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
+  const c4c::TextId missing_fn_text = texts.intern("missing_function_lookup");
   const c4c::TextId missing_ref_text = texts.intern("missing_ref_overload");
   const c4c::TextId missing_cpp_text = texts.intern("operator_missing_lookup");
   c4c::TypeSpec int_value = make_sema_lookup_ts(c4c::TB_INT);
@@ -5190,41 +5191,49 @@ void test_sema_overload_lookup_ignores_stale_rendered_name_after_structured_miss
   c4c::TypeSpec rvalue_int_ref = int_value;
   rvalue_int_ref.is_rvalue_ref = true;
 
+  c4c::Node* stale_fn = make_sema_lookup_function(
+      parser, arena, "::stale_function_lookup", "stale_function_lookup",
+      texts.intern("stale_function_lookup"), stale_ret, int_value);
   c4c::Node* stale_ref_lvalue = make_sema_lookup_function(
-      parser, arena, "stale_ref_overload", "stale_ref_overload",
+      parser, arena, "::stale_ref_overload", "stale_ref_overload",
       texts.intern("stale_ref_overload"), stale_ret, lvalue_int_ref);
   c4c::Node* stale_ref_rvalue = make_sema_lookup_function(
-      parser, arena, "stale_ref_overload", "stale_ref_overload",
+      parser, arena, "::stale_ref_overload", "stale_ref_overload",
       texts.intern("stale_ref_overload"), stale_ret, rvalue_int_ref);
   c4c::Node* stale_cpp_int = make_sema_lookup_function(
-      parser, arena, "operator_stale_lookup", "operator_stale_lookup",
+      parser, arena, "::operator_stale_lookup", "operator_stale_lookup",
       texts.intern("operator_stale_lookup"), stale_ret, int_value);
   c4c::Node* stale_cpp_double = make_sema_lookup_function(
-      parser, arena, "operator_stale_lookup", "operator_stale_lookup",
+      parser, arena, "::operator_stale_lookup", "operator_stale_lookup",
       texts.intern("operator_stale_lookup"), stale_ret, double_value);
 
+  c4c::Node* fn_caller = make_sema_lookup_calling_function(
+      parser, arena, "call_missing_function", "::stale_function_lookup",
+      "missing_function_lookup", missing_fn_text);
   c4c::Node* ref_caller = make_sema_lookup_calling_function(
-      parser, arena, "call_missing_ref_overload", "stale_ref_overload",
+      parser, arena, "call_missing_ref_overload", "::stale_ref_overload",
       "missing_ref_overload", missing_ref_text);
   c4c::Node* cpp_caller = make_sema_lookup_calling_function(
-      parser, arena, "call_missing_cpp_overload", "operator_stale_lookup",
+      parser, arena, "call_missing_cpp_overload", "::operator_stale_lookup",
       "operator_missing_lookup", missing_cpp_text);
 
   c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
-  program->n_children = 6;
-  program->children = arena.alloc_array<c4c::Node*>(6);
-  program->children[0] = stale_ref_lvalue;
-  program->children[1] = stale_ref_rvalue;
-  program->children[2] = stale_cpp_int;
-  program->children[3] = stale_cpp_double;
-  program->children[4] = ref_caller;
-  program->children[5] = cpp_caller;
+  program->n_children = 8;
+  program->children = arena.alloc_array<c4c::Node*>(8);
+  program->children[0] = stale_fn;
+  program->children[1] = stale_ref_lvalue;
+  program->children[2] = stale_ref_rvalue;
+  program->children[3] = stale_cpp_int;
+  program->children[4] = stale_cpp_double;
+  program->children[5] = fn_caller;
+  program->children[6] = ref_caller;
+  program->children[7] = cpp_caller;
 
   const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
   const std::string diag =
       result.diagnostics.empty() ? "" : (": " + result.diagnostics.front().message);
   expect_true(result.ok,
-              "overload lookup should ignore stale rendered names after structured metadata misses" + diag);
+              "function and overload lookup should ignore stale qualified rendered names after structured metadata misses" + diag);
 }
 
 void test_sema_overload_lookup_keeps_no_metadata_rendered_compatibility() {

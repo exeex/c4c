@@ -353,6 +353,7 @@ bool is_ref_overload(const FunctionSig& a, const FunctionSig& b) {
 
 bool supports_cpp_overload_set(const char* name) {
   if (!name || !name[0]) return false;
+  if (std::strncmp(name, "::", 2) == 0) name += 2;
   // C++ permits overloading ordinary operator functions, not just allocation
   // forms. Treat our parser's normalized operator_* spellings as overloadable
   // so sema doesn't reject later declarations as C-style redeclarations.
@@ -723,7 +724,7 @@ class Validator {
     const FunctionSig* rendered_name_compatibility =
         it != funcs_.end() ? &it->second : nullptr;
     const bool rendered_name_has_structured_metadata =
-        name.find("::") == std::string::npos && structured_function_names_.count(name) > 0;
+        structured_function_names_.count(name) > 0;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const FunctionSig* structured = lookup_function_by_key(*key);
@@ -741,7 +742,7 @@ class Validator {
     const std::vector<FunctionSig>* legacy =
         it != ref_overload_sigs_.end() ? &it->second : nullptr;
     const bool legacy_has_structured_metadata =
-        name.find("::") == std::string::npos && structured_ref_overload_names_.count(name) > 0;
+        structured_ref_overload_names_.count(name) > 0;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const std::vector<FunctionSig>* structured =
@@ -760,7 +761,7 @@ class Validator {
     const std::vector<FunctionSig>* legacy =
         it != cpp_overload_sigs_.end() ? &it->second : nullptr;
     const bool legacy_has_structured_metadata =
-        name.find("::") == std::string::npos && structured_cpp_overload_names_.count(name) > 0;
+        structured_cpp_overload_names_.count(name) > 0;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const std::vector<FunctionSig>* structured =
