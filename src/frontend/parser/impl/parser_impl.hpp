@@ -168,11 +168,13 @@ void parse_record_base_clause(Parser& parser, std::vector<TypeSpec>* base_types)
 bool try_parse_record_using_member(
     Parser& parser,
     std::vector<const char*>* member_typedef_names,
-    std::vector<TypeSpec>* member_typedef_types);
+    std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos);
 bool try_parse_record_typedef_member(
     Parser& parser,
     std::vector<const char*>* member_typedef_names,
-    std::vector<TypeSpec>* member_typedef_types);
+    std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos);
 bool try_parse_nested_record_member(
     Parser& parser,
     std::vector<Node*>* fields,
@@ -199,6 +201,7 @@ bool try_parse_record_type_like_member_dispatch(
     std::vector<Node*>* fields,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos,
     const std::function<void(const char*)>& check_dup_field);
 bool try_parse_record_member_dispatch(
     Parser& parser,
@@ -207,6 +210,7 @@ bool try_parse_record_member_dispatch(
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos,
     const std::function<void(const char*)>& check_dup_field);
 bool try_parse_record_special_member_dispatch(
     Parser& parser,
@@ -219,6 +223,7 @@ bool try_parse_record_member_with_template_prelude(
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos,
     const std::function<void(const char*)>& check_dup_field);
 bool try_parse_record_member_prelude(Parser& parser,
                                      std::vector<Node*>* methods);
@@ -229,6 +234,7 @@ bool try_parse_record_member(
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos,
     const std::function<void(const char*)>& check_dup_field);
 bool try_parse_record_body_member(
     Parser& parser,

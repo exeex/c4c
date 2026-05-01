@@ -378,6 +378,9 @@ class Parser {
       TextId member_text_id, const TypeSpec& type);
   void register_dependent_record_member_typedef_binding(
       const QualifiedNameKey& key, const TypeSpec& type);
+  void register_record_member_typedef_info(
+      const QualifiedNameKey& key,
+      const ParserAliasTemplateMemberTypedefInfo& info);
   void register_structured_typedef_binding(const QualifiedNameKey& key,
                                            const TypeSpec& type);
   void register_structured_typedef_binding_in_context(
@@ -420,6 +423,8 @@ class Parser {
       int context_id, TextId record_text_id, TextId member_text_id);
   const TypeSpec* find_dependent_record_member_typedef_type(
       const QualifiedNameKey& key) const;
+  const ParserAliasTemplateMemberTypedefInfo*
+  find_record_member_typedef_info(const QualifiedNameKey& key) const;
   const TypeSpec* find_template_instantiation_member_typedef_type(
       const ParserTemplateState::TemplateInstantiationKey& concrete_owner,
       TextId member_text_id) const;

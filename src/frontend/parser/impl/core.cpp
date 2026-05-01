@@ -1037,6 +1037,13 @@ void Parser::register_dependent_record_member_typedef_binding(
     template_state_.dependent_record_member_typedefs_by_key[key] = type;
 }
 
+void Parser::register_record_member_typedef_info(
+    const QualifiedNameKey& key,
+    const ParserAliasTemplateMemberTypedefInfo& info) {
+    if (key.base_text_id == kInvalidText || !info.valid) return;
+    template_state_.record_member_typedef_infos_by_key[key] = info;
+}
+
 void Parser::register_structured_typedef_binding(
     const QualifiedNameKey& key, const TypeSpec& type) {
     if (key.base_text_id == kInvalidText) return;
@@ -1226,6 +1233,15 @@ const TypeSpec* Parser::find_dependent_record_member_typedef_type(
     const auto it =
         template_state_.dependent_record_member_typedefs_by_key.find(key);
     return it == template_state_.dependent_record_member_typedefs_by_key.end()
+               ? nullptr
+               : &it->second;
+}
+
+const ParserAliasTemplateMemberTypedefInfo*
+Parser::find_record_member_typedef_info(const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    const auto it = template_state_.record_member_typedef_infos_by_key.find(key);
+    return it == template_state_.record_member_typedef_infos_by_key.end()
                ? nullptr
                : &it->second;
 }

@@ -723,6 +723,72 @@ bool try_parse_record_base_specifier(Parser& parser, TypeSpec* base_ts) {
     }
 }
 
+static QualifiedNameKey record_alias_member_owner_key(
+    Parser& parser, const Parser::QualifiedNameRef& owner_qn) {
+    if (Node* primary = parser.find_template_struct_primary(owner_qn)) {
+        const int context_id =
+            primary->namespace_context_id >= 0
+                ? primary->namespace_context_id
+                : parser.current_namespace_context_id();
+        TextId name_text_id = primary->unqualified_text_id;
+        if (name_text_id == kInvalidText && primary->unqualified_name) {
+            name_text_id = parser.parser_text_id_for_token(
+                kInvalidText, primary->unqualified_name);
+        }
+        return parser.alias_template_key_in_context(context_id, name_text_id);
+    }
+
+    const int context_id =
+        owner_qn.qualifier_segments.empty()
+            ? (owner_qn.is_global_qualified ? 0
+                                             : parser.current_namespace_context_id())
+            : parser.resolve_namespace_context(owner_qn);
+    if (context_id < 0) return {};
+    return parser.alias_template_key_in_context(context_id, owner_qn.base_text_id);
+}
+
+static ParserAliasTemplateMemberTypedefInfo
+try_parse_record_using_member_typedef_info(Parser& parser) {
+    ParserAliasTemplateMemberTypedefInfo info;
+    Parser::TentativeParseGuard guard(parser);
+
+    if (!parser.match(TokenKind::KwTypename)) return info;
+
+    Parser::QualifiedNameRef owner_qn;
+    if (!parser.consume_qualified_type_spelling_with_typename(
+            /*require_typename=*/false,
+            /*allow_global=*/true,
+            /*consume_final_template_args=*/false,
+            nullptr,
+            &owner_qn)) {
+        return info;
+    }
+    if (owner_qn.base_text_id == kInvalidText || !parser.check(TokenKind::Less))
+        return info;
+
+    std::vector<Parser::TemplateArgParseResult> owner_args;
+    if (!parser.parse_template_argument_list(&owner_args)) return info;
+    if (!parser.match(TokenKind::ColonColon)) return info;
+    if (parser.check(TokenKind::KwTemplate)) parser.consume();
+    if (!parser.check(TokenKind::Identifier)) return info;
+
+    const std::string_view member_name = parser.token_spelling(parser.cur());
+    const TextId member_text_id =
+        parser.parser_text_id_for_token(parser.cur().text_id, member_name);
+    parser.consume();
+    if (member_text_id == kInvalidText) return info;
+
+    const QualifiedNameKey owner_key =
+        record_alias_member_owner_key(parser, owner_qn);
+    if (owner_key.base_text_id == kInvalidText) return info;
+
+    info.valid = true;
+    info.owner_key = owner_key;
+    info.owner_args = std::move(owner_args);
+    info.member_text_id = member_text_id;
+    return info;
+}
+
 void parse_record_base_clause(Parser& parser, std::vector<TypeSpec>* base_types) {
     if (!base_types || !parser.is_cpp_mode() || !parser.check(TokenKind::Colon))
         return;
@@ -740,7 +806,8 @@ void parse_record_base_clause(Parser& parser, std::vector<TypeSpec>* base_types)
 bool try_parse_record_using_member(
     Parser& parser,
     std::vector<const char*>* member_typedef_names,
-    std::vector<TypeSpec>* member_typedef_types) {
+    std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos) {
     Parser::ParseContextGuard trace(&parser, __func__);
     if (!(parser.is_cpp_mode() && parser.check(TokenKind::KwUsing)))
         return false;
@@ -753,12 +820,16 @@ bool try_parse_record_using_member(
         std::string alias_name = std::string(parser.token_spelling(parser.cur()));
         parser.consume(); // name
         parser.consume(); // '='
+        const ParserAliasTemplateMemberTypedefInfo member_typedef_info =
+            try_parse_record_using_member_typedef_info(parser);
         TypeSpec alias_ts = parser.parse_type_name();
         parser.expect(TokenKind::Semi);
 
         parser.register_typedef_binding(alias_name_text_id, alias_ts, false);
         member_typedef_names->push_back(parser.arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
+        if (member_typedef_infos)
+            member_typedef_infos->push_back(member_typedef_info);
         return true;
     }
 
@@ -772,7 +843,8 @@ bool try_parse_record_using_member(
 bool try_parse_record_typedef_member(
     Parser& parser,
     std::vector<const char*>* member_typedef_names,
-    std::vector<TypeSpec>* member_typedef_types) {
+    std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos) {
     Parser::ParseContextGuard trace(&parser, __func__);
     if (!(parser.is_cpp_mode() && parser.check(TokenKind::KwTypedef)))
         return false;
@@ -794,6 +866,8 @@ bool try_parse_record_typedef_member(
         }
         member_typedef_names->push_back(name);
         member_typedef_types->push_back(type);
+        if (member_typedef_infos)
+            member_typedef_infos->push_back({});
     };
 
     const char* tdname = nullptr;
@@ -1734,10 +1808,12 @@ bool try_parse_record_type_like_member_dispatch(
     std::vector<Node*>* fields,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos,
     const std::function<void(const char*)>& check_dup_field) {
     Parser::ParseContextGuard trace(&parser, __func__);
     if (try_parse_record_using_member(parser, member_typedef_names,
-                                      member_typedef_types)) {
+                                      member_typedef_types,
+                                      member_typedef_infos)) {
         return true;
     }
     if (try_parse_nested_record_member(parser, fields, check_dup_field))
@@ -1745,7 +1821,8 @@ bool try_parse_record_type_like_member_dispatch(
     if (try_parse_record_enum_member(parser, fields, check_dup_field))
         return true;
     return try_parse_record_typedef_member(parser, member_typedef_names,
-                                           member_typedef_types);
+                                           member_typedef_types,
+                                           member_typedef_infos);
 }
 
 bool try_parse_record_member_dispatch(
@@ -1755,11 +1832,12 @@ bool try_parse_record_member_dispatch(
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos,
     const std::function<void(const char*)>& check_dup_field) {
     Parser::ParseContextGuard trace(&parser, __func__);
     if (try_parse_record_type_like_member_dispatch(
             parser, fields, member_typedef_names, member_typedef_types,
-            check_dup_field)) {
+            member_typedef_infos, check_dup_field)) {
         return true;
     }
     if (try_parse_record_special_member_dispatch(parser, struct_source_name,
@@ -1788,6 +1866,7 @@ bool try_parse_record_member_with_template_prelude(
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos,
     const std::function<void(const char*)>& check_dup_field) {
     Parser::RecordTemplatePreludeGuard tmpl_guard(&parser);
     parse_record_template_member_prelude(parser, &tmpl_guard.injected_type_params,
@@ -1797,7 +1876,7 @@ bool try_parse_record_member_with_template_prelude(
     if (try_skip_record_static_assert_member(parser, methods)) return true;
     return try_parse_record_member_dispatch(
         parser, struct_source_name, fields, methods, member_typedef_names,
-        member_typedef_types, check_dup_field);
+        member_typedef_types, member_typedef_infos, check_dup_field);
 }
 
 bool begin_record_member_parse(Parser& parser) {
@@ -1819,12 +1898,13 @@ bool try_parse_record_member(
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
+    std::vector<ParserAliasTemplateMemberTypedefInfo>* member_typedef_infos,
     const std::function<void(const char*)>& check_dup_field) {
     if (!begin_record_member_parse(parser)) return false;
     if (try_parse_record_member_prelude(parser, methods)) return true;
     return try_parse_record_member_with_template_prelude(
         parser, struct_source_name, fields, methods, member_typedef_names,
-        member_typedef_types, check_dup_field);
+        member_typedef_types, member_typedef_infos, check_dup_field);
 }
 
 bool try_parse_record_body_member(
@@ -1842,6 +1922,7 @@ bool try_parse_record_body_member(
                                        &body_state->methods,
                                        &body_state->member_typedef_names,
                                        &body_state->member_typedef_types,
+                                       &body_state->member_typedef_infos,
                                        check_dup_field);
     } catch (const std::exception&) {
         const Parser::RecordMemberRecoveryResult recovery =
@@ -2330,8 +2411,11 @@ void register_record_definition(Parser& parser,
     }
 }
 
-void register_record_member_typedef_bindings(Parser& parser, Node* sd,
-                                             const char* source_tag) {
+void register_record_member_typedef_bindings(
+    Parser& parser,
+    Node* sd,
+    const char* source_tag,
+    const Parser::RecordBodyState& body_state) {
     if (!sd || sd->n_member_typedefs <= 0 || !sd->member_typedef_names ||
         !sd->member_typedef_types) {
         return;
@@ -2359,6 +2443,12 @@ void register_record_member_typedef_bindings(Parser& parser, Node* sd,
             parser.register_dependent_record_member_typedef_binding(
                 member_key, sd->member_typedef_types[i]);
         }
+        if (member_key.base_text_id != kInvalidText &&
+            i < static_cast<int>(body_state.member_typedef_infos.size()) &&
+            body_state.member_typedef_infos[i].valid) {
+            parser.register_record_member_typedef_info(
+                member_key, body_state.member_typedef_infos[i]);
+        }
     }
 }
 
@@ -2371,7 +2461,8 @@ void finalize_record_definition(
     apply_record_trailing_type_attributes(parser, sd);
     store_record_body_members(parser, sd, body_state);
     register_record_definition(parser, sd, is_union, source_tag);
-    register_record_member_typedef_bindings(parser, sd, source_tag);
+    register_record_member_typedef_bindings(parser, sd, source_tag,
+                                            body_state);
     parser.definition_state_.struct_defs.push_back(sd);
 }
 

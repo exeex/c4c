@@ -189,6 +189,9 @@ struct ParserTemplateState {
       template_instantiation_member_typedefs_by_key;
   std::unordered_map<QualifiedNameKey, TypeSpec, QualifiedNameKeyHash>
       dependent_record_member_typedefs_by_key;
+  std::unordered_map<QualifiedNameKey, ParserAliasTemplateMemberTypedefInfo,
+                     QualifiedNameKeyHash>
+      record_member_typedef_infos_by_key;
   std::unordered_map<NttpDefaultExprKey, std::vector<Token>,
                      NttpDefaultExprKeyHash>
       nttp_default_expr_tokens_by_key;

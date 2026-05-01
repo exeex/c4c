@@ -846,6 +846,8 @@ TypeSpec Parser::parse_base_type() {
                     }
                     return ts;
                 };
+                std::function<bool(const Node*, TextId, TypeSpec*)>
+                    resolve_record_member_typedef_sidecar;
                 auto try_node_member_typedefs = [&](const Node* sdef) -> bool {
                     if (!sdef || sdef->n_member_typedefs <= 0) return false;
                     for (int i = 0; i < sdef->n_member_typedefs; ++i) {
@@ -855,6 +857,15 @@ TypeSpec Parser::parse_base_type() {
                                 ? find_parser_text_id(name ? name : "") == member_text_id
                                 : (name && member == name);
                         if (name_matches) {
+                            TextId alias_text_id = member_text_id;
+                            if (alias_text_id == kInvalidText && name)
+                                alias_text_id = find_parser_text_id(name);
+                            if (resolve_record_member_typedef_sidecar &&
+                                alias_text_id != kInvalidText &&
+                                resolve_record_member_typedef_sidecar(
+                                    sdef, alias_text_id, out)) {
+                                return true;
+                            }
                             *out = sdef->member_typedef_types[i];
                             return true;
                         }
@@ -914,6 +925,224 @@ TypeSpec Parser::parse_base_type() {
                             }
                         }
                         return member_ts;
+                    };
+                auto record_member_key_for_node =
+                    [&](const Node* owner,
+                        TextId alias_text_id) -> QualifiedNameKey {
+                        if (!owner || alias_text_id == kInvalidText) return {};
+                        const int context_id =
+                            owner->namespace_context_id >= 0
+                                ? owner->namespace_context_id
+                                : current_namespace_context_id();
+                        TextId record_text_id = kInvalidText;
+                        if (owner->template_origin_name &&
+                            owner->template_origin_name[0]) {
+                            record_text_id = parser_text_id_for_token(
+                                kInvalidText, owner->template_origin_name);
+                        }
+                        if (record_text_id == kInvalidText)
+                            record_text_id = owner->unqualified_text_id;
+                        if (record_text_id == kInvalidText &&
+                            owner->unqualified_name) {
+                            record_text_id = parser_text_id_for_token(
+                                kInvalidText, owner->unqualified_name);
+                        }
+                        if (record_text_id == kInvalidText && owner->name) {
+                            record_text_id = parser_text_id_for_token(
+                                kInvalidText, owner->name);
+                        }
+                        if (record_text_id == kInvalidText) return {};
+                        return record_member_typedef_key_in_context(
+                            context_id, record_text_id, alias_text_id);
+                    };
+                auto template_primary_for_record =
+                    [&](const Node* owner) -> const Node* {
+                        if (!owner) return nullptr;
+                        if (owner->template_origin_name &&
+                            owner->template_origin_name[0]) {
+                            return find_template_struct_primary(
+                                owner->namespace_context_id >= 0
+                                    ? owner->namespace_context_id
+                                    : current_namespace_context_id(),
+                                parser_text_id_for_token(
+                                    kInvalidText, owner->template_origin_name));
+                        }
+                        if (is_primary_template_struct_def(owner)) return owner;
+                        return nullptr;
+                    };
+                auto record_actual_args =
+                    [&](const Node* owner,
+                        std::vector<ParsedTemplateArg>* out_args) -> bool {
+                        if (!owner || !out_args || owner->n_template_args <= 0)
+                            return false;
+                        out_args->clear();
+                        out_args->reserve(owner->n_template_args);
+                        for (int i = 0; i < owner->n_template_args; ++i) {
+                            ParsedTemplateArg arg;
+                            arg.is_value = owner->template_arg_is_value &&
+                                           owner->template_arg_is_value[i];
+                            if (arg.is_value) {
+                                arg.value = owner->template_arg_values
+                                                ? owner->template_arg_values[i]
+                                                : 0;
+                                arg.nttp_name =
+                                    owner->template_arg_nttp_names
+                                        ? owner->template_arg_nttp_names[i]
+                                        : nullptr;
+                            } else if (owner->template_arg_types) {
+                                arg.type = owner->template_arg_types[i];
+                            }
+                            out_args->push_back(arg);
+                        }
+                        return !out_args->empty();
+                    };
+                auto substitute_record_carrier_arg =
+                    [&](const Node* record_primary,
+                        const std::vector<ParsedTemplateArg>& actual_args,
+                        const ParsedTemplateArg& carrier_arg,
+                        ParsedTemplateArg* out_arg) -> bool {
+                        if (!out_arg) return false;
+                        *out_arg = carrier_arg;
+                        if (!record_primary ||
+                            record_primary->n_template_params <= 0 ||
+                            actual_args.empty()) {
+                            return true;
+                        }
+                        auto param_index = [&](TextId text_id) -> int {
+                            if (text_id == kInvalidText) return -1;
+                            for (int pi = 0;
+                                 pi < record_primary->n_template_params;
+                                 ++pi) {
+                                const char* pname =
+                                    record_primary->template_param_names
+                                        ? record_primary->template_param_names[pi]
+                                        : nullptr;
+                                if (!pname) continue;
+                                if (parser_text_id_for_token(kInvalidText,
+                                                             pname) == text_id) {
+                                    return pi;
+                                }
+                            }
+                            return -1;
+                        };
+                        if (carrier_arg.is_value) {
+                            if (!(carrier_arg.nttp_name &&
+                                  carrier_arg.nttp_name[0])) {
+                                return true;
+                            }
+                            const int pi = param_index(parser_text_id_for_token(
+                                kInvalidText, carrier_arg.nttp_name));
+                            if (pi < 0 ||
+                                pi >= static_cast<int>(actual_args.size())) {
+                                return true;
+                            }
+                            if (!actual_args[pi].is_value) return false;
+                            *out_arg = actual_args[pi];
+                            return true;
+                        }
+                        const TypeSpec& carrier_type = carrier_arg.type;
+                        if (!(carrier_type.base == TB_TYPEDEF &&
+                              carrier_type.tag &&
+                              carrier_type.tag[0])) {
+                            return true;
+                        }
+                        TextId type_text_id = carrier_type.tag_text_id;
+                        if (type_text_id == kInvalidText) {
+                            type_text_id = parser_text_id_for_token(
+                                kInvalidText, carrier_type.tag);
+                        }
+                        const int pi = param_index(type_text_id);
+                        if (pi < 0 ||
+                            pi >= static_cast<int>(actual_args.size())) {
+                            return true;
+                        }
+                        if (actual_args[pi].is_value) return false;
+                        *out_arg = actual_args[pi];
+                        return true;
+                    };
+                resolve_record_member_typedef_sidecar =
+                    [&](const Node* record_owner,
+                        TextId alias_text_id,
+                        TypeSpec* resolved_out) -> bool {
+                        if (!record_owner || alias_text_id == kInvalidText ||
+                            !resolved_out) {
+                            return false;
+                        }
+                        const QualifiedNameKey alias_key =
+                            record_member_key_for_node(record_owner,
+                                                       alias_text_id);
+                        const ParserAliasTemplateMemberTypedefInfo* info =
+                            find_record_member_typedef_info(alias_key);
+                        if (!info || !info->valid ||
+                            info->owner_key.base_text_id == kInvalidText ||
+                            info->member_text_id == kInvalidText) {
+                            return false;
+                        }
+                        const Node* rhs_primary =
+                            find_template_struct_primary(info->owner_key);
+                        if (!rhs_primary) return false;
+
+                        std::vector<ParsedTemplateArg> record_args;
+                        (void)record_actual_args(record_owner, &record_args);
+                        const Node* record_primary =
+                            template_primary_for_record(record_owner);
+                        std::vector<ParsedTemplateArg> actual_rhs_args;
+                        actual_rhs_args.reserve(info->owner_args.size());
+                        for (const ParsedTemplateArg& carrier_arg :
+                             info->owner_args) {
+                            ParsedTemplateArg actual_arg;
+                            if (!substitute_record_carrier_arg(
+                                    record_primary, record_args, carrier_arg,
+                                    &actual_arg)) {
+                                return false;
+                            }
+                            actual_rhs_args.push_back(actual_arg);
+                        }
+
+                        const ParserTemplateState::TemplateInstantiationKey
+                            concrete_owner{
+                                info->owner_key,
+                                make_template_instantiation_argument_keys(
+                                    actual_rhs_args)};
+                        if (const TypeSpec* structured_member =
+                                find_template_instantiation_member_typedef_type(
+                                    concrete_owner, info->member_text_id)) {
+                            *resolved_out = *structured_member;
+                            return true;
+                        }
+
+                        std::vector<std::pair<std::string, TypeSpec>>
+                            type_bindings;
+                        std::vector<std::pair<std::string, long long>>
+                            nttp_bindings;
+                        const std::vector<Node*>* specializations =
+                            find_template_struct_specializations(
+                                info->owner_key);
+                        const Node* selected =
+                            select_template_struct_pattern_for_args(
+                                actual_rhs_args, rhs_primary, specializations,
+                                &type_bindings, &nttp_bindings);
+                        if (!selected || selected->n_member_typedefs <= 0)
+                            return false;
+                        for (int mi = 0; mi < selected->n_member_typedefs;
+                             ++mi) {
+                            const char* member =
+                                selected->member_typedef_names[mi];
+                            if (!member || !member[0]) continue;
+                            const TextId selected_member_text_id =
+                                parser_text_id_for_token(kInvalidText, member);
+                            if (selected_member_text_id !=
+                                info->member_text_id) {
+                                continue;
+                            }
+                            bool substituted = false;
+                            *resolved_out = apply_template_bindings(
+                                selected->member_typedef_types[mi],
+                                type_bindings, nttp_bindings, &substituted);
+                            (void)substituted;
+                            return true;
+                        }
+                        return false;
                     };
                 auto try_selected_specialization_member_typedefs =
                     [&](const Node* owner) -> bool {

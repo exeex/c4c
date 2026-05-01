@@ -191,6 +191,7 @@ struct ParserRecordBodyState {
   std::vector<Node*> methods;
   std::vector<const char*> member_typedef_names;
   std::vector<TypeSpec> member_typedef_types;
+  std::vector<ParserAliasTemplateMemberTypedefInfo> member_typedef_infos;
 };
 
 // Boundary role: diagnostics/debug carrier for record-member recovery.
