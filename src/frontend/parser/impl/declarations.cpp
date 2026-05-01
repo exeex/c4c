@@ -145,6 +145,57 @@ static void restore_current_struct_tag(Parser& parser, TextId text_id,
     parser.set_current_struct_tag(text_id, tag);
 }
 
+static void attach_out_of_class_method_owner(
+    Parser& parser, Node* fn, const Parser::QualifiedNameRef& qn) {
+    if (!fn || qn.qualifier_text_ids.empty() ||
+        qn.qualifier_text_ids.back() == kInvalidText) {
+        return;
+    }
+
+    Parser::QualifiedNameRef namespace_qn;
+    namespace_qn.is_global_qualified = qn.is_global_qualified;
+    for (size_t i = 0; i + 1 < qn.qualifier_text_ids.size(); ++i) {
+        namespace_qn.qualifier_text_ids.push_back(qn.qualifier_text_ids[i]);
+        if (i < qn.qualifier_segments.size()) {
+            namespace_qn.qualifier_segments.push_back(qn.qualifier_segments[i]);
+        } else {
+            namespace_qn.qualifier_segments.emplace_back();
+        }
+    }
+    const int owner_namespace_context = parser.resolve_namespace_context(namespace_qn);
+    if (owner_namespace_context >= 0) {
+        fn->namespace_context_id = owner_namespace_context;
+    }
+    fn->is_global_qualified = qn.is_global_qualified;
+    fn->unqualified_text_id = qn.base_text_id;
+    fn->unqualified_name = parser.arena_.strdup(
+        std::string(parser.parser_text(qn.base_text_id, qn.base_name)).c_str());
+
+    fn->n_qualifier_segments = static_cast<int>(qn.qualifier_text_ids.size());
+    fn->qualifier_segments = parser.arena_.alloc_array<const char*>(fn->n_qualifier_segments);
+    fn->qualifier_text_ids = parser.arena_.alloc_array<TextId>(fn->n_qualifier_segments);
+    for (int i = 0; i < fn->n_qualifier_segments; ++i) {
+        const std::string fallback =
+            i < static_cast<int>(qn.qualifier_segments.size()) ? qn.qualifier_segments[i] : "";
+        fn->qualifier_text_ids[i] = qn.qualifier_text_ids[i];
+        fn->qualifier_segments[i] = parser.arena_.strdup(
+            std::string(parser.parser_text(qn.qualifier_text_ids[i], fallback)).c_str());
+    }
+}
+
+static Parser::QualifiedNameRef make_out_of_class_method_qn(
+    bool is_global_qualified, const std::vector<std::string>& owner_segments,
+    const std::vector<TextId>& owner_text_ids, const std::string& base_name,
+    TextId base_text_id) {
+    Parser::QualifiedNameRef qn;
+    qn.is_global_qualified = is_global_qualified;
+    qn.qualifier_segments = owner_segments;
+    qn.qualifier_text_ids = owner_text_ids;
+    qn.base_name = base_name;
+    qn.base_text_id = base_text_id;
+    return qn;
+}
+
 static void finalize_pending_operator_name(std::string& name, size_t param_count) {
     if (name.find("operator_star_pending") != std::string::npos) {
         name.replace(name.find("operator_star_pending"),
@@ -2302,9 +2353,11 @@ Node* parse_top_level(Parser& parser) {
         auto consume_special_member_owner =
             [&](bool stop_before_operator, bool stop_before_ctor,
                 std::vector<TextId>* out_owner_text_ids = nullptr,
+                std::vector<std::string>* out_owner_segments = nullptr,
                 bool* out_is_global_qualified = nullptr) -> bool {
                 parser.pos_ = saved_special_member_pos;
                 if (out_owner_text_ids) out_owner_text_ids->clear();
+                if (out_owner_segments) out_owner_segments->clear();
                 if (out_is_global_qualified) *out_is_global_qualified = false;
                 if (parser.check(TokenKind::ColonColon)) {
                     if (out_is_global_qualified) *out_is_global_qualified = true;
@@ -2321,6 +2374,7 @@ Node* parse_top_level(Parser& parser) {
                     if (out_owner_text_ids && seg_text_id != kInvalidText) {
                         out_owner_text_ids->push_back(seg_text_id);
                     }
+                    if (out_owner_segments) out_owner_segments->push_back(seg);
 
                     if (stop_before_operator &&
                         parser.check(TokenKind::ColonColon) &&
@@ -2358,10 +2412,12 @@ Node* parse_top_level(Parser& parser) {
 
         if (looks_like_qualified_operator) {
             std::vector<TextId> qualified_owner_text_ids;
+            std::vector<std::string> qualified_owner_segments;
             bool qualified_owner_is_global = false;
             if (!consume_special_member_owner(/*stop_before_operator=*/true,
                                               /*stop_before_ctor=*/false,
                                               &qualified_owner_text_ids,
+                                              &qualified_owner_segments,
                                               &qualified_owner_is_global)) {
                 parser.pos_ = saved_special_member_pos;
             }
@@ -2456,9 +2512,19 @@ Node* parse_top_level(Parser& parser) {
             parser.skip_exception_spec();
             parse_optional_cpp20_trailing_requires_clause(parser);
 
+            const TextId operator_base_text_id =
+                parser.parser_text_id_for_token(kInvalidText, operator_base_name);
+
             Node* fn = parser.make_node(NK_FUNCTION, ln);
             fn->type = conv_ts;
             fn->name = parser.arena_.strdup(qualified_op_name.c_str());
+            attach_out_of_class_method_owner(
+                parser, fn,
+                make_out_of_class_method_qn(qualified_owner_is_global,
+                                            qualified_owner_segments,
+                                            qualified_owner_text_ids,
+                                            operator_base_name,
+                                            operator_base_text_id));
             fn->variadic = variadic;
             fn->is_static = is_static;
             fn->is_extern = is_extern;
@@ -2504,8 +2570,6 @@ Node* parse_top_level(Parser& parser) {
             } else {
                 parser.match(TokenKind::Semi);
             }
-            const TextId operator_base_text_id =
-                parser.parser_text_id_for_token(kInvalidText, operator_base_name);
             if (operator_base_text_id != kInvalidText) {
                 QualifiedNameKey operator_key;
                 operator_key.context_id = 0;
@@ -2525,10 +2589,12 @@ Node* parse_top_level(Parser& parser) {
 
         if (looks_like_qualified_ctor) {
             std::vector<TextId> qualified_owner_text_ids;
+            std::vector<std::string> qualified_owner_segments;
             bool qualified_owner_is_global = false;
             if (!consume_special_member_owner(/*stop_before_operator=*/false,
                                               /*stop_before_ctor=*/true,
                                               &qualified_owner_text_ids,
+                                              &qualified_owner_segments,
                                               &qualified_owner_is_global)) {
                 parser.pos_ = saved_special_member_pos;
             }
@@ -2612,6 +2678,13 @@ Node* parse_top_level(Parser& parser) {
                 Node* fn = parser.make_node(NK_FUNCTION, ln);
                 fn->type.base = TB_VOID;
                 fn->name = parser.arena_.strdup(qualified_ctor_name.c_str());
+                attach_out_of_class_method_owner(
+                    parser, fn,
+                    make_out_of_class_method_qn(qualified_owner_is_global,
+                                                qualified_owner_segments,
+                                                qualified_owner_text_ids,
+                                                ctor_name,
+                                                ctor_name_text_id));
                 fn->variadic = variadic;
                 fn->is_static = is_static;
                 fn->is_extern = is_extern;
@@ -2914,6 +2987,7 @@ top_level_base_ready:
     ts.array_size_expr = nullptr;
     const char* decl_name = nullptr;
     TextId decl_name_text_id = kInvalidText;
+    Parser::QualifiedNameRef decl_qn;
     Node** decl_fn_ptr_params = nullptr;
     int decl_n_fn_ptr_params = 0;
     bool decl_fn_ptr_variadic = false;
@@ -3108,7 +3182,7 @@ top_level_base_ready:
     parser.parse_declarator(ts, &decl_name, &decl_fn_ptr_params, &decl_n_fn_ptr_params,
                      &decl_fn_ptr_variadic, nullptr, &decl_ret_fn_ptr_params,
                      &decl_n_ret_fn_ptr_params, &decl_ret_fn_ptr_variadic,
-                     &decl_name_text_id);
+                     &decl_name_text_id, &decl_qn);
     if (is_incomplete_object_type(ts) && !parser.check(TokenKind::LParen)) {
         throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
     }
@@ -3349,6 +3423,7 @@ top_level_base_ready:
             fn->type      = ts;
             fn->name      = scoped_decl_name;
             parser.apply_decl_namespace(fn, parser.current_namespace_context_id(), decl_name);
+            attach_out_of_class_method_owner(parser, fn, decl_qn);
             fn->variadic  = fptr_fn_variadic;
             fn->is_static = is_static;
             fn->is_extern = is_extern;
@@ -3378,6 +3453,7 @@ top_level_base_ready:
         fn->type      = ts;
         fn->name      = scoped_decl_name;
         parser.apply_decl_namespace(fn, parser.current_namespace_context_id(), decl_name);
+        attach_out_of_class_method_owner(parser, fn, decl_qn);
         fn->variadic  = fptr_fn_variadic;
         fn->is_static = is_static;
         fn->is_extern = is_extern;
@@ -3580,6 +3656,7 @@ top_level_base_ready:
             fn->type      = ts;
             fn->name      = scoped_decl_name;
             parser.apply_decl_namespace(fn, parser.current_namespace_context_id(), decl_name);
+            attach_out_of_class_method_owner(parser, fn, decl_qn);
             fn->variadic  = variadic;
             fn->is_static = is_static;
             fn->is_extern = is_extern;
@@ -3611,6 +3688,7 @@ top_level_base_ready:
         fn->type      = ts;
         fn->name      = scoped_decl_name;
         parser.apply_decl_namespace(fn, parser.current_namespace_context_id(), decl_name);
+        attach_out_of_class_method_owner(parser, fn, decl_qn);
         fn->variadic  = variadic;
         fn->is_static = is_static;
         fn->is_extern = is_extern;

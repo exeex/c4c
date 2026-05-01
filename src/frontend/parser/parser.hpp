@@ -601,7 +601,8 @@ class Parser {
                         Node*** out_ret_fn_ptr_params = nullptr,
                         int* out_n_ret_fn_ptr_params = nullptr,
                         bool* out_ret_fn_ptr_variadic = nullptr,
-                        TextId* out_name_text_id = nullptr);
+                        TextId* out_name_text_id = nullptr,
+                        QualifiedNameRef* out_qn = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
 
   // ── AST handoff builders: AST node construction ──────────────────────────

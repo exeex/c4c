@@ -1344,32 +1344,6 @@ class Validator {
     return key;
   }
 
-  const Node* resolve_owner_by_rendered_name_fallback(
-      const std::string& owner, int namespace_context_id) const {
-    if (owner.empty() || namespace_context_id < 0) return nullptr;
-
-    auto it = struct_defs_by_unqualified_name_.find(unqualified_name(owner));
-    if (it == struct_defs_by_unqualified_name_.end()) return nullptr;
-
-    const Node* match = nullptr;
-    for (const Node* candidate : it->second) {
-      if (!candidate || candidate->namespace_context_id != namespace_context_id ||
-          !candidate->name || !candidate->name[0]) {
-        continue;
-      }
-      if (owner.find("::") != std::string::npos) {
-        const std::string candidate_name(candidate->name);
-        if (candidate_name.size() < owner.size() ||
-            candidate_name.compare(candidate_name.size() - owner.size(), owner.size(), owner) != 0) {
-          continue;
-        }
-      }
-      if (match && match != candidate) return nullptr;
-      match = candidate;
-    }
-    return match;
-  }
-
   const Node* resolve_owner_in_namespace_context(
       const std::string& owner, int namespace_context_id,
       const std::optional<SemaStructuredNameKey>& structured_owner_key) const {
@@ -1378,7 +1352,7 @@ class Validator {
       auto it = struct_defs_by_key_.find(*structured_owner_key);
       return it != struct_defs_by_key_.end() ? it->second : nullptr;
     }
-    return resolve_owner_by_rendered_name_fallback(owner, namespace_context_id);
+    return nullptr;
   }
 
   const Node* enclosing_method_owner_record(const Node* fn) const {

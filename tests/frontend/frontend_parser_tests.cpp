@@ -1924,6 +1924,11 @@ void test_parser_out_of_class_operator_registers_structured_global_key() {
               "global-qualified out-of-class operator declarations should parse as functions");
   expect_eq(fn->name, "Owner::operator_bool",
             "out-of-class operator final spelling should keep the existing rendered display name");
+  expect_true(fn->is_global_qualified && fn->namespace_context_id == 0 &&
+                  fn->n_qualifier_segments == 1 && fn->qualifier_text_ids &&
+                  fn->qualifier_text_ids[0] == parser_test_text_id(parser, "Owner") &&
+                  fn->unqualified_text_id == parser_test_text_id(parser, "operator_bool"),
+              "out-of-class operator nodes should carry structured owner and operator TextIds");
   expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "::Owner::operator_bool"))),
               "out-of-class operator registration should keep the structured global-qualified key");
   expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "Owner::operator_bool"))),
@@ -1943,6 +1948,11 @@ void test_parser_out_of_class_constructor_registers_structured_global_key() {
               "global-qualified out-of-class constructor declarations should parse as functions");
   expect_eq(fn->name, "Owner::Owner",
             "out-of-class constructor final spelling should keep the existing rendered display name");
+  expect_true(fn->is_global_qualified && fn->namespace_context_id == 0 &&
+                  fn->n_qualifier_segments == 1 && fn->qualifier_text_ids &&
+                  fn->qualifier_text_ids[0] == parser_test_text_id(parser, "Owner") &&
+                  fn->unqualified_text_id == parser_test_text_id(parser, "Owner"),
+              "out-of-class constructor nodes should carry structured owner and constructor TextIds");
   expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "::Owner::Owner"))),
               "out-of-class constructor registration should keep the structured global-qualified key");
   expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "Owner::Owner"))),
@@ -5705,6 +5715,22 @@ void test_sema_method_owner_lookup_uses_qualifier_text_id_over_stale_rendered_ow
   actual->type = make_ts(c4c::TB_INT);
   owner->fields[0] = actual;
 
+  c4c::Node* stale_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  stale_owner->name = arena.strdup("StaleOwner");
+  stale_owner->unqualified_name = arena.strdup("StaleOwner");
+  stale_owner->unqualified_text_id = texts.intern("StaleOwner");
+  stale_owner->namespace_context_id = namespace_context;
+  stale_owner->n_fields = 1;
+  stale_owner->fields = arena.alloc_array<c4c::Node*>(1);
+
+  c4c::Node* stale_field = parser.make_node(c4c::NK_DECL, 1);
+  stale_field->name = arena.strdup("stale");
+  stale_field->unqualified_name = arena.strdup("stale");
+  stale_field->unqualified_text_id = texts.intern("stale");
+  stale_field->namespace_context_id = namespace_context;
+  stale_field->type = make_ts(c4c::TB_FLOAT);
+  stale_owner->fields[0] = stale_field;
+
   c4c::Node* field_ref = parser.make_node(c4c::NK_VAR, 2);
   field_ref->name = arena.strdup("actual");
   field_ref->unqualified_name = arena.strdup("actual");
@@ -5733,10 +5759,11 @@ void test_sema_method_owner_lookup_uses_qualifier_text_id_over_stale_rendered_ow
   fn->body = body;
 
   c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
-  program->n_children = 2;
-  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
   program->children[0] = owner;
-  program->children[1] = fn;
+  program->children[1] = stale_owner;
+  program->children[2] = fn;
 
   const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
   const std::string diag =

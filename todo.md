@@ -8,25 +8,30 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Completed Step 3.3 instance-field cleanup by deleting the Sema
-`has_struct_instance_field_legacy(tag, member)` rendered owner/member route and
-the rendered `struct_field_names_` / `struct_base_tags_` maps. Implicit
-out-of-class method field validation now resolves through
-`current_method_struct_key_`, structured base keys, and field `TextId` metadata
-when present.
+Completed Step 3.3 method-owner cleanup by keeping the Sema
+`resolve_owner_by_rendered_name_fallback(owner, namespace_context_id)` helper
+deleted and adding parser-owned structured owner metadata to out-of-class
+`NK_FUNCTION` nodes.
 
-Kept behavior for parsed positive cases whose field declarations or references
-do not carry `TextId` yet by adding a structured-owner-key field-name
-compatibility map. That compatibility is keyed by `SemaStructuredNameKey`, so it
-does not recover fields from stale rendered owner tags or cross-namespace owner
-spellings.
+Ordinary qualified declarators now thread their parsed `QualifiedNameRef` out of
+`parse_declarator()`, and top-level function construction attaches the owner
+qualifier `TextId` path plus the resolved owner namespace context to the
+function node. Special out-of-class operator and constructor paths attach the
+same carrier from their already-consumed owner tokens. Sema owner resolution now
+uses `method_owner_key_from_qualifier()`, `struct_defs_by_key_`, and the direct
+method-owner record path without rendered owner recovery.
+
+Focused coverage was strengthened for stale rendered owner disagreement: the
+synthetic Sema method-owner test now includes a real `StaleOwner` record, and
+the parser operator/constructor tests assert that out-of-class function nodes
+carry structured owner and base `TextId` metadata.
 
 ## Suggested Next
 
-Continue Step 3.3 with the remaining method-owner route
-`resolve_owner_by_rendered_name_fallback(owner, namespace_context_id)`, after
-confirming each call site has a reliable qualifier `TextId`/namespace-context
-owner key or a documented no-metadata compatibility case.
+Continue Step 3.3 with the remaining static-member rendered owner bridge in
+`lookup_struct_static_member_type(tag, reference)` and
+`static_member_lookup_has_structured_metadata()`, using focused stale rendered
+owner/member coverage before removing or narrowing that route.
 
 ## Watchouts
 
@@ -46,9 +51,9 @@ owner key or a documented no-metadata compatibility case.
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' >> test_after.log 2>&1`
 
 Result: passed. `test_after.log` contains a fresh successful build plus 884/884
-passing delegated positive Sema tests, including the same-feature implicit
-method-field coverage in
-`cpp_positive_sema_namespaced_out_of_class_method_context_frontend_cpp`,
+passing delegated positive Sema tests, including the previously failing
+`cpp_positive_sema_namespaced_out_of_class_method_context_frontend_cpp` and the
+same-feature method-owner coverage in
 `cpp_positive_sema_qualified_namespaced_out_of_class_method_context_frontend_cpp`,
 `cpp_positive_sema_inherited_implicit_member_out_of_class_runtime_cpp`, and
 `cpp_positive_sema_operator_implicit_member_runtime_cpp`.
