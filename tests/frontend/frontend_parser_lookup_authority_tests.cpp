@@ -555,6 +555,118 @@ void test_sema_global_lookup_rejects_stale_qualified_rendered_reentry() {
               "fallback after structured global key miss");
 }
 
+void test_sema_global_lookup_rejects_rendered_after_metadata_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  c4c::Node* rendered_only_global = parser.make_node(c4c::NK_DECL, 1);
+  rendered_only_global->name = arena.strdup("stale_rendered_global");
+  rendered_only_global->namespace_context_id = parser.current_namespace_context_id();
+  rendered_only_global->type = make_ts(c4c::TB_SHORT);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("stale_rendered_global");
+  ref->unqualified_name = arena.strdup("missing_global");
+  ref->unqualified_text_id = texts.intern("missing_global");
+  ref->namespace_context_id = rendered_only_global->namespace_context_id;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("rejects_rendered_global");
+  fn->unqualified_name = arena.strdup("rejects_rendered_global");
+  fn->unqualified_text_id = texts.intern("rejects_rendered_global");
+  fn->namespace_context_id = rendered_only_global->namespace_context_id;
+  fn->type = make_ts(c4c::TB_SHORT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = rendered_only_global;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema global lookup should reject rendered compatibility after "
+              "the reference structured metadata misses");
+}
+
+void test_sema_enum_lookup_rejects_rendered_after_metadata_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  c4c::Node* rendered_only_enum = parser.make_node(c4c::NK_ENUM_DEF, 1);
+  rendered_only_enum->name = arena.strdup("E");
+  rendered_only_enum->unqualified_name = arena.strdup("E");
+  rendered_only_enum->unqualified_text_id = texts.intern("E");
+  rendered_only_enum->namespace_context_id = parser.current_namespace_context_id();
+  rendered_only_enum->n_enum_variants = 1;
+  rendered_only_enum->enum_names = arena.alloc_array<const char*>(1);
+  rendered_only_enum->enum_names[0] = arena.strdup("stale_rendered_enum");
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("stale_rendered_enum");
+  ref->unqualified_name = arena.strdup("missing_enum");
+  ref->unqualified_text_id = texts.intern("missing_enum");
+  ref->namespace_context_id = rendered_only_enum->namespace_context_id;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("rejects_rendered_enum");
+  fn->unqualified_name = arena.strdup("rejects_rendered_enum");
+  fn->unqualified_text_id = texts.intern("rejects_rendered_enum");
+  fn->namespace_context_id = rendered_only_enum->namespace_context_id;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = rendered_only_enum;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema enum lookup should reject rendered compatibility after "
+              "the reference structured metadata misses");
+}
+
 }  // namespace
 
 int main() {
@@ -568,6 +680,8 @@ int main() {
   test_parsed_record_fields_carry_member_text_ids_into_sema();
   test_parsed_nested_record_fields_carry_member_text_ids();
   test_sema_global_lookup_rejects_stale_qualified_rendered_reentry();
+  test_sema_global_lookup_rejects_rendered_after_metadata_miss();
+  test_sema_enum_lookup_rejects_rendered_after_metadata_miss();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";
   return 0;
 }
