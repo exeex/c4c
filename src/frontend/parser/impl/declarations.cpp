@@ -60,6 +60,7 @@ static void annotate_template_param_type_refs(TypeSpec* ts, const Node* owner) {
 static void annotate_template_param_type_refs(Node* node, const Node* owner) {
     if (!node) return;
     annotate_template_param_type_refs(&node->type, owner);
+    annotate_template_param_type_refs(node->type.array_size_expr, owner);
     if (node->template_param_default_types) {
         for (int i = 0; i < node->n_template_params; ++i) {
             annotate_template_param_type_refs(&node->template_param_default_types[i], owner);
@@ -70,8 +71,34 @@ static void annotate_template_param_type_refs(Node* node, const Node* owner) {
             annotate_template_param_type_refs(&node->template_arg_types[i], owner);
         }
     }
+    if (node->template_arg_exprs) {
+        for (int i = 0; i < node->n_template_args; ++i) {
+            annotate_template_param_type_refs(node->template_arg_exprs[i], owner);
+        }
+    }
     for (int i = 0; i < node->n_params; ++i) {
         annotate_template_param_type_refs(node->params ? node->params[i] : nullptr, owner);
+    }
+    for (int i = 0; i < node->n_fn_ptr_params; ++i) {
+        annotate_template_param_type_refs(node->fn_ptr_params ? node->fn_ptr_params[i] : nullptr,
+                                          owner);
+    }
+    for (int i = 0; i < node->n_ret_fn_ptr_params; ++i) {
+        annotate_template_param_type_refs(
+            node->ret_fn_ptr_params ? node->ret_fn_ptr_params[i] : nullptr, owner);
+    }
+    for (int i = 0; i < node->n_fields; ++i) {
+        annotate_template_param_type_refs(node->fields ? node->fields[i] : nullptr, owner);
+    }
+    if (node->member_typedef_types) {
+        for (int i = 0; i < node->n_member_typedefs; ++i) {
+            annotate_template_param_type_refs(&node->member_typedef_types[i], owner);
+        }
+    }
+    if (node->base_types) {
+        for (int i = 0; i < node->n_bases; ++i) {
+            annotate_template_param_type_refs(&node->base_types[i], owner);
+        }
     }
     for (int i = 0; i < node->n_children; ++i) {
         annotate_template_param_type_refs(node->children ? node->children[i] : nullptr, owner);

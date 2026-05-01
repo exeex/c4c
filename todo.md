@@ -4,39 +4,42 @@ Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
 Review Artifact Path: none
-Current Step ID: Step 2.5
-Current Step Title: Preserve Parser Const-Int Boundary And HIR Blocker
+Current Step ID: Step 3.1
+Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 2.5 completed the parser const-int boundary audit and parser-scope
-cleanup. Parser-owned constant-evaluation callers that still passed only the
-rendered struct-tag bridge now route through `eval_const_int_with_parser_tables()`
-or pass `binding_state_.const_int_bindings` alongside the tag map, preserving
-`TextId`-keyed named constant lookup where parser metadata is available.
+Step 3.1 repaired the parser producer route for `TB_TYPEDEF`
+template-parameter TypeSpecs used by consteval `resolve_type()`. The existing
+template-param TypeSpec annotator in `src/frontend/parser/impl/declarations.cpp`
+now walks additional parser-owned TypeSpec carriers, including array-bound
+expressions, template argument expressions, function-pointer parameter lists,
+record fields, member typedef target types, and base types, so intrinsic
+owner/index/text metadata is attached before consteval must rely on rendered
+name mirrors.
 
-The parked HIR rendered-name `eval_const_int` compatibility overload remains in
-place and was not touched; migrating `hir::NttpBindings` metadata is still out
-of scope for this parser packet.
+Added `consteval_typespec_member_alias.cpp` to cover a template parameter
+flowing through `Outer<T>::Alias` into consteval `sizeof`.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 2.5 parser-scope slice, then
-decide whether the active runbook has any remaining parser-owned cleanup or
-needs plan-owner/reviewer routing before any HIR metadata work proceeds.
+Run the next Step 3.1 value-producer packet for consteval function-body
+parameter/local/for-init bindings, or route to Step 3.2 only after the
+supervisor accepts the covered TypeSpec producer route as complete enough for a
+matching fallback-deletion packet.
 
 ## Watchouts
 
-- Direct `eval_const_int` calls remaining in parser-owned files are either the
-  helper implementation/recursion, already pass `const_int_bindings`, or are
-  tag-only structural constant cases; the HIR calls under `src/frontend/hir`
-  still intentionally use the rendered-name compatibility overload.
-- Do not delete the rendered-name compatibility overload until the HIR
-  `NttpBindings` metadata carrier exists under the separate HIR metadata idea.
+- This packet did not delete `ConstEvalEnv` rendered compatibility or the
+  consteval rendered type-binding mirror maps; it only repaired the parser
+  producer side for the covered TypeSpec metadata route.
+- HIR-owned metadata carriers and `src/frontend/hir/*` remain untouched and out
+  of scope.
 
 ## Proof
 
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^cpp_' >> test_after.log 2>&1`
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '(^cpp_positive_sema_.*consteval.*_cpp$|^cpp_negative_tests_.*consteval)' >> test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains a fresh successful build plus
-1108/1108 passing `^cpp_` tests.
+Result: passed. `test_after.log` contains a fresh successful build plus 28/28
+passing delegated consteval positive/negative tests, including
+`cpp_positive_sema_consteval_typespec_member_alias_cpp`.
