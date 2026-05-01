@@ -8,21 +8,18 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed `compatibility_namespace_name_in_context(int, TextId,
-std::string_view fallback_name)` from the `Parser` class surface. The only
-remaining call path was `render_lookup_name_in_context`, so the same namespace
-rendering behavior now lives inside that file-local rendering bridge instead of
-being exposed as parser semantic/fallback API.
+Step 2.3 removed
+`bridge_name_in_context(int, TextId, std::string_view fallback_name)` from the
+public `Parser` class surface. Parser implementation callers now use the
+`TextId`-only `render_name_in_context(int, TextId)` final-spelling renderer,
+with string inputs first interned through parser-owned `TextId`s where needed.
 
 ## Suggested Next
 
-Continue Step 2.3 from the namespace compatibility API removal. Inspect the
-next same-shape `parser.hpp` candidate and either remove it in a bounded Step
-2.3 packet or record why it is non-semantic/output-only:
+Continue Step 2.3 from the `TextId`-only final-spelling renderer cleanup.
+Inspect the next same-shape `parser.hpp` candidate and either remove it in a
+bounded Step 2.3 packet or record why it is non-semantic/output-only:
 
-- `bridge_name_in_context(int, TextId, std::string_view fallback_name)`:
-  `TextId + fallback spelling` shape; decide whether it should become
-  `TextId`-only plus a separate final-spelling projection helper.
 - `register_tag_type_binding(const std::string& name, ...)`: semantic tag/type
   binding currently keyed from a string.
 - `cache_typedef_type(const std::string& name, ...)`: semantic typedef cache
@@ -44,6 +41,10 @@ next same-shape `parser.hpp` candidate and either remove it in a bounded Step
   Its final-spelling compatibility behavior is confined to
   `render_lookup_name_in_context`; do not reintroduce it as a public/class
   fallback helper.
+- `bridge_name_in_context(int, TextId, std::string_view fallback_name)` no
+  longer exists as parser API. The remaining public replacement is
+  `render_name_in_context(int, TextId)`, which is a final-spelling renderer;
+  do not reintroduce fallback spelling on that public route.
 - Do not accept a parser public semantic API that keeps `std::string`,
   `std::string_view`, `const char*`, `fallback_name`, `compatibility`, or
   `legacy` as a lookup key/escape hatch when `TextId` or a domain key exists.

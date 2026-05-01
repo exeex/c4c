@@ -2081,10 +2081,11 @@ Node* parse_record_tag_setup(
                      parser.definition_state_.anon_counter++);
             resolved_tag = parser.arena_.strdup(buf);
         } else {
-            const std::string qtag = parser.bridge_name_in_context(
+            const TextId resolved_tag_text_id =
+                parser.parser_text_id_for_token(kInvalidText, resolved_tag);
+            const std::string qtag = parser.render_name_in_context(
                 parser.current_namespace_context_id(),
-                parser.parser_text_id_for_token(kInvalidText, resolved_tag),
-                resolved_tag);
+                resolved_tag_text_id);
             resolved_tag = parser.arena_.strdup(qtag.c_str());
         }
 
@@ -2132,10 +2133,9 @@ Node* parse_record_tag_setup(
         const std::string qtag =
             std::strstr(resolved_tag, "::")
                 ? std::string(resolved_tag)
-                : parser.bridge_name_in_context(
+                : parser.render_name_in_context(
                       parser.current_namespace_context_id(),
-                      parser.parser_text_id_for_token(kInvalidText, resolved_tag),
-                      resolved_tag);
+                      parser.parser_text_id_for_token(kInvalidText, resolved_tag));
         if (parser.definition_state_.defined_struct_tags.count(qtag)) {
             if (parser.active_context_state_.parsing_top_level_context &&
                 !parser.is_cpp_mode()) {
@@ -2285,10 +2285,9 @@ void register_record_definition(Parser& parser,
     const std::string canonical =
         std::strstr(source_tag, "::")
             ? std::string(source_tag)
-            : parser.bridge_name_in_context(
+            : parser.render_name_in_context(
                   parser.current_namespace_context_id(),
-                  parser.parser_text_id_for_token(kInvalidText, source_tag),
-                  source_tag);
+                  parser.parser_text_id_for_token(kInvalidText, source_tag));
     sd->name = parser.arena_.strdup(canonical.c_str());
     parser.apply_decl_namespace(sd, parser.current_namespace_context_id(),
                                 source_tag);
@@ -2439,9 +2438,9 @@ Node* parse_enum(Parser& parser) {
             tag = parser.arena_.strdup(buf);
         }
         Node* ref = parser.make_node(NK_ENUM_DEF, ln);
-        ref->name = parser.arena_.strdup(parser.bridge_name_in_context(
+        ref->name = parser.arena_.strdup(parser.render_name_in_context(
             parser.current_namespace_context_id(),
-            parser.parser_text_id_for_token(kInvalidText, tag), tag).c_str());
+            parser.parser_text_id_for_token(kInvalidText, tag)).c_str());
         parser.apply_decl_namespace(ref, parser.current_namespace_context_id(), tag);
         ref->n_enum_variants = -1;
         register_enum_type(tag, ref->name);
@@ -2456,9 +2455,9 @@ Node* parse_enum(Parser& parser) {
     }
 
     Node* ed = parser.make_node(NK_ENUM_DEF, ln);
-    ed->name = parser.arena_.strdup(parser.bridge_name_in_context(
-        parser.current_namespace_context_id(), parser.parser_text_id_for_token(kInvalidText, tag),
-        tag).c_str());
+    ed->name = parser.arena_.strdup(parser.render_name_in_context(
+        parser.current_namespace_context_id(),
+        parser.parser_text_id_for_token(kInvalidText, tag)).c_str());
     parser.apply_decl_namespace(ed, parser.current_namespace_context_id(), tag);
     register_enum_type(tag, ed->name);
 

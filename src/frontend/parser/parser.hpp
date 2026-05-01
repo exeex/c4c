@@ -432,8 +432,7 @@ class Parser {
   const ParserAliasTemplateInfo* find_alias_template_info_in_context(
       int context_id, TextId name_text_id) const;
   QualifiedNameKey qualified_name_key(const QualifiedNameRef& name);
-  std::string bridge_name_in_context(int context_id, TextId name_text_id,
-                                     std::string_view fallback_name) const;
+  std::string render_name_in_context(int context_id, TextId name_text_id) const;
   std::string qualified_name_text(const QualifiedNameRef& name,
                                   bool include_global_prefix = true) const;
   int resolve_namespace_context(const QualifiedNameRef& name) const;

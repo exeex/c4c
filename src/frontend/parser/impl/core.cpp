@@ -2282,7 +2282,7 @@ std::string Parser::qualify_name(TextId name_text_id) const {
     const int context_id = current_namespace_context_id();
     if (context_id <= 0) return std::string(name);
     if (name.find("::") != std::string::npos) return std::string(name);
-    return bridge_name_in_context(context_id, name_text_id, name);
+    return render_name_in_context(context_id, name_text_id);
 }
 
 const char* Parser::qualify_name_arena(TextId name_text_id) {
@@ -2338,10 +2338,9 @@ Parser::VisibleNameResult Parser::resolve_visible_type(
         const std::string qualified_current =
             current_record.find("::") != std::string_view::npos
                 ? std::string(current_record)
-                : bridge_name_in_context(current_namespace_context_id(),
-                                         active_context_state_
-                                             .current_struct_tag_text_id,
-                                         current_record);
+                : render_name_in_context(
+                      current_namespace_context_id(),
+                      active_context_state_.current_struct_tag_text_id);
         if (spelling_matches_current_record(name, current_record,
                                             qualified_current)) {
             VisibleNameResult result;
@@ -2430,7 +2429,7 @@ std::string Parser::visible_name_spelling(
         return structured;
     }
     if (result.context_id >= 0 && result.base_text_id != kInvalidText) {
-        return bridge_name_in_context(result.context_id, result.base_text_id, {});
+        return render_name_in_context(result.context_id, result.base_text_id);
     }
     return {};
 }
@@ -2572,10 +2571,10 @@ std::string Parser::canonical_name_in_context(int context_id, const std::string&
     return std::string(ctx.canonical_name) + "::" + name;
 }
 
-std::string Parser::bridge_name_in_context(int context_id, TextId name_text_id,
-                                           std::string_view fallback_name) const {
+std::string Parser::render_name_in_context(int context_id,
+                                           TextId name_text_id) const {
     return render_lookup_name_in_context(*this, context_id, name_text_id,
-                                         fallback_name);
+                                         {});
 }
 
 int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
@@ -2796,7 +2795,7 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
             render_value_binding_name(*this, candidate_key);
         if (resolved->compatibility_spelling.empty()) {
             resolved->compatibility_spelling =
-                bridge_name_in_context(context_id, name_text_id, {});
+                render_name_in_context(context_id, name_text_id);
         }
         return true;
     }
@@ -2854,7 +2853,7 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
             render_value_binding_name(*this, lookup_key);
         if (resolved->compatibility_spelling.empty()) {
             resolved->compatibility_spelling =
-                bridge_name_in_context(context_id, name_text_id, {});
+                render_name_in_context(context_id, name_text_id);
         }
         return true;
     }
@@ -2877,7 +2876,7 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
         resolved->compatibility_spelling = render_structured_name(*this, candidate_key);
         if (resolved->compatibility_spelling.empty()) {
             resolved->compatibility_spelling =
-                bridge_name_in_context(context_id, name_text_id, {});
+                render_name_in_context(context_id, name_text_id);
         }
         return true;
     }
@@ -2962,7 +2961,7 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
             render_structured_name(*this, candidate_key);
         if (resolved->compatibility_spelling.empty()) {
             resolved->compatibility_spelling =
-                bridge_name_in_context(context_id, name_text_id, {});
+                render_name_in_context(context_id, name_text_id);
         }
         return true;
     }

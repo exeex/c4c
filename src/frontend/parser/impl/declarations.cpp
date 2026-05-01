@@ -1728,8 +1728,8 @@ Node* parse_top_level(Parser& parser) {
                     parser.parser_text_id_for_token(kInvalidText, first_name);
                 const QualifiedNameKey alias_key = parser.alias_template_key_in_context(
                     using_context_id, alias_name_text_id);
-                const std::string qualified = parser.bridge_name_in_context(
-                    using_context_id, alias_name_text_id, first_name);
+                const std::string qualified = parser.render_name_in_context(
+                    using_context_id, alias_name_text_id);
                 parser.register_structured_typedef_binding_in_context(
                     using_context_id, alias_name_text_id, alias_ts);
                 parser.register_typedef_binding(
@@ -1768,8 +1768,8 @@ Node* parse_top_level(Parser& parser) {
             const TypeSpec* imported_typedef =
                 parser.find_typedef_type(imported_type.key);
             if (imported_typedef) {
-                const std::string imported_key = parser.bridge_name_in_context(
-                    using_context_id, target_name.base_text_id, imported_name);
+                const std::string imported_key = parser.render_name_in_context(
+                    using_context_id, target_name.base_text_id);
                 parser.register_structured_typedef_binding_in_context(
                     using_context_id, target_name.base_text_id, *imported_typedef);
                 parser.register_typedef_binding(
@@ -1784,8 +1784,8 @@ Node* parse_top_level(Parser& parser) {
         }
 
         const QualifiedNameKey imported_value_key = parser.qualified_name_key(target_name);
-        const std::string imported_key = parser.bridge_name_in_context(
-            using_context_id, target_name.base_text_id, imported_name);
+        const std::string imported_key = parser.render_name_in_context(
+            using_context_id, target_name.base_text_id);
         std::string imported_value_name;
         if (parser.shared_lookup_state_.token_texts) {
             imported_value_name = render_qualified_name(
@@ -2293,9 +2293,10 @@ Node* parse_top_level(Parser& parser) {
                                           last_sd->name);
                 // If inside a namespace, also register ns::Name so
                 // qualified references like std::vector<int> work.
-                const std::string qn = parser.bridge_name_in_context(
-                    parser.current_namespace_context_id(), parser.find_parser_text_id(last_sd->name),
-                    last_sd->name);
+                const std::string qn = parser.render_name_in_context(
+                    parser.current_namespace_context_id(),
+                    parser.parser_text_id_for_token(kInvalidText,
+                                                    last_sd->name));
                 parser.register_tag_type_binding(qn, TB_STRUCT, last_sd->name);
             }
         }

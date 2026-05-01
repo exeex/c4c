@@ -1997,12 +1997,11 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                             if (has_dependent_arg) {
                                                 const std::string owner_name =
-                                                    bridge_name_in_context(
+                                                    render_name_in_context(
                                                         ati->member_typedef.owner_key
                                                             .context_id,
                                                         ati->member_typedef.owner_key
-                                                            .base_text_id,
-                                                        {});
+                                                            .base_text_id);
                                                 const std::string member_name =
                                                     std::string(parser_text(
                                                         ati->member_typedef

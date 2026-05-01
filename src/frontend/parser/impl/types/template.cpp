@@ -990,8 +990,8 @@ bool Parser::eval_deferred_nttp_default(
         return false;
     }
 
-    const std::string template_name = bridge_name_in_context(
-        template_key.context_id, template_key.base_text_id, {});
+    const std::string template_name = render_name_in_context(
+        template_key.context_id, template_key.base_text_id);
     return eval_deferred_nttp_expr_tokens(template_name, structured_it->second,
                                           type_bindings, nttp_bindings, out);
 }
