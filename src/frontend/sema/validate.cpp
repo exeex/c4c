@@ -1219,21 +1219,42 @@ class Validator {
   }
 
   std::optional<TypeSpec> lookup_struct_static_member_type_by_key(
-      const SemaStructuredNameKey& record_key, TextId member_text_id) const {
+      const SemaStructuredNameKey& record_key, TextId member_text_id,
+      bool* has_metadata = nullptr) const {
     if (member_text_id == kInvalidText) return std::nullopt;
     auto sit = struct_static_member_types_by_key_.find(record_key);
     if (sit != struct_static_member_types_by_key_.end()) {
+      if (has_metadata) *has_metadata = true;
       auto mit = sit->second.find(member_text_id);
       if (mit != sit->second.end()) return mit->second;
     }
     auto bit = struct_base_keys_by_key_.find(record_key);
     if (bit != struct_base_keys_by_key_.end()) {
       for (const auto& base_key : bit->second) {
-        auto from_base = lookup_struct_static_member_type_by_key(base_key, member_text_id);
+        bool base_has_metadata = false;
+        auto from_base = lookup_struct_static_member_type_by_key(
+            base_key, member_text_id, &base_has_metadata);
+        if (base_has_metadata && has_metadata) *has_metadata = true;
         if (from_base.has_value()) return from_base;
       }
     }
     return std::nullopt;
+  }
+
+  static std::optional<SemaStructuredNameKey> static_member_owner_key_from_reference(
+      const Node* reference) {
+    if (!reference || reference->namespace_context_id < 0 ||
+        reference->unqualified_text_id == kInvalidText ||
+        reference->n_qualifier_segments <= 0 || !reference->qualifier_text_ids) {
+      return std::nullopt;
+    }
+    const TextId owner_text_id =
+        reference->qualifier_text_ids[reference->n_qualifier_segments - 1];
+    if (owner_text_id == kInvalidText) return std::nullopt;
+    SemaStructuredNameKey key;
+    key.namespace_context_id = reference->namespace_context_id;
+    key.base_text_id = owner_text_id;
+    return key;
   }
 
   std::optional<TypeSpec> lookup_struct_static_member_type_legacy(
@@ -1253,15 +1274,36 @@ class Validator {
     return std::nullopt;
   }
 
+  std::optional<SemaStructuredNameKey> static_member_owner_key(
+      const std::string& tag, const Node* reference) const {
+    if (auto key = static_member_owner_key_from_reference(reference);
+        key.has_value() && key->valid()) {
+      return key;
+    }
+    return structured_record_key_for_tag(tag);
+  }
+
+  bool static_member_lookup_has_structured_metadata(
+      const std::string& tag, const Node* reference) const {
+    if (!reference || reference->unqualified_text_id == kInvalidText) return false;
+    auto record_key = static_member_owner_key(tag, reference);
+    if (!record_key.has_value()) return false;
+    bool has_metadata = false;
+    (void)lookup_struct_static_member_type_by_key(
+        *record_key, reference->unqualified_text_id, &has_metadata);
+    return has_metadata;
+  }
+
   std::optional<TypeSpec> lookup_struct_static_member_type(
       const std::string& tag, const std::string& member, const Node* reference = nullptr) const {
     if (reference && reference->unqualified_text_id != kInvalidText) {
-      if (auto record_key = structured_record_key_for_tag(tag); record_key.has_value()) {
+      if (auto record_key = static_member_owner_key(tag, reference); record_key.has_value()) {
         auto legacy = lookup_struct_static_member_type_legacy(tag, member);
-        auto structured =
-            lookup_struct_static_member_type_by_key(*record_key, reference->unqualified_text_id);
+        bool has_metadata = false;
+        auto structured = lookup_struct_static_member_type_by_key(
+            *record_key, reference->unqualified_text_id, &has_metadata);
         compare_optional_type_lookup(legacy, structured);
-        return structured;
+        if (structured.has_value() || has_metadata) return structured;
       }
     }
     return lookup_struct_static_member_type_legacy(tag, member);
@@ -2201,7 +2243,8 @@ class Validator {
           }
           // If base chain has unresolved pending template types ($expr:),
           // accept the lookup optimistically — the HIR will resolve it.
-          if (complete_structs_.count(struct_tag) || complete_unions_.count(struct_tag)) {
+          if (!static_member_lookup_has_structured_metadata(struct_tag, n) &&
+              (complete_structs_.count(struct_tag) || complete_unions_.count(struct_tag))) {
             out.valid = true;
             out.type = make_int_ts();
             out.is_lvalue = true;

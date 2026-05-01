@@ -3,24 +3,24 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 3.2
-Current Step Title: Delete Consteval Rendered Compatibility After Metadata Completion
+Current Step ID: Step 3.3
+Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.2 deleted the consteval value rendered-name fallback in
-`ConstEvalEnv::lookup(const Node*)` once structured or TextId value metadata
-produces an authoritative miss, including same-spelling rendered names. Focused
-parser tests now prove same-spelling TextId and structured metadata misses
-reject rendered fallback, no-metadata rendered compatibility remains, and the
-HIR-owned legacy `NttpBindings` bridge remains available when NTTP metadata maps
-themselves do not authoritatively miss.
+Step 3.3 narrowed Sema static-member type lookup so qualified references use
+structured owner/member `TextId` metadata before rendered owner/member strings.
+Rendered static-member lookup and the complete-record optimistic acceptance path
+now remain only as no-metadata compatibility when the structured static-member
+table/base chain has no authoritative metadata for the reference. The focused
+frontend parser test now proves stale rendered owner and member spellings do not
+override structured static-member metadata.
 
 ## Suggested Next
 
-Choose the next bounded Step 3 rendered-lookup removal packet from the
-remaining watchouts, keeping it to one concrete producer gap or one proven
-consumer deletion route.
+Choose the next bounded Step 3 rendered-lookup removal packet from the remaining
+watchouts, keeping it to one concrete producer gap or one proven consumer
+deletion route.
 
 ## Watchouts
 
@@ -83,6 +83,11 @@ consumer deletion route.
   spelling equality when either side has populated member TextId metadata and
   the other side lacks or mismatches it. Same-TextId equality still tolerates
   stale rendered member spelling.
+- Derived/static-template static-member routes can still lack structured
+  static-member table or base-chain metadata even when the reference has
+  owner/member `TextId`s; keep rendered compatibility there until that producer
+  gap is closed. The retained path is explicitly no-metadata compatibility, not
+  a rendered-string authority after structured static-member metadata exists.
 
 ## Proof
 

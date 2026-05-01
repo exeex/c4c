@@ -4714,7 +4714,7 @@ void test_sema_static_member_type_lookup_prefers_structured_member_key() {
   owner->fields[1] = stale;
 
   c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
-  ref->name = arena.strdup("Owner::stale");
+  ref->name = arena.strdup("WrongOwner::stale");
   ref->unqualified_name = arena.strdup("actual");
   ref->unqualified_text_id = actual_text;
   ref->namespace_context_id = owner->namespace_context_id;
@@ -4748,7 +4748,7 @@ void test_sema_static_member_type_lookup_prefers_structured_member_key() {
 
   const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
   expect_true(result.ok,
-              "Sema static member lookup should use structured member TextId over rendered member spelling");
+              "Sema static member lookup should use structured owner/member TextIds over rendered spelling");
 }
 
 void test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling() {
