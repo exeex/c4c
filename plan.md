@@ -694,6 +694,54 @@ Completion check:
 - Narrow parser/Sema tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
+### Step 2.4.4.5B.1: Add Record-Scope Using-Alias Member-Typedef Carrier
+
+Goal: make record-scope `using name = typename Owner<Args>::member;`
+registration carry structured owner/member metadata directly, so
+`apply_alias_template_member_typedef_compat_type` can be retried without
+forcing the RHS through a deferred member `TypeSpec`.
+
+Primary target: the record-scope using-alias parsing and registration path
+that reaches `try_parse_record_using_member`, `parse_type_name`, and
+`parse_dependent_typename_specifier` for
+`typename Owner<Args>::member` RHS aliases.
+
+Actions:
+
+- Add or thread a parser/Sema-owned record-scope using-alias RHS carrier that
+  preserves the owner `QualifiedNameKey`, structured/substitutable owner
+  arguments, and member `TextId` directly at registration time.
+- Route `using name = typename Owner<Args>::member;` member-typedef
+  registration through that carrier before consulting
+  `apply_alias_template_member_typedef_compat_type`.
+- Do not seed the carrier from rendered/deferred `TypeSpec` fields,
+  `tpl_struct_origin`, `deferred_member_type_name`,
+  `qualified_name_from_text`, `qualified_alias_name`, `debug_text`, or a split
+  rendered `Owner::member` spelling.
+- Preserve the accepted Step 2.4.4.5B partial results: the alias-template
+  context fallback and dependent rendered/deferred `TypeSpec` projection in
+  `base.cpp` stay deleted.
+- Re-attempt deletion of `apply_alias_template_member_typedef_compat_type`
+  only after the record-scope carrier covers
+  `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp` and
+  `cpp_positive_sema_stl_iterator_then_max_size_type_parse_cpp`.
+- Keep rendered owner/member spelling only for diagnostics, display, debug
+  output, mangling, or final emitted text.
+
+Completion check:
+
+- Record-scope using-alias registration for
+  `typename Owner<Args>::member` preserves owner `QualifiedNameKey`,
+  structured/substitutable owner arguments, and member `TextId` without a
+  deferred member `TypeSpec` handoff.
+- The two timeout fixtures named above pass with
+  `apply_alias_template_member_typedef_compat_type` deleted, or the executor
+  records the next exact missing structured carrier before Step 2.4.4.6.
+- No local rendered-key reconstruction, helper-only rename, or named-test
+  shortcut is counted as progress.
+- Narrow parser/Sema tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
 ### Step 2.4.4.5C: Add Dependent/Template Record Member-Typedef Carrier
 
 Goal: replace the remaining record-body bridge that publishes
