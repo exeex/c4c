@@ -342,6 +342,11 @@ struct Node {
     TextId* qualifier_text_ids;      // parser-owned text identity for qualifier_segments
     int n_qualifier_segments;        // qualifier segment count (excludes base name)
     bool is_global_qualified;        // true when the source spelling started with ::
+    TextId* using_value_alias_target_qualifier_text_ids;
+    int n_using_value_alias_target_qualifier_segments;
+    TextId using_value_alias_target_text_id;
+    int using_value_alias_target_namespace_context_id;
+    bool using_value_alias_target_is_global_qualified;
     BuiltinId builtin_id;
 
     // Compatibility/display spelling: operator token text still used by

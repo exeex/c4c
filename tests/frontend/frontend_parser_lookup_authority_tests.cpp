@@ -53,6 +53,35 @@ const c4c::Node* find_field(const c4c::Node* record, const char* name) {
   return nullptr;
 }
 
+const c4c::Node* find_function(const c4c::Node* root, const char* name) {
+  if (!root || root->kind != c4c::NK_PROGRAM) return nullptr;
+  for (int i = 0; i < root->n_children; ++i) {
+    const c4c::Node* child = root->children[i];
+    if (child && child->kind == c4c::NK_FUNCTION && child->name &&
+        std::string(child->name) == name) {
+      return child;
+    }
+  }
+  return nullptr;
+}
+
+c4c::Node* find_function(c4c::Node* root, const char* name) {
+  return const_cast<c4c::Node*>(
+      find_function(static_cast<const c4c::Node*>(root), name));
+}
+
+c4c::Node* find_return_var(c4c::Node* fn) {
+  if (!fn || !fn->body || fn->body->kind != c4c::NK_BLOCK) return nullptr;
+  for (int i = 0; i < fn->body->n_children; ++i) {
+    c4c::Node* child = fn->body->children[i];
+    if (child && child->kind == c4c::NK_RETURN &&
+        child->left && child->left->kind == c4c::NK_VAR) {
+      return child->left;
+    }
+  }
+  return nullptr;
+}
+
 void test_global_qualified_lookup_rejects_rendered_fallback_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -106,6 +135,36 @@ void test_global_qualified_lookup_rejects_rendered_fallback_authority() {
   expect_true(!parser.resolve_qualified_value(global_qn),
               "global-qualified TextId-less value lookup should reject "
               "rendered fallback storage");
+}
+
+void test_sema_global_lookup_uses_using_value_alias_target_key() {
+  c4c::Arena arena;
+  c4c::Lexer lexer(
+      "int exported_value;\n"
+      "namespace wrap {\n"
+      "using ::exported_value;\n"
+      "int read_alias() { return wrap::exported_value; }\n"
+      "}\n",
+      c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "using-value-alias-target.cpp");
+  c4c::Node* root = parser.parse();
+  c4c::Node* fn = find_function(root, "wrap::read_alias");
+  c4c::Node* ref = find_return_var(fn);
+  expect_true(ref != nullptr, "test should parse a return reference");
+  expect_true(ref->using_value_alias_target_text_id != c4c::kInvalidText,
+              "using-value-alias reference should carry target TextId");
+  expect_true(ref->using_value_alias_target_namespace_context_id == 0,
+              "using ::value alias target should carry global namespace");
+
+  ref->name = arena.strdup("stale_rendered_alias_fallback");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema global lookup should use the structured using-value-alias "
+              "target key instead of rendered fallback spelling");
 }
 
 void test_qualified_known_function_lookup_uses_key_not_rendered_spelling() {
@@ -1122,6 +1181,7 @@ void test_sema_enum_lookup_rejects_same_member_wrong_owner_reentry() {
 
 int main() {
   test_global_qualified_lookup_rejects_rendered_fallback_authority();
+  test_sema_global_lookup_uses_using_value_alias_target_key();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();

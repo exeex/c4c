@@ -3053,6 +3053,35 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
     }
 }
 
+void Parser::apply_using_value_alias_target(
+    Node* node, const VisibleNameResult& resolved) {
+    if (!node || resolved.source != VisibleNameSource::UsingAlias) return;
+    if (resolved.key.base_text_id == kInvalidText ||
+        resolved.key.context_id < 0) {
+        return;
+    }
+    node->using_value_alias_target_text_id = resolved.key.base_text_id;
+    node->using_value_alias_target_namespace_context_id =
+        resolved.key.context_id;
+    node->using_value_alias_target_is_global_qualified =
+        resolved.key.is_global_qualified;
+    const NamePathTable::View qualifier_path =
+        shared_lookup_state_.parser_name_paths.lookup(
+            resolved.key.qualifier_path_id);
+    node->n_using_value_alias_target_qualifier_segments =
+        static_cast<int>(qualifier_path.size);
+    if (node->n_using_value_alias_target_qualifier_segments > 0) {
+        node->using_value_alias_target_qualifier_text_ids =
+            arena_.alloc_array<TextId>(
+                node->n_using_value_alias_target_qualifier_segments);
+        for (int i = 0;
+             i < node->n_using_value_alias_target_qualifier_segments; ++i) {
+            node->using_value_alias_target_qualifier_text_ids[i] =
+                qualifier_path[static_cast<std::size_t>(i)];
+        }
+    }
+}
+
 void Parser::apply_decl_namespace(Node* node, int context_id, const char* unqualified_name) {
     if (!node) return;
     node->namespace_context_id = context_id;
@@ -3285,6 +3314,8 @@ Node* Parser::make_node(NodeKind k, int line) {
     }
     n->ival = -1;  // -1 = not a bitfield (for struct field declarations)
     n->builtin_id = BuiltinId::Unknown;
+    n->using_value_alias_target_text_id = kInvalidText;
+    n->using_value_alias_target_namespace_context_id = -1;
     n->type.array_size = -1;
     n->type.array_rank = 0;
     for (int i = 0; i < 8; ++i) n->type.array_dims[i] = -1;

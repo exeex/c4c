@@ -1269,6 +1269,7 @@ Node* parse_primary(Parser& parser) {
         Node* ident = parser.make_node(NK_VAR, ln);
         ident->name = nm;
         parser.apply_qualified_name(ident, qn, nm);
+        parser.apply_using_value_alias_target(ident, resolved_value);
         if (parser.is_cpp_mode() && parser.check(TokenKind::Less)) {
             Parser::TentativeParseGuard guard(parser);
             std::vector<Parser::TemplateArgParseResult> parsed_args;
@@ -1537,6 +1538,7 @@ Node* parse_primary(Parser& parser) {
         }
         Node* ident = parser.make_var(nm, ln);
         parser.apply_qualified_name(ident, qn, nm);
+        parser.apply_using_value_alias_target(ident, resolved_value);
         if (parser.is_cpp_mode() && parser.check(TokenKind::Less)) {
             Parser::TentativeParseGuard guard(parser);
             std::vector<Parser::TemplateArgParseResult> parsed_args;
@@ -1734,6 +1736,8 @@ Node* parse_primary(Parser& parser) {
                         const char* nm = parser.arena_.strdup(qualified_name.c_str());
                         arg = parser.make_var(nm, ln);
                         parser.apply_qualified_name(arg, operand_name, nm);
+                        parser.apply_using_value_alias_target(
+                            arg, resolved_operand);
                     } else {
                         arg = parse_assign_expr(parser);
                     }

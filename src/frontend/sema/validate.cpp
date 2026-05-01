@@ -161,6 +161,34 @@ static std::optional<SemaStructuredNameKey> sema_qualified_symbol_name_key(
   return key;
 }
 
+static std::optional<SemaStructuredNameKey> sema_using_value_alias_target_key(
+    const Node* node) {
+  if (!node || node->using_value_alias_target_namespace_context_id < 0 ||
+      node->using_value_alias_target_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+  if (node->n_using_value_alias_target_qualifier_segments > 0 &&
+      !node->using_value_alias_target_qualifier_text_ids) {
+    return std::nullopt;
+  }
+
+  SemaStructuredNameKey key;
+  key.namespace_context_id =
+      node->using_value_alias_target_namespace_context_id;
+  key.is_global_qualified = node->using_value_alias_target_is_global_qualified;
+  key.base_text_id = node->using_value_alias_target_text_id;
+  key.qualifier_text_ids.reserve(
+      static_cast<std::size_t>(
+          node->n_using_value_alias_target_qualifier_segments));
+  for (int i = 0; i < node->n_using_value_alias_target_qualifier_segments;
+       ++i) {
+    const TextId segment = node->using_value_alias_target_qualifier_text_ids[i];
+    if (segment == kInvalidText) return std::nullopt;
+    key.qualifier_text_ids.push_back(segment);
+  }
+  return key;
+}
+
 static std::optional<SemaStructuredNameKey> sema_template_param_local_name_key(
     const Node* node, int param_index) {
   if (!node || param_index < 0 || param_index >= node->n_template_params ||
@@ -1065,6 +1093,16 @@ class Validator {
     if (qualified_structured_key.has_value()) {
       const TypeSpec* structured_global = lookup_global_by_key(*qualified_structured_key);
       (void)compare_sema_lookup_ptrs(rendered_global_compatibility, structured_global);
+      if (structured_global) return ScopedSym{*structured_global, true};
+    }
+    if (const auto using_alias_target_key =
+            reference ? sema_using_value_alias_target_key(reference)
+                      : std::nullopt;
+        using_alias_target_key.has_value()) {
+      const TypeSpec* structured_global =
+          lookup_global_by_key(*using_alias_target_key);
+      (void)compare_sema_lookup_ptrs(rendered_global_compatibility,
+                                     structured_global);
       if (structured_global) return ScopedSym{*structured_global, true};
     }
     if (structured_key.has_value() &&

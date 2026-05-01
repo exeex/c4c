@@ -8,41 +8,30 @@ Current Step Title: Carry Parser Using-Value-Alias Authority Into Sema
 
 ## Just Finished
 
-Step 3.3.3 narrow global fallback probe: attempted to make qualified global
-references reject an unqualified rendered global after the qualified structured
-key misses. The direct qualifier-match tightening also rejected the existing
-supported `wrap::exported_value` case imported by `using ::exported_value`.
-That reference reaches Sema with the same observable shape needed by this
-packet: unqualified rendered lookup spelling, qualifier metadata, a structured
-qualified miss, and an unqualified global candidate with no stored qualifier.
-The attempted code/test edits were removed rather than broadening rendered
-compatibility.
+Step 3.3.3A carried parser using-value-alias authority into Sema global lookup.
+Parser now annotates qualified value references resolved through
+`VisibleNameSource::UsingAlias` with the structured alias target key, and Sema
+consults that target key before rendered global compatibility. The focused
+lookup-authority test corrupts the rendered reference spelling for
+`wrap::exported_value` imported via `using ::exported_value`, proving the
+global lookup succeeds from the structured carrier rather than rendered
+fallback.
 
 ## Suggested Next
 
-Next executor packet should implement Step 3.3.3A: carry parser
-`namespace_state_.using_value_aliases`, or an equivalent structured
-using-value-alias authority, into Sema global lookup. The packet should make
-Sema distinguish namespace using-alias imports from wrong-owner qualified
-global references before Step 3.3.3B retries unqualified rendered global
-fallback removal.
+Next executor packet can retry Step 3.3.3B: remove or tighten the remaining
+unqualified rendered global fallback for qualified references now that
+namespace using-value-alias imports have a structured Sema carrier.
 
 ## Watchouts
 
-- Missing metadata: Sema does not currently see
-  `namespace_state_.using_value_aliases`, so `wrap::exported_value` via
-  `using ::exported_value` is indistinguishable from the reviewer-reported
-  wrong-owner unqualified-global fallback using only `Node` qualifier fields
-  and `structured_global_keys_by_name_`.
-- This prerequisite belongs inside idea 139 because it is parser-to-Sema
-  metadata handoff for a parser/Sema lookup route. Do not create a separate
-  open idea unless the next packet proves parser cannot supply the carrier
-  inside parser/Sema ownership.
-- Do not resolve this by restoring broad rendered compatibility for all
-  qualified references; the missing alias authority needs a structured carrier.
-- Do not retry Step 3.3.3B unqualified rendered global fallback deletion until
-  the structured using-value-alias carrier is present or the exact blocker is
-  recorded.
+- The carrier currently feeds Sema global variable lookup. If the next packet
+  finds the same alias distinction is needed for function or overload lookup,
+  extend the same structured target-key path there instead of re-opening broad
+  rendered compatibility.
+- Step 3.3.3B should still avoid testcase-shaped matching: reject wrong-owner
+  qualified references by semantic metadata, while preserving alias imports
+  through the new target carrier.
 - The C++ overload route still shares the same mirror/query key selection; no
   separate named C++ overload test was added in this blocked packet.
 - `review/step33_sema_lookup_route_review.md` was already untracked in the
@@ -52,7 +41,7 @@ fallback removal.
 
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)' >> test_after.log 2>&1`
 
-Failed during the attempted qualifier tightening. The focused authority test
-passed, but `cpp_positive_sema_using_global_scope_decl_parse_cpp` failed with
-`use of undeclared identifier 'exported_value'`. `test_after.log` is the
-canonical failed proof log for this blocked packet.
+Passed. `test_after.log` contains the canonical proof log for this packet:
+build succeeded and the corrected delegated subset passed, including
+`frontend_parser_lookup_authority_tests` and 884 `cpp_positive_sema_` tests
+for 885/885 total selected tests.

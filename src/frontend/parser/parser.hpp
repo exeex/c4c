@@ -474,6 +474,8 @@ class Parser {
   QualifiedNameRef parse_qualified_name(bool allow_global = true);
   void apply_qualified_name(Node* node, const QualifiedNameRef& qn,
                             const char* resolved_name = nullptr);
+  void apply_using_value_alias_target(Node* node,
+                                      const VisibleNameResult& resolved);
   void apply_decl_namespace(Node* node, int context_id, const char* unqualified_name);
 
   // ── AST handoff helpers: generic skipping and attributes ─────────────────
