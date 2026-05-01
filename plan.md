@@ -694,53 +694,114 @@ Completion check:
 - Narrow parser/Sema tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 2.4.4.5B.1: Add Record-Scope Using-Alias Member-Typedef Carrier
+### Step 2.4.4.5B.1: Review Failed Record-Scope Carrier Route
 
-Goal: make record-scope `using name = typename Owner<Args>::member;`
-registration carry structured owner/member metadata directly, so
-`apply_alias_template_member_typedef_compat_type` can be retried without
-forcing the RHS through a deferred member `TypeSpec`.
+Goal: decide the next structured carrier before any more implementation,
+because the first record-scope `using name = typename Owner<Args>::member;`
+carrier attempt was reverted as insufficient.
 
-Primary target: the record-scope using-alias parsing and registration path
-that reaches `try_parse_record_using_member`, `parse_type_name`, and
-`parse_dependent_typename_specifier` for
-`typename Owner<Args>::member` RHS aliases.
+Primary target: the retained
+`apply_alias_template_member_typedef_compat_type` projector, the reverted
+Step 2.4.4.5B.1 attempt facts in `todo.md`, and the parser path sampled by
+`cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp` and
+`cpp_positive_sema_stl_iterator_then_max_size_type_parse_cpp`.
 
 Actions:
 
-- Add or thread a parser/Sema-owned record-scope using-alias RHS carrier that
-  preserves the owner `QualifiedNameKey`, structured/substitutable owner
-  arguments, and member `TextId` directly at registration time.
-- Route `using name = typename Owner<Args>::member;` member-typedef
-  registration through that carrier before consulting
+- Review the still-live path through `try_parse_record_using_member`,
+  `parse_type_name`, `parse_dependent_typename_specifier`, and
   `apply_alias_template_member_typedef_compat_type`.
-- Do not seed the carrier from rendered/deferred `TypeSpec` fields,
-  `tpl_struct_origin`, `deferred_member_type_name`,
-  `qualified_name_from_text`, `qualified_alias_name`, `debug_text`, or a split
-  rendered `Owner::member` spelling.
-- Preserve the accepted Step 2.4.4.5B partial results: the alias-template
-  context fallback and dependent rendered/deferred `TypeSpec` projection in
-  `base.cpp` stay deleted.
-- Re-attempt deletion of `apply_alias_template_member_typedef_compat_type`
-  only after the record-scope carrier covers
-  `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp` and
-  `cpp_positive_sema_stl_iterator_then_max_size_type_parse_cpp`.
-- Keep rendered owner/member spelling only for diagnostics, display, debug
-  output, mangling, or final emitted text.
+- Identify whether the missing structured carrier is record-scope using-alias
+  RHS metadata, template/dependent record member typedef availability from
+  Step 2.4.4.5C, or another parser/Sema-owned carrier.
+- Preserve accepted Step 2.4.4.5B partial results: the alias-template context
+  fallback and dependent rendered/deferred `TypeSpec` projection in `base.cpp`
+  stay deleted.
+- Record explicitly that the reverted Step 2.4.4.5B.1 implementation attempt
+  is not accepted implementation progress and does not make projector deletion
+  safer.
+- Do not resume carrier implementation until this review names the exact next
+  carrier and the proof command for the executor packet.
+- Do not rewrite expectations, mark fixtures unsupported, add named-test
+  shortcuts, or replace the projector with another rendered/deferred
+  `TypeSpec`, `std::string`, `std::string_view`, `debug_text`, or split
+  `Owner::member` route.
 
 Completion check:
 
-- Record-scope using-alias registration for
-  `typename Owner<Args>::member` preserves owner `QualifiedNameKey`,
-  structured/substitutable owner arguments, and member `TextId` without a
-  deferred member `TypeSpec` handoff.
-- The two timeout fixtures named above pass with
-  `apply_alias_template_member_typedef_compat_type` deleted, or the executor
-  records the next exact missing structured carrier before Step 2.4.4.6.
-- No local rendered-key reconstruction, helper-only rename, or named-test
-  shortcut is counted as progress.
+- The next packet is one exact implementation route, not "try record-scope
+  carrier again".
+- The review explains why the two timeout fixtures still need
+  `apply_alias_template_member_typedef_compat_type` after the failed
+  record-scope attempt.
+- Any decision to proceed to Step 2.4.4.5B.2, jump to Step 2.4.4.5C, or split
+  again is written into `todo.md` before implementation resumes.
+- No implementation progress is claimed from the reverted Step 2.4.4.5B.1
+  attempt.
+
+### Step 2.4.4.5B.2: Implement Reviewed Record-Scope Or Adjacent Carrier
+
+Goal: implement only the structured carrier selected by Step 2.4.4.5B.1, so
+`apply_alias_template_member_typedef_compat_type` can be retried against a
+known missing metadata boundary.
+
+Primary target: the parser/Sema carrier named by Step 2.4.4.5B.1.
+
+Actions:
+
+- Thread the reviewed carrier through parser/Sema metadata without seeding it
+  from rendered/deferred `TypeSpec` fields, `tpl_struct_origin`,
+  `deferred_member_type_name`, `qualified_name_from_text`,
+  `qualified_alias_name`, `debug_text`, or split rendered `Owner::member`
+  spelling.
+- Preserve owner identity as direct record/template owner metadata,
+  `QualifiedNameKey`, namespace-aware key, or other reviewed domain key.
+- Preserve member identity as `TextId` from the parsed member token or reviewed
+  structured metadata source.
+- Keep rendered owner/member spelling only for diagnostics, display, debug
+  output, mangling, or final emitted text.
+- Preserve accepted Step 2.4.4.5B partial results: the alias-template context
+  fallback and dependent rendered/deferred `TypeSpec` projection in `base.cpp`
+  stay deleted.
+- Stop and update `todo.md` instead of broadening the packet if the reviewed
+  carrier is insufficient for the two timeout fixtures.
+
+Completion check:
+
+- The reviewed carrier covers the two timeout fixtures without introducing a
+  replacement rendered/deferred lookup route.
+- No local rendered-key reconstruction, helper-only rename, expectation
+  downgrade, or named-test shortcut is counted as progress.
 - Narrow parser/Sema tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
+
+### Step 2.4.4.5B.3: Delete The Using-Alias Projector
+
+Goal: delete `apply_alias_template_member_typedef_compat_type` only after the
+reviewed structured carrier covers its remaining parser/Sema behavior.
+
+Primary target: `apply_alias_template_member_typedef_compat_type` and its
+remaining call sites.
+
+Actions:
+
+- Re-attempt deletion of `apply_alias_template_member_typedef_compat_type`
+  after Step 2.4.4.5B.2 passes with the two timeout fixtures.
+- Confirm no remaining parser/Sema reader requires a deferred member
+  `TypeSpec` handoff to recover `Owner<Args>::member` identity.
+- If another missing carrier appears, record that exact carrier in `todo.md`
+  before proceeding to Step 2.4.4.6.
+
+Completion check:
+
+- `apply_alias_template_member_typedef_compat_type` is deleted, or the exact
+  remaining structured carrier blocker is recorded before Step 2.4.4.6.
+- The two timeout fixtures and the broader `cpp_positive_sema_` subset pass
+  without the projector.
+- No local rendered-key reconstruction, helper-only rename, or named-test
+  shortcut is counted as progress.
+- A fresh build and narrow parser/Sema proof are recorded in canonical
+  `test_after.log`.
 
 ### Step 2.4.4.5C: Add Dependent/Template Record Member-Typedef Carrier
 
