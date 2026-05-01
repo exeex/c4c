@@ -412,7 +412,6 @@ class Parser {
   // Namespace scope stack: pushes the active lookup frame for nested scopes.
   void push_namespace_context(int context_id);
   void pop_namespace_context();
-  std::string canonical_name_in_context(int context_id, const std::string& name) const;
   QualifiedNameKey known_fn_name_key(int context_id, TextId name_text_id) const;
   QualifiedNameKey intern_semantic_name_key(TextId name_text_id);
   QualifiedNameKey known_fn_name_key_in_context(int context_id,

@@ -2566,14 +2566,6 @@ void Parser::pop_namespace_context() {
     refresh_current_namespace_bridge();
 }
 
-std::string Parser::canonical_name_in_context(int context_id, const std::string& name) const {
-    if (name.empty()) return name;
-    if (context_id <= 0) return name;
-    const NamespaceContext& ctx = namespace_state_.namespace_contexts[context_id];
-    if (!ctx.canonical_name || !ctx.canonical_name[0]) return name;
-    return std::string(ctx.canonical_name) + "::" + name;
-}
-
 std::string Parser::render_name_in_context(int context_id,
                                            TextId name_text_id) const {
     return render_lookup_name_in_context(*this, context_id, name_text_id,

@@ -8,12 +8,11 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the dependent-typename/member-typedef declarator call family
-from `cache_typedef_type(const std::string& name, ...)`. The two
-`parse_dependent_typename_specifier` cache writes now register the resolved
-typedef through `QualifiedNameKey` via `register_structured_typedef_binding`,
-and focused parser tests now prove those results through structured keys
-instead of `find_parser_text_id(rendered_name)`.
+Step 2.3 removed the dead parser string-taking namespace/name construction API
+`canonical_name_in_context(int, const std::string& name)`. Raw reference
+inspection found no code call sites beyond the declaration and definition, and
+the remaining public namespace final-spelling route is
+`render_name_in_context(int, TextId)`.
 
 ## Suggested Next
 
@@ -21,9 +20,10 @@ Continue Step 2.3 from the parser semantic string-keyed binding cleanup.
 Inspect the next same-shape `parser.hpp` candidate and either remove it in a
 bounded Step 2.3 packet or record why it is non-semantic/output-only:
 
-- `canonical_name_in_context(int, const std::string& name)`: namespace/name
-  construction helper; verify whether it is semantic lookup authority or only
-  display/final spelling construction.
+- `ensure_named_namespace_context(int parent_id, TextId text_id,
+  const std::string& name)`: namespace context construction helper; verify
+  whether `name` is only display/canonical payload while `text_id` remains the
+  semantic child key.
 
 ## Watchouts
 
@@ -51,6 +51,9 @@ bounded Step 2.3 packet or record why it is non-semantic/output-only:
   longer exists as parser API. The remaining public replacement is
   `render_name_in_context(int, TextId)`, which is a final-spelling renderer;
   do not reintroduce fallback spelling on that public route.
+- `canonical_name_in_context(int, const std::string& name)` no longer exists as
+  parser API. Do not reintroduce string-taking namespace/name construction when
+  `TextId`-based final spelling via `render_name_in_context` is sufficient.
 - `register_tag_type_binding` no longer accepts a rendered string as its
   semantic binding key. The `const char* tag` argument is still retained as
   `TypeSpec` compatibility/display payload; do not treat that payload as lookup
