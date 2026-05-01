@@ -1333,15 +1333,13 @@ class Validator {
   bool has_struct_instance_field(const std::string& tag,
                                  const std::string& member,
                                  TextId member_text_id = kInvalidText) const {
-    const bool legacy = has_struct_instance_field_legacy(tag, member);
     std::optional<SemaStructuredNameKey> record_key = current_method_struct_key_;
     if (!record_key.has_value()) record_key = structured_record_key_for_tag(tag);
-    if (record_key.has_value() && member_text_id != kInvalidText) {
+    if (record_key.has_value() && record_key->valid() && member_text_id != kInvalidText) {
       const auto structured = has_struct_instance_field_by_key(*record_key, member_text_id);
-      (void)compare_sema_lookup_presence(legacy, structured.value_or(false));
       if (structured.has_value()) return *structured;
     }
-    return legacy;
+    return has_struct_instance_field_legacy(tag, member);
   }
 
   std::optional<SemaStructuredNameKey> method_owner_key_from_qualifier(

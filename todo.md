@@ -8,20 +8,20 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.3 removed the Sema method-owner rendered-name gate when qualifier
-TextId metadata already resolves to a known structured owner key. Stale
-rendered owner spelling can no longer block that structured owner route; the
-existing rendered compatibility path remains only for incomplete namespaced
-owner carriers whose structured owner key is not present. Focused
-`frontend_parser_tests` coverage now proves that stale rendered owner spelling
-does not override qualifier TextId owner metadata.
+Step 3.3 removed the eager rendered instance-field probe from Sema method-body
+field lookup when structured owner/member metadata is available.
+`has_struct_instance_field` now queries the structured owner key and member
+`TextId` first, returns that authoritative result on metadata hit or miss, and
+only falls back to rendered field-name lookup when the structured route has no
+metadata. Existing focused `frontend_parser_tests` coverage proves stale
+rendered field spelling does not win over structured metadata.
 
 ## Suggested Next
 
 Choose the next bounded Step 3.3 rendered-lookup removal packet from another
-route where structured metadata is already complete. Avoid namespace-qualified
-out-of-class method-owner cleanup until the producer supplies a complete
-structured owner context beyond the current compatibility path.
+route where structured metadata is already complete. Avoid derived/static-member
+cleanup until the producer supplies complete structured base-chain/static-member
+metadata.
 
 ## Watchouts
 
@@ -115,6 +115,9 @@ structured owner context beyond the current compatibility path.
   record. Namespace-qualified out-of-class methods can still arrive with an
   incomplete owner key, so their rendered compatibility remains intentionally
   retained until that producer metadata is complete.
+- Method-body instance-field lookup now trusts structured owner/member metadata
+  before rendered field spelling. The rendered fallback is intentionally still
+  present for no-metadata compatibility only.
 
 ## Proof
 
