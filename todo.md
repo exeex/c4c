@@ -8,23 +8,26 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.3 fixed the `e0b01f49` Sema symbol-lookup regression by keeping rendered
-global/enum fallback rejection limited to references with no qualifier segments:
-unqualified names and global-qualified (`::name`) references still reject stale
-rendered entries when structured metadata exists, while namespace/owner-qualified
-rendered bridges such as the global-scope using-declaration path retain
-compatibility. The existing focused stale global-qualified rendered global and
-enum tests remain covered.
+Step 3.3 deleted the remaining method-owner rendered fallback probe from
+`resolve_owner_in_namespace_context` when a valid structured owner key is
+already present. Structured owner metadata is now the only consulted route in
+that branch; rendered owner spelling is still used only when no valid structured
+owner key exists. Existing focused Sema coverage proves both sides:
+`test_sema_namespace_owner_resolution_prefers_structured_owner_key` and
+`test_sema_namespace_owner_resolution_rejects_rendered_fallback_after_structured_miss`.
 
 ## Suggested Next
 
-Choose the next bounded Step 3 rendered-lookup removal packet from the remaining
-watchouts, keeping it to one concrete producer gap or one proven consumer
-deletion route; namespace-qualified rendered globals should stay parked until
-their producer metadata is equivalent.
+Choose the next bounded Step 3.3 rendered-lookup removal packet from a route
+where structured metadata is already complete, preferably another comparison-only
+rendered probe or a consumer guarded by existing focused stale-spelling coverage.
 
 ## Watchouts
 
+- Do not delete or narrow derived/static-member rendered compatibility yet:
+  `cpp_positive_sema_inherited_static_member_lookup_simple_runtime_cpp` still
+  needs the current no-metadata fallback when structured base-chain/static-member
+  metadata is absent.
 - Do not delete the rendered-name `eval_const_int` compatibility overload while
   HIR still passes `NttpBindings` as `std::unordered_map<std::string, long long>`.
 - Route deletion of the rendered-name `eval_const_int` compatibility overload

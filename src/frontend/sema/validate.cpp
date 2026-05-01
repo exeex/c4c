@@ -1409,15 +1409,11 @@ class Validator {
       const std::string& owner, int namespace_context_id,
       const std::optional<SemaStructuredNameKey>& structured_owner_key) const {
     if (owner.empty() || namespace_context_id < 0) return nullptr;
-    const Node* rendered_fallback =
-        resolve_owner_by_rendered_name_fallback(owner, namespace_context_id);
     if (structured_owner_key.has_value() && structured_owner_key->valid()) {
       auto it = struct_defs_by_key_.find(*structured_owner_key);
-      const Node* structured = it != struct_defs_by_key_.end() ? it->second : nullptr;
-      (void)compare_sema_lookup_ptrs(rendered_fallback, structured);
-      return structured;
+      return it != struct_defs_by_key_.end() ? it->second : nullptr;
     }
-    return rendered_fallback;
+    return resolve_owner_by_rendered_name_fallback(owner, namespace_context_id);
   }
 
   const Node* enclosing_method_owner_record(const Node* fn) const {
