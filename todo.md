@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Review Artifact Path: review/step2_4_5b_1_failed_record_scope_carrier_review.md
-Current Step ID: Step 2.4.4.5B.3
-Current Step Title: Delete The Using-Alias Projector
+Review Artifact Path: review/step2_4_5b_3_blocked_projector_deletion_review.md
+Current Step ID: Step 2.4.4.5B.2
+Current Step Title: Implement Top-Level Template Using-Alias RHS Structured Carrier Follow-Up
 
 ## Just Finished
 
@@ -20,9 +20,21 @@ but the two required fixtures return to parse timeouts without the projector:
 
 ## Suggested Next
 
-Next packet should add the missing structured carrier needed by top-level
-template using-alias RHS propagation for `typename Owner<Args>::member`, then
-retry deleting `apply_alias_template_member_typedef_compat_type`.
+Next executor packet stays within Step 2.4.4.5B and should add the missing
+structured carrier needed by top-level template using-alias RHS propagation for
+`typename Owner<Args>::member`.
+
+Packet contract:
+
+- Preserve the blocked B.3 deletion result as context, not implementation
+  progress.
+- Thread owner identity as structured parser/Sema metadata such as direct
+  record/template owner metadata, `QualifiedNameKey`, namespace-aware key, or
+  another reviewed domain key.
+- Preserve member identity as `TextId` from the parsed member token or reviewed
+  structured metadata source.
+- After the carrier covers the two timeout fixtures, retry deleting
+  `apply_alias_template_member_typedef_compat_type`.
 
 ## Watchouts
 
@@ -34,6 +46,8 @@ retry deleting `apply_alias_template_member_typedef_compat_type`.
 - Do not unblock this by restoring rendered/deferred `TypeSpec`,
   `debug_text`, split `Owner::member`, expectation downgrades, or named-fixture
   shortcuts.
+- Do not claim implementation progress from the B.3 deletion attempt; it only
+  discovered the top-level template using-alias RHS carrier blocker.
 - `clang-format` is not installed in this environment, so no automatic format
   pass was available.
 
