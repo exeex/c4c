@@ -97,9 +97,9 @@ struct ParserFunctionParamScopeGuard {
         active = true;
         for (Node* param : params) {
             if (!param || !param->name || !param->name[0]) continue;
-            parser->register_var_type_binding(
-                parser->parser_text_id_for_token(kInvalidText, param->name),
-                param->type);
+            if (param->unqualified_text_id == kInvalidText) continue;
+            parser->register_var_type_binding(param->unqualified_text_id,
+                                              param->type);
         }
     }
 

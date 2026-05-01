@@ -8,30 +8,32 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 replaced
-`ensure_named_namespace_context(int parent_id, TextId text_id,
-const std::string& name)` with the TextId-only
-`ensure_named_namespace_context(int parent_id, TextId text_id)`. Namespace
-child construction now rejects invalid `TextId`s, uses
-`named_namespace_children[parent_id][text_id]` as the semantic child key, and
-derives display/canonical spelling only through `parser_text(text_id, {})`.
-Parser namespace declaration call sites and focused parser tests were updated
-to stop passing fallback/display strings into this construction API.
+Step 2.3 classified the `ParserFunctionParamScopeGuard` call family for
+`parser_text_id_for_token(TextId token_text_id, std::string_view fallback)`.
+Those calls were semantic parameter-binding producers: they registered local
+parameter type bindings by reinterning `param->name` through
+`parser_text_id_for_token(kInvalidText, param->name)`. `parse_param` already
+materializes `Node::unqualified_text_id` from the declarator token/structured
+metadata, so both duplicated guards now register only the existing
+`param->unqualified_text_id` and skip genuinely metadata-less params instead
+of using a rendered-name fallback as binding authority.
 
 ## Suggested Next
 
-Continue Step 2.3 from the parser semantic string-keyed binding cleanup.
-Inspect the next same-shape `parser.hpp` candidate and either remove it in a
-bounded Step 2.3 packet or record why it is non-semantic/output-only:
-
-- `parser_text_id_for_token(TextId token_text_id, std::string_view fallback)`:
-  classify remaining parser call paths by producer role. It is still a central
-  TextId materialization boundary, so only remove or narrow concrete semantic
-  fallback uses that can be replaced by already-available token/structured
-  metadata.
+Continue Step 2.3 by classifying the next `parser_text_id_for_token` producer
+family. Good candidates are the remaining `kInvalidText` call sites in
+`declarations.cpp`, `types/struct.cpp`, `types/template.cpp`, and
+`types/types_helpers.hpp`; remove or narrow only a semantic fallback use where
+token/structured `TextId` metadata is already available, otherwise record the
+family as display-only, synthetic/prelude, or blocked by missing metadata.
 
 ## Watchouts
 
+- The function-parameter scope guard fallback route is removed for the covered
+  parser-owned parameter declarations. If a future parameter-like producer
+  lacks `Node::unqualified_text_id`, treat that as missing producer metadata
+  instead of restoring `parser_text_id_for_token(kInvalidText, param->name)` in
+  the binding guard.
 - `cache_typedef_type(const std::string& name, ...)` still exists, but its
   remaining direct callers are the synthetic/prelude typedef aliases registered
   in `core.cpp` (`va_list`, fixed-width integer aliases, `std::__true_type`,
