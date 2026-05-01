@@ -3,42 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 3.3.3B
-Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
+Current Step ID: Step 4
+Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 3.3.3B tightened Sema rendered global and enum compatibility for
-qualified references. After structured qualified lookup misses, a reference
-with qualifier TextId metadata can no longer recover an unqualified rendered
-global or enum constant of the same member spelling; the using-value-alias
-target-key lookup still runs before the rendered fallback gate and remains
-green.
+Step 3.3 completed after final route review in
+`review/step33_final_route_review.md`. The reviewer judged the Step 3.3.1
+through Step 3.3.3B route aligned with idea 139 and ready to advance after
+commit `683da938d`.
 
 ## Suggested Next
 
-Next executor packet can review the Step 3.3.3B diff against the active idea
-and decide whether the remaining function/overload rendered compatibility gates
-need an analogous qualified-metadata hard block or are already covered by
-structured function-name ownership tracking.
+Next executor packet should start Step 4: trace parser-to-Sema metadata handoff
+for typedefs, values, records, templates, NTTP defaults, known functions,
+members, static members, and consteval references. Name one concrete handoff
+gap where metadata is dropped and later recovered from rendered spelling, then
+repair that gap or record the exact blocker.
 
 ## Watchouts
 
-- Function, ref-overload, and C++ overload lookup already consult structured
-  function keys before rendered lookup and suppress rendered fallback when the
-  rendered function name is tracked as structured. The current packet did not
-  add a new hard block for unstructured rendered function names.
-- The global/enum fallback block intentionally runs after the structured
-  `using ::exported_value` alias target-key lookup, preserving Step 3.3.3A
-  behavior.
-- `review/step33_sema_lookup_route_review.md` was already untracked in the
-  worktree and was not touched.
+- The source idea remains active; Step 3.3 closure is not source-idea closure.
+- Step 4 should preserve structured metadata that already exists. Do not add
+  fallback spelling, rendered qualified-text parsing, helper-only renames, or
+  string/string_view semantic lookup routes.
+- If a handoff requires a cross-module carrier outside parser/Sema ownership,
+  record a separate metadata idea instead of expanding idea 139.
+- `review/step33_final_route_review.md` and prior review artifacts are
+  transient review files and were not modified by this lifecycle update.
 
 ## Proof
 
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)' >> test_after.log 2>&1`
+Step 3.3 final review accepted the existing canonical proof in
+`test_after.log`: build plus
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)'`.
 
-Passed. `test_after.log` contains the canonical proof log for this packet:
-build succeeded and the delegated subset passed, including
-`frontend_parser_lookup_authority_tests` and 884 `cpp_positive_sema_` tests
-for 885/885 total selected tests.
+No close-time regression guard was run for this lifecycle update because idea
+139 is not complete; the active runbook advances to Step 4.
