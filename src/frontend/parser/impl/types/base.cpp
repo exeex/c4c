@@ -2147,6 +2147,9 @@ TypeSpec Parser::parse_base_type() {
                                                 ts.base = TB_STRUCT;
                                                 ts.tag = arena_.strdup(
                                                     owner_name.c_str());
+                                                ts.tag_text_id =
+                                                    ati->member_typedef.owner_key
+                                                        .base_text_id;
                                                 ts.tpl_struct_origin = ts.tag;
                                                 set_template_arg_refs_from_parsed_args(
                                                     &ts, actual_args);
@@ -2156,6 +2159,19 @@ TypeSpec Parser::parse_base_type() {
                                                 ts.deferred_member_type_text_id =
                                                     ati->member_typedef
                                                         .member_text_id;
+                                                ParserAliasTemplateMemberTypedefInfo
+                                                    dependent_carrier;
+                                                dependent_carrier.valid = true;
+                                                dependent_carrier.owner_key =
+                                                    ati->member_typedef.owner_key;
+                                                dependent_carrier.owner_args =
+                                                    actual_args;
+                                                dependent_carrier.member_text_id =
+                                                    ati->member_typedef
+                                                        .member_text_id;
+                                                active_context_state_
+                                                    .last_using_alias_member_typedef =
+                                                    std::move(dependent_carrier);
                                                 return true;
                                             }
 

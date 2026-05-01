@@ -1497,13 +1497,23 @@ Node* parse_top_level(Parser& parser) {
                 const int alias_type_pos = parser.pos_;
                 const ParserAliasTemplateMemberTypedefInfo member_typedef_info =
                     try_parse_alias_template_member_typedef_info(parser);
+                parser.active_context_state_.last_using_alias_member_typedef = {};
                 TypeSpec alias_ts{};
+                ParserAliasTemplateMemberTypedefInfo alias_member_typedef_info =
+                    member_typedef_info;
                 try {
                     alias_ts = parser.parse_type_name();
                     if (!alias_ts.tpl_struct_origin &&
                         member_typedef_info.valid) {
                         apply_alias_template_member_typedef_compat_type(
                             parser, member_typedef_info, &alias_ts);
+                    }
+                    if (!alias_member_typedef_info.valid &&
+                        parser.active_context_state_
+                            .last_using_alias_member_typedef.valid) {
+                        alias_member_typedef_info =
+                            parser.active_context_state_
+                                .last_using_alias_member_typedef;
                     }
                 } catch (const std::exception&) {
                     parser.pos_ = alias_type_pos;
@@ -1539,7 +1549,7 @@ Node* parse_top_level(Parser& parser) {
                 }
                 parser.set_last_using_alias_name(alias_key);
                 parser.active_context_state_.last_using_alias_member_typedef =
-                    member_typedef_info;
+                    alias_member_typedef_info;
                 return nullptr;
             }
             target_name.base_name = std::move(first_name);
