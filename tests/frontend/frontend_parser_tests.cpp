@@ -231,6 +231,15 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
   const int ns_context =
       parser.ensure_named_namespace_context(0, ns_id);
 
+  c4c::TypeSpec stale_legacy_var_ts{};
+  stale_legacy_var_ts.array_size = -1;
+  stale_legacy_var_ts.inner_rank = -1;
+  stale_legacy_var_ts.base = c4c::TB_SHORT;
+  const c4c::Parser::SymbolId stale_value_symbol =
+      parser.parser_symbol_tables().intern_identifier("idFirstValue");
+  parser.parser_symbol_tables().var_types[stale_value_symbol] =
+      stale_legacy_var_ts;
+
   parser.register_typedef_binding(typedef_id, typedef_ts, true);
   parser.register_var_type_binding(value_id, var_ts);
   parser.register_known_fn_name_in_context(ns_context, fn_id);
@@ -242,6 +251,12 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
               "ID-first typedef registration should not prefer fallback spelling");
   expect_true(parser.find_var_type(value_id) != nullptr,
               "ID-first value registration should use the TextId spelling");
+  expect_true(parser.find_var_type(value_id) != nullptr &&
+                  parser.find_var_type(value_id)->base == c4c::TB_LONG,
+              "ID-first value lookup should prefer TextId storage over stale legacy symbol cache");
+  expect_true(parser.parser_symbol_tables().var_types[stale_value_symbol].base ==
+                  c4c::TB_SHORT,
+              "ID-first value registration should not refresh the legacy symbol cache");
   expect_true(parser.find_var_type(
                   parser_test_text_id(parser, "wrong_value_fallback")) ==
                   nullptr,
@@ -1950,7 +1965,7 @@ void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_va
   const c4c::TextId qualified_value_text =
       parser.parser_text_id_for_token(c4c::kInvalidText,
                                       "ns::LegacyOnlyValue");
-  parser.binding_state_.non_atom_var_types[qualified_value_text] = legacy_ts;
+  parser.binding_state_.var_types_by_text_id[qualified_value_text] = legacy_ts;
 
   c4c::Parser::VisibleNameResult resolved_type;
   expect_true(!parser.lookup_type_in_context(ns_context, type_text,

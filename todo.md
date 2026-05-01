@@ -8,39 +8,39 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Lifecycle boundary refresh landed after the Step 2.3 parser setter conversion.
-`plan.md` now treats parser/Sema-owned `fallback`, `legacy`, and
-`compatibility` semantic routes as active cleanup targets when structured
-metadata already exists.
+Step 2.3 removed the parser-owned `cache_legacy_var_type_binding` rendered
+spelling route. `register_var_type_binding` now records direct TextId-backed
+value types plus structured `QualifiedNameKey` value bindings without
+refreshing the legacy symbol cache. `find_var_type(TextId)` now prefers the
+TextId table and only preserves explicit legacy symbol-table compatibility as a
+last-resort reader.
 
-HIR-only rendered lookup routes were moved to
-`ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md`, and
-`TypeSpec::tag` field deletion / cross-stage fallout was moved to
-`ideas/open/141_typespec_tag_field_removal_metadata_migration.md`.
+The focused parser test now seeds a stale legacy symbol-cache value for an
+ID-first value registration and proves TextId storage wins while registration
+does not rewrite the legacy cache.
 
 ## Suggested Next
 
-Execute a focused Step 2.3 parser-owned cleanup packet for one remaining
-`fallback` / `legacy` / `compatibility` semantic route where the caller already
-has a real carrier. Good first candidates are:
-
-- `cache_legacy_var_type_binding` and the associated var/type binding readers,
-  if they can be collapsed to `TextId`, `QualifiedNameKey`, namespace context,
-  or declaration metadata without adding a rendered rediscovery helper.
-- Visible typedef fallback depth/guard paths, if the guarded lookup can be
-  expressed through existing `TextId` or visible-name metadata.
-- Visible-name `compatibility_spelling` / `compatibility_name` paths, if the
-  route can keep `VisibleNameResult` or structured lookup output until display
-  spelling is explicitly needed.
-
-Start by naming one exact route and proving whether it is removable now or is a
-metadata blocker that belongs in idea 140 or 141.
+Execute one more focused Step 2.3 parser-owned cleanup packet against either
+the visible typedef fallback depth/guard path or a visible-name
+`compatibility_spelling` / `compatibility_name` path where existing
+`VisibleNameResult`, `TextId`, or `QualifiedNameKey` metadata can carry the
+semantic answer without adding rendered rediscovery helpers.
 
 ## Watchouts
 
 - Do not restore string/string_view parser state setter authority. The setters
   are now `TextId`-based; display strings passed to them are fallback/display
   payloads only.
+- `var_types_by_text_id` is direct parser TextId metadata for
+  `register_var_type_binding`, not a rendered-name rediscovery cache. Direct
+  structured registrations intentionally do not populate it, so
+  string-facing/TextId-facing lookup does not bridge from structured-only
+  storage.
+- `find_var_type(TextId)` still has an explicit legacy symbol-table
+  compatibility fallback for callers/tests that manually seed
+  `parser_symbol_tables().var_types`; Step 2.3 removed parser-owned writes to
+  that cache for ordinary value registration.
 - The qualified `has_typedef` path was deliberately left compatibility-backed
   for qualified names. A metadata-only attempt using qualifier/base `TextId`s
   passed ordinary qualified casts but regressed
@@ -66,5 +66,5 @@ metadata blocker that belongs in idea 140 or 141.
 Passed:
 `(cmake --build build --target c4cll && ctest --test-dir build -R 'cpp_(positive_parser|positive_sema|negative_tests)' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: regenerated canonical `test_after.log` after this setter-conversion
-packet (926 tests passed).
+Proof log: regenerated canonical `test_after.log` after this
+`cache_legacy_var_type_binding` removal packet (926 tests passed).

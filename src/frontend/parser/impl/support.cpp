@@ -281,7 +281,7 @@ Parser::ParserSnapshot Parser::save_state() const {
     snap.non_atom_typedefs = binding_state_.non_atom_typedefs;
     snap.non_atom_user_typedefs = binding_state_.non_atom_user_typedefs;
     snap.non_atom_typedef_types = binding_state_.non_atom_typedef_types;
-    snap.non_atom_var_types = binding_state_.non_atom_var_types;
+    snap.var_types_by_text_id = binding_state_.var_types_by_text_id;
     snap.value_bindings = binding_state_.value_bindings;
     snap.lexical_scope_state = lexical_scope_state_;
 #endif
@@ -297,7 +297,7 @@ void Parser::restore_state(const ParserSnapshot& snap) {
     binding_state_.non_atom_typedefs = snap.non_atom_typedefs;
     binding_state_.non_atom_user_typedefs = snap.non_atom_user_typedefs;
     binding_state_.non_atom_typedef_types = snap.non_atom_typedef_types;
-    binding_state_.non_atom_var_types = snap.non_atom_var_types;
+    binding_state_.var_types_by_text_id = snap.var_types_by_text_id;
     binding_state_.value_bindings = snap.value_bindings;
     lexical_scope_state_ = snap.lexical_scope_state;
 #endif

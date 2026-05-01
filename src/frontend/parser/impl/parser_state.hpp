@@ -70,7 +70,7 @@ struct ParserBindingState {
   std::unordered_set<TextId> non_atom_typedefs;
   std::unordered_set<TextId> non_atom_user_typedefs;
   std::unordered_map<TextId, TypeSpec> non_atom_typedef_types;
-  std::unordered_map<TextId, TypeSpec> non_atom_var_types;
+  std::unordered_map<TextId, TypeSpec> var_types_by_text_id;
   std::unordered_map<QualifiedNameKey, TypeSpec, QualifiedNameKeyHash>
       struct_typedefs;
   std::unordered_map<QualifiedNameKey, TypeSpec, QualifiedNameKeyHash>
@@ -298,7 +298,7 @@ struct ParserSnapshot {
   std::unordered_set<TextId> non_atom_typedefs;
   std::unordered_set<TextId> non_atom_user_typedefs;
   std::unordered_map<TextId, TypeSpec> non_atom_typedef_types;
-  std::unordered_map<TextId, TypeSpec> non_atom_var_types;
+  std::unordered_map<TextId, TypeSpec> var_types_by_text_id;
   std::unordered_map<QualifiedNameKey, TypeSpec, QualifiedNameKeyHash>
       value_bindings;
   ParserLexicalScopeState lexical_scope_state;

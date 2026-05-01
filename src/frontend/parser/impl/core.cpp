@@ -310,20 +310,6 @@ std::string render_lookup_name_in_context(const Parser& parser, int context_id,
     return qualified;
 }
 
-void cache_legacy_var_type_binding(Parser& parser, std::string_view name,
-                                   const TypeSpec& type) {
-    if (!uses_symbol_identity(name)) {
-        const TextId id = parser.parser_text_id_for_token(kInvalidText, name);
-        if (id == kInvalidText) return;
-        parser.binding_state_.non_atom_var_types[id] = type;
-        return;
-    }
-    const Parser::SymbolId id =
-        parser.shared_lookup_state_.parser_name_tables.intern_identifier(name);
-    if (id == Parser::kInvalidSymbol) return;
-    parser.shared_lookup_state_.parser_name_tables.var_types[id] = type;
-}
-
 bool is_unqualified_lookup_name(std::string_view name) {
     return !name.empty() && name.find("::") == std::string_view::npos;
 }
@@ -1086,13 +1072,10 @@ void Parser::register_structured_typedef_binding_in_context(
 }
 
 const TypeSpec* Parser::find_var_type(TextId name_text_id) const {
-    const std::string_view name = parser_text(name_text_id, {});
-    if (name.empty()) return nullptr;
-    if (!uses_symbol_identity(name)) {
-        if (name_text_id == kInvalidText) return nullptr;
-        const auto it = binding_state_.non_atom_var_types.find(name_text_id);
-        return it == binding_state_.non_atom_var_types.end() ? nullptr
-                                                             : &it->second;
+    if (name_text_id == kInvalidText) return nullptr;
+    const auto text_it = binding_state_.var_types_by_text_id.find(name_text_id);
+    if (text_it != binding_state_.var_types_by_text_id.end()) {
+        return &text_it->second;
     }
     const SymbolId id =
         shared_lookup_state_.parser_name_tables.find_identifier(name_text_id);
@@ -1160,7 +1143,9 @@ void Parser::register_var_type_binding(TextId name_text_id,
     if (key.base_text_id != kInvalidText) {
         binding_state_.value_bindings[key] = type;
     }
-    cache_legacy_var_type_binding(*this, resolved_name, type);
+    if (local_name_id != kInvalidText) {
+        binding_state_.var_types_by_text_id[local_name_id] = type;
+    }
 }
 
 void Parser::register_structured_var_type_binding(const QualifiedNameKey& key,
