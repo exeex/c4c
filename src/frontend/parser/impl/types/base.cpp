@@ -1608,15 +1608,72 @@ TypeSpec Parser::parse_base_type() {
                 set_last_resolved_typedef(tname_text_id, tname);
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
-                    const QualifiedNameKey alias_key = alias_template_key_in_context(
-                        current_namespace_context_id(), active_context_state_.last_resolved_typedef_text_id);
+                    auto alias_template_key_from_saved_type_metadata =
+                        [&]() -> QualifiedNameKey {
+                        TextId alias_text_id =
+                            save_tag_text_id != kInvalidText
+                                ? save_tag_text_id
+                                : active_context_state_
+                                      .last_resolved_typedef_text_id;
+                        if (alias_text_id == kInvalidText) return {};
+
+                        if (save_namespace_context_id >= 0) {
+                            return alias_template_key_in_context(
+                                save_namespace_context_id, alias_text_id);
+                        }
+
+                        if (save_is_global_qualified ||
+                            save_n_qualifier_segments > 0) {
+                            QualifiedNameRef alias_qn;
+                            alias_qn.base_text_id = alias_text_id;
+                            alias_qn.is_global_qualified =
+                                save_is_global_qualified;
+                            alias_qn.qualifier_segments.reserve(
+                                save_n_qualifier_segments);
+                            alias_qn.qualifier_text_ids.reserve(
+                                save_n_qualifier_segments);
+                            for (int qi = 0;
+                                 qi < save_n_qualifier_segments; ++qi) {
+                                const char* segment =
+                                    save_qualifier_segments
+                                        ? save_qualifier_segments[qi]
+                                        : nullptr;
+                                alias_qn.qualifier_segments.push_back(
+                                    segment ? std::string(segment)
+                                            : std::string{});
+                                TextId segment_text_id =
+                                    save_qualifier_text_ids
+                                        ? save_qualifier_text_ids[qi]
+                                        : kInvalidText;
+                                if (segment_text_id == kInvalidText && segment &&
+                                    segment[0]) {
+                                    segment_text_id =
+                                        find_parser_text_id(segment);
+                                }
+                                alias_qn.qualifier_text_ids.push_back(
+                                    segment_text_id);
+                            }
+                            const int context_id =
+                                resolve_namespace_context(alias_qn);
+                            if (context_id >= 0) {
+                                return alias_template_key_in_context(
+                                    context_id, alias_text_id);
+                            }
+                        }
+
+                        return alias_template_key_in_context(
+                            current_namespace_context_id(), alias_text_id);
+                    };
+                    const QualifiedNameKey alias_key =
+                        alias_template_key_from_saved_type_metadata();
                     const ParserAliasTemplateInfo* ati =
                         find_alias_template_info(alias_key);
                     if (!ati) {
                         // Legacy rendered-name recovery stays fallback-only once the
                         // structured alias key probe has been exhausted.
                         ati = find_alias_template_info_in_context(
-                            current_namespace_context_id(), active_context_state_.last_resolved_typedef_text_id);
+                            current_namespace_context_id(),
+                            active_context_state_.last_resolved_typedef_text_id);
                     }
                     if (ati) {
                         TentativeParseGuard alias_guard(*this);
