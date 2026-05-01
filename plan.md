@@ -45,12 +45,24 @@ Do not keep a string rediscovery route as the plan outcome.
 - Parser string-keyed semantic lookup maps and rendered-name probes
 - Parser semantic lookup APIs with string/string_view parameters,
   string-compatible overloads, or fallback spelling parameters
+- Parser-owned `fallback`/`legacy`/`compatibility` routes where structured
+  metadata already exists, including visible-name compatibility spelling,
+  visible typedef fallback depth/guards, known-function compatibility probes,
+  and legacy var/type binding caches.
+- Parser call sites of text helpers that pass rendered fallback spelling for
+  semantic lookup. The helper primitives are not automatically violations; the
+  semantic call sites must be collapsed when a `TextId`, `QualifiedNameKey`,
+  namespace context id, direct record/declaration, or owner key is available.
 - Parser call sites that render `QualifiedNameKey` and then re-enter
   string lookup
 - Sema consteval, owner, member, and static lookup routes that consult rendered
   names after structured keys exist
 - Sema semantic lookup overload families that preserve both string and
   structured routes
+- Sema-owned `fallback`/`legacy`/`compatibility` routes where producer
+  metadata is in parser/Sema scope, including structured owner/member/static
+  lookup, rendered global/enum compatibility indexes, and same-stage consteval
+  value/type fallback after metadata producers are complete.
 - Parser-to-Sema metadata handoff for `TextId`, namespace context, record
   identity, `TypeSpec::record_def`, declaration objects, and owner keys
 - Focused frontend tests for structured-vs-rendered disagreement cases
@@ -117,6 +129,17 @@ Parser and Sema lookup should follow this order:
   pull `src/frontend/hir` carrier migration into this plan. Route that work
   through `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` or a
   narrower HIR metadata idea if the supervisor switches scope.
+- HIR-only rendered lookup cleanup is not part of this active plan. Routes such
+  as `find_function_by_name_legacy`, `find_global_by_name_legacy`,
+  `has_legacy_mangled_entry`, `ModuleDeclLookupAuthority::LegacyRendered`,
+  `declaration_fallback`, rendered compatibility indexes, HIR
+  `NttpBindings`, and HIR `fallback_*` owner/member/tag recovery belong in
+  `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md`.
+- Removing `TypeSpec::tag` as a field is not part of this active plan. Idea
+  139 may move parser/Sema-owned call sites to `tag_text_id`, `record_def`, or
+  explicit owner/member/template metadata, but the field deletion itself and
+  cross-stage migration belong in
+  `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`.
 
 ## Steps
 
@@ -238,6 +261,10 @@ Actions:
   `std::string_view` spelling or fallback strings, including
   `lookup_using_value_alias`, `lookup_value_in_context`,
   `lookup_type_in_context`, and `lookup_concept_in_context`.
+- Remove or replace parser-owned `fallback`/`legacy`/`compatibility` named
+  semantic routes when the caller already has a real carrier, including legacy
+  var/type binding caches, visible typedef fallback guards, visible-name
+  compatibility spelling, and known-function compatibility probes.
 - Convert lookup authority to `TextId`, namespace context ids,
   `QualifiedNameKey`, direct AST links, declaration objects, or
   `VisibleNameResult` fields where those carriers are available.
@@ -867,6 +894,11 @@ Actions:
 - Inspect structured owner key construction and lookup call sites.
 - Convert rendered-name probes to structured owner/member/static lookups where
   producer metadata already exists.
+- Prioritize remaining Sema-owned `fallback`/`legacy` routes that can be
+  deleted with existing metadata, including `lookup_struct_static_member_*`,
+  instance-field legacy probes, owner-by-rendered-name fallback, and rendered
+  global/enum compatibility indexes. Park only the routes whose missing
+  producer is named in `todo.md` or a separate idea.
 - Delete Sema semantic lookup APIs that take `std::string`, `std::string_view`,
   or fallback spelling arguments.
 - Collapse Sema overload families so each semantic lookup uses a structured

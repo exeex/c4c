@@ -49,6 +49,10 @@ rendered lookup resweeps.
 - Inventory every `TypeSpec::tag` read/write and classify it as semantic
   identity, final/display spelling, diagnostics/dumps, mangling/link spelling,
   compatibility payload, or missing metadata.
+- Treat `TypeSpec::tag` deletion and cross-stage fallout as deferred from idea
+  139. Parser/Sema cleanup may convert individual call sites to existing
+  `tag_text_id`, `record_def`, or structured owner/member/template metadata,
+  but deleting the field is owned by this idea.
 - Replace parser-owned semantic `TypeSpec::tag` use with existing
   `tag_text_id`, `record_def`, `template_param_*`, `deferred_member_*`, or
   structured owner/member/template carriers where those are already available.
@@ -62,6 +66,26 @@ rendered lookup resweeps.
   removing `TypeSpec::tag` exposes missing non-HIR metadata.
 - Add focused tests where stale or drifted rendered `TypeSpec` spelling must
   not decide semantic lookup once structured metadata exists.
+
+## Deferred From Idea 139 And The Field-Removal Experiment
+
+The 2026-05-01 build experiment showed that removing `TypeSpec::tag` is larger
+than parser/Sema rendered lookup cleanup. This idea owns the remaining field
+removal route, including:
+
+- Parser-owned semantic `TypeSpec::tag` call sites that still need to be
+  migrated to `tag_text_id`, `record_def`, `QualifiedNameKey`,
+  template-parameter metadata, deferred member metadata, or another domain key.
+- HIR consumers that use `TypeSpec::tag` as struct/union/enum/typedef
+  identity, template parameter identity, record lookup key, member lookup key,
+  or display/source spelling without a separated semantic carrier.
+- HIR lowering and compile-time paths in the first failing build clusters:
+  `compile_time_engine.hpp`, `hir_types.cpp`, `hir_ir.hpp`,
+  `hir_functions.cpp`, `hir_lowering_core.cpp`, `builtin.cpp`, and
+  `hir_build.cpp`.
+- Any downstream LIR/BIR/backend carrier gap exposed after HIR no longer reads
+  semantic identity from `TypeSpec::tag`; those gaps should become separate
+  open ideas rather than resurrecting a rendered semantic field on `TypeSpec`.
 
 ## Out Of Scope
 

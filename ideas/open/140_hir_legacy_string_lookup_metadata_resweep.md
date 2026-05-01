@@ -37,6 +37,12 @@ silently expanding into `src/frontend/hir`.
 
 - Re-inventory `src/frontend/hir` for `std::string` keyed lookup maps,
   rendered-name fallback paths, and parity-only structured mirrors.
+- Include HIR `fallback`, `legacy`, and `compatibility` named semantic routes
+  surfaced during idea 139 cleanup, including
+  `find_function_by_name_legacy`, `find_global_by_name_legacy`,
+  `has_legacy_mangled_entry`, `ModuleDeclLookupAuthority::LegacyRendered`,
+  `declaration_fallback`, rendered-name compatibility indexes, and
+  `fallback_tag` / `fallback_member` style recovery.
 - Trace parser/Sema metadata through HIR lowering for records, methods,
   templates, static members, consteval, globals, function declarations, and
   NTTP bindings.
@@ -50,6 +56,28 @@ silently expanding into `src/frontend/hir`.
   spelling and must prefer the structured carrier.
 - Split missing upstream parser/Sema metadata or downstream LIR/BIR carrier
   needs into separate `ideas/open/` files.
+
+## Deferred From Idea 139
+
+The active parser/Sema plan may delete parser/Sema fallback routes only when
+the required metadata is owned by parser/Sema. The following blockers should
+move here instead of widening idea 139:
+
+- HIR rendered declaration lookup and lookup authority parity, including
+  `find_function_by_name_legacy`, `find_global_by_name_legacy`, and
+  `ModuleDeclLookupAuthority::LegacyRendered`.
+- HIR mangled/rendered materialization compatibility, including
+  `has_legacy_mangled_entry` and rendered-name compatibility indexes that
+  still decide semantic identity.
+- HIR fallback recovery surfaces such as `declaration_fallback`,
+  `fallback_tag`, and `fallback_member` when they recover owner/member/type
+  identity from rendered spelling.
+- HIR consteval and NTTP handoff through string-keyed `NttpBindings`, which
+  blocks deleting the parser/Sema rendered-name
+  `eval_const_int(..., const std::unordered_map<std::string, long long>*)`
+  compatibility overload.
+- Any parser/Sema route whose only remaining blocker is a HIR producer or
+  consumer contract rather than missing parser/Sema metadata.
 
 ## Out Of Scope
 
@@ -85,6 +113,10 @@ silently expanding into `src/frontend/hir`.
 - A rendered-name fallback is renamed, wrapped, or reclassified as structured
   progress while still deciding HIR semantic identity after structured metadata
   exists.
+- A `legacy`, `fallback`, or `compatibility` named HIR semantic route surfaced
+  from idea 139 remains in the normal metadata-backed path without being
+  deleted, structurally replaced, or explicitly classified as no-metadata
+  compatibility.
 - Tests are weakened, marked unsupported, or limited to one named fixture
   instead of covering same-feature structured-vs-rendered disagreement.
 - The implementation expands into LIR, BIR, or backend cleanup instead of
