@@ -237,6 +237,66 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
     if (ts.is_rvalue_ref) out += "_rref";
 }
 
+static const char* alias_template_arg_debug_text(
+    Parser& parser, const Parser::TemplateArgParseResult& arg) {
+    if (arg.is_value) {
+        if (arg.nttp_name && arg.nttp_name[0]) return arg.nttp_name;
+        return parser.arena_.strdup(std::to_string(arg.value).c_str());
+    }
+    std::string debug_ref;
+    append_type_mangled_suffix_local(debug_ref, arg.type);
+    if (debug_ref.empty() && arg.type.tag && arg.type.tag[0]) {
+        debug_ref = arg.type.tag;
+    }
+    if (debug_ref.empty() && arg.type.tag_text_id != kInvalidText) {
+        debug_ref = std::string(parser.parser_text(arg.type.tag_text_id, {}));
+    }
+    return debug_ref.empty() ? nullptr : parser.arena_.strdup(debug_ref.c_str());
+}
+
+static bool apply_alias_template_member_typedef_compat_type(
+    Parser& parser, const ParserAliasTemplateMemberTypedefInfo& info,
+    TypeSpec* alias_ts) {
+    if (!alias_ts || !info.valid ||
+        info.owner_key.base_text_id == kInvalidText ||
+        info.member_text_id == kInvalidText) {
+        return false;
+    }
+    const std::string owner_name =
+        parser.render_name_in_context(info.owner_key.context_id,
+                                      info.owner_key.base_text_id);
+    const std::string member_name =
+        std::string(parser.parser_text(info.member_text_id, {}));
+    if (owner_name.empty() || member_name.empty()) return false;
+
+    *alias_ts = {};
+    alias_ts->array_size = -1;
+    alias_ts->inner_rank = -1;
+    alias_ts->base = TB_STRUCT;
+    alias_ts->tag = parser.arena_.strdup(owner_name.c_str());
+    alias_ts->tag_text_id = info.owner_key.base_text_id;
+    alias_ts->tpl_struct_origin = alias_ts->tag;
+    if (!info.owner_args.empty()) {
+        alias_ts->tpl_struct_args.data =
+            parser.arena_.alloc_array<TemplateArgRef>(info.owner_args.size());
+        alias_ts->tpl_struct_args.size =
+            static_cast<int>(info.owner_args.size());
+        for (int i = 0; i < alias_ts->tpl_struct_args.size; ++i) {
+            const Parser::TemplateArgParseResult& arg = info.owner_args[i];
+            TemplateArgRef& out = alias_ts->tpl_struct_args.data[i];
+            out.kind = arg.is_value ? TemplateArgKind::Value
+                                    : TemplateArgKind::Type;
+            out.type = arg.is_value ? TypeSpec{} : arg.type;
+            out.value = arg.is_value ? arg.value : 0;
+            out.debug_text = alias_template_arg_debug_text(parser, arg);
+        }
+    }
+    alias_ts->deferred_member_type_name =
+        parser.arena_.strdup(member_name.c_str());
+    alias_ts->deferred_member_type_text_id = info.member_text_id;
+    return true;
+}
+
 static bool template_param_expr_continues_after_greater(TokenKind k) {
     return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
            k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
@@ -1441,269 +1501,9 @@ Node* parse_top_level(Parser& parser) {
                 try {
                     alias_ts = parser.parse_type_name();
                     if (!alias_ts.tpl_struct_origin &&
-                        alias_type_pos < parser.core_input_state_.pos &&
-                        parser.core_input_state_.tokens[alias_type_pos].kind ==
-                            TokenKind::KwTypename) {
-                        auto skip_balanced_template_args = [&](int* pos) -> bool {
-                            if (!pos ||
-                                *pos < 0 ||
-                                *pos >=
-                                    static_cast<int>(parser.core_input_state_.tokens.size()) ||
-                                parser.core_input_state_.tokens[*pos].kind != TokenKind::Less) {
-                                return false;
-                            }
-                            int depth = 0;
-                            while (*pos < static_cast<int>(parser.core_input_state_.tokens.size())) {
-                                const TokenKind kind = parser.core_input_state_.tokens[*pos].kind;
-                                if (kind == TokenKind::Less) {
-                                    ++depth;
-                                    ++(*pos);
-                                    continue;
-                                }
-                                if (kind == TokenKind::Greater) {
-                                    --depth;
-                                    ++(*pos);
-                                    if (depth <= 0) return true;
-                                    continue;
-                                }
-                                if (kind == TokenKind::GreaterGreater) {
-                                    depth -= 2;
-                                    ++(*pos);
-                                    if (depth <= 0) return true;
-                                    continue;
-                                }
-                                ++(*pos);
-                            }
-                            return false;
-                        };
-                        auto join_token_lexemes = [&](int start, int end) -> std::string {
-                            std::string out;
-                            for (int i = start; i < end; ++i) {
-                                out += parser.token_spelling(parser.core_input_state_.tokens[i]);
-                            }
-                            return out;
-                        };
-                        auto split_template_arg_token_ranges =
-                            [&](int start, int end) -> std::vector<std::pair<int, int>> {
-                            std::vector<std::pair<int, int>> ranges;
-                            int arg_start = start;
-                            int angle_depth = 0;
-                            int paren_depth = 0;
-                            int bracket_depth = 0;
-                            int brace_depth = 0;
-                            for (int i = start; i < end; ++i) {
-                                switch (parser.core_input_state_.tokens[i].kind) {
-                                    case TokenKind::Less: ++angle_depth; break;
-                                    case TokenKind::Greater:
-                                        if (angle_depth > 0) --angle_depth;
-                                        break;
-                                    case TokenKind::GreaterGreater:
-                                        angle_depth = std::max(0, angle_depth - 2);
-                                        break;
-                                    case TokenKind::LParen: ++paren_depth; break;
-                                    case TokenKind::RParen:
-                                        if (paren_depth > 0) --paren_depth;
-                                        break;
-                                    case TokenKind::LBracket: ++bracket_depth; break;
-                                    case TokenKind::RBracket:
-                                        if (bracket_depth > 0) --bracket_depth;
-                                        break;
-                                    case TokenKind::LBrace: ++brace_depth; break;
-                                    case TokenKind::RBrace:
-                                        if (brace_depth > 0) --brace_depth;
-                                        break;
-                                    case TokenKind::Comma:
-                                        if (angle_depth == 0 && paren_depth == 0 &&
-                                            bracket_depth == 0 && brace_depth == 0) {
-                                            ranges.push_back({arg_start, i});
-                                            arg_start = i + 1;
-                                        }
-                                        break;
-                                    default:
-                                        break;
-                                }
-                            }
-                            if (arg_start < end) ranges.push_back({arg_start, end});
-                            return ranges;
-                        };
-                        std::function<std::string(int, int)> encode_template_arg_ref_tokens =
-                            [&](int start, int end) -> std::string {
-                            while (start < end &&
-                                   (parser.core_input_state_.tokens[start].kind ==
-                                        TokenKind::KwTypename ||
-                                    parser.core_input_state_.tokens[start].kind ==
-                                        TokenKind::KwClass)) {
-                                ++start;
-                            }
-                            if (start >= end) return {};
-
-                            for (int i = start; i < end; ++i) {
-                                if (parser.core_input_state_.tokens[i].kind != TokenKind::Less) continue;
-                                int probe = i;
-                                if (!skip_balanced_template_args(&probe) || probe > end) {
-                                    break;
-                                }
-
-                                std::string owner = join_token_lexemes(start, i);
-                                std::string inner_refs;
-                                const auto inner_ranges =
-                                    split_template_arg_token_ranges(i + 1, probe - 1);
-                                for (const auto& [arg_start, arg_end] : inner_ranges) {
-                                    const std::string part =
-                                        encode_template_arg_ref_tokens(arg_start, arg_end);
-                                    if (part.empty()) continue;
-                                    if (!inner_refs.empty()) inner_refs += ",";
-                                    inner_refs += part;
-                                }
-                                return "@" + owner + ":" + inner_refs;
-                            }
-
-                            if (parser.core_input_state_.tokens[start].kind == TokenKind::IntLit ||
-                                parser.core_input_state_.tokens[start].kind == TokenKind::FloatLit ||
-                                parser.core_input_state_.tokens[start].kind == TokenKind::CharLit ||
-                                parser.core_input_state_.tokens[start].kind == TokenKind::KwTrue ||
-                                parser.core_input_state_.tokens[start].kind == TokenKind::KwFalse) {
-                                return join_token_lexemes(start, end);
-                            }
-
-                            std::string prefix;
-                            while (start < end &&
-                                   (parser.core_input_state_.tokens[start].kind == TokenKind::KwConst ||
-                                    parser.core_input_state_.tokens[start].kind ==
-                                        TokenKind::KwVolatile)) {
-                                if (parser.core_input_state_.tokens[start].kind == TokenKind::KwConst)
-                                    prefix += "const_";
-                                if (parser.core_input_state_.tokens[start].kind ==
-                                    TokenKind::KwVolatile)
-                                    prefix += "volatile_";
-                                ++start;
-                            }
-
-                            std::string base;
-                            while (start < end &&
-                                   (parser.core_input_state_.tokens[start].kind ==
-                                        TokenKind::Identifier ||
-                                    parser.core_input_state_.tokens[start].kind ==
-                                        TokenKind::ColonColon)) {
-                                base += parser.token_spelling(parser.core_input_state_.tokens[start]);
-                                ++start;
-                            }
-                            if (base.empty()) return join_token_lexemes(start, end);
-
-                            std::string suffix;
-                            for (int i = start; i < end; ++i) {
-                                if (parser.core_input_state_.tokens[i].kind == TokenKind::Star)
-                                    suffix += "_ptr";
-                                if (parser.core_input_state_.tokens[i].kind == TokenKind::Amp)
-                                    suffix += "_ref";
-                                if (parser.core_input_state_.tokens[i].kind == TokenKind::AmpAmp)
-                                    suffix += "_rref";
-                            }
-                            return prefix + base + suffix;
-                        };
-
-                        int probe = alias_type_pos + 1;  // skip typename
-                        bool owner_global_qualified = false;
-                        if (probe < parser.core_input_state_.pos &&
-                            parser.core_input_state_.tokens[probe].kind ==
-                                TokenKind::ColonColon) {
-                            owner_global_qualified = true;
-                            ++probe;
-                        }
-                        std::vector<std::string> qualifier_segments;
-                        std::vector<TextId> qualifier_text_ids;
-                        int owner_template_arg_start = -1;
-                        int owner_template_arg_end = -1;
-                        std::string member_name;
-                        TextId member_text_id = kInvalidText;
-                        while (probe < parser.core_input_state_.pos) {
-                            if (parser.core_input_state_.tokens[probe].kind != TokenKind::Identifier)
-                                break;
-                            const Token& segment_token = parser.core_input_state_.tokens[probe];
-                            const std::string segment =
-                                std::string(parser.token_spelling(segment_token));
-                            const TextId segment_text_id =
-                                parser.parser_text_id_for_token(segment_token.text_id, segment);
-                            ++probe;
-                            if (probe < parser.core_input_state_.pos &&
-                                parser.core_input_state_.tokens[probe].kind == TokenKind::Less) {
-                                owner_template_arg_start = probe;
-                                if (!skip_balanced_template_args(&probe)) break;
-                                owner_template_arg_end = probe;
-                            }
-                            if (probe < parser.core_input_state_.pos &&
-                                parser.core_input_state_.tokens[probe].kind ==
-                                    TokenKind::ColonColon) {
-                                ++probe;
-                                if (probe < parser.core_input_state_.pos &&
-                                    parser.core_input_state_.tokens[probe].kind ==
-                                        TokenKind::KwTemplate) {
-                                    ++probe;
-                                }
-                                if (probe < parser.core_input_state_.pos &&
-                                    parser.core_input_state_.tokens[probe].kind ==
-                                        TokenKind::Identifier) {
-                                    qualifier_segments.push_back(segment);
-                                    qualifier_text_ids.push_back(segment_text_id);
-                                    continue;
-                                }
-                            }
-                            member_name = segment;
-                            member_text_id = segment_text_id;
-                            break;
-                        }
-
-                        if (!qualifier_segments.empty() &&
-                            owner_template_arg_start >= 0 &&
-                            owner_template_arg_end > owner_template_arg_start &&
-                            !member_name.empty()) {
-                            Parser::QualifiedNameRef owner_qn;
-                            owner_qn.is_global_qualified = owner_global_qualified;
-                            owner_qn.qualifier_segments.assign(
-                                qualifier_segments.begin(),
-                                qualifier_segments.end() - 1);
-                            owner_qn.qualifier_text_ids.assign(
-                                qualifier_text_ids.begin(),
-                                qualifier_text_ids.end() - 1);
-                            owner_qn.base_name = qualifier_segments.back();
-                            owner_qn.base_text_id = qualifier_text_ids.back();
-
-                            std::string owner_name =
-                                resolve_qualified_known_type_name(parser, owner_qn);
-
-                            std::string owner_arg_refs;
-                            const auto owner_ranges = split_template_arg_token_ranges(
-                                owner_template_arg_start + 1,
-                                owner_template_arg_end - 1);
-                            for (const auto& [arg_start, arg_end] : owner_ranges) {
-                                const std::string ref =
-                                    encode_template_arg_ref_tokens(arg_start, arg_end);
-                                if (ref.empty()) continue;
-                                if (!owner_arg_refs.empty()) owner_arg_refs += ",";
-                                owner_arg_refs += ref;
-                            }
-
-                            alias_ts = {};
-                            alias_ts.array_size = -1;
-                            alias_ts.inner_rank = -1;
-                            alias_ts.base = TB_STRUCT;
-                            alias_ts.tag = parser.arena_.strdup(owner_name.c_str());
-                            alias_ts.tpl_struct_origin = alias_ts.tag;
-                            if (!owner_arg_refs.empty()) {
-                                alias_ts.tpl_struct_args.data =
-                                    parser.arena_.alloc_array<TemplateArgRef>(1);
-                                alias_ts.tpl_struct_args.size = 1;
-                                alias_ts.tpl_struct_args.data[0].kind =
-                                    TemplateArgKind::Type;
-                                alias_ts.tpl_struct_args.data[0].type = {};
-                                alias_ts.tpl_struct_args.data[0].value = 0;
-                                alias_ts.tpl_struct_args.data[0].debug_text =
-                                    parser.arena_.strdup(owner_arg_refs.c_str());
-                            }
-                            alias_ts.deferred_member_type_name =
-                                parser.arena_.strdup(member_name.c_str());
-                            alias_ts.deferred_member_type_text_id = member_text_id;
-                        }
+                        member_typedef_info.valid) {
+                        apply_alias_template_member_typedef_compat_type(
+                            parser, member_typedef_info, &alias_ts);
                     }
                 } catch (const std::exception&) {
                     parser.pos_ = alias_type_pos;
