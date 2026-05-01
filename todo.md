@@ -8,20 +8,20 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.3 removed the eager rendered instance-field probe from Sema method-body
-field lookup when structured owner/member metadata is available.
-`has_struct_instance_field` now queries the structured owner key and member
+Step 3.3 removed the eager rendered static-member probe from Sema
+`lookup_struct_static_member_type` when structured owner/member metadata is
+available. Static-member lookup now queries the structured owner key and member
 `TextId` first, returns that authoritative result on metadata hit or miss, and
-only falls back to rendered field-name lookup when the structured route has no
-metadata. Existing focused `frontend_parser_tests` coverage proves stale
-rendered field spelling does not win over structured metadata.
+only falls back to rendered owner/member lookup when the structured route has
+no metadata. Focused `frontend_parser_tests` coverage now proves stale rendered
+static-member spelling is rejected after a structured member miss.
 
 ## Suggested Next
 
 Choose the next bounded Step 3.3 rendered-lookup removal packet from another
 route where structured metadata is already complete. Avoid derived/static-member
-cleanup until the producer supplies complete structured base-chain/static-member
-metadata.
+cleanup beyond no-metadata compatibility until the producer supplies complete
+structured base-chain/static-member metadata.
 
 ## Watchouts
 
@@ -118,6 +118,9 @@ metadata.
 - Method-body instance-field lookup now trusts structured owner/member metadata
   before rendered field spelling. The rendered fallback is intentionally still
   present for no-metadata compatibility only.
+- Static-member lookup no longer eagerly consults rendered owner/member spelling
+  once valid structured owner/member metadata is available. The rendered
+  fallback is intentionally still present for no-metadata compatibility only.
 
 ## Proof
 

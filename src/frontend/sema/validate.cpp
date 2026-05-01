@@ -1150,14 +1150,6 @@ class Validator {
     }
   }
 
-  static void compare_optional_type_lookup(const std::optional<TypeSpec>& legacy,
-                                           const std::optional<TypeSpec>& structured) {
-    (void)compare_sema_lookup_presence(legacy.has_value(), structured.has_value());
-    if (legacy.has_value() && structured.has_value()) {
-      (void)type_binding_values_equivalent(*legacy, *structured);
-    }
-  }
-
   void note_struct_def(const Node* n) {
     if (!n || n->kind != NK_STRUCT_DEF || !n->name || !n->name[0]) return;
     // Zero-sized structs/unions are a GCC extension; treat them as complete.
@@ -1285,11 +1277,9 @@ class Validator {
       const std::string& tag, const std::string& member, const Node* reference = nullptr) const {
     if (reference && reference->unqualified_text_id != kInvalidText) {
       if (auto record_key = static_member_owner_key(tag, reference); record_key.has_value()) {
-        auto legacy = lookup_struct_static_member_type_legacy(tag, member);
         bool has_metadata = false;
         auto structured = lookup_struct_static_member_type_by_key(
             *record_key, reference->unqualified_text_id, &has_metadata);
-        compare_optional_type_lookup(legacy, structured);
         if (structured.has_value() || has_metadata) return structured;
       }
     }
