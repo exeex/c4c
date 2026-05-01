@@ -8,18 +8,18 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 3.3 completed after final route review in
-`review/step33_final_route_review.md`. The reviewer judged the Step 3.3.1
-through Step 3.3.3B route aligned with idea 139 and ready to advance after
-commit `683da938d`.
+Step 4 repaired one parser-to-Sema consteval metadata handoff gap. Parser AST
+function references already carried qualifier `TextId` metadata, but Sema
+consteval registration and lookup collapsed consteval function identity to
+namespace plus base `TextId`. The slice now records and resolves consteval
+function keys through the qualified function key and carries qualifier
+`TextId`s through the consteval structured key path.
 
 ## Suggested Next
 
-Next executor packet should start Step 4: trace parser-to-Sema metadata handoff
-for typedefs, values, records, templates, NTTP defaults, known functions,
-members, static members, and consteval references. Name one concrete handoff
-gap where metadata is dropped and later recovered from rendered spelling, then
-repair that gap or record the exact blocker.
+Continue Step 4 by tracing the next parser-to-Sema handoff family, preferably
+known functions or NTTP-default references, and either repair one concrete
+metadata drop or record the exact missing carrier.
 
 ## Watchouts
 
@@ -27,6 +27,9 @@ repair that gap or record the exact blocker.
 - Step 4 should preserve structured metadata that already exists. Do not add
   fallback spelling, rendered qualified-text parsing, helper-only renames, or
   string/string_view semantic lookup routes.
+- The repaired consteval path covers qualified owner identity for same-base
+  consteval functions. It does not claim cleanup of ordinary known-call
+  spelling classification or HIR consteval/string compatibility routes.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
 - `review/step33_final_route_review.md` and prior review artifacts are
@@ -34,9 +37,8 @@ repair that gap or record the exact blocker.
 
 ## Proof
 
-Step 3.3 final review accepted the existing canonical proof in
-`test_after.log`: build plus
-`ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)'`.
+Ran the delegated proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)' | tee test_after.log`.
 
-No close-time regression guard was run for this lifecycle update because idea
-139 is not complete; the active runbook advances to Step 4.
+Result: build succeeded and the filtered CTest subset passed
+`885/885` tests. Fresh proof log: `test_after.log`.

@@ -284,9 +284,20 @@ struct ConstEvalEnv {
         n->unqualified_text_id == kInvalidText) {
       return std::nullopt;
     }
+    if (n->n_qualifier_segments < 0) return std::nullopt;
+    if (n->n_qualifier_segments > 0 && !n->qualifier_text_ids) {
+      return std::nullopt;
+    }
     ConstEvalStructuredNameKey key;
     key.namespace_context_id = n->namespace_context_id;
+    key.is_global_qualified = n->is_global_qualified;
     key.base_text_id = n->unqualified_text_id;
+    key.qualifier_text_ids.reserve(static_cast<std::size_t>(n->n_qualifier_segments));
+    for (int i = 0; i < n->n_qualifier_segments; ++i) {
+      const TextId segment = n->qualifier_text_ids[i];
+      if (segment == kInvalidText) return std::nullopt;
+      key.qualifier_text_ids.push_back(segment);
+    }
     return key;
   }
 

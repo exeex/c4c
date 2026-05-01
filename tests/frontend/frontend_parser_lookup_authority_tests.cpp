@@ -973,6 +973,87 @@ void test_sema_func_local_lookup_rejects_rendered_after_metadata_miss() {
               "fallback after structured local key miss");
 }
 
+void test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  auto make_consteval_function = [&](const char* owner, long long value,
+                                     int line) {
+    const c4c::TextId owner_text = texts.intern(owner);
+    const c4c::TextId value_text = texts.intern("value");
+    const std::string rendered = std::string(owner) + "::value";
+
+    c4c::Node* lit = parser.make_node(c4c::NK_INT_LIT, line);
+    lit->ival = value;
+
+    c4c::Node* ret = parser.make_node(c4c::NK_RETURN, line);
+    ret->left = lit;
+
+    c4c::Node* body = parser.make_node(c4c::NK_BLOCK, line);
+    body->n_children = 1;
+    body->children = arena.alloc_array<c4c::Node*>(1);
+    body->children[0] = ret;
+
+    c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, line);
+    fn->name = arena.strdup(rendered);
+    fn->unqualified_name = arena.strdup("value");
+    fn->unqualified_text_id = value_text;
+    fn->namespace_context_id = parser.current_namespace_context_id();
+    fn->n_qualifier_segments = 1;
+    fn->qualifier_segments = arena.alloc_array<const char*>(1);
+    fn->qualifier_segments[0] = arena.strdup(owner);
+    fn->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+    fn->qualifier_text_ids[0] = owner_text;
+    fn->type = make_ts(c4c::TB_INT);
+    fn->is_consteval = true;
+    fn->body = body;
+    return fn;
+  };
+
+  c4c::Node* owner_b_false = make_consteval_function("OwnerB", 0, 1);
+  c4c::Node* owner_a_true = make_consteval_function("OwnerA", 1, 2);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 3);
+  ref->name = arena.strdup("OwnerA::value");
+  ref->unqualified_name = arena.strdup("value");
+  ref->unqualified_text_id = texts.intern("value");
+  ref->namespace_context_id = parser.current_namespace_context_id();
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("OwnerB");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = texts.intern("OwnerB");
+
+  c4c::Node* call = parser.make_node(c4c::NK_CALL, 3);
+  call->left = ref;
+
+  c4c::Node* assertion = parser.make_node(c4c::NK_STATIC_ASSERT, 3);
+  assertion->left = call;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
+  program->children[0] = owner_b_false;
+  program->children[1] = owner_a_true;
+  program->children[2] = assertion;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema consteval lookup should preserve parser-qualified owner "
+              "metadata instead of recovering from stale rendered spelling");
+}
+
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1260,6 +1341,7 @@ int main() {
   test_sema_function_lookup_rejects_same_member_wrong_owner_reentry();
   test_sema_ref_overload_lookup_rejects_same_member_wrong_owner_reentry();
   test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
+  test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();

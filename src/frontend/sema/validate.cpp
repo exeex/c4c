@@ -827,7 +827,7 @@ class Validator {
     if (n->unqualified_text_id != kInvalidText) {
       consteval_funcs_by_text_[n->unqualified_text_id] = n;
     }
-    if (auto key = sema_symbol_name_key(n); key.has_value() && key->valid()) {
+    if (auto key = sema_function_lookup_key(n); key.has_value() && key->valid()) {
       consteval_funcs_by_key_[to_consteval_key(*key)] = n;
     }
   }
@@ -913,7 +913,7 @@ class Validator {
       const std::string& name, const Node* reference = nullptr) const {
     if (reference) {
       bool has_authoritative_metadata = false;
-      if (auto key = sema_symbol_name_key(reference); key.has_value()) {
+      if (auto key = sema_function_lookup_key(reference); key.has_value()) {
         has_authoritative_metadata = true;
         const Node* structured = lookup_consteval_function_by_key(*key);
         if (structured) return structured;
