@@ -955,17 +955,24 @@ bool try_parse_nested_record_member(
     bool has_declarator = !parser.check(TokenKind::Semi) && !parser.check(TokenKind::RBrace);
     if (has_declarator) {
         const char* fname = nullptr;
-        parser.parse_declarator(anon_fts, &fname);
+        TextId fname_text_id = kInvalidText;
+        parser.parse_declarator(anon_fts, &fname, nullptr, nullptr, nullptr,
+                                nullptr, nullptr, nullptr, nullptr,
+                                &fname_text_id);
         if (fname) {
             Node* f = parser.make_node(NK_DECL, parser.cur().line);
             f->type = anon_fts;
             f->name = fname;
+            f->unqualified_name = fname;
+            f->unqualified_text_id = fname_text_id;
             check_dup_field(fname);
             fields->push_back(f);
         } else if (inner && inner->name) {
             Node* f = parser.make_node(NK_DECL, parser.cur().line);
             f->type = anon_fts;
             f->name = inner->name;
+            f->unqualified_name = inner->unqualified_name ? inner->unqualified_name : inner->name;
+            f->unqualified_text_id = inner->unqualified_text_id;
             f->is_anon_field = true;
             fields->push_back(f);
         }
@@ -977,11 +984,16 @@ bool try_parse_nested_record_member(
             fts2.tag = inner ? inner->name : nullptr;
             fts2.record_def = (inner && inner->n_fields >= 0) ? inner : nullptr;
             const char* fname2 = nullptr;
-            parser.parse_declarator(fts2, &fname2);
+            TextId fname2_text_id = kInvalidText;
+            parser.parse_declarator(fts2, &fname2, nullptr, nullptr, nullptr,
+                                    nullptr, nullptr, nullptr, nullptr,
+                                    &fname2_text_id);
             if (fname2) {
                 Node* f2 = parser.make_node(NK_DECL, parser.cur().line);
                 f2->type = fts2;
                 f2->name = fname2;
+                f2->unqualified_name = fname2;
+                f2->unqualified_text_id = fname2_text_id;
                 check_dup_field(fname2);
                 fields->push_back(f2);
             }
@@ -990,6 +1002,8 @@ bool try_parse_nested_record_member(
         Node* f = parser.make_node(NK_DECL, parser.cur().line);
         f->type = anon_fts;
         f->name = inner->name;
+        f->unqualified_name = inner->unqualified_name ? inner->unqualified_name : inner->name;
+        f->unqualified_text_id = inner->unqualified_text_id;
         f->is_anon_field = true;
         fields->push_back(f);
     }
@@ -1027,7 +1041,10 @@ bool try_parse_record_enum_member(
         while (true) {
             TypeSpec cur_fts = fts;
             const char* fname = nullptr;
-            parser.parse_declarator(cur_fts, &fname);
+            TextId fname_text_id = kInvalidText;
+            parser.parse_declarator(cur_fts, &fname, nullptr, nullptr, nullptr,
+                                    nullptr, nullptr, nullptr, nullptr,
+                                    &fname_text_id);
             parser.skip_attributes();
             long long bf_width = -1;
             if (parser.check(TokenKind::Colon)) {
@@ -1040,6 +1057,8 @@ bool try_parse_record_enum_member(
                 Node* f = parser.make_node(NK_DECL, parser.cur().line);
                 f->type = cur_fts;
                 f->name = fname;
+                f->unqualified_name = fname;
+                f->unqualified_text_id = fname_text_id;
                 f->ival = bf_width;  // -1 = not a bitfield; N = N-bit bitfield
                 check_dup_field(fname);
                 fields->push_back(f);
@@ -1656,8 +1675,10 @@ bool try_parse_record_method_or_field_member(
         Node** fn_ptr_params = nullptr;
         int n_fn_ptr_params = 0;
         bool fn_ptr_variadic = false;
+        TextId fname_text_id = kInvalidText;
         parser.parse_declarator(cur_fts, &fname, &fn_ptr_params,
-                         &n_fn_ptr_params, &fn_ptr_variadic);
+                         &n_fn_ptr_params, &fn_ptr_variadic, nullptr,
+                         nullptr, nullptr, nullptr, &fname_text_id);
         parser.skip_attributes();
 
         if (fname && parser.check(TokenKind::LParen)) {
@@ -1803,6 +1824,8 @@ bool try_parse_record_method_or_field_member(
             Node* f = parser.make_node(NK_DECL, parser.cur().line);
             f->type = cur_fts;
             f->name = fname;
+            f->unqualified_name = fname;
+            f->unqualified_text_id = fname_text_id;
             f->ival = bf_width;
             f->is_static = field_is_static;
             f->is_constexpr = field_is_constexpr;

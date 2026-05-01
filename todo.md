@@ -8,40 +8,36 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Continued Step 3.3 by replacing the remaining
-`has_struct_instance_field_name_by_key(const SemaStructuredNameKey&, const
-std::string&)` rendered member-name fallback in Sema. Instance-field recovery
-now checks structured field `TextId` metadata first, rejects stale structured
-member IDs when that metadata exists, and only preserves a separate textless
-field-name compatibility path for record fields whose declaration still arrives
-without `unqualified_text_id`.
+Continued Step 3.3 by wiring parsed record-field declarations to carry
+`unqualified_name` and `unqualified_text_id` from the declarator parser into
+Sema. Regular fields, multi-declarator fields, function-pointer fields,
+record enum fields, and nested-record declarator fields now provide member
+`TextId` metadata on the parsed `NK_DECL` field nodes.
 
-Added focused stale instance-field coverage in
-`frontend_parser_lookup_authority_tests`: an implicit method-body reference
-whose rendered member spelling is `stale` but whose structured member `TextId`
-is `missing` must not recover the real `stale` field after the structured
-member-key miss.
+Deleted the Sema `struct_textless_field_names_by_key_` compatibility index and
+its textless field-name lookup route. Instance-field lookup now succeeds for
+the covered parsed path through structured field `TextId` metadata rather than
+rendered field-name recovery.
+
+Added focused parsed-source coverage in
+`frontend_parser_lookup_authority_tests` proving parsed record fields carry
+member `TextId`s and that implicit method-body field lookup validates without
+the textless Sema compatibility path.
 
 ## Suggested Next
 
-Continue Step 3.3 by either wiring parser record-field declarations to produce
-`unqualified_text_id` consistently or by reviewing the remaining Sema
-`lookup_symbol()` rendered compatibility routes, especially enum constants and
-local/global cases where the reference still lacks complete qualifier or
-namespace producer metadata.
+Continue Step 3.3 by reviewing the remaining Sema `lookup_symbol()` rendered
+compatibility routes, especially enum constants and local/global cases where
+the reference still lacks complete qualifier or namespace producer metadata.
 
 ## Watchouts
 
-- The exact remaining instance-field metadata blocker is producer-side:
-  parsed record fields in positive cases such as
-  `operator_implicit_member_runtime.cpp` still reach Sema with
-  `unqualified_text_id == kInvalidText`, while method-body references like `x`
-  carry a `TextId`. The new `struct_textless_field_names_by_key_` path is
-  compatibility for those textless declarations only; stale structured member
-  IDs are rejected when structured field metadata exists.
-- `c4c-clang-tool-ccdb` was available on `PATH`, but
-  `build/compile_commands.json` did not load `src/frontend/sema/validate.cpp`;
-  targeted source reads were used after that tooling miss.
+- The parsed record-field producer gap covered by this packet is closed; no
+  remaining parsed-source field declaration in the exercised regular, enum,
+  nested-record, multi-declarator, or function-pointer paths needs the deleted
+  textless Sema field-name recovery.
+- `c4c-clang-tools` was not needed for this packet; targeted `rg` and source
+  reads were enough to find the existing declarator `out_name_text_id` channel.
 - The static-member template-instantiation optimistic route noted in the prior
   packet remains unchanged.
 
@@ -54,5 +50,5 @@ passing delegated positive Sema tests.
 
 Additional check: `cmake --build --preset default --target frontend_parser_lookup_authority_tests && build/tests/frontend/frontend_parser_lookup_authority_tests`
 
-Result: passed, including the new stale instance-field member lookup authority
-coverage.
+Result: passed, including the new parsed record-field member `TextId` coverage
+and the existing stale instance-field member lookup authority coverage.

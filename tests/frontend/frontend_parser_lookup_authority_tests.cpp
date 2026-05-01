@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -17,6 +18,39 @@ namespace {
 
 void expect_true(bool cond, const std::string& msg) {
   if (!cond) fail(msg);
+}
+
+c4c::Node* parse_cpp_source(c4c::Arena& arena, c4c::Lexer& lexer) {
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  c4c::Node* root = parser.parse();
+  expect_true(root != nullptr, "test source should produce a program node");
+  return root;
+}
+
+const c4c::Node* find_record(const c4c::Node* root, const char* name) {
+  if (!root || root->kind != c4c::NK_PROGRAM) return nullptr;
+  for (int i = 0; i < root->n_children; ++i) {
+    const c4c::Node* child = root->children[i];
+    if (child && child->kind == c4c::NK_STRUCT_DEF && child->name &&
+        std::string(child->name) == name) {
+      return child;
+    }
+  }
+  return nullptr;
+}
+
+const c4c::Node* find_field(const c4c::Node* record, const char* name) {
+  if (!record) return nullptr;
+  for (int i = 0; i < record->n_fields; ++i) {
+    const c4c::Node* field = record->fields[i];
+    if (field && field->name && std::string(field->name) == name) {
+      return field;
+    }
+  }
+  return nullptr;
 }
 
 void test_global_qualified_lookup_rejects_rendered_fallback_authority() {
@@ -403,6 +437,59 @@ void test_sema_instance_field_lookup_rejects_stale_member_spelling() {
               "spelling after structured member TextId miss");
 }
 
+void test_parsed_record_fields_carry_member_text_ids_into_sema() {
+  const char* source =
+      "struct Owner {\n"
+      "  int x, y;\n"
+      "  int (*callback)(int);\n"
+      "  enum Kind { A } kind;\n"
+      "  int method() { return x + y; }\n"
+      "};\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  const c4c::Node* owner = find_record(root, "Owner");
+  expect_true(owner != nullptr, "parsed Owner record should exist");
+  for (const char* name : {"x", "y", "callback", "kind"}) {
+    const c4c::Node* field = find_field(owner, name);
+    expect_true(field != nullptr,
+                std::string("parsed field should exist: ") + name);
+    expect_true(field->unqualified_text_id != c4c::kInvalidText,
+                std::string("parsed field should carry TextId: ") + name);
+    expect_true(field->unqualified_name && std::string(field->unqualified_name) == name,
+                std::string("parsed field should carry unqualified name: ") + name);
+  }
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "implicit method-body field lookup should validate through "
+              "structured field TextId metadata");
+}
+
+void test_parsed_nested_record_fields_carry_member_text_ids() {
+  const char* source =
+      "struct Outer {\n"
+      "  struct Inner { int value; } inner, other;\n"
+      "};\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  const c4c::Node* outer = find_record(root, "Outer");
+  expect_true(outer != nullptr, "parsed Outer record should exist");
+  for (const char* name : {"inner", "other"}) {
+    const c4c::Node* field = find_field(outer, name);
+    expect_true(field != nullptr,
+                std::string("parsed nested-record field should exist: ") + name);
+    expect_true(field->unqualified_text_id != c4c::kInvalidText,
+                std::string("parsed nested-record field should carry TextId: ") +
+                    name);
+  }
+}
+
 void test_sema_global_lookup_rejects_stale_qualified_rendered_reentry() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -478,6 +565,8 @@ int main() {
   test_dependent_typename_rejects_visible_type_rendered_reentry();
   test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry();
   test_sema_instance_field_lookup_rejects_stale_member_spelling();
+  test_parsed_record_fields_carry_member_text_ids_into_sema();
+  test_parsed_nested_record_fields_carry_member_text_ids();
   test_sema_global_lookup_rejects_stale_qualified_rendered_reentry();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";
   return 0;
