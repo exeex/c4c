@@ -3,13 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Review Artifact Path: review/step2_4_5b_3_blocked_projector_deletion_review.md
-Current Step ID: Step 2.4.4.5B.2
-Current Step Title: Implement Top-Level Template Using-Alias RHS Structured Carrier Follow-Up
+Review Artifact Path: none
+Current Step ID: Step 2.4.4.5C
+Current Step Title: Add Dependent/Template Record Member-Typedef Carrier
 
 ## Just Finished
 
-Step 2.4.4.5B.2 completed the structured-carrier follow-up needed to delete
+Step 2.4.4.5B.2 and Step 2.4.4.5B.3 completed the structured-carrier
+follow-up and projector deletion needed to remove
 `apply_alias_template_member_typedef_compat_type`.
 
 The parser now rejects `typename Owner<Args>::template member<...>` from the
@@ -33,9 +34,19 @@ types for the `cpp_hir_template_member_owner*` fixtures.
 
 ## Suggested Next
 
-Next packet should be supervisor/reviewer chosen. The current dirty slice is
-ready for acceptance review against
-`review/step2_4_5b_followup_acceptance_review.md`.
+Execute Step 2.4.4.5C: Add Dependent/Template Record Member-Typedef Carrier.
+
+Target `register_record_member_typedef_bindings()` in
+`src/frontend/parser/impl/types/struct.cpp` and the parser route exercised by:
+
+- `cpp_positive_sema_eastl_slice7_piecewise_ctor_parse_cpp`
+- `cpp_positive_sema_step3_timeout_probe_baseline_parse_cpp`
+- `cpp_positive_sema_tuple_element_alias_mix_parse_cpp`
+
+The packet should add or thread a parser/Sema-owned structured carrier for
+template/dependent record member typedef availability keyed by structured owner
+identity plus member `TextId`, then route those fixtures through it before any
+rendered `source_tag::member` publication.
 
 ## Watchouts
 
@@ -51,6 +62,14 @@ ready for acceptance review against
 - The record-scope structured shortcut must stay scoped; broadening it back to
   all `typename Owner<Args>::member` aliases loses HIR materialized types for
   simple owner chains.
+- Step 2.4.4.5C must not retry deletion by assuming
+  `template_instantiation_member_typedefs_by_key` or
+  `ParserAliasTemplateInfo::member_typedef` covers the timed-out
+  dependent/template record route; the runbook calls both already
+  insufficient for this packet.
+- Do not replace the record member typedef bridge with a helper that renders,
+  splits, reparses, or stores `source_tag::member`, `std::string`,
+  `std::string_view`, fallback spelling, or debug text as semantic authority.
 - `clang-format` is not installed in this environment, so no automatic format
   pass was available.
 
@@ -66,3 +85,6 @@ Result: passed. `test_after.log` contains a fresh successful build plus
 Focused broader proof also passed:
 `ctest --test-dir build -j --output-on-failure -R '^cpp_hir_template_member_owner'`
 with 5/5 passing tests.
+
+Suggested Step 2.4.4.5C proof:
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R 'cpp_positive_sema_(eastl_slice7_piecewise_ctor_parse_cpp|step3_timeout_probe_baseline_parse_cpp|tuple_element_alias_mix_parse_cpp)' >> test_after.log 2>&1`
