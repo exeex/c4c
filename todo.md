@@ -5,7 +5,6 @@ Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
 Current Step ID: Step 3.3
 Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
-你該做test baseline review了
 
 ## Just Finished
 
