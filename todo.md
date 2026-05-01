@@ -8,18 +8,20 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.3 narrowed Sema function, ref-overload, and C++ overload lookup so a
-valid structured function key miss blocks rendered-name compatibility even when
-the rendered spelling is qualified. The retained rendered fallback now remains
-explicitly tied to legacy entries that have no structured metadata. The focused
-frontend parser test now covers stale global-qualified rendered function,
-ref-overload, and C++ overload spellings versus structured reference keys.
+Step 3.3 narrowed Sema global value and enum-constant lookup so a valid
+structured symbol key miss blocks rendered compatibility for unqualified and
+global-qualified (`::...`) rendered entries that have structured metadata. The
+retained rendered fallback remains explicit no-metadata compatibility, and
+namespace-qualified rendered bridges remain outside this packet. Focused
+frontend parser tests now cover stale global-qualified rendered global and enum
+constant spellings versus structured reference keys.
 
 ## Suggested Next
 
 Choose the next bounded Step 3 rendered-lookup removal packet from the remaining
 watchouts, keeping it to one concrete producer gap or one proven consumer
-deletion route.
+deletion route; namespace-qualified rendered globals should stay parked until
+their producer metadata is equivalent.
 
 ## Watchouts
 
@@ -95,6 +97,11 @@ deletion route.
   spellings so the qualified rendered C++ overload path is exercised; broader
   owner-qualified operator registration remains outside this packet because
   owner-qualified function names are still routed as method-owner forms.
+- Global value and enum-constant lookup now reject stale `::...` rendered
+  compatibility after a valid structured key miss when the rendered entry has
+  structured metadata. Owner/namespace-qualified rendered compatibility such as
+  using-import and anonymous-namespace bridges is intentionally retained until
+  those producers carry equivalent structured qualifier metadata.
 
 ## Proof
 

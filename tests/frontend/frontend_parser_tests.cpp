@@ -4932,6 +4932,106 @@ c4c::TypeSpec make_sema_lookup_ts(c4c::TypeBase base, int ptr_level = 0) {
   return ts;
 }
 
+void test_sema_symbol_lookup_rejects_stale_qualified_rendered_global_spelling() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* stale_global = parser.make_node(c4c::NK_DECL, 1);
+  stale_global->name = arena.strdup("::stale_qualified_global");
+  stale_global->unqualified_name = arena.strdup("actual_qualified_global");
+  stale_global->unqualified_text_id = texts.intern("actual_qualified_global");
+  stale_global->namespace_context_id = parser.current_namespace_context_id();
+  stale_global->type = make_sema_lookup_ts(c4c::TB_INT);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 3);
+  ref->name = arena.strdup("::stale_qualified_global");
+  ref->unqualified_name = arena.strdup("missing_qualified_global");
+  ref->unqualified_text_id = texts.intern("missing_qualified_global");
+  ref->namespace_context_id = stale_global->namespace_context_id;
+  ref->is_global_qualified = true;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 3);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("rejects_stale_qualified_global");
+  fn->unqualified_name = arena.strdup("rejects_stale_qualified_global");
+  fn->unqualified_text_id = texts.intern("rejects_stale_qualified_global");
+  fn->namespace_context_id = stale_global->namespace_context_id;
+  fn->type = make_sema_lookup_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = stale_global;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "global lookup should reject stale qualified rendered names after a structured global miss");
+}
+
+void test_sema_symbol_lookup_rejects_stale_qualified_rendered_enum_spelling() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* stale_enum = parser.make_node(c4c::NK_ENUM_DEF, 1);
+  stale_enum->name = arena.strdup("E");
+  stale_enum->unqualified_name = arena.strdup("E");
+  stale_enum->unqualified_text_id = texts.intern("E");
+  stale_enum->namespace_context_id = parser.current_namespace_context_id();
+  stale_enum->n_enum_variants = 1;
+  stale_enum->enum_names = arena.alloc_array<const char*>(1);
+  stale_enum->enum_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  stale_enum->enum_vals = arena.alloc_array<long long>(1);
+  stale_enum->enum_names[0] = arena.strdup("::stale_qualified_enum");
+  stale_enum->enum_name_text_ids[0] = texts.intern("actual_qualified_enum");
+  stale_enum->enum_vals[0] = 1;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 3);
+  ref->name = arena.strdup("::stale_qualified_enum");
+  ref->unqualified_name = arena.strdup("missing_qualified_enum");
+  ref->unqualified_text_id = texts.intern("missing_qualified_enum");
+  ref->namespace_context_id = stale_enum->namespace_context_id;
+  ref->is_global_qualified = true;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 3);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("rejects_stale_qualified_enum");
+  fn->unqualified_name = arena.strdup("rejects_stale_qualified_enum");
+  fn->unqualified_text_id = texts.intern("rejects_stale_qualified_enum");
+  fn->namespace_context_id = stale_enum->namespace_context_id;
+  fn->type = make_sema_lookup_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = stale_enum;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "enum constant lookup should reject stale qualified rendered names after a structured enum miss");
+}
+
 c4c::Node* make_sema_template_param_holder(c4c::Parser& parser,
                                            c4c::Arena& arena,
                                            const char* fn_name,
@@ -7717,6 +7817,8 @@ int main() {
   test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_local_spelling();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_global_spelling();
+  test_sema_symbol_lookup_rejects_stale_qualified_rendered_global_spelling();
+  test_sema_symbol_lookup_rejects_stale_qualified_rendered_enum_spelling();
   test_sema_overload_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_overload_lookup_ignores_stale_rendered_name_after_structured_miss();
   test_sema_overload_lookup_keeps_no_metadata_rendered_compatibility();
