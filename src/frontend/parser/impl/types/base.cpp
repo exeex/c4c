@@ -774,21 +774,73 @@ TypeSpec Parser::parse_base_type() {
     lookup_struct_member_typedef_recursive_for_type =
             [&](const TypeSpec& owner_ts, const std::string& member,
                 TextId member_text_id, TypeSpec* out) -> bool {
-                const std::string tag = owner_ts.tag ? owner_ts.tag : "";
                 if (member.empty() || !out) return false;
-                auto lookup_typedef_for_name =
-                    [&](std::string_view name) -> const TypeSpec* {
-                        if (name.empty()) return nullptr;
-                        const TextId name_text_id = find_parser_text_id(name);
-                        return name.find("::") == std::string_view::npos
-                                   ? find_visible_typedef_type(name_text_id)
-                                   : find_typedef_type(name_text_id);
+                auto type_spec_base_text_id =
+                    [&](const TypeSpec& ts) -> TextId {
+                        if (ts.tag_text_id != kInvalidText) return ts.tag_text_id;
+                        if (!ts.tag || !ts.tag[0]) return kInvalidText;
+                        const std::string_view tag_text(ts.tag);
+                        if (tag_text.find("::") != std::string_view::npos)
+                            return kInvalidText;
+                        return find_parser_text_id(tag_text);
+                    };
+                auto type_spec_qualified_name_ref =
+                    [&](const TypeSpec& ts, QualifiedNameRef* out) -> bool {
+                        if (!out) return false;
+                        const TextId base_text_id = type_spec_base_text_id(ts);
+                        if (base_text_id == kInvalidText) return false;
+
+                        QualifiedNameRef qn;
+                        qn.base_text_id = base_text_id;
+                        qn.is_global_qualified = ts.is_global_qualified;
+                        if (ts.n_qualifier_segments > 0) {
+                            qn.qualifier_segments.reserve(ts.n_qualifier_segments);
+                            qn.qualifier_text_ids.reserve(ts.n_qualifier_segments);
+                            for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+                                const char* segment =
+                                    ts.qualifier_segments ? ts.qualifier_segments[i]
+                                                          : nullptr;
+                                qn.qualifier_segments.push_back(
+                                    segment ? std::string(segment) : std::string{});
+                                TextId segment_text_id =
+                                    ts.qualifier_text_ids ? ts.qualifier_text_ids[i]
+                                                          : kInvalidText;
+                                if (segment_text_id == kInvalidText && segment &&
+                                    segment[0]) {
+                                    segment_text_id = find_parser_text_id(segment);
+                                }
+                                qn.qualifier_text_ids.push_back(segment_text_id);
+                            }
+                        }
+                        *out = std::move(qn);
+                        return true;
+                    };
+                auto lookup_typedef_for_type =
+                    [&](const TypeSpec& ts) -> const TypeSpec* {
+                        const TextId base_text_id = type_spec_base_text_id(ts);
+                        if (base_text_id == kInvalidText) return nullptr;
+                        if (ts.n_qualifier_segments > 0 || ts.is_global_qualified) {
+                            QualifiedNameRef qn;
+                            if (type_spec_qualified_name_ref(ts, &qn)) {
+                                if (const TypeSpec* structured =
+                                        find_typedef_type(qualified_name_key(qn))) {
+                                    return structured;
+                                }
+                            }
+                        }
+                        if (ts.namespace_context_id >= 0) {
+                            if (const TypeSpec* structured = find_typedef_type(
+                                    struct_typedef_key_in_context(
+                                        ts.namespace_context_id, base_text_id))) {
+                                return structured;
+                            }
+                        }
+                        return find_visible_typedef_type(base_text_id);
                     };
                 auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
                     ts = resolve_typedef_type_chain(ts);
                     if (ts.base == TB_TYPEDEF && ts.tag) {
-                        if (const TypeSpec* nested =
-                                lookup_typedef_for_name(ts.tag)) {
+                        if (const TypeSpec* nested = lookup_typedef_for_type(ts)) {
                             ts = *nested;
                         }
                     }
@@ -809,16 +861,17 @@ TypeSpec Parser::parse_base_type() {
                     }
                     return false;
                 };
-                auto structured_record_for_tag = [&](const TypeSpec& ts) -> const Node* {
-                    if (!ts.tag || !ts.tag[0]) return nullptr;
+                auto structured_record_for_type = [&](const TypeSpec& ts) -> const Node* {
                     QualifiedNameRef qn;
-                    if (qualified_name_from_text(*this, ts.tag, &qn)) {
+                    if (type_spec_qualified_name_ref(ts, &qn) &&
+                        (ts.n_qualifier_segments > 0 || ts.is_global_qualified)) {
                         return qualified_type_record_definition_from_structured_authority(
                             *this, qn);
                     }
+                    if (!ts.tag || !ts.tag[0]) return nullptr;
                     return record_definition_in_context_by_text_id(
                         *this, current_namespace_context_id(),
-                        find_parser_text_id(ts.tag));
+                        type_spec_base_text_id(ts));
                 };
                 auto apply_template_bindings =
                     [&](TypeSpec member_ts,
@@ -1025,17 +1078,19 @@ TypeSpec Parser::parse_base_type() {
                     };
                 TypeSpec resolved = resolve_struct_like(owner_ts);
                 if (!resolved.record_def) {
-                    if (const TypeSpec* typedef_type = lookup_typedef_for_name(tag)) {
+                    if (const TypeSpec* typedef_type =
+                            lookup_typedef_for_type(owner_ts)) {
                         resolved = resolve_struct_like(*typedef_type);
                     }
                 }
                 const Node* sdef = resolve_record_type_spec(resolved, nullptr);
-                if (!sdef) sdef = structured_record_for_tag(resolved);
+                if (!sdef) sdef = structured_record_for_type(resolved);
                 if (!sdef) {
-                    if (const TypeSpec* typedef_type = lookup_typedef_for_name(tag)) {
+                    if (const TypeSpec* typedef_type =
+                            lookup_typedef_for_type(owner_ts)) {
                         resolved = resolve_struct_like(*typedef_type);
                         sdef = resolve_record_type_spec(resolved, nullptr);
-                        if (!sdef) sdef = structured_record_for_tag(resolved);
+                        if (!sdef) sdef = structured_record_for_type(resolved);
                     }
                 }
                 if (!sdef) return false;
