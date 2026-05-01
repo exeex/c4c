@@ -720,58 +720,43 @@ class Validator {
 
   const FunctionSig* lookup_function_by_name(const std::string& name,
                                              const Node* reference = nullptr) const {
-    auto it = funcs_.find(name);
-    const FunctionSig* rendered_name_compatibility =
-        it != funcs_.end() ? &it->second : nullptr;
-    const bool rendered_name_has_structured_metadata =
-        structured_function_names_.count(name) > 0;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const FunctionSig* structured = lookup_function_by_key(*key);
-        (void)compare_sema_lookup_ptrs(rendered_name_compatibility, structured);
         if (structured) return structured;
-        if (rendered_name_has_structured_metadata) return nullptr;
+        if (structured_function_names_.count(name) > 0) return nullptr;
       }
     }
-    return rendered_name_compatibility;
+    auto it = funcs_.find(name);
+    return it != funcs_.end() ? &it->second : nullptr;
   }
 
   const std::vector<FunctionSig>* lookup_ref_overloads_by_name(
       const std::string& name, const Node* reference = nullptr) const {
-    auto it = ref_overload_sigs_.find(name);
-    const std::vector<FunctionSig>* legacy =
-        it != ref_overload_sigs_.end() ? &it->second : nullptr;
-    const bool legacy_has_structured_metadata =
-        structured_ref_overload_names_.count(name) > 0;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const std::vector<FunctionSig>* structured =
             lookup_ref_overloads_by_key(*key);
-        (void)compare_sema_lookup_ptrs(legacy, structured);
         if (structured) return structured;
-        if (legacy_has_structured_metadata) return nullptr;
+        if (structured_ref_overload_names_.count(name) > 0) return nullptr;
       }
     }
-    return legacy;
+    auto it = ref_overload_sigs_.find(name);
+    return it != ref_overload_sigs_.end() ? &it->second : nullptr;
   }
 
   const std::vector<FunctionSig>* lookup_cpp_overloads_by_name(
       const std::string& name, const Node* reference = nullptr) const {
-    auto it = cpp_overload_sigs_.find(name);
-    const std::vector<FunctionSig>* legacy =
-        it != cpp_overload_sigs_.end() ? &it->second : nullptr;
-    const bool legacy_has_structured_metadata =
-        structured_cpp_overload_names_.count(name) > 0;
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         const std::vector<FunctionSig>* structured =
             lookup_cpp_overloads_by_key(*key);
-        (void)compare_sema_lookup_ptrs(legacy, structured);
         if (structured) return structured;
-        if (legacy_has_structured_metadata) return nullptr;
+        if (structured_cpp_overload_names_.count(name) > 0) return nullptr;
       }
     }
-    return legacy;
+    auto it = cpp_overload_sigs_.find(name);
+    return it != cpp_overload_sigs_.end() ? &it->second : nullptr;
   }
 
   const Node* lookup_consteval_function_by_key(const SemaStructuredNameKey& key) const {

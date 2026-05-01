@@ -8,13 +8,13 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.3 deleted the remaining method-owner rendered fallback probe from
-`resolve_owner_in_namespace_context` when a valid structured owner key is
-already present. Structured owner metadata is now the only consulted route in
-that branch; rendered owner spelling is still used only when no valid structured
-owner key exists. Existing focused Sema coverage proves both sides:
-`test_sema_namespace_owner_resolution_prefers_structured_owner_key` and
-`test_sema_namespace_owner_resolution_rejects_rendered_fallback_after_structured_miss`.
+Step 3.3 removed the eager rendered-map compatibility probes from
+`lookup_function_by_name`, `lookup_ref_overloads_by_name`, and
+`lookup_cpp_overloads_by_name` when a valid structured reference key is present.
+Those helpers now consult structured function/ref-overload/C++ overload indexes
+first; rendered compatibility maps are consulted only when structured metadata
+is absent or incomplete. Existing focused stale rendered-name overload coverage
+continues to prove structured authority and no-metadata compatibility.
 
 ## Suggested Next
 
@@ -92,10 +92,10 @@ rendered probe or a consumer guarded by existing focused stale-spelling coverage
   owner/member `TextId`s; keep rendered compatibility there until that producer
   gap is closed. The retained path is explicitly no-metadata compatibility, not
   a rendered-string authority after structured static-member metadata exists.
-- Function/ref-overload/C++ overload rendered-name compatibility now treats
-  structured metadata on qualified rendered legacy entries as authoritative
-  after a valid structured reference key misses. Do not reintroduce an
-  unqualified-only rendered-name guard for these helpers.
+- Function/ref-overload/C++ overload helpers no longer eagerly consult rendered
+  maps for comparison when a valid structured reference key exists. Do not
+  reintroduce an eager rendered probe or an unqualified-only rendered-name guard
+  for these helpers.
 - `supports_cpp_overload_set` now accepts global-qualified `::operator_*`
   spellings so the qualified rendered C++ overload path is exercised; broader
   owner-qualified operator registration remains outside this packet because
