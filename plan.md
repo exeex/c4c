@@ -1058,18 +1058,64 @@ Completion check:
 - Narrow Sema tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 3.3.3: Remove Remaining Sema Owner/Member/Static Rendered Routes
+### Step 3.3.3A: Carry Parser Using-Value-Alias Authority Into Sema
+
+Goal: give Sema a structured way to distinguish namespace using-alias imports
+from wrong-owner qualified global references before removing the remaining
+unqualified rendered global fallback.
+
+Primary target: parser-to-Sema handoff for `namespace_state_.using_value_aliases`
+or an equivalent structured using-value-alias carrier consumed by Sema global
+lookup.
+
+Actions:
+
+- Inspect the parser namespace using-value-alias producer and the Sema global
+  lookup consumer that currently sees only qualifier fields,
+  `structured_global_keys_by_name_`, and an unqualified rendered candidate.
+- Thread structured using-value-alias authority into Sema global lookup without
+  reconstructing it from rendered spelling, split qualified text, or a
+  same-name global fallback query.
+- Preserve enough namespace/source-target metadata for Sema to accept a
+  qualified reference such as `wrap::exported_value` when `wrap` imports
+  `::exported_value`, while still letting a qualified structured miss reject a
+  wrong-owner unqualified global.
+- Keep rendered spelling only for diagnostics, display, debug output, mangling,
+  ABI/link spelling, or final emitted text.
+- Do not retry deletion of the unqualified rendered global fallback in this
+  step unless the using-value-alias carrier is first present and observable in
+  the Sema lookup decision.
+- If parser cannot supply this carrier inside parser/Sema ownership, stop and
+  record the exact metadata blocker in `todo.md` or a new open metadata idea.
+
+Completion check:
+
+- Sema global lookup receives structured using-value-alias authority, or the
+  exact missing parser/Sema metadata producer is recorded as a blocker.
+- The supported `wrap::exported_value` via `using ::exported_value` case is no
+  longer indistinguishable from a wrong-owner qualified global solely because
+  both share unqualified rendered spelling.
+- No rendered qualified-text parsing, fallback spelling parameter, helper-only
+  rename, expectation downgrade, or named-test shortcut is counted as progress.
+- Narrow Sema/frontend tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor for code-changing packets.
+
+### Step 3.3.3B: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 Goal: finish Sema owner/member/static rendered-route removal after the
-global/enum qualifier-aware key producer is complete.
+global/enum qualifier-aware key producer and Step 3.3.3A using-value-alias
+carrier are complete.
 
 Primary target: Sema owner/member/static lookup paths outside consteval
 value/type and outside the Step 3.3.2 global/enum key producer.
 
 Actions:
 
-- Re-inventory remaining Sema-owned `fallback`/`legacy` routes after Step 3.3.2
-  lands.
+- Re-inventory remaining Sema-owned `fallback`/`legacy` routes after Step
+  3.3.3A lands.
+- Retry removal of the unqualified rendered global fallback only after Sema can
+  distinguish namespace using-alias imports from wrong-owner qualified global
+  references through structured metadata.
 - Convert rendered-name probes to structured owner/member/static lookups where
   producer metadata already exists, including `lookup_struct_static_member_*`,
   instance-field legacy probes, and owner-by-rendered-name fallback.
@@ -1085,6 +1131,8 @@ Actions:
 Completion check:
 
 - Covered Sema paths use structured semantic authority only.
+- Qualified global fallback removal preserves structured using-alias imports
+  and rejects wrong-owner unqualified global recovery.
 - Covered Sema semantic lookup APIs no longer accept string/string_view or
   fallback spelling parameters.
 - Covered Sema overload families are collapsed to structured/domain-key APIs.
