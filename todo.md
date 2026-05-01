@@ -3,28 +3,70 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 3.3
-Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
+Current Step ID: Step 2
+Current Step Title: Remove Parser Rendered-String Semantic Lookup Routes
 
 ## Just Finished
 
-Step 3.3 removed the eager rendered static-member probe from Sema
-`lookup_struct_static_member_type` when structured owner/member metadata is
-available. Static-member lookup now queries the structured owner key and member
-`TextId` first, returns that authoritative result on metadata hit or miss, and
-only falls back to rendered owner/member lookup when the structured route has
-no metadata. Focused `frontend_parser_tests` coverage now proves stale rendered
-static-member spelling is rejected after a structured member miss.
+Folded back the executor-written `todo.md` completion note for the in-progress
+parser public API cleanup and re-reviewed `src/frontend/parser/parser.hpp` under
+idea 139's strict parser API rule.
+
+The current dirty implementation diff has already collapsed the visible-name
+public API family to `TextId`-only routes:
+`qualify_name(TextId)`, `qualify_name_arena(TextId)`,
+`resolve_visible_value(TextId)`, `resolve_visible_value_name(TextId)`,
+`resolve_visible_type(TextId)`, `resolve_visible_type_name(TextId)`,
+`resolve_visible_concept(TextId)`, `resolve_visible_concept_name(TextId)`, and
+`is_concept_name(TextId)`.
+
+The string/string_view/fallback overloads that were explicitly reviewed and are
+now removed from `parser.hpp` in the dirty diff are:
+`qualify_name(TextId, std::string_view)`, `qualify_name(const std::string&)`,
+`qualify_name_arena(TextId, const char*)`, `qualify_name_arena(const char*)`,
+`resolve_visible_value(TextId, std::string_view)`,
+`resolve_visible_value_name(TextId, std::string_view)`,
+`resolve_visible_type(TextId, std::string_view)`,
+`resolve_visible_type(std::string_view)`,
+`resolve_visible_type_name(TextId, std::string_view)`,
+`resolve_visible_type_name(std::string_view)`,
+`resolve_visible_concept(TextId, std::string_view)`,
+`resolve_visible_concept(std::string_view)`,
+`resolve_visible_concept_name(TextId, std::string_view)`,
+`resolve_visible_concept_name(const std::string&)`, and
+`is_concept_name(const std::string&)`.
 
 ## Suggested Next
 
-Choose the next bounded Step 3.3 rendered-lookup removal packet from another
-route where structured metadata is already complete. Avoid derived/static-member
-cleanup beyond no-metadata compatibility until the producer supplies complete
-structured base-chain/static-member metadata.
+Before accepting or committing the current parser API cleanup, inspect the next
+same-shape `parser.hpp` candidates and either remove them in the same Step 2
+slice or record why they are non-semantic/output-only:
+
+- `compatibility_namespace_name_in_context(int, TextId, std::string_view
+  fallback_name)`: name and signature both indicate compatibility/fallback.
+- `bridge_name_in_context(int, TextId, std::string_view fallback_name)`:
+  `TextId + fallback spelling` shape; decide whether it should become
+  `TextId`-only plus a separate final-spelling projection helper.
+- `register_tag_type_binding(const std::string& name, ...)`: semantic tag/type
+  binding currently keyed from a string.
+- `cache_typedef_type(const std::string& name, ...)`: semantic typedef cache
+  route currently keyed from a string.
+- `canonical_name_in_context(int, const std::string& name)`: namespace/name
+  construction helper; verify whether it is semantic lookup authority or only
+  display/final spelling construction.
 
 ## Watchouts
 
+- `parser_text_id_for_token`, `find_parser_text_id`, `parser_text`,
+  `token_spelling`, `set_parser_owned_spelling`, debug/diagnostic helpers,
+  test-only hooks, and AST final spelling builders are not automatically Step 2
+  violations. Classify them by concrete semantic lookup call path before
+  deleting or renaming them.
+- `visible_name_spelling(const VisibleNameResult&)` is intentionally the final
+  spelling/display projection boundary, not a semantic lookup route.
+- Do not accept a parser public semantic API that keeps `std::string`,
+  `std::string_view`, `const char*`, `fallback_name`, `compatibility`, or
+  `legacy` as a lookup key/escape hatch when `TextId` or a domain key exists.
 - Do not delete or narrow derived/static-member rendered compatibility yet:
   `cpp_positive_sema_inherited_static_member_lookup_simple_runtime_cpp` still
   needs the current no-metadata fallback when structured base-chain/static-member
