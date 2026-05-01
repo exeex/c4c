@@ -328,6 +328,81 @@ void test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry() {
               "fallback after structured owner/member miss");
 }
 
+void test_sema_instance_field_lookup_rejects_stale_member_spelling() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId owner_text = texts.intern("Owner");
+  const c4c::TextId stale_text = texts.intern("stale");
+  const c4c::TextId missing_text = texts.intern("missing");
+  const c4c::TextId method_text = texts.intern("method");
+
+  c4c::Node* owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner->name = arena.strdup("Owner");
+  owner->unqualified_name = arena.strdup("Owner");
+  owner->unqualified_text_id = owner_text;
+  owner->namespace_context_id = parser.current_namespace_context_id();
+  owner->n_fields = 1;
+  owner->fields = arena.alloc_array<c4c::Node*>(1);
+
+  c4c::Node* stale = parser.make_node(c4c::NK_DECL, 1);
+  stale->name = arena.strdup("stale");
+  stale->unqualified_name = arena.strdup("stale");
+  stale->unqualified_text_id = stale_text;
+  stale->namespace_context_id = owner->namespace_context_id;
+  stale->type = make_ts(c4c::TB_INT);
+  owner->fields[0] = stale;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("stale");
+  ref->unqualified_name = arena.strdup("stale");
+  ref->unqualified_text_id = missing_text;
+  ref->namespace_context_id = owner->namespace_context_id;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* method = parser.make_node(c4c::NK_FUNCTION, 2);
+  method->name = arena.strdup("Owner::method");
+  method->unqualified_name = arena.strdup("method");
+  method->unqualified_text_id = method_text;
+  method->namespace_context_id = owner->namespace_context_id;
+  method->n_qualifier_segments = 1;
+  method->qualifier_segments = arena.alloc_array<const char*>(1);
+  method->qualifier_segments[0] = arena.strdup("Owner");
+  method->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  method->qualifier_text_ids[0] = owner_text;
+  method->type = make_ts(c4c::TB_INT);
+  method->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = owner;
+  program->children[1] = method;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema instance field lookup should reject stale rendered member "
+              "spelling after structured member TextId miss");
+}
+
 void test_sema_global_lookup_rejects_stale_qualified_rendered_reentry() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -402,6 +477,7 @@ int main() {
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
   test_dependent_typename_rejects_visible_type_rendered_reentry();
   test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry();
+  test_sema_instance_field_lookup_rejects_stale_member_spelling();
   test_sema_global_lookup_rejects_stale_qualified_rendered_reentry();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";
   return 0;
