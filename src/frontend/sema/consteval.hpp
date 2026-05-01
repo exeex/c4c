@@ -244,9 +244,6 @@ struct ConstEvalEnv {
   std::optional<long long> lookup_rendered_nttp_compatibility(
       const Node* n,
       bool local_binding_metadata_miss) const {
-    // Step 3.1 exposes the structured/TextId local-miss predicate here.
-    // Step 3.2 owns consuming it to delete the covered rendered fallback.
-    (void)local_binding_metadata_miss;
     if (!n || !n->name || !nttp_bindings) return std::nullopt;
     const auto local = local_key(n);
     if (auto result = lookup_key_map_status(nttp_bindings_by_key, local);
@@ -263,6 +260,11 @@ struct ConstEvalEnv {
       } else if (result.status == ConstEvalValueLookupStatus::Miss) {
         return std::nullopt;
       }
+    }
+    if (local_binding_metadata_miss &&
+        ((nttp_bindings_by_key && !nttp_bindings_by_key->empty()) ||
+         (nttp_bindings_by_text && !nttp_bindings_by_text->empty()))) {
+      return std::nullopt;
     }
     auto it = nttp_bindings->find(n->name);
     if (it != nttp_bindings->end()) return it->second;

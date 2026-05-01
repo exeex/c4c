@@ -18,8 +18,15 @@ consteval int loop_local_sum(int n) {
   return total;
 }
 
+template<int N>
+consteval int nttp_with_local_metadata(int x) {
+  int local = x + 1;
+  return local + N;
+}
+
 int main() {
   if (nested_local_shadow(9) != 9) return 1;
   if (loop_local_sum(5) != 10) return 2;
+  if (nttp_with_local_metadata<5>(2) != 8) return 3;
   return 0;
 }
