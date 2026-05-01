@@ -8,25 +8,28 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the unqualified global-scope `::name` fallback authority from
-`resolve_qualified_value` and `resolve_qualified_type`. Missing `::LegacyOnly*`
-lookups now return no `VisibleNameResult` instead of manufacturing a semantic
-result from rendered spelling.
+Step 2.3 closed the reviewer proof gap from
+`review/step2_3_global_qualified_fallback_review.md` by adding
+`frontend_parser_lookup_authority_tests`, an independently runnable focused
+CTest target for the global-qualified fallback authority removal.
 
-Focused parser coverage in `test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_value_bridges`
-now checks TextId-backed and TextId-less global-qualified misses for both type
-and value resolution.
+The new focused parser test seeds stale rendered fallback storage and proves
+that `resolve_qualified_type` and `resolve_qualified_value` reject
+global-qualified type/value misses for both TextId-backed and TextId-less
+`::LegacyOnly*` lookups.
 
 ## Suggested Next
 
-Continue Step 2.3 with a focused review of the remaining
-`compatibility_spelling` assignments in `resolve_visible_*`,
-`lookup_*_in_context`, and `lookup_using_value_alias`; remove only a route that
-still decides lookup success from rendered spelling rather than from TextId or
+Continue Step 2.3 with a focused review of one remaining
+`compatibility_spelling` or fallback authority path; remove it only if it still
+decides lookup success from rendered spelling rather than from TextId or
 structured key metadata.
 
 ## Watchouts
 
+- The reviewer finding was validation sufficiency only: the edited white-box
+  assertions were not executable through the delegated green CTest subset. The
+  new target addresses that without adding a monolithic-binary switch.
 - Declaration-side qualified-name classification still intentionally keeps
   unresolved qualified heads on the type side unless structured value lookup
   proves an expression. The removed route was only the semantic lookup success
@@ -76,14 +79,6 @@ structured key metadata.
 ## Proof
 
 Passed:
-`(cmake --build build --target c4cll && ctest --test-dir build -R 'cpp_(positive_parser|positive_sema|negative_tests)' --output-on-failure) > test_after.log 2>&1`
+`(cmake --build build --target frontend_parser_lookup_authority_tests && ctest --test-dir build -R '^frontend_parser_lookup_authority_tests$' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: regenerated canonical `test_after.log` after removing the
-unqualified global `::name` fallback semantic success route (926 tests passed).
-
-Additional compile check passed for the edited unit-test source:
-`cmake --build build --target frontend_parser_tests`.
-
-Additional direct binary check attempted and blocked by pre-existing later
-qualified `TypeSpec` metadata assertion:
-`./build/tests/frontend/frontend_parser_tests`.
+Proof log: `test_after.log` (1 focused CTest passed).

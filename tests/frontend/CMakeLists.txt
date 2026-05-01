@@ -1,4 +1,6 @@
-set(frontend_test_targets frontend_lexer_tests frontend_parser_tests frontend_hir_lookup_tests
+set(frontend_test_targets frontend_lexer_tests frontend_parser_tests
+                          frontend_parser_lookup_authority_tests
+                          frontend_hir_lookup_tests
                           frontend_lir_global_type_ref_test
                           frontend_lir_function_signature_type_ref_test
                           frontend_lir_extern_decl_type_ref_test
@@ -26,6 +28,8 @@ endif()
 
 add_test(NAME frontend_lexer_tests  COMMAND frontend_lexer_tests)
 add_test(NAME frontend_parser_tests COMMAND frontend_parser_tests)
+add_test(NAME frontend_parser_lookup_authority_tests
+         COMMAND frontend_parser_lookup_authority_tests)
 add_test(NAME frontend_hir_lookup_tests COMMAND frontend_hir_lookup_tests)
 add_test(NAME frontend_lir_global_type_ref COMMAND frontend_lir_global_type_ref_test)
 add_test(NAME frontend_lir_function_signature_type_ref
@@ -35,6 +39,8 @@ add_test(NAME frontend_lir_extern_decl_type_ref
 add_test(NAME frontend_lir_call_type_ref COMMAND frontend_lir_call_type_ref_test)
 set_tests_properties(frontend_lexer_tests  PROPERTIES LABELS "internal;lex")
 set_tests_properties(frontend_parser_tests PROPERTIES LABELS "internal;parse")
+set_tests_properties(frontend_parser_lookup_authority_tests
+                     PROPERTIES LABELS "internal;parse")
 set_tests_properties(frontend_hir_lookup_tests PROPERTIES LABELS "internal;hir")
 set_tests_properties(frontend_lir_global_type_ref PROPERTIES LABELS "internal;hir;lir")
 set_tests_properties(frontend_lir_function_signature_type_ref PROPERTIES LABELS "internal;hir;lir")
