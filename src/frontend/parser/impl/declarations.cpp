@@ -115,7 +115,7 @@ static void restore_current_struct_tag(Parser& parser, TextId text_id,
         parser.clear_current_struct_tag();
         return;
     }
-    parser.set_current_struct_tag(tag);
+    parser.set_current_struct_tag(text_id, tag);
 }
 
 static void finalize_pending_operator_name(std::string& name, size_t param_count) {
@@ -2622,7 +2622,12 @@ Node* parse_top_level(Parser& parser) {
                 parser.active_context_state_.current_struct_tag_text_id;
             const std::string saved_tag_op_fallback =
                 parser.active_context_state_.current_struct_tag;
-            parser.set_current_struct_tag(qualified_owner);
+            const TextId qualified_owner_text_id =
+                qualified_owner_text_ids.size() == 1
+                    ? qualified_owner_text_ids.front()
+                    : kInvalidText;
+            parser.set_current_struct_tag(qualified_owner_text_id,
+                                          qualified_owner);
             if (!parser.template_state_.template_scope_stack.empty() &&
                 parser.template_state_.template_scope_stack.back().kind ==
                     Parser::TemplateScopeKind::FreeFunctionTemplate &&
@@ -2791,7 +2796,12 @@ Node* parse_top_level(Parser& parser) {
                     parser.active_context_state_.current_struct_tag_text_id;
                 const std::string saved_tag_ctor_fallback =
                     parser.active_context_state_.current_struct_tag;
-                parser.set_current_struct_tag(qualified_owner);
+                const TextId qualified_owner_text_id =
+                    qualified_owner_text_ids.size() == 1
+                        ? qualified_owner_text_ids.front()
+                        : kInvalidText;
+                parser.set_current_struct_tag(qualified_owner_text_id,
+                                              qualified_owner);
                 if (!parser.template_state_.template_scope_stack.empty() &&
                     parser.template_state_.template_scope_stack.back().kind ==
                         Parser::TemplateScopeKind::FreeFunctionTemplate &&
@@ -3361,7 +3371,7 @@ top_level_base_ready:
         auto sep = dn.rfind("::");
         if (sep == std::string::npos || sep == 0) return;
         qualified_owner_tag = dn.substr(0, sep);
-        parser.set_current_struct_tag(qualified_owner_tag);
+        parser.set_current_struct_tag(kInvalidText, qualified_owner_tag);
         // If the owner is a known template struct and we have an active
         // FreeFunctionTemplate scope, relabel it as EnclosingClass.
         if (!parser.template_state_.template_scope_stack.empty() &&

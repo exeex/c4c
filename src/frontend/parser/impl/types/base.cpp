@@ -1518,7 +1518,10 @@ TypeSpec Parser::parse_base_type() {
         if (tname) {
             const bool is_unqualified_typedef =
                 std::strstr(tname, "::") == nullptr;
-            const TextId tname_text_id = find_parser_text_id(tname);
+            const TextId tname_text_id =
+                is_unqualified_typedef && ts.tag_text_id != kInvalidText
+                    ? ts.tag_text_id
+                    : parser_text_id_for_token(kInvalidText, tname);
             const TypeSpec* typedef_type =
                 is_unqualified_typedef ? find_visible_typedef_type(tname_text_id)
                                        : find_typedef_type(tname_text_id);
@@ -1529,7 +1532,7 @@ TypeSpec Parser::parse_base_type() {
                 ts.is_const   |= save_const;
                 ts.is_volatile |= save_vol;
                 // Phase C: remember the typedef name for fn_ptr param propagation.
-                set_last_resolved_typedef(tname);
+                set_last_resolved_typedef(tname_text_id, tname);
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
                     const QualifiedNameKey alias_key = alias_template_key_in_context(

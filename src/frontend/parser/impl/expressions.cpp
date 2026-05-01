@@ -1343,7 +1343,13 @@ Node* parse_primary(Parser& parser) {
                     !direct_resolved_type
                         ? std::string(qn_base_name)
                         : parser.visible_name_spelling(direct_resolved_type);
-                parser.set_last_resolved_typedef(visible_typedef_name);
+                const TextId visible_typedef_text_id =
+                    direct_resolved_type &&
+                            direct_resolved_type.base_text_id != kInvalidText
+                        ? direct_resolved_type.base_text_id
+                        : qn.base_text_id;
+                parser.set_last_resolved_typedef(visible_typedef_text_id,
+                                                 visible_typedef_name);
                 parser.consume();
                 std::vector<Node*> args;
                 if (!parser.check(TokenKind::RParen)) {
@@ -1425,11 +1431,11 @@ Node* parse_primary(Parser& parser) {
                         parser.tokens_ = saved_tokens;
                         parser.clear_last_resolved_typedef();
                         if (saved_typedef_text_id != kInvalidText) {
-                            parser.set_last_resolved_typedef(parser.parser_text(
-                                saved_typedef_text_id, saved_typedef_fallback));
+                            parser.set_last_resolved_typedef(
+                                saved_typedef_text_id, saved_typedef_fallback);
                         } else if (!saved_typedef_fallback.empty()) {
                             parser.set_last_resolved_typedef(
-                                saved_typedef_fallback);
+                                kInvalidText, saved_typedef_fallback);
                         }
                     };
 
@@ -1469,10 +1475,11 @@ Node* parse_primary(Parser& parser) {
                 auto restore_last_resolved_typedef = [&]() {
                     parser.clear_last_resolved_typedef();
                     if (saved_typedef_text_id != kInvalidText) {
-                        parser.set_last_resolved_typedef(parser.parser_text(
-                            saved_typedef_text_id, saved_typedef_fallback));
+                        parser.set_last_resolved_typedef(
+                            saved_typedef_text_id, saved_typedef_fallback);
                     } else if (!saved_typedef_fallback.empty()) {
-                        parser.set_last_resolved_typedef(saved_typedef_fallback);
+                        parser.set_last_resolved_typedef(
+                            kInvalidText, saved_typedef_fallback);
                     }
                 };
                 TypeSpec cast_ts = parser.parse_base_type();

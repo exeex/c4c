@@ -237,6 +237,7 @@ bool try_parse_record_body_member(
     const std::function<void(const char*)>& check_dup_field);
 void begin_record_body_context(Parser& parser,
                                const char* tag,
+                               TextId tag_text_id,
                                const char* template_origin_name,
                                std::string* saved_struct_tag,
                                std::string* struct_source_name);
@@ -245,6 +246,7 @@ void parse_record_body(Parser& parser,
                        Parser::RecordBodyState* body_state);
 void parse_record_body_with_context(Parser& parser,
                                     const char* tag,
+                                    TextId tag_text_id,
                                     const char* template_origin_name,
                                     Parser::RecordBodyState* body_state);
 void finish_record_body_context(Parser& parser,
@@ -254,6 +256,7 @@ void parse_record_definition_prelude(
     int line,
     TypeSpec* attr_ts,
     const char** tag,
+    TextId* tag_text_id,
     const char** template_origin_name,
     std::vector<Parser::TemplateArgParseResult>* specialization_args,
     std::vector<TypeSpec>* base_types);
@@ -279,6 +282,7 @@ Node* parse_record_definition_after_tag_setup(
     int line,
     bool is_union,
     const char* tag,
+    TextId tag_text_id,
     const char* template_origin_name,
     const TypeSpec& attr_ts,
     const std::vector<Parser::TemplateArgParseResult>& specialization_args,
@@ -301,6 +305,7 @@ void parse_record_definition_body(Parser& parser,
                                   bool is_union,
                                   const char* source_tag,
                                   const char* tag,
+                                  TextId tag_text_id,
                                   const char* template_origin_name);
 Node* parse_struct_or_union(Parser& parser, bool is_union);
 

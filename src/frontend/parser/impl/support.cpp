@@ -43,10 +43,11 @@ void Parser::clear_current_struct_tag() {
     active_context_state_.current_struct_tag_text_id = kInvalidText;
 }
 
-void Parser::set_current_struct_tag(std::string_view tag) {
-    active_context_state_.current_struct_tag = std::string(tag);
-    active_context_state_.current_struct_tag_text_id =
-        parser_text_id_for_token(kInvalidText, tag);
+void Parser::set_current_struct_tag(TextId tag_text_id,
+                                    std::string_view display_name) {
+    active_context_state_.current_struct_tag =
+        std::string(parser_text(tag_text_id, display_name));
+    active_context_state_.current_struct_tag_text_id = tag_text_id;
 }
 
 std::string_view Parser::current_struct_tag_text() const {
@@ -59,10 +60,11 @@ void Parser::clear_last_resolved_typedef() {
     active_context_state_.last_resolved_typedef_text_id = kInvalidText;
 }
 
-void Parser::set_last_resolved_typedef(std::string_view name) {
-    active_context_state_.last_resolved_typedef = std::string(name);
-    active_context_state_.last_resolved_typedef_text_id =
-        parser_text_id_for_token(kInvalidText, name);
+void Parser::set_last_resolved_typedef(TextId name_text_id,
+                                       std::string_view display_name) {
+    active_context_state_.last_resolved_typedef =
+        std::string(parser_text(name_text_id, display_name));
+    active_context_state_.last_resolved_typedef_text_id = name_text_id;
 }
 
 void Parser::clear_last_using_alias_name() {
@@ -259,8 +261,7 @@ void Parser::restore_lite_state(const ParserLiteSnapshot& snap) {
     if (snap.last_resolved_typedef.kind == TentativeTextRefKind::TextId &&
         snap.last_resolved_typedef.text_id != kInvalidText &&
         shared_lookup_state_.token_texts) {
-        set_last_resolved_typedef(shared_lookup_state_.token_texts->lookup(
-            snap.last_resolved_typedef.text_id));
+        set_last_resolved_typedef(snap.last_resolved_typedef.text_id);
     }
     active_context_state_.template_arg_expr_depth =
         snap.template_arg_expr_depth;

@@ -42,7 +42,7 @@ static void restore_current_struct_tag(Parser& parser, TextId text_id,
         parser.clear_current_struct_tag();
         return;
     }
-    parser.set_current_struct_tag(tag);
+    parser.set_current_struct_tag(text_id, tag);
 }
 
 // ── struct / union parsing ───────────────────────────────────────────────────
@@ -1855,6 +1855,7 @@ bool try_parse_record_body_member(
 
 void begin_record_body_context(Parser& parser,
                                const char* tag,
+                               TextId tag_text_id,
                                const char* template_origin_name,
                                std::string* saved_struct_tag,
                                std::string* struct_source_name) {
@@ -1867,7 +1868,7 @@ void begin_record_body_context(Parser& parser,
     if (saved_struct_tag)
         *saved_struct_tag = parser.active_context_state_.current_struct_tag;
     if (tag && tag[0]) {
-        parser.set_current_struct_tag(tag);
+        parser.set_current_struct_tag(tag_text_id, tag);
     } else {
         parser.clear_current_struct_tag();
     }
@@ -1919,6 +1920,7 @@ void parse_record_body(
 void parse_record_body_with_context(
     Parser& parser,
     const char* tag,
+    TextId tag_text_id,
     const char* template_origin_name,
     Parser::RecordBodyState* body_state) {
     const TextId saved_struct_tag_text_id =
@@ -1926,7 +1928,7 @@ void parse_record_body_with_context(
     std::string saved_struct_tag =
         parser.active_context_state_.current_struct_tag;
     std::string struct_source_name;
-    begin_record_body_context(parser, tag, template_origin_name,
+    begin_record_body_context(parser, tag, tag_text_id, template_origin_name,
                               &saved_struct_tag, &struct_source_name);
     parse_record_body(parser, struct_source_name, body_state);
     finish_record_body_context(parser, saved_struct_tag);
@@ -1947,16 +1949,18 @@ void parse_record_definition_prelude(
     int line,
     TypeSpec* attr_ts,
     const char** tag,
+    TextId* tag_text_id,
     const char** template_origin_name,
     std::vector<Parser::TemplateArgParseResult>* specialization_args,
     std::vector<TypeSpec>* base_types) {
-    if (!attr_ts || !tag || !template_origin_name || !specialization_args ||
-        !base_types) {
+    if (!attr_ts || !tag || !tag_text_id || !template_origin_name ||
+        !specialization_args || !base_types) {
         return;
     }
 
     *attr_ts = {};
     *tag = nullptr;
+    *tag_text_id = kInvalidText;
     *template_origin_name = nullptr;
     specialization_args->clear();
     base_types->clear();
@@ -1973,8 +1977,11 @@ void parse_record_definition_prelude(
                 parser.qualified_name_text(tag_qn,
                                            /*include_global_prefix=*/false);
             *tag = parser.arena_.strdup(spelled.c_str());
+            *tag_text_id = tag_qn.is_unqualified_atom() ? tag_qn.base_text_id
+                                                        : kInvalidText;
         }
     } else if (parser.check(TokenKind::Identifier)) {
+        *tag_text_id = parser.cur().text_id;
         *tag = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
         parser.consume();
     }
@@ -2223,6 +2230,7 @@ Node* parse_record_definition_after_tag_setup(
     int line,
     bool is_union,
     const char* tag,
+    TextId tag_text_id,
     const char* template_origin_name,
     const TypeSpec& attr_ts,
     const std::vector<Parser::TemplateArgParseResult>& specialization_args,
@@ -2232,6 +2240,7 @@ Node* parse_record_definition_after_tag_setup(
                                             template_origin_name, attr_ts,
                                             specialization_args, base_types);
     parse_record_definition_body(parser, sd, is_union, source_tag, tag,
+                                 tag_text_id,
                                  template_origin_name);
     return sd;
 }
@@ -2376,11 +2385,12 @@ void parse_record_definition_body(Parser& parser,
                                   bool is_union,
                                   const char* source_tag,
                                   const char* tag,
+                                  TextId tag_text_id,
                                   const char* template_origin_name) {
     parser.consume();  // consume {
 
     Parser::RecordBodyState body_state;
-    parse_record_body_with_context(parser, tag, template_origin_name,
+    parse_record_body_with_context(parser, tag, tag_text_id, template_origin_name,
                                    &body_state);
     finalize_record_definition(parser, sd, is_union, source_tag, body_state);
 }
@@ -2389,10 +2399,11 @@ Node* parse_struct_or_union(Parser& parser, bool is_union) {
     int ln = parser.cur().line;
     TypeSpec attr_ts{};
     const char* tag = nullptr;
+    TextId tag_text_id = kInvalidText;
     const char* template_origin_name = nullptr;
     std::vector<ParsedTemplateArg> specialization_args;
     std::vector<TypeSpec> base_types;
-    parse_record_definition_prelude(parser, ln, &attr_ts, &tag,
+    parse_record_definition_prelude(parser, ln, &attr_ts, &tag, &tag_text_id,
                                     &template_origin_name,
                                     &specialization_args, &base_types);
 
@@ -2402,7 +2413,7 @@ Node* parse_struct_or_union(Parser& parser, bool is_union) {
         return ref;
 
     return parse_record_definition_after_tag_setup(
-        parser, ln, is_union, tag, template_origin_name, attr_ts,
+        parser, ln, is_union, tag, tag_text_id, template_origin_name, attr_ts,
         specialization_args, base_types);
 }
 

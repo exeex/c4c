@@ -288,10 +288,12 @@ class Parser {
   std::string_view parser_text(TextId text_id,
                                std::string_view fallback = {}) const;
   void clear_current_struct_tag();
-  void set_current_struct_tag(std::string_view tag);
+  void set_current_struct_tag(TextId tag_text_id,
+                              std::string_view display_name = {});
   std::string_view current_struct_tag_text() const;
   void clear_last_resolved_typedef();
-  void set_last_resolved_typedef(std::string_view name);
+  void set_last_resolved_typedef(TextId name_text_id,
+                                 std::string_view display_name = {});
   void clear_last_using_alias_name();
   void set_last_using_alias_name(const QualifiedNameKey& key);
   std::string_view last_using_alias_name_text() const;
