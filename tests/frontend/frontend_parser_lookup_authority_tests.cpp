@@ -555,6 +555,77 @@ void test_sema_global_lookup_rejects_stale_qualified_rendered_reentry() {
               "fallback after structured global key miss");
 }
 
+void test_sema_global_lookup_rejects_same_member_wrong_owner_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId owner_a_text = texts.intern("OwnerA");
+  const c4c::TextId owner_b_text = texts.intern("OwnerB");
+  const c4c::TextId member_text = texts.intern("same_member");
+  const int namespace_context = parser.current_namespace_context_id();
+
+  c4c::Node* rendered_global = parser.make_node(c4c::NK_GLOBAL_VAR, 1);
+  rendered_global->name = arena.strdup("OwnerA::same_member");
+  rendered_global->unqualified_name = arena.strdup("same_member");
+  rendered_global->unqualified_text_id = member_text;
+  rendered_global->namespace_context_id = namespace_context;
+  rendered_global->n_qualifier_segments = 1;
+  rendered_global->qualifier_segments = arena.alloc_array<const char*>(1);
+  rendered_global->qualifier_segments[0] = arena.strdup("OwnerA");
+  rendered_global->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  rendered_global->qualifier_text_ids[0] = owner_a_text;
+  rendered_global->type = make_ts(c4c::TB_INT);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("OwnerA::same_member");
+  ref->unqualified_name = arena.strdup("same_member");
+  ref->unqualified_text_id = member_text;
+  ref->namespace_context_id = namespace_context;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("OwnerB");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = owner_b_text;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("rejects_wrong_owner_global");
+  fn->unqualified_name = arena.strdup("rejects_wrong_owner_global");
+  fn->unqualified_text_id = texts.intern("rejects_wrong_owner_global");
+  fn->namespace_context_id = namespace_context;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = rendered_global;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema global lookup should reject same-member rendered fallback "
+              "when structured owner metadata names a different owner");
+}
+
 void test_sema_func_local_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -805,6 +876,84 @@ void test_sema_enum_lookup_rejects_rendered_after_metadata_miss() {
               "the reference structured metadata misses");
 }
 
+void test_sema_enum_lookup_rejects_same_member_wrong_owner_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId owner_a_text = texts.intern("OwnerA");
+  const c4c::TextId owner_b_text = texts.intern("OwnerB");
+  const c4c::TextId enum_text = texts.intern("Domain");
+  const c4c::TextId member_text = texts.intern("same_enum_member");
+  const int namespace_context = parser.current_namespace_context_id();
+
+  c4c::Node* rendered_enum = parser.make_node(c4c::NK_ENUM_DEF, 1);
+  rendered_enum->name = arena.strdup("OwnerA::Domain");
+  rendered_enum->unqualified_name = arena.strdup("Domain");
+  rendered_enum->unqualified_text_id = enum_text;
+  rendered_enum->namespace_context_id = namespace_context;
+  rendered_enum->n_qualifier_segments = 1;
+  rendered_enum->qualifier_segments = arena.alloc_array<const char*>(1);
+  rendered_enum->qualifier_segments[0] = arena.strdup("OwnerA");
+  rendered_enum->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  rendered_enum->qualifier_text_ids[0] = owner_a_text;
+  rendered_enum->n_enum_variants = 1;
+  rendered_enum->enum_names = arena.alloc_array<const char*>(1);
+  rendered_enum->enum_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  rendered_enum->enum_vals = arena.alloc_array<long long>(1);
+  rendered_enum->enum_names[0] = arena.strdup("OwnerA::same_enum_member");
+  rendered_enum->enum_name_text_ids[0] = member_text;
+  rendered_enum->enum_vals[0] = 1;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("OwnerA::same_enum_member");
+  ref->unqualified_name = arena.strdup("same_enum_member");
+  ref->unqualified_text_id = member_text;
+  ref->namespace_context_id = namespace_context;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("OwnerB");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = owner_b_text;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("rejects_wrong_owner_enum");
+  fn->unqualified_name = arena.strdup("rejects_wrong_owner_enum");
+  fn->unqualified_text_id = texts.intern("rejects_wrong_owner_enum");
+  fn->namespace_context_id = namespace_context;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = rendered_enum;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema enum lookup should reject same-member rendered fallback "
+              "when structured enum-domain metadata names a different owner");
+}
+
 }  // namespace
 
 int main() {
@@ -818,10 +967,12 @@ int main() {
   test_parsed_record_fields_carry_member_text_ids_into_sema();
   test_parsed_nested_record_fields_carry_member_text_ids();
   test_sema_global_lookup_rejects_stale_qualified_rendered_reentry();
+  test_sema_global_lookup_rejects_same_member_wrong_owner_reentry();
   test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();
+  test_sema_enum_lookup_rejects_same_member_wrong_owner_reentry();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";
   return 0;
 }
