@@ -414,51 +414,43 @@ Completion check:
   as progress.
 - Lifecycle-only inventory rewrite does not claim code proof.
 
-### Step 2.4.4.2: Add Template-Instantiation Member-Typedef Carrier
+### Step 2.4.4.2: Retired - Template-Instantiation Carrier Already Exists
 
-Goal: make the template-instantiation member-typedef writer use parser-owned
-structured storage keyed by concrete template-instantiation identity plus
-member text identity.
+Goal: record the Step 2.4.4.1 route correction and avoid re-adding parser
+metadata that the audit found already present.
 
-Primary target: the template-instantiation path in
-`src/frontend/parser/impl/types/base.cpp` that currently reaches member typedef
-registration through rendered instantiation spelling, plus the minimal parser
-metadata/API surface required to store and query:
-`TemplateInstantiationKey concrete_owner + TextId member_text_id`.
+Primary target: no implementation packet. This step is retired by the
+Step 2.4.4.1 inventory.
+
+Audit result:
+
+- Direct template instantiation already writes member typedefs through
+  `template_instantiation_member_typedefs_by_key`.
+- The writer and parser readers use
+  `ParserTemplateState::TemplateInstantiationKey` plus member `TextId`, not
+  rendered `owner::member` spelling, as the concrete owner/member carrier.
+- Alias-template member typedef metadata also preserves owner key, parsed owner
+  arguments, and member `TextId` for parser/Sema routing.
+- The remaining blocker identified by the audit is the HIR
+  `resolve_struct_member_typedef_type(std::string tag, std::string member, ...)`
+  API and callers that only have realized tag/member strings. That cleanup is
+  outside idea 139 and belongs to
+  `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md`.
 
 Actions:
 
-- Add a parser-owned member-typedef carrier/API for concrete template
-  instantiations instead of forcing `TemplateInstantiationKey` through
-  `QualifiedNameKey` or rendered spelling.
-- Reuse the call site's existing structured concrete-instantiation metadata:
-  primary template `QualifiedNameKey`, concrete
-  `TemplateInstantiationKey::Argument` vector, and direct member name
-  `TextId`.
-- Convert the template-instantiation writer to register member typedefs
-  through the concrete template-instantiation carrier.
-- Add reader plumbing only for callers that can query from the same concrete
-  template owner plus member `TextId`; do not add a generic rendered
-  `owner::member` rediscovery route.
-- Treat any need to cross into HIR, LIR, BIR, or backend metadata as a separate
-  open idea instead of widening this parser/Sema plan.
-- Keep rendered instantiation spelling only for mangling, diagnostics, debug
-  output, or final emitted names.
-- Add or keep a focused disagreement test proving the writer does not let stale
-  rendered scoped typedef storage decide semantic lookup.
+- Do not add another parser-owned
+  `TemplateInstantiationKey concrete_owner + TextId member_text_id` carrier.
+- Do not convert the next packet into HIR API migration.
+- Continue idea 139 with the next parser/Sema member-typedef consumer that
+  still depends on rendered scoped typedef storage.
 
 Completion check:
 
-- Parser metadata contains a structured storage/API path for
-  `TemplateInstantiationKey concrete_owner + TextId member_text_id`; it does
-  not alias all specializations of the same primary template.
-- The covered writer no longer builds semantic `QualifiedNameKey` or
-  owner/member identity by parsing rendered instantiation text or using
-  rendered `mangled` as concrete owner identity.
-- Any remaining missing metadata outside parser/Sema is represented as a
-  separate open blocker idea rather than a new string rediscovery route.
-- Narrow parser tests and a fresh build pass, with fresh canonical
-  `test_after.log`, are produced by the executor.
+- `todo.md` preserves the Step 2.4.4.1 inventory and removes HIR cleanup as
+  the suggested next packet.
+- The active execution pointer skips to Step 2.4.4.3.
+- HIR member-typedef resolver cleanup remains routed to idea 140.
 
 ### Step 2.4.4.3: Convert C-Style Cast Type-Id Member-Typedef Consumer
 
