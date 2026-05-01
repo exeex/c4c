@@ -3,37 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/139_parser_sema_rendered_string_lookup_removal.md
 Source Plan Path: plan.md
-Current Step ID: Step 3.3.3A
-Current Step Title: Carry Parser Using-Value-Alias Authority Into Sema
+Current Step ID: Step 3.3.3B
+Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.3.3A carried parser using-value-alias authority into Sema global lookup.
-Parser now annotates qualified value references resolved through
-`VisibleNameSource::UsingAlias` with the structured alias target key, and Sema
-consults that target key before rendered global compatibility. The focused
-lookup-authority test corrupts the rendered reference spelling for
-`wrap::exported_value` imported via `using ::exported_value`, proving the
-global lookup succeeds from the structured carrier rather than rendered
-fallback.
+Step 3.3.3B tightened Sema rendered global and enum compatibility for
+qualified references. After structured qualified lookup misses, a reference
+with qualifier TextId metadata can no longer recover an unqualified rendered
+global or enum constant of the same member spelling; the using-value-alias
+target-key lookup still runs before the rendered fallback gate and remains
+green.
 
 ## Suggested Next
 
-Next executor packet can retry Step 3.3.3B: remove or tighten the remaining
-unqualified rendered global fallback for qualified references now that
-namespace using-value-alias imports have a structured Sema carrier.
+Next executor packet can review the Step 3.3.3B diff against the active idea
+and decide whether the remaining function/overload rendered compatibility gates
+need an analogous qualified-metadata hard block or are already covered by
+structured function-name ownership tracking.
 
 ## Watchouts
 
-- The carrier currently feeds Sema global variable lookup. If the next packet
-  finds the same alias distinction is needed for function or overload lookup,
-  extend the same structured target-key path there instead of re-opening broad
-  rendered compatibility.
-- Step 3.3.3B should still avoid testcase-shaped matching: reject wrong-owner
-  qualified references by semantic metadata, while preserving alias imports
-  through the new target carrier.
-- The C++ overload route still shares the same mirror/query key selection; no
-  separate named C++ overload test was added in this blocked packet.
+- Function, ref-overload, and C++ overload lookup already consult structured
+  function keys before rendered lookup and suppress rendered fallback when the
+  rendered function name is tracked as structured. The current packet did not
+  add a new hard block for unstructured rendered function names.
+- The global/enum fallback block intentionally runs after the structured
+  `using ::exported_value` alias target-key lookup, preserving Step 3.3.3A
+  behavior.
 - `review/step33_sema_lookup_route_review.md` was already untracked in the
   worktree and was not touched.
 
@@ -42,6 +39,6 @@ namespace using-value-alias imports have a structured Sema carrier.
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)' >> test_after.log 2>&1`
 
 Passed. `test_after.log` contains the canonical proof log for this packet:
-build succeeded and the corrected delegated subset passed, including
+build succeeded and the delegated subset passed, including
 `frontend_parser_lookup_authority_tests` and 884 `cpp_positive_sema_` tests
 for 885/885 total selected tests.
