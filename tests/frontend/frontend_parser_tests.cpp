@@ -321,6 +321,9 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
                   parser.visible_name_spelling(resolved_type) ==
                       "IdFirstLookupType",
               "namespace-visible typedef lookup should report the TextId spelling over a mismatched fallback");
+  expect_true(resolved_type.source == c4c::Parser::VisibleNameSource::Namespace &&
+                  resolved_type.key == direct_typedef_key,
+              "namespace-visible typedef lookup should resolve through structured metadata instead of fallback probing");
   resolved_type = {};
   expect_true(!parser.lookup_type_in_context(0, missing_typedef_id,
                                              &resolved_type),

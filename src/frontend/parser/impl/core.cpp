@@ -450,27 +450,6 @@ QualifiedNameKey intern_known_fn_name_key_from_spelling(
     return key;
 }
 
-int& visible_typedef_fallback_depth_for(const Parser& parser) {
-    static thread_local std::unordered_map<const Parser*, int> depths;
-    return depths[&parser];
-}
-
-struct VisibleTypedefFallbackGuard {
-    explicit VisibleTypedefFallbackGuard(int& depth) : depth_(depth) {
-        ++depth_;
-    }
-    ~VisibleTypedefFallbackGuard() { --depth_; }
-
-    int& depth_;
-};
-
-bool probe_visible_typedef_name(const Parser& parser, TextId name_text_id,
-                                std::string_view name) {
-    (void)name;
-    VisibleTypedefFallbackGuard guard(visible_typedef_fallback_depth_for(parser));
-    return parser.has_visible_typedef_type(name_text_id);
-}
-
 std::vector<std::string> merge_leading_top_level_qualified_probe(
     const std::vector<Parser::ParseDebugEvent>& parse_debug_events,
     const std::vector<std::string>& summary_stack) {
@@ -2861,24 +2840,13 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
     }
     const std::string_view name = parser_text(name_text_id, {});
     if (context_id == 0 && !name.empty() &&
-        name.find("::") == std::string_view::npos &&
-        visible_typedef_fallback_depth_for(*this) == 0) {
+        name.find("::") == std::string_view::npos) {
         if (find_local_visible_typedef_type(name_text_id)) {
             resolved->found = true;
             resolved->kind = VisibleNameKind::Type;
             resolved->base_text_id = name_text_id;
             resolved->context_id = context_id;
             resolved->source = VisibleNameSource::Local;
-            resolved->compatibility_spelling =
-                std::string(parser_text(name_text_id, name));
-            return true;
-        }
-        if (probe_visible_typedef_name(*this, name_text_id, name)) {
-            resolved->found = true;
-            resolved->kind = VisibleNameKind::Type;
-            resolved->base_text_id = name_text_id;
-            resolved->context_id = context_id;
-            resolved->source = VisibleNameSource::Fallback;
             resolved->compatibility_spelling =
                 std::string(parser_text(name_text_id, name));
             return true;

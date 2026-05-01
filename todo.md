@@ -8,22 +8,21 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the parser-owned `cache_legacy_var_type_binding` rendered
-spelling route. `register_var_type_binding` now records direct TextId-backed
-value types plus structured `QualifiedNameKey` value bindings without
-refreshing the legacy symbol cache. `find_var_type(TextId)` now prefers the
-TextId table and only preserves explicit legacy symbol-table compatibility as a
-last-resort reader.
+Step 2.3 removed the parser-owned visible typedef fallback recursion route.
+`visible_typedef_fallback_depth_for`, `VisibleTypedefFallbackGuard`, and
+`probe_visible_typedef_name` are gone; `lookup_type_in_context` now accepts the
+direct local visible typedef table and structured namespace typedef metadata
+without re-entering `has_visible_typedef_type` as a fallback probe.
 
-The focused parser test now seeds a stale legacy symbol-cache value for an
-ID-first value registration and proves TextId storage wins while registration
-does not rewrite the legacy cache.
+The focused parser test now proves namespace-visible typedef lookup reports the
+structured `QualifiedNameKey`/`VisibleNameSource::Namespace` carrier while the
+existing TextId-less and rendered-storage miss checks continue to reject
+fallback promotion.
 
 ## Suggested Next
 
-Execute one more focused Step 2.3 parser-owned cleanup packet against either
-the visible typedef fallback depth/guard path or a visible-name
-`compatibility_spelling` / `compatibility_name` path where existing
+Execute one more focused Step 2.3 parser-owned cleanup packet against a
+visible-name `compatibility_spelling` / `compatibility_name` path where existing
 `VisibleNameResult`, `TextId`, or `QualifiedNameKey` metadata can carry the
 semantic answer without adding rendered rediscovery helpers.
 
@@ -32,6 +31,9 @@ semantic answer without adding rendered rediscovery helpers.
 - Do not restore string/string_view parser state setter authority. The setters
   are now `TextId`-based; display strings passed to them are fallback/display
   payloads only.
+- `lookup_type_in_context` still has a direct global-context local visible
+  typedef check. That path is TextId/local-table based and is separate from the
+  removed recursive visible typedef fallback probe.
 - `var_types_by_text_id` is direct parser TextId metadata for
   `register_var_type_binding`, not a rendered-name rediscovery cache. Direct
   structured registrations intentionally do not populate it, so
@@ -66,5 +68,5 @@ semantic answer without adding rendered rediscovery helpers.
 Passed:
 `(cmake --build build --target c4cll && ctest --test-dir build -R 'cpp_(positive_parser|positive_sema|negative_tests)' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: regenerated canonical `test_after.log` after this
-`cache_legacy_var_type_binding` removal packet (926 tests passed).
+Proof log: regenerated canonical `test_after.log` after this visible typedef
+fallback guard removal packet (926 tests passed).
