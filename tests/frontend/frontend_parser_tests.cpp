@@ -5522,6 +5522,84 @@ void test_sema_namespace_owner_resolution_rejects_rendered_fallback_after_struct
               "method owner lookup should reject rendered owner fallback after a structured owner-key miss");
 }
 
+void test_sema_method_owner_lookup_uses_qualifier_text_id_over_stale_rendered_owner() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base, int ptr_level = 0, const char* tag = nullptr) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    ts.ptr_level = ptr_level;
+    ts.tag = tag;
+    return ts;
+  };
+
+  const c4c::TextId owner_text = texts.intern("Owner");
+  const c4c::TextId actual_text = texts.intern("actual");
+  const c4c::TextId get_text = texts.intern("get");
+  const int namespace_context = parser.current_namespace_context_id();
+
+  c4c::Node* owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner->name = arena.strdup("Owner");
+  owner->unqualified_name = arena.strdup("Owner");
+  owner->unqualified_text_id = owner_text;
+  owner->namespace_context_id = namespace_context;
+  owner->n_fields = 1;
+  owner->fields = arena.alloc_array<c4c::Node*>(1);
+
+  c4c::Node* actual = parser.make_node(c4c::NK_DECL, 1);
+  actual->name = arena.strdup("actual");
+  actual->unqualified_name = arena.strdup("actual");
+  actual->unqualified_text_id = actual_text;
+  actual->namespace_context_id = namespace_context;
+  actual->type = make_ts(c4c::TB_INT);
+  owner->fields[0] = actual;
+
+  c4c::Node* field_ref = parser.make_node(c4c::NK_VAR, 2);
+  field_ref->name = arena.strdup("actual");
+  field_ref->unqualified_name = arena.strdup("actual");
+  field_ref->unqualified_text_id = actual_text;
+  field_ref->namespace_context_id = namespace_context;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = field_ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("StaleOwner::get");
+  fn->unqualified_name = arena.strdup("get");
+  fn->unqualified_text_id = get_text;
+  fn->namespace_context_id = namespace_context;
+  fn->n_qualifier_segments = 1;
+  fn->qualifier_segments = arena.alloc_array<const char*>(1);
+  fn->qualifier_segments[0] = arena.strdup("StaleOwner");
+  fn->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  fn->qualifier_text_ids[0] = owner_text;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = owner;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  const std::string diag =
+      result.diagnostics.empty() ? "" : (": " + result.diagnostics.front().message);
+  expect_true(result.ok,
+              "method owner lookup should use qualifier TextId metadata over stale rendered owner spelling" +
+                  diag);
+}
+
 void test_sema_method_validation_prefers_structured_owner_key_for_fields() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -7935,6 +8013,7 @@ int main() {
   test_sema_overload_lookup_keeps_no_metadata_rendered_compatibility();
   test_sema_namespace_owner_resolution_prefers_structured_owner_key();
   test_sema_namespace_owner_resolution_rejects_rendered_fallback_after_structured_miss();
+  test_sema_method_owner_lookup_uses_qualifier_text_id_over_stale_rendered_owner();
   test_sema_method_validation_prefers_structured_owner_key_for_fields();
   test_sema_method_validation_rejects_stale_rendered_field_spelling();
   test_parser_template_instantiation_dedup_keys_skip_mark_on_failed_instantiation();

@@ -1350,15 +1350,20 @@ class Validator {
         !fn->qualifier_text_ids) {
       return std::nullopt;
     }
-    if (fn->qualifier_segments && fn->qualifier_segments[fn->n_qualifier_segments - 1]) {
-      const std::string qualifier_owner(fn->qualifier_segments[fn->n_qualifier_segments - 1]);
-      if (qualifier_owner != unqualified_name(owner)) return std::nullopt;
-    }
     const TextId owner_text_id = fn->qualifier_text_ids[fn->n_qualifier_segments - 1];
     if (owner_text_id == kInvalidText) return std::nullopt;
     SemaStructuredNameKey key;
     key.namespace_context_id = fn->namespace_context_id;
     key.base_text_id = owner_text_id;
+    const bool structured_owner_key_exists =
+        struct_defs_by_key_.find(key) != struct_defs_by_key_.end();
+    if (structured_owner_key_exists) return key;
+    if (owner.find("::") != std::string::npos || fn->n_qualifier_segments != 1 ||
+        !fn->qualifier_segments || !fn->qualifier_segments[0]) {
+      return std::nullopt;
+    }
+    const std::string qualifier_owner(fn->qualifier_segments[0]);
+    if (qualifier_owner != unqualified_name(owner)) return std::nullopt;
     return key;
   }
 

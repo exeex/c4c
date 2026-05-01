@@ -8,20 +8,20 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.3 removed the eager rendered-map compatibility probe from
-`lookup_consteval_function_by_name` when a valid structured key or TextId
-carrier is present. The helper now consults structured consteval function
-metadata and unqualified TextId metadata before reading `consteval_funcs_`,
-returns `nullptr` after authoritative metadata misses, and preserves rendered
-compatibility for references with no metadata. Focused Sema stale-rendered
-consteval tests now cover structured authority, TextId authority, metadata
-misses, and no-metadata rendered fallback.
+Step 3.3 removed the Sema method-owner rendered-name gate when qualifier
+TextId metadata already resolves to a known structured owner key. Stale
+rendered owner spelling can no longer block that structured owner route; the
+existing rendered compatibility path remains only for incomplete namespaced
+owner carriers whose structured owner key is not present. Focused
+`frontend_parser_tests` coverage now proves that stale rendered owner spelling
+does not override qualifier TextId owner metadata.
 
 ## Suggested Next
 
-Choose the next bounded Step 3.3 rendered-lookup removal packet from a route
-where structured metadata is already complete, preferably another comparison-only
-rendered probe or a consumer guarded by existing focused stale-spelling coverage.
+Choose the next bounded Step 3.3 rendered-lookup removal packet from another
+route where structured metadata is already complete. Avoid namespace-qualified
+out-of-class method-owner cleanup until the producer supplies a complete
+structured owner context beyond the current compatibility path.
 
 ## Watchouts
 
@@ -110,6 +110,11 @@ rendered probe or a consumer guarded by existing focused stale-spelling coverage
   structured metadata. Owner/namespace-qualified rendered compatibility such as
   using-import and anonymous-namespace bridges is intentionally retained until
   those producers carry equivalent structured qualifier metadata.
+- Method-owner lookup now trusts qualifier TextId metadata over stale rendered
+  owner spelling when the resulting Sema owner key resolves to an existing
+  record. Namespace-qualified out-of-class methods can still arrive with an
+  incomplete owner key, so their rendered compatibility remains intentionally
+  retained until that producer metadata is complete.
 
 ## Proof
 
