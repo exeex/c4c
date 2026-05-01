@@ -404,8 +404,7 @@ class Parser {
   // ── lookup / binding helpers: namespace resolution and qualified names ───
   void refresh_current_namespace_bridge();
   int current_namespace_context_id() const;
-  int ensure_named_namespace_context(int parent_id, TextId text_id,
-                                     const std::string& name);
+  int ensure_named_namespace_context(int parent_id, TextId text_id);
   int create_anonymous_namespace_context(int parent_id);
   int find_named_namespace_child(int parent_id, TextId text_id) const;
 

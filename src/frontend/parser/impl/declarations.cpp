@@ -1371,10 +1371,10 @@ Node* parse_top_level(Parser& parser) {
                         ? ns_name.qualifier_text_ids[i]
                         : kInvalidText;
                 context_id = parser.ensure_named_namespace_context(
-                    context_id, segment_text_id, ns_name.qualifier_segments[i]);
+                    context_id, segment_text_id);
             }
             context_id = parser.ensure_named_namespace_context(
-                context_id, ns_name.base_text_id, ns_name.base_name);
+                context_id, ns_name.base_text_id);
         } else {
             context_id = parser.create_anonymous_namespace_context(context_id);
         }

@@ -2520,14 +2520,13 @@ int Parser::find_named_namespace_child(int parent_id, TextId text_id) const {
     return child_it->second;
 }
 
-int Parser::ensure_named_namespace_context(int parent_id, TextId text_id,
-                                           const std::string& name) {
-    if (text_id == kInvalidText) {
-        text_id = parser_text_id_for_token(kInvalidText, name);
-    }
+int Parser::ensure_named_namespace_context(int parent_id, TextId text_id) {
+    if (text_id == kInvalidText) return -1;
     const int existing = find_named_namespace_child(parent_id, text_id);
     if (existing >= 0) return existing;
 
+    const std::string name(parser_text(text_id, {}));
+    if (name.empty()) return -1;
     const NamespaceContext& parent = namespace_state_.namespace_contexts[parent_id];
     std::string canonical =
         build_canonical_namespace_name(parent.canonical_name, name);

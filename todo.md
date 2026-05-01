@@ -8,11 +8,15 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the dead parser string-taking namespace/name construction API
-`canonical_name_in_context(int, const std::string& name)`. Raw reference
-inspection found no code call sites beyond the declaration and definition, and
-the remaining public namespace final-spelling route is
-`render_name_in_context(int, TextId)`.
+Step 2.3 replaced
+`ensure_named_namespace_context(int parent_id, TextId text_id,
+const std::string& name)` with the TextId-only
+`ensure_named_namespace_context(int parent_id, TextId text_id)`. Namespace
+child construction now rejects invalid `TextId`s, uses
+`named_namespace_children[parent_id][text_id]` as the semantic child key, and
+derives display/canonical spelling only through `parser_text(text_id, {})`.
+Parser namespace declaration call sites and focused parser tests were updated
+to stop passing fallback/display strings into this construction API.
 
 ## Suggested Next
 
@@ -20,10 +24,11 @@ Continue Step 2.3 from the parser semantic string-keyed binding cleanup.
 Inspect the next same-shape `parser.hpp` candidate and either remove it in a
 bounded Step 2.3 packet or record why it is non-semantic/output-only:
 
-- `ensure_named_namespace_context(int parent_id, TextId text_id,
-  const std::string& name)`: namespace context construction helper; verify
-  whether `name` is only display/canonical payload while `text_id` remains the
-  semantic child key.
+- `parser_text_id_for_token(TextId token_text_id, std::string_view fallback)`:
+  classify remaining parser call paths by producer role. It is still a central
+  TextId materialization boundary, so only remove or narrow concrete semantic
+  fallback uses that can be replaced by already-available token/structured
+  metadata.
 
 ## Watchouts
 
@@ -54,6 +59,10 @@ bounded Step 2.3 packet or record why it is non-semantic/output-only:
 - `canonical_name_in_context(int, const std::string& name)` no longer exists as
   parser API. Do not reintroduce string-taking namespace/name construction when
   `TextId`-based final spelling via `render_name_in_context` is sufficient.
+- `ensure_named_namespace_context(int, TextId, const std::string&)` no longer
+  exists as parser API. Named namespace construction is keyed only by `TextId`;
+  retained display/canonical namespace spelling is derived from
+  `parser_text(text_id, {})` after the semantic key is known.
 - `register_tag_type_binding` no longer accepts a rendered string as its
   semantic binding key. The `const char* tag` argument is still retained as
   `TypeSpec` compatibility/display payload; do not treat that payload as lookup
@@ -163,4 +172,5 @@ bounded Step 2.3 packet or record why it is non-semantic/output-only:
 Passed:
 `(cmake --build build -j && ctest --test-dir build -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_positive_sema_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_negative_tests_.*(symbol|namespace|function|enum|member|method|static|call|consteval|overload).*|cpp_positive_sema_using_global_scope_decl_parse_cpp)$' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: regenerated canonical `test_after.log` (465 tests passed).
+Proof log: regenerated canonical `test_after.log` after this packet (465 tests
+passed).

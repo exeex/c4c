@@ -229,7 +229,7 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
       parser.parser_text_id_for_token(c4c::kInvalidText,
                                       "idFirstQualifiedFn");
   const int ns_context =
-      parser.ensure_named_namespace_context(0, ns_id, "wrong_ns_fallback");
+      parser.ensure_named_namespace_context(0, ns_id);
 
   parser.register_typedef_binding(typedef_id, typedef_ts, true);
   parser.register_var_type_binding(value_id, var_ts);
@@ -821,7 +821,7 @@ void test_parser_type_start_probes_use_token_spelling() {
   const c4c::TextId ns_text_id =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
   const int ns_context_id =
-      parser.ensure_named_namespace_context(0, ns_text_id, "ns");
+      parser.ensure_named_namespace_context(0, ns_text_id);
   const c4c::TextId qualified_concept_text_id =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ScopedConcept");
   parser.register_concept_name_in_context(ns_context_id,
@@ -1741,7 +1741,7 @@ void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
 
   const c4c::TextId ns_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
-  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
   const c4c::TextId target_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "Target");
   const c4c::TextId alias_text = texts.intern("Alias");
@@ -1932,11 +1932,11 @@ void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_va
 
   const c4c::TextId ns_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
-  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
   const c4c::TextId outer_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "outer");
   const int outer_context =
-      parser.ensure_named_namespace_context(0, outer_text, "outer");
+      parser.ensure_named_namespace_context(0, outer_text);
   const c4c::TextId type_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "LegacyOnlyType");
   const c4c::TextId qualified_type_text =
@@ -2042,7 +2042,7 @@ void test_parser_qualified_type_parse_fallback_requires_structured_type() {
 
   const c4c::TextId ns_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
-  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
   const c4c::TextId alias_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
 
@@ -2113,7 +2113,7 @@ void test_parser_qualified_functional_cast_owner_requires_structured_authority()
 
   const c4c::TextId legacy_ns_text =
       parser_test_text_id(legacy_parser, "ns");
-  legacy_parser.ensure_named_namespace_context(0, legacy_ns_text, "ns");
+  legacy_parser.ensure_named_namespace_context(0, legacy_ns_text);
   const c4c::TextId legacy_t_text =
       parser_test_text_id(legacy_parser, "T");
   legacy_parser.push_template_scope(
@@ -2168,8 +2168,7 @@ void test_parser_qualified_functional_cast_owner_requires_structured_authority()
   const c4c::TextId structured_ns_text =
       parser_test_text_id(structured_parser, "ns");
   const int structured_ns_context =
-      structured_parser.ensure_named_namespace_context(
-          0, structured_ns_text, "ns");
+      structured_parser.ensure_named_namespace_context(0, structured_ns_text);
   const c4c::TextId owner_text =
       parser_test_text_id(structured_parser, "Owner");
   c4c::Node* structured_owner =
@@ -2210,7 +2209,7 @@ void test_parser_qualified_member_typedef_lookup_requires_structured_metadata() 
                             c4c::SourceProfile::CppSubset);
   const c4c::TextId legacy_ns_text =
       parser_test_text_id(legacy_parser, "ns");
-  legacy_parser.ensure_named_namespace_context(0, legacy_ns_text, "ns");
+  legacy_parser.ensure_named_namespace_context(0, legacy_ns_text);
   c4c::Node* legacy_owner =
       legacy_parser.make_node(c4c::NK_STRUCT_DEF, 1);
   legacy_owner->name = legacy_arena.strdup("ns::LegacyOwner");
@@ -2258,8 +2257,7 @@ void test_parser_qualified_member_typedef_lookup_requires_structured_metadata() 
   const c4c::TextId rendered_ns_text =
       parser_test_text_id(rendered_member_parser, "ns");
   const int rendered_ns_context =
-      rendered_member_parser.ensure_named_namespace_context(
-          0, rendered_ns_text, "ns");
+      rendered_member_parser.ensure_named_namespace_context(0, rendered_ns_text);
   const c4c::TextId rendered_owner_text =
       parser_test_text_id(rendered_member_parser, "Owner");
   c4c::Node* rendered_owner =
@@ -2304,8 +2302,7 @@ void test_parser_qualified_member_typedef_lookup_requires_structured_metadata() 
   const c4c::TextId structured_ns_text =
       parser_test_text_id(structured_parser, "ns");
   const int structured_ns_context =
-      structured_parser.ensure_named_namespace_context(
-          0, structured_ns_text, "ns");
+      structured_parser.ensure_named_namespace_context(0, structured_ns_text);
   const c4c::TextId structured_owner_text =
       parser_test_text_id(structured_parser, "Owner");
   c4c::Node* structured_owner =
@@ -2365,7 +2362,7 @@ void test_parser_record_body_member_typedef_writers_register_direct_keys() {
   const c4c::TextId ns_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
   const int ns_context =
-      parser.ensure_named_namespace_context(0, ns_text, "ns");
+      parser.ensure_named_namespace_context(0, ns_text);
   const c4c::TextId owner_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "Owner");
   const c4c::TextId using_text =
@@ -2443,7 +2440,7 @@ void test_parser_template_record_member_typedef_writer_registers_dependent_key()
   const c4c::TextId ns_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
   const int ns_context =
-      parser.ensure_named_namespace_context(0, ns_text, "ns");
+      parser.ensure_named_namespace_context(0, ns_text);
   const c4c::TextId owner_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "Owner");
   const c4c::TextId member_text =
@@ -3019,7 +3016,7 @@ void test_parser_using_type_import_prefers_structured_type_over_corrupt_rendered
 
   const c4c::TextId ns_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
-  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
   const c4c::TextId alias_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
   parser.register_structured_typedef_binding_in_context(
@@ -4432,7 +4429,7 @@ void test_parser_nttp_default_cache_uses_structured_key_only() {
 
   const c4c::TextId ns_text = texts.intern("ns");
   const int other_context =
-      parser.ensure_named_namespace_context(0, ns_text, "ns");
+      parser.ensure_named_namespace_context(0, ns_text);
   const c4c::QualifiedNameKey other_trait_key =
       parser.alias_template_key_in_context(other_context, trait_text);
   parser.cache_nttp_default_expr_tokens(other_trait_key, 0, {
@@ -5492,8 +5489,8 @@ void test_sema_namespace_owner_resolution_prefers_structured_owner_key() {
   const c4c::TextId wrong_ns_text = texts.intern("wrong");
   const c4c::TextId owner_text = texts.intern("Owner");
   const c4c::TextId self_text = texts.intern("self");
-  const int real_ns = parser.ensure_named_namespace_context(0, real_ns_text, "real");
-  const int wrong_ns = parser.ensure_named_namespace_context(0, wrong_ns_text, "wrong");
+  const int real_ns = parser.ensure_named_namespace_context(0, real_ns_text);
+  const int wrong_ns = parser.ensure_named_namespace_context(0, wrong_ns_text);
 
   c4c::Node* wrong_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   wrong_owner->name = arena.strdup("Owner");
@@ -5721,8 +5718,8 @@ void test_sema_method_validation_prefers_structured_owner_key_for_fields() {
   const c4c::TextId owner_text = texts.intern("Owner");
   const c4c::TextId actual_text = texts.intern("actual");
   const c4c::TextId get_text = texts.intern("get");
-  const int real_ns = parser.ensure_named_namespace_context(0, real_ns_text, "real");
-  const int wrong_ns = parser.ensure_named_namespace_context(0, wrong_ns_text, "wrong");
+  const int real_ns = parser.ensure_named_namespace_context(0, real_ns_text);
+  const int wrong_ns = parser.ensure_named_namespace_context(0, wrong_ns_text);
 
   c4c::Node* wrong_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   wrong_owner->name = arena.strdup("Owner");
@@ -5807,8 +5804,8 @@ void test_sema_method_validation_rejects_stale_rendered_field_spelling() {
   const c4c::TextId actual_text = texts.intern("actual");
   const c4c::TextId stale_text = texts.intern("stale");
   const c4c::TextId get_text = texts.intern("get");
-  const int real_ns = parser.ensure_named_namespace_context(0, real_ns_text, "real");
-  const int wrong_ns = parser.ensure_named_namespace_context(0, wrong_ns_text, "wrong");
+  const int real_ns = parser.ensure_named_namespace_context(0, real_ns_text);
+  const int wrong_ns = parser.ensure_named_namespace_context(0, wrong_ns_text);
 
   c4c::Node* wrong_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   wrong_owner->name = arena.strdup("Owner");
@@ -7411,7 +7408,7 @@ void test_parser_qualified_typespec_preserves_text_metadata_over_rendered_spelli
 
   const c4c::TextId ns_text = lexer.text_table().intern("ns");
   const c4c::TextId alias_text = lexer.text_table().intern("Alias");
-  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
   c4c::TypeSpec alias_type = make_sema_lookup_ts(c4c::TB_INT);
   alias_type.tag = arena.strdup("rendered_alias_payload");
   parser.register_structured_typedef_binding_in_context(ns_context, alias_text,
@@ -7444,7 +7441,7 @@ void test_parser_qualified_typename_typespec_preserves_text_metadata_over_render
 
   const c4c::TextId ns_text = lexer.text_table().intern("ns");
   const c4c::TextId alias_text = lexer.text_table().intern("Alias");
-  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
 
   c4c::Parser::QualifiedNameRef alias_qn;
   alias_qn.qualifier_segments.push_back("ns");
