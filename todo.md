@@ -18,6 +18,13 @@ The fresh proof state was restored by the supervisor after review, and the
 regression guard accepted the non-regressing result. The remaining bridge paths
 are still live work for Step 2.4.4.5B, not completed in this checkpoint.
 
+Hook-triggered route review
+`review/hook_code_review_step2_4_5a_route.md` found the implementation route
+still aligned with idea 139 and `plan.md`, with no testcase overfit,
+expectation downgrade, rendered-string rewrapping accepted as bridge removal,
+or premature bridge deletion. The stale hook-managed current-step metadata was
+repaired after that review.
+
 ## Suggested Next
 
 Next coherent packet is Step 2.4.4.5B bridge deletion now that the carrier route
