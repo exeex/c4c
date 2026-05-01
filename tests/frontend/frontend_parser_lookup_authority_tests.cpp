@@ -328,6 +328,71 @@ void test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry() {
               "fallback after structured owner/member miss");
 }
 
+void test_sema_global_lookup_rejects_stale_qualified_rendered_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId rendered_ns_text = texts.intern("RenderedNs");
+  const c4c::TextId stale_text = texts.intern("stale");
+  const c4c::TextId missing_text = texts.intern("missing");
+
+  c4c::Node* stale_global = parser.make_node(c4c::NK_DECL, 1);
+  stale_global->name = arena.strdup("RenderedNs::stale");
+  stale_global->unqualified_name = arena.strdup("stale");
+  stale_global->unqualified_text_id = stale_text;
+  stale_global->namespace_context_id = parser.current_namespace_context_id();
+  stale_global->type = make_ts(c4c::TB_SHORT);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("RenderedNs::stale");
+  ref->unqualified_name = arena.strdup("missing");
+  ref->unqualified_text_id = missing_text;
+  ref->namespace_context_id = stale_global->namespace_context_id;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("RenderedNs");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = rendered_ns_text;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("returns_stale");
+  fn->unqualified_name = arena.strdup("returns_stale");
+  fn->unqualified_text_id = texts.intern("returns_stale");
+  fn->namespace_context_id = stale_global->namespace_context_id;
+  fn->type = make_ts(c4c::TB_SHORT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = stale_global;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema global lookup should reject stale qualified rendered "
+              "fallback after structured global key miss");
+}
+
 }  // namespace
 
 int main() {
@@ -337,6 +402,7 @@ int main() {
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
   test_dependent_typename_rejects_visible_type_rendered_reentry();
   test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry();
+  test_sema_global_lookup_rejects_stale_qualified_rendered_reentry();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";
   return 0;
 }

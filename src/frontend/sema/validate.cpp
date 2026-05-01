@@ -915,6 +915,12 @@ class Validator {
     const bool rendered_global_has_structured_metadata =
         (name.find("::") == std::string::npos || name.rfind("::", 0) == 0) &&
         structured_global_names_.count(name) > 0;
+    const bool rendered_global_conflicts_with_reference =
+        reference && reference->n_qualifier_segments > 0 &&
+        reference->unqualified_name && reference->unqualified_name[0] &&
+        std::string(reference->unqualified_name).find("::") == std::string::npos &&
+        unqualified_name(name) != reference->unqualified_name &&
+        structured_global_names_.count(name) > 0;
     if (structured_key.has_value()) {
       const TypeSpec* structured_global = lookup_global_by_key(*structured_key);
       (void)compare_sema_lookup_ptrs(rendered_global_compatibility, structured_global);
@@ -922,7 +928,9 @@ class Validator {
     }
     if (rendered_global_compatibility &&
         !(has_unqualified_or_global_structured_symbol_key &&
-          rendered_global_has_structured_metadata)) {
+          rendered_global_has_structured_metadata) &&
+        !(structured_key.has_value() && rendered_global_has_structured_metadata &&
+          rendered_global_conflicts_with_reference)) {
       return ScopedSym{*rendered_global_compatibility, true};
     }
 
