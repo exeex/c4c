@@ -2325,11 +2325,6 @@ TypeSpec Parser::parse_base_type() {
                                                     kInvalidText) {
                                                 return false;
                                             }
-                                            const Node* primary_tpl =
-                                                find_template_struct_primary(
-                                                    ati->member_typedef.owner_key);
-                                            if (!primary_tpl) return false;
-
                                             std::vector<ParsedTemplateArg>
                                                 actual_args;
                                             actual_args.reserve(
@@ -2349,6 +2344,324 @@ TypeSpec Parser::parse_base_type() {
                                                     has_dependent_arg = true;
                                                 }
                                                 actual_args.push_back(actual);
+                                            }
+                                            const Node* primary_tpl =
+                                                find_template_struct_primary(
+                                                    ati->member_typedef.owner_key);
+                                            if (!primary_tpl) {
+                                                const ParserAliasTemplateInfo*
+                                                    owner_alias =
+                                                        find_alias_template_info(
+                                                            ati->member_typedef
+                                                                .owner_key);
+                                                if (!owner_alias ||
+                                                    !owner_alias->member_typedef
+                                                         .valid) {
+                                                    return false;
+                                                }
+
+                                                const size_t owner_param_count =
+                                                    std::max({
+                                                        owner_alias
+                                                            ->param_name_text_ids
+                                                            .size(),
+                                                        owner_alias->param_is_nttp
+                                                            .size(),
+                                                        owner_alias->param_is_pack
+                                                            .size(),
+                                                        owner_alias
+                                                            ->param_has_default
+                                                            .size(),
+                                                        owner_alias
+                                                            ->param_default_types
+                                                            .size(),
+                                                        owner_alias
+                                                            ->param_default_values
+                                                            .size(),
+                                                        owner_alias->param_names
+                                                            .size(),
+                                                    });
+                                                auto owner_alias_param_text_id =
+                                                    [&](size_t param_index)
+                                                    -> TextId {
+                                                    if (param_index <
+                                                            owner_alias
+                                                                ->param_name_text_ids
+                                                                .size() &&
+                                                        owner_alias
+                                                                ->param_name_text_ids
+                                                                    [param_index] !=
+                                                            kInvalidText) {
+                                                        return owner_alias
+                                                            ->param_name_text_ids
+                                                                [param_index];
+                                                    }
+                                                    const char* pname =
+                                                        param_index <
+                                                                owner_alias
+                                                                    ->param_names
+                                                                    .size()
+                                                            ? owner_alias
+                                                                  ->param_names
+                                                                      [param_index]
+                                                            : nullptr;
+                                                    return pname && pname[0]
+                                                               ? parser_text_id_for_token(
+                                                                     kInvalidText,
+                                                                     pname)
+                                                               : kInvalidText;
+                                                };
+                                                auto owner_alias_param_ref_text_id =
+                                                    [&](std::string_view ref)
+                                                    -> TextId {
+                                                    if (ref.empty())
+                                                        return kInvalidText;
+                                                    TextId ref_text_id =
+                                                        find_parser_text_id(ref);
+                                                    if (ref_text_id !=
+                                                        kInvalidText) {
+                                                        return ref_text_id;
+                                                    }
+                                                    for (size_t pi = 0;
+                                                         pi < owner_param_count;
+                                                         ++pi) {
+                                                        if (pi <
+                                                                owner_alias
+                                                                    ->param_name_text_ids
+                                                                    .size() &&
+                                                            owner_alias
+                                                                    ->param_name_text_ids
+                                                                        [pi] !=
+                                                                kInvalidText) {
+                                                            continue;
+                                                        }
+                                                        const char* pname =
+                                                            pi < owner_alias
+                                                                     ->param_names
+                                                                     .size()
+                                                                ? owner_alias
+                                                                      ->param_names
+                                                                          [pi]
+                                                                : nullptr;
+                                                        if (pname &&
+                                                            ref == pname) {
+                                                            return owner_alias_param_text_id(
+                                                                pi);
+                                                        }
+                                                    }
+                                                    return kInvalidText;
+                                                };
+                                                auto owner_alias_param_index_for_text_id =
+                                                    [&](TextId param_text_id)
+                                                    -> size_t {
+                                                    if (param_text_id ==
+                                                        kInvalidText) {
+                                                        return owner_param_count;
+                                                    }
+                                                    for (size_t pi = 0;
+                                                         pi < owner_param_count;
+                                                         ++pi) {
+                                                        if (owner_alias_param_text_id(
+                                                                pi) ==
+                                                            param_text_id) {
+                                                            return pi;
+                                                        }
+                                                    }
+                                                    return owner_param_count;
+                                                };
+                                                auto substitute_owner_carrier_arg =
+                                                    [&](const ParsedTemplateArg&
+                                                            carrier_arg,
+                                                        ParsedTemplateArg*
+                                                            out_arg) -> bool {
+                                                    if (!out_arg) return false;
+                                                    *out_arg = carrier_arg;
+                                                    if (carrier_arg.is_value) {
+                                                        if (!carrier_arg
+                                                                 .nttp_name ||
+                                                            !carrier_arg
+                                                                 .nttp_name[0]) {
+                                                            return true;
+                                                        }
+                                                        const TextId nttp_text_id =
+                                                            owner_alias_param_ref_text_id(
+                                                                carrier_arg
+                                                                    .nttp_name);
+                                                        const size_t pi =
+                                                            owner_alias_param_index_for_text_id(
+                                                                nttp_text_id);
+                                                        if (pi >=
+                                                                actual_args.size() ||
+                                                            pi >=
+                                                                owner_param_count) {
+                                                            return true;
+                                                        }
+                                                        if (!actual_args[pi]
+                                                                 .is_value) {
+                                                            return false;
+                                                        }
+                                                        *out_arg =
+                                                            actual_args[pi];
+                                                        return true;
+                                                    }
+                                                    const TypeSpec& carrier_type =
+                                                        carrier_arg.type;
+                                                    if (carrier_type.base !=
+                                                            TB_TYPEDEF ||
+                                                        !carrier_type.tag ||
+                                                        !carrier_type.tag[0]) {
+                                                        return true;
+                                                    }
+                                                    const TextId type_text_id =
+                                                        owner_alias_param_ref_text_id(
+                                                            carrier_type.tag);
+                                                    const size_t pi =
+                                                        owner_alias_param_index_for_text_id(
+                                                            type_text_id);
+                                                    if (pi >=
+                                                            actual_args.size() ||
+                                                        pi >=
+                                                            owner_param_count) {
+                                                        return true;
+                                                    }
+                                                    if (actual_args[pi]
+                                                            .is_value) {
+                                                        return false;
+                                                    }
+                                                    *out_arg = actual_args[pi];
+                                                    return true;
+                                                };
+
+                                                std::vector<ParsedTemplateArg>
+                                                    owner_actual_args;
+                                                owner_actual_args.reserve(
+                                                    owner_alias->member_typedef
+                                                        .owner_args.size());
+                                                for (const ParsedTemplateArg&
+                                                         carrier_arg :
+                                                     owner_alias->member_typedef
+                                                         .owner_args) {
+                                                    ParsedTemplateArg actual{};
+                                                    if (!substitute_owner_carrier_arg(
+                                                            carrier_arg,
+                                                            &actual)) {
+                                                        return false;
+                                                    }
+                                                    owner_actual_args.push_back(
+                                                        actual);
+                                                }
+
+                                                TypeSpec owner_ts{};
+                                                const ParserTemplateState::
+                                                    TemplateInstantiationKey
+                                                        concrete_alias_owner{
+                                                            owner_alias
+                                                                ->member_typedef
+                                                                .owner_key,
+                                                            make_template_instantiation_argument_keys(
+                                                                owner_actual_args)};
+                                                if (const TypeSpec*
+                                                        structured_owner =
+                                                            find_template_instantiation_member_typedef_type(
+                                                                concrete_alias_owner,
+                                                                owner_alias
+                                                                    ->member_typedef
+                                                                    .member_text_id)) {
+                                                    owner_ts = *structured_owner;
+                                                } else {
+                                                    const Node*
+                                                        owner_primary_tpl =
+                                                            find_template_struct_primary(
+                                                                owner_alias
+                                                                    ->member_typedef
+                                                                    .owner_key);
+                                                    if (!owner_primary_tpl) {
+                                                        return false;
+                                                    }
+                                                    std::vector<std::pair<std::string, TypeSpec>>
+                                                        owner_type_bindings;
+                                                    std::vector<std::pair<std::string, long long>>
+                                                        owner_nttp_bindings;
+                                                    const std::vector<Node*>*
+                                                        owner_specializations =
+                                                            find_template_struct_specializations(
+                                                                owner_alias
+                                                                    ->member_typedef
+                                                                    .owner_key);
+                                                    const Node* owner_selected =
+                                                        select_template_struct_pattern_for_args(
+                                                            owner_actual_args,
+                                                            owner_primary_tpl,
+                                                            owner_specializations,
+                                                            &owner_type_bindings,
+                                                            &owner_nttp_bindings);
+                                                    if (!owner_selected ||
+                                                        owner_selected
+                                                                ->n_member_typedefs <=
+                                                            0) {
+                                                        return false;
+                                                    }
+                                                    for (int mi = 0;
+                                                         mi < owner_selected
+                                                                  ->n_member_typedefs;
+                                                         ++mi) {
+                                                        const char* member =
+                                                            owner_selected
+                                                                ->member_typedef_names
+                                                                    [mi];
+                                                        if (!member ||
+                                                            !member[0]) {
+                                                            continue;
+                                                        }
+                                                        const TextId
+                                                            selected_member_text_id =
+                                                                parser_text_id_for_token(
+                                                                    kInvalidText,
+                                                                    member);
+                                                        if (selected_member_text_id !=
+                                                            owner_alias
+                                                                ->member_typedef
+                                                                .member_text_id) {
+                                                            continue;
+                                                        }
+                                                        bool substituted = false;
+                                                        owner_ts =
+                                                            apply_alias_template_bindings(
+                                                                owner_selected
+                                                                    ->member_typedef_types
+                                                                        [mi],
+                                                                owner_type_bindings,
+                                                                owner_nttp_bindings,
+                                                                &substituted);
+                                                        (void)substituted;
+                                                        break;
+                                                    }
+                                                    if (!((owner_ts.tag &&
+                                                           owner_ts.tag[0]) ||
+                                                          owner_ts.record_def ||
+                                                          owner_ts
+                                                              .tpl_struct_origin)) {
+                                                        return false;
+                                                    }
+                                                }
+
+                                                const std::string member_name(
+                                                    parser_text(
+                                                        ati->member_typedef
+                                                            .member_text_id,
+                                                        {}));
+                                                if (member_name.empty()) {
+                                                    return false;
+                                                }
+                                                if (lookup_struct_member_typedef_recursive_for_type(
+                                                        owner_ts,
+                                                        member_name,
+                                                        ati->member_typedef
+                                                            .member_text_id,
+                                                        &ts)) {
+                                                    return true;
+                                                }
+                                                return false;
                                             }
                                             if (has_dependent_arg) {
                                                 ParserAliasTemplateMemberTypedefInfo

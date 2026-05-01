@@ -164,7 +164,8 @@ static QualifiedNameKey alias_template_member_owner_key(
 }
 
 static ParserAliasTemplateMemberTypedefInfo
-try_parse_alias_template_member_typedef_info(Parser& parser) {
+try_parse_alias_template_member_typedef_info(Parser& parser,
+                                             bool consume_match = false) {
     ParserAliasTemplateMemberTypedefInfo info;
     Parser::TentativeParseGuard guard(parser);
 
@@ -193,6 +194,7 @@ try_parse_alias_template_member_typedef_info(Parser& parser) {
     const TextId member_text_id =
         parser.parser_text_id_for_token(parser.cur().text_id, member_name);
     parser.consume();
+    if (parser.check(TokenKind::Less)) return info;
     if (member_text_id == kInvalidText) return info;
 
     const QualifiedNameKey owner_key =
@@ -203,6 +205,7 @@ try_parse_alias_template_member_typedef_info(Parser& parser) {
     info.owner_key = owner_key;
     info.owner_args = std::move(owner_args);
     info.member_text_id = member_text_id;
+    if (consume_match) guard.commit();
     return info;
 }
 
@@ -233,68 +236,8 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
         default: out += "T"; break;
     }
     for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
-   if (ts.is_lvalue_ref) out += "_ref";
+    if (ts.is_lvalue_ref) out += "_ref";
     if (ts.is_rvalue_ref) out += "_rref";
-}
-
-static const char* alias_template_arg_debug_text(
-    Parser& parser, const Parser::TemplateArgParseResult& arg) {
-    if (arg.is_value) {
-        if (arg.nttp_name && arg.nttp_name[0]) return arg.nttp_name;
-        return parser.arena_.strdup(std::to_string(arg.value).c_str());
-    }
-    std::string debug_ref;
-    append_type_mangled_suffix_local(debug_ref, arg.type);
-    if (debug_ref.empty() && arg.type.tag && arg.type.tag[0]) {
-        debug_ref = arg.type.tag;
-    }
-    if (debug_ref.empty() && arg.type.tag_text_id != kInvalidText) {
-        debug_ref = std::string(parser.parser_text(arg.type.tag_text_id, {}));
-    }
-    return debug_ref.empty() ? nullptr : parser.arena_.strdup(debug_ref.c_str());
-}
-
-static bool apply_alias_template_member_typedef_compat_type(
-    Parser& parser, const ParserAliasTemplateMemberTypedefInfo& info,
-    TypeSpec* alias_ts) {
-    if (!alias_ts || !info.valid ||
-        info.owner_key.base_text_id == kInvalidText ||
-        info.member_text_id == kInvalidText) {
-        return false;
-    }
-    const std::string owner_name =
-        parser.render_name_in_context(info.owner_key.context_id,
-                                      info.owner_key.base_text_id);
-    const std::string member_name =
-        std::string(parser.parser_text(info.member_text_id, {}));
-    if (owner_name.empty() || member_name.empty()) return false;
-
-    *alias_ts = {};
-    alias_ts->array_size = -1;
-    alias_ts->inner_rank = -1;
-    alias_ts->base = TB_STRUCT;
-    alias_ts->tag = parser.arena_.strdup(owner_name.c_str());
-    alias_ts->tag_text_id = info.owner_key.base_text_id;
-    alias_ts->tpl_struct_origin = alias_ts->tag;
-    if (!info.owner_args.empty()) {
-        alias_ts->tpl_struct_args.data =
-            parser.arena_.alloc_array<TemplateArgRef>(info.owner_args.size());
-        alias_ts->tpl_struct_args.size =
-            static_cast<int>(info.owner_args.size());
-        for (int i = 0; i < alias_ts->tpl_struct_args.size; ++i) {
-            const Parser::TemplateArgParseResult& arg = info.owner_args[i];
-            TemplateArgRef& out = alias_ts->tpl_struct_args.data[i];
-            out.kind = arg.is_value ? TemplateArgKind::Value
-                                    : TemplateArgKind::Type;
-            out.type = arg.is_value ? TypeSpec{} : arg.type;
-            out.value = arg.is_value ? arg.value : 0;
-            out.debug_text = alias_template_arg_debug_text(parser, arg);
-        }
-    }
-    alias_ts->deferred_member_type_name =
-        parser.arena_.strdup(member_name.c_str());
-    alias_ts->deferred_member_type_text_id = info.member_text_id;
-    return true;
 }
 
 static bool template_param_expr_continues_after_greater(TokenKind k) {
@@ -1503,13 +1446,7 @@ Node* parse_top_level(Parser& parser) {
                     member_typedef_info;
                 try {
                     alias_ts = parser.parse_type_name();
-                    if (!alias_ts.tpl_struct_origin &&
-                        member_typedef_info.valid) {
-                        apply_alias_template_member_typedef_compat_type(
-                            parser, member_typedef_info, &alias_ts);
-                    }
-                    if (!alias_member_typedef_info.valid &&
-                        parser.active_context_state_
+                    if (parser.active_context_state_
                             .last_using_alias_member_typedef.valid) {
                         alias_member_typedef_info =
                             parser.active_context_state_

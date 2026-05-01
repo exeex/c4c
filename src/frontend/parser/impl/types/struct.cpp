@@ -748,7 +748,8 @@ static QualifiedNameKey record_alias_member_owner_key(
 }
 
 static ParserAliasTemplateMemberTypedefInfo
-try_parse_record_using_member_typedef_info(Parser& parser) {
+try_parse_record_using_member_typedef_info(Parser& parser,
+                                           bool consume_match = false) {
     ParserAliasTemplateMemberTypedefInfo info;
     Parser::TentativeParseGuard guard(parser);
 
@@ -776,6 +777,7 @@ try_parse_record_using_member_typedef_info(Parser& parser) {
     const TextId member_text_id =
         parser.parser_text_id_for_token(parser.cur().text_id, member_name);
     parser.consume();
+    if (parser.check(TokenKind::Less)) return info;
     if (member_text_id == kInvalidText) return info;
 
     const QualifiedNameKey owner_key =
@@ -786,6 +788,7 @@ try_parse_record_using_member_typedef_info(Parser& parser) {
     info.owner_key = owner_key;
     info.owner_args = std::move(owner_args);
     info.member_text_id = member_text_id;
+    if (consume_match) guard.commit();
     return info;
 }
 
@@ -822,7 +825,30 @@ bool try_parse_record_using_member(
         parser.consume(); // '='
         const ParserAliasTemplateMemberTypedefInfo member_typedef_info =
             try_parse_record_using_member_typedef_info(parser);
-        TypeSpec alias_ts = parser.parse_type_name();
+        TypeSpec alias_ts{};
+        const bool has_template_scope =
+            !parser.template_state_.template_scope_stack.empty();
+        const bool member_owner_has_primary =
+            member_typedef_info.valid &&
+            parser.find_template_struct_primary(member_typedef_info.owner_key);
+        const bool member_owner_needs_structured_rhs =
+            member_typedef_info.valid && has_template_scope &&
+            ((!member_owner_has_primary &&
+              parser.find_alias_template_info(member_typedef_info.owner_key)) ||
+             (member_owner_has_primary &&
+              parser.find_template_struct_specializations(
+                  member_typedef_info.owner_key)));
+        if (member_owner_needs_structured_rhs) {
+            (void)try_parse_record_using_member_typedef_info(
+                parser, /*consume_match=*/true);
+            alias_ts.array_size = -1;
+            alias_ts.inner_rank = -1;
+            alias_ts.base = TB_TYPEDEF;
+            alias_ts.tag = parser.arena_.strdup(alias_name.c_str());
+            alias_ts.tag_text_id = alias_name_text_id;
+        } else {
+            alias_ts = parser.parse_type_name();
+        }
         parser.expect(TokenKind::Semi);
 
         parser.register_typedef_binding(alias_name_text_id, alias_ts, false);
