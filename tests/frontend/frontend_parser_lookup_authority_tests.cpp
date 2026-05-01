@@ -1,4 +1,6 @@
+#include "lexer.hpp"
 #include "impl/parser_impl.hpp"
+#include "impl/types/types_helpers.hpp"
 #include "parser.hpp"
 
 #include <cstdlib>
@@ -141,12 +143,54 @@ void test_alias_template_lookup_rejects_visible_type_rendered_reentry() {
               "visible-type rendered spelling");
 }
 
+void test_qualified_typedef_name_uses_structured_result_not_rendered_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "StructuredNs");
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  expect_true(ns_context > 0, "test namespace context should be created");
+
+  c4c::TypeSpec alias_type{};
+  alias_type.array_size = -1;
+  alias_type.inner_rank = -1;
+  alias_type.base = c4c::TB_INT;
+  parser.register_structured_typedef_binding_in_context(ns_context, alias_text,
+                                                        alias_type);
+
+  c4c::Parser::QualifiedNameRef qualified;
+  qualified.qualifier_segments.push_back("RenderedNsDrift");
+  qualified.qualifier_text_ids.push_back(ns_text);
+  qualified.base_name = "RenderedAliasDrift";
+  qualified.base_text_id = alias_text;
+
+  const std::string rendered = parser.visible_name_spelling(
+      parser.resolve_qualified_type(qualified));
+  expect_true(!rendered.empty(),
+              "test qualified typedef should have a display spelling");
+  expect_true(parser.find_parser_text_id(rendered) == c4c::kInvalidText,
+              "test should not pre-seed a full rendered typedef TextId");
+
+  const std::string resolved =
+      c4c::resolve_qualified_typedef_name(parser, qualified);
+  expect_true(resolved == rendered,
+              "qualified typedef resolution should trust the structured "
+              "qualified result, not a rendered-spelling TextId re-entry");
+}
+
 }  // namespace
 
 int main() {
   test_global_qualified_lookup_rejects_rendered_fallback_authority();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
+  test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";
   return 0;
 }

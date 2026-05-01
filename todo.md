@@ -8,22 +8,22 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the alias-template visible-type rendered-spelling re-entry
-route from `find_alias_template_info_in_context`.
+Step 2.3 removed the qualified typedef rendered-spelling re-entry route from
+`resolve_qualified_typedef_name`.
 
-Alias-template info lookup in context now stops after the direct structured
-`QualifiedNameKey` probe and no longer calls `visible_name_spelling`, recovers a
-`TextId` with `find_parser_text_id`, or retries lookup through the rendered
-visible-type spelling. `frontend_parser_lookup_authority_tests` now covers a
-drifted using-alias rendered target that would have satisfied the removed
-re-entry route.
+Qualified typedef name resolution now treats `resolve_qualified_type` as the
+structured proof for qualified typedef success and no longer converts
+`visible_name_spelling(...)` back through `find_parser_text_id(...)` before
+calling `has_typedef_type(...)`. The returned string remains display/name
+payload after the structured result is proven. `frontend_parser_lookup_authority_tests`
+now covers a drifted qualified typedef whose structured namespace/base `TextId`
+metadata resolves even though the full rendered spelling has no parser `TextId`.
 
 ## Suggested Next
 
-Continue Step 2.3 with another focused review of remaining parser
-`compatibility_spelling`, `visible_name_spelling`, or fallback authority paths;
-remove only routes where rendered spelling still decides lookup success after
-TextId, `QualifiedNameKey`, or namespace metadata already exists.
+Continue Step 2.3 with the next focused parser/Sema authority route only if the
+supervisor has another concrete rendered-spelling semantic fallback target;
+otherwise request reviewer or plan-owner routing for Step 2.3 exhaustion.
 
 ## Watchouts
 
@@ -77,6 +77,10 @@ TextId, `QualifiedNameKey`, or namespace metadata already exists.
 - `find_alias_template_info_in_context` is now key-authoritative only. If a
   future alias-template caller needs a using-alias target, it needs structured
   metadata for that target rather than a rendered-spelling bridge.
+- `resolve_qualified_typedef_name` is now key/result-authoritative for qualified
+  typedef success. Do not reintroduce a full rendered-name `TextId` bridge to
+  prove qualified typedef presence; if a qualified member typedef still needs
+  instantiated owner/member metadata, keep that as a separate metadata packet.
 - A direct `frontend_parser_tests` binary run is outside the delegated proof and
   currently still stops on qualified `TypeSpec` metadata expectations
   (`qualified TypeSpec should carry the base-name TextId metadata`); the
@@ -87,4 +91,5 @@ TextId, `QualifiedNameKey`, or namespace metadata already exists.
 Passed:
 `(cmake --build build --target frontend_parser_lookup_authority_tests && ctest --test-dir build -R '^frontend_parser_lookup_authority_tests$' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: `test_after.log` (1 focused CTest passed).
+Proof log: `test_after.log` (1 focused CTest passed, including the drifted
+qualified typedef rendered-spelling re-entry coverage).

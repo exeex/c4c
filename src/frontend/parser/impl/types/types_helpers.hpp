@@ -626,9 +626,7 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
         const Parser::VisibleNameResult resolved_type =
             parser.resolve_qualified_type(qn);
         std::string resolved = parser.visible_name_spelling(resolved_type);
-        if (!resolved.empty() &&
-            parser.has_typedef_type(parser.find_parser_text_id(resolved)))
-            return resolved;
+        if (resolved_type && !resolved.empty()) return resolved;
     } else {
         return visible_type_head_name(parser, qn.base_text_id, base_name);
     }
