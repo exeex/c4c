@@ -8,21 +8,21 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed rendered-spelling output authority from the structured
-known-function branch in `lookup_value_in_context`.
+Step 2.3 removed the alias-template visible-type rendered-spelling re-entry
+route from `find_alias_template_info_in_context`.
 
-Known-function value lookup now returns success from the registered
-`QualifiedNameKey`/known-function set instead of requiring
-`render_structured_name` to produce a non-empty `compatibility_spelling`.
-`frontend_parser_lookup_authority_tests` now covers a qualified
-known-function lookup with drifted rendered strings and detached rendered text
-storage so the route must succeed through qualifier/base `TextId` metadata.
+Alias-template info lookup in context now stops after the direct structured
+`QualifiedNameKey` probe and no longer calls `visible_name_spelling`, recovers a
+`TextId` with `find_parser_text_id`, or retries lookup through the rendered
+visible-type spelling. `frontend_parser_lookup_authority_tests` now covers a
+drifted using-alias rendered target that would have satisfied the removed
+re-entry route.
 
 ## Suggested Next
 
-Continue Step 2.3 with another focused review of one remaining
-`compatibility_spelling` or fallback authority path in parser visible-name
-lookup; remove it only if rendered spelling still decides lookup success after
+Continue Step 2.3 with another focused review of remaining parser
+`compatibility_spelling`, `visible_name_spelling`, or fallback authority paths;
+remove only routes where rendered spelling still decides lookup success after
 TextId, `QualifiedNameKey`, or namespace metadata already exists.
 
 ## Watchouts
@@ -74,6 +74,9 @@ TextId, `QualifiedNameKey`, or namespace metadata already exists.
 - The known-function value route is now key-authoritative for lookup success,
   but it still fills `compatibility_spelling` opportunistically as display
   payload. Do not convert that display field into a new semantic wrapper.
+- `find_alias_template_info_in_context` is now key-authoritative only. If a
+  future alias-template caller needs a using-alias target, it needs structured
+  metadata for that target rather than a rendered-spelling bridge.
 - A direct `frontend_parser_tests` binary run is outside the delegated proof and
   currently still stops on qualified `TypeSpec` metadata expectations
   (`qualified TypeSpec should carry the base-name TextId metadata`); the

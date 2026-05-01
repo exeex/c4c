@@ -109,11 +109,44 @@ void test_qualified_known_function_lookup_uses_key_not_rendered_spelling() {
               "registered key");
 }
 
+void test_alias_template_lookup_rejects_visible_type_rendered_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  const c4c::TextId rendered_target_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "RenderedDrift");
+  const c4c::QualifiedNameKey rendered_target_key =
+      parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                           rendered_target_text);
+
+  c4c::ParserAliasTemplateInfo info;
+  info.aliased_type.array_size = -1;
+  info.aliased_type.inner_rank = -1;
+  info.aliased_type.base = c4c::TB_INT;
+  parser.register_alias_template_info_for_testing(rendered_target_key, info);
+  parser.register_known_fn_name(rendered_target_key);
+  parser.register_using_value_alias_for_testing(
+      parser.current_namespace_context_id(), alias_text, rendered_target_key);
+
+  const c4c::ParserAliasTemplateInfo* found =
+      parser.find_alias_template_info_in_context(
+          parser.current_namespace_context_id(), alias_text);
+  expect_true(found == nullptr,
+              "alias-template lookup should not recover through a "
+              "visible-type rendered spelling");
+}
+
 }  // namespace
 
 int main() {
   test_global_qualified_lookup_rejects_rendered_fallback_authority();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
+  test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";
   return 0;
 }

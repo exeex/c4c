@@ -1312,26 +1312,12 @@ bool Parser::has_structured_concept_name(const QualifiedNameKey& key) const {
 const ParserAliasTemplateInfo* Parser::find_alias_template_info_in_context(
     int context_id, TextId name_text_id) const {
     if (context_id < 0) return nullptr;
-    const std::string_view name = parser_text(name_text_id, {});
 
     const QualifiedNameKey key = alias_template_key_in_context(
         context_id, name_text_id);
     if (const ParserAliasTemplateInfo* structured =
             find_alias_template_info(key)) {
         return structured;
-    }
-
-    const VisibleNameResult resolved_type =
-        resolve_visible_type(name_text_id);
-    const std::string resolved = visible_name_spelling(resolved_type);
-    if (resolved_type && !resolved.empty() && resolved != name) {
-        const TextId resolved_text_id = find_parser_text_id(resolved);
-        const QualifiedNameKey resolved_key = alias_template_key_in_context(
-            resolved_type.context_id, resolved_text_id);
-        if (const ParserAliasTemplateInfo* structured =
-                find_alias_template_info(resolved_key)) {
-            return structured;
-        }
     }
     return nullptr;
 }
