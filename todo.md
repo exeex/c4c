@@ -9,30 +9,33 @@ Current Step Title: Add Consteval Local And TypeSpec Metadata Producers
 
 ## Just Finished
 
-Step 3.1 repaired the parser producer route for `TB_TYPEDEF`
-template-parameter TypeSpecs used by consteval `resolve_type()`. The existing
-template-param TypeSpec annotator in `src/frontend/parser/impl/declarations.cpp`
-now walks additional parser-owned TypeSpec carriers, including array-bound
-expressions, template argument expressions, function-pointer parameter lists,
-record fields, member typedef target types, and base types, so intrinsic
-owner/index/text metadata is attached before consteval must rely on rendered
-name mirrors.
+Step 3.1 audited the consteval function-body value producer route for
+parameters, local declarations, assignment targets, and `for` initializers.
+The covered route already populates metadata before rendered-name compatibility
+can matter: `parse_param()` gives parameter declarations `unqualified_text_id`,
+`parse_local_decl()` gives local and `for` declaration nodes
+`unqualified_text_id`, expression parsing applies qualified-name metadata to
+identifier references through `Parser::apply_qualified_name()`, and
+`InterpreterBindings::bind()` records the resulting value in `by_text` and
+`by_key` alongside the rendered-name map.
 
-Added `consteval_typespec_member_alias.cpp` to cover a template parameter
-flowing through `Outer<T>::Alias` into consteval `sizeof`.
+No focused producer repair was needed for this function-body value slice.
 
 ## Suggested Next
 
-Run the next Step 3.1 value-producer packet for consteval function-body
-parameter/local/for-init bindings, or route to Step 3.2 only after the
-supervisor accepts the covered TypeSpec producer route as complete enough for a
-matching fallback-deletion packet.
+Route the covered consteval function-body value lookup path to Step 3.2 for
+fallback deletion, while leaving non-body/global consteval value routes and the
+already-covered TypeSpec route to the supervisor's Step 3.2 packet selection.
 
 ## Watchouts
 
-- This packet did not delete `ConstEvalEnv` rendered compatibility or the
-  consteval rendered type-binding mirror maps; it only repaired the parser
-  producer side for the covered TypeSpec metadata route.
+- This packet did not delete `ConstEvalEnv` rendered compatibility; Step 3.2
+  still owns removing the rendered fallback after producer completeness is
+  accepted.
+- The audit was scoped to function-body interpreter bindings:
+  `evaluate_consteval_call()` parameter binding, `NK_DECL` locals including
+  `for` initializers, and `NK_ASSIGN` targets. It did not claim completeness
+  for unrelated global/named const or enum consteval value maps.
 - HIR-owned metadata carriers and `src/frontend/hir/*` remain untouched and out
   of scope.
 
