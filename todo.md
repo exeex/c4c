@@ -19,12 +19,31 @@ structured owner/member metadata into rendered/deferred `TypeSpec` fields when
 substituted owner args remain dependent. That branch now only publishes the
 substituted structured carrier through `last_using_alias_member_typedef`.
 
+Accepted partial result: keep the two already-removed `base.cpp` bridge paths
+deleted. Do not reintroduce the alias-template context fallback or the
+dependent rendered/deferred `TypeSpec` projection while addressing the
+remaining projector blocker.
+
 ## Suggested Next
 
-Next coherent packet is to add the missing non-`TypeSpec` alias-template RHS
-carrier needed to delete `apply_alias_template_member_typedef_compat_type`, or
-to split that carrier into a follow-up metadata idea if the supervisor wants
-Step 2.4.4.5B parked as partially complete.
+Next executable packet remains Step 2.4.4.5B:
+
+Add a direct, non-`TypeSpec` alias-template RHS carrier for using-alias
+registration of `typename Owner<Args>::member`.
+
+Packet target:
+
+- Preserve owner identity as `QualifiedNameKey`, substituted/dependent owner
+  args as structured refs/keys, and member identity as `TextId` at the
+  using-alias registration boundary.
+- Route the using-alias registration path that currently needs
+  `apply_alias_template_member_typedef_compat_type` through that carrier
+  instead of fabricating a deferred member `TypeSpec`.
+- Delete `apply_alias_template_member_typedef_compat_type` only after the
+  structured RHS carrier covers the two timeout fixtures named below.
+- If this carrier cannot fit inside parser/Sema ownership for Step 2.4.4.5B,
+  stop and ask the supervisor to split it into a separate metadata idea before
+  Step 2.4.4.6.
 
 ## Watchouts
 
