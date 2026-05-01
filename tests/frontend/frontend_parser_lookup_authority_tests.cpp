@@ -2,6 +2,7 @@
 #include "impl/parser_impl.hpp"
 #include "impl/types/types_helpers.hpp"
 #include "parser.hpp"
+#include "sema/validate.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -251,6 +252,82 @@ void test_dependent_typename_rejects_visible_type_rendered_reentry() {
               "structured dependent typename type authority");
 }
 
+void test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId rendered_owner_text = texts.intern("RenderedOwner");
+  const c4c::TextId missing_owner_text = texts.intern("MissingOwner");
+  const c4c::TextId stale_text = texts.intern("stale");
+  const c4c::TextId missing_text = texts.intern("missing");
+
+  c4c::Node* rendered_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  rendered_owner->name = arena.strdup("RenderedOwner");
+  rendered_owner->unqualified_name = arena.strdup("RenderedOwner");
+  rendered_owner->unqualified_text_id = rendered_owner_text;
+  rendered_owner->namespace_context_id = parser.current_namespace_context_id();
+  rendered_owner->n_fields = 1;
+  rendered_owner->fields = arena.alloc_array<c4c::Node*>(1);
+
+  c4c::Node* stale = parser.make_node(c4c::NK_DECL, 1);
+  stale->name = arena.strdup("stale");
+  stale->unqualified_name = arena.strdup("stale");
+  stale->unqualified_text_id = stale_text;
+  stale->namespace_context_id = rendered_owner->namespace_context_id;
+  stale->is_static = true;
+  stale->type = make_ts(c4c::TB_INT);
+  rendered_owner->fields[0] = stale;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("RenderedOwner::stale");
+  ref->unqualified_name = arena.strdup("missing");
+  ref->unqualified_text_id = missing_text;
+  ref->namespace_context_id = rendered_owner->namespace_context_id;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("MissingOwner");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = missing_owner_text;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("returns_missing");
+  fn->unqualified_name = arena.strdup("returns_missing");
+  fn->unqualified_text_id = texts.intern("returns_missing");
+  fn->namespace_context_id = rendered_owner->namespace_context_id;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = rendered_owner;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema static member lookup should reject stale rendered owner "
+              "fallback after structured owner/member miss");
+}
+
 }  // namespace
 
 int main() {
@@ -259,6 +336,7 @@ int main() {
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
   test_dependent_typename_rejects_visible_type_rendered_reentry();
+  test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry();
   std::cout << "PASS: frontend_parser_lookup_authority_tests\n";
   return 0;
 }

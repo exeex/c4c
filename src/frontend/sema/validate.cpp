@@ -1232,34 +1232,39 @@ class Validator {
     return key;
   }
 
-  std::optional<SemaStructuredNameKey> static_member_owner_key(
-      const std::string& tag, const Node* reference) const {
-    if (auto key = static_member_owner_key_from_reference(reference);
-        key.has_value() && key->valid()) {
-      return key;
-    }
-    return structured_record_key_for_tag(tag);
-  }
-
   bool static_member_lookup_has_structured_metadata(
       const std::string& tag, const Node* reference) const {
     if (!reference || reference->unqualified_text_id == kInvalidText) return false;
-    auto record_key = static_member_owner_key(tag, reference);
-    if (!record_key.has_value()) return false;
-    bool has_metadata = false;
-    (void)lookup_struct_static_member_type_by_key(
-        *record_key, reference->unqualified_text_id, &has_metadata);
-    return has_metadata;
+    auto reference_key = static_member_owner_key_from_reference(reference);
+    if (reference_key.has_value() && reference_key->valid()) {
+      bool has_metadata = false;
+      (void)lookup_struct_static_member_type_by_key(
+          *reference_key, reference->unqualified_text_id, &has_metadata);
+      if (reference->n_template_args > 0) return false;
+      if (has_metadata) return true;
+      auto rendered_key = structured_record_key_for_tag(tag);
+      return rendered_key.has_value() && *rendered_key != *reference_key;
+    }
+    return false;
   }
 
   std::optional<TypeSpec> lookup_struct_static_member_type(
       const std::string& tag, const Node* reference) const {
     if (reference && reference->unqualified_text_id != kInvalidText) {
-      if (auto record_key = static_member_owner_key(tag, reference); record_key.has_value()) {
+      auto reference_key = static_member_owner_key_from_reference(reference);
+      if (reference_key.has_value() && reference_key->valid()) {
         bool has_metadata = false;
         auto structured = lookup_struct_static_member_type_by_key(
-            *record_key, reference->unqualified_text_id, &has_metadata);
-        if (structured.has_value() || has_metadata) return structured;
+            *reference_key, reference->unqualified_text_id, &has_metadata);
+        if (structured.has_value() ||
+            (has_metadata && reference->n_template_args <= 0)) {
+          return structured;
+        }
+      }
+      if (auto record_key = structured_record_key_for_tag(tag); record_key.has_value()) {
+        auto structured = lookup_struct_static_member_type_by_key(
+            *record_key, reference->unqualified_text_id);
+        if (structured.has_value()) return structured;
       }
     }
     return std::nullopt;

@@ -8,52 +8,57 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Completed Step 3.3 method-owner cleanup by keeping the Sema
-`resolve_owner_by_rendered_name_fallback(owner, namespace_context_id)` helper
-deleted and adding parser-owned structured owner metadata to out-of-class
-`NK_FUNCTION` nodes.
+Continued Step 3.3 static-member cleanup by deleting the
+`static_member_owner_key(tag, reference)` helper that blended reference-carried
+owner metadata with rendered owner text. `lookup_struct_static_member_type()`
+now tries the reference owner/member key first and treats non-template
+structured misses as authoritative; rendered-tag lookup is narrowed to a
+successful compatibility hit when the reference cannot provide the complete
+static-member owner key.
 
-Ordinary qualified declarators now thread their parsed `QualifiedNameRef` out of
-`parse_declarator()`, and top-level function construction attaches the owner
-qualifier `TextId` path plus the resolved owner namespace context to the
-function node. Special out-of-class operator and constructor paths attach the
-same carrier from their already-consumed owner tokens. Sema owner resolution now
-uses `method_owner_key_from_qualifier()`, `struct_defs_by_key_`, and the direct
-method-owner record path without rendered owner recovery.
-
-Focused coverage was strengthened for stale rendered owner disagreement: the
-synthetic Sema method-owner test now includes a real `StaleOwner` record, and
-the parser operator/constructor tests assert that out-of-class function nodes
-carry structured owner and base `TextId` metadata.
+`static_member_lookup_has_structured_metadata()` now blocks the optimistic
+rendered-owner path when a structured reference key has table authority or when
+the rendered tag resolves to a different structured owner key. Template
+instantiation references keep the existing no-metadata optimistic route for
+unresolved-template static members. Added focused stale rendered-owner/member
+Sema coverage for a reference whose structured owner/member metadata disagrees
+with the rendered `Owner::member` spelling.
 
 ## Suggested Next
 
-Continue Step 3.3 with the remaining static-member rendered owner bridge in
-`lookup_struct_static_member_type(tag, reference)` and
-`static_member_lookup_has_structured_metadata()`, using focused stale rendered
-owner/member coverage before removing or narrowing that route.
+Continue Step 3.3 by reviewing the remaining Sema rendered-spelling
+compatibility routes outside static-member lookup, with special attention to
+template-instantiated references where structured owner keys are still
+incomplete and the no-metadata optimistic route remains intentional.
 
 ## Watchouts
 
-- `lookup_struct_static_member_type(tag, reference)` still accepts rendered
-  owner text only to bridge qualifier spellings to the existing structured
-  record key when the reference node does not directly provide the complete
-  namespace-aware owner key. Do not count renaming that bridge as progress.
-- `static_member_lookup_has_structured_metadata()` still uses the owner text for
-  the unresolved-template optimistic path. Treat any further shrink there as a
-  separate packet with focused coverage.
-- The instance-field `TextId` carrier is incomplete for some parsed positive
-  cases. The new name compatibility path is intentionally owner-keyed; do not
-  convert it back into tag/member lookup while working on method-owner cleanup.
+- `lookup_struct_static_member_type(tag, reference)` still has a rendered-tag
+  compatibility hit path when `static_member_owner_key_from_reference()` cannot
+  build a valid owner key. This is materially narrower than the deleted blended
+  helper, but not a complete rendered-tag removal.
+- Template-instantiated static-member references (`n_template_args > 0`) still
+  rely on the optimistic unresolved-template path after structured table misses;
+  the delegated subset includes
+  `cpp_positive_sema_template_variable_member_typedef_normalization_runtime_cpp`
+  as a guard for that compatibility route.
+- A direct `build/tests/frontend/frontend_parser_tests` run is currently blocked
+  by the existing failure:
+  `FAIL: record-body using member typedef writer should register a direct record/member key`.
+  The focused stale-owner authority check is covered in the passing
+  `frontend_parser_lookup_authority_tests` binary instead.
 
 ## Proof
 
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' >> test_after.log 2>&1`
 
 Result: passed. `test_after.log` contains a fresh successful build plus 884/884
-passing delegated positive Sema tests, including the previously failing
-`cpp_positive_sema_namespaced_out_of_class_method_context_frontend_cpp` and the
-same-feature method-owner coverage in
-`cpp_positive_sema_qualified_namespaced_out_of_class_method_context_frontend_cpp`,
-`cpp_positive_sema_inherited_implicit_member_out_of_class_runtime_cpp`, and
-`cpp_positive_sema_operator_implicit_member_runtime_cpp`.
+passing delegated positive Sema tests.
+
+Additional check: `build/tests/frontend/frontend_parser_lookup_authority_tests`.
+Result: passed, including the focused stale rendered-owner/member static-member
+Sema coverage.
+
+Additional check attempted: `build/tests/frontend/frontend_parser_tests`.
+Result: failed at the existing record-body member-typedef writer assertion
+noted above.
