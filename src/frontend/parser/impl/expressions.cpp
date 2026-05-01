@@ -1521,7 +1521,7 @@ Node* parse_primary(Parser& parser) {
             off->type = base_ts;
             off->name = parser.arena_.strdup(field_path);
             long long cv = 0;
-            if (eval_const_int(off, &cv, &parser.definition_state_.struct_tag_def_map))
+            if (parser.eval_const_int_with_parser_tables(off, &cv))
                 return parser.make_int_lit(cv, ln);
             return off;
         }

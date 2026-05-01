@@ -1811,8 +1811,7 @@ long long parse_one_declarator_array_dim(Parser& parser, TypeSpec& ts) {
         ts.array_size_expr = sz;
         long long cv = 0;
         if (sz &&
-            eval_const_int(sz, &cv,
-                           &parser.definition_state_.struct_tag_def_map) &&
+            parser.eval_const_int_with_parser_tables(sz, &cv) &&
             cv > 0) {
             dim = cv;
         } else if (sz && sz->kind == NK_INT_LIT) {

@@ -2928,7 +2928,11 @@ top_level_base_ready:
             long long dim = -2;
             if (!parser.check(TokenKind::RBracket)) {
                 Node* sz = parse_expr(parser);
-                if (sz) { long long v; if (eval_const_int(sz, &v)) dim = v; }
+                if (sz) {
+                    long long v;
+                    if (parser.eval_const_int_with_parser_tables(sz, &v))
+                        dim = v;
+                }
             }
             parser.expect(TokenKind::RBracket);
             if (ts.array_rank < 8) ts.array_dims[ts.array_rank++] = dim;

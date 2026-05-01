@@ -1034,8 +1034,7 @@ bool try_parse_record_enum_member(
                 parser.consume();
                 Node* bfw = parse_assign_expr(parser);
                 if (bfw)
-                    eval_const_int(
-                        bfw, &bf_width, &parser.definition_state_.struct_tag_def_map);
+                    parser.eval_const_int_with_parser_tables(bfw, &bf_width);
             }
             if (fname) {
                 Node* f = parser.make_node(NK_DECL, parser.cur().line);
@@ -1760,8 +1759,7 @@ bool try_parse_record_method_or_field_member(
             parser.consume();
             Node* bfw = parse_assign_expr(parser);
             if (bfw)
-                eval_const_int(
-                    bfw, &bf_width, &parser.definition_state_.struct_tag_def_map);
+                parser.eval_const_int_with_parser_tables(bfw, &bf_width);
         }
 
         Node* field_init_expr = nullptr;

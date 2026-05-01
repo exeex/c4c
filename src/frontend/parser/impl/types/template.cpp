@@ -771,7 +771,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     if (f->init) {
                         long long v = 0;
                         if (eval_const_int(
-                                f->init, &v, &definition_state_.struct_tag_def_map)) {
+                                f->init, &v, &definition_state_.struct_tag_def_map,
+                                &binding_state_.const_int_bindings)) {
                             *val = v;
                             return true;
                         }
@@ -786,7 +787,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                         long long v = 0;
                         if (eval_const_int(
                                 child->init, &v,
-                                &definition_state_.struct_tag_def_map)) {
+                                &definition_state_.struct_tag_def_map,
+                                &binding_state_.const_int_bindings)) {
                             *val = v;
                             return true;
                         }

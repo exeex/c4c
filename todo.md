@@ -9,42 +9,30 @@ Current Step Title: Preserve Parser Const-Int Boundary And HIR Blocker
 
 ## Just Finished
 
-Step 2.4.4.6 completed the member-typedef mirror cleanup. It deleted the
-remaining rendered scoped member-typedef mirror:
-`dependent_record_member_typedefs_by_key` was removed from parser template
-state, and the full-member-key overload of
-`find_dependent_record_member_typedef_type()` now only decomposes the structured
-member key to the owner `QualifiedNameKey` plus member `TextId` carrier.
+Step 2.5 completed the parser const-int boundary audit and parser-scope
+cleanup. Parser-owned constant-evaluation callers that still passed only the
+rendered struct-tag bridge now route through `eval_const_int_with_parser_tables()`
+or pass `binding_state_.const_int_bindings` alongside the tag map, preserving
+`TextId`-keyed named constant lookup where parser metadata is available.
 
-The parser/Sema audit found no remaining source readers/writers of
-`dependent_record_member_typedefs_by_key`, `owner::member`, or
-`source_tag::member` member-typedef semantic storage after this change.
+The parked HIR rendered-name `eval_const_int` compatibility overload remains in
+place and was not touched; migrating `hir::NttpBindings` metadata is still out
+of scope for this parser packet.
 
 ## Suggested Next
 
-Delegate Step 2.5: Preserve Parser Const-Int Boundary And HIR Blocker.
-
-The next packet should verify that parser-owned const-int lookup remains on
-`TextId` or structured maps where available, while keeping the HIR
-`NttpBindings` metadata migration parked under the existing HIR metadata idea.
-This is primarily a boundary-preservation packet unless the supervisor chooses
-a specific parser-owned const-int cleanup target.
+Supervisor should review and commit this Step 2.5 parser-scope slice, then
+decide whether the active runbook has any remaining parser-owned cleanup or
+needs plan-owner/reviewer routing before any HIR metadata work proceeds.
 
 ## Watchouts
 
-- `c4c-clang-tool-ccdb` is installed, but the AST query attempt could not load
-  `/workspaces/c4c/src/frontend/parser/impl/core.cpp` because
-  `build/compile_commands.json` was absent in this workspace during the packet;
-  the member-typedef mirror audit used targeted source search instead.
-- `record_member_typedef_infos_by_key` still uses the existing structured full
-  member key for alias-template RHS sidecar metadata; this packet only changed
-  member typedef availability, not alias-template RHS metadata ownership.
-- `clang-format` is not installed in this environment, so no automatic format
-  pass was available.
-- Step 2.5 must not edit `src/frontend/hir`; deleting the rendered-name
-  `eval_const_int` compatibility overload belongs to the HIR metadata idea if
-  that carrier migration is selected.
-- Do not treat the parked HIR blocker as completed parser/Sema work.
+- Direct `eval_const_int` calls remaining in parser-owned files are either the
+  helper implementation/recursion, already pass `const_int_bindings`, or are
+  tag-only structural constant cases; the HIR calls under `src/frontend/hir`
+  still intentionally use the rendered-name compatibility overload.
+- Do not delete the rendered-name compatibility overload until the HIR
+  `NttpBindings` metadata carrier exists under the separate HIR metadata idea.
 
 ## Proof
 
@@ -52,6 +40,3 @@ a specific parser-owned const-int cleanup target.
 
 Result: passed. `test_after.log` contains a fresh successful build plus
 1108/1108 passing `^cpp_` tests.
-
-Lifecycle update: advanced the active packet pointer to Step 2.5. No code
-validation was run for this todo-only lifecycle change.
