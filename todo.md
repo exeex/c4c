@@ -8,22 +8,22 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 closed the reviewer proof gap from
-`review/step2_3_global_qualified_fallback_review.md` by adding
-`frontend_parser_lookup_authority_tests`, an independently runnable focused
-CTest target for the global-qualified fallback authority removal.
+Step 2.3 removed rendered-spelling output authority from the structured
+known-function branch in `lookup_value_in_context`.
 
-The new focused parser test seeds stale rendered fallback storage and proves
-that `resolve_qualified_type` and `resolve_qualified_value` reject
-global-qualified type/value misses for both TextId-backed and TextId-less
-`::LegacyOnly*` lookups.
+Known-function value lookup now returns success from the registered
+`QualifiedNameKey`/known-function set instead of requiring
+`render_structured_name` to produce a non-empty `compatibility_spelling`.
+`frontend_parser_lookup_authority_tests` now covers a qualified
+known-function lookup with drifted rendered strings and detached rendered text
+storage so the route must succeed through qualifier/base `TextId` metadata.
 
 ## Suggested Next
 
-Continue Step 2.3 with a focused review of one remaining
-`compatibility_spelling` or fallback authority path; remove it only if it still
-decides lookup success from rendered spelling rather than from TextId or
-structured key metadata.
+Continue Step 2.3 with another focused review of one remaining
+`compatibility_spelling` or fallback authority path in parser visible-name
+lookup; remove it only if rendered spelling still decides lookup success after
+TextId, `QualifiedNameKey`, or namespace metadata already exists.
 
 ## Watchouts
 
@@ -71,6 +71,9 @@ structured key metadata.
 - `UsingValueAlias` is now target-key-only. Do not reintroduce test-only alias
   string mutation; corrupt rendered bridge coverage should be represented by
   legacy rendered tables outside the alias entry.
+- The known-function value route is now key-authoritative for lookup success,
+  but it still fills `compatibility_spelling` opportunistically as display
+  payload. Do not convert that display field into a new semantic wrapper.
 - A direct `frontend_parser_tests` binary run is outside the delegated proof and
   currently still stops on qualified `TypeSpec` metadata expectations
   (`qualified TypeSpec should carry the base-name TextId metadata`); the

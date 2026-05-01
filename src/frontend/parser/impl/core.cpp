@@ -2715,7 +2715,7 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
         resolved->source = VisibleNameSource::Namespace;
         resolved->compatibility_spelling =
             render_structured_name(*this, candidate_key);
-        return !resolved->compatibility_spelling.empty();
+        return true;
     }
 
     if (find_structured_var_type(candidate_key)) {
@@ -2746,7 +2746,7 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
             resolved->source = VisibleNameSource::Namespace;
             resolved->compatibility_spelling =
                 render_structured_name(*this, global_key);
-            return !resolved->compatibility_spelling.empty();
+            return true;
         }
     }
 
