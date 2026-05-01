@@ -128,11 +128,35 @@ std::string visible_type_head_name(const Parser& parser,
     return visible_type_head_name(parser, parser.find_parser_text_id(name), name);
 }
 
+Node* record_definition_in_context_by_text_id(const Parser& parser,
+                                              int context_id,
+                                              TextId name_text_id);
+
 Node* type_spec_structured_record_definition(const Parser& parser,
                                              const TypeSpec* type) {
     if (!type) return nullptr;
     TypeSpec resolved = parser.resolve_struct_like_typedef_type(*type);
-    return resolve_record_type_spec(resolved, nullptr);
+    if (Node* record = resolve_record_type_spec(resolved, nullptr)) {
+        return record;
+    }
+    const TextId record_text_id =
+        resolved.tag_text_id != kInvalidText
+            ? resolved.tag_text_id
+            : parser.find_parser_text_id(resolved.tag ? resolved.tag : "");
+    if (record_text_id == kInvalidText) return nullptr;
+    const int context_id = resolved.namespace_context_id >= 0
+                               ? resolved.namespace_context_id
+                               : parser.current_namespace_context_id();
+    if (Node* record =
+            record_definition_in_context_by_text_id(parser, context_id,
+                                                    record_text_id)) {
+        return record;
+    }
+    if (context_id != 0) {
+        return record_definition_in_context_by_text_id(parser, 0,
+                                                       record_text_id);
+    }
+    return nullptr;
 }
 
 bool type_spec_has_structured_record_definition(const Parser& parser,
@@ -201,6 +225,42 @@ Node* qualified_type_record_definition_from_structured_authority(
     const bool is_qualified = !qn.qualifier_segments.empty() ||
                               qn.is_global_qualified;
     if (!is_qualified) {
+        if (const TypeSpec* current_member_type =
+                parser.find_typedef_type(
+                    parser.current_record_member_name_key(qn.base_text_id))) {
+            if (Node* record =
+                    type_spec_structured_record_definition(
+                        parser, current_member_type)) {
+                return record;
+            }
+        }
+        if (!parser.active_context_state_.current_struct_tag.empty()) {
+            TextId current_record_text_id =
+                parser.active_context_state_.current_struct_tag_text_id;
+            if (current_record_text_id == kInvalidText) {
+                current_record_text_id =
+                    parser.find_parser_text_id(parser.current_struct_tag_text());
+            }
+            if (Node* current_record = record_definition_in_context_by_text_id(
+                    parser, parser.current_namespace_context_id(),
+                    current_record_text_id)) {
+                if (current_record->n_member_typedefs > 0 &&
+                    current_record->member_typedef_names &&
+                    current_record->member_typedef_types) {
+                    const std::string_view member_name =
+                        parser.parser_text(qn.base_text_id, qn.base_name);
+                    for (int i = 0; i < current_record->n_member_typedefs;
+                         ++i) {
+                        const char* candidate =
+                            current_record->member_typedef_names[i];
+                        if (!candidate || member_name != candidate) continue;
+                        return type_spec_structured_record_definition(
+                            parser,
+                            &current_record->member_typedef_types[i]);
+                    }
+                }
+            }
+        }
         return type_spec_structured_record_definition(
             parser, parser.find_visible_typedef_type(qn.base_text_id));
     }
@@ -518,6 +578,18 @@ bool is_known_simple_visible_type_head(const Parser& parser,
            parser.has_visible_typedef_type(name_text_id);
 }
 
+bool is_visible_alias_template_head(const Parser& parser, TextId name_text_id) {
+    if (name_text_id == kInvalidText) return false;
+    if (parser.find_alias_template_info_in_context(
+            parser.current_namespace_context_id(), name_text_id)) {
+        return true;
+    }
+
+    const Parser::VisibleNameResult visible_type =
+        parser.resolve_visible_type(name_text_id);
+    return visible_type && parser.find_alias_template_info(visible_type.key);
+}
+
 bool starts_with_value_like_template_expr(const Parser& parser,
                                           const std::vector<Token>& tokens,
                                           int pos) {
@@ -537,8 +609,16 @@ bool starts_with_value_like_template_expr(const Parser& parser,
 
     bool saw_scope = tokens[start_pos].kind == TokenKind::ColonColon;
     const Token& first_identifier = tokens[pos];
+    const TextId first_identifier_text_id =
+        parser.parser_text_id_for_token(
+            first_identifier.text_id, parser.token_spelling(first_identifier));
+    if (pos + 1 < static_cast<int>(tokens.size()) &&
+        tokens[pos + 1].kind == TokenKind::Less &&
+        is_visible_alias_template_head(parser, first_identifier_text_id)) {
+        return false;
+    }
     const bool first_identifier_is_known_type =
-        is_known_simple_type_head(parser, first_identifier.text_id,
+        is_known_simple_type_head(parser, first_identifier_text_id,
                                   parser.token_spelling(first_identifier));
 
     while (pos < static_cast<int>(tokens.size())) {
@@ -705,8 +785,7 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
             if (const Node* owner =
                     qualified_type_record_definition_from_structured_authority(
                         parser, owner_qn)) {
-                if (owner->n_template_params == 0 &&
-                    owner->n_member_typedefs > 0 &&
+                if (owner->n_member_typedefs > 0 &&
                     owner->member_typedef_names &&
                     owner->member_typedef_types) {
                     const std::string_view member_name =
