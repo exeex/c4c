@@ -77,9 +77,8 @@ Node* Parser::find_template_struct_primary(int context_id,
             alias_template_key_in_context(context_id, name_text_id))) {
         return direct;
     }
-    const std::string_view name = parser_text(name_text_id, {});
     const VisibleNameResult resolved_type =
-        resolve_visible_type(name_text_id, name);
+        resolve_visible_type(name_text_id);
     if (!resolved_type) return nullptr;
     return find_template_struct_primary(alias_template_key_in_context(
         resolved_type.context_id, resolved_type.base_text_id));
@@ -109,9 +108,8 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
             alias_template_key_in_context(context_id, name_text_id))) {
         return direct;
     }
-    const std::string_view name = parser_text(name_text_id, {});
     const VisibleNameResult resolved_type =
-        resolve_visible_type(name_text_id, name);
+        resolve_visible_type(name_text_id);
     if (!resolved_type) return nullptr;
     return find_template_struct_specializations(alias_template_key_in_context(
         resolved_type.context_id, resolved_type.base_text_id));
@@ -717,7 +715,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         }
         if (!ref_primary) {
             const VisibleNameResult visible_type =
-                resolve_visible_type(ref_tpl_name_text_id, ref_tpl_name);
+                resolve_visible_type(ref_tpl_name_text_id);
             const std::string visible_name = visible_name_spelling(visible_type);
             if (visible_type && !visible_name.empty()) {
                 resolved_ref_tpl_name = visible_name;

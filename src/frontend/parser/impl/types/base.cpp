@@ -125,7 +125,7 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::Identifier) {
         const TextId name_text_id = cur().text_id;
         const std::string name(token_spelling(cur()));
-        if (is_concept_name(name)) return false;
+        if (is_concept_name(name_text_id)) return false;
         if (find_local_visible_typedef_type(name_text_id)) return true;
         if (starts_with_value_like_template_expr(*this, core_input_state_.tokens,
                                                  core_input_state_.pos)) return false;
@@ -294,7 +294,7 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
         }
 
         const VisibleNameResult resolved_value =
-            resolve_visible_value(head_tok.text_id, head_name);
+            resolve_visible_value(head_tok.text_id);
         if (resolved_value) {
             if (resolved_value.key.base_text_id != kInvalidText) {
                 if (has_known_fn_name(resolved_value.key)) return 1;
@@ -305,7 +305,7 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
                                               head_name)) {
             return -1;
         }
-        if (resolve_visible_type(head_tok.text_id, head_name)) return -1;
+        if (resolve_visible_type(head_tok.text_id)) return -1;
         return 0;
     }
 
@@ -352,7 +352,7 @@ bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {
     if (!is_cpp_mode()) return false;
     if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) return false;
     if (core_input_state_.tokens[pos].kind != TokenKind::Identifier) return false;
-    if (is_concept_name(std::string(token_spelling(core_input_state_.tokens[pos])))) return false;
+    if (is_concept_name(core_input_state_.tokens[pos].text_id)) return false;
 
     const int next = pos + 1;
     if (next >= static_cast<int>(core_input_state_.tokens.size())) return false;
@@ -382,7 +382,7 @@ bool Parser::looks_like_unresolved_parenthesized_parameter_type_head(int pos) co
     const Token& head_tok = core_input_state_.tokens[pos];
     const TextId head_text_id = head_tok.text_id;
     const std::string head_name = std::string(token_spelling(head_tok));
-    if (is_concept_name(head_name)) return false;
+    if (is_concept_name(head_text_id)) return false;
     if (is_known_simple_visible_type_head(*this, head_text_id, head_name)) return false;
     if (find_visible_var_type(head_text_id)) return false;
 
@@ -1405,7 +1405,7 @@ TypeSpec Parser::parse_base_type() {
                         if (!already_have_base) {
                             has_typedef = true;
                             const VisibleNameResult visible_type =
-                                resolve_visible_type(name_text_id, name);
+                                resolve_visible_type(name_text_id);
                             const std::string resolved =
                                 visible_type ? visible_name_spelling(visible_type)
                                              : std::string(name);

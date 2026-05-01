@@ -733,7 +733,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
         if (!visible_dep_typedef &&
             !has_visible_typedef_type(qn.base_text_id)) {
             const VisibleNameResult visible_type =
-                resolve_visible_type(qn.base_text_id, dep_name);
+                resolve_visible_type(qn.base_text_id);
             if (visible_type) {
                 resolved = visible_name_spelling(visible_type);
             }

@@ -454,34 +454,17 @@ class Parser {
                               VisibleNameResult* resolved) const;
   bool lookup_concept_in_context(int context_id, TextId name_text_id,
                                  VisibleNameResult* resolved) const;
-  std::string qualify_name(TextId name_text_id, std::string_view name) const;
-  std::string qualify_name(const std::string& name) const;
-  const char* qualify_name_arena(TextId name_text_id, const char* name);
-  const char* qualify_name_arena(const char* name);
-  VisibleNameResult resolve_visible_value(TextId name_text_id,
-                                          std::string_view name) const;
-  std::string resolve_visible_value_name(TextId name_text_id,
-                                         std::string_view name) const;
-  VisibleNameResult resolve_visible_type(TextId name_text_id,
-                                         std::string_view name) const;
-  // String-only visible type resolution is compatibility/fallback only; prefer
-  // the TextId overload where parser-owned identity exists.
-  VisibleNameResult resolve_visible_type(std::string_view name) const;
+  std::string qualify_name(TextId name_text_id) const;
+  const char* qualify_name_arena(TextId name_text_id);
+  VisibleNameResult resolve_visible_value(TextId name_text_id) const;
+  std::string resolve_visible_value_name(TextId name_text_id) const;
+  VisibleNameResult resolve_visible_type(TextId name_text_id) const;
   std::string visible_name_spelling(
       const VisibleNameResult& result) const;
-  std::string resolve_visible_type_name(TextId name_text_id,
-                                        std::string_view name) const;
-  // Final spelling projection over resolve_visible_type(...).
-  std::string resolve_visible_type_name(std::string_view name) const;
-  VisibleNameResult resolve_visible_concept(TextId name_text_id,
-                                            std::string_view name) const;
-  // String-only visible concept resolution is compatibility/fallback only.
-  VisibleNameResult resolve_visible_concept(std::string_view name) const;
-  std::string resolve_visible_concept_name(TextId name_text_id,
-                                           std::string_view name) const;
-  // Final spelling projection over resolve_visible_concept(...).
-  std::string resolve_visible_concept_name(const std::string& name) const;
-  bool is_concept_name(const std::string& name) const;
+  std::string resolve_visible_type_name(TextId name_text_id) const;
+  VisibleNameResult resolve_visible_concept(TextId name_text_id) const;
+  std::string resolve_visible_concept_name(TextId name_text_id) const;
+  bool is_concept_name(TextId name_text_id) const;
   bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;
   bool consume_template_parameter_type_start(bool allow_typename_keyword = true);
   QualifiedNameRef parse_qualified_name(bool allow_global = true);

@@ -781,7 +781,7 @@ const TypeSpec* Parser::find_visible_typedef_type(TextId name_text_id) const {
     }
     if (const TypeSpec* type = find_typedef_type(name_text_id)) return type;
     const VisibleNameResult resolved_result =
-        resolve_visible_type(name_text_id, name);
+        resolve_visible_type(name_text_id);
     if (!resolved_result) return nullptr;
     if (const TypeSpec* type = find_structured_typedef_type(resolved_result.key)) {
         return type;
@@ -1095,7 +1095,7 @@ const TypeSpec* Parser::find_visible_var_type(TextId name_text_id) const {
     }
     if (const TypeSpec* type = find_var_type(name_text_id)) return type;
     const VisibleNameResult resolved_result =
-        resolve_visible_value(name_text_id, name);
+        resolve_visible_value(name_text_id);
     if (!resolved_result) return nullptr;
     if (const TypeSpec* type = find_structured_var_type(resolved_result.key)) {
         return type;
@@ -1324,7 +1324,7 @@ const ParserAliasTemplateInfo* Parser::find_alias_template_info_in_context(
     }
 
     const VisibleNameResult resolved_type =
-        resolve_visible_type(name_text_id, name);
+        resolve_visible_type(name_text_id);
     const std::string resolved = visible_name_spelling(resolved_type);
     if (resolved_type && !resolved.empty() && resolved != name) {
         const TextId resolved_text_id = find_parser_text_id(resolved);
@@ -2245,8 +2245,8 @@ bool Parser::match(TokenKind k) {
     return false;
 }
 
-std::string Parser::qualify_name(TextId name_text_id,
-                                 std::string_view name) const {
+std::string Parser::qualify_name(TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
     if (name.empty()) return {};
     const int context_id = current_namespace_context_id();
     if (context_id <= 0) return std::string(name);
@@ -2254,23 +2254,15 @@ std::string Parser::qualify_name(TextId name_text_id,
     return bridge_name_in_context(context_id, name_text_id, name);
 }
 
-std::string Parser::qualify_name(const std::string& name) const {
-    return qualify_name(parser_text_id_for_token(kInvalidText, name), name);
-}
-
-const char* Parser::qualify_name_arena(TextId name_text_id, const char* name) {
-    if (!name || !name[0]) return name;
-    std::string qualified = qualify_name(name_text_id, name);
-    if (qualified == name) return name;
+const char* Parser::qualify_name_arena(TextId name_text_id) {
+    std::string qualified = qualify_name(name_text_id);
+    if (qualified.empty()) return nullptr;
     return arena_.strdup(qualified.c_str());
 }
 
-const char* Parser::qualify_name_arena(const char* name) {
-    return qualify_name_arena(parser_text_id_for_token(kInvalidText, name), name);
-}
-
 Parser::VisibleNameResult Parser::resolve_visible_value(
-    TextId name_text_id, std::string_view name) const {
+    TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
     if (can_probe_local_binding(name_text_id, name) &&
         find_local_visible_var_type(name_text_id)) {
         VisibleNameResult result;
@@ -2297,9 +2289,9 @@ Parser::VisibleNameResult Parser::resolve_visible_value(
     return {};
 }
 
-std::string Parser::resolve_visible_value_name(TextId name_text_id,
-                                               std::string_view name) const {
-    const VisibleNameResult result = resolve_visible_value(name_text_id, name);
+std::string Parser::resolve_visible_value_name(TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
+    const VisibleNameResult result = resolve_visible_value(name_text_id);
     if (result) {
         const std::string spelling = visible_name_spelling(result);
         if (!spelling.empty()) return spelling;
@@ -2308,7 +2300,8 @@ std::string Parser::resolve_visible_value_name(TextId name_text_id,
 }
 
 Parser::VisibleNameResult Parser::resolve_visible_type(
-    TextId name_text_id, std::string_view name) const {
+    TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
     if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
         const std::string_view current_record = current_struct_tag_text();
         const std::string qualified_current =
@@ -2395,13 +2388,6 @@ Parser::VisibleNameResult Parser::resolve_visible_type(
     return {};
 }
 
-// String-only visible resolution is a compatibility entry point. It immediately
-// recovers parser text identity when possible, then uses the structured path.
-Parser::VisibleNameResult Parser::resolve_visible_type(
-    std::string_view name) const {
-    return resolve_visible_type(find_parser_text_id(name), name);
-}
-
 std::string Parser::visible_name_spelling(
     const VisibleNameResult& result) const {
     if (!result) return {};
@@ -2418,9 +2404,9 @@ std::string Parser::visible_name_spelling(
     return {};
 }
 
-std::string Parser::resolve_visible_type_name(TextId name_text_id,
-                                              std::string_view name) const {
-    const VisibleNameResult result = resolve_visible_type(name_text_id, name);
+std::string Parser::resolve_visible_type_name(TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
+    const VisibleNameResult result = resolve_visible_type(name_text_id);
     if (result) {
         const std::string spelling = visible_name_spelling(result);
         if (!spelling.empty()) return spelling;
@@ -2428,13 +2414,9 @@ std::string Parser::resolve_visible_type_name(TextId name_text_id,
     return std::string(name);
 }
 
-// Final spelling projection over structured visible-type resolution.
-std::string Parser::resolve_visible_type_name(std::string_view name) const {
-    return resolve_visible_type_name(find_parser_text_id(name), name);
-}
-
 Parser::VisibleNameResult Parser::resolve_visible_concept(
-    TextId name_text_id, std::string_view name) const {
+    TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
     if (name_text_id != kInvalidText && is_unqualified_lookup_name(name) &&
         binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
         VisibleNameResult result;
@@ -2457,16 +2439,9 @@ Parser::VisibleNameResult Parser::resolve_visible_concept(
     return {};
 }
 
-// String-only visible resolution is a compatibility entry point. It immediately
-// recovers parser text identity when possible, then uses the structured path.
-Parser::VisibleNameResult Parser::resolve_visible_concept(
-    std::string_view name) const {
-    return resolve_visible_concept(find_parser_text_id(name), name);
-}
-
-std::string Parser::resolve_visible_concept_name(TextId name_text_id,
-                                                 std::string_view name) const {
-    const VisibleNameResult result = resolve_visible_concept(name_text_id, name);
+std::string Parser::resolve_visible_concept_name(TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
+    const VisibleNameResult result = resolve_visible_concept(name_text_id);
     if (result) {
         const std::string spelling = visible_name_spelling(result);
         if (!spelling.empty()) return spelling;
@@ -2474,14 +2449,9 @@ std::string Parser::resolve_visible_concept_name(TextId name_text_id,
     return std::string(name);
 }
 
-// Final spelling projection over structured visible-concept resolution.
-std::string Parser::resolve_visible_concept_name(const std::string& name) const {
-    return resolve_visible_concept_name(find_parser_text_id(name), name);
-}
-
-bool Parser::is_concept_name(const std::string& name) const {
+bool Parser::is_concept_name(TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
     if (name.empty()) return false;
-    const TextId name_text_id = find_parser_text_id(name);
     if (name.find("::") != std::string::npos &&
         has_structured_concept_name(known_fn_name_key(0, name_text_id))) {
         return true;
@@ -2490,7 +2460,7 @@ bool Parser::is_concept_name(const std::string& name) const {
         binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
         return true;
     }
-    return static_cast<bool>(resolve_visible_concept(name_text_id, name));
+    return static_cast<bool>(resolve_visible_concept(name_text_id));
 }
 
 void Parser::refresh_current_namespace_bridge() {
@@ -2677,7 +2647,7 @@ Parser::VisibleNameResult Parser::resolve_qualified_value(
         std::string(parser_text(name.base_text_id, name.base_name));
     if (name.qualifier_segments.empty()) {
         if (!name.is_global_qualified) {
-            return resolve_visible_value(name.base_text_id, base_name);
+            return resolve_visible_value(name.base_text_id);
         }
         VisibleNameResult result;
         if (lookup_value_in_context(0, name.base_text_id, &result)) {
@@ -2714,7 +2684,7 @@ Parser::VisibleNameResult Parser::resolve_qualified_type(
         std::string(parser_text(name.base_text_id, name.base_name));
     if (name.qualifier_segments.empty()) {
         if (!name.is_global_qualified) {
-            return resolve_visible_type(name.base_text_id, base_name);
+            return resolve_visible_type(name.base_text_id);
         }
         VisibleNameResult result;
         if (lookup_type_in_context(0, name.base_text_id, &result)) {

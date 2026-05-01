@@ -334,9 +334,9 @@ bool is_same_visible_type_name(Parser& parser, TextId lhs_text_id,
     if (lhs.empty() || rhs.empty()) return false;
     if (lhs == rhs) return true;
     const Parser::VisibleNameResult lhs_type =
-        parser.resolve_visible_type(lhs_text_id, lhs);
+        parser.resolve_visible_type(lhs_text_id);
     const Parser::VisibleNameResult rhs_type =
-        parser.resolve_visible_type(rhs_text_id, rhs);
+        parser.resolve_visible_type(rhs_text_id);
     if (!lhs_type || !rhs_type) return false;
     if (lhs_type.key.base_text_id != kInvalidText &&
         rhs_type.key.base_text_id != kInvalidText) {
@@ -2007,7 +2007,7 @@ Node* parse_top_level(Parser& parser) {
                         /*allow_global=*/true,
                         /*consume_final_template_args=*/true,
                         &head_name, nullptr) &&
-                    parser.is_concept_name(head_name)) {
+                    parser.is_concept_name(parser.find_parser_text_id(head_name))) {
                     return false;
                 }
             }
@@ -3054,7 +3054,8 @@ top_level_base_ready:
                          nullptr, nullptr, nullptr, &tdname_text_id);
         if (tdname) {
             const char* scoped_tdname =
-                parser.qualify_name_arena(tdname_text_id, tdname);
+                parser.qualify_name_arena(tdname_text_id);
+            if (!scoped_tdname) scoped_tdname = tdname;
             if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdname) &&
                 parser.has_conflicting_user_typedef_binding(tdname_text_id, ts_copy))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
@@ -3066,7 +3067,7 @@ top_level_base_ready:
                     parser.current_namespace_context_id(), tdname_text_id,
                     ts_copy);
             }
-            if (scoped_tdname != tdname) {
+            if (std::string_view(scoped_tdname) != std::string_view(tdname)) {
                 parser.register_typedef_binding(
                     parser.parser_text_id_for_token(kInvalidText, scoped_tdname),
                     ts_copy, false);
@@ -3095,7 +3096,8 @@ top_level_base_ready:
                              &tdn2_text_id);
             if (tdn2) {
                 const char* scoped_tdn2 =
-                    parser.qualify_name_arena(tdn2_text_id, tdn2);
+                    parser.qualify_name_arena(tdn2_text_id);
+                if (!scoped_tdn2) scoped_tdn2 = tdn2;
                 if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
                     parser.has_conflicting_user_typedef_binding(tdn2_text_id, ts2))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
@@ -3107,7 +3109,7 @@ top_level_base_ready:
                         parser.current_namespace_context_id(), tdn2_text_id,
                         ts2);
                 }
-                if (scoped_tdn2 != tdn2) {
+                if (std::string_view(scoped_tdn2) != std::string_view(tdn2)) {
                     parser.register_typedef_binding(
                         parser.parser_text_id_for_token(kInvalidText, scoped_tdn2),
                         ts2, false);
@@ -3550,7 +3552,8 @@ top_level_base_ready:
     }
 
     const char* scoped_decl_name =
-        parser.qualify_name_arena(decl_name_text_id, decl_name);
+        parser.qualify_name_arena(decl_name_text_id);
+    if (!scoped_decl_name) scoped_decl_name = decl_name;
     auto register_decl_known_fn_name = [&]() {
         if (decl_name) {
             const TextId known_fn_text_id =
@@ -3650,8 +3653,10 @@ top_level_base_ready:
             std::string adjusted_name(decl_name);
             finalize_pending_operator_name(adjusted_name, params.size());
             decl_name = parser.arena_.strdup(adjusted_name.c_str());
-            decl_name_text_id = kInvalidText;
-            scoped_decl_name = parser.qualify_name_arena(decl_name_text_id, decl_name);
+            decl_name_text_id =
+                parser.parser_text_id_for_token(kInvalidText, adjusted_name);
+            scoped_decl_name = parser.qualify_name_arena(decl_name_text_id);
+            if (!scoped_decl_name) scoped_decl_name = decl_name;
         }
         parser.parse_attributes(&ts);
         parser.skip_asm();
@@ -3958,7 +3963,8 @@ top_level_base_ready:
         if (parser.match(TokenKind::Assign) ||
             (parser.is_cpp_mode() && parser.check(TokenKind::LBrace))) init2 = parse_initializer(parser);
         if (n2) {
-            const char* scoped_n2 = parser.qualify_name_arena(n2_text_id, n2);
+            const char* scoped_n2 = parser.qualify_name_arena(n2_text_id);
+            if (!scoped_n2) scoped_n2 = n2;
             gvars.push_back(make_gvar(ts2, scoped_n2, n2, n2_text_id, init2,
                                           fn_ptr_params2, n_fn_ptr_params2,
                                           fn_ptr_variadic2));

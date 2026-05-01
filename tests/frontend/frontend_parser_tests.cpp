@@ -1638,7 +1638,7 @@ void test_parser_visible_type_alias_uses_scope_local_typedef_facade() {
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "corrupted");
 
-  expect_eq(parser.resolve_visible_type_name("Alias"), "Target",
+  expect_eq(parser.resolve_visible_type_name(parser_test_text_id(parser, "Alias")), "Target",
             "unqualified value aliases should project the structured target through the visible typedef facade when the target key is known");
 
   expect_true(parser.pop_local_binding_scope(),
@@ -1699,7 +1699,7 @@ void test_parser_visible_type_alias_uses_token_text_id_scope_lookup() {
       parser.find_visible_typedef_type(alias_text);
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "token TextId visible typedef probes should consult the local lexical scope first");
-  expect_eq(parser.resolve_visible_type_name(alias_text, "Alias"), "Target",
+  expect_eq(parser.resolve_visible_type_name(alias_text), "Target",
             "token TextId visible typedef probes should still resolve through the visible alias facade");
 
   expect_true(parser.pop_local_binding_scope(),
@@ -1738,7 +1738,7 @@ void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
   parser.register_using_value_alias_for_testing(0, alias_text, target_key,
                                                 "corrupted");
 
-  expect_eq(parser.resolve_visible_type_name("Alias"), "ns::Target",
+  expect_eq(parser.resolve_visible_type_name(parser_test_text_id(parser, "Alias")), "ns::Target",
             "qualified value aliases should keep namespace-qualified typedef resolution intact");
   const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
@@ -1795,7 +1795,7 @@ void test_parser_using_value_import_keeps_structured_target_key() {
   expect_true(parser.replace_using_value_alias_compatibility_name_for_testing(
                   0, alias_text, "corrupted"),
               "using-import fixture should record a value-alias entry");
-  expect_eq(parser.resolve_visible_value_name(alias_text, "Target"), "ns::Target",
+  expect_eq(parser.resolve_visible_value_name(alias_text), "ns::Target",
             "using-import lookup should prefer the structured target key over the compatibility bridge");
 }
 
@@ -1855,7 +1855,7 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
   expect_true(parser.replace_using_value_alias_compatibility_name_for_testing(
                   0, alias_text, "corrupted"),
               "global using-import fixture should record a value-alias entry");
-  expect_eq(parser.resolve_visible_value_name(alias_text, "Target"), "Target",
+  expect_eq(parser.resolve_visible_value_name(alias_text), "Target",
             "global using-import lookup should keep the global target spelling instead of introducing a leading scope bridge");
 }
 
@@ -2919,7 +2919,7 @@ void test_parser_using_value_alias_prefers_structured_target_type() {
   const c4c::TypeSpec* visible_alias = parser.find_visible_var_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "using value aliases should prefer the structured target key over the compatibility bridge type");
-  expect_eq(parser.resolve_visible_value_name(alias_text, "Alias"), "ns::Target",
+  expect_eq(parser.resolve_visible_value_name(alias_text), "ns::Target",
             "using value aliases should keep rendered output derived from the structured target key");
 }
 
@@ -2976,7 +2976,7 @@ void test_parser_visible_value_alias_rejects_scope_local_target_bridge() {
   const c4c::TypeSpec* visible_alias = parser.find_visible_var_type(parser_test_text_id(parser, "Alias"));
   expect_true(visible_alias == nullptr,
               "structured using value aliases should not validate through a scope-local target spelling");
-  expect_eq(parser.resolve_visible_value_name(alias_text, "Alias"), "Alias",
+  expect_eq(parser.resolve_visible_value_name(alias_text), "Alias",
             "structured using value aliases should leave the alias unresolved when the structured target is missing");
 
   expect_true(parser.pop_local_binding_scope(),

@@ -1314,7 +1314,9 @@ Node* parse_primary(Parser& parser) {
                         ident->template_arg_exprs[i] = parsed_args[i].expr;
                     }
                     ident->is_concept_id =
-                        parser.is_concept_name(ident->name ? ident->name : "");
+                        parser.is_concept_name(
+                            parser.parser_text_id_for_token(
+                                qn.base_text_id, ident->name ? ident->name : ""));
                 }
             }
         }
@@ -1329,7 +1331,7 @@ Node* parse_primary(Parser& parser) {
             parser.parser_text(qn.base_text_id, qn.base_name);
         const Parser::VisibleNameResult direct_resolved_type =
             qn.qualifier_segments.empty()
-                ? parser.resolve_visible_type(qn.base_text_id, qn_base_name)
+                ? parser.resolve_visible_type(qn.base_text_id)
                 : Parser::VisibleNameResult{};
         if (parser.is_cpp_mode() && qn.qualifier_segments.empty() &&
             parser.check(TokenKind::LParen)) {
@@ -1628,7 +1630,10 @@ Node* parse_primary(Parser& parser) {
                         ident->template_arg_nttp_names[i] = parsed_args[i].nttp_name;
                         ident->template_arg_exprs[i] = parsed_args[i].expr;
                     }
-                    ident->is_concept_id = parser.is_concept_name(ident->name ? ident->name : "");
+                    ident->is_concept_id =
+                        parser.is_concept_name(
+                            parser.parser_text_id_for_token(
+                                qn.base_text_id, ident->name ? ident->name : ""));
                     // Template<A,B>::member — resolve as qualified name.
                     // Re-parse from ident_start to trigger template struct
                     // instantiation and get the mangled tag.
