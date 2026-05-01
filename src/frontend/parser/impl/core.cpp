@@ -1266,16 +1266,8 @@ const TypeSpec* Parser::find_dependent_record_member_typedef_type(
     if (key.base_text_id == kInvalidText) return nullptr;
     const QualifiedNameKey owner_key =
         record_member_typedef_owner_key_from_member_key(key);
-    if (const TypeSpec* structured =
-            find_dependent_record_member_typedef_type(owner_key,
-                                                      key.base_text_id)) {
-        return structured;
-    }
-    const auto it =
-        template_state_.dependent_record_member_typedefs_by_key.find(key);
-    return it == template_state_.dependent_record_member_typedefs_by_key.end()
-               ? nullptr
-               : &it->second;
+    return find_dependent_record_member_typedef_type(owner_key,
+                                                     key.base_text_id);
 }
 
 const TypeSpec* Parser::find_dependent_record_member_typedef_type(
