@@ -322,10 +322,7 @@ class Parser {
   void register_concept_name_for_testing(TextId name_text_id);
   void register_struct_definition_for_testing(std::string tag, Node* definition);
   void register_using_value_alias_for_testing(
-      int context_id, TextId alias_text_id, const QualifiedNameKey& target_key,
-      std::string compatibility_name);
-  bool replace_using_value_alias_compatibility_name_for_testing(
-      int context_id, TextId alias_text_id, std::string compatibility_name);
+      int context_id, TextId alias_text_id, const QualifiedNameKey& target_key);
   void register_alias_template_info_for_testing(
       const QualifiedNameKey& key, const ParserAliasTemplateInfo& info);
   bool has_last_using_alias_name_text_id_for_testing() const;

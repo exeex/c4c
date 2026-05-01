@@ -257,19 +257,6 @@ struct ParserActiveContextState {
 struct ParserNamespaceState {
   struct UsingValueAlias {
     QualifiedNameKey target_key;
-    std::string compatibility_name;
-
-    UsingValueAlias() = default;
-    explicit UsingValueAlias(std::string_view name)
-        : compatibility_name(name) {}
-    UsingValueAlias(QualifiedNameKey key, std::string name)
-        : target_key(key), compatibility_name(std::move(name)) {}
-
-    UsingValueAlias& operator=(std::string_view name) {
-      target_key = {};
-      compatibility_name.assign(name);
-      return *this;
-    }
   };
 
   std::string current_namespace;

@@ -8,22 +8,20 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the parser-owned using-declaration value import fallback that
-recovered a missing target through `find_parser_text_id(imported_value_name)`
-and legacy `var_types` storage. `using ns::Target` now imports value type
-authority only from the structured imported `QualifiedNameKey`/resolved
-`VisibleNameResult` path, not from the rendered compatibility spelling.
+Step 2.3 removed the remaining `UsingValueAlias` rendered compatibility-name
+storage and mutation hook. Using-value alias lookup now requires a structured
+target `QualifiedNameKey` and validates that key against known function or
+structured value bindings; no-key rendered aliases no longer resolve.
 
-The focused parser test now seeds only legacy rendered `ns::Target` var-type
-storage and proves the using-import alias remains unresolved when the
-structured target key has no value/function binding.
+The focused parser tests now seed corrupt rendered bridge storage outside the
+alias entry and prove both value and type alias lookup ignore that text, while
+no-key aliases are rejected.
 
 ## Suggested Next
 
-Execute the next focused Step 2.3 parser-owned cleanup packet against a
-remaining visible-name `compatibility_spelling` / `compatibility_name` path
-where existing `VisibleNameResult`, `TextId`, or `QualifiedNameKey` metadata can
-carry the semantic answer without adding rendered rediscovery helpers.
+Continue Step 2.3 with a focused review of remaining parser-owned rendered
+`compatibility_spelling` paths and remove only those that still act as semantic
+lookup authority instead of display/fallback text.
 
 ## Watchouts
 
@@ -61,6 +59,9 @@ carry the semantic answer without adding rendered rediscovery helpers.
   `token_spelling`, synthetic token production, diagnostics, display/final
   spelling, and compatibility paths are not automatically Step 2 violations;
   classify them by concrete semantic lookup authority before removing them.
+- `UsingValueAlias` is now target-key-only. Do not reintroduce test-only alias
+  string mutation; corrupt rendered bridge coverage should be represented by
+  legacy rendered tables outside the alias entry.
 - A direct `frontend_parser_tests` binary run is outside the delegated proof and
   currently still stops later on qualified `TypeSpec` metadata expectations; the
   required C++ parser/sema/negative ctest subset is green.
@@ -70,5 +71,8 @@ carry the semantic answer without adding rendered rediscovery helpers.
 Passed:
 `(cmake --build build --target c4cll && ctest --test-dir build -R 'cpp_(positive_parser|positive_sema|negative_tests)' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: regenerated canonical `test_after.log` after this using-declaration
-value import fallback removal packet (926 tests passed).
+Proof log: regenerated canonical `test_after.log` after removing the
+using-value alias compatibility-name bridge (926 tests passed).
+
+Additional compile check passed for the edited unit-test source:
+`cmake --build build --target frontend_parser_tests`.

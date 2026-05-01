@@ -192,20 +192,9 @@ void Parser::register_struct_definition_for_testing(std::string tag,
 }
 
 void Parser::register_using_value_alias_for_testing(
-    int context_id, TextId alias_text_id, const QualifiedNameKey& target_key,
-    std::string compatibility_name) {
+    int context_id, TextId alias_text_id, const QualifiedNameKey& target_key) {
     namespace_state_.using_value_aliases[context_id][alias_text_id] = {
-        target_key, std::move(compatibility_name)};
-}
-
-bool Parser::replace_using_value_alias_compatibility_name_for_testing(
-    int context_id, TextId alias_text_id, std::string compatibility_name) {
-    const auto context_it = namespace_state_.using_value_aliases.find(context_id);
-    if (context_it == namespace_state_.using_value_aliases.end()) return false;
-    const auto alias_it = context_it->second.find(alias_text_id);
-    if (alias_it == context_it->second.end()) return false;
-    alias_it->second.compatibility_name = std::move(compatibility_name);
-    return true;
+        target_key};
 }
 
 void Parser::register_alias_template_info_for_testing(

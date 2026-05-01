@@ -1785,12 +1785,6 @@ Node* parse_top_level(Parser& parser) {
         const QualifiedNameKey imported_value_key = parser.qualified_name_key(target_name);
         const std::string imported_key = parser.render_name_in_context(
             using_context_id, target_name.base_text_id);
-        std::string imported_value_name;
-        if (parser.shared_lookup_state_.token_texts) {
-            imported_value_name = render_qualified_name(
-                imported_value_key, parser.shared_lookup_state_.parser_name_paths,
-                *parser.shared_lookup_state_.token_texts);
-        }
         const TypeSpec* imported_var =
             parser.find_var_type(imported_value_key);
         QualifiedNameKey imported_alias_key = imported_value_key;
@@ -1798,8 +1792,6 @@ Node* parse_top_level(Parser& parser) {
         if (!imported_var || !imported_known_fn) {
             const Parser::VisibleNameResult imported_value =
                 parser.resolve_qualified_value(target_name);
-            const std::string resolved_value_name =
-                parser.visible_name_spelling(imported_value);
             if (imported_value) {
                 if (!imported_var) {
                     const TypeSpec* resolved_var =
@@ -1813,18 +1805,6 @@ Node* parse_top_level(Parser& parser) {
                     parser.has_known_fn_name(imported_value.key)) {
                     imported_known_fn = true;
                     imported_alias_key = imported_value.key;
-                }
-                if (!resolved_value_name.empty()) {
-                    imported_value_name = resolved_value_name;
-                }
-            }
-            if (imported_value_name.empty()) {
-                imported_value_name = parser.qualified_name_text(target_name);
-            }
-            if (imported_value_name.empty()) {
-                imported_value_name = imported_key;
-                if (imported_value_name.rfind("::", 0) == 0) {
-                    imported_value_name.erase(0, 2);
                 }
             }
         }
@@ -1840,7 +1820,7 @@ Node* parse_top_level(Parser& parser) {
             }
             parser.namespace_state_.using_value_aliases[using_context_id]
                                                [target_name.base_text_id] = {
-                imported_alias_key, imported_value_name};
+                imported_alias_key};
         }
         recover_top_level_decl_terminator_or_boundary(parser, ln);
         return nullptr;
