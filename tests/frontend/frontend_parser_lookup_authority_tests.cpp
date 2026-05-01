@@ -626,6 +626,170 @@ void test_sema_global_lookup_rejects_same_member_wrong_owner_reentry() {
               "when structured owner metadata names a different owner");
 }
 
+void test_sema_function_lookup_rejects_same_member_wrong_owner_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId owner_a_text = texts.intern("OwnerA");
+  const c4c::TextId owner_b_text = texts.intern("OwnerB");
+  const c4c::TextId member_text = texts.intern("same_function");
+  const int namespace_context = parser.current_namespace_context_id();
+
+  c4c::Node* rendered_function = parser.make_node(c4c::NK_FUNCTION, 1);
+  rendered_function->name = arena.strdup("same_function");
+  rendered_function->unqualified_name = arena.strdup("same_function");
+  rendered_function->unqualified_text_id = member_text;
+  rendered_function->namespace_context_id = namespace_context;
+  rendered_function->n_qualifier_segments = 1;
+  rendered_function->qualifier_segments = arena.alloc_array<const char*>(1);
+  rendered_function->qualifier_segments[0] = arena.strdup("OwnerA");
+  rendered_function->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  rendered_function->qualifier_text_ids[0] = owner_a_text;
+  rendered_function->type = make_ts(c4c::TB_INT);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("same_function");
+  ref->unqualified_name = arena.strdup("same_function");
+  ref->unqualified_text_id = member_text;
+  ref->namespace_context_id = namespace_context;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("OwnerB");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = owner_b_text;
+
+  c4c::Node* expr = parser.make_node(c4c::NK_EXPR_STMT, 2);
+  expr->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = expr;
+
+  c4c::Node* caller = parser.make_node(c4c::NK_FUNCTION, 2);
+  caller->name = arena.strdup("rejects_wrong_owner_function");
+  caller->unqualified_name = arena.strdup("rejects_wrong_owner_function");
+  caller->unqualified_text_id = texts.intern("rejects_wrong_owner_function");
+  caller->namespace_context_id = namespace_context;
+  caller->type = make_ts(c4c::TB_VOID);
+  caller->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = rendered_function;
+  program->children[1] = caller;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema function lookup should reject same-member rendered "
+              "fallback when structured owner metadata names a different owner");
+}
+
+void test_sema_ref_overload_lookup_rejects_same_member_wrong_owner_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId owner_a_text = texts.intern("OwnerA");
+  const c4c::TextId owner_b_text = texts.intern("OwnerB");
+  const c4c::TextId member_text = texts.intern("same_overload");
+  const c4c::TextId param_text = texts.intern("value");
+  const int namespace_context = parser.current_namespace_context_id();
+
+  auto make_overload = [&](bool rvalue_ref) {
+    c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+    fn->name = arena.strdup("same_overload");
+    fn->unqualified_name = arena.strdup("same_overload");
+    fn->unqualified_text_id = member_text;
+    fn->namespace_context_id = namespace_context;
+    fn->n_qualifier_segments = 1;
+    fn->qualifier_segments = arena.alloc_array<const char*>(1);
+    fn->qualifier_segments[0] = arena.strdup("OwnerA");
+    fn->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+    fn->qualifier_text_ids[0] = owner_a_text;
+    fn->type = make_ts(c4c::TB_INT);
+    fn->n_params = 1;
+    fn->params = arena.alloc_array<c4c::Node*>(1);
+    c4c::Node* param = parser.make_node(c4c::NK_DECL, 1);
+    param->name = arena.strdup("value");
+    param->unqualified_name = arena.strdup("value");
+    param->unqualified_text_id = param_text;
+    param->namespace_context_id = namespace_context;
+    param->type = make_ts(c4c::TB_INT);
+    param->type.is_lvalue_ref = !rvalue_ref;
+    param->type.is_rvalue_ref = rvalue_ref;
+    fn->params[0] = param;
+    return fn;
+  };
+
+  c4c::Node* lvalue_overload = make_overload(false);
+  c4c::Node* rvalue_overload = make_overload(true);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("same_overload");
+  ref->unqualified_name = arena.strdup("same_overload");
+  ref->unqualified_text_id = member_text;
+  ref->namespace_context_id = namespace_context;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("OwnerB");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = owner_b_text;
+
+  c4c::Node* call = parser.make_node(c4c::NK_CALL, 2);
+  call->left = ref;
+
+  c4c::Node* expr = parser.make_node(c4c::NK_EXPR_STMT, 2);
+  expr->left = call;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = expr;
+
+  c4c::Node* caller = parser.make_node(c4c::NK_FUNCTION, 2);
+  caller->name = arena.strdup("rejects_wrong_owner_overload");
+  caller->unqualified_name = arena.strdup("rejects_wrong_owner_overload");
+  caller->unqualified_text_id = texts.intern("rejects_wrong_owner_overload");
+  caller->namespace_context_id = namespace_context;
+  caller->type = make_ts(c4c::TB_VOID);
+  caller->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
+  program->children[0] = lvalue_overload;
+  program->children[1] = rvalue_overload;
+  program->children[2] = caller;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(result.ok,
+              "Sema ref-overload lookup should reject the wrong-owner "
+              "rendered overload set and leave the stale call non-diagnostic");
+}
+
 void test_sema_func_local_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -968,6 +1132,8 @@ int main() {
   test_parsed_nested_record_fields_carry_member_text_ids();
   test_sema_global_lookup_rejects_stale_qualified_rendered_reentry();
   test_sema_global_lookup_rejects_same_member_wrong_owner_reentry();
+  test_sema_function_lookup_rejects_same_member_wrong_owner_reentry();
+  test_sema_ref_overload_lookup_rejects_same_member_wrong_owner_reentry();
   test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
