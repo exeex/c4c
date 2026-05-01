@@ -990,31 +990,97 @@ Completion check:
 - Narrow Sema/frontend tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 3.3: Remove Remaining Sema Owner/Member/Static Rendered Routes
+### Step 3.3.1: Preserve The Injected-Local No-Carrier Boundary
 
-Goal: Sema owner/member/static lookup must not consult rendered names after
-owner keys, AST nodes, declarations, or structured maps are available.
+Goal: keep the accepted local-symbol Step 3.3 result bounded to predefined
+locals whose parsed references may or may not carry a parser `TextId`.
 
-Primary target: Sema owner/member/static lookup paths outside the consteval
-value/type metadata-producer route.
+Primary target: Sema lookup for `__func__`, `__FUNCTION__`,
+`__PRETTY_FUNCTION__`, and injected `this`.
 
 Actions:
 
-- Inspect structured owner key construction and lookup call sites.
+- Treat the local-symbol packet reviewed in
+  `review/step33_sema_lookup_route_review.md` as accepted only for the covered
+  injected-local route.
+- Keep structured local metadata authoritative when a parsed reference supplies
+  a carrier.
+- Keep any rendered local compatibility limited to the no-carrier synthetic
+  boundary described in the review report.
+- Do not generalize body scanning into a broad local metadata producer that
+  reconstructs identity from rendered spelling.
+
+Completion check:
+
+- Focused local tests prove stale rendered local recovery is rejected when a
+  structured local key exists and misses.
+- `todo.md` records that the remaining Step 3.3 work is not local cleanup; it
+  is qualifier-aware global/enum metadata/key producer work.
+
+### Step 3.3.2: Add Qualifier-Aware Sema Global/Enum Metadata Keys
+
+Goal: Sema global and enum lookup must reject same-member/wrong-owner rendered
+compatibility after structured metadata exists by using a qualifier-aware,
+namespace-aware, or domain-specific carrier instead of unqualified spelling.
+
+Primary target: `src/frontend/sema/validate.cpp` global and enum lookup
+metadata/key production and the focused frontend lookup-authority tests.
+
+Actions:
+
+- Read `review/step33_sema_lookup_route_review.md` before delegating code for
+  this step.
+- Inspect `sema_symbol_name_key(...)`, rendered global metadata predicates,
+  rendered enum metadata predicates, and `lookup_symbol()` global/enum
+  compatibility gates.
+- Repair the producer/key contract so qualified globals and enum members carry
+  qualifier, owner, namespace, enum-domain, declaration, or equivalent
+  structured identity where that information is available.
+- Reject a structured global or enum miss using that qualifier-aware carrier;
+  do not allow same unqualified spelling to rescue a wrong-owner rendered
+  entry.
+- Add focused same-feature tests for same-member/wrong-owner global and enum
+  drift, not only mismatched unqualified-name drift.
+- Keep rendered spelling only for diagnostics, display, debug output, mangling,
+  ABI/link spelling, or final emitted text.
+- If the required qualifier/owner carrier is genuinely unavailable in
+  parser/Sema scope, stop and record the exact producer ambiguity in `todo.md`
+  or a new metadata idea instead of broadening rendered compatibility.
+
+Completion check:
+
+- Qualified global lookup and enum lookup no longer use unqualified rendered
+  spelling as alternate semantic authority after structured metadata exists.
+- The covered metadata/key producer distinguishes same-member/wrong-owner
+  cases with qualifier-aware or domain-specific identity.
+- Focused Sema/frontend tests cover global and enum same-member/wrong-owner
+  rendered drift.
+- Narrow Sema tests and a fresh build pass, with fresh canonical
+  `test_after.log`, are produced by the executor.
+
+### Step 3.3.3: Remove Remaining Sema Owner/Member/Static Rendered Routes
+
+Goal: finish Sema owner/member/static rendered-route removal after the
+global/enum qualifier-aware key producer is complete.
+
+Primary target: Sema owner/member/static lookup paths outside consteval
+value/type and outside the Step 3.3.2 global/enum key producer.
+
+Actions:
+
+- Re-inventory remaining Sema-owned `fallback`/`legacy` routes after Step 3.3.2
+  lands.
 - Convert rendered-name probes to structured owner/member/static lookups where
-  producer metadata already exists.
-- Prioritize remaining Sema-owned `fallback`/`legacy` routes that can be
-  deleted with existing metadata, including `lookup_struct_static_member_*`,
-  instance-field legacy probes, owner-by-rendered-name fallback, and rendered
-  global/enum compatibility indexes. Park only the routes whose missing
-  producer is named in `todo.md` or a separate idea.
+  producer metadata already exists, including `lookup_struct_static_member_*`,
+  instance-field legacy probes, and owner-by-rendered-name fallback.
 - Delete Sema semantic lookup APIs that take `std::string`, `std::string_view`,
   or fallback spelling arguments.
 - Collapse Sema overload families so each semantic lookup uses a structured
   owner, declaration, `TextId`, or domain key route.
 - Remove Sema semantic helpers whose `fallback` or `legacy` names preserve
   rendered-spelling compatibility.
-- Add focused Sema tests for same-feature structured-vs-rendered disagreement.
+- Park only routes whose missing producer is named in `todo.md` or a separate
+  metadata idea.
 
 Completion check:
 
