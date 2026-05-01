@@ -375,6 +375,31 @@ Parser::QualifiedNameRef qualified_owner_name(const Parser& parser,
     return owner_qn;
 }
 
+const TypeSpec* record_member_typedef_type_from_structured_authority(
+    const Parser& parser, const Parser::QualifiedNameRef& qn) {
+    if (qn.qualifier_segments.empty() || qn.base_text_id == kInvalidText) {
+        return nullptr;
+    }
+
+    const Parser::QualifiedNameRef owner_qn = qualified_owner_name(parser, qn);
+    const Node* owner =
+        qualified_type_record_definition_from_structured_authority(parser,
+                                                                   owner_qn);
+    if (!owner || owner->n_member_typedefs <= 0 ||
+        !owner->member_typedef_names || !owner->member_typedef_types) {
+        return nullptr;
+    }
+
+    for (int i = 0; i < owner->n_member_typedefs; ++i) {
+        const char* candidate = owner->member_typedef_names[i];
+        if (!candidate) continue;
+        if (parser.find_parser_text_id(candidate) == qn.base_text_id) {
+            return &owner->member_typedef_types[i];
+        }
+    }
+    return nullptr;
+}
+
 std::string resolve_qualified_owner_type_name(
     const Parser& parser,
     const Parser::QualifiedNameRef& qn) {
@@ -779,28 +804,13 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
         probe.spelled_name = qualified_name_text(parser, qn);
         probe.namespace_context_id = parser.resolve_namespace_context(qn);
 
-        if (!qn.qualifier_segments.empty()) {
-            const Parser::QualifiedNameRef owner_qn =
-                qualified_owner_name(parser, qn);
-            if (const Node* owner =
-                    qualified_type_record_definition_from_structured_authority(
-                        parser, owner_qn)) {
-                if (owner->n_member_typedefs > 0 &&
-                    owner->member_typedef_names &&
-                    owner->member_typedef_types) {
-                    const std::string_view member_name =
-                        parser.parser_text(qn.base_text_id, qn.base_name);
-                    for (int i = 0; i < owner->n_member_typedefs; ++i) {
-                        const char* candidate = owner->member_typedef_names[i];
-                        if (!candidate || member_name != candidate) continue;
-                        probe.has_resolved_typedef = true;
-                        probe.record_member_typedef_type =
-                            &owner->member_typedef_types[i];
-                        probe.resolved_typedef_name = probe.spelled_name;
-                        return probe;
-                    }
-                }
-            }
+        if (const TypeSpec* member_typedef =
+                record_member_typedef_type_from_structured_authority(parser,
+                                                                     qn)) {
+            probe.has_resolved_typedef = true;
+            probe.record_member_typedef_type = member_typedef;
+            probe.resolved_typedef_name = probe.spelled_name;
+            return probe;
         }
 
         const Parser::VisibleNameResult resolved_type =

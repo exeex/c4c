@@ -1015,6 +1015,18 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         }
     };
 
+    if (const TypeSpec* member_typedef =
+            record_member_typedef_type_from_structured_authority(parser, qn)) {
+        *out_ts = *member_typedef;
+        attach_qualified_typespec_metadata();
+        parser.consume_qualified_type_spelling_with_typename(
+            /*require_typename=*/false,
+            /*allow_global=*/true,
+            /*consume_final_template_args=*/false,
+            nullptr, nullptr);
+        return true;
+    }
+
     const QualifiedTypeProbe probe = probe_qualified_type(parser, qn);
     if (probe.has_resolved_typedef) {
         if (probe.record_member_typedef_type) {
