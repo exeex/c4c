@@ -8,30 +8,33 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the public parser state setter overloads
-`set_current_struct_tag(std::string_view)` and
-`set_last_resolved_typedef(std::string_view)`. The replacement setters accept
-`TextId` plus optional display spelling and no longer intern rendered state
-names through `parser_text_id_for_token(kInvalidText, ...)`.
+Lifecycle boundary refresh landed after the Step 2.3 parser setter conversion.
+`plan.md` now treats parser/Sema-owned `fallback`, `legacy`, and
+`compatibility` semantic routes as active cleanup targets when structured
+metadata already exists.
 
-Parser call sites now pass existing token/declarator/type metadata where
-available. Record-body current-struct context carries parsed tag `TextId`
-metadata into `set_current_struct_tag`, visible typedef casts and base typedef
-resolution pass typedef `TextId` metadata into `set_last_resolved_typedef`, and
-tentative restore paths restore saved `TextId`s without rediscovering them from
-rendered text. The unqualified typedef-resolution route in `parse_base_type`
-now uses `ts.tag_text_id` when present instead of looking up the unqualified
-display tag.
+HIR-only rendered lookup routes were moved to
+`ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md`, and
+`TypeSpec::tag` field deletion / cross-stage fallout was moved to
+`ideas/open/141_typespec_tag_field_removal_metadata_migration.md`.
 
 ## Suggested Next
 
-Create a focused metadata-producer packet for concrete qualified
-owner-member typedef `TypeSpec` identities. The blocked route is the qualified
-`has_typedef` resolution path in `src/frontend/parser/impl/types/base.cpp`
-around `const char* tname = ts.tag`: instantiated owner-member cases such as
-`typename ns::holder<int>::type` still need the concrete owner-member identity
-(`ns::holder_T_int::type`) produced as metadata before this resolver can stop
-using the rendered `ts.tag` compatibility lookup for qualified names.
+Execute a focused Step 2.3 parser-owned cleanup packet for one remaining
+`fallback` / `legacy` / `compatibility` semantic route where the caller already
+has a real carrier. Good first candidates are:
+
+- `cache_legacy_var_type_binding` and the associated var/type binding readers,
+  if they can be collapsed to `TextId`, `QualifiedNameKey`, namespace context,
+  or declaration metadata without adding a rendered rediscovery helper.
+- Visible typedef fallback depth/guard paths, if the guarded lookup can be
+  expressed through existing `TextId` or visible-name metadata.
+- Visible-name `compatibility_spelling` / `compatibility_name` paths, if the
+  route can keep `VisibleNameResult` or structured lookup output until display
+  spelling is explicitly needed.
+
+Start by naming one exact route and proving whether it is removable now or is a
+metadata blocker that belongs in idea 140 or 141.
 
 ## Watchouts
 
@@ -46,8 +49,13 @@ using the rendered `ts.tag` compatibility lookup for qualified names.
   of the concrete instantiated owner-member typedef (`int`).
 - The exact missing producer metadata is a concrete owner-member `TextId` or
   equivalent domain key for instantiated member typedefs such as
-  `ns::holder_T_int::type`. Treat that as a new producer packet rather than a
-  lookup-only cleanup.
+  `ns::holder_T_int::type`. Do not pull this into the next Step 2.3 packet
+  unless the work is deliberately scoped as parser/Sema metadata only; full
+  `TypeSpec::tag` field deletion belongs to idea 141.
+- Do not use idea 139 to absorb HIR-only cleanup. Routes such as
+  `find_function_by_name_legacy`, `find_global_by_name_legacy`,
+  `has_legacy_mangled_entry`, HIR `NttpBindings`, `LegacyRendered`, or HIR
+  `fallback_*` recovery belong to idea 140.
 - Remaining `parser_text_id_for_token`, `find_parser_text_id`, `parser_text`,
   `token_spelling`, synthetic token production, diagnostics, display/final
   spelling, and compatibility paths are not automatically Step 2 violations;
