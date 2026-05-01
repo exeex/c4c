@@ -775,25 +775,23 @@ class Validator {
 
   const Node* lookup_consteval_function_by_name(
       const std::string& name, const Node* reference = nullptr) const {
-    auto it = consteval_funcs_.find(name);
-    const Node* legacy = it != consteval_funcs_.end() ? it->second : nullptr;
     if (reference) {
-      const Node* text = lookup_consteval_function_by_text(reference);
-      (void)compare_sema_lookup_ptrs(legacy, text);
-      bool has_authoritative_metadata = text != nullptr;
+      bool has_authoritative_metadata = false;
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         has_authoritative_metadata = true;
         const Node* structured = lookup_consteval_function_by_key(*key);
-        (void)compare_sema_lookup_ptrs(legacy, structured);
         if (structured) return structured;
       }
       if (reference->unqualified_text_id != kInvalidText &&
           !reference->is_global_qualified && reference->n_qualifier_segments == 0) {
         has_authoritative_metadata = true;
+        const Node* text = lookup_consteval_function_by_text(reference);
+        if (text) return text;
       }
-      if (text) return text;
       if (has_authoritative_metadata) return nullptr;
     }
+    auto it = consteval_funcs_.find(name);
+    const Node* legacy = it != consteval_funcs_.end() ? it->second : nullptr;
     return legacy;
   }
 

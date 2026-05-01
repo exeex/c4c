@@ -8,13 +8,14 @@ Current Step Title: Remove Remaining Sema Owner/Member/Static Rendered Routes
 
 ## Just Finished
 
-Step 3.3 removed the eager rendered-map compatibility probes from
-`lookup_function_by_name`, `lookup_ref_overloads_by_name`, and
-`lookup_cpp_overloads_by_name` when a valid structured reference key is present.
-Those helpers now consult structured function/ref-overload/C++ overload indexes
-first; rendered compatibility maps are consulted only when structured metadata
-is absent or incomplete. Existing focused stale rendered-name overload coverage
-continues to prove structured authority and no-metadata compatibility.
+Step 3.3 removed the eager rendered-map compatibility probe from
+`lookup_consteval_function_by_name` when a valid structured key or TextId
+carrier is present. The helper now consults structured consteval function
+metadata and unqualified TextId metadata before reading `consteval_funcs_`,
+returns `nullptr` after authoritative metadata misses, and preserves rendered
+compatibility for references with no metadata. Focused Sema stale-rendered
+consteval tests now cover structured authority, TextId authority, metadata
+misses, and no-metadata rendered fallback.
 
 ## Suggested Next
 
@@ -96,6 +97,10 @@ rendered probe or a consumer guarded by existing focused stale-spelling coverage
   maps for comparison when a valid structured reference key exists. Do not
   reintroduce an eager rendered probe or an unqualified-only rendered-name guard
   for these helpers.
+- `lookup_consteval_function_by_name` no longer reads `consteval_funcs_` before
+  structured/TextId metadata when a valid carrier exists. Keep the rendered
+  consteval function map as no-metadata compatibility only; do not reintroduce
+  rendered comparison probes on metadata-backed references.
 - `supports_cpp_overload_set` now accepts global-qualified `::operator_*`
   spellings so the qualified rendered C++ overload path is exercised; broader
   owner-qualified operator registration remains outside this packet because
