@@ -572,7 +572,6 @@ class Validator {
   std::unordered_map<std::string, std::vector<const Node*>> struct_defs_by_unqualified_name_;
   // Struct field names for implicit member lookup in out-of-class method bodies.
   std::unordered_map<std::string, std::unordered_set<std::string>> struct_field_names_;
-  std::unordered_map<std::string, std::unordered_map<std::string, TypeSpec>> struct_static_member_types_;
   std::unordered_map<std::string, std::vector<std::string>> struct_base_tags_;
   std::unordered_map<SemaStructuredNameKey, std::unordered_set<TextId>, SemaStructuredNameKeyHash>
       struct_field_text_ids_by_key_;
@@ -1171,7 +1170,6 @@ class Validator {
     auto& fnames = struct_field_names_[tag];
     for (int i = 0; i < n->n_fields; ++i) {
       if (!n->fields[i] || !n->fields[i]->name || !n->fields[i]->name[0]) continue;
-      struct_static_member_types_[tag][n->fields[i]->name] = n->fields[i]->type;
       if (record_key.has_value() && record_key->valid() &&
           n->fields[i]->unqualified_text_id != kInvalidText) {
         struct_static_member_types_by_key_[*record_key][n->fields[i]->unqualified_text_id] =
@@ -1236,23 +1234,6 @@ class Validator {
     return key;
   }
 
-  std::optional<TypeSpec> lookup_struct_static_member_type_legacy(
-      const std::string& tag, const std::string& member) const {
-    auto sit = struct_static_member_types_.find(tag);
-    if (sit != struct_static_member_types_.end()) {
-      auto mit = sit->second.find(member);
-      if (mit != sit->second.end()) return mit->second;
-    }
-    auto bit = struct_base_tags_.find(tag);
-    if (bit != struct_base_tags_.end()) {
-      for (const auto& base_tag : bit->second) {
-        auto from_base = lookup_struct_static_member_type_legacy(base_tag, member);
-        if (from_base.has_value()) return from_base;
-      }
-    }
-    return std::nullopt;
-  }
-
   std::optional<SemaStructuredNameKey> static_member_owner_key(
       const std::string& tag, const Node* reference) const {
     if (auto key = static_member_owner_key_from_reference(reference);
@@ -1274,7 +1255,7 @@ class Validator {
   }
 
   std::optional<TypeSpec> lookup_struct_static_member_type(
-      const std::string& tag, const std::string& member, const Node* reference = nullptr) const {
+      const std::string& tag, const Node* reference) const {
     if (reference && reference->unqualified_text_id != kInvalidText) {
       if (auto record_key = static_member_owner_key(tag, reference); record_key.has_value()) {
         bool has_metadata = false;
@@ -1283,7 +1264,7 @@ class Validator {
         if (structured.has_value() || has_metadata) return structured;
       }
     }
-    return lookup_struct_static_member_type_legacy(tag, member);
+    return std::nullopt;
   }
 
   std::optional<bool> has_struct_instance_field_by_key(
@@ -2207,8 +2188,7 @@ class Validator {
         size_t scope_pos = qname.rfind("::");
         if (scope_pos != std::string::npos) {
           std::string struct_tag = qname.substr(0, scope_pos);
-          std::string member = qname.substr(scope_pos + 2);
-          if (auto mts = lookup_struct_static_member_type(struct_tag, member, n)) {
+          if (auto mts = lookup_struct_static_member_type(struct_tag, n)) {
             out.valid = true;
             out.type = *mts;
             out.is_lvalue = true;
