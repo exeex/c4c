@@ -2289,15 +2289,21 @@ Node* parse_top_level(Parser& parser) {
                     last_sd);
                 // In C++ mode, register the template struct name as a typedef
                 // so it's recognized as a type start for Pair<int> syntax.
-                parser.register_tag_type_binding(last_sd->name, TB_STRUCT,
-                                          last_sd->name);
+                const TextId template_struct_name_text_id =
+                    parser.parser_text_id_for_token(kInvalidText,
+                                                    last_sd->name);
+                parser.register_tag_type_binding(template_struct_name_text_id,
+                                                 TB_STRUCT, last_sd->name,
+                                                 template_struct_name_text_id);
                 // If inside a namespace, also register ns::Name so
                 // qualified references like std::vector<int> work.
                 const std::string qn = parser.render_name_in_context(
                     parser.current_namespace_context_id(),
                     parser.parser_text_id_for_token(kInvalidText,
                                                     last_sd->name));
-                parser.register_tag_type_binding(qn, TB_STRUCT, last_sd->name);
+                parser.register_tag_type_binding(
+                    parser.parser_text_id_for_token(kInvalidText, qn),
+                    TB_STRUCT, last_sd->name, template_struct_name_text_id);
             }
         }
         return templated;

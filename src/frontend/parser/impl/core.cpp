@@ -1012,24 +1012,27 @@ void Parser::register_synthesized_typedef_binding(TextId name_text_id) {
     register_typedef_binding(name_text_id, synthesized_ts, false);
 }
 
-void Parser::register_tag_type_binding(const std::string& name,
+void Parser::register_tag_type_binding(TextId name_text_id,
                                        TypeBase base,
                                        const char* tag,
+                                       TextId tag_text_id,
                                        TypeBase enum_underlying_base) {
-    if (name.empty() || !tag || !tag[0]) return;
+    if (name_text_id == kInvalidText || !tag || !tag[0]) return;
 
     TypeSpec tagged_ts{};
     tagged_ts.array_size = -1;
     tagged_ts.array_rank = 0;
     tagged_ts.base = base;
     tagged_ts.tag = tag;
+    tagged_ts.tag_text_id =
+        tag_text_id != kInvalidText ? tag_text_id
+                                    : parser_text_id_for_token(kInvalidText, tag);
     if (base == TB_ENUM) {
         tagged_ts.inner_rank = -1;
         for (int i = 0; i < 8; ++i) tagged_ts.array_dims[i] = -1;
         tagged_ts.enum_underlying_base = enum_underlying_base;
     }
-    register_typedef_binding(parser_text_id_for_token(kInvalidText, name),
-                             tagged_ts, false);
+    register_typedef_binding(name_text_id, tagged_ts, false);
 }
 
 void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {

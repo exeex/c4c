@@ -369,8 +369,9 @@ class Parser {
                                 bool is_user_typedef);
   void unregister_typedef_binding(TextId name_text_id);
   void register_synthesized_typedef_binding(TextId name_text_id);
-  void register_tag_type_binding(const std::string& name, TypeBase base,
+  void register_tag_type_binding(TextId name_text_id, TypeBase base,
                                  const char* tag,
+                                 TextId tag_text_id = kInvalidText,
                                  TypeBase enum_underlying_base = TB_VOID);
   void cache_typedef_type(const std::string& name, const TypeSpec& type);
   void register_template_instantiation_member_typedef_binding(

@@ -8,20 +8,18 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed
-`bridge_name_in_context(int, TextId, std::string_view fallback_name)` from the
-public `Parser` class surface. Parser implementation callers now use the
-`TextId`-only `render_name_in_context(int, TextId)` final-spelling renderer,
-with string inputs first interned through parser-owned `TextId`s where needed.
+Step 2.3 removed `register_tag_type_binding(const std::string& name, ...)`
+from the public `Parser` class surface. Tag/type binding registration now uses
+a parser-owned `TextId` key, and the covered struct/union/enum/template-struct
+callers intern their binding names before registration; rendered tag strings
+remain compatibility/display payloads with `tag_text_id` metadata attached.
 
 ## Suggested Next
 
-Continue Step 2.3 from the `TextId`-only final-spelling renderer cleanup.
+Continue Step 2.3 from the parser semantic string-keyed binding cleanup.
 Inspect the next same-shape `parser.hpp` candidate and either remove it in a
 bounded Step 2.3 packet or record why it is non-semantic/output-only:
 
-- `register_tag_type_binding(const std::string& name, ...)`: semantic tag/type
-  binding currently keyed from a string.
 - `cache_typedef_type(const std::string& name, ...)`: semantic typedef cache
   route currently keyed from a string.
 - `canonical_name_in_context(int, const std::string& name)`: namespace/name
@@ -45,6 +43,10 @@ bounded Step 2.3 packet or record why it is non-semantic/output-only:
   longer exists as parser API. The remaining public replacement is
   `render_name_in_context(int, TextId)`, which is a final-spelling renderer;
   do not reintroduce fallback spelling on that public route.
+- `register_tag_type_binding` no longer accepts a rendered string as its
+  semantic binding key. The `const char* tag` argument is still retained as
+  `TypeSpec` compatibility/display payload; do not treat that payload as lookup
+  authority while the `TextId` binding key and `tag_text_id` are available.
 - Do not accept a parser public semantic API that keeps `std::string`,
   `std::string_view`, `const char*`, `fallback_name`, `compatibility`, or
   `legacy` as a lookup key/escape hatch when `TextId` or a domain key exists.

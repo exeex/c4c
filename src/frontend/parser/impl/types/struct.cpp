@@ -1885,7 +1885,10 @@ void begin_record_body_context(Parser& parser,
             ? parser.has_visible_typedef_type(template_origin_text_id)
             : parser.has_typedef_type(template_origin_text_id);
     if (!has_existing_template_origin_type) {
-        parser.register_tag_type_binding(template_origin_name, TB_STRUCT, tag);
+        parser.register_tag_type_binding(
+            template_origin_text_id, TB_STRUCT, tag,
+            tag ? parser.parser_text_id_for_token(kInvalidText, tag)
+                : kInvalidText);
     }
 }
 
@@ -2107,14 +2110,17 @@ Node* parse_record_tag_setup(
             ref->n_fields = -1;  // -1 = forward reference (no body)
         }
         if (parser.is_cpp_mode() && resolved_tag && resolved_tag[0]) {
-            parser.register_tag_type_binding(resolved_tag,
+            const TextId resolved_tag_text_id =
+                parser.parser_text_id_for_token(kInvalidText, resolved_tag);
+            parser.register_tag_type_binding(resolved_tag_text_id,
                                              is_union ? TB_UNION : TB_STRUCT,
-                                             resolved_tag);
+                                             resolved_tag, resolved_tag_text_id);
             if (source_tag && source_tag[0] &&
                 std::strcmp(source_tag, resolved_tag) != 0) {
-                parser.register_tag_type_binding(source_tag,
-                                                 is_union ? TB_UNION : TB_STRUCT,
-                                                 resolved_tag);
+                parser.register_tag_type_binding(
+                    parser.parser_text_id_for_token(kInvalidText, source_tag),
+                    is_union ? TB_UNION : TB_STRUCT, resolved_tag,
+                    resolved_tag_text_id);
             }
         }
         if (parser.is_cpp_mode() &&
@@ -2297,12 +2303,16 @@ void register_record_definition(Parser& parser,
     if (!parser.is_cpp_mode() || !(sd->name && sd->name[0]))
         return;
 
-    parser.register_tag_type_binding(sd->name, is_union ? TB_UNION : TB_STRUCT,
-                                     sd->name);
+    const TextId canonical_tag_text_id =
+        parser.parser_text_id_for_token(kInvalidText, sd->name);
+    parser.register_tag_type_binding(canonical_tag_text_id,
+                                     is_union ? TB_UNION : TB_STRUCT,
+                                     sd->name, canonical_tag_text_id);
     if (source_tag && source_tag[0] && std::strcmp(source_tag, sd->name) != 0) {
-        parser.register_tag_type_binding(source_tag,
-                                         is_union ? TB_UNION : TB_STRUCT,
-                                         sd->name);
+        parser.register_tag_type_binding(
+            parser.parser_text_id_for_token(kInvalidText, source_tag),
+            is_union ? TB_UNION : TB_STRUCT, sd->name,
+            canonical_tag_text_id);
     }
 }
 
@@ -2423,10 +2433,15 @@ Node* parse_enum(Parser& parser) {
     auto register_enum_type = [&](const char* source_tag, const char* canonical_tag) {
         if (!source_tag || !source_tag[0] || !canonical_tag || !canonical_tag[0])
             return;
-        parser.register_tag_type_binding(source_tag, TB_ENUM, canonical_tag,
-                                         enum_underlying_base);
+        const TextId canonical_tag_text_id =
+            parser.parser_text_id_for_token(kInvalidText, canonical_tag);
+        parser.register_tag_type_binding(
+            parser.parser_text_id_for_token(kInvalidText, source_tag), TB_ENUM,
+            canonical_tag, canonical_tag_text_id, enum_underlying_base);
         if (strcmp(source_tag, canonical_tag) != 0)
-            parser.register_tag_type_binding(canonical_tag, TB_ENUM, canonical_tag,
+            parser.register_tag_type_binding(canonical_tag_text_id, TB_ENUM,
+                                             canonical_tag,
+                                             canonical_tag_text_id,
                                              enum_underlying_base);
     };
 
