@@ -46,6 +46,19 @@ c4c::TextId parser_test_text_id(c4c::Parser& parser,
   return parser.parser_text_id_for_token(c4c::kInvalidText, spelling);
 }
 
+c4c::QualifiedNameKey parser_test_qualified_name_key(
+    c4c::Parser& parser, std::initializer_list<std::string_view> qualifiers,
+    std::string_view base_name) {
+  c4c::Parser::QualifiedNameRef qn;
+  for (std::string_view qualifier : qualifiers) {
+    qn.qualifier_segments.emplace_back(qualifier);
+    qn.qualifier_text_ids.push_back(parser_test_text_id(parser, qualifier));
+  }
+  qn.base_name = std::string(base_name);
+  qn.base_text_id = parser_test_text_id(parser, base_name);
+  return parser.qualified_name_key(qn);
+}
+
 void test_link_name_table_reuses_text_table_storage() {
   c4c::TextTable texts;
   c4c::LinkNameTable link_names(&texts);
@@ -1155,9 +1168,13 @@ void test_parser_dependent_typename_uses_local_visible_owner_alias() {
 
   expect_eq(resolved_name, "Alias::type",
             "dependent typename parsing should preserve the cached alias-member spelling");
-  expect_true(parser.find_typedef_type(parser.find_parser_text_id(resolved_name)) != nullptr &&
-                  parser.find_typedef_type(parser.find_parser_text_id(resolved_name))->base == c4c::TB_INT,
-              "dependent typename parsing should resolve a scope-local owner alias through the visible typedef facade");
+  const c4c::QualifiedNameKey alias_member_key =
+      parser_test_qualified_name_key(parser, {"Alias"}, "type");
+  const c4c::TypeSpec* structured_alias_member =
+      parser.find_typedef_type(alias_member_key);
+  expect_true(structured_alias_member != nullptr &&
+                  structured_alias_member->base == c4c::TB_INT,
+              "dependent typename parsing should resolve a scope-local owner alias through the structured typedef key");
   expect_true(parser.pop_local_binding_scope(),
               "test fixture should balance the local visible typedef scope");
 }
@@ -1207,8 +1224,8 @@ void test_parser_dependent_typename_owner_alias_prefers_record_definition() {
 
   expect_eq(resolved_name, "Alias::type",
             "dependent typename parsing should preserve alias-member spelling");
-  const c4c::TypeSpec* resolved_type =
-      parser.find_typedef_type(parser.find_parser_text_id(resolved_name));
+  const c4c::TypeSpec* resolved_type = parser.find_typedef_type(
+      parser_test_qualified_name_key(parser, {"Alias"}, "type"));
   expect_true(resolved_type != nullptr && resolved_type->base == c4c::TB_INT,
               "record_def owner lookup should recover the real member typedef");
   expect_true(parser.pop_local_binding_scope(),
@@ -1432,8 +1449,8 @@ void test_parser_nested_dependent_typename_prefers_record_definition() {
 
   expect_eq(resolved_name, "Root::Nested::type",
             "nested dependent typename parsing should preserve nested spelling");
-  const c4c::TypeSpec* resolved_type =
-      parser.find_typedef_type(parser.find_parser_text_id(resolved_name));
+  const c4c::TypeSpec* resolved_type = parser.find_typedef_type(
+      parser_test_qualified_name_key(parser, {"Root", "Nested"}, "type"));
   expect_true(resolved_type != nullptr && resolved_type->base == c4c::TB_LONG,
               "nested record_def owner lookup should recover the real nested member typedef");
 }
@@ -1487,8 +1504,8 @@ void test_parser_nested_dependent_typename_uses_tagless_record_definition() {
   expect_true(parser.parse_dependent_typename_specifier(&resolved_name),
               "nested dependent typename owners should use tagless field record_def");
 
-  const c4c::TypeSpec* resolved_type =
-      parser.find_typedef_type(parser.find_parser_text_id(resolved_name));
+  const c4c::TypeSpec* resolved_type = parser.find_typedef_type(
+      parser_test_qualified_name_key(parser, {"Root", "Nested"}, "type"));
   expect_true(resolved_type != nullptr && resolved_type->base == c4c::TB_LONG,
               "tagless nested record_def owner lookup should recover the real member typedef");
 }
@@ -2322,8 +2339,8 @@ void test_parser_qualified_member_typedef_lookup_requires_structured_metadata() 
                   &structured_name),
               "structured record metadata should authorize member typedef lookup");
   const c4c::TypeSpec* structured_type =
-      structured_parser.find_typedef_type(
-          structured_parser.find_parser_text_id(structured_name));
+      structured_parser.find_typedef_type(parser_test_qualified_name_key(
+          structured_parser, {"ns", "Owner"}, "Member"));
   expect_true(structured_type != nullptr && structured_type->base == c4c::TB_INT,
               "direct member typedef arrays should remain the member typedef authority");
 }

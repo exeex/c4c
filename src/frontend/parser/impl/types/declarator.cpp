@@ -782,7 +782,10 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                                               .c_str());
                         owner_ts.deferred_member_type_text_id =
                             core_input_state_.tokens[final_scope_pos + 1].text_id;
-                        cache_typedef_type(spelled_name, owner_ts);
+                        if (structured_typedef_key.base_text_id != kInvalidText) {
+                            register_structured_typedef_binding(
+                                structured_typedef_key, owner_ts);
+                        }
                         resolved = spelled_name;
                         resolved_type = owner_ts;
                         resolved_type_payload = &resolved_type;
@@ -938,7 +941,10 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                         found_member = true;
                     }
                     if (found_member) {
-                        cache_typedef_type(dep_name, resolved_member);
+                        if (structured_typedef_key.base_text_id != kInvalidText) {
+                            register_structured_typedef_binding(
+                                structured_typedef_key, resolved_member);
+                        }
                         if (resolved_member.is_lvalue_ref ||
                             resolved_member.is_rvalue_ref) {
                             resolved_type = {};

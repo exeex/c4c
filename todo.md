@@ -8,11 +8,12 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed `register_tag_type_binding(const std::string& name, ...)`
-from the public `Parser` class surface. Tag/type binding registration now uses
-a parser-owned `TextId` key, and the covered struct/union/enum/template-struct
-callers intern their binding names before registration; rendered tag strings
-remain compatibility/display payloads with `tag_text_id` metadata attached.
+Step 2.3 removed the dependent-typename/member-typedef declarator call family
+from `cache_typedef_type(const std::string& name, ...)`. The two
+`parse_dependent_typename_specifier` cache writes now register the resolved
+typedef through `QualifiedNameKey` via `register_structured_typedef_binding`,
+and focused parser tests now prove those results through structured keys
+instead of `find_parser_text_id(rendered_name)`.
 
 ## Suggested Next
 
@@ -20,14 +21,21 @@ Continue Step 2.3 from the parser semantic string-keyed binding cleanup.
 Inspect the next same-shape `parser.hpp` candidate and either remove it in a
 bounded Step 2.3 packet or record why it is non-semantic/output-only:
 
-- `cache_typedef_type(const std::string& name, ...)`: semantic typedef cache
-  route currently keyed from a string.
 - `canonical_name_in_context(int, const std::string& name)`: namespace/name
   construction helper; verify whether it is semantic lookup authority or only
   display/final spelling construction.
 
 ## Watchouts
 
+- `cache_typedef_type(const std::string& name, ...)` still exists, but its
+  remaining direct callers are the synthetic/prelude typedef aliases registered
+  in `core.cpp` (`va_list`, fixed-width integer aliases, `std::__true_type`,
+  `std::__false_type`, etc.). The declarator dependent-member typedef family is
+  no longer a string-keyed cache caller.
+- Do not restore parser tests that prove dependent member typedef lookup by
+  recovering a `TextId` from rendered names such as `Alias::type` or
+  `Root::Nested::type`; the covered route should be proven through
+  `QualifiedNameKey`.
 - `parser_text_id_for_token`, `find_parser_text_id`, `parser_text`,
   `token_spelling`, `set_parser_owned_spelling`, debug/diagnostic helpers,
   test-only hooks, and AST final spelling builders are not automatically Step 2
