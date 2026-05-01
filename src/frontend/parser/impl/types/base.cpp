@@ -1668,13 +1668,6 @@ TypeSpec Parser::parse_base_type() {
                         alias_template_key_from_saved_type_metadata();
                     const ParserAliasTemplateInfo* ati =
                         find_alias_template_info(alias_key);
-                    if (!ati) {
-                        // Legacy rendered-name recovery stays fallback-only once the
-                        // structured alias key probe has been exhausted.
-                        ati = find_alias_template_info_in_context(
-                            current_namespace_context_id(),
-                            active_context_state_.last_resolved_typedef_text_id);
-                    }
                     if (ati) {
                         TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
@@ -2129,36 +2122,6 @@ TypeSpec Parser::parse_base_type() {
                                                 actual_args.push_back(actual);
                                             }
                                             if (has_dependent_arg) {
-                                                const std::string owner_name =
-                                                    render_name_in_context(
-                                                        ati->member_typedef.owner_key
-                                                            .context_id,
-                                                        ati->member_typedef.owner_key
-                                                            .base_text_id);
-                                                const std::string member_name =
-                                                    std::string(parser_text(
-                                                        ati->member_typedef
-                                                            .member_text_id,
-                                                        {}));
-                                                if (owner_name.empty() ||
-                                                    member_name.empty()) {
-                                                    return false;
-                                                }
-                                                ts.base = TB_STRUCT;
-                                                ts.tag = arena_.strdup(
-                                                    owner_name.c_str());
-                                                ts.tag_text_id =
-                                                    ati->member_typedef.owner_key
-                                                        .base_text_id;
-                                                ts.tpl_struct_origin = ts.tag;
-                                                set_template_arg_refs_from_parsed_args(
-                                                    &ts, actual_args);
-                                                ts.deferred_member_type_name =
-                                                    arena_.strdup(
-                                                        member_name.c_str());
-                                                ts.deferred_member_type_text_id =
-                                                    ati->member_typedef
-                                                        .member_text_id;
                                                 ParserAliasTemplateMemberTypedefInfo
                                                     dependent_carrier;
                                                 dependent_carrier.valid = true;
