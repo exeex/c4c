@@ -181,10 +181,10 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
                           ->base == c4c::TB_INT,
               "symbol-keyed typedef map should recover the stored TypeSpec");
 
-  expect_true(var_symbol != c4c::Parser::kInvalidSymbol,
-              "var-type wrapper should intern a valid SymbolId");
-  expect_true(parser.parser_symbol_tables().var_types.count(var_symbol) == 1,
-              "var-type wrapper should store var bindings by SymbolId");
+  expect_true(var_symbol == c4c::Parser::kInvalidSymbol,
+              "var-type wrapper should not mirror ordinary value bindings into legacy SymbolId storage");
+  expect_true(parser.parser_symbol_tables().var_types.empty(),
+              "var-type wrapper should leave legacy SymbolId var bindings empty");
   expect_true(parser.find_var_type(parser_test_text_id(parser, "counter")) !=
                   nullptr,
               "TextId-facing var-type lookup should still work");
@@ -1638,8 +1638,9 @@ void test_parser_record_body_context_keeps_visible_template_origin_lookup_local(
 
   std::string saved_struct_tag;
   std::string struct_source_name;
-  c4c::begin_record_body_context(parser, "Widget", "Alias", &saved_struct_tag,
-                                 &struct_source_name);
+  const c4c::TextId widget_text = parser_test_text_id(parser, "Widget");
+  c4c::begin_record_body_context(parser, "Widget", widget_text, "Alias",
+                                 &saved_struct_tag, &struct_source_name);
 
   expect_eq(struct_source_name, "Alias",
             "record body setup should preserve the template origin spelling");
@@ -1869,6 +1870,35 @@ void test_parser_using_value_import_prefers_structured_type_over_corrupt_rendere
               "using value imports should prefer the structured target type before rendered fallback names");
 }
 
+void test_parser_using_value_import_rejects_legacy_rendered_target_lookup() {
+  c4c::Lexer lexer("using ns::Target;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec bridge_ts{};
+  bridge_ts.array_size = -1;
+  bridge_ts.inner_rank = -1;
+  bridge_ts.base = c4c::TB_DOUBLE;
+
+  const c4c::TextId rendered_target_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns::Target");
+  const c4c::Parser::SymbolId rendered_target_symbol =
+      parser.parser_symbol_tables().intern_identifier(rendered_target_text);
+  parser.parser_symbol_tables().var_types[rendered_target_symbol] = bridge_ts;
+
+  (void)parse_top_level(parser);
+
+  const c4c::TextId alias_text = parser.find_parser_text_id("Target");
+  expect_true(alias_text != c4c::kInvalidText,
+              "using-import fixture should intern the alias text");
+  expect_true(parser.find_visible_var_type(alias_text) == nullptr,
+              "using value imports should reject legacy rendered target lookup when the structured target key is missing");
+  expect_eq(parser.resolve_visible_value_name(alias_text), "Target",
+            "using value imports should not project a rendered legacy target spelling through the alias");
+}
+
 void test_parser_global_using_value_import_keeps_global_target_resolution() {
   c4c::Lexer lexer("using ::Target;\n", c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -2036,7 +2066,7 @@ void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_va
   expect_true(parser.lookup_type_in_context(0, type_text,
                                             &resolved_type) &&
                   parser.visible_name_spelling(resolved_type) ==
-                      "LegacyOnlyType",
+                      "ns::LegacyOnlyType",
               "global visible type lookup should keep imported structured typedef authority");
   parser.namespace_state_.using_namespace_contexts[outer_context].push_back(ns_context);
   resolved_type = {};
@@ -7433,8 +7463,9 @@ void test_parser_qualified_typespec_preserves_text_metadata_over_rendered_spelli
                                                         alias_type);
 
   c4c::TypeSpec parsed = parser.parse_base_type();
-  expect_true(parsed.tag_text_id == alias_text,
-              "qualified TypeSpec should carry the base-name TextId metadata");
+  expect_eq_int(static_cast<int>(parsed.tag_text_id),
+                static_cast<int>(alias_text),
+                "qualified TypeSpec should carry the base-name TextId metadata");
   expect_true(parsed.namespace_context_id == ns_context,
               "qualified TypeSpec should carry the resolved namespace context");
   expect_true(parsed.n_qualifier_segments == 1 && parsed.qualifier_text_ids,
@@ -8059,6 +8090,7 @@ int main() {
   test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup();
   test_parser_using_value_import_keeps_structured_target_key();
   test_parser_using_value_import_prefers_structured_type_over_corrupt_rendered_name();
+  test_parser_using_value_import_rejects_legacy_rendered_target_lookup();
   test_parser_global_using_value_import_keeps_global_target_resolution();
   test_parser_out_of_class_operator_registers_structured_global_key();
   test_parser_out_of_class_constructor_registers_structured_global_key();

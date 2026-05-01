@@ -1827,9 +1827,6 @@ Node* parse_top_level(Parser& parser) {
                     imported_value_name.erase(0, 2);
                 }
             }
-            if (!imported_var && !imported_value_name.empty()) {
-                imported_var = parser.find_var_type(parser.find_parser_text_id(imported_value_name));
-            }
         }
         {
             if (imported_var) {

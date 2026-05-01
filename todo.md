@@ -8,23 +8,22 @@ Current Step Title: Remove Remaining Parser Semantic Spelling And Fallback Autho
 
 ## Just Finished
 
-Step 2.3 removed the parser-owned visible typedef fallback recursion route.
-`visible_typedef_fallback_depth_for`, `VisibleTypedefFallbackGuard`, and
-`probe_visible_typedef_name` are gone; `lookup_type_in_context` now accepts the
-direct local visible typedef table and structured namespace typedef metadata
-without re-entering `has_visible_typedef_type` as a fallback probe.
+Step 2.3 removed the parser-owned using-declaration value import fallback that
+recovered a missing target through `find_parser_text_id(imported_value_name)`
+and legacy `var_types` storage. `using ns::Target` now imports value type
+authority only from the structured imported `QualifiedNameKey`/resolved
+`VisibleNameResult` path, not from the rendered compatibility spelling.
 
-The focused parser test now proves namespace-visible typedef lookup reports the
-structured `QualifiedNameKey`/`VisibleNameSource::Namespace` carrier while the
-existing TextId-less and rendered-storage miss checks continue to reject
-fallback promotion.
+The focused parser test now seeds only legacy rendered `ns::Target` var-type
+storage and proves the using-import alias remains unresolved when the
+structured target key has no value/function binding.
 
 ## Suggested Next
 
-Execute one more focused Step 2.3 parser-owned cleanup packet against a
-visible-name `compatibility_spelling` / `compatibility_name` path where existing
-`VisibleNameResult`, `TextId`, or `QualifiedNameKey` metadata can carry the
-semantic answer without adding rendered rediscovery helpers.
+Execute the next focused Step 2.3 parser-owned cleanup packet against a
+remaining visible-name `compatibility_spelling` / `compatibility_name` path
+where existing `VisibleNameResult`, `TextId`, or `QualifiedNameKey` metadata can
+carry the semantic answer without adding rendered rediscovery helpers.
 
 ## Watchouts
 
@@ -62,11 +61,14 @@ semantic answer without adding rendered rediscovery helpers.
   `token_spelling`, synthetic token production, diagnostics, display/final
   spelling, and compatibility paths are not automatically Step 2 violations;
   classify them by concrete semantic lookup authority before removing them.
+- A direct `frontend_parser_tests` binary run is outside the delegated proof and
+  currently still stops later on qualified `TypeSpec` metadata expectations; the
+  required C++ parser/sema/negative ctest subset is green.
 
 ## Proof
 
 Passed:
 `(cmake --build build --target c4cll && ctest --test-dir build -R 'cpp_(positive_parser|positive_sema|negative_tests)' --output-on-failure) > test_after.log 2>&1`
 
-Proof log: regenerated canonical `test_after.log` after this visible typedef
-fallback guard removal packet (926 tests passed).
+Proof log: regenerated canonical `test_after.log` after this using-declaration
+value import fallback removal packet (926 tests passed).
