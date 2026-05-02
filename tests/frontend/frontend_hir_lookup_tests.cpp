@@ -1103,6 +1103,70 @@ void test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag() {
               "consteval alignof should prefer structured HIR owner layout over stale rendered tag");
 }
 
+void test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  c4c::Arena arena;
+
+  c4c::Node* record_node = arena.alloc_array<c4c::Node>(1);
+  record_node->kind = c4c::NK_STRUCT_DEF;
+  record_node->name = arena.strdup("RealBuiltinLayout");
+  record_node->unqualified_name = arena.strdup("RealBuiltinLayout");
+  record_node->unqualified_text_id = module.link_name_texts->intern("RealBuiltinLayout");
+  record_node->namespace_context_id = 21;
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealBuiltinLayout";
+  real_def.tag_text_id = record_node->unqualified_text_id;
+  real_def.ns_qual.context_id = record_node->namespace_context_id;
+  real_def.size_bytes = 40;
+  real_def.align_bytes = 16;
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(real_def);
+  module.index_struct_def_owner(owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleBuiltinLayout";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleBuiltinLayout");
+  stale_def.ns_qual.context_id = record_node->namespace_context_id;
+  stale_def.size_bytes = 4;
+  stale_def.align_bytes = 4;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  query.tag = "StaleBuiltinLayout";
+  query.tag_text_id = record_node->unqualified_text_id;
+  query.namespace_context_id = record_node->namespace_context_id;
+  query.record_def = record_node;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  c4c::Node sizeof_node{};
+  sizeof_node.kind = c4c::NK_SIZEOF_TYPE;
+  sizeof_node.type = query;
+  const c4c::hir::ExprId sizeof_id =
+      lowerer.lower_builtin_sizeof_type(nullptr, &sizeof_node);
+  const c4c::hir::Expr* sizeof_expr = module.find_expr(sizeof_id);
+  const auto* sizeof_lit =
+      sizeof_expr ? std::get_if<c4c::hir::IntLiteral>(&sizeof_expr->payload) : nullptr;
+  expect_true(sizeof_lit && sizeof_lit->value == 40,
+              "HIR builtin sizeof should prefer structured owner layout over stale rendered tag");
+
+  c4c::Node alignof_node{};
+  alignof_node.kind = c4c::NK_ALIGNOF_TYPE;
+  alignof_node.type = query;
+  const c4c::hir::ExprId alignof_id =
+      lowerer.lower_builtin_alignof_type(nullptr, &alignof_node);
+  const c4c::hir::Expr* alignof_expr = module.find_expr(alignof_id);
+  const auto* alignof_lit =
+      alignof_expr ? std::get_if<c4c::hir::IntLiteral>(&alignof_expr->payload) : nullptr;
+  expect_true(alignof_lit && alignof_lit->value == 16,
+              "HIR builtin alignof should prefer structured owner layout over stale rendered tag");
+}
+
 }  // namespace
 
 int main() {
@@ -1118,6 +1182,7 @@ int main() {
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();
   test_static_member_nttp_const_eval_prefers_text_id_binding();
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
+  test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

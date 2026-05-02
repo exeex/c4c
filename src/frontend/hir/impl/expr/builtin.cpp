@@ -1,6 +1,7 @@
 #include "expr.hpp"
 
 #include <algorithm>
+#include <optional>
 
 namespace c4c::hir {
 
@@ -10,18 +11,14 @@ class LayoutQueries {
  public:
   explicit LayoutQueries(const hir::Module& module) : module_(module) {}
 
-  int struct_size_bytes(const char* tag) const {
-    if (!tag || !tag[0]) return 4;
-    const auto it = module_.struct_defs.find(tag);
-    if (it == module_.struct_defs.end()) return 4;
-    return it->second.size_bytes;
+  int struct_size_bytes(const TypeSpec& ts) const {
+    const HirStructDef* layout = find_struct_layout(ts);
+    return layout ? layout->size_bytes : 4;
   }
 
-  int struct_align_bytes(const char* tag) const {
-    if (!tag || !tag[0]) return 4;
-    const auto it = module_.struct_defs.find(tag);
-    if (it == module_.struct_defs.end()) return 4;
-    return std::max(1, it->second.align_bytes);
+  int struct_align_bytes(const TypeSpec& ts) const {
+    const HirStructDef* layout = find_struct_layout(ts);
+    return layout ? std::max(1, layout->align_bytes) : 4;
   }
 
   int type_size_bytes(const TypeSpec& ts) const {
@@ -37,7 +34,7 @@ class LayoutQueries {
     if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
     if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
     if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
-      return struct_size_bytes(ts.tag);
+      return struct_size_bytes(ts);
     }
     return sizeof_type_spec(ts);
   }
@@ -51,7 +48,7 @@ class LayoutQueries {
     } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
       natural = 8;
     } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
-      natural = struct_align_bytes(ts.tag);
+      natural = struct_align_bytes(ts);
     } else {
       natural = std::max(1, static_cast<int>(alignof_type_spec(ts)));
     }
@@ -60,6 +57,63 @@ class LayoutQueries {
   }
 
  private:
+  static std::optional<HirRecordOwnerKey> record_owner_key_from_node(
+      const Node* record_def) {
+    if (!record_def || record_def->kind != NK_STRUCT_DEF ||
+        record_def->unqualified_text_id == kInvalidText) {
+      return std::nullopt;
+    }
+
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = record_def->namespace_context_id;
+    ns_qual.is_global_qualified = record_def->is_global_qualified;
+    if (record_def->qualifier_text_ids && record_def->n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          record_def->qualifier_text_ids,
+          record_def->qualifier_text_ids + record_def->n_qualifier_segments);
+    }
+
+    HirRecordOwnerKey key =
+        make_hir_record_owner_key(ns_qual, record_def->unqualified_text_id);
+    if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+    return key;
+  }
+
+  static std::optional<HirRecordOwnerKey> record_owner_key_from_typespec(
+      const TypeSpec& ts) {
+    if (auto key = record_owner_key_from_node(ts.record_def); key.has_value()) {
+      return key;
+    }
+    if (ts.namespace_context_id < 0 || ts.tag_text_id == kInvalidText) {
+      return std::nullopt;
+    }
+
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = ts.namespace_context_id;
+    ns_qual.is_global_qualified = ts.is_global_qualified;
+    if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          ts.qualifier_text_ids,
+          ts.qualifier_text_ids + ts.n_qualifier_segments);
+    }
+
+    HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+    if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+    return key;
+  }
+
+  const HirStructDef* find_struct_layout(const TypeSpec& ts) const {
+    if (auto key = record_owner_key_from_typespec(ts); key.has_value()) {
+      if (const HirStructDef* structured =
+              module_.find_struct_def_by_owner_structured(*key)) {
+        return structured;
+      }
+    }
+    if (!ts.tag || !ts.tag[0]) return nullptr;
+    const auto it = module_.struct_defs.find(ts.tag);
+    return it == module_.struct_defs.end() ? nullptr : &it->second;
+  }
+
   static TypeSpec array_element_type(const TypeSpec& ts) {
     TypeSpec elem = ts;
     elem.array_rank--;
