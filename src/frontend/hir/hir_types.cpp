@@ -2158,9 +2158,27 @@ void Lowerer::lower_struct_def(const Node* sd) {
           PendingTemplateTypeKind::BaseType,
           std::string("struct-base:") + (tag ? tag : ""));
     }
-    const std::optional<std::string> base_tag =
+    std::optional<std::string> rendered_base_tag =
         module_ ? rendered_typespec_tag_for_compatibility(*module_, base)
                 : std::nullopt;
+    std::optional<std::string> base_tag;
+    if (rendered_base_tag && !rendered_base_tag->empty() &&
+        module_->struct_defs.count(*rendered_base_tag)) {
+      base_tag = rendered_base_tag;
+    }
+    const HirStructDef* base_layout = find_struct_def_for_layout_type(base);
+    if ((!base_tag || base_tag->empty()) && base_layout) {
+      base_tag = base_layout->tag;
+    }
+    if ((!base_tag || base_tag->empty()) && base.record_def &&
+        base.record_def->kind == NK_STRUCT_DEF && base.record_def->name &&
+        base.record_def->name[0]) {
+      base_tag = base.record_def->name;
+    }
+    if ((!base_tag || base_tag->empty()) && rendered_base_tag &&
+        !rendered_base_tag->empty()) {
+      base_tag = rendered_base_tag;
+    }
     if (!resolve_struct_member_typedef_if_ready(&base) &&
         base.deferred_member_type_name && base_tag && !base_tag->empty()) {
       TypeBindings empty_tb;
@@ -2171,11 +2189,20 @@ void Lowerer::lower_struct_def(const Node* sd) {
     }
     if (base_tag && !base_tag->empty()) {
       def.base_tags.push_back(*base_tag);
-      const TextId base_tag_text_id =
-          base.tag_text_id != kInvalidText
-              ? base.tag_text_id
-              : make_text_id(*base_tag,
-                             module_ ? module_->link_name_texts.get() : nullptr);
+      TextId base_tag_text_id = kInvalidText;
+      if (base.tag_text_id != kInvalidText && module_ && module_->link_name_texts) {
+        const std::string_view rendered_text =
+            module_->link_name_texts->lookup(base.tag_text_id);
+        if (rendered_text == *base_tag) base_tag_text_id = base.tag_text_id;
+      }
+      if (base_tag_text_id == kInvalidText && base_layout &&
+          base_layout->tag_text_id != kInvalidText) {
+        base_tag_text_id = base_layout->tag_text_id;
+      }
+      if (base_tag_text_id == kInvalidText) {
+        base_tag_text_id = make_text_id(
+            *base_tag, module_ ? module_->link_name_texts.get() : nullptr);
+      }
       def.base_tag_text_ids.push_back(
           base_tag_text_id);
     }

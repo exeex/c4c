@@ -8,11 +8,14 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared the
-`src/frontend/hir/impl/expr/object.cpp` `lower_new_expr` allocation-owner
-family. Class-specific `operator new` lookup and constructor overload lookup
-now share the structured `resolve_struct_method_lookup_owner_tag` result
-instead of directly gating on or indexing with `TypeSpec::tag`.
+Step 4 - Probe Field Removal And Split Boundaries fixed the full-suite
+inherited-base regression exposed after `bd59d1237` while preserving the
+`lower_new_expr` allocation-owner and constructor lookup migration. The root
+cause was base-layout metadata accepting a parser-owned `TypeSpec::tag_text_id`
+through the HIR link-name text table, which could render `Base` as an unrelated
+member spelling such as `value`; base tags now validate rendered compatibility
+against known layouts and recover from structured base layout or `record_def`
+metadata before falling back to rendered spelling.
 
 ## Suggested Next
 
@@ -64,8 +67,14 @@ surfaces.
   compatibility spelling, then the deletion-safe legacy payload helper.
 - Base-layout metadata in `lower_struct_def` no longer reads `base.tag`
   directly while populating `HirStructDef::base_tags`; `base_tags` remains
-  rendered final spelling/compatibility storage, and `base_tag_text_ids` now
-  prefers existing TypeSpec TextId metadata.
+  rendered final spelling/compatibility storage, and `base_tag_text_ids` must
+  only reuse TypeSpec TextId metadata after validating it against the chosen
+  base tag.
+- Base-layout metadata must not trust parser-owned TextIds through the HIR
+  link-name text table unless the rendered text matches the chosen base tag.
+  Keep the structured layout/`record_def` recovery before accepting a rendered
+  compatibility spelling, or inherited-base lookup can silently point at an
+  unrelated member name.
 - `hir_lowering_core.cpp` no longer has direct `TypeSpec::tag` reads in generic
   record compatibility or local layout TypeSpec lookup.
 - The base layout path still uses `HirStructDef::base_tags` as final spelling
@@ -156,21 +165,21 @@ surfaces.
 
 Executor proof:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(cpp_positive_sema_inherited_(base_aggregate_init|base_member_access|base_method_call|implicit_member_out_of_class|static_member_lookup_simple)_runtime_cpp|frontend_hir_lookup_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
 Result: command exited 0 and `test_after.log` was preserved as the canonical
-executor proof log. The build passed, and CTest passed 73 of 73 delegated
-tests: `frontend_hir_lookup_tests` and all `cpp_hir_.*` tests.
+executor proof log. The build passed, and CTest passed 78 of 78 delegated
+tests, including the five inherited-base runtime regressions,
+`frontend_hir_lookup_tests`, and all `cpp_hir_.*` tests.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_object_new_expr.log 2>&1`, and restored
-the temporary edit. The probe no longer reports the later
-initializer/aggregate type-comparison cluster or `lower_new_expr` allocation
-owner/constructor lookup as the first blocker. The first residual error is
-direct `TypeSpec::tag` use in `lower_delete_expr` at
+/tmp/c4c_typespec_tag_deletion_probe_step4_regression_fix.log 2>&1`, and restored
+the temporary edit. The probe still does not report `lower_new_expr`
+allocation-owner or constructor lookup as a blocker. The first residual error
+is direct `TypeSpec::tag` use in `lower_delete_expr` at
 `src/frontend/hir/impl/expr/object.cpp:958`, with later residual errors in
 `src/frontend/hir/impl/inspect/printer.cpp`,
 `src/frontend/hir/impl/expr/operator.cpp`, and
