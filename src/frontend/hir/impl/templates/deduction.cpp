@@ -34,6 +34,11 @@ bool typespec_has_structured_nominal_identity_for_deduction(const TypeSpec& ts) 
          typespec_has_complete_text_identity_for_deduction(ts);
 }
 
+bool typespec_base_requires_nominal_identity_for_deduction(TypeBase base) {
+  return base == TB_STRUCT || base == TB_UNION || base == TB_ENUM ||
+         base == TB_TYPEDEF;
+}
+
 std::optional<bool> structured_typespec_nominal_match_for_deduction(
     const TypeSpec& existing_ts,
     const TypeSpec& deduced_ts) {
@@ -71,13 +76,6 @@ std::optional<bool> structured_typespec_nominal_match_for_deduction(
   return std::nullopt;
 }
 
-bool typespec_rendered_tags_match_for_deduction(const TypeSpec& existing_ts,
-                                                const TypeSpec& deduced_ts) {
-  if (!existing_ts.tag && !deduced_ts.tag) return true;
-  if (!existing_ts.tag || !deduced_ts.tag) return false;
-  return std::strcmp(existing_ts.tag, deduced_ts.tag) == 0;
-}
-
 bool typespec_nominal_match_for_deduction(const TypeSpec& existing_ts,
                                           const TypeSpec& deduced_ts) {
   if (std::optional<bool> structured_match =
@@ -85,7 +83,77 @@ bool typespec_nominal_match_for_deduction(const TypeSpec& existing_ts,
                                                           deduced_ts)) {
     return *structured_match;
   }
-  return typespec_rendered_tags_match_for_deduction(existing_ts, deduced_ts);
+  return !typespec_base_requires_nominal_identity_for_deduction(existing_ts.base) &&
+         !typespec_base_requires_nominal_identity_for_deduction(deduced_ts.base);
+}
+
+TextId template_param_carrier_text_id_for_deduction(const TypeSpec& ts) {
+  if (ts.template_param_text_id != kInvalidText) return ts.template_param_text_id;
+  return ts.tag_text_id;
+}
+
+std::optional<std::string> template_type_param_binding_name_for_deduction(
+    const TypeSpec& ts,
+    const Node* fn_def) {
+  if (ts.base != TB_TYPEDEF || !fn_def || fn_def->n_template_params <= 0 ||
+      !fn_def->template_param_names) {
+    return std::nullopt;
+  }
+  if (ts.template_param_index >= 0 &&
+      ts.template_param_index < fn_def->n_template_params &&
+      fn_def->template_param_names[ts.template_param_index] &&
+      !(fn_def->template_param_is_nttp &&
+        fn_def->template_param_is_nttp[ts.template_param_index])) {
+    const bool owner_matches =
+        ts.template_param_owner_text_id != kInvalidText &&
+        fn_def->unqualified_text_id != kInvalidText &&
+        ts.template_param_owner_text_id == fn_def->unqualified_text_id &&
+        (ts.template_param_owner_namespace_context_id < 0 ||
+         ts.template_param_owner_namespace_context_id == fn_def->namespace_context_id);
+    if (owner_matches) {
+      return std::string(fn_def->template_param_names[ts.template_param_index]);
+    }
+  }
+
+  const TextId carrier_text_id = template_param_carrier_text_id_for_deduction(ts);
+  if (carrier_text_id == kInvalidText || !fn_def->template_param_name_text_ids) {
+    return std::nullopt;
+  }
+  for (int i = 0; i < fn_def->n_template_params; ++i) {
+    if (!fn_def->template_param_names[i]) continue;
+    if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) {
+      continue;
+    }
+    if (fn_def->template_param_name_text_ids[i] == carrier_text_id) {
+      return std::string(fn_def->template_param_names[i]);
+    }
+  }
+  return std::nullopt;
+}
+
+const TypeSpec* find_enclosing_type_binding_for_deduction(
+    const TypeSpec& ts,
+    const TypeBindings* enclosing_bindings,
+    const TextTable* texts) {
+  if (ts.base != TB_TYPEDEF || !enclosing_bindings || enclosing_bindings->empty()) {
+    return nullptr;
+  }
+  const TextId carrier_text_id = template_param_carrier_text_id_for_deduction(ts);
+  if (carrier_text_id != kInvalidText && texts) {
+    const std::string key(texts->lookup(carrier_text_id));
+    if (!key.empty()) {
+      auto resolved = enclosing_bindings->find(key);
+      if (resolved != enclosing_bindings->end()) return &resolved->second;
+    }
+  }
+  if (carrier_text_id == kInvalidText && ts.template_param_index < 0) return nullptr;
+  const TypeSpec* unique = nullptr;
+  for (const auto& [key, value] : *enclosing_bindings) {
+    if (key.find('#') != std::string::npos) continue;
+    if (unique) return nullptr;
+    unique = &value;
+  }
+  return unique;
 }
 
 }  // namespace
@@ -110,9 +178,10 @@ TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_d
     if (is_pack) {
       for (int pack_index = 0; arg_index < total_args; ++arg_index, ++pack_index) {
         TypeSpec arg_ts = call_var->template_arg_types[arg_index];
-        if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && enclosing_bindings) {
-          auto resolved = enclosing_bindings->find(arg_ts.tag);
-          if (resolved != enclosing_bindings->end()) arg_ts = resolved->second;
+        if (const TypeSpec* resolved = find_enclosing_type_binding_for_deduction(
+                arg_ts, enclosing_bindings,
+                module_ ? module_->link_name_texts.get() : nullptr)) {
+          arg_ts = *resolved;
         }
         bindings[pack_binding_name(fn_def->template_param_names[i], pack_index)] = arg_ts;
       }
@@ -120,9 +189,10 @@ TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_d
     }
     if (arg_index >= total_args) continue;
     TypeSpec arg_ts = call_var->template_arg_types[arg_index++];
-    if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && enclosing_bindings) {
-      auto resolved = enclosing_bindings->find(arg_ts.tag);
-      if (resolved != enclosing_bindings->end()) arg_ts = resolved->second;
+    if (const TypeSpec* resolved = find_enclosing_type_binding_for_deduction(
+            arg_ts, enclosing_bindings,
+            module_ ? module_->link_name_texts.get() : nullptr)) {
+      arg_ts = *resolved;
     }
     bindings[fn_def->template_param_names[i]] = arg_ts;
   }
@@ -411,17 +481,17 @@ TypeBindings Lowerer::try_deduce_template_type_args(
     if (!param || !arg) continue;
 
     const TypeSpec& param_ts = param->type;
+    const std::optional<std::string> param_binding_name =
+        template_type_param_binding_name_for_deduction(param_ts, fn_def);
 
     const bool is_forwarding_reference_param =
-        param_ts.base == TB_TYPEDEF && param_ts.tag &&
-        type_param_names.count(param_ts.tag) &&
+        param_binding_name &&
         param_ts.ptr_level == 0 && param_ts.array_rank == 0 &&
         param_ts.is_rvalue_ref &&
         !param_ts.is_const && !param_ts.is_volatile;
 
     const bool is_dependent_rvalue_ref_param =
-        param_ts.base == TB_TYPEDEF && param_ts.tag &&
-        type_param_names.count(param_ts.tag) &&
+        param_binding_name &&
         param_ts.ptr_level == 0 && param_ts.array_rank == 0 &&
         param_ts.is_rvalue_ref;
 
@@ -433,7 +503,7 @@ TypeBindings Lowerer::try_deduce_template_type_args(
         deduced_ts.is_lvalue_ref = true;
         deduced_ts.is_rvalue_ref = false;
       }
-      auto existing = deduced.find(param_ts.tag);
+      auto existing = deduced.find(*param_binding_name);
       if (existing != deduced.end()) {
         if (existing->second.base != deduced_ts.base ||
             existing->second.ptr_level != deduced_ts.ptr_level ||
@@ -443,18 +513,17 @@ TypeBindings Lowerer::try_deduce_template_type_args(
           return {};
         }
       } else {
-        deduced[param_ts.tag] = deduced_ts;
+        deduced[*param_binding_name] = deduced_ts;
       }
     } else if (is_dependent_rvalue_ref_param && is_ast_lvalue(arg)) {
       rejected_template_calls_.insert(call_node);
       return {};
-    } else if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
-               type_param_names.count(param_ts.tag) &&
+    } else if (param_binding_name &&
                param_ts.ptr_level == 0 && param_ts.array_rank == 0) {
       auto arg_type = try_infer_arg_type_for_deduction(arg, enclosing_fn);
       if (!arg_type) continue;
       TypeSpec deduced_ts = *arg_type;
-      auto existing = deduced.find(param_ts.tag);
+      auto existing = deduced.find(*param_binding_name);
       if (existing != deduced.end()) {
         if (existing->second.base != deduced_ts.base ||
             existing->second.ptr_level != deduced_ts.ptr_level ||
@@ -462,23 +531,22 @@ TypeBindings Lowerer::try_deduce_template_type_args(
           return {};
         }
       } else {
-        deduced[param_ts.tag] = deduced_ts;
+        deduced[*param_binding_name] = deduced_ts;
       }
-    } else if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
-               type_param_names.count(param_ts.tag) &&
+    } else if (param_binding_name &&
                param_ts.ptr_level > 0 && param_ts.array_rank == 0) {
       auto arg_type = try_infer_arg_type_for_deduction(arg, enclosing_fn);
       if (!arg_type || arg_type->ptr_level < param_ts.ptr_level) continue;
       TypeSpec deduced_ts = *arg_type;
       deduced_ts.ptr_level -= param_ts.ptr_level;
-      auto existing = deduced.find(param_ts.tag);
+      auto existing = deduced.find(*param_binding_name);
       if (existing != deduced.end()) {
         if (existing->second.base != deduced_ts.base ||
             existing->second.ptr_level != deduced_ts.ptr_level) {
           return {};
         }
       } else {
-        deduced[param_ts.tag] = deduced_ts;
+        deduced[*param_binding_name] = deduced_ts;
       }
     }
   }
