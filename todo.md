@@ -67,4 +67,6 @@ Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)' | tee test_after.log`.
 
 Result: build succeeded and the filtered CTest subset passed
-`885/885` tests. Fresh proof log: `test_after.log`.
+`885/885` tests. The accepted proof log was rolled forward from
+`test_after.log` to canonical `test_before.log` after the regression guard
+passed.
