@@ -595,6 +595,10 @@ class Lowerer {
       const FunctionCtx* ctx,
       long long* out_value,
       const char** out_debug_ref = nullptr);
+  bool try_eval_template_value_arg_expr(
+      const Node* expr,
+      const FunctionCtx* ctx,
+      long long* out_value);
 
   void realize_template_struct(TypeSpec& ts,
                                const Node* primary_tpl,

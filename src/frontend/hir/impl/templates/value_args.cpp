@@ -1,5 +1,6 @@
 #include "templates.hpp"
 
+#include <climits>
 #include <cstring>
 
 namespace c4c::hir {
@@ -151,6 +152,11 @@ namespace {
 std::string unqualified_name(const std::string& name) {
   const size_t split = name.rfind("::");
   return (split == std::string::npos) ? name : name.substr(split + 2);
+}
+
+std::string qualified_owner_name(const std::string& name) {
+  const size_t split = name.rfind("::");
+  return (split == std::string::npos) ? std::string{} : name.substr(0, split);
 }
 
 std::string family_root(const std::string& tag) {
@@ -404,6 +410,10 @@ bool Lowerer::resolve_ast_template_value_arg(
       *out_value = expr_value.as_int();
       return true;
     }
+    if (try_eval_template_value_arg_expr(ref->template_arg_exprs[index], ctx,
+                                         out_value)) {
+      return true;
+    }
   }
   if (ctx && nttp_name && nttp_name[0]) {
     auto it = ctx->nttp_bindings.find(nttp_name);
@@ -432,12 +442,156 @@ bool Lowerer::resolve_ast_template_value_arg(
   return ref->template_arg_values != nullptr;
 }
 
+bool Lowerer::try_eval_template_value_arg_expr(
+    const Node* expr,
+    const FunctionCtx* ctx,
+    long long* out_value) {
+  if (!expr || !out_value) return false;
+  LowererConstEvalStructuredMaps structured_maps;
+  ConstEvalEnv env = make_lowerer_consteval_env(
+      structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
+  if (ctx) env.nttp_bindings = &ctx->nttp_bindings;
+  if (auto value = evaluate_constant_expr(expr, env); value.ok()) {
+    *out_value = value.as_int();
+    return true;
+  }
+
+  switch (expr->kind) {
+    case NK_INT_LIT:
+    case NK_CHAR_LIT:
+      *out_value = expr->ival;
+      return true;
+    case NK_CAST:
+      return try_eval_template_value_arg_expr(expr->left, ctx, out_value);
+    case NK_UNARY: {
+      long long value = 0;
+      if (!expr->op || !try_eval_template_value_arg_expr(expr->left, ctx, &value)) {
+        return false;
+      }
+      if (std::strcmp(expr->op, "+") == 0) {
+        *out_value = value;
+        return true;
+      }
+      if (std::strcmp(expr->op, "-") == 0) {
+        *out_value = -value;
+        return true;
+      }
+      if (std::strcmp(expr->op, "~") == 0) {
+        *out_value = ~value;
+        return true;
+      }
+      if (std::strcmp(expr->op, "!") == 0) {
+        *out_value = !value;
+        return true;
+      }
+      return false;
+    }
+    case NK_BINOP: {
+      if (!expr->op) return false;
+      long long lhs = 0;
+      if (!try_eval_template_value_arg_expr(expr->left, ctx, &lhs)) return false;
+      if (std::strcmp(expr->op, "&&") == 0 && !lhs) {
+        *out_value = 0;
+        return true;
+      }
+      if (std::strcmp(expr->op, "||") == 0 && lhs) {
+        *out_value = 1;
+        return true;
+      }
+      long long rhs = 0;
+      if (!try_eval_template_value_arg_expr(expr->right, ctx, &rhs)) return false;
+      if (std::strcmp(expr->op, "+") == 0) *out_value = lhs + rhs;
+      else if (std::strcmp(expr->op, "-") == 0) *out_value = lhs - rhs;
+      else if (std::strcmp(expr->op, "*") == 0) *out_value = lhs * rhs;
+      else if (std::strcmp(expr->op, "/") == 0) {
+        if (rhs == 0) return false;
+        *out_value = lhs / rhs;
+      } else if (std::strcmp(expr->op, "%") == 0) {
+        if (rhs == 0) return false;
+        *out_value = lhs % rhs;
+      } else if (std::strcmp(expr->op, "<<") == 0) *out_value = lhs << rhs;
+      else if (std::strcmp(expr->op, ">>") == 0) *out_value = lhs >> rhs;
+      else if (std::strcmp(expr->op, "&") == 0) *out_value = lhs & rhs;
+      else if (std::strcmp(expr->op, "|") == 0) *out_value = lhs | rhs;
+      else if (std::strcmp(expr->op, "^") == 0) *out_value = lhs ^ rhs;
+      else if (std::strcmp(expr->op, "&&") == 0) *out_value = lhs && rhs;
+      else if (std::strcmp(expr->op, "||") == 0) *out_value = lhs || rhs;
+      else if (std::strcmp(expr->op, "==") == 0) *out_value = lhs == rhs;
+      else if (std::strcmp(expr->op, "!=") == 0) *out_value = lhs != rhs;
+      else if (std::strcmp(expr->op, "<") == 0) *out_value = lhs < rhs;
+      else if (std::strcmp(expr->op, "<=") == 0) *out_value = lhs <= rhs;
+      else if (std::strcmp(expr->op, ">") == 0) *out_value = lhs > rhs;
+      else if (std::strcmp(expr->op, ">=") == 0) *out_value = lhs >= rhs;
+      else return false;
+      return true;
+    }
+    case NK_TERNARY: {
+      long long cond = 0;
+      if (!try_eval_template_value_arg_expr(expr->cond, ctx, &cond)) return false;
+      return try_eval_template_value_arg_expr(cond ? expr->then_ : expr->else_,
+                                             ctx, out_value);
+    }
+    case NK_VAR: {
+      if (!expr->name || !expr->name[0]) return false;
+      if (ctx) {
+        auto it = ctx->nttp_bindings.find(expr->name);
+        if (it != ctx->nttp_bindings.end()) {
+          *out_value = it->second;
+          return true;
+        }
+      }
+      const std::string qname = expr->name;
+      const std::string member = unqualified_name(qname);
+      const std::string owner = qualified_owner_name(qname);
+      if (owner.empty() || member.empty()) return false;
+      if (auto value = try_eval_instantiated_struct_static_member_const(
+              owner, member)) {
+        *out_value = *value;
+        return true;
+      }
+      if (!(expr->has_template_args || expr->n_template_args > 0)) return false;
+      if (auto value = try_eval_template_static_member_const(
+              const_cast<FunctionCtx*>(ctx), owner, expr, member)) {
+        *out_value = *value;
+        return true;
+      }
+      return false;
+    }
+    default:
+      return false;
+  }
+}
+
 std::optional<long long> Lowerer::try_eval_template_static_member_const(
     FunctionCtx* ctx,
     const std::string& tpl_name,
     const Node* ref,
     const std::string& member) {
-  const Node* primary = find_template_struct_primary(tpl_name);
+  const Node* primary = nullptr;
+  if (ref && ref->qualifier_text_ids && ref->n_qualifier_segments > 0) {
+    const TextId owner_text_id =
+        ref->qualifier_text_ids[ref->n_qualifier_segments - 1];
+    if (owner_text_id != kInvalidText) {
+      NamespaceQualifier owner_ns;
+      owner_ns.context_id = ref->namespace_context_id;
+      owner_ns.is_global_qualified = ref->is_global_qualified;
+      owner_ns.segment_text_ids.reserve(ref->n_qualifier_segments - 1);
+      for (int i = 0; i + 1 < ref->n_qualifier_segments; ++i) {
+        if (ref->qualifier_text_ids[i] == kInvalidText) {
+          owner_ns.segment_text_ids.clear();
+          break;
+        }
+        owner_ns.segment_text_ids.push_back(ref->qualifier_text_ids[i]);
+      }
+      HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(owner_ns, owner_text_id);
+      if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+        auto it = template_struct_defs_by_owner_.find(owner_key);
+        if (it != template_struct_defs_by_owner_.end()) primary = it->second;
+      }
+    }
+  }
+  if (!primary) primary = find_template_struct_primary(tpl_name);
   if (!primary && tpl_name.find("::") == std::string::npos) {
     const Node* unique_match = nullptr;
     const std::string suffix = "::" + tpl_name;
@@ -455,6 +609,12 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
       }
     }
     primary = unique_match;
+  }
+  if (!primary && ref && ref->n_qualifier_segments > 0 &&
+      ref->qualifier_segments &&
+      ref->qualifier_segments[ref->n_qualifier_segments - 1]) {
+    primary = find_template_struct_primary(
+        ref->qualifier_segments[ref->n_qualifier_segments - 1]);
   }
   if (!primary || !ref) return std::nullopt;
 
@@ -502,6 +662,59 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
       arg.type = ts;
     }
     actual_args.push_back(arg);
+  }
+  if (primary->template_param_has_default &&
+      static_cast<int>(actual_args.size()) < primary->n_template_params) {
+    std::vector<std::pair<std::string, TypeSpec>> type_env;
+    std::vector<std::pair<std::string, long long>> nttp_env;
+    for (int i = 0; i < static_cast<int>(actual_args.size()) &&
+                    i < primary->n_template_params; ++i) {
+      if (!primary->template_param_names || !primary->template_param_names[i]) {
+        continue;
+      }
+      if (actual_args[i].is_value) {
+        nttp_env.push_back({primary->template_param_names[i], actual_args[i].value});
+      } else {
+        type_env.push_back({primary->template_param_names[i], actual_args[i].type});
+      }
+    }
+    for (int i = static_cast<int>(actual_args.size());
+         i < primary->n_template_params; ++i) {
+      if (!primary->template_param_has_default[i]) break;
+      HirTemplateArg arg{};
+      arg.is_value =
+          primary->template_param_is_nttp && primary->template_param_is_nttp[i];
+      if (arg.is_value) {
+        long long value = primary->template_param_default_values
+                              ? primary->template_param_default_values[i]
+                              : 0;
+        if (value == LLONG_MIN) {
+          if (!eval_deferred_nttp_expr_hir(
+                  primary, i, type_env, nttp_env, nullptr, &value)) {
+            break;
+          }
+        }
+        arg.value = value;
+        if (primary->template_param_names && primary->template_param_names[i]) {
+          nttp_env.push_back({primary->template_param_names[i], value});
+        }
+      } else if (primary->template_param_default_types) {
+        TypeSpec ts = primary->template_param_default_types[i];
+        TypeBindings type_bindings;
+        NttpBindings nttp_bindings;
+        for (const auto& [name, type] : type_env) type_bindings[name] = type;
+        for (const auto& [name, value] : nttp_env) nttp_bindings[name] = value;
+        seed_and_resolve_pending_template_type_if_needed(
+            ts, type_bindings, nttp_bindings, ref,
+            PendingTemplateTypeKind::DeclarationType,
+            "template-static-member-default");
+        arg.type = ts;
+        if (primary->template_param_names && primary->template_param_names[i]) {
+          type_env.push_back({primary->template_param_names[i], ts});
+        }
+      }
+      actual_args.push_back(arg);
+    }
   }
 
   if (member == "value" && actual_args.size() == 1 && !actual_args[0].is_value) {
@@ -558,6 +771,17 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
                  : 0LL;
     }
   }
+  TemplateStructEnv env = build_template_struct_env(primary);
+  SelectedTemplateStructPattern selected =
+      select_template_struct_pattern_hir(actual_args, env);
+  if (selected.selected_pattern) {
+    long long value = 0;
+    if (eval_struct_static_member_value_hir(
+            selected.selected_pattern, struct_def_nodes_, member,
+            &selected.nttp_bindings, &value)) {
+      return value;
+    }
+  }
   return std::nullopt;
 }
 
@@ -612,6 +836,23 @@ std::optional<long long> Lowerer::try_eval_instantiated_struct_static_member_con
                    canonical_type_str(actual_args[1].type)
                ? 1LL
                : 0LL;
+  }
+  NttpBindings selected_nttp_bindings;
+  if (owner->template_param_names) {
+    for (int i = 0; i < owner->n_template_args && i < owner->n_template_params; ++i) {
+      if (!owner->template_param_is_nttp || !owner->template_param_is_nttp[i]) {
+        continue;
+      }
+      const char* param_name = owner->template_param_names[i];
+      if (!param_name || !param_name[0]) continue;
+      selected_nttp_bindings[param_name] =
+          owner->template_arg_values ? owner->template_arg_values[i] : 0;
+    }
+  }
+  long long value = 0;
+  if (eval_struct_static_member_value_hir(
+          owner, struct_def_nodes_, member, &selected_nttp_bindings, &value)) {
+    return value;
   }
   return std::nullopt;
 }

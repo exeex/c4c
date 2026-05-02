@@ -8,26 +8,25 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 extended the parser-to-Sema static-member metadata handoff for
-parser-generated `NK_VAR` references from simple/alias owners to nested record
-owners such as `Outer::Inner::value`.
+Step 4 repaired the downstream HIR constant-evaluation gap exposed by the
+static-member metadata carrier: template value arguments such as
+`Count<3>::value + 1` now evaluate through structured AST/value-argument
+carriers instead of falling back to zero or rendered owner lookup.
 
-The parser static-member owner canonicalizer now resolves the owner path by
-splitting any namespace prefix from the first record segment, then walking
-nested record carriers through `TypeSpec::record_def` on the owning record's
-member field. The generated reference keeps the structured final owner
-`TextId`, member `unqualified_text_id`, and owner namespace context before Sema
-sees the node. The focused test mutates the rendered owner path and member
-spelling after parsing; Sema still validates through the structured
-owner/member metadata.
+HIR template value-argument materialization now evaluates
+`TemplateArgRef::type.array_size_expr` with the current type and NTTP binding
+environment. The lowerer-owned fallback handles ordinary integer operators,
+template static-member constants, instantiated template static members such as
+`Count_N_3::value`, and missing default NTTPs before selecting the static-member
+owner pattern. Parser/Sema owner metadata remains authoritative; no expectation
+downgrades or named-test shortcuts were added.
 
 ## Suggested Next
 
-Continue Step 4 by probing namespace-qualified nested static-member owners
-(`Ns::Outer::Inner::value`) and same-name nested owners in different enclosing
-records. If Sema still only keys static members by namespace plus final owner
-`TextId`, split that ambiguity into the next carrier packet instead of
-recovering through rendered qualified text.
+Continue Step 4 with a narrow probe for namespace-qualified template
+static-member value arguments and nested-owner value arguments that combine
+type bindings with NTTP defaults. Keep the probe on structured
+`TemplateArgRef`/`NK_VAR` carriers; do not reintroduce rendered owner parsing.
 
 ## Watchouts
 
@@ -78,11 +77,19 @@ recovering through rendered qualified text.
   owner namespace context plus final owner `TextId`. This packet repairs the
   parser carrier for available nested record identity; it does not add an
   enclosing-record path to the Sema key.
+- HIR template value-argument evaluation now has a lowerer-owned recursive
+  fallback for structured expression nodes after generic consteval misses. Keep
+  future extensions semantic and carrier-driven; do not broaden `$expr:` debug
+  text compatibility to cover structured-carrier misses.
+- The `cpp_positive_sema_template_nttp_default_runtime_cpp` proof case covers
+  the default-NTTP side of this path: static-member value expressions must carry
+  enclosing type bindings when evaluating defaults such as
+  `is_void<T>::value || is_void<T>::value`.
 
 ## Proof
 
 Ran the delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp|cpp_hir_template_struct_arg_materialization|cpp_hir_template_value_arg_static_member_trait)$' | tee test_after.log`.
 
-Result: build completed successfully; CTest passed `886/886` matched tests.
+Result: build completed successfully; CTest passed `888/888` matched tests.
 Final proof log path: `test_after.log`.

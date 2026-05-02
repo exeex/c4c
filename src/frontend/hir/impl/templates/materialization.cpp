@@ -64,6 +64,8 @@ struct HirTemplateArgMaterializer {
                      const std::vector<std::pair<std::string, TypeSpec>>&,
                      const std::vector<std::pair<std::string, long long>>&,
                      const std::string*, long long*)> eval_deferred_nttp;
+  std::function<bool(const Node*, const TypeBindings&, const NttpBindings&, long long*)>
+      eval_template_value_expr;
   std::function<void(TypeSpec&)> resolve_pending_type;
   std::function<std::string(const std::string&, int)> make_pack_name;
   ResolvedTemplateArgs result;
@@ -374,6 +376,23 @@ bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
     if (ref.kind != TemplateArgKind::Value) return false;
     const std::string debug_text =
         ref.debug_text ? std::string(ref.debug_text) : std::string{};
+    if (ref.type.array_size_expr) {
+      long long eval_val = 0;
+      TypeBindings expr_type_bindings = tpl_bindings;
+      for (const auto& [name, type] : result.type_bindings) {
+        expr_type_bindings[name] = type;
+      }
+      NttpBindings expr_nttp_bindings = nttp_bindings;
+      for (const auto& [name, val] : result.nttp_bindings) {
+        expr_nttp_bindings[name] = val;
+      }
+      if (eval_template_value_expr &&
+          eval_template_value_expr(ref.type.array_size_expr, expr_type_bindings,
+                                   expr_nttp_bindings, &eval_val)) {
+        out_arg->value = eval_val;
+        return true;
+      }
+    }
     if (!debug_text.empty() && is_deferred_nttp_expr_ref(debug_text)) {
       long long eval_val = 0;
       std::string expr = deferred_nttp_expr_text(debug_text);
@@ -598,6 +617,13 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
              long long* out) {
         return eval_deferred_nttp_expr_hir(
             owner_tpl, param_idx, type_env, nttp_env, expr_override, out);
+      },
+      [this](const Node* expr, const TypeBindings& type_env,
+             const NttpBindings& nttp_env, long long* out) {
+        FunctionCtx expr_ctx;
+        expr_ctx.tpl_bindings = type_env;
+        expr_ctx.nttp_bindings = nttp_env;
+        return try_eval_template_value_arg_expr(expr, &expr_ctx, out);
       },
       [this, &tpl_bindings, &nttp_bindings](TypeSpec& ts) {
         seed_and_resolve_pending_template_type_if_needed(
