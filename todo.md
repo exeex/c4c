@@ -8,47 +8,40 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries reran the controlled
-`TypeSpec::tag` deletion probe after clearing the `builtin.cpp` layout
-fallback. The temporary edit removed `const char* tag` from
-`src/frontend/parser/ast.hpp`, ran `cmake --build --preset default` with
-pipefail, captured the current first frontend/HIR compile-failure clusters, and
-then restored `ast.hpp` to the pre-probe buildable state.
+Step 4 - Probe Field Removal And Split Boundaries attempted the bounded
+`src/frontend/hir/hir_functions.cpp` signature/template-binding migration and
+stopped on a real carrier boundary. A narrow prototype made
+`substitute_signature_template_type` prefer `template_param_text_id` /
+`tag_text_id`-derived binding keys and bridged callable template parameter
+metadata from callable nodes into module TextIds. That repaired ordinary
+template function signature substitution and parameter-pack expansion, but it
+regressed existing deferred member-typedef signature cases such as
+`cpp_hir_template_member_owner_signature_local`,
+`cpp_hir_template_member_owner_field_and_local`, and
+`cpp_hir_template_member_owner_decl_and_cast`.
 
-Fifth deletion-probe result: the build still stops in frontend/HIR compilation
-before reaching LIR/BIR/backend. Cleared since the fourth probe:
-`src/frontend/hir/impl/expr/builtin.cpp::LayoutQueries::find_struct_layout` no
-longer appears as a direct `TypeSpec::tag` failure cluster, so `builtin.cpp`
-is absent from the current first failure set. Current first remaining clusters
-are:
+Blocker: the failing member-typedef signature path still depends on rendered
+owner/type spellings in `TypeSpec::tag` to seed or resolve
+`typename wrapper<T>::alias` / `typename holder<T>::alias` style types. In this
+file, existing structured carriers (`template_param_text_id`, `tag_text_id`,
+`tpl_struct_origin_key`, and callable template parameter TextIds) are not
+enough to recover the owner spelling needed by the deferred member-typedef
+resolver without either keeping rendered `TypeSpec::tag` compatibility or
+widening into the deferred member-typedef/template owner machinery outside the
+owned route.
 
-- `src/frontend/hir/hir_functions.cpp`: mixed HIR semantic/template-binding and
-  compatibility surfaces, including zero-sized struct return normalization,
-  `substitute_signature_template_type`, callable return/parameter preparation,
-  member typedef lookup, and pack binding name parsing.
-- `src/frontend/hir/hir_lowering_core.cpp`: mixed semantic/display surfaces,
-  including `generic_type_compatible`, local layout-size/layout-align helpers,
-  and base-layout scratch TypeSpec construction.
-- `src/frontend/hir/hir_build.cpp`: overload collection parity still compares
-  record/union argument tags as rendered strings.
-- `src/frontend/hir/hir_types.cpp`: broad HIR semantic/display cluster,
-  including typedef-to-struct compatibility, struct method owner recovery,
-  method lookup parity, layout fallback, inherited field/base construction,
-  member symbol lookup, base tag storage/final spelling, generic type
-  inference, template binding fallback, and member-call return recovery.
-- `src/frontend/hir/impl/expr/call.cpp`: HIR call-lowering cluster for template
-  struct calls, aggregate initializer parity, pack expansion, member calls,
-  ordinary calls, synthetic `this` TypeSpec construction, and consteval call
-  argument template binding fallback.
+The unsafe prototype was reverted before return, leaving implementation files
+buildable. Durable output for this packet is this blocker classification in
+`todo.md`.
 
 ## Suggested Next
 
 Continue Step 4 with one bounded frontend/HIR compile-failure cluster
-migration. Suggested next packet: clear the `hir_functions.cpp`
-`substitute_signature_template_type` / callable signature template-binding
-surface by using existing structured type-parameter metadata before any
-rendered binding-name compatibility, or explicitly demote the no-metadata
-pieces needed for the future no-tag contract.
+migration, but do not retry `hir_functions.cpp` signature/member-typedef
+handoff in isolation. Suggested next packet: migrate or add a structured owner
+carrier in the deferred member-typedef/template owner route so
+`typename wrapper<T>::alias` can be resolved without rendered `TypeSpec::tag`,
+then return to `hir_functions.cpp::substitute_signature_template_type`.
 
 ## Watchouts
 
@@ -94,6 +87,11 @@ pieces needed for the future no-tag contract.
   Remaining first-probe clusters are HIR call-lowering helpers and mixed HIR
   semantic/display consumers in `hir_functions.cpp`, `hir_lowering_core.cpp`,
   `hir_build.cpp`, and `hir_types.cpp`.
+- `hir_functions.cpp::substitute_signature_template_type` cannot be completed
+  safely as a standalone slice because deferred member-typedef signature
+  lowering lacks a structured owner spelling bridge in this file. The attempted
+  local-only bridge regressed existing member-typedef HIR cases and was
+  reverted.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend
   failures after frontend/HIR compile blockers are cleared.
 - Classify each failure as parser/HIR-owned, compatibility/display/final
@@ -109,11 +107,8 @@ pieces needed for the future no-tag contract.
 
 ## Proof
 
-Step 4 fifth deletion probe ran with:
-temporary removal of `TypeSpec::tag` from
-`src/frontend/parser/ast.hpp`, then `cmake --build --preset default`.
+Step 4 blocked-route restoration proof passed with:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-Probe result: build failed as expected in frontend/HIR compile with the first
-clusters classified above. The temporary `ast.hpp` deletion was restored, and
-the restored tree passed `cmake --build --preset default`. `git diff --check`
-passed after restoration.
+Result: build passed and 62/62 selected CTest tests passed after reverting the
+unsafe prototype. Proof log: `test_after.log`. `git diff --check` passed.
