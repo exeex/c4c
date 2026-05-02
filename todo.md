@@ -8,20 +8,21 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 made Sema function and overload lookup treat parser/Sema function
-metadata as authoritative. `lookup_function_by_name`,
-`lookup_ref_overloads_by_name`, and `lookup_cpp_overloads_by_name` now return
-only structured-key results when a reference carries a valid function key or
-using-value-alias target key; rendered `Node::name` fallback is reserved for
-keyless references. Focused authority coverage now mutates rendered callee
-spelling to legacy function/overload entries while preserving structured
-metadata and proves the lookup boundary rejects that drift.
+Step 4 repaired the Sema method-owner handoff for parsed out-of-class methods:
+`validate_function` now establishes the current method owner from direct
+record ownership or the parser-produced qualifier `TextId` plus namespace key,
+and the `enclosing_method_owner_struct_compatibility` rendered-owner fallback
+was removed. Focused authority coverage now parses `Owner::method`, verifies
+the owner qualifier metadata, mutates rendered `Node::name` so it no longer
+contains an owner, and proves implicit field lookup still validates through
+structured owner metadata.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining Sema lookup helpers for the same
-pattern: a reference carries producer-side `TextId`, namespace, owner, or
-declaration metadata but a miss can still reopen rendered compatibility lookup.
+Continue Step 4 by auditing the remaining Sema owner/member helpers for
+rendered compatibility after structured parser/Sema metadata exists, especially
+routes that still infer owner/member identity from final spelling instead of a
+record key, declaration object, qualifier `TextId`, or namespace context.
 
 ## Watchouts
 
@@ -45,6 +46,10 @@ declaration metadata but a miss can still reopen rendered compatibility lookup.
   function metadata. If a supported call path starts failing here, fix the
   parser/Sema declaration or reference metadata producer instead of
   reintroducing rendered-name fallback in these helpers.
+- Method-owner lookup now depends on parser qualifier metadata or direct record
+  child ownership. Qualified function templates with parser qualifier metadata
+  remain outside the C-style redeclaration signature table to avoid reviving
+  the prior rendered-name skip as namespace-function conflict behavior.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
 - `review/step33_final_route_review.md` and prior review artifacts are

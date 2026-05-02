@@ -513,16 +513,6 @@ bool is_deref_of_this_expr(const Node* n) {
          n->left->name && std::strcmp(n->left->name, "this") == 0;
 }
 
-std::optional<std::string> qualified_method_owner_struct(const Node* fn) {
-  if (!fn || fn->kind != NK_FUNCTION || !fn->name) return std::nullopt;
-  const std::string name(fn->name);
-  const size_t sep = name.rfind("::");
-  if (sep == std::string::npos || sep == 0 || sep + 2 >= name.size())
-    return std::nullopt;
-  return name.substr(0, sep);
-}
-
-
 // Implicit conversion check for assignment-like contexts:
 // - function-call argument to parameter (C11 6.5.2.2p7)
 // - assignment/initializer constraints (C11 6.5.16.1)
@@ -1607,7 +1597,7 @@ class Validator {
   }
 
   std::optional<SemaStructuredNameKey> method_owner_key_from_qualifier(
-      const Node* fn, const std::string& owner) const {
+      const Node* fn) const {
     if (!fn || fn->namespace_context_id < 0 || fn->n_qualifier_segments <= 0 ||
         !fn->qualifier_text_ids) {
       return std::nullopt;
@@ -1617,61 +1607,23 @@ class Validator {
     SemaStructuredNameKey key;
     key.namespace_context_id = fn->namespace_context_id;
     key.base_text_id = owner_text_id;
-    const bool structured_owner_key_exists =
-        struct_defs_by_key_.find(key) != struct_defs_by_key_.end();
-    if (structured_owner_key_exists) return key;
-    if (owner.find("::") != std::string::npos || fn->n_qualifier_segments != 1 ||
-        !fn->qualifier_segments || !fn->qualifier_segments[0]) {
-      return std::nullopt;
-    }
-    const std::string qualifier_owner(fn->qualifier_segments[0]);
-    if (qualifier_owner != unqualified_name(owner)) return std::nullopt;
     return key;
   }
 
-  const Node* resolve_owner_in_namespace_context(
-      const std::string& owner, int namespace_context_id,
-      const std::optional<SemaStructuredNameKey>& structured_owner_key) const {
-    if (owner.empty() || namespace_context_id < 0) return nullptr;
-    if (structured_owner_key.has_value() && structured_owner_key->valid()) {
-      auto it = struct_defs_by_key_.find(*structured_owner_key);
-      return it != struct_defs_by_key_.end() ? it->second : nullptr;
-    }
-    return nullptr;
+  const Node* method_owner_record_from_qualifier(const Node* fn) const {
+    auto key = method_owner_key_from_qualifier(fn);
+    if (!key.has_value() || !key->valid()) return nullptr;
+    auto it = struct_defs_by_key_.find(*key);
+    return it != struct_defs_by_key_.end() ? it->second : nullptr;
   }
 
   const Node* enclosing_method_owner_record(const Node* fn) const {
-    if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
-      if (const Node* contextual = resolve_owner_in_namespace_context(
-              *owner, fn ? fn->namespace_context_id : -1,
-              method_owner_key_from_qualifier(fn, *owner))) {
-        return contextual;
-      }
-      return nullptr;
-    }
     auto it = method_owner_records_.find(fn);
-    if (it == method_owner_records_.end() || !it->second || !it->second->name ||
-        !it->second->name[0]) {
-      return nullptr;
+    if (it != method_owner_records_.end() && it->second && it->second->name &&
+        it->second->name[0]) {
+      return it->second;
     }
-    return it->second;
-  }
-
-  std::optional<std::string> enclosing_method_owner_struct_compatibility(const Node* fn) const {
-    if (const Node* record = enclosing_method_owner_record(fn)) return std::string(record->name);
-    if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
-      if (auto key = method_owner_key_from_qualifier(fn, *owner);
-          key.has_value() && key->valid()) {
-        return std::nullopt;
-      }
-      if (complete_structs_.count(*owner) || complete_unions_.count(*owner)) return owner;
-      // Do not guess across namespaces once direct contextual and canonical-tag
-      // lookup has failed. Unqualified owners must resolve through the
-      // declaration namespace; qualified owners must already name the record.
-      if (owner->find("::") != std::string::npos) return owner;
-      return std::nullopt;
-    }
-    return std::nullopt;
+    return method_owner_record_from_qualifier(fn);
   }
 
   bool can_defer_owner_qualified_cast_typedef(const TypeSpec& ts) const {
@@ -1819,7 +1771,13 @@ class Validator {
     } else if (n->kind == NK_FUNCTION) {
       if (!n->name || !n->name[0]) return;
       if (n->is_consteval && n->body) record_consteval_function(n);
-      if (qualified_method_owner_struct(n).has_value()) return;
+      if (method_owner_record_from_qualifier(n)) return;
+      // Qualified function templates are handled by parser template lookup;
+      // do not reclassify them as C-style redeclarations here.
+      if (n->n_template_params > 0 && n->n_qualifier_segments > 0 &&
+          n->qualifier_text_ids) {
+        return;
+      }
       FunctionSig sig;
       sig.ret = n->type;
       sig.variadic = n->variadic;
@@ -2086,9 +2044,6 @@ class Validator {
     if (const Node* owner_record = enclosing_method_owner_record(fn)) {
       current_method_struct_tag_ = owner_record->name ? owner_record->name : "";
       current_method_struct_key_ = sema_symbol_name_key(owner_record);
-    } else if (auto owner = enclosing_method_owner_struct_compatibility(fn); owner.has_value()) {
-      current_method_struct_tag_ = *owner;
-      current_method_struct_key_ = structured_record_key_for_tag(*owner);
     }
     if (!current_method_struct_tag_.empty()) {
       TypeSpec this_ts{};

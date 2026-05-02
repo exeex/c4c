@@ -360,6 +360,41 @@ void test_namespace_qualified_function_decl_handoff_uses_context_metadata() {
                        : std::string(": ") + result.diagnostics.front().message));
 }
 
+void test_out_of_class_method_owner_handoff_uses_qualifier_metadata() {
+  const char* source =
+      "struct Owner {\n"
+      "  int x;\n"
+      "  int method();\n"
+      "};\n"
+      "int Owner::method() { return x; }\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  const c4c::Node* owner = find_record(root, "Owner");
+  c4c::Node* method = find_function(root, "Owner::method");
+  expect_true(owner != nullptr, "parsed Owner record should exist");
+  expect_true(method != nullptr, "parsed out-of-class method should exist");
+  expect_true(method->namespace_context_id == owner->namespace_context_id,
+              "out-of-class method should carry owner namespace context");
+  expect_true(method->n_qualifier_segments == 1 && method->qualifier_text_ids &&
+                  method->qualifier_text_ids[0] == owner->unqualified_text_id,
+              "out-of-class method should carry owner qualifier TextId");
+  expect_true(method->unqualified_text_id != c4c::kInvalidText,
+              "out-of-class method should carry method base TextId");
+
+  method->name = arena.strdup("rendered_method_without_owner");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema method owner lookup should use parser qualifier metadata "
+              "instead of rendered owner spelling" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_parsed_local_var_ref_handoff_uses_text_id_not_rendered_spelling() {
   const char* source =
       "int uses_local() {\n"
@@ -1865,6 +1900,7 @@ int main() {
   test_sema_function_call_uses_using_value_alias_target_key();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
   test_namespace_qualified_function_decl_handoff_uses_context_metadata();
+  test_out_of_class_method_owner_handoff_uses_qualifier_metadata();
   test_parsed_local_var_ref_handoff_uses_text_id_not_rendered_spelling();
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
