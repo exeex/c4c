@@ -62,6 +62,10 @@ void Parser::clear_last_resolved_typedef() {
 
 void Parser::set_last_resolved_typedef(TextId name_text_id,
                                        std::string_view display_name) {
+    if (name_text_id == kInvalidText) {
+        clear_last_resolved_typedef();
+        return;
+    }
     active_context_state_.last_resolved_typedef =
         std::string(parser_text(name_text_id, display_name));
     active_context_state_.last_resolved_typedef_text_id = name_text_id;

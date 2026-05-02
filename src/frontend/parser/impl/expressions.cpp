@@ -1528,9 +1528,6 @@ Node* parse_primary(Parser& parser) {
                     if (saved_typedef_text_id != kInvalidText) {
                         parser.set_last_resolved_typedef(
                             saved_typedef_text_id, saved_typedef_fallback);
-                    } else if (!saved_typedef_fallback.empty()) {
-                        parser.set_last_resolved_typedef(
-                            kInvalidText, saved_typedef_fallback);
                     }
                 };
                 TypeSpec cast_ts =

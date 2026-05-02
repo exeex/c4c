@@ -580,6 +580,55 @@ void test_dependent_typename_rejects_visible_type_rendered_reentry() {
               "structured dependent typename type authority");
 }
 
+void test_parser_qualified_typedef_cast_restore_drops_rendered_typedef_state() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "TypeNs");
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  expect_true(ns_context > 0, "test namespace context should be created");
+
+  c4c::TypeSpec alias_type{};
+  alias_type.array_size = -1;
+  alias_type.inner_rank = -1;
+  alias_type.base = c4c::TB_INT;
+  parser.register_structured_typedef_binding_in_context(ns_context, alias_text,
+                                                        alias_type);
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeNs"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "0"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+
+  parser.set_last_resolved_typedef(c4c::kInvalidText, "RenderedOnlyTypedef");
+  expect_true(parser.last_resolved_typedef_text().empty(),
+              "rendered-only typedef state should not be retained as "
+              "semantic metadata");
+
+  c4c::Node* expr = c4c::parse_assign_expr(parser);
+  expect_true(expr && expr->kind == c4c::NK_CAST,
+              "qualified typedef function-style cast should parse");
+  expect_true(expr->type.base == c4c::TB_INT,
+              "qualified typedef cast should use structured typedef payload");
+  const std::string restored_typedef(parser.last_resolved_typedef_text());
+  expect_true(restored_typedef != "RenderedOnlyTypedef",
+              "qualified typedef probe should not restore rendered-only "
+              "last typedef state");
+}
+
 void test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4086,6 +4135,7 @@ int main() {
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
   test_dependent_typename_rejects_visible_type_rendered_reentry();
+  test_parser_qualified_typedef_cast_restore_drops_rendered_typedef_state();
   test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry();
   test_sema_template_static_member_lookup_rejects_stale_rendered_owner_reentry();
   test_sema_template_static_member_lookup_rejects_rendered_after_metadata_miss();
