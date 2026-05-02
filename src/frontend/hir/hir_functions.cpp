@@ -127,6 +127,36 @@ void Lowerer::finish_lowered_callable(Function* fn, BlockId entry) {
   module_->functions[fn->id.value] = std::move(*fn);
 }
 
+void Lowerer::populate_template_type_text_bindings(
+    FunctionCtx& ctx, const Node* template_owner,
+    const TypeBindings* bindings) const {
+  ctx.tpl_bindings_by_text.clear();
+  if (!template_owner || !bindings || bindings->empty() ||
+      template_owner->n_template_params <= 0 ||
+      !template_owner->template_param_names) {
+    return;
+  }
+  for (int i = 0; i < template_owner->n_template_params; ++i) {
+    if (!template_owner->template_param_names[i]) continue;
+    if (template_owner->template_param_is_nttp &&
+        template_owner->template_param_is_nttp[i]) {
+      continue;
+    }
+    const auto it = bindings->find(template_owner->template_param_names[i]);
+    if (it == bindings->end()) continue;
+    TextId param_text_id = kInvalidText;
+    if (template_owner->template_param_name_text_ids) {
+      param_text_id = template_owner->template_param_name_text_ids[i];
+    }
+    if (param_text_id == kInvalidText && module_ && module_->link_name_texts) {
+      param_text_id =
+          module_->link_name_texts->intern(template_owner->template_param_names[i]);
+    }
+    if (param_text_id == kInvalidText) continue;
+    ctx.tpl_bindings_by_text[param_text_id] = it->second;
+  }
+}
+
 void Lowerer::lower_function(const Node* fn_node,
                              const std::string* name_override,
                              const TypeBindings* tpl_override,
@@ -237,6 +267,7 @@ void Lowerer::lower_function(const Node* fn_node,
   if (tpl_override) {
     ctx.tpl_bindings = *tpl_override;
   }
+  populate_template_type_text_bindings(ctx, fn_node, tpl_override);
   if (nttp_override) {
     ctx.nttp_bindings = *nttp_override;
   }

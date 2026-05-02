@@ -285,6 +285,7 @@ class Lowerer {
     std::vector<SwitchCtx> switch_stack;
     std::unordered_map<std::string, long long> local_const_bindings;
     TypeBindings tpl_bindings;  // template param → concrete type for enclosing template fn
+    std::unordered_map<TextId, TypeSpec> tpl_bindings_by_text;
     NttpBindings nttp_bindings; // non-type template param → constant value
     NttpTextBindings nttp_bindings_by_text; // non-type template param TextId → value
     std::unordered_map<std::string, std::vector<PackParamElem>> pack_params;
@@ -855,6 +856,9 @@ class Lowerer {
   TypeSpec builtin_query_result_type() const;
 
   TypeSpec resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) const;
+  void populate_template_type_text_bindings(FunctionCtx& ctx,
+                                            const Node* template_owner,
+                                            const TypeBindings* bindings) const;
 
   ExprId lower_builtin_sizeof_type(FunctionCtx* ctx, const Node* n);
 

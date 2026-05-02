@@ -8,32 +8,27 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries reran the controlled
-`TypeSpec::tag` deletion probe after the builtin layout/query producer cleanup
-and full-suite regression fix. The probe temporarily removed
-`TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
-`cmake --build --preset default`, captured the current frontend/HIR
-compile-failure clusters, then restored `ast.hpp` exactly and rebuilt the
-normal tree.
+Step 4 - Probe Field Removal And Split Boundaries cleared the
+`TypeSpec::tag` deletion-probe blocker in
+`src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type`.
+`FunctionCtx` now carries a parallel `tpl_bindings_by_text` map keyed by
+parser template-parameter `TextId`, populated for function, method, and global
+template lowering from the owning AST template parameter metadata.
 
-Sixth-probe result: `LayoutQueries::find_struct_layout` remains cleared, but
-`src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type` is now the
-first visible builtin.cpp blocker because its guarded template-param
-compatibility bridge still reads `target.tag` after `template_param_text_id`
-lookup misses in the HIR module text table. The next first-failure clusters are
-HIR-owned signature/callable substitution in `hir_functions.cpp`, mixed
-semantic/layout/final-spelling helpers in `hir_lowering_core.cpp`, function
-overload collection in `hir_build.cpp`, and mixed semantic/display/layout
-consumers in `hir_types.cpp`.
+`resolve_builtin_query_type` now checks `template_param_text_id` against that
+TextId-keyed map before the existing module text-table lookup and no longer
+reads `target.tag`. The stale rendered tag-only/no-metadata test still rejects
+fallback, and a new focused test covers the important compatibility case where
+the parser-owned template-param `TextId` is not decodable through
+`module_->link_name_texts` but the structured TextId binding carrier is
+available.
 
 ## Suggested Next
 
-Continue Step 4 with one bounded HIR compile-failure cluster migration.
-Suggested next packet: clear
-`src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type` by
-replacing the guarded rendered template-param binding-name bridge with a
-non-`TypeSpec::tag` payload, likely a TypeBindings-by-TextId bridge or a module
-text-table attachment path for parser template-param TextIds.
+Continue Step 4 by rerunning the controlled `TypeSpec::tag` deletion probe.
+Expected next first cluster should move past `builtin.cpp` and land in the
+remaining HIR signature/callable/layout clusters such as `hir_functions.cpp`,
+`hir_lowering_core.cpp`, `hir_build.cpp`, or `hir_types.cpp`.
 
 ## Watchouts
 
@@ -74,12 +69,12 @@ text-table attachment path for parser template-param TextIds.
   `record_def` / TextId metadata plus HIR-side translation from parser record
   nodes into module-owned owner keys. `LayoutQueries::find_struct_layout` still
   does not read `TypeSpec::tag`.
-- `resolve_builtin_query_type` still has a bounded rendered binding-name
-  compatibility bridge for parser-owned template-param TextIds that cannot be
-  decoded from the HIR module text table. This is guarded by
-  `tag_text_id == template_param_text_id`; stale rendered tag-only miss tests
-  still reject fallback. The sixth deletion probe now classifies this as the
-  first builtin.cpp compile blocker for the future no-tag contract.
+- `resolve_builtin_query_type` no longer reads rendered `TypeSpec::tag`.
+  Parser-owned template-param TextIds that cannot be decoded from the HIR
+  module text table now resolve through `FunctionCtx::tpl_bindings_by_text`.
+  The string-keyed `tpl_bindings` remain compatibility for routes that can
+  decode a module text name, while stale rendered tag-only/no-metadata tests
+  still reject fallback.
 - The HIR builtin query type route is cleared for
   `resolve_builtin_query_type`; `template_param_text_id` lookup is authoritative
   when present, and tag-only/no-metadata substitution is intentionally not
@@ -88,8 +83,9 @@ text-table attachment path for parser template-param TextIds.
   LIR/BIR/backend downstream metadata gap has been reached yet.
 - Clusters cleared since the fifth probe: direct
   `LayoutQueries::find_struct_layout` fallback behavior and the full-suite
-  layout/runtime regression. Current first-probe clusters are
-  `builtin.cpp::resolve_builtin_query_type`, HIR callable/signature helpers in
+  layout/runtime regression. Since the sixth probe,
+  `builtin.cpp::resolve_builtin_query_type` was also cleared. Remaining
+  expected first-probe clusters are HIR callable/signature helpers in
   `hir_functions.cpp`, `hir_lowering_core.cpp` generic compatibility/layout
   helpers, `hir_build.cpp` ref-overload collection, `hir_types.cpp`
   typedef/layout/member/object inference helpers, and then call-lowering
@@ -120,26 +116,11 @@ text-table attachment path for parser template-param TextIds.
 
 ## Proof
 
-Sixth deletion probe proof:
-1. Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`.
-2. Ran `cmake --build --preset default`; result: expected probe failure in
-   frontend/HIR compilation. First useful clusters:
-   `src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type`
-   (`target.tag` guarded template-param compatibility),
-   `src/frontend/hir/hir_functions.cpp`
-   (`normalize_zero_sized_struct_return_from_body`,
-   `substitute_signature_template_type`, callable return/param preparation,
-   pack binding names),
-   `src/frontend/hir/hir_lowering_core.cpp`
-   (`generic_type_compatible`, local layout query helpers, base-tag layout
-   construction),
-   `src/frontend/hir/hir_build.cpp`
-   (`collect_ref_overloaded_free_functions`), and
-   `src/frontend/hir/hir_types.cpp` (typedef-to-struct, owner tag recovery,
-   layout/member/object inference helpers), followed by
-   `src/frontend/hir/impl/expr/call.cpp`.
-3. Restored `src/frontend/parser/ast.hpp` exactly.
-4. Ran `cmake --build --preset default`; result: restored tree builds.
-5. Ran `git diff --check`; result: passed.
+Step 4 builtin query TextId binding proof was run with:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(positive_sema_ok_expr_access_misc_runtime_c|positive_sema_ok_pragma_pack_c|cpp_positive_sema_alignas_applies_alignment_runtime_cpp|cpp_positive_sema_alignas_decl_storage_runtime_cpp|cpp_positive_sema_scoped_enum_underlying_layout_runtime_cpp|cpp_positive_sema_template_sizeof_cpp|cpp_hir_builtin_layout_query_sizeof_type|cpp_hir_builtin_layout_query_alignof_type|cpp_hir_builtin_layout_query_alignof_expr|llvm_gcc_c_torture_src_20071018_1_c|llvm_gcc_c_torture_src_pr34456_c|llvm_gcc_c_torture_src_stkalign_c|frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-No extra root-level probe logs were left behind.
+Result: build passed and selected CTest passed 74/74. Focused coverage in
+`frontend_hir_lookup_tests` proves the TextId-keyed binding route works even
+when module text lookup cannot decode the parser TextId, while the stale
+rendered tag-only/no-metadata route still rejects fallback. Proof log:
+`test_after.log`.

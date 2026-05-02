@@ -1949,6 +1949,35 @@ void test_builtin_query_type_uses_template_param_text_id_binding() {
               "builtin query type should preserve existing pointer composition");
 }
 
+void test_builtin_query_type_uses_text_binding_when_module_text_missing() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec concrete{};
+  concrete.base = c4c::TB_LONG;
+  concrete.array_size = -1;
+  concrete.inner_rank = -1;
+
+  const c4c::TextId parser_only_text_id = 4096;
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.tpl_bindings["RenderedTemplateParam"] = concrete;
+  ctx.tpl_bindings_by_text[parser_only_text_id] = concrete;
+
+  c4c::TypeSpec target{};
+  target.base = c4c::TB_TYPEDEF;
+  target.tag = "StaleRenderedTemplateParam";
+  target.tag_text_id = parser_only_text_id;
+  target.template_param_text_id = parser_only_text_id;
+  target.array_size = -1;
+  target.inner_rank = -1;
+
+  const c4c::TypeSpec resolved =
+      lowerer.resolve_builtin_query_type(&ctx, target);
+  expect_true(resolved.base == c4c::TB_LONG,
+              "builtin query type should use TextId bindings when module text lookup misses");
+}
+
 void test_builtin_query_type_structured_miss_rejects_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -2377,6 +2406,7 @@ int main() {
   test_builtin_record_layout_structured_owner_miss_rejects_stale_tag();
   test_builtin_record_layout_no_owner_uses_tag_text_id_compatibility();
   test_builtin_query_type_uses_template_param_text_id_binding();
+  test_builtin_query_type_uses_text_binding_when_module_text_missing();
   test_builtin_query_type_structured_miss_rejects_stale_tag();
   test_builtin_query_type_no_metadata_keeps_compatibility_shape();
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();

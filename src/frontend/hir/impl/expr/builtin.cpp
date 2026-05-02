@@ -183,6 +183,12 @@ TypeSpec Lowerer::resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) 
   if (!ctx || ctx->tpl_bindings.empty() || target.base != TB_TYPEDEF) {
     return target;
   }
+  if (target.template_param_text_id != kInvalidText) {
+    auto text_it = ctx->tpl_bindings_by_text.find(target.template_param_text_id);
+    if (text_it != ctx->tpl_bindings_by_text.end()) {
+      return apply_builtin_query_template_binding(target, text_it->second);
+    }
+  }
   if (target.template_param_text_id == kInvalidText || !module_ ||
       !module_->link_name_texts) {
     return target;
@@ -195,18 +201,6 @@ TypeSpec Lowerer::resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) 
     if (it != ctx->tpl_bindings.end()) {
       return apply_builtin_query_template_binding(target, it->second);
     }
-  }
-  if (target.tag && target.tag[0] &&
-      target.tag_text_id == target.template_param_text_id &&
-      (binding_key.empty() || binding_key != target.tag)) {
-    // Parser-owned TextIds are not always attached to the HIR module text
-    // table yet. This is a compatibility spelling for an already-identified
-    // template parameter, not tag-only type identity.
-    auto rendered_it = ctx->tpl_bindings.find(target.tag);
-    if (rendered_it != ctx->tpl_bindings.end()) {
-      return apply_builtin_query_template_binding(target, rendered_it->second);
-    }
-    return target;
   }
   if (binding_key.empty()) return target;
   return target;

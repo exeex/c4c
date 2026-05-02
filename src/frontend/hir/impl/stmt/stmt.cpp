@@ -523,6 +523,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   FunctionCtx ctx{};
   ctx.fn = &fn;
   if (tpl_bindings) ctx.tpl_bindings = *tpl_bindings;
+  populate_template_type_text_bindings(ctx, method_node, tpl_bindings);
   if (nttp_bindings) ctx.nttp_bindings = *nttp_bindings;
   if (nttp_text_bindings) ctx.nttp_bindings_by_text = *nttp_text_bindings;
   ctx.method_struct_tag = struct_tag;
