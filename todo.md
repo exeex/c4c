@@ -8,22 +8,22 @@ Current Step Title: Convert Or Demote Legacy HIR Lookup Routes
 
 ## Just Finished
 
-Step 4 - Convert Or Demote Legacy HIR Lookup Routes now has a local function
-prototype demotion. `Lowerer::lower_local_decl_stmt` no longer checks rendered
-`module_->fn_index.count(n->name)` for local function prototypes; it builds a
-metadata-backed function `DeclRef` from the declaration node and resolves
-through `Module::resolve_function_decl`, preserving rendered fallback through
-the central resolver when structured metadata is absent or incomplete.
+Step 4 - Convert Or Demote Legacy HIR Lookup Routes now has an ordinary
+variable global fallback demotion. `Lowerer::lower_var_expr` no longer calls
+rendered `module_->lookup_global_id(r.name)` for the global fallback; it uses
+the metadata-backed `DeclRef` already built from the AST variable node and
+resolves through `Module::resolve_global_decl`, preserving rendered fallback
+through the central resolver when structured metadata is absent or incomplete.
 
-Focused coverage proves a stale rendered local prototype name resolves through
-structured function metadata, skips local allocation, and records a legacy
-rendered parity mismatch instead of trusting the stale rendered function entry.
+Focused coverage proves a stale rendered variable name resolves to the
+structured global, rewrites the lowered `DeclRef` to that resolved global, and
+records a legacy rendered parity mismatch.
 
 ## Suggested Next
 
 Continue Step 4 by auditing the remaining direct `lookup_function_id` /
 `lookup_global_id` callers. Template/global materialization by mangled names
-should likely stay compatibility payload; ordinary AST-backed variable/callee
+should likely stay compatibility payload; remaining AST-backed callee/global
 references should route through `resolve_*_decl` when they still bypass it.
 
 ## Watchouts

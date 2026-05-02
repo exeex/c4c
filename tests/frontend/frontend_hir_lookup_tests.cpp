@@ -1409,6 +1409,49 @@ void test_local_function_prototype_prefers_structured_decl_over_stale_rendered_n
               "local function prototype lookup should record legacy rendered parity mismatch");
 }
 
+void test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_name() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text = texts.intern("stale_var_global");
+  const c4c::TextId structured_text = texts.intern("structured_var_global");
+  c4c::hir::NamespaceQualifier local_ns;
+  local_ns.context_id = 0;
+
+  add_global(module, c4c::hir::GlobalId{70}, "stale_var_global",
+             stale_text, c4c::kInvalidLinkName, local_ns);
+  add_global(module, c4c::hir::GlobalId{71}, "structured_var_global",
+             structured_text, c4c::kInvalidLinkName, local_ns);
+
+  c4c::Node var{};
+  var.kind = c4c::NK_VAR;
+  var.name = "stale_var_global";
+  var.unqualified_name = "structured_var_global";
+  var.unqualified_text_id = structured_text;
+  var.type.base = c4c::TB_INT;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(nullptr, &var);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(ref != nullptr,
+              "ordinary variable fallback should lower to a DeclRef");
+  expect_true(ref->global && ref->global->value == 71,
+              "ordinary variable fallback should prefer structured global metadata over stale rendered name");
+  expect_true(ref->name == "structured_var_global",
+              "ordinary variable fallback should rewrite DeclRef name to the resolved structured global");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                      c4c::hir::ModuleDeclLookupAuthority::Structured,
+                      "stale_var_global", 71),
+              "ordinary variable fallback should record structured global authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Global,
+                           "stale_var_global", 71, 70),
+              "ordinary variable fallback should record legacy rendered parity mismatch");
+}
+
 }  // namespace
 
 int main() {
@@ -1429,6 +1472,7 @@ int main() {
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
   test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name();
+  test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_name();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

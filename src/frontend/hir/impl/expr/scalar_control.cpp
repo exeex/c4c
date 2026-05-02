@@ -262,8 +262,10 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
     }
   }
   if (!has_local_binding) {
-    const GlobalId global_id = module_->lookup_global_id(r.name);
-    if (global_id.valid()) r.global = global_id;
+    if (const GlobalVar* gv = module_->resolve_global_decl(r)) {
+      r.global = gv->id;
+      r.name = gv->name;
+    }
   }
   if (ctx && !ctx->method_struct_tag.empty() && !has_local_binding &&
       !r.param_index && !r.global) {
