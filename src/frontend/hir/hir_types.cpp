@@ -83,6 +83,45 @@ DeclRef make_global_lookup_decl_ref(Module& module, std::string name,
   return ref;
 }
 
+const HirStructDef* find_base_struct_def_for_layout(
+    const Module& module,
+    const HirStructDef& def,
+    size_t base_index) {
+  if (base_index >= def.base_tags.size()) return nullptr;
+  const auto& base_tag = def.base_tags[base_index];
+  if (base_tag.empty()) return nullptr;
+  if (base_index < def.base_tag_text_ids.size()) {
+    const HirRecordOwnerKey owner_key =
+        make_hir_record_owner_key(def.ns_qual, def.base_tag_text_ids[base_index]);
+    if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+      return module.find_struct_def_by_owner_structured(owner_key);
+    }
+  }
+  // Compatibility bridge for legacy base metadata that still lacks a complete
+  // structured owner key; `base_tags` remains the rendered final spelling.
+  const auto it = module.struct_defs.find(base_tag);
+  return it == module.struct_defs.end() ? nullptr : &it->second;
+}
+
+const HirStructField* find_struct_instance_field_including_bases(
+    const Module& module,
+    const HirStructDef& layout,
+    const std::string& field) {
+  for (const auto& fld : layout.fields) {
+    if (fld.name == field) return &fld;
+  }
+  for (size_t base_index = 0; base_index < layout.base_tags.size(); ++base_index) {
+    const HirStructDef* base_layout =
+        find_base_struct_def_for_layout(module, layout, base_index);
+    if (!base_layout) continue;
+    if (const HirStructField* inherited =
+            find_struct_instance_field_including_bases(module, *base_layout, field)) {
+      return inherited;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
@@ -1019,6 +1058,8 @@ const HirStructDef* Lowerer::find_struct_def_for_layout_type(const TypeSpec& ts)
       return nullptr;
     }
   }
+  // Compatibility bridge for legacy TypeSpec producers that still lack
+  // complete structured owner metadata.
   if (!ts.tag || !ts.tag[0]) return nullptr;
   const auto it = module_->struct_defs.find(ts.tag);
   return it == module_->struct_defs.end() ? nullptr : &it->second;
@@ -1029,21 +1070,8 @@ const HirStructField* Lowerer::find_struct_instance_field_including_bases(
     const std::string& field) const {
   const HirStructDef* layout = find_struct_def_for_layout_type(owner_ts);
   if (!layout) return nullptr;
-  for (const auto& fld : layout->fields) {
-    if (fld.name == field) return &fld;
-  }
-  for (const auto& base_tag : layout->base_tags) {
-    TypeSpec base_ts{};
-    base_ts.base = TB_STRUCT;
-    base_ts.tag = base_tag.c_str();
-    base_ts.array_size = -1;
-    base_ts.inner_rank = -1;
-    if (const HirStructField* inherited =
-            find_struct_instance_field_including_bases(base_ts, field)) {
-      return inherited;
-    }
-  }
-  return nullptr;
+  return ::c4c::hir::find_struct_instance_field_including_bases(
+      *module_, *layout, field);
 }
 
 long long Lowerer::flat_scalar_count(const TypeSpec& ts) const {

@@ -9,27 +9,25 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared/classified the
-`src/frontend/hir/hir_functions.cpp` callable compatibility deletion blocker:
+`src/frontend/hir/hir_types.cpp` layout/member-base deletion blocker:
 
-- Removed the generic `compatibility_type_tag()` helper that directly returned
-  rendered `TypeSpec::tag`.
-- Split the retained rendered-name reads into explicit legacy bridges:
-  template binding only when no usable TextId spelling is available, member
-  typedef owner spelling only when qualified TextId spelling is unavailable,
-  and callable zero-sized-return struct lookup only when complete structured
-  owner metadata is absent or incomplete.
-- Kept structured `HirRecordOwnerKey` lookup authoritative for callable
-  zero-sized-return normalization; a complete structured miss still blocks the
-  rendered fallback.
-- No focused test was added because `hir_functions.cpp` is staged in the build
-  and existing `cpp_hir_template_function_pack_signature_binding` coverage
-  exercises the affected legacy parameter-pack bridge.
+- Kept `find_struct_def_for_layout_type()` structured owner metadata
+  authoritative; its retained rendered `TypeSpec::tag` lookup is now explicitly
+  documented as a no-complete-metadata compatibility bridge for legacy
+  TypeSpec producers.
+- Split recursive base field lookup away from rendered-tag-only `TypeSpec`
+  reconstruction. Base traversal now resolves complete `base_tag_text_ids`
+  through structured `HirRecordOwnerKey` lookup first and uses rendered
+  `base_tags` only as the legacy compatibility/final-spelling bridge.
+- No focused stale-rendered-vs-structured HIR test was added because this slice
+  changes the helper route/classification without changing the visible field
+  lookup contract, and the existing HIR subset covers layout/member-base users.
 
 ## Suggested Next
 
 Continue Step 4 with one bounded frontend/HIR packet for the next fresh
-deletion-probe cluster, likely `src/frontend/hir/hir_types.cpp` lookup/payload
-surfaces, per the supervisor's subset choice.
+deletion-probe cluster after the top-level `hir_types.cpp` layout/member-base
+helper family, per the supervisor's subset choice.
 
 ## Watchouts
 
@@ -61,10 +59,14 @@ surfaces, per the supervisor's subset choice.
 - `hir_functions.cpp` callable scaffolding no longer has the
   `compatibility_type_tag()` direct rendered-tag helper; retained rendered
   reads are classified as no-complete/no-usable-metadata compatibility bridges.
-- `hir_types.cpp` still contains both semantic-looking lookup reads and
-  compatibility/final-spelling payload writes. Split those before editing so
-  ABI/link-visible names, diagnostics, dumps, and base-tag storage are not
-  accidentally collapsed into owner-key semantics.
+- `hir_types.cpp` layout/member-base helpers now classify retained rendered
+  lookup as no-complete-metadata compatibility. Base traversal should continue
+  to prefer complete `base_tag_text_ids` owner metadata before rendered
+  `base_tags`.
+- `hir_types.cpp` still contains other lookup and compatibility/final-spelling
+  payload surfaces outside the just-cleared layout/member-base helper family.
+  Split those before editing so ABI/link-visible names, diagnostics, dumps, and
+  base-tag storage are not accidentally collapsed into owner-key semantics.
 - `hir/impl/expr/call.cpp` remains a later first-wave HIR cluster after the
   top-level HIR files compile.
 - Step 4 is a probe, not the final field removal. Do not commit a broken
