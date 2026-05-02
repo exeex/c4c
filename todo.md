@@ -9,23 +9,24 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries migrated the first residual
-`src/frontend/hir/impl/templates/member_typedef.cpp` deletion-probe blocker away
-from direct semantic `TypeSpec::tag` use.
+`src/frontend/hir/impl/templates/materialization.cpp` deletion-probe blocker
+away from direct semantic `TypeSpec::tag` use.
 
-Deferred member typedef owner resolution now uses a local `record_def`
-member-typedef lookup, HIR owner-key lookup through
-`find_struct_def_tag_by_owner`, and existing template-origin materialization.
-Complete structured misses no longer fall back to rendered `TypeSpec::tag`
-spelling in `resolve_deferred_member_typedef_type`.
+`HirTemplateArgMaterializer::substitute_bound_type` now resolves typedef
+template-parameter bindings through structured parameter metadata:
+`template_param_index`, template parameter `TextId` carriers, and the primary
+template parameter table. The rendered `TypeSpec::tag` spelling remains only as
+a compatibility fallback for unstructured legacy typedefs; complete structured
+misses do not fall back to rendered spelling as semantic authority.
 
 ## Suggested Next
 
-Return Step 4 to the next deletion-probe blocker in
-`src/frontend/hir/impl/templates/materialization.cpp`, starting at
-`HirTemplateArgMaterializer::substitute_bound_type` line 142 where typedef
-binding still probes `ts.tag`. Keep the parallel struct instantiation and
-template encoding/matching residuals split unless the supervisor routes those
-template families together.
+Continue Step 4 in `src/frontend/hir/impl/templates/materialization.cpp` with
+the next deletion-probe blocker in `HirTemplateArgMaterializer::decode_type_ref`,
+starting at the struct/union/enum payload writes around lines 261, 266, 271,
+and 275 in the current file. Keep the later materialization mangling payload
+residuals and the parallel `struct_instantiation.cpp` / `templates.cpp`
+families split unless the supervisor routes them together.
 
 ## Watchouts
 
@@ -71,8 +72,10 @@ template families together.
 - Recent packets added `/tmp/c4c_typespec_tag_deletion_probe_step4_stmt.log`.
 - Recent packets added `/tmp/c4c_typespec_tag_deletion_probe_step4_deduction.log`.
 - Recent packets added `/tmp/c4c_typespec_tag_deletion_probe_step4_global.log`.
-- This packet added
+- Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_member_typedef.log`.
+- This packet added
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_materialization.log`.
 
 ## Proof
 
@@ -87,12 +90,15 @@ Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_member_typedef.log 2>&1`, and
-restored the temporary edit. The probe moved past
-`src/frontend/hir/impl/templates/member_typedef.cpp`. The first residual errors
-are direct `TypeSpec::tag` reads in
-`src/frontend/hir/impl/templates/materialization.cpp:142` and `:148`, with
-same-build residuals in
+/tmp/c4c_typespec_tag_deletion_probe_step4_materialization.log 2>&1`, and
+restored the temporary edit. The probe moved past the targeted
+`HirTemplateArgMaterializer::substitute_bound_type` reads in
+`src/frontend/hir/impl/templates/materialization.cpp`. The first residual
+errors are now the direct `TypeSpec::tag` payload writes in
+`HirTemplateArgMaterializer::decode_type_ref` at
+`src/frontend/hir/impl/templates/materialization.cpp:261`, `:266`, `:271`, and
+`:275`, with later same-file mangling payload residuals and same-build
+residuals in
 `src/frontend/hir/impl/templates/struct_instantiation.cpp` and
 `src/frontend/hir/impl/templates/templates.cpp`.
 
