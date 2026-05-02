@@ -1368,6 +1368,47 @@ void test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered
               "local extern structured global lookup should record legacy rendered parity mismatch");
 }
 
+void test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text = texts.intern("stale_local_proto");
+  const c4c::TextId structured_text = texts.intern("structured_local_proto");
+  c4c::hir::NamespaceQualifier local_ns;
+  local_ns.context_id = 0;
+
+  add_function(module, c4c::hir::FunctionId{60}, "stale_local_proto",
+               stale_text, c4c::kInvalidLinkName, local_ns);
+  add_function(module, c4c::hir::FunctionId{61}, "structured_local_proto",
+               structured_text, c4c::kInvalidLinkName, local_ns);
+
+  c4c::Node decl{};
+  decl.kind = c4c::NK_DECL;
+  decl.name = "stale_local_proto";
+  decl.unqualified_name = "structured_local_proto";
+  decl.unqualified_text_id = structured_text;
+  decl.n_params = 1;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+
+  lowerer.lower_local_decl_stmt(ctx, &decl);
+
+  expect_true(ctx.locals.find("stale_local_proto") == ctx.locals.end(),
+              "local function prototype should not create a local when structured function metadata resolves");
+  expect_true(module.expr_pool.empty(),
+              "local function prototype skip should not append initializer expressions");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::Structured,
+                      "stale_local_proto", 61),
+              "local function prototype lookup should record structured authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
+                           "stale_local_proto", 61, 60),
+              "local function prototype lookup should record legacy rendered parity mismatch");
+}
+
 }  // namespace
 
 int main() {
@@ -1387,6 +1428,7 @@ int main() {
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
+  test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

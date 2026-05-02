@@ -19,7 +19,17 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   // local alloca; later references will resolve directly to the global function.
   // Require n_params > 0 to distinguish from a plain variable declaration
   // whose name coincidentally matches a function name.
-  if (n->name && !n->init && n->n_params > 0 && module_->fn_index.count(n->name)) return;
+  if (n->name && !n->init && n->n_params > 0) {
+    DeclRef fn_ref{};
+    fn_ref.name = n->name;
+    fn_ref.name_text_id = make_unqualified_text_id(
+        n, module_ ? module_->link_name_texts.get() : nullptr);
+    fn_ref.ns_qual = make_ns_qual(
+        n, module_ ? module_->link_name_texts.get() : nullptr);
+    fn_ref.link_name_id =
+        module_ ? module_->link_names.find(fn_ref.name) : kInvalidLinkName;
+    if (module_->resolve_function_decl(fn_ref)) return;
+  }
 
   // Local extern declaration: `extern T v;` inside a function refers to
   // the global with that name (C99 6.2.2p4). Erase any shadowing local

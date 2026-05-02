@@ -8,35 +8,23 @@ Current Step Title: Convert Or Demote Legacy HIR Lookup Routes
 
 ## Just Finished
 
-Step 4 - Convert Or Demote Legacy HIR Lookup Routes now has its first bounded
-legacy declaration-lookup demotion. Local `extern` declaration lowering no
-longer calls rendered `Module::lookup_global_id` directly; it builds a
-metadata-backed `DeclRef` from the declaration node and resolves through
-`Module::resolve_global_decl`, so structured global metadata can win before
-rendered compatibility.
+Step 4 - Convert Or Demote Legacy HIR Lookup Routes now has a local function
+prototype demotion. `Lowerer::lower_local_decl_stmt` no longer checks rendered
+`module_->fn_index.count(n->name)` for local function prototypes; it builds a
+metadata-backed function `DeclRef` from the declaration node and resolves
+through `Module::resolve_function_decl`, preserving rendered fallback through
+the central resolver when structured metadata is absent or incomplete.
 
-Focused coverage proves a stale rendered local-extern name resolves to the
-structured global and records a legacy rendered parity mismatch instead of
-binding the stale rendered global.
-
-Step 4 classification from this audit:
-`find_function_by_name_legacy` / `find_global_by_name_legacy` are rendered-name
-compatibility helpers used by central resolvers and should remain explicit
-fallbacks; `ModuleDeclLookupAuthority::LegacyRendered` is the no-metadata or
-incomplete-metadata authority label; `resolve_function_decl` /
-`resolve_global_decl` are the structured-first declaration lookup APIs and
-record parity; direct `lookup_function_id` / `lookup_global_id` callers are
-the migration targets when they operate on AST-backed declarations or
-references with TextId metadata; rendered template/global mangled lookups
-remain compatibility payloads for generated names.
+Focused coverage proves a stale rendered local prototype name resolves through
+structured function metadata, skips local allocation, and records a legacy
+rendered parity mismatch instead of trusting the stale rendered function entry.
 
 ## Suggested Next
 
 Continue Step 4 by auditing the remaining direct `lookup_function_id` /
-`lookup_global_id` callers. The next likely bounded target is local function
-prototype handling in `lower_local_decl_stmt`, provided the declaration node
-has enough TextId/namespace metadata to call `resolve_function_decl` without
-weakening no-metadata compatibility.
+`lookup_global_id` callers. Template/global materialization by mangled names
+should likely stay compatibility payload; ordinary AST-backed variable/callee
+references should route through `resolve_*_decl` when they still bypass it.
 
 ## Watchouts
 
