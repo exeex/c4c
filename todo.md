@@ -8,24 +8,16 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 covered the nested consteval `NK_CALL` handoff route inside
-`interp_expr()`. The exact route proved was `root()` calling
-`outer<int, 7>()`, then `outer<OuterT, OuterN>()` calling
-`inner<OuterT, OuterN>()` through stale rendered template-argument spellings
-plus parser/Sema TextId and structured carriers.
+Step 4 covered Sema record completeness lookup in `is_complete_object_type()`.
+The exact route proved was a `TypeSpec` with direct `record_def` metadata and a
+stale rendered tag, plus a `TypeSpec` with `tag_text_id`/namespace metadata
+whose structured key misses while the rendered tag names a complete record.
 
-Confirmed the `NK_CALL` path passes the structured type-binding maps,
-type-binding name maps, and NTTP TextId/structured maps into
-`bind_consteval_call_env()`. Added focused regression coverage proving nested
-consteval template calls preserve structured type and NTTP binding metadata
-across both call frames, so `inner` resolves `sizeof(InnerT) + InnerN` from
-structured carriers instead of relying on stale rendered names.
-
-Plan-owner processed
-`review/step4_consteval_handoff_route_review.md` after supervisor proof
-normalization. The reviewer found no route-quality or testcase-overfit blocker
-and recommended continuing Step 4 without splitting the route; the code-review
-reminder was cleared.
+Confirmed direct `TypeSpec::record_def` completeness and
+`tag_text_id`/namespace structured keys are authoritative when present.
+Rendered `TypeSpec::tag` completeness is now compatibility-only after those
+structured carriers are absent, so stale rendered tag success no longer wins
+after a structured metadata miss.
 
 ## Suggested Next
 
@@ -78,6 +70,10 @@ boundaries.
 - The nested consteval handoff fixture is intentionally three frames deep; a
   direct `bind_consteval_call_env()` test would not catch regressions where the
   interpreter's `NK_CALL` branch forgets to forward the structured maps.
+- `is_complete_object_type()` still intentionally keeps rendered tag fallback
+  for struct/union object types with no direct `record_def` and no
+  `tag_text_id`/namespace metadata. Removing that compatibility path needs a
+  separate carrier-promotion packet.
 
 ## Proof
 

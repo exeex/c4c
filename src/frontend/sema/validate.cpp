@@ -1416,17 +1416,32 @@ class Validator {
   bool is_complete_object_type(const TypeSpec& ts) const {
     if (ts.ptr_level > 0 || ts.array_rank > 0 || ts.is_lvalue_ref || ts.is_rvalue_ref) return true;
     if (ts.tpl_struct_origin) return true;  // pending template struct — resolved at HIR level
-    if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || !ts.tag || !ts.tag[0]) return true;
-    const std::string tag(ts.tag);
+    if (ts.base != TB_STRUCT && ts.base != TB_UNION) return true;
+
+    const bool has_rendered_tag = ts.tag && ts.tag[0];
     const bool legacy_complete =
-        ts.base == TB_STRUCT ? complete_structs_.count(tag) > 0
-                             : complete_unions_.count(tag) > 0;
-    if (auto record_key = structured_record_key_for_tag(tag); record_key.has_value()) {
+        has_rendered_tag ? (ts.base == TB_STRUCT ? complete_structs_.count(ts.tag) > 0
+                                                 : complete_unions_.count(ts.tag) > 0)
+                         : true;
+
+    if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+      const bool record_complete = ts.record_def->n_fields >= 0;
+      if (has_rendered_tag) {
+        (void)compare_sema_lookup_presence(legacy_complete, record_complete);
+      }
+      return record_complete;
+    }
+
+    if (auto record_key = structured_record_key_for_type_metadata(ts);
+        record_key.has_value() && record_key->valid()) {
       const bool structured_complete =
           ts.base == TB_STRUCT ? complete_structs_by_key_.count(*record_key) > 0
                                : complete_unions_by_key_.count(*record_key) > 0;
       (void)compare_sema_lookup_presence(legacy_complete, structured_complete);
+      return structured_complete;
     }
+
+    if (!has_rendered_tag) return true;
     return legacy_complete;
   }
 
@@ -1455,6 +1470,20 @@ class Validator {
       return key;
     }
     if (ts.tag && ts.tag[0]) return structured_record_key_for_tag(ts.tag);
+    return std::nullopt;
+  }
+
+  std::optional<SemaStructuredNameKey> structured_record_key_for_type_metadata(
+      const TypeSpec& ts) const {
+    if (auto key = sema_symbol_name_key(ts.record_def); key.has_value()) {
+      return key;
+    }
+    if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
+      SemaStructuredNameKey key;
+      key.namespace_context_id = ts.namespace_context_id;
+      key.base_text_id = ts.tag_text_id;
+      return key;
+    }
     return std::nullopt;
   }
 

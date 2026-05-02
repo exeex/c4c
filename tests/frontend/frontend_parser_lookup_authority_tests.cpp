@@ -662,6 +662,99 @@ void test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry() {
               "fallback after structured owner/member miss");
 }
 
+void test_sema_record_completeness_uses_structured_metadata_before_rendered_tag() {
+  {
+    c4c::Arena arena;
+    c4c::TextTable texts;
+    c4c::FileTable files;
+    c4c::Parser parser({}, arena, &texts, &files,
+                       c4c::SourceProfile::CppSubset);
+
+    const int namespace_context = parser.current_namespace_context_id();
+    const c4c::TextId complete_text = texts.intern("StructuredComplete");
+
+    c4c::Node* complete_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    complete_record->name = arena.strdup("StructuredComplete");
+    complete_record->unqualified_name = arena.strdup("StructuredComplete");
+    complete_record->unqualified_text_id = complete_text;
+    complete_record->namespace_context_id = namespace_context;
+    complete_record->n_fields = 0;
+
+    c4c::TypeSpec carried_type{};
+    carried_type.array_size = -1;
+    carried_type.inner_rank = -1;
+    carried_type.base = c4c::TB_STRUCT;
+    carried_type.tag = arena.strdup("MissingRenderedComplete");
+    carried_type.record_def = complete_record;
+
+    c4c::Node* global = parser.make_node(c4c::NK_GLOBAL_VAR, 2);
+    global->name = arena.strdup("uses_record_def");
+    global->unqualified_name = arena.strdup("uses_record_def");
+    global->unqualified_text_id = texts.intern("uses_record_def");
+    global->namespace_context_id = namespace_context;
+    global->type = carried_type;
+
+    c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+    program->n_children = 2;
+    program->children = arena.alloc_array<c4c::Node*>(2);
+    program->children[0] = complete_record;
+    program->children[1] = global;
+
+    const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+    expect_true(result.ok,
+                "Sema record completeness should accept direct record_def "
+                "metadata even when the rendered tag is stale" +
+                    (result.diagnostics.empty()
+                         ? std::string()
+                         : std::string(": ") + result.diagnostics.front().message));
+  }
+
+  {
+    c4c::Arena arena;
+    c4c::TextTable texts;
+    c4c::FileTable files;
+    c4c::Parser parser({}, arena, &texts, &files,
+                       c4c::SourceProfile::CppSubset);
+
+    const int namespace_context = parser.current_namespace_context_id();
+    const c4c::TextId rendered_text = texts.intern("RenderedComplete");
+    const c4c::TextId missing_text = texts.intern("StructuredMissing");
+
+    c4c::Node* rendered_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    rendered_record->name = arena.strdup("RenderedComplete");
+    rendered_record->unqualified_name = arena.strdup("RenderedComplete");
+    rendered_record->unqualified_text_id = rendered_text;
+    rendered_record->namespace_context_id = namespace_context;
+    rendered_record->n_fields = 0;
+
+    c4c::TypeSpec stale_type{};
+    stale_type.array_size = -1;
+    stale_type.inner_rank = -1;
+    stale_type.base = c4c::TB_STRUCT;
+    stale_type.tag = arena.strdup("RenderedComplete");
+    stale_type.tag_text_id = missing_text;
+    stale_type.namespace_context_id = namespace_context;
+
+    c4c::Node* global = parser.make_node(c4c::NK_GLOBAL_VAR, 2);
+    global->name = arena.strdup("rejects_stale_rendered_complete");
+    global->unqualified_name = arena.strdup("rejects_stale_rendered_complete");
+    global->unqualified_text_id = texts.intern("rejects_stale_rendered_complete");
+    global->namespace_context_id = namespace_context;
+    global->type = stale_type;
+
+    c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+    program->n_children = 2;
+    program->children = arena.alloc_array<c4c::Node*>(2);
+    program->children[0] = rendered_record;
+    program->children[1] = global;
+
+    const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+    expect_true(!result.ok,
+                "Sema record completeness should reject stale rendered tag "
+                "success after structured TextId metadata misses");
+  }
+}
+
 void test_sema_template_static_member_lookup_rejects_stale_rendered_owner_reentry() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3858,6 +3951,7 @@ int main() {
   test_sema_template_static_member_lookup_rejects_stale_rendered_owner_reentry();
   test_sema_template_static_member_lookup_rejects_rendered_after_metadata_miss();
   test_sema_static_member_lookup_rejects_rendered_after_metadata_miss();
+  test_sema_record_completeness_uses_structured_metadata_before_rendered_tag();
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
   test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift();
   test_sema_instance_field_lookup_rejects_stale_member_spelling();
