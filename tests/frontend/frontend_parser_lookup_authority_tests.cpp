@@ -1674,6 +1674,147 @@ void test_parser_deferred_nttp_default_uses_structured_binding_metadata() {
               "lookup after authoritative structured metadata misses");
 }
 
+void test_alias_template_deferred_nttp_bases_carry_structured_record_def() {
+  const char* source =
+      "template <typename T, T v>\n"
+      "struct integral_constant {\n"
+      "  static constexpr T value = v;\n"
+      "};\n"
+      "template <bool B>\n"
+      "using bool_constant = integral_constant<bool, B>;\n"
+      "template <typename T>\n"
+      "struct signed_probe : bool_constant<(T(-1) < T(0))> {};\n"
+      "enum Color { Red, Blue };\n"
+      "template <typename T>\n"
+      "struct is_enum : integral_constant<bool, __is_enum(T)> {};\n"
+      "int read_signed() {\n"
+      "  return signed_probe<int>::value ? 0 : 1;\n"
+      "}\n"
+      "int read_unsigned() {\n"
+      "  return signed_probe<unsigned int>::value ? 2 : 0;\n"
+      "}\n"
+      "int read_enum() {\n"
+      "  return is_enum<Color>::value ? 0 : 3;\n"
+      "}\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  int signed_probe_instances = 0;
+  int is_enum_instances = 0;
+  for (int i = 0; root && i < root->n_children; ++i) {
+    c4c::Node* record = root->children[i];
+    if (!record || record->kind != c4c::NK_STRUCT_DEF ||
+        !record->template_origin_name || record->n_template_args <= 0) {
+      continue;
+    }
+    const std::string origin(record->template_origin_name);
+    if (origin != "signed_probe" && origin != "is_enum") continue;
+    expect_true(record->n_bases == 1 && record->base_types != nullptr,
+                "instantiated trait wrapper should preserve its inherited base");
+    expect_true(record->base_types[0].record_def != nullptr,
+                std::string("alias-template deferred NTTP base should carry "
+                            "record_def for ") +
+                    (record->name ? record->name : "<unnamed>"));
+    record->base_types[0].tag = arena.strdup("RenderedBaseDrift");
+    if (record->base_types[0].tpl_struct_args.data &&
+        record->base_types[0].tpl_struct_args.size > 0) {
+      record->base_types[0].tpl_struct_args.data[0].debug_text =
+          arena.strdup("$expr:RenderedFallbackDrift");
+    }
+    if (origin == "signed_probe") ++signed_probe_instances;
+    if (origin == "is_enum") ++is_enum_instances;
+  }
+
+  expect_true(signed_probe_instances >= 2,
+              "signed_probe<int> and signed_probe<unsigned int> should instantiate");
+  expect_true(is_enum_instances >= 1,
+              "is_enum<Color> should instantiate");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema inherited static-member lookup should consume base "
+              "record_def metadata despite rendered base spelling drift" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
+void test_alias_template_nttp_base_carrier_ignores_stale_debug_text() {
+  c4c::Arena arena;
+  c4c::Lexer lexer("Alias<7>",
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const c4c::TextId param_text = lexer.text_table().intern("B");
+  const c4c::TextId stale_text = lexer.text_table().intern("RenderedDrift");
+
+  c4c::Node* carrier_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  carrier_record->name = arena.strdup("Carrier_7");
+  carrier_record->unqualified_name = arena.strdup("Carrier_7");
+  carrier_record->unqualified_text_id = lexer.text_table().intern("Carrier_7");
+  carrier_record->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::TypeSpec aliased{};
+  aliased.array_size = -1;
+  aliased.inner_rank = -1;
+  aliased.base = c4c::TB_STRUCT;
+  aliased.tag = arena.strdup("Carrier_RenderedDrift");
+  aliased.tpl_struct_origin = arena.strdup("Carrier");
+  aliased.record_def = carrier_record;
+  aliased.tpl_struct_args.size = 1;
+  aliased.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  aliased.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+  aliased.tpl_struct_args.data[0].type = {};
+  aliased.tpl_struct_args.data[0].type.array_size = -1;
+  aliased.tpl_struct_args.data[0].type.inner_rank = -1;
+  aliased.tpl_struct_args.data[0].value = 0;
+  aliased.tpl_struct_args.data[0].nttp_text_id = param_text;
+  aliased.tpl_struct_args.data[0].debug_text = arena.strdup("RenderedDrift");
+
+  c4c::ParserAliasTemplateInfo info{};
+  info.param_names.push_back(arena.strdup("B"));
+  info.param_name_text_ids.push_back(param_text);
+  info.param_is_nttp.push_back(true);
+  info.param_is_pack.push_back(false);
+  info.param_has_default.push_back(false);
+  info.aliased_type = aliased;
+
+  c4c::TypeSpec alias_typedef{};
+  alias_typedef.array_size = -1;
+  alias_typedef.inner_rank = -1;
+  alias_typedef.base = c4c::TB_TYPEDEF;
+  alias_typedef.tag = arena.strdup("Alias");
+  alias_typedef.tag_text_id = alias_text;
+  parser.register_typedef_binding(alias_text, alias_typedef, true);
+  parser.register_alias_template_info_for_testing(
+      parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                           alias_text),
+      info);
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  expect_true(resolved.record_def == carrier_record,
+              "alias NTTP substitution should preserve the inherited base "
+              "record_def carrier");
+  expect_true(resolved.tpl_struct_args.data != nullptr &&
+                  resolved.tpl_struct_args.size == 1,
+              "alias NTTP substitution should retain the structured value arg");
+  const c4c::TemplateArgRef& arg = resolved.tpl_struct_args.data[0];
+  expect_true(arg.kind == c4c::TemplateArgKind::Value && arg.value == 7,
+              "alias NTTP substitution should use TemplateArgRef TextId "
+              "identity instead of stale debug text");
+  expect_true(arg.debug_text && std::string(arg.debug_text) == "7",
+              "substituted alias NTTP debug text should be regenerated from "
+              "the actual argument, not the stale carrier spelling");
+  expect_true(stale_text != c4c::kInvalidText,
+              "test setup should intern the stale rendered spelling");
+}
+
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1972,6 +2113,8 @@ int main() {
   test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();
   test_parser_deferred_nttp_default_uses_structured_binding_metadata();
+  test_alias_template_deferred_nttp_bases_carry_structured_record_def();
+  test_alias_template_nttp_base_carrier_ignores_stale_debug_text();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();

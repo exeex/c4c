@@ -174,6 +174,8 @@ struct TemplateArgRef {
     TemplateArgKind kind;
     TypeSpec type;
     long long value;
+    TextId nttp_text_id =
+        kInvalidText; // parser-owned identity for forwarded NTTP value refs
 
     // Debug/recovery/display spelling. Helpers may use this to preserve or
     // search original argument text, but structured fields above remain the

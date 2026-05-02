@@ -688,6 +688,7 @@ TypeSpec Parser::parse_base_type() {
                 target->tpl_struct_args.data[i].kind = TemplateArgKind::Type;
                 target->tpl_struct_args.data[i].type = {};
                 target->tpl_struct_args.data[i].value = 0;
+                target->tpl_struct_args.data[i].nttp_text_id = kInvalidText;
                 target->tpl_struct_args.data[i].debug_text =
                     arena_.strdup(refs[i].c_str());
             }
@@ -698,6 +699,7 @@ TypeSpec Parser::parse_base_type() {
                 !arg.debug_text || !arg.debug_text[0]) {
                 return false;
             }
+            if (arg.type.array_size_expr) return false;
             char* end = nullptr;
             (void)std::strtoll(arg.debug_text, &end, 10);
             return !(end && *end == '\0');
@@ -728,7 +730,10 @@ TypeSpec Parser::parse_base_type() {
                     if (i > 0) ref += ",";
                     const TemplateArgRef& nested = arg.type.tpl_struct_args.data[i];
                     if (nested.kind == TemplateArgKind::Value) {
-                        if (zero_value_arg_ref_uses_debug_fallback(nested)) {
+                        if (nested.type.array_size_expr && nested.debug_text &&
+                            nested.debug_text[0]) {
+                            ref += nested.debug_text;
+                        } else if (zero_value_arg_ref_uses_debug_fallback(nested)) {
                             ref += nested.debug_text;
                         } else {
                             ref += std::to_string(nested.value);
@@ -777,13 +782,27 @@ TypeSpec Parser::parse_base_type() {
                 out.kind = arg.is_value ? TemplateArgKind::Value
                                         : TemplateArgKind::Type;
                 out.type = arg.is_value ? TypeSpec{} : arg.type;
+                if (arg.is_value) {
+                    out.type.array_size = -1;
+                    out.type.inner_rank = -1;
+                    out.type.array_size_expr = arg.expr;
+                }
                 out.value = arg.is_value ? arg.value : 0;
+                out.nttp_text_id =
+                    arg.is_value ? arg.nttp_text_id : kInvalidText;
                 const std::string debug_ref = render_template_arg_ref(arg);
                 out.debug_text = debug_ref.empty()
                     ? nullptr
                     : arena_.strdup(debug_ref.c_str());
             }
         };
+    auto parsed_args_have_value_carrier =
+        [](const std::vector<ParsedTemplateArg>& args) -> bool {
+        for (const ParsedTemplateArg& arg : args) {
+            if (arg.is_value) return true;
+        }
+        return false;
+    };
     auto set_template_arg_debug_refs_text =
         [&](TypeSpec* target, const std::string& refs_text) {
             if (!target) return;
@@ -801,7 +820,10 @@ TypeSpec Parser::parse_base_type() {
             if (i > 0) refs += ",";
             const TemplateArgRef& arg = spec.tpl_struct_args.data[i];
             if (arg.kind == TemplateArgKind::Value) {
-                if (zero_value_arg_ref_uses_debug_fallback(arg)) {
+                if (arg.type.array_size_expr && arg.debug_text &&
+                    arg.debug_text[0]) {
+                    refs += arg.debug_text;
+                } else if (zero_value_arg_ref_uses_debug_fallback(arg)) {
                     refs += arg.debug_text;
                 } else {
                     refs += std::to_string(arg.value);
@@ -2284,6 +2306,129 @@ TypeSpec Parser::parse_base_type() {
                                             *out_arg = resolved_alias_args[pi];
                                             return true;
                                         };
+                                    auto template_arg_ref_from_parsed_arg =
+                                        [&](const ParsedTemplateArg& arg)
+                                        -> TemplateArgRef {
+                                        TemplateArgRef out{};
+                                        out.kind = arg.is_value
+                                                       ? TemplateArgKind::Value
+                                                       : TemplateArgKind::Type;
+                                        out.type = arg.is_value ? TypeSpec{} : arg.type;
+                                        if (arg.is_value) {
+                                            out.type.array_size = -1;
+                                            out.type.inner_rank = -1;
+                                            out.type.array_size_expr = arg.expr;
+                                        }
+                                        out.value = arg.is_value ? arg.value : 0;
+                                        out.nttp_text_id =
+                                            arg.is_value ? arg.nttp_text_id
+                                                         : kInvalidText;
+                                        const std::string debug_ref =
+                                            render_template_arg_ref(arg);
+                                        out.debug_text =
+                                            debug_ref.empty()
+                                                ? nullptr
+                                                : arena_.strdup(debug_ref.c_str());
+                                        return out;
+                                    };
+                                    std::function<bool(TemplateArgRef*, int)>
+                                        substitute_template_arg_ref_structured =
+                                            [&](TemplateArgRef* ref,
+                                                int depth) -> bool {
+                                        if (!ref) return false;
+                                        if (depth > 64) return true;
+                                        if (ref->kind == TemplateArgKind::Value) {
+                                            const TextId value_text_id =
+                                                ref->nttp_text_id;
+                                            const size_t pi =
+                                                alias_param_index_for_text_id(
+                                                    value_text_id);
+                                            if (pi >= resolved_alias_args.size() ||
+                                                pi >= alias_param_count) {
+                                                return true;
+                                            }
+                                            if (!resolved_alias_args[pi].is_value) {
+                                                return false;
+                                            }
+                                            *ref = template_arg_ref_from_parsed_arg(
+                                                resolved_alias_args[pi]);
+                                            return true;
+                                        }
+
+                                        TypeSpec& ref_type = ref->type;
+                                        if (ref_type.base == TB_TYPEDEF &&
+                                            ref_type.tag && ref_type.tag[0]) {
+                                            const TextId type_text_id =
+                                                alias_param_ref_text_id(ref_type.tag);
+                                            const size_t pi =
+                                                alias_param_index_for_text_id(
+                                                    type_text_id);
+                                            if (pi < resolved_alias_args.size() &&
+                                                pi < alias_param_count) {
+                                                if (resolved_alias_args[pi].is_value) {
+                                                    return false;
+                                                }
+                                                *ref = template_arg_ref_from_parsed_arg(
+                                                    resolved_alias_args[pi]);
+                                                return true;
+                                            }
+                                        }
+
+                                        if (ref_type.tpl_struct_args.data &&
+                                            ref_type.tpl_struct_args.size > 0) {
+                                            for (int ai = 0;
+                                                 ai < ref_type.tpl_struct_args.size;
+                                                ++ai) {
+                                                if (!substitute_template_arg_ref_structured(
+                                                        &ref_type.tpl_struct_args.data[ai],
+                                                        depth + 1)) {
+                                                    return false;
+                                                }
+                                            }
+                                        }
+                                        return true;
+                                    };
+                                    auto substitute_template_arg_refs_structured =
+                                        [&](TypeSpec* target) -> bool {
+                                        if (!target || !target->tpl_struct_args.data ||
+                                            target->tpl_struct_args.size <= 0) {
+                                            return true;
+                                        }
+                                        for (int ai = 0;
+                                             ai < target->tpl_struct_args.size; ++ai) {
+                                            if (!substitute_template_arg_ref_structured(
+                                                    &target->tpl_struct_args.data[ai],
+                                                    0)) {
+                                                return false;
+                                            }
+                                        }
+                                        return true;
+                                    };
+                                    std::function<bool(const TypeSpec&, int)>
+                                        type_has_unstructured_template_arg_ref =
+                                            [&](const TypeSpec& type,
+                                                int depth) -> bool {
+                                        if (depth > 64 ||
+                                            !type.tpl_struct_args.data ||
+                                            type.tpl_struct_args.size <= 0) {
+                                            return false;
+                                        }
+                                        for (int ai = 0;
+                                             ai < type.tpl_struct_args.size; ++ai) {
+                                            const TemplateArgRef& arg =
+                                                type.tpl_struct_args.data[ai];
+                                            if (unstructured_type_arg_ref_uses_debug_fallback(
+                                                    arg)) {
+                                                return true;
+                                            }
+                                            if (arg.kind == TemplateArgKind::Type &&
+                                                type_has_unstructured_template_arg_ref(
+                                                    arg.type, depth + 1)) {
+                                                return true;
+                                            }
+                                        }
+                                        return false;
+                                    };
                                     auto type_mentions_template_scope_param =
                                         [&](const TypeSpec& type) -> bool {
                                         std::function<bool(const TypeSpec&)> type_mentions_dep_params =
@@ -2840,12 +2985,19 @@ TypeSpec Parser::parse_base_type() {
                                     }
                                 }
                                 if (ts.tpl_struct_args.size > 0) {
-                                    const std::string new_refs =
-                                        substitute_template_arg_refs(
-                                            template_arg_refs_text(ts).c_str());
-                                    set_template_arg_debug_refs_text(&ts, new_refs);
+                                    if (type_has_unstructured_template_arg_ref(
+                                            ts, 0)) {
+                                        const std::string new_refs =
+                                            substitute_template_arg_refs(
+                                                template_arg_refs_text(ts).c_str());
+                                        set_template_arg_debug_refs_text(&ts, new_refs);
+                                    } else if (!substitute_template_arg_refs_structured(&ts)) {
+                                        alias_parse_ok = false;
+                                    }
                                     // Update tag (mangled name) to reflect substituted args.
-                                    if (ts.tpl_struct_origin) {
+                                    if (alias_parse_ok && ts.tpl_struct_origin) {
+                                        const std::string new_refs =
+                                            template_arg_refs_text(ts);
                                         std::string new_tag = ts.tpl_struct_origin;
                                         for (const auto& p2 :
                                              split_template_arg_refs(new_refs)) {
@@ -2855,10 +3007,14 @@ TypeSpec Parser::parse_base_type() {
                                         ts.tag = arena_.strdup(new_tag.c_str());
                                     }
                                 }
+                                if (!alias_parse_ok) {
+                                    // alias_guard restores pos_ on scope exit
+                                } else {
                                 ts.is_const   |= save_const;
                                 ts.is_volatile |= save_vol;
                                 alias_guard.commit();
                                 return ts;
+                                }
                             }
                     }
                 }
@@ -2987,7 +3143,10 @@ TypeSpec Parser::parse_base_type() {
                             }
                         }
                         ts.tpl_struct_origin = arena_.strdup(tpl_name.c_str());
-                        set_template_arg_debug_refs_text(&ts, arg_refs);
+                        if (parsed_args_have_value_carrier(actual_args))
+                            set_template_arg_refs_from_parsed_args(&ts, actual_args);
+                        else
+                            set_template_arg_debug_refs_text(&ts, arg_refs);
                         ts.tag = arena_.strdup(tpl_name.c_str());
                         return ts;
                     }
@@ -3283,7 +3442,10 @@ TypeSpec Parser::parse_base_type() {
                             }
                         }
                         ts.tpl_struct_origin = arena_.strdup(family_name.c_str());
-                        set_template_arg_debug_refs_text(&ts, arg_refs);
+                        if (parsed_args_have_value_carrier(concrete_args))
+                            set_template_arg_refs_from_parsed_args(&ts, concrete_args);
+                        else
+                            set_template_arg_debug_refs_text(&ts, arg_refs);
                         ts.tag = arena_.strdup(mangled.c_str());
                         ts.tag_text_id = mangled_text_id;
                         ts.namespace_context_id = mangled_namespace_context;
@@ -3352,6 +3514,275 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                             return false;
                                     };
+                                    auto bound_type_for_type = [&](TypeSpec type) {
+                                        if (type.base == TB_TYPEDEF &&
+                                            type.tag && type.tag[0]) {
+                                            for (const auto& [pname2, pts] :
+                                                 type_bindings) {
+                                                if (std::string(type.tag) == pname2) {
+                                                    return pts;
+                                                }
+                                            }
+                                        }
+                                        return type;
+                                    };
+                                    auto nttp_value_for_ref =
+                                        [&](const Node* node, long long* out)
+                                        -> bool {
+                                        if (!node || !out) return false;
+                                        const TextId ref_text_id =
+                                            node->unqualified_text_id;
+                                        if (ref_text_id != kInvalidText) {
+                                            for (const auto& meta :
+                                                 nttp_binding_meta) {
+                                                if (meta.name_text_id ==
+                                                    ref_text_id) {
+                                                    *out = meta.value;
+                                                    return true;
+                                                }
+                                            }
+                                            return false;
+                                        }
+                                        if (!node->name) return false;
+                                        for (const auto& [pname2, value] :
+                                             nttp_bindings) {
+                                            if (std::string(node->name) ==
+                                                pname2) {
+                                                *out = value;
+                                                return true;
+                                            }
+                                        }
+                                        return false;
+                                    };
+                                    auto type_is_unsigned_integer =
+                                        [&](TypeSpec type) -> bool {
+                                        type = bound_type_for_type(type);
+                                        switch (type.base) {
+                                            case TB_UCHAR:
+                                            case TB_USHORT:
+                                            case TB_UINT:
+                                            case TB_ULONG:
+                                            case TB_ULONGLONG:
+                                            case TB_UINT128:
+                                                return true;
+                                            default:
+                                                return false;
+                                        }
+                                    };
+                                    auto functional_cast_type =
+                                        [&](const Node* node,
+                                            TypeSpec* out_type) -> bool {
+                                        if (!node || node->kind != NK_CALL ||
+                                            !node->left ||
+                                            node->left->kind != NK_VAR ||
+                                            !node->left->name || !out_type) {
+                                            return false;
+                                        }
+                                        TypeSpec candidate{};
+                                        candidate.base = TB_TYPEDEF;
+                                        candidate.tag = node->left->name;
+                                        candidate.tag_text_id =
+                                            node->left->unqualified_text_id;
+                                        candidate.array_size = -1;
+                                        candidate.inner_rank = -1;
+                                        *out_type = bound_type_for_type(candidate);
+                                        return out_type->base != TB_TYPEDEF ||
+                                               out_type->record_def ||
+                                               out_type->tag != candidate.tag;
+                                    };
+                                    std::function<bool(const Node*)>
+                                        expr_has_unsigned_type =
+                                            [&](const Node* node) -> bool {
+                                        if (!node) return false;
+                                        if (node->kind == NK_CAST ||
+                                            node->kind == NK_SIZEOF_TYPE) {
+                                            return type_is_unsigned_integer(node->type);
+                                        }
+                                        TypeSpec cast_type{};
+                                        if (functional_cast_type(node,
+                                                                 &cast_type)) {
+                                            return type_is_unsigned_integer(
+                                                cast_type);
+                                        }
+                                        return false;
+                                    };
+                                    std::function<bool(const Node*, long long*)>
+                                        eval_structured_nttp_expr =
+                                            [&](const Node* node,
+                                                long long* out) -> bool {
+                                        if (!node || !out) return false;
+                                        if (node->kind == NK_INT_LIT ||
+                                            node->kind == NK_CHAR_LIT) {
+                                            *out = node->ival;
+                                            return true;
+                                        }
+                                        if (node->kind == NK_VAR) {
+                                            return nttp_value_for_ref(node, out);
+                                        }
+                                        if (node->kind == NK_CAST && node->left) {
+                                            return eval_structured_nttp_expr(
+                                                node->left, out);
+                                        }
+                                        if (node->kind == NK_CALL &&
+                                            node->n_children == 1 &&
+                                            node->children) {
+                                            TypeSpec cast_type{};
+                                            if (functional_cast_type(node,
+                                                                     &cast_type)) {
+                                                return eval_structured_nttp_expr(
+                                                    node->children[0], out);
+                                            }
+                                        }
+                                        if (node->kind == NK_SIZEOF_TYPE) {
+                                            const TypeSpec sized =
+                                                bound_type_for_type(node->type);
+                                            if (sized.base == TB_TYPEDEF &&
+                                                sized.tag) {
+                                                return false;
+                                            }
+                                            *out = sizeof_type_spec(sized);
+                                            return true;
+                                        }
+                                        if (node->kind == NK_UNARY && node->op &&
+                                            node->left) {
+                                            long long v = 0;
+                                            if (!eval_structured_nttp_expr(
+                                                    node->left, &v)) {
+                                                return false;
+                                            }
+                                            if (std::strcmp(node->op, "-") == 0) {
+                                                *out = -v;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "+") == 0) {
+                                                *out = v;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "!") == 0) {
+                                                *out = !v;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "~") == 0) {
+                                                *out = ~v;
+                                                return true;
+                                            }
+                                            return false;
+                                        }
+                                        if (node->kind == NK_BINOP && node->op &&
+                                            node->left && node->right) {
+                                            long long l = 0;
+                                            long long r = 0;
+                                            if (!eval_structured_nttp_expr(
+                                                    node->left, &l) ||
+                                                !eval_structured_nttp_expr(
+                                                    node->right, &r)) {
+                                                return false;
+                                            }
+                                            if (std::strcmp(node->op, "+") == 0) {
+                                                *out = l + r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "-") == 0) {
+                                                *out = l - r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "*") == 0) {
+                                                *out = l * r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "/") == 0 &&
+                                                r != 0) {
+                                                *out = l / r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "%") == 0 &&
+                                                r != 0) {
+                                                *out = l % r;
+                                                return true;
+                                            }
+                                            const bool compare_unsigned =
+                                                expr_has_unsigned_type(node->left) ||
+                                                expr_has_unsigned_type(node->right);
+                                            if (std::strcmp(node->op, "<") == 0) {
+                                                *out = compare_unsigned
+                                                           ? static_cast<unsigned long long>(l) <
+                                                                 static_cast<unsigned long long>(r)
+                                                           : l < r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, ">") == 0) {
+                                                *out = compare_unsigned
+                                                           ? static_cast<unsigned long long>(l) >
+                                                                 static_cast<unsigned long long>(r)
+                                                           : l > r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "<=") == 0) {
+                                                *out = compare_unsigned
+                                                           ? static_cast<unsigned long long>(l) <=
+                                                                 static_cast<unsigned long long>(r)
+                                                           : l <= r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, ">=") == 0) {
+                                                *out = compare_unsigned
+                                                           ? static_cast<unsigned long long>(l) >=
+                                                                 static_cast<unsigned long long>(r)
+                                                           : l >= r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "==") == 0) {
+                                                *out = l == r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "!=") == 0) {
+                                                *out = l != r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "&&") == 0) {
+                                                *out = (l && r) ? 1 : 0;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "||") == 0) {
+                                                *out = (l || r) ? 1 : 0;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "&") == 0) {
+                                                *out = l & r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "|") == 0) {
+                                                *out = l | r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "^") == 0) {
+                                                *out = l ^ r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, "<<") == 0) {
+                                                *out = l << r;
+                                                return true;
+                                            }
+                                            if (std::strcmp(node->op, ">>") == 0) {
+                                                *out = l >> r;
+                                                return true;
+                                            }
+                                            return false;
+                                        }
+                                        if (node->kind == NK_TERNARY &&
+                                            node->cond && node->then_ &&
+                                            node->else_) {
+                                            long long c = 0;
+                                            if (!eval_structured_nttp_expr(
+                                                    node->cond, &c)) {
+                                                return false;
+                                            }
+                                            return eval_structured_nttp_expr(
+                                                c ? node->then_ : node->else_,
+                                                out);
+                                        }
+                                        return false;
+                                    };
                                     const Node* base_primary =
                                         find_instantiated_base_primary();
                                     if (inst->base_types[bi].tpl_struct_args.data &&
@@ -3370,7 +3801,8 @@ TypeSpec Parser::parse_base_type() {
                                             if (src_arg.kind == TemplateArgKind::Value) {
                                                 if (src_arg.debug_text &&
                                                     std::strncmp(src_arg.debug_text,
-                                                                 "$expr:", 6) == 0) {
+                                                                 "$expr:", 6) == 0 &&
+                                                    !src_arg.type.array_size_expr) {
                                                     can_use_typed_args = false;
                                                     break;
                                                 }
@@ -3381,6 +3813,19 @@ TypeSpec Parser::parse_base_type() {
                                                 }
                                                 base_arg.is_value = true;
                                                 base_arg.value = src_arg.value;
+                                                base_arg.expr =
+                                                    src_arg.type.array_size_expr;
+                                                if (base_arg.expr) {
+                                                    long long expr_value = 0;
+                                                    if (!eval_structured_nttp_expr(
+                                                            base_arg.expr,
+                                                            &expr_value)) {
+                                                        can_use_typed_args = false;
+                                                        break;
+                                                    }
+                                                    base_arg.value = expr_value;
+                                                    base_arg.expr = nullptr;
+                                                }
                                             } else {
                                                 if (unstructured_type_arg_ref_uses_debug_fallback(
                                                         src_arg)) {
@@ -3502,16 +3947,16 @@ TypeSpec Parser::parse_base_type() {
                                                             base_def = base_def_it->second;
                                                         }
                                                     }
-                                                    if (!inst->base_types[bi].tag &&
-                                                        base_def) {
-                                                        inst->base_types[bi] = TypeSpec{};
-                                                        inst->base_types[bi].array_size = -1;
-                                                        inst->base_types[bi].inner_rank = -1;
-                                                        inst->base_types[bi].base = TB_STRUCT;
-                                                        inst->base_types[bi].tag =
-                                                            arena_.strdup(base_mangled.c_str());
-                                                        inst->base_types[bi].record_def =
-                                                            base_def;
+                                                    if (base_def) {
+                                                        if (!inst->base_types[bi].tag) {
+                                                            inst->base_types[bi] = TypeSpec{};
+                                                            inst->base_types[bi].array_size = -1;
+                                                            inst->base_types[bi].inner_rank = -1;
+                                                            inst->base_types[bi].base = TB_STRUCT;
+                                                            inst->base_types[bi].tag =
+                                                                arena_.strdup(base_mangled.c_str());
+                                                        }
+                                                        inst->base_types[bi].record_def = base_def;
                                                     }
                                                     continue;
                                                 }
@@ -3767,16 +4212,16 @@ TypeSpec Parser::parse_base_type() {
                                                     base_def = base_def_it->second;
                                                 }
                                             }
-                                            if (!inst->base_types[bi].tag &&
-                                                base_def) {
-                                                inst->base_types[bi] = TypeSpec{};
-                                                inst->base_types[bi].array_size = -1;
-                                                inst->base_types[bi].inner_rank = -1;
-                                                inst->base_types[bi].base = TB_STRUCT;
-                                                inst->base_types[bi].tag =
-                                                    arena_.strdup(base_mangled.c_str());
-                                                inst->base_types[bi].record_def =
-                                                    base_def;
+                                            if (base_def) {
+                                                if (!inst->base_types[bi].tag) {
+                                                    inst->base_types[bi] = TypeSpec{};
+                                                    inst->base_types[bi].array_size = -1;
+                                                    inst->base_types[bi].inner_rank = -1;
+                                                    inst->base_types[bi].base = TB_STRUCT;
+                                                    inst->base_types[bi].tag =
+                                                        arena_.strdup(base_mangled.c_str());
+                                                }
+                                                inst->base_types[bi].record_def = base_def;
                                             }
                                         } else if (auto base_def_it =
                                                        definition_state_.struct_tag_def_map.find(
