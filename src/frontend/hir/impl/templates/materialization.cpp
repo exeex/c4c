@@ -16,6 +16,31 @@ const char* typespec_legacy_tag_if_present(const TypeSpec&, long) {
   return nullptr;
 }
 
+template <typename T>
+auto assign_typespec_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void assign_typespec_legacy_tag_if_present(TypeSpec&, const char*, long) {}
+
+void assign_decoded_record_identity(TypeSpec& ts,
+                                    const Node* record,
+                                    TypeBase base,
+                                    const char* display_name) {
+  ts.base = base;
+  ts.record_def = const_cast<Node*>(record);
+  if (record) {
+    ts.tag_text_id = record->unqualified_text_id;
+    ts.namespace_context_id = record->namespace_context_id;
+    if (!display_name || !display_name[0]) {
+      display_name = record->unqualified_name ? record->unqualified_name
+                                              : record->name;
+    }
+  }
+  assign_typespec_legacy_tag_if_present(ts, display_name, 0);
+}
+
 std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
   if (arg.kind == TemplateArgKind::Value && arg.value == 0 &&
       arg.debug_text && arg.debug_text[0]) {
@@ -257,22 +282,27 @@ bool HirTemplateArgMaterializer::decode_type_ref(const std::string& ref,
   } else if (parse_builtin_typespec_text(base_ref, &resolved)) {
   } else if (auto sit = struct_def_nodes.find(base_ref);
              sit != struct_def_nodes.end()) {
-    resolved.base = TB_STRUCT;
-    resolved.tag = sit->first.c_str();
+    assign_decoded_record_identity(resolved, sit->second, TB_STRUCT,
+                                   sit->first.c_str());
   } else if (base_ref.size() > 7 &&
-             base_ref.compare(0, 7, "struct_") == 0 &&
-             struct_def_nodes.count(base_ref.substr(7)) != 0) {
-    resolved.base = TB_STRUCT;
-    resolved.tag = struct_def_nodes.find(base_ref.substr(7))->first.c_str();
+             base_ref.compare(0, 7, "struct_") == 0) {
+    const std::string record_name = base_ref.substr(7);
+    auto record_it = struct_def_nodes.find(record_name);
+    if (record_it == struct_def_nodes.end()) return false;
+    assign_decoded_record_identity(resolved, record_it->second, TB_STRUCT,
+                                   record_it->first.c_str());
   } else if (base_ref.size() > 6 &&
-             base_ref.compare(0, 6, "union_") == 0 &&
-             struct_def_nodes.count(base_ref.substr(6)) != 0) {
-    resolved.base = TB_UNION;
-    resolved.tag = struct_def_nodes.find(base_ref.substr(6))->first.c_str();
+             base_ref.compare(0, 6, "union_") == 0) {
+    const std::string record_name = base_ref.substr(6);
+    auto record_it = struct_def_nodes.find(record_name);
+    if (record_it == struct_def_nodes.end()) return false;
+    assign_decoded_record_identity(resolved, record_it->second, TB_UNION,
+                                   record_it->first.c_str());
   } else if (base_ref.size() > 5 &&
              base_ref.compare(0, 5, "enum_") == 0) {
     resolved.base = TB_ENUM;
-    resolved.tag = ::strdup(base_ref.substr(5).c_str());
+    assign_typespec_legacy_tag_if_present(
+        resolved, ::strdup(base_ref.substr(5).c_str()), 0);
   } else {
     return false;
   }
