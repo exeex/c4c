@@ -1092,6 +1092,7 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> struct_def_nodes_;
   std::unordered_map<HirRecordOwnerKey, const Node*, HirRecordOwnerKeyHash>
       struct_def_nodes_by_owner_;
+  std::unordered_map<const Node*, HirRecordOwnerKey> struct_def_owner_by_node_;
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   std::unordered_map<HirRecordOwnerKey, const Node*, HirRecordOwnerKeyHash>
       template_struct_defs_by_owner_;

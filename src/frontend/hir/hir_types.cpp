@@ -2006,6 +2006,9 @@ void Lowerer::lower_struct_def(const Node* sd) {
   const HirRecordOwnerKey struct_owner_key = make_hir_record_owner_key(def);
   const bool has_struct_owner_key =
       hir_record_owner_key_has_complete_metadata(struct_owner_key);
+  if (has_struct_owner_key) {
+    struct_def_owner_by_node_[sd] = struct_owner_key;
+  }
   auto find_existing_struct_def = [&]() -> const HirStructDef* {
     if (has_struct_owner_key) {
       if (const HirStructDef* structured =
@@ -2158,6 +2161,15 @@ void Lowerer::lower_struct_def(const Node* sd) {
           struct_owner_key, hf.field_text_id, hf.member_symbol_id);
     }
     TypeSpec ft = f->type;
+    if ((ft.base == TB_STRUCT || ft.base == TB_UNION) && ft.record_def) {
+      const auto owner_it = struct_def_owner_by_node_.find(ft.record_def);
+      if (owner_it != struct_def_owner_by_node_.end()) {
+        const HirRecordOwnerKey& owner_key = owner_it->second;
+        ft.tag_text_id = owner_key.declaration_text_id;
+        ft.namespace_context_id = owner_key.namespace_context_id;
+        ft.is_global_qualified = owner_key.is_global_qualified;
+      }
+    }
 
     if (is_bitfield && !sd->is_union) {
       // Determine signedness from original declared type

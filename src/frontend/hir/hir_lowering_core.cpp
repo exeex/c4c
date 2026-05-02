@@ -49,13 +49,14 @@ TextId make_text_id(std::string_view text, TextTable* texts) {
 }
 
 TextId make_unqualified_text_id(const Node* n, TextTable* texts) {
-  if (!n || !texts) return kInvalidText;
-  if (n->unqualified_name && n->unqualified_name[0]) {
+  if (!n) return kInvalidText;
+  if (texts && n->unqualified_name && n->unqualified_name[0]) {
     return make_text_id(n->unqualified_name, texts);
   }
-  if (n->name && n->name[0]) {
+  if (texts && n->name && n->name[0]) {
     return make_text_id(n->name, texts);
   }
+  if (n->unqualified_text_id != kInvalidText) return n->unqualified_text_id;
   return kInvalidText;
 }
 
@@ -90,10 +91,8 @@ std::optional<HirRecordOwnerKey> make_record_owner_key_for_type(
             make_text_id(ts.record_def->qualifier_segments[i], texts));
       }
     }
-    TextId declaration_text_id = ts.record_def->unqualified_text_id;
-    if (declaration_text_id == kInvalidText) {
-      declaration_text_id = make_unqualified_text_id(ts.record_def, texts);
-    }
+    const TextId declaration_text_id =
+        make_unqualified_text_id(ts.record_def, texts);
     HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, declaration_text_id);
     if (hir_record_owner_key_has_complete_metadata(key)) return key;
   }
@@ -416,7 +415,17 @@ class LayoutQueries {
     if (const std::optional<HirRecordOwnerKey> owner_key =
             make_record_owner_key_for_type(
                 ts, module_.link_name_texts ? module_.link_name_texts.get() : nullptr)) {
-      return module_.find_struct_def_by_owner_structured(*owner_key);
+      if (const HirStructDef* structured =
+              module_.find_struct_def_by_owner_structured(*owner_key)) {
+        return structured;
+      }
+      if (ts.record_def && ts.tag_text_id != kInvalidText) {
+        const HirRecordOwnerKey type_key =
+            make_hir_record_owner_key(make_type_ns_qual(ts), ts.tag_text_id);
+        if (hir_record_owner_key_has_complete_metadata(type_key)) {
+          return module_.find_struct_def_by_owner_structured(type_key);
+        }
+      }
     }
     return nullptr;
   }
