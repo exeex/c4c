@@ -1550,6 +1550,10 @@ class Validator {
     return key;
   }
 
+  static bool is_template_specialized_static_member_reference(const Node* reference) {
+    return reference && (reference->has_template_args || reference->n_template_args > 0);
+  }
+
   bool static_member_lookup_has_structured_metadata(
       const std::string& tag, const Node* reference) const {
     (void)tag;
@@ -2478,7 +2482,8 @@ class Validator {
           }
           // If base chain has unresolved pending template types ($expr:),
           // accept the lookup optimistically — the HIR will resolve it.
-          if (!static_member_lookup_has_structured_metadata(struct_tag, n) &&
+          if (!is_template_specialized_static_member_reference(n) &&
+              !static_member_lookup_has_structured_metadata(struct_tag, n) &&
               (complete_structs_.count(struct_tag) || complete_unions_.count(struct_tag))) {
             out.valid = true;
             out.type = make_int_ts();
