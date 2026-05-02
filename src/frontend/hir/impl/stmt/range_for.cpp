@@ -1,31 +1,264 @@
 #include "stmt.hpp"
 
+#include <cstring>
+#include <optional>
 #include <stdexcept>
 
 namespace c4c::hir {
+
+namespace {
+
+bool is_range_for_generated_anonymous_record_tag(const char* name) {
+  return name && std::strncmp(name, "_anon_", 6) == 0;
+}
+
+NamespaceQualifier range_for_type_ns_qual(const TypeSpec& ts) {
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(
+        ts.qualifier_text_ids,
+        ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  return ns_qual;
+}
+
+}  // namespace
 
 void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
   const Node* decl_node = n->init;
   const Node* range_node = n->right;
 
+  struct RangeForOwner {
+    std::string tag;
+    std::optional<HirRecordOwnerKey> owner_key;
+    bool has_structured_identity = false;
+  };
+
+  auto has_structured_owner_identity = [&](const TypeSpec& owner_ts) {
+    const std::optional<HirRecordOwnerKey> record_owner_key =
+        (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF)
+            ? make_struct_def_node_owner_key(owner_ts.record_def)
+            : std::nullopt;
+    const bool record_def_has_structured_owner_identity =
+        record_owner_key.has_value() &&
+        !is_range_for_generated_anonymous_record_tag(owner_ts.record_def->name);
+    return record_def_has_structured_owner_identity ||
+           (owner_ts.namespace_context_id >= 0 &&
+            owner_ts.tag_text_id != kInvalidText) ||
+           (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) ||
+           (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0);
+  };
+
+  auto diagnostic_owner_name = [&](const TypeSpec& owner_ts,
+                                   const RangeForOwner& owner) {
+    if (!owner.tag.empty()) return owner.tag;
+    if (owner_ts.record_def && owner_ts.record_def->name &&
+        owner_ts.record_def->name[0]) {
+      return std::string(owner_ts.record_def->name);
+    }
+    if (module_ && module_->link_name_texts &&
+        owner_ts.tag_text_id != kInvalidText) {
+      const std::string_view text =
+          module_->link_name_texts->lookup(owner_ts.tag_text_id);
+      if (!text.empty()) return std::string(text);
+    }
+    if (owner.owner_key) return owner.owner_key->debug_label();
+    return std::string("<unknown>");
+  };
+
+  auto resolve_structured_owner =
+      [&](TypeSpec owner_ts,
+          const std::string& context_name) -> RangeForOwner {
+    RangeForOwner owner;
+    owner.has_structured_identity = has_structured_owner_identity(owner_ts);
+    while (resolve_struct_member_typedef_if_ready(&owner_ts)) {
+    }
+    resolve_typedef_to_struct(owner_ts);
+    if ((owner_ts.base != TB_STRUCT && owner_ts.base != TB_UNION) ||
+        owner_ts.ptr_level != 0 || owner_ts.array_rank != 0) {
+      return owner;
+    }
+
+    auto resolve_from_key = [&](const HirRecordOwnerKey& key) -> bool {
+      if (!hir_record_owner_key_has_complete_metadata(key)) return false;
+      if (const SymbolName* tag = module_->find_struct_def_tag_by_owner(key)) {
+        if (module_->struct_defs.count(*tag)) {
+          owner.owner_key = key;
+          owner.tag = *tag;
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
+      if (const std::optional<HirRecordOwnerKey> key =
+              make_struct_def_node_owner_key(owner_ts.record_def)) {
+        if (resolve_from_key(*key)) return owner;
+      }
+    }
+
+    if (owner_ts.namespace_context_id >= 0 &&
+        owner_ts.tag_text_id != kInvalidText) {
+      const HirRecordOwnerKey key =
+          make_hir_record_owner_key(
+              range_for_type_ns_qual(owner_ts), owner_ts.tag_text_id);
+      if (resolve_from_key(key)) return owner;
+    }
+
+    if (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) {
+      if (!ctx.tpl_bindings.empty()) {
+        seed_and_resolve_pending_template_type_if_needed(
+            owner_ts, ctx.tpl_bindings, ctx.nttp_bindings, n,
+            PendingTemplateTypeKind::OwnerStruct, context_name);
+      } else {
+        TypeBindings empty_tb;
+        realize_template_struct_if_needed(owner_ts, empty_tb, ctx.nttp_bindings);
+      }
+      if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
+        if (const std::optional<HirRecordOwnerKey> key =
+                make_struct_def_node_owner_key(owner_ts.record_def)) {
+          if (resolve_from_key(*key)) return owner;
+        }
+      }
+      if (owner_ts.namespace_context_id >= 0 &&
+          owner_ts.tag_text_id != kInvalidText) {
+        const HirRecordOwnerKey key =
+            make_hir_record_owner_key(
+                range_for_type_ns_qual(owner_ts), owner_ts.tag_text_id);
+        if (resolve_from_key(key)) return owner;
+      }
+    }
+
+    if (!owner.has_structured_identity && module_ && module_->link_name_texts &&
+        owner_ts.tag_text_id != kInvalidText) {
+      const std::string_view rendered =
+          module_->link_name_texts->lookup(owner_ts.tag_text_id);
+      if (!rendered.empty() && module_->struct_defs.count(std::string(rendered))) {
+        owner.tag = std::string(rendered);
+      }
+    }
+    return owner;
+  };
+
+  auto make_method_key =
+      [&](const HirRecordOwnerKey& owner_key, const char* method_name,
+          bool is_const_method) -> std::optional<HirStructMethodLookupKey> {
+    if (!module_ || !module_->link_name_texts || !method_name || !method_name[0]) {
+      return std::nullopt;
+    }
+    const TextId method_text_id = module_->link_name_texts->find(method_name);
+    if (method_text_id == kInvalidText) return std::nullopt;
+    HirStructMethodLookupKey key;
+    key.owner_key = owner_key;
+    key.method_text_id = method_text_id;
+    key.is_const_method = is_const_method;
+    if (!hir_struct_method_lookup_key_has_complete_metadata(key)) {
+      return std::nullopt;
+    }
+    return key;
+  };
+
+  auto find_owner_method_mangled =
+      [&](const RangeForOwner& owner, const char* method_name,
+          bool is_const_obj) -> std::optional<std::string> {
+    auto try_const = [&](const HirRecordOwnerKey& key,
+                         bool is_const_method) -> std::optional<std::string> {
+      const std::optional<HirStructMethodLookupKey> method_key =
+          make_method_key(key, method_name, is_const_method);
+      if (!method_key) return std::nullopt;
+      const auto it = struct_methods_by_owner_.find(*method_key);
+      return it == struct_methods_by_owner_.end()
+                 ? std::nullopt
+                 : std::optional<std::string>(it->second);
+    };
+    if (owner.owner_key) {
+      if (auto local = try_const(*owner.owner_key, is_const_obj)) return local;
+      if (auto local = try_const(*owner.owner_key, !is_const_obj)) return local;
+    }
+    if (!owner.has_structured_identity && !owner.tag.empty()) {
+      return find_struct_method_mangled(owner.tag, method_name, is_const_obj);
+    }
+    if (!owner.tag.empty()) {
+      auto dit = module_->struct_defs.find(owner.tag);
+      if (dit != module_->struct_defs.end()) {
+        for (const auto& base_tag : dit->second.base_tags) {
+          if (const std::optional<HirStructMethodLookupKey> base_key =
+                  make_struct_method_lookup_key(
+                      base_tag, method_name, is_const_obj)) {
+            const auto it = struct_methods_by_owner_.find(*base_key);
+            if (it != struct_methods_by_owner_.end()) return it->second;
+          }
+          if (const std::optional<HirStructMethodLookupKey> base_alt_key =
+                  make_struct_method_lookup_key(
+                      base_tag, method_name, !is_const_obj)) {
+            const auto it = struct_methods_by_owner_.find(*base_alt_key);
+            if (it != struct_methods_by_owner_.end()) return it->second;
+          }
+        }
+      }
+    }
+    return std::nullopt;
+  };
+
+  auto find_owner_method_return_type =
+      [&](const RangeForOwner& owner, const char* method_name,
+          bool is_const_obj) -> std::optional<TypeSpec> {
+    auto try_const = [&](const HirRecordOwnerKey& key,
+                         bool is_const_method) -> std::optional<TypeSpec> {
+      const std::optional<HirStructMethodLookupKey> method_key =
+          make_method_key(key, method_name, is_const_method);
+      if (!method_key) return std::nullopt;
+      const auto it = struct_method_ret_types_by_owner_.find(*method_key);
+      return it == struct_method_ret_types_by_owner_.end()
+                 ? std::nullopt
+                 : std::optional<TypeSpec>(it->second);
+    };
+    if (owner.owner_key) {
+      if (auto local = try_const(*owner.owner_key, is_const_obj)) return local;
+      if (auto local = try_const(*owner.owner_key, !is_const_obj)) return local;
+    }
+    if (!owner.has_structured_identity && !owner.tag.empty()) {
+      return find_struct_method_return_type(owner.tag, method_name, is_const_obj);
+    }
+    if (!owner.tag.empty()) {
+      auto dit = module_->struct_defs.find(owner.tag);
+      if (dit != module_->struct_defs.end()) {
+        for (const auto& base_tag : dit->second.base_tags) {
+          if (const std::optional<HirStructMethodLookupKey> base_key =
+                  make_struct_method_lookup_key(
+                      base_tag, method_name, is_const_obj)) {
+            const auto it = struct_method_ret_types_by_owner_.find(*base_key);
+            if (it != struct_method_ret_types_by_owner_.end()) return it->second;
+          }
+          if (const std::optional<HirStructMethodLookupKey> base_alt_key =
+                  make_struct_method_lookup_key(
+                      base_tag, method_name, !is_const_obj)) {
+            const auto it = struct_method_ret_types_by_owner_.find(*base_alt_key);
+            if (it != struct_method_ret_types_by_owner_.end()) return it->second;
+          }
+        }
+      }
+    }
+    return std::nullopt;
+  };
+
   TypeSpec range_ts = infer_generic_ctrl_type(&ctx, range_node);
-  if (range_ts.base != TB_STRUCT || !range_ts.tag) {
+  const RangeForOwner range_owner =
+      resolve_structured_owner(range_ts, "range-for-method-owner");
+  if (range_ts.base != TB_STRUCT || range_owner.tag.empty()) {
     throw std::runtime_error(
         std::string("error: range-for expression is not a struct type (line ") +
         std::to_string(n->line) + ")");
   }
-  const std::string* current_struct_tag =
-      !ctx.method_struct_tag.empty() ? &ctx.method_struct_tag : nullptr;
-  const std::string range_method_owner_tag =
-      resolve_struct_method_lookup_owner_tag(
-          range_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
-          current_struct_tag, n, "range-for-method-owner");
-  const std::string range_error_tag = range_ts.tag ? std::string(range_ts.tag)
-                                                   : range_method_owner_tag;
+  const std::string range_error_tag =
+      diagnostic_owner_name(range_ts, range_owner);
 
   auto find_method = [&](const char* method_name) -> std::string {
-    auto method = find_struct_method_mangled(
-        range_method_owner_tag, method_name, range_ts.is_const);
+    auto method = find_owner_method_mangled(
+        range_owner, method_name, range_ts.is_const);
     if (!method) {
       throw std::runtime_error(
           std::string("error: range-for: no ") + method_name +
@@ -50,7 +283,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
   }
   if (iter_ts.base == TB_VOID) {
     if (auto rit =
-            find_struct_method_return_type(range_method_owner_tag, "begin", false)) {
+            find_owner_method_return_type(range_owner, "begin", false)) {
       iter_ts = *rit;
     }
   }
@@ -97,12 +330,10 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
 
   LocalId begin_lid = make_iter_local("__range_begin", begin_call);
   LocalId end_lid = make_iter_local("__range_end", end_call);
-  const std::string iter_method_owner_tag =
-      resolve_struct_method_lookup_owner_tag(
-          iter_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
-          current_struct_tag, n, "range-for-iterator-method-owner");
+  const RangeForOwner iter_owner =
+      resolve_structured_owner(iter_ts, "range-for-iterator-method-owner");
   const std::string iter_error_tag =
-      iter_ts.tag ? std::string(iter_ts.tag) : iter_method_owner_tag;
+      diagnostic_owner_name(iter_ts, iter_owner);
 
   auto ref_local = [&](const char* name, LocalId lid) -> ExprId {
     DeclRef dr{};
@@ -113,8 +344,8 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
 
   ExprId cond_expr;
   {
-    auto method = find_struct_method_mangled(
-        iter_method_owner_tag, "operator_neq", false);
+    auto method = find_owner_method_mangled(
+        iter_owner, "operator_neq", false);
     if (!method) {
       throw std::runtime_error(
           std::string("error: range-for: iterator type ") + iter_error_tag +
@@ -141,8 +372,8 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
 
   ExprId update_expr;
   {
-    auto method = find_struct_method_mangled(
-        iter_method_owner_tag, "operator_preinc", false);
+    auto method = find_owner_method_mangled(
+        iter_owner, "operator_preinc", false);
     if (!method) {
       throw std::runtime_error(
           std::string("error: range-for: iterator type ") + iter_error_tag +
@@ -190,8 +421,8 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     TypeSpec deref_ret_ts{};
     deref_ret_ts.base = TB_INT;
     {
-      auto method = find_struct_method_mangled(
-          iter_method_owner_tag, "operator_deref", false);
+      auto method = find_owner_method_mangled(
+          iter_owner, "operator_deref", false);
       if (!method) {
         throw std::runtime_error(
             std::string("error: range-for: iterator type ") + iter_error_tag +
@@ -207,8 +438,8 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
         }
       }
       if (deref_ret_ts.base == TB_VOID || deref_ret_ts.base == TB_INT) {
-        if (auto rit = find_struct_method_return_type(
-                iter_method_owner_tag, "operator_deref", false)) {
+        if (auto rit = find_owner_method_return_type(
+                iter_owner, "operator_deref", false)) {
           deref_ret_ts = *rit;
         }
       }
