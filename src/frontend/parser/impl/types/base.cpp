@@ -4862,7 +4862,6 @@ TypeSpec Parser::parse_base_type() {
                                                 }
                                                 if (base_def) {
                                                     restore_deferred_member_lookup();
-                                                    restore_deferred_member_lookup();
                                                     inst->base_types[bi].record_def =
                                                         base_def;
                                                 }

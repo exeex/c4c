@@ -8,19 +8,15 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 moved the successful base-instantiation handoff closer to
-`ensure_template_struct_instantiated_from_args(...)`. The base route now asks
-the producer for a fresh resolved `TypeSpec`, consumes the producer-returned
-`record_def`/concrete tag when available, and keeps the validated structured
-map materialization only as fallback before any no-carrier rendered-map
-compatibility path.
+Step 4 cleaned up the default-only base-instantiation branch after review by
+removing a duplicate consecutive `restore_deferred_member_lookup()` call while
+preserving the existing metadata restoration point before attaching the
+instantiated `record_def`.
 
 ## Suggested Next
 
-Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
-the supervisor. A likely follow-up is moving the same producer-return pattern
-into adjacent non-base template instantiation callers that still pass an
-already-populated `TypeSpec` and then repair `record_def` locally.
+Continue Step 4 with the next parser-to-Sema metadata handoff gap or review
+cleanup selected by the supervisor.
 
 ## Watchouts
 
@@ -98,7 +94,8 @@ already-populated `TypeSpec` and then repair `record_def` locally.
 Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build succeeded with no work to do. CTest passed `886/886` matched
-tests, including `frontend_parser_lookup_authority_tests`,
+Result: build succeeded, rebuilding `base.cpp` and dependent frontend targets.
+CTest passed `886/886` matched tests, including
+`frontend_parser_lookup_authority_tests`,
 `eastl_cpp_external_utility_frontend_basic_cpp`, and the
 `cpp_positive_sema_.*` subset. Final proof log path: `test_after.log`.
