@@ -5020,6 +5020,79 @@ void test_typespec_template_origin_equality_uses_structured_key() {
               "when both structured template-origin keys are absent");
 }
 
+void test_typespec_equality_uses_structured_type_identity_before_rendered_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  const c4c::TextId owner_text = texts.intern("Owner");
+  const c4c::TextId type_text = texts.intern("StructuredType");
+  const c4c::TextId other_type_text = texts.intern("OtherStructuredType");
+  const c4c::TextId template_owner_text = texts.intern("TemplateOwner");
+  const c4c::TextId template_param_text = texts.intern("T");
+  const c4c::TextId other_template_param_text = texts.intern("U");
+
+  auto make_ts = [&](const char* rendered_tag) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = c4c::TB_TYPEDEF;
+    ts.tag = arena.strdup(rendered_tag);
+    return ts;
+  };
+
+  c4c::Node record{};
+  record.kind = c4c::NK_STRUCT_DEF;
+
+  c4c::TypeSpec lhs = make_ts("StaleLeftTag");
+  lhs.record_def = &record;
+  c4c::TypeSpec rhs = make_ts("StaleRightTag");
+  rhs.record_def = &record;
+  expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should use shared record_def identity "
+              "instead of stale rendered tag spelling");
+
+  c4c::TextId lhs_qualifiers[] = {owner_text};
+  c4c::TextId rhs_qualifiers[] = {owner_text};
+  lhs = make_ts("StaleLeftTag");
+  lhs.namespace_context_id = 3;
+  lhs.tag_text_id = type_text;
+  lhs.n_qualifier_segments = 1;
+  lhs.qualifier_text_ids = lhs_qualifiers;
+  rhs = make_ts("StaleRightTag");
+  rhs.namespace_context_id = 3;
+  rhs.tag_text_id = type_text;
+  rhs.n_qualifier_segments = 1;
+  rhs.qualifier_text_ids = rhs_qualifiers;
+  expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should use namespace and tag TextId "
+              "metadata before rendered tag spelling");
+
+  rhs.tag = lhs.tag;
+  rhs.tag_text_id = other_type_text;
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should reject different tag TextIds even "
+              "when rendered tag spelling matches");
+
+  lhs = make_ts("StaleLeftTemplateParam");
+  lhs.template_param_owner_namespace_context_id = 7;
+  lhs.template_param_owner_text_id = template_owner_text;
+  lhs.template_param_index = 0;
+  lhs.template_param_text_id = template_param_text;
+  rhs = make_ts("StaleRightTemplateParam");
+  rhs.template_param_owner_namespace_context_id = 7;
+  rhs.template_param_owner_text_id = template_owner_text;
+  rhs.template_param_index = 0;
+  rhs.template_param_text_id = template_param_text;
+  expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should use template parameter owner/index/"
+              "TextId metadata before rendered tag spelling");
+
+  rhs.tag = lhs.tag;
+  rhs.template_param_text_id = other_template_param_text;
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should reject different template parameter "
+              "TextIds even when rendered tag spelling matches");
+}
+
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5366,6 +5439,7 @@ int main() {
   test_dependent_template_specialization_uses_nested_arg_carriers_before_debug_text();
   test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss();
   test_typespec_template_origin_equality_uses_structured_key();
+  test_typespec_equality_uses_structured_type_identity_before_rendered_tag();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();

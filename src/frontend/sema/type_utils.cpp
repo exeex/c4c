@@ -446,6 +446,93 @@ bool same_optional_cstr(const char* lhs, const char* rhs) {
   return std::strcmp(lhs, rhs) == 0;
 }
 
+bool has_record_def_identity(const TypeSpec& ts) {
+  return ts.record_def != nullptr;
+}
+
+bool same_record_def_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
+  return lhs.record_def == rhs.record_def;
+}
+
+bool has_template_param_identity(const TypeSpec& ts) {
+  return ts.template_param_owner_namespace_context_id >= 0 ||
+         ts.template_param_owner_text_id != kInvalidText ||
+         ts.template_param_index >= 0 ||
+         ts.template_param_text_id != kInvalidText;
+}
+
+bool same_template_param_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
+  return lhs.template_param_owner_namespace_context_id ==
+             rhs.template_param_owner_namespace_context_id &&
+         lhs.template_param_owner_text_id == rhs.template_param_owner_text_id &&
+         lhs.template_param_index == rhs.template_param_index &&
+         lhs.template_param_text_id == rhs.template_param_text_id;
+}
+
+bool has_complete_text_name_identity(const TypeSpec& ts) {
+  if (ts.namespace_context_id < 0 || ts.tag_text_id == kInvalidText) {
+    return false;
+  }
+  if (ts.n_qualifier_segments < 0) return false;
+  for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+    if (!ts.qualifier_text_ids || ts.qualifier_text_ids[i] == kInvalidText) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool same_text_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
+  if (lhs.namespace_context_id != rhs.namespace_context_id ||
+      lhs.tag_text_id != rhs.tag_text_id ||
+      lhs.is_global_qualified != rhs.is_global_qualified ||
+      lhs.n_qualifier_segments != rhs.n_qualifier_segments) {
+    return false;
+  }
+  for (int i = 0; i < lhs.n_qualifier_segments; ++i) {
+    if (lhs.qualifier_text_ids[i] != rhs.qualifier_text_ids[i]) return false;
+  }
+  return true;
+}
+
+bool same_rendered_type_name_compatibility(const TypeSpec& lhs,
+                                           const TypeSpec& rhs) {
+  if (!same_optional_cstr(lhs.tag, rhs.tag)) return false;
+  if (lhs.n_qualifier_segments != rhs.n_qualifier_segments) return false;
+  for (int i = 0; i < lhs.n_qualifier_segments; ++i) {
+    const char* lseg = lhs.qualifier_segments ? lhs.qualifier_segments[i] : nullptr;
+    const char* rseg = rhs.qualifier_segments ? rhs.qualifier_segments[i] : nullptr;
+    if (!same_optional_cstr(lseg, rseg)) return false;
+  }
+  return lhs.is_global_qualified == rhs.is_global_qualified;
+}
+
+bool same_type_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
+  const bool lhs_has_template_param = has_template_param_identity(lhs);
+  const bool rhs_has_template_param = has_template_param_identity(rhs);
+  if (lhs_has_template_param || rhs_has_template_param) {
+    return lhs_has_template_param && rhs_has_template_param &&
+           same_template_param_identity(lhs, rhs);
+  }
+
+  if (has_record_def_identity(lhs) && has_record_def_identity(rhs)) {
+    return same_record_def_identity(lhs, rhs);
+  }
+
+  const bool lhs_has_text_name = has_complete_text_name_identity(lhs);
+  const bool rhs_has_text_name = has_complete_text_name_identity(rhs);
+  if (lhs_has_text_name || rhs_has_text_name) {
+    return lhs_has_text_name && rhs_has_text_name &&
+           same_text_name_identity(lhs, rhs);
+  }
+
+  if (has_record_def_identity(lhs) || has_record_def_identity(rhs)) {
+    return false;
+  }
+
+  return same_rendered_type_name_compatibility(lhs, rhs);
+}
+
 bool same_template_arg_ref_list(const TemplateArgRefList& lhs,
                                 const TemplateArgRefList& rhs);
 
@@ -486,14 +573,7 @@ bool same_template_origin(const TypeSpec& lhs, const TypeSpec& rhs) {
 bool type_binding_values_equivalent(const TypeSpec& lhs, const TypeSpec& rhs) {
   if (lhs.base != rhs.base) return false;
   if (lhs.enum_underlying_base != rhs.enum_underlying_base) return false;
-  if (!same_optional_cstr(lhs.tag, rhs.tag)) return false;
-  if (lhs.n_qualifier_segments != rhs.n_qualifier_segments) return false;
-  for (int i = 0; i < lhs.n_qualifier_segments; ++i) {
-    const char* lseg = lhs.qualifier_segments ? lhs.qualifier_segments[i] : nullptr;
-    const char* rseg = rhs.qualifier_segments ? rhs.qualifier_segments[i] : nullptr;
-    if (!same_optional_cstr(lseg, rseg)) return false;
-  }
-  if (lhs.is_global_qualified != rhs.is_global_qualified) return false;
+  if (!same_type_name_identity(lhs, rhs)) return false;
   if (lhs.ptr_level != rhs.ptr_level) return false;
   if (lhs.is_lvalue_ref != rhs.is_lvalue_ref) return false;
   if (lhs.is_rvalue_ref != rhs.is_rvalue_ref) return false;
