@@ -2,6 +2,7 @@
 #include "consteval.hpp"
 
 #include <cstring>
+#include <string_view>
 
 namespace c4c::hir {
 
@@ -9,6 +10,40 @@ namespace {
 
 bool is_generated_anonymous_record_tag(const char* name) {
   return name && std::strncmp(name, "_anon_", 6) == 0;
+}
+
+template <typename T>
+auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+template <typename T>
+void set_typespec_final_spelling_tag_if_present(T&, const char*, long) {}
+
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, std::string_view{}) {
+  return ts.tag ? std::string_view(ts.tag) : std::string_view{};
+}
+
+template <typename T>
+std::string_view typespec_legacy_tag_if_present(const T&, long) {
+  return {};
+}
+
+std::optional<std::string> rendered_typespec_tag_for_decl_compatibility(
+    const Module* module,
+    const TypeSpec& ts) {
+  if (module && module->link_name_texts &&
+      ts.tag_text_id != kInvalidText) {
+    const std::string_view rendered_tag =
+        module->link_name_texts->lookup(ts.tag_text_id);
+    if (!rendered_tag.empty()) return std::string(rendered_tag);
+  }
+  const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  if (!legacy_tag.empty()) return std::string(legacy_tag);
+  return std::nullopt;
 }
 
 }  // namespace
@@ -173,8 +208,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     }
     if (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) {
       const std::string incoming_tag =
-          (owner_ts.tag && owner_ts.tag[0]) ? std::string(owner_ts.tag)
-                                            : std::string{};
+          rendered_typespec_tag_for_decl_compatibility(module_, owner_ts)
+              .value_or(std::string{});
       if (!ctx.tpl_bindings.empty()) {
         seed_and_resolve_pending_template_type_if_needed(
             owner_ts, ctx.tpl_bindings, ctx.nttp_bindings, n,
@@ -183,10 +218,12 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         TypeBindings empty_tb;
         realize_template_struct_if_needed(owner_ts, empty_tb, ctx.nttp_bindings);
       }
-      if (owner_ts.tag && owner_ts.tag[0] &&
-          (incoming_tag.empty() || incoming_tag != owner_ts.tag) &&
-          module_->struct_defs.count(owner_ts.tag)) {
-        return std::string(owner_ts.tag);
+      if (std::optional<std::string> resolved_tag =
+              rendered_typespec_tag_for_decl_compatibility(module_, owner_ts)) {
+        if ((incoming_tag.empty() || incoming_tag != *resolved_tag) &&
+            module_->struct_defs.count(*resolved_tag)) {
+          return *resolved_tag;
+        }
       }
     }
     return std::nullopt;
@@ -205,8 +242,10 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     std::string resolved_tag;
     if (owner_tag) {
       resolved_tag = *owner_tag;
-    } else if (!has_decl_structured_owner_identity(owner_ts) && owner_ts.tag) {
-      resolved_tag = owner_ts.tag;
+    } else if (!has_decl_structured_owner_identity(owner_ts)) {
+      resolved_tag =
+          rendered_typespec_tag_for_decl_compatibility(module_, owner_ts)
+              .value_or(std::string{});
     }
     MemberSymbolId member_symbol_id = kInvalidMemberSymbol;
     if (!resolved_tag.empty()) {
@@ -235,7 +274,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       }
       return {};
     }
-    return owner_ts.tag ? std::string(owner_ts.tag) : std::string{};
+    return rendered_typespec_tag_for_decl_compatibility(module_, owner_ts)
+        .value_or(std::string{});
   };
   const std::string decl_struct_owner_tag =
       resolve_decl_struct_owner_tag(
@@ -247,8 +287,10 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     std::string owner_tag =
         resolve_decl_struct_owner_tag(owner_ts, context_name);
     if (owner_tag.empty() && owner_ts.base == TB_UNION &&
-        !has_decl_structured_owner_identity(owner_ts) && owner_ts.tag) {
-      owner_tag = owner_ts.tag;
+        !has_decl_structured_owner_identity(owner_ts)) {
+      owner_tag =
+          rendered_typespec_tag_for_decl_compatibility(module_, owner_ts)
+              .value_or(std::string{});
     }
     if (owner_tag.empty()) return {{}, nullptr};
     const auto it = module_->struct_defs.find(owner_tag);
@@ -749,9 +791,13 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             if (!elem_owner_tag.empty() || !scalar_owner_tag.empty()) {
               direct_agg = elem_owner_tag == scalar_owner_tag;
             } else {
-              const char* et = elem_ts.tag ? elem_ts.tag : "";
-              const char* stg = st.tag ? st.tag : "";
-              direct_agg = std::strcmp(et, stg) == 0;
+              const std::string elem_compat_tag =
+                  rendered_typespec_tag_for_decl_compatibility(module_, elem_ts)
+                      .value_or(std::string{});
+              const std::string scalar_compat_tag =
+                  rendered_typespec_tag_for_decl_compatibility(module_, st)
+                      .value_or(std::string{});
+              direct_agg = elem_compat_tag == scalar_compat_tag;
             }
           }
         }
@@ -832,7 +878,10 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
     }
   }
-  if (((is_struct_with_init_list && (!decl_struct_owner_tag.empty() || decl_ts.tag)) ||
+  const bool has_decl_compatibility_tag =
+      rendered_typespec_tag_for_decl_compatibility(module_, decl_ts).has_value();
+  if (((is_struct_with_init_list &&
+        (!decl_struct_owner_tag.empty() || has_decl_compatibility_tag)) ||
        (is_array_with_init_list && !use_array_init_fast_path)) &&
       n->init) {
     auto is_agg = [](const TypeSpec& ts) {
@@ -901,9 +950,13 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             return lhs_owner_tag == rhs_owner_tag;
           }
         }
-        const char* lt = lhs_ts.tag ? lhs_ts.tag : "";
-        const char* rt = rhs_ts.tag ? rhs_ts.tag : "";
-        return std::strcmp(lt, rt) == 0;
+        const std::string lhs_compat_tag =
+            rendered_typespec_tag_for_decl_compatibility(module_, lhs_ts)
+                .value_or(std::string{});
+        const std::string rhs_compat_tag =
+            rendered_typespec_tag_for_decl_compatibility(module_, rhs_ts)
+                .value_or(std::string{});
+        return lhs_compat_tag == rhs_compat_tag;
       }
       return true;
     };
@@ -932,7 +985,17 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
 
       TypeSpec base_ptr_ts{};
       base_ptr_ts.base = TB_STRUCT;
-      base_ptr_ts.tag = base_tag.c_str();
+      set_typespec_final_spelling_tag_if_present(
+          base_ptr_ts, base_tag.c_str(), 0);
+      if (module_) {
+        const auto base_it = module_->struct_defs.find(base_tag);
+        if (base_it != module_->struct_defs.end()) {
+          base_ptr_ts.tag_text_id = base_it->second.tag_text_id;
+          base_ptr_ts.namespace_context_id = base_it->second.ns_qual.context_id;
+          base_ptr_ts.is_global_qualified =
+              base_it->second.ns_qual.is_global_qualified;
+        }
+      }
       base_ptr_ts.ptr_level = 1;
       CastExpr cast{};
       cast.to_type = qtype_from(base_ptr_ts, ValueCategory::RValue);
