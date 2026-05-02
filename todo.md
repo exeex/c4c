@@ -8,22 +8,22 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared the first
-`src/frontend/hir/impl/expr/object.cpp` deletion-probe blocker in
-`describe_initializer_list_struct` and the immediately coupled initializer-list
-member assignment owner fallback. Initializer-list layout description now uses
-`find_struct_def_for_layout_type` instead of `module_->struct_defs[TypeSpec::tag]`,
-and the member assignment fallback uses the resolved `HirStructDef::tag`
-payload from that layout path instead of reading `param_ts.tag` directly.
+Step 4 - Probe Field Removal And Split Boundaries cleared the later
+`src/frontend/hir/impl/expr/object.cpp` initializer/aggregate
+type-comparison cluster. Aggregate direct-assignment type comparison now uses
+structured nominal carriers through `generic_type_compatible` first and keeps
+legacy rendered spelling only behind a deletion-safe no-structured-metadata
+compatibility helper; the coupled aggregate owner fallback no longer directly
+reads `TypeSpec::tag`.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next first deletion-probe blocker in
 `src/frontend/hir/impl/expr/object.cpp`. The current probe first reports direct
-`TypeSpec::tag` reads in the later initializer/aggregate type-comparison
-cluster around `object.cpp:523`, followed by more `object.cpp`
-compatibility/display surfaces, then `inspect/printer.cpp`, `expr/operator.cpp`,
-and `expr/scalar_control.cpp` surfaces.
+`TypeSpec::tag` reads in `lower_new_expr` around `object.cpp:849`, followed by
+constructor lookup around `object.cpp:898`, delete-expression owner lookup
+around `object.cpp:957`, then `inspect/printer.cpp`, `expr/operator.cpp`, and
+`expr/scalar_control.cpp` surfaces.
 
 ## Watchouts
 
@@ -120,13 +120,14 @@ and `expr/scalar_control.cpp` surfaces.
   `TypeSpec::tag`. Keep `template_param_text_id` and `tag_text_id` binding
   misses authoritative; do not fall back to rendered spelling when either
   structured carrier is present.
-- The current deletion probe moved past `expr.cpp`. The first residual blocker
-  moved past `try_lower_direct_struct_constructor_call`,
-  `describe_initializer_list_struct`, and the adjacent initializer-list member
-  assignment owner fallback. The first residual blocker is now
-  `src/frontend/hir/impl/expr/object.cpp:523` in a later
-  initializer/aggregate type-comparison cluster; later residuals remain in
-  `src/frontend/hir/impl/expr/object.cpp`, `src/frontend/hir/impl/inspect/printer.cpp`,
+- The current deletion probe moved past `expr.cpp`,
+  `try_lower_direct_struct_constructor_call`,
+  `describe_initializer_list_struct`, the adjacent initializer-list member
+  assignment owner fallback, and the later initializer/aggregate
+  type-comparison cluster. The first residual blocker is now
+  `src/frontend/hir/impl/expr/object.cpp:849` in `lower_new_expr`; later
+  residuals remain in `src/frontend/hir/impl/expr/object.cpp`,
+  `src/frontend/hir/impl/inspect/printer.cpp`,
   `src/frontend/hir/impl/expr/operator.cpp`, and
   `src/frontend/hir/impl/expr/scalar_control.cpp`.
 - Direct struct constructor lowering now treats rendered struct tags as
@@ -136,12 +137,17 @@ and `expr/scalar_control.cpp` surfaces.
   as the owner/layout authority. Keep `_M_array` and `_M_len` field discovery
   on the resolved `HirStructDef`; do not reintroduce direct
   `module_->struct_defs[TypeSpec::tag]` lookup for this path.
+- Aggregate direct-assignment type comparison now treats structured nominal
+  carriers as authoritative and rendered tags only as deletion-safe
+  no-structured-metadata compatibility spelling. Do not turn this path back
+  into direct rendered tag equality.
 - The rejected `ft.tag` layout repair route was replaced with a structured
   AST-node-to-HIR-owner carrier. Do not reintroduce rendered field type tag
   lookup for layout ownership.
 - Non-canonical deletion probe artifacts for recent packets:
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log` and
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_object.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log`,
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_object.log`, and
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_object_next.log`.
 
 ## Proof
 
@@ -157,14 +163,12 @@ Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_object.log 2>&1`, and restored the
-temporary edit. The probe no longer reports
-`try_lower_direct_struct_constructor_call`,
-`describe_initializer_list_struct`, or the adjacent initializer-list member
-assignment owner fallback as the first blocker. The first residual error is
-direct `TypeSpec::tag` use in the later initializer/aggregate type-comparison
-cluster at `src/frontend/hir/impl/expr/object.cpp:523`, with later residual
-errors in `src/frontend/hir/impl/expr/object.cpp`,
+/tmp/c4c_typespec_tag_deletion_probe_step4_object_next.log 2>&1`, and restored
+the temporary edit. The probe no longer reports the later
+initializer/aggregate type-comparison cluster as the first blocker. The first
+residual error is direct `TypeSpec::tag` use in `lower_new_expr` at
+`src/frontend/hir/impl/expr/object.cpp:849`, with later residual errors in
+`src/frontend/hir/impl/expr/object.cpp`,
 `src/frontend/hir/impl/inspect/printer.cpp`,
 `src/frontend/hir/impl/expr/operator.cpp`, and
 `src/frontend/hir/impl/expr/scalar_control.cpp`.

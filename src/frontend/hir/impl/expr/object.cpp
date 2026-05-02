@@ -6,6 +6,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace c4c::hir {
 
@@ -22,6 +23,39 @@ auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
 }
 
 void set_typespec_final_spelling_tag_if_present(TypeSpec&, const char*, long) {}
+
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, std::string_view{}) {
+  return ts.tag ? std::string_view(ts.tag) : std::string_view{};
+}
+
+std::string_view typespec_legacy_tag_if_present(const TypeSpec&, long) {
+  return {};
+}
+
+bool typespec_has_aggregate_nominal_carrier(const TypeSpec& ts) {
+  return ts.record_def || ts.tag_text_id != kInvalidText ||
+         (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) ||
+         (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0);
+}
+
+bool same_aggregate_direct_assign_type(const TypeSpec& lhs_ts,
+                                       const TypeSpec& rhs_ts) {
+  if (!generic_type_compatible(lhs_ts, rhs_ts)) return false;
+  if (lhs_ts.base != TB_STRUCT && lhs_ts.base != TB_UNION &&
+      lhs_ts.base != TB_ENUM) {
+    return true;
+  }
+  if (typespec_has_aggregate_nominal_carrier(lhs_ts) ||
+      typespec_has_aggregate_nominal_carrier(rhs_ts)) {
+    return true;
+  }
+  const std::string_view lhs_tag = typespec_legacy_tag_if_present(lhs_ts, 0);
+  const std::string_view rhs_tag = typespec_legacy_tag_if_present(rhs_ts, 0);
+  if (lhs_tag.empty() && rhs_tag.empty()) return true;
+  return lhs_tag == rhs_tag;
+}
 
 }  // namespace
 
@@ -518,13 +552,7 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
       if (!is_agg(lhs_ts)) return false;
       const TypeSpec rhs_ts = infer_generic_ctrl_type(ctx, rhs_node);
       if (rhs_ts.ptr_level != 0 || rhs_ts.array_rank != 0) return false;
-      if (rhs_ts.base != lhs_ts.base) return false;
-      if (rhs_ts.base == TB_STRUCT || rhs_ts.base == TB_UNION || rhs_ts.base == TB_ENUM) {
-        const char* lt = lhs_ts.tag ? lhs_ts.tag : "";
-        const char* rt = rhs_ts.tag ? rhs_ts.tag : "";
-        return std::strcmp(lt, rt) == 0;
-      }
-      return true;
+      return same_aggregate_direct_assign_type(lhs_ts, rhs_ts);
     };
     auto is_direct_char_array_init = [&](const TypeSpec& lhs_ts, const Node* rhs_node) -> bool {
       if (!rhs_node) return false;
@@ -571,9 +599,9 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
         }
       }
       if (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) {
-        const std::string incoming_tag =
-            (owner_ts.tag && owner_ts.tag[0]) ? std::string(owner_ts.tag)
-                                              : std::string{};
+        const std::string_view incoming_tag_view =
+            typespec_legacy_tag_if_present(owner_ts, 0);
+        const std::string incoming_tag(incoming_tag_view);
         if (ctx && !ctx->tpl_bindings.empty()) {
           seed_and_resolve_pending_template_type_if_needed(
               owner_ts, ctx->tpl_bindings, ctx->nttp_bindings, n,
@@ -584,10 +612,12 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
           realize_template_struct_if_needed(
               owner_ts, empty_tb, ctx ? ctx->nttp_bindings : empty_nttp);
         }
-        if (owner_ts.tag && owner_ts.tag[0] &&
-            (incoming_tag.empty() || incoming_tag != owner_ts.tag) &&
-            module_->struct_defs.count(owner_ts.tag)) {
-          return std::string(owner_ts.tag);
+        const std::string_view resolved_tag =
+            typespec_legacy_tag_if_present(owner_ts, 0);
+        if (!resolved_tag.empty() &&
+            (incoming_tag.empty() || incoming_tag != resolved_tag) &&
+            module_->struct_defs.count(std::string(resolved_tag))) {
+          return std::string(resolved_tag);
         }
       }
       return std::nullopt;
@@ -612,10 +642,11 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
           return AggregateOwner{*owner_tag, &sit->second};
         }
       }
-      if (!has_structured_owner && owner_ts.tag && owner_ts.tag[0]) {
-        const auto sit = module_->struct_defs.find(owner_ts.tag);
+      const std::string_view legacy_tag = typespec_legacy_tag_if_present(owner_ts, 0);
+      if (!has_structured_owner && !legacy_tag.empty()) {
+        const auto sit = module_->struct_defs.find(std::string(legacy_tag));
         if (sit != module_->struct_defs.end()) {
-          return AggregateOwner{std::string(owner_ts.tag), &sit->second};
+          return AggregateOwner{std::string(legacy_tag), &sit->second};
         }
       }
       return std::nullopt;
