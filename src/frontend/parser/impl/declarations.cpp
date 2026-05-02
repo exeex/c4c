@@ -183,6 +183,31 @@ static void attach_out_of_class_method_owner(
     }
 }
 
+static bool attach_namespace_free_function_owner(
+    Parser& parser, Node* fn, const Parser::QualifiedNameRef& qn) {
+    if (!fn || qn.base_text_id == kInvalidText ||
+        qn.qualifier_text_ids.empty()) {
+        return false;
+    }
+
+    const int namespace_context_id = parser.resolve_namespace_context(qn);
+    if (namespace_context_id < 0) return false;
+
+    const std::string base_name(
+        parser.parser_text(qn.base_text_id, qn.base_name));
+    parser.apply_decl_namespace(
+        fn, namespace_context_id, parser.arena_.strdup(base_name.c_str()));
+    return true;
+}
+
+static void apply_function_decl_namespace(
+    Parser& parser, Node* fn, int context_id, const char* decl_name,
+    const Parser::QualifiedNameRef& decl_qn) {
+    if (attach_namespace_free_function_owner(parser, fn, decl_qn)) return;
+    parser.apply_decl_namespace(fn, context_id, decl_name);
+    attach_out_of_class_method_owner(parser, fn, decl_qn);
+}
+
 static Parser::QualifiedNameRef make_out_of_class_method_qn(
     bool is_global_qualified, const std::vector<std::string>& owner_segments,
     const std::vector<TextId>& owner_text_ids, const std::string& base_name,
@@ -3400,12 +3425,21 @@ top_level_base_ready:
         parser.qualify_name_arena(decl_name_text_id);
     if (!scoped_decl_name) scoped_decl_name = decl_name;
     auto register_decl_known_fn_name = [&]() {
-        if (decl_name) {
-            const TextId known_fn_text_id =
-                parser.parser_text_id_for_token(decl_name_text_id, decl_name);
-            parser.register_known_fn_name_in_context(
-                parser.current_namespace_context_id(), known_fn_text_id);
+        if (!decl_name) return;
+        if (!decl_qn.qualifier_text_ids.empty() &&
+            decl_qn.base_text_id != kInvalidText) {
+            const int namespace_context_id =
+                parser.resolve_namespace_context(decl_qn);
+            if (namespace_context_id >= 0) {
+                parser.register_known_fn_name_in_context(
+                    namespace_context_id, decl_qn.base_text_id);
+                return;
+            }
         }
+        const TextId known_fn_text_id =
+            parser.parser_text_id_for_token(decl_name_text_id, decl_name);
+        parser.register_known_fn_name_in_context(
+            parser.current_namespace_context_id(), known_fn_text_id);
     };
 
     // Handle function-returning-fptr: int (* f1(a, b))(c, d) { body }
@@ -3422,8 +3456,9 @@ top_level_base_ready:
             Node* fn = parser.make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = scoped_decl_name;
-            parser.apply_decl_namespace(fn, parser.current_namespace_context_id(), decl_name);
-            attach_out_of_class_method_owner(parser, fn, decl_qn);
+            apply_function_decl_namespace(
+                parser, fn, parser.current_namespace_context_id(), decl_name,
+                decl_qn);
             fn->variadic  = fptr_fn_variadic;
             fn->is_static = is_static;
             fn->is_extern = is_extern;
@@ -3452,8 +3487,9 @@ top_level_base_ready:
         Node* fn = parser.make_node(NK_FUNCTION, ln);
         fn->type      = ts;
         fn->name      = scoped_decl_name;
-        parser.apply_decl_namespace(fn, parser.current_namespace_context_id(), decl_name);
-        attach_out_of_class_method_owner(parser, fn, decl_qn);
+        apply_function_decl_namespace(
+            parser, fn, parser.current_namespace_context_id(), decl_name,
+            decl_qn);
         fn->variadic  = fptr_fn_variadic;
         fn->is_static = is_static;
         fn->is_extern = is_extern;
@@ -3657,8 +3693,9 @@ top_level_base_ready:
             Node* fn = parser.make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = scoped_decl_name;
-            parser.apply_decl_namespace(fn, parser.current_namespace_context_id(), decl_name);
-            attach_out_of_class_method_owner(parser, fn, decl_qn);
+            apply_function_decl_namespace(
+                parser, fn, parser.current_namespace_context_id(), decl_name,
+                decl_qn);
             fn->variadic  = variadic;
             fn->is_static = is_static;
             fn->is_extern = is_extern;
@@ -3689,8 +3726,9 @@ top_level_base_ready:
         Node* fn = parser.make_node(NK_FUNCTION, ln);
         fn->type      = ts;
         fn->name      = scoped_decl_name;
-        parser.apply_decl_namespace(fn, parser.current_namespace_context_id(), decl_name);
-        attach_out_of_class_method_owner(parser, fn, decl_qn);
+        apply_function_decl_namespace(
+            parser, fn, parser.current_namespace_context_id(), decl_name,
+            decl_qn);
         fn->variadic  = variadic;
         fn->is_static = is_static;
         fn->is_extern = is_extern;

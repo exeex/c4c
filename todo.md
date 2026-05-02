@@ -8,20 +8,23 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 added a parser/Sema-owned `ParserNttpBindingMetadata` carrier for
-deferred NTTP default-expression evaluation. `Parser::eval_deferred_nttp_default`
-and `Parser::eval_deferred_nttp_expr_tokens` now accept optional structured NTTP
-binding metadata and consult TextId/key metadata before rendered binding names;
-when authoritative metadata exists and misses, the evaluator no longer reopens
-the rendered-name NTTP binding route. Parser template instantiation handoff
-sites now build and forward this metadata from template parameter TextIds while
-preserving the existing compatibility binding list.
+Step 4 repaired the namespaced free-function declaration handoff where a
+qualified declarator such as `Api::target` was carried to Sema primarily as a
+rendered declaration spelling. Parser function declaration construction now
+recognizes qualified declarators whose qualifier resolves to a namespace and
+projects the declaration as resolved namespace context plus base `TextId`
+metadata before Sema mirrors function lookup keys. Known-function registration
+for that path also uses the namespace context and base `TextId`, so namespaced
+call/reference lookup no longer needs to rediscover identity from `ns::fn`.
+`frontend_parser_lookup_authority_tests` now mutates both declaration and call
+rendered spellings after parsing and proves Sema validates through the
+structured namespace/base metadata.
 
 ## Suggested Next
 
-Continue Step 4 with the next parser/Sema handoff gap, preferably a remaining
-ordinary call/reference or template argument route that still has a compatibility
-string mirror but already has producer-side TextId/key metadata available.
+Continue Step 4 with the next parser/Sema handoff gap that still has
+producer-side `TextId`, namespace, owner, or declaration metadata available but
+also keeps a rendered compatibility spelling in the semantic lookup path.
 
 ## Watchouts
 
@@ -34,10 +37,10 @@ string mirror but already has producer-side TextId/key metadata available.
   metadata exists. It does not claim cleanup of expression-string `$expr:`
   template arguments or HIR `NttpBindings` string compatibility.
 - The known-function slice covers using-imported call references whose parser
-  carrier is target base `TextId` plus target qualifier `TextId` metadata. It
-  does not fix parser production of resolved namespace context ids for
-  namespaced free-function declarations that are rendered as `ns::fn`; that
-  should be treated as a separate parser/Sema carrier packet if needed.
+  carrier is target base `TextId` plus target qualifier `TextId` metadata. The
+  namespaced free-function slice covers namespace-resolved qualified
+  declarators, but does not claim cleanup of class-member declarator ownership
+  or HIR/module declaration lookup compatibility.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
 - `review/step33_final_route_review.md` and prior review artifacts are

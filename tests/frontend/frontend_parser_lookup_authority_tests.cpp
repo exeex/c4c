@@ -84,6 +84,19 @@ c4c::Node* find_return_var(c4c::Node* fn) {
   return nullptr;
 }
 
+c4c::Node* find_return_call_callee(c4c::Node* fn) {
+  if (!fn || !fn->body || fn->body->kind != c4c::NK_BLOCK) return nullptr;
+  for (int i = 0; i < fn->body->n_children; ++i) {
+    c4c::Node* child = fn->body->children[i];
+    if (child && child->kind == c4c::NK_RETURN && child->left &&
+        child->left->kind == c4c::NK_CALL && child->left->left &&
+        child->left->left->kind == c4c::NK_VAR) {
+      return child->left->left;
+    }
+  }
+  return nullptr;
+}
+
 void test_global_qualified_lookup_rejects_rendered_fallback_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -292,6 +305,47 @@ void test_qualified_known_function_lookup_uses_key_not_rendered_spelling() {
   expect_true(result.key == target_key,
               "qualified known-function lookup should return the structured "
               "registered key");
+}
+
+void test_namespace_qualified_function_decl_handoff_uses_context_metadata() {
+  const char* source =
+      "namespace Api {}\n"
+      "int Api::target() { return 7; }\n"
+      "int caller() { return Api::target(); }\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  c4c::Node* target = find_function(root, "Api::target");
+  c4c::Node* caller = find_function(root, "caller");
+  c4c::Node* callee = find_return_call_callee(caller);
+  expect_true(target != nullptr, "parsed namespace function declaration exists");
+  expect_true(callee != nullptr, "parsed namespace function call exists");
+  expect_true(target->namespace_context_id > 0,
+              "namespace function declaration should carry namespace context");
+  expect_true(target->unqualified_text_id != c4c::kInvalidText,
+              "namespace function declaration should carry base TextId");
+  expect_true(target->unqualified_name &&
+                  std::string(target->unqualified_name) == "target",
+              "namespace function declaration should keep base name separate "
+              "from rendered spelling");
+  expect_true(callee->namespace_context_id == target->namespace_context_id,
+              "namespace function call should carry the resolved context");
+  expect_true(callee->unqualified_text_id == target->unqualified_text_id,
+              "namespace function call and declaration should share base "
+              "TextId metadata");
+
+  target->name = arena.strdup("stale_decl_rendered_name");
+  callee->name = arena.strdup("stale_call_rendered_name");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema function lookup should use namespace/base TextId metadata "
+              "instead of rendered qualified spelling" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
 }
 
 void test_alias_template_lookup_rejects_visible_type_rendered_reentry() {
@@ -1555,6 +1609,7 @@ int main() {
   test_sema_global_lookup_uses_using_value_alias_target_key();
   test_sema_function_call_uses_using_value_alias_target_key();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
+  test_namespace_qualified_function_decl_handoff_uses_context_metadata();
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
   test_dependent_typename_rejects_visible_type_rendered_reentry();
