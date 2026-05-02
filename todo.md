@@ -8,20 +8,21 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 tightened the remaining direct template-instantiation
-`lex_template_expr_text(actual.nttp_name + 6, ...)` fallback. The preliminary
-NTTP binding pass now treats both `ParsedTemplateArg::expr` and
-`TypeSpec::array_size_expr` copied from a value `TemplateArgRef` as structured
-expression carriers, clears both after successful structured evaluation, and
-only reaches `$expr:` re-lexing when no parsed expression, TemplateArgRef
-expression, or `nttp_text_id` carrier exists.
+Step 4 tightened the alias-template rendered arg-ref fallback outside the local
+`$expr:` re-lex branch. The comma-split
+`substitute_template_arg_refs(template_arg_refs_text(...))` path now refuses to
+rewrite debug-only template args when the type already has a resolved
+template-origin carrier (`tpl_struct_origin_key` plus `record_def`), leaving
+rendered spelling as display/mangling data instead of semantic authority.
+Added same-feature drift coverage for a stale debug-only type arg on a
+resolved template-origin carrier.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing remaining rendered-template-argument fallback
-policy outside this local `lex_template_expr_text(...)` call site, especially
-legacy debug-text paths that still need producer repair before they can stop
-being compatibility-only.
+Continue Step 4 by repairing the unresolved origin-key-only alias/member-typedef
+producer gap: `cpp_positive_sema_template_variable_alias_inherited_member_typedef_runtime_cpp`
+still needs rendered arg substitution when `tpl_struct_origin_key` exists but
+`record_def` is not attached yet.
 
 ## Watchouts
 
@@ -70,9 +71,15 @@ being compatibility-only.
   template-arg lists with unstructured debug-only refs and no structured
   carrier. Do not restore it as a recovery path for mixed carrier lists or stale
   `TemplateArgRef::debug_text`.
+- A broader attempt to block that fallback whenever `tpl_struct_origin_key` was
+  present regressed unresolved alias/member-typedef owner instantiation. The
+  missing producer is parser-side arg metadata or earlier `record_def`
+  attachment for origin-key-only routes; keep the current gate limited to
+  resolved origin carriers until that producer exists.
 - `zero_value_arg_ref_uses_debug_fallback(...)` still represents legacy
-  compatibility policy elsewhere; this packet only made the alias-template
-  fallback gate treat `nttp_text_id` as structured carrier metadata.
+  compatibility policy elsewhere; recent packets made the alias-template
+  fallback gate treat `nttp_text_id` and resolved template-origin carriers as
+  structured metadata.
 - Do not reintroduce rendered qualified-text parsing, `$expr:` debug-text
   semantic authority, string/string_view semantic lookup parameters, fallback
   spelling, expectation downgrades, or named-test shortcuts.

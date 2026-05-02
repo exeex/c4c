@@ -2482,6 +2482,32 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         return false;
                                     };
+                                    std::function<bool(const TypeSpec&, int)>
+                                        type_has_resolved_template_origin_carrier =
+                                            [&](const TypeSpec& type,
+                                                int depth) -> bool {
+                                        if (depth > 64) return false;
+                                        if (type.tpl_struct_origin_key.base_text_id !=
+                                                kInvalidText &&
+                                            type.record_def) {
+                                            return true;
+                                        }
+                                        if (!type.tpl_struct_args.data ||
+                                            type.tpl_struct_args.size <= 0) {
+                                            return false;
+                                        }
+                                        for (int ai = 0;
+                                             ai < type.tpl_struct_args.size; ++ai) {
+                                            const TemplateArgRef& arg =
+                                                type.tpl_struct_args.data[ai];
+                                            if (arg.kind == TemplateArgKind::Type &&
+                                                type_has_resolved_template_origin_carrier(
+                                                    arg.type, depth + 1)) {
+                                                return true;
+                                            }
+                                        }
+                                        return false;
+                                    };
                                     auto type_mentions_template_scope_param =
                                         [&](const TypeSpec& type) -> bool {
                                         std::function<bool(const TypeSpec&)> type_mentions_dep_params =
@@ -3044,10 +3070,14 @@ TypeSpec Parser::parse_base_type() {
                                     const bool had_structured_refs =
                                         type_has_structured_template_arg_ref(
                                             ts, 0);
+                                    const bool had_resolved_template_origin_carrier =
+                                        type_has_resolved_template_origin_carrier(
+                                            ts, 0);
                                     if (!substitute_template_arg_refs_structured(&ts)) {
                                         alias_parse_ok = false;
                                     } else if (had_unstructured_refs &&
-                                               !had_structured_refs) {
+                                               !had_structured_refs &&
+                                               !had_resolved_template_origin_carrier) {
                                         const std::string new_refs =
                                             substitute_template_arg_refs(
                                                 template_arg_refs_text(ts).c_str());
