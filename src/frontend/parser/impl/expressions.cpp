@@ -1,4 +1,5 @@
 #include <cassert>
+#include <algorithm>
 #include <cstring>
 #include <functional>
 #include <stdexcept>
@@ -38,6 +39,36 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
     for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
     if (ts.is_lvalue_ref) out += "_ref";
     if (ts.is_rvalue_ref) out += "_rref";
+}
+
+static const Node* canonical_static_member_owner_record(
+    const Parser& parser, Parser::QualifiedNameRef& qn) {
+    if (qn.qualifier_segments.empty()) return nullptr;
+
+    Parser::QualifiedNameRef owner_qn;
+    owner_qn.is_global_qualified = qn.is_global_qualified;
+    const size_t owner_segment_count = qn.qualifier_segments.size();
+    owner_qn.qualifier_segments.assign(qn.qualifier_segments.begin(),
+                                       qn.qualifier_segments.end() - 1);
+    owner_qn.qualifier_text_ids.assign(qn.qualifier_text_ids.begin(),
+                                       qn.qualifier_text_ids.begin() +
+                                           std::min(qn.qualifier_text_ids.size(),
+                                                    owner_segment_count - 1));
+    owner_qn.base_name = qn.qualifier_segments.back();
+    owner_qn.base_text_id =
+        qn.qualifier_text_ids.size() >= owner_segment_count
+            ? qn.qualifier_text_ids[owner_segment_count - 1]
+            : parser.parser_text_id_for_token(kInvalidText, owner_qn.base_name);
+
+    const Node* owner =
+        qualified_type_record_definition_from_structured_authority(parser,
+                                                                   owner_qn);
+    if (!owner || owner->unqualified_text_id == kInvalidText) return nullptr;
+
+    qn.qualifier_text_ids.resize(owner_segment_count, kInvalidText);
+    qn.qualifier_text_ids[owner_segment_count - 1] =
+        owner->unqualified_text_id;
+    return owner;
 }
 
 int bin_prec(TokenKind k) {
@@ -1265,10 +1296,17 @@ Node* parse_primary(Parser& parser) {
             qualified_name = parser.qualified_name_text(
                 qn, true /* include_global_prefix */);
         }
+        const Node* static_member_owner =
+            canonical_static_member_owner_record(parser, qn);
         const char* nm = parser.arena_.strdup(qualified_name.c_str());
         Node* ident = parser.make_node(NK_VAR, ln);
         ident->name = nm;
         parser.apply_qualified_name(ident, qn, nm);
+        if (static_member_owner &&
+            static_member_owner->namespace_context_id >= 0) {
+            ident->namespace_context_id =
+                static_member_owner->namespace_context_id;
+        }
         parser.apply_using_value_alias_target(ident, resolved_value);
         if (parser.is_cpp_mode() && parser.check(TokenKind::Less)) {
             Parser::TentativeParseGuard guard(parser);
@@ -1501,6 +1539,8 @@ Node* parse_primary(Parser& parser) {
             qualified_name = parser.qualified_name_text(
                 qn, true /* include_global_prefix */);
         }
+        const Node* static_member_owner =
+            canonical_static_member_owner_record(parser, qn);
         const char* nm = parser.arena_.strdup(qualified_name.c_str());
         const BuiltinId builtin_id = builtin_id_from_name(nm);
         // __builtin_offsetof(type, member) — parse as constant expression when possible
@@ -1542,6 +1582,11 @@ Node* parse_primary(Parser& parser) {
         }
         Node* ident = parser.make_var(nm, ln);
         parser.apply_qualified_name(ident, qn, nm);
+        if (static_member_owner &&
+            static_member_owner->namespace_context_id >= 0) {
+            ident->namespace_context_id =
+                static_member_owner->namespace_context_id;
+        }
         parser.apply_using_value_alias_target(ident, resolved_value);
         if (parser.is_cpp_mode() && parser.check(TokenKind::Less)) {
             Parser::TentativeParseGuard guard(parser);

@@ -8,27 +8,31 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 covered Sema record completeness lookup in `is_complete_object_type()`.
-The exact route proved was a `TypeSpec` with direct `record_def` metadata and a
-stale rendered tag, plus a `TypeSpec` with `tag_text_id`/namespace metadata
-whose structured key misses while the rendered tag names a complete record.
+Step 4 repaired the parser-to-Sema static-member metadata handoff for
+parser-generated `NK_VAR` references to `Owner::member`.
 
-Confirmed direct `TypeSpec::record_def` completeness and
-`tag_text_id`/namespace structured keys are authoritative when present.
-Rendered `TypeSpec::tag` completeness is now compatibility-only after those
-structured carriers are absent, so stale rendered tag success no longer wins
-after a structured metadata miss.
+The exact route proved was an alias-qualified static member reference
+(`Alias::value`) where the parser can resolve the alias owner to the canonical
+record. The generated `NK_VAR` now carries the canonical owner `TextId` in
+`qualifier_text_ids`, the member `unqualified_text_id`, and the owner namespace
+context before Sema sees the node. The focused test mutates the rendered owner
+and member spelling after parsing; Sema still validates through the structured
+owner/member metadata instead of the stale rendered spelling.
 
 ## Suggested Next
 
-Continue Step 4 by selecting the next parser/Sema metadata handoff gap that
-still depends on rendered fallback, preferably one with a direct structured
-carrier already present so the route can be repaired without crossing module
-boundaries.
+Continue Step 4 with the next parser/Sema handoff gap where parser-created
+qualified references have owner identity available but Sema still needs a
+carrier promotion, preferably nested or namespace-qualified static member
+owners if review finds an uncovered same-feature case.
 
 ## Watchouts
 
 - The source idea remains active; Step 4 progress is not source-idea closure.
+- Parser static-member references now canonicalize the final owner qualifier
+  `TextId` only when the owner prefix resolves to a structured record/type
+  alias. Namespace-qualified ordinary values should continue through the normal
+  qualified value path.
 - `SourceLanguage` is declaration provenance, not linkage. Keep
   `linkage_spec` authoritative for explicit `extern "C"` conflict behavior.
 - Manually constructed AST tests default zero-initialized nodes to C source

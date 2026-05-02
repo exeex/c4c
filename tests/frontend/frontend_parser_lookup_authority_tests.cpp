@@ -1038,6 +1038,47 @@ void test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag
                        : std::string(": ") + result.diagnostics.front().message));
 }
 
+void test_parsed_static_member_alias_owner_uses_canonical_owner_metadata() {
+  const char* source =
+      "struct Owner {\n"
+      "  static int value;\n"
+      "};\n"
+      "typedef Owner Alias;\n"
+      "int read() { return Alias::value; }\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  const c4c::Node* owner = find_record(root, "Owner");
+  const c4c::Node* field = find_field(owner, "value");
+  c4c::Node* reader = find_function(root, "read");
+  c4c::Node* ref = find_return_var(reader);
+  expect_true(owner != nullptr, "parsed Owner record should exist");
+  expect_true(field != nullptr && field->is_static,
+              "parsed static member should exist");
+  expect_true(ref != nullptr, "parsed alias static member reference should exist");
+  expect_true(ref->namespace_context_id == owner->namespace_context_id,
+              "alias static member reference should carry owner namespace context");
+  expect_true(ref->n_qualifier_segments == 1 && ref->qualifier_text_ids &&
+                  ref->qualifier_text_ids[0] == owner->unqualified_text_id,
+              "alias static member reference should carry canonical owner TextId");
+  expect_true(ref->unqualified_text_id == field->unqualified_text_id,
+              "alias static member reference should carry member TextId");
+
+  ref->name = arena.strdup("Alias::rendered_value");
+  ref->unqualified_name = arena.strdup("rendered_value");
+  ref->qualifier_segments[0] = arena.strdup("Alias");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema static member lookup should use canonical parser owner/member "
+              "metadata instead of alias rendered owner spelling" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift() {
   const char* source =
       "template <typename T>\n"
@@ -3953,6 +3994,7 @@ int main() {
   test_sema_static_member_lookup_rejects_rendered_after_metadata_miss();
   test_sema_record_completeness_uses_structured_metadata_before_rendered_tag();
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
+  test_parsed_static_member_alias_owner_uses_canonical_owner_metadata();
   test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift();
   test_sema_instance_field_lookup_rejects_stale_member_spelling();
   test_parsed_record_fields_carry_member_text_ids_into_sema();
