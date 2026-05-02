@@ -120,11 +120,50 @@ ConstEvalEnv Lowerer::make_lowerer_consteval_env(
 }
 
 void Lowerer::resolve_typedef_to_struct(TypeSpec& ts) const {
-  if (ts.base != TB_TYPEDEF || !ts.tag) return;
+  if (ts.base != TB_TYPEDEF || !module_) return;
+  auto apply_struct_def = [&](const HirStructDef& def) {
+    ts.base = def.is_union ? TB_UNION : TB_STRUCT;
+    ts.tag = def.tag.c_str();
+    ts.tag_text_id = def.tag_text_id;
+    ts.namespace_context_id = def.ns_qual.context_id;
+    ts.is_global_qualified = def.ns_qual.is_global_qualified;
+  };
+
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    if (const std::optional<HirRecordOwnerKey> owner_key =
+            make_struct_def_node_owner_key(ts.record_def)) {
+      if (const HirStructDef* structured =
+              module_->find_struct_def_by_owner_structured(*owner_key)) {
+        apply_struct_def(*structured);
+      }
+      return;
+    }
+  }
+
+  if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = ts.namespace_context_id;
+    ns_qual.is_global_qualified = ts.is_global_qualified;
+    if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          ts.qualifier_text_ids,
+          ts.qualifier_text_ids + ts.n_qualifier_segments);
+    }
+    const HirRecordOwnerKey owner_key =
+        make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+    if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+      if (const HirStructDef* structured =
+              module_->find_struct_def_by_owner_structured(owner_key)) {
+        apply_struct_def(*structured);
+      }
+      return;
+    }
+  }
+
+  if (!ts.tag || !ts.tag[0]) return;
   auto sit = module_->struct_defs.find(ts.tag);
   if (sit != module_->struct_defs.end()) {
-    ts.base = TB_STRUCT;
-    ts.tag = sit->second.tag.c_str();
+    apply_struct_def(sit->second);
   }
 }
 

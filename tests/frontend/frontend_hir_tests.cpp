@@ -1904,6 +1904,186 @@ void test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag() {
               "stale rendered owner tag must not block structured member typedef resolution");
 }
 
+void test_hir_resolve_typedef_to_struct_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealTypedefOwner");
+  real_record->unqualified_name = arena.strdup("RealTypedefOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture typedef record_def owner should have structured metadata");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealTypedefOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealTypedefOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleTypedefOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleTypedefOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_TYPEDEF;
+  ts.tag = arena.strdup("StaleTypedefOwner");
+  ts.record_def = real_record;
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+
+  lowerer.resolve_typedef_to_struct(ts);
+
+  expect_true(ts.base == c4c::TB_STRUCT,
+              "typedef resolution should resolve a record_def-backed owner to a struct");
+  expect_eq(ts.tag, "RealTypedefOwner",
+            "typedef resolution should prefer record_def owner metadata over a stale rendered tag");
+  expect_true(ts.tag_text_id == real_def.tag_text_id,
+              "typedef resolution should copy the resolved structured tag TextId");
+}
+
+void test_hir_resolve_typedef_to_struct_record_def_miss_rejects_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* unresolved_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  unresolved_record->name = arena.strdup("UnresolvedTypedefOwner");
+  unresolved_record->unqualified_name = arena.strdup("UnresolvedTypedefOwner");
+  unresolved_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(unresolved_record);
+  expect_true(owner_key.has_value(),
+              "fixture unresolved typedef owner should have structured metadata");
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleTypedefOwnerAfterMiss";
+  stale_def.tag_text_id =
+      module.link_name_texts->intern("StaleTypedefOwnerAfterMiss");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_TYPEDEF;
+  ts.tag = arena.strdup("StaleTypedefOwnerAfterMiss");
+  ts.record_def = unresolved_record;
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+
+  lowerer.resolve_typedef_to_struct(ts);
+
+  expect_true(ts.base == c4c::TB_TYPEDEF,
+              "complete record_def owner misses should not consult stale rendered typedef tags");
+  expect_eq(ts.tag, "StaleTypedefOwnerAfterMiss",
+            "failed structured typedef resolution should leave the compatibility spelling intact");
+}
+
+void test_hir_resolve_typedef_to_struct_prefers_text_owner_over_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::NamespaceQualifier ns;
+  ns.context_id = 77;
+  const c4c::TextId owner_text_id =
+      module.link_name_texts->intern("RealTextTypedefOwner");
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(ns, owner_text_id);
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealTextTypedefOwner";
+  real_def.tag_text_id = owner_text_id;
+  real_def.ns_qual = ns;
+  module.index_struct_def_owner(owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleTextTypedefOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleTextTypedefOwner");
+  stale_def.ns_qual.context_id = ns.context_id;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_TYPEDEF;
+  ts.tag = "StaleTextTypedefOwner";
+  ts.tag_text_id = owner_text_id;
+  ts.namespace_context_id = ns.context_id;
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+
+  lowerer.resolve_typedef_to_struct(ts);
+
+  expect_true(ts.base == c4c::TB_STRUCT,
+              "typedef resolution should resolve a TextId-backed owner to a struct");
+  expect_eq(ts.tag, "RealTextTypedefOwner",
+            "typedef resolution should prefer TextId owner metadata over stale rendered tag spelling");
+}
+
+void test_hir_resolve_typedef_to_struct_text_miss_rejects_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleTextTypedefOwnerAfterMiss";
+  stale_def.tag_text_id =
+      module.link_name_texts->intern("StaleTextTypedefOwnerAfterMiss");
+  stale_def.ns_qual.context_id = 88;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_TYPEDEF;
+  ts.tag = "StaleTextTypedefOwnerAfterMiss";
+  ts.tag_text_id = module.link_name_texts->intern("MissingTextTypedefOwner");
+  ts.namespace_context_id = 88;
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+
+  lowerer.resolve_typedef_to_struct(ts);
+
+  expect_true(ts.base == c4c::TB_TYPEDEF,
+              "complete TextId owner misses should not consult stale rendered typedef tags");
+}
+
+void test_hir_resolve_typedef_to_struct_keeps_rendered_fallback_without_metadata() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef legacy_def;
+  legacy_def.tag = "LegacyRenderedTypedefOwner";
+  legacy_def.tag_text_id =
+      module.link_name_texts->intern("LegacyRenderedTypedefOwner");
+  module.struct_defs[legacy_def.tag] = legacy_def;
+
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_TYPEDEF;
+  ts.tag = "LegacyRenderedTypedefOwner";
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+
+  lowerer.resolve_typedef_to_struct(ts);
+
+  expect_true(ts.base == c4c::TB_STRUCT,
+              "typedef resolution should keep rendered fallback when complete owner metadata is absent");
+  expect_eq(ts.tag, "LegacyRenderedTypedefOwner",
+            "rendered fallback should preserve legacy typedef-to-struct compatibility");
+}
+
 void test_hir_member_owner_lookup_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5490,6 +5670,11 @@ int main() {
   test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback();
   test_hir_pending_type_ref_keeps_legacy_zero_value_debug_text();
   test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag();
+  test_hir_resolve_typedef_to_struct_prefers_record_def_over_stale_tag();
+  test_hir_resolve_typedef_to_struct_record_def_miss_rejects_stale_tag();
+  test_hir_resolve_typedef_to_struct_prefers_text_owner_over_stale_tag();
+  test_hir_resolve_typedef_to_struct_text_miss_rejects_stale_tag();
+  test_hir_resolve_typedef_to_struct_keeps_rendered_fallback_without_metadata();
   test_hir_member_owner_lookup_prefers_record_def_over_stale_tag();
   test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag();
   test_hir_template_struct_primary_lookup_prefers_record_def_over_stale_origin();
