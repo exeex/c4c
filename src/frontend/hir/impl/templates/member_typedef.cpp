@@ -84,6 +84,38 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
           "owner struct still pending", &result)) {
     return result;
   }
+  if (const Node* primary_tpl =
+          canonical_template_struct_primary(work_item.pending_type,
+                                            work_item.owner_primary_def)) {
+    ResolvedTemplateArgs resolved = materialize_template_args(
+        primary_tpl, work_item.pending_type, work_item.type_bindings,
+        work_item.nttp_bindings);
+    SelectedTemplateStructPattern selected;
+    if (template_struct_has_pack_params(primary_tpl)) {
+      selected.primary_def = primary_tpl;
+      selected.selected_pattern = primary_tpl;
+    } else {
+      selected = select_template_struct_pattern_hir(
+          resolved.concrete_args, build_template_struct_env(primary_tpl));
+    }
+    const Node* selected_def =
+        selected.selected_pattern ? selected.selected_pattern : primary_tpl;
+    const std::string structured_owner_tag = build_template_mangled_name(
+        primary_tpl, selected_def,
+        work_item.pending_type.tpl_struct_origin
+            ? work_item.pending_type.tpl_struct_origin
+            : (primary_tpl->name ? primary_tpl->name : ""),
+        resolved);
+    if (!structured_owner_tag.empty()) {
+      TypeSpec resolved_member{};
+      if (resolve_struct_member_typedef_type(
+              structured_owner_tag,
+              work_item.pending_type.deferred_member_type_name,
+              &resolved_member)) {
+        return DeferredTemplateTypeResult::resolved();
+      }
+    }
+  }
   if (!owner_ts.tag || !owner_ts.tag[0]) {
     return blocked_deferred_template_type(
         work_item, "owner tag unavailable");

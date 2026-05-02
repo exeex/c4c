@@ -475,6 +475,21 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     TypeSpec owner_ts = *ts;
     owner_ts.deferred_member_type_name = nullptr;
     realize_template_struct_if_needed(owner_ts, empty_tb, empty_nb, primary_tpl);
+    const Node* structured_owner =
+        selected.selected_pattern ? selected.selected_pattern : primary_tpl;
+    const std::string structured_owner_tag = build_template_mangled_name(
+        primary_tpl, structured_owner,
+        ts->tpl_struct_origin ? ts->tpl_struct_origin
+                              : (primary_tpl->name ? primary_tpl->name : ""),
+        resolved);
+    if (!structured_owner_tag.empty()) {
+      TypeSpec resolved_member{};
+      if (resolve_struct_member_typedef_type(
+              structured_owner_tag, deferred_member_name, &resolved_member)) {
+        *ts = resolved_member;
+        return true;
+      }
+    }
     if (owner_ts.tag && owner_ts.tag[0]) {
       TypeSpec resolved_member{};
       if (resolve_struct_member_typedef_type(

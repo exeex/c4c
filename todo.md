@@ -8,40 +8,32 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries attempted the bounded
-`src/frontend/hir/hir_functions.cpp` signature/template-binding migration and
-stopped on a real carrier boundary. A narrow prototype made
-`substitute_signature_template_type` prefer `template_param_text_id` /
-`tag_text_id`-derived binding keys and bridged callable template parameter
-metadata from callable nodes into module TextIds. That repaired ordinary
-template function signature substitution and parameter-pack expansion, but it
-regressed existing deferred member-typedef signature cases such as
-`cpp_hir_template_member_owner_signature_local`,
+Step 4 - Probe Field Removal And Split Boundaries added a structured-derived
+owner bridge for deferred member typedef/template-owner resolution in
+`src/frontend/hir/impl/templates/member_typedef.cpp` and
+`src/frontend/hir/impl/templates/type_resolution.cpp`. For pending
+`typename wrapper<T>::alias` style owners, the resolver now materializes
+template arguments from the existing template owner carriers, selects the
+template struct pattern, derives the instantiated owner name from the primary
+template plus resolved arguments, and attempts member-typedef lookup through
+that structured-derived owner before falling back to rendered `TypeSpec::tag`.
+
+This is a structured-derived instantiated-owner spelling bridge into the
+existing string-keyed member typedef registry, not the final structured
+owner-key migration. Direct `owner_ts.tag` / `ts->tag` lookups remain explicit
+no-metadata compatibility for routes that still lack a complete structured
+owner carrier. Existing member-owner signature coverage remains green,
+including `cpp_hir_template_member_owner_signature_local`,
 `cpp_hir_template_member_owner_field_and_local`, and
 `cpp_hir_template_member_owner_decl_and_cast`.
-
-Blocker: the failing member-typedef signature path still depends on rendered
-owner/type spellings in `TypeSpec::tag` to seed or resolve
-`typename wrapper<T>::alias` / `typename holder<T>::alias` style types. In this
-file, existing structured carriers (`template_param_text_id`, `tag_text_id`,
-`tpl_struct_origin_key`, and callable template parameter TextIds) are not
-enough to recover the owner spelling needed by the deferred member-typedef
-resolver without either keeping rendered `TypeSpec::tag` compatibility or
-widening into the deferred member-typedef/template owner machinery outside the
-owned route.
-
-The unsafe prototype was reverted before return, leaving implementation files
-buildable. Durable output for this packet is this blocker classification in
-`todo.md`.
 
 ## Suggested Next
 
 Continue Step 4 with one bounded frontend/HIR compile-failure cluster
-migration, but do not retry `hir_functions.cpp` signature/member-typedef
-handoff in isolation. Suggested next packet: migrate or add a structured owner
-carrier in the deferred member-typedef/template owner route so
-`typename wrapper<T>::alias` can be resolved without rendered `TypeSpec::tag`,
-then return to `hir_functions.cpp::substitute_signature_template_type`.
+migration. Suggested next packet: retry the bounded
+`src/frontend/hir/hir_functions.cpp::substitute_signature_template_type`
+signature/template-binding slice now that deferred member-typedef owners have a
+structured-derived bridge before rendered tag fallback.
 
 ## Watchouts
 
@@ -87,11 +79,17 @@ then return to `hir_functions.cpp::substitute_signature_template_type`.
   Remaining first-probe clusters are HIR call-lowering helpers and mixed HIR
   semantic/display consumers in `hir_functions.cpp`, `hir_lowering_core.cpp`,
   `hir_build.cpp`, and `hir_types.cpp`.
-- `hir_functions.cpp::substitute_signature_template_type` cannot be completed
-  safely as a standalone slice because deferred member-typedef signature
-  lowering lacks a structured owner spelling bridge in this file. The attempted
-  local-only bridge regressed existing member-typedef HIR cases and was
-  reverted.
+- Deferred member typedef owner resolution now has a structured-derived
+  instantiated-owner spelling bridge in `member_typedef.cpp` and
+  `type_resolution.cpp`; rendered `tag` fallback remains explicit
+  compatibility for no-carrier routes, and this is not yet a final structured
+  owner-key carrier.
+- `build_template_mangled_name` may still use rendered nominal `TypeSpec::tag`
+  for struct/union/enum/typedef template arguments; add stale-rendered proof or
+  migrate that helper before removing remaining deferred-member fallbacks.
+- `hir_functions.cpp::substitute_signature_template_type` should now be
+  retried as a separate bounded packet, with the member-owner signature tests
+  kept in the focused proof set.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend
   failures after frontend/HIR compile blockers are cleared.
 - Classify each failure as parser/HIR-owned, compatibility/display/final
@@ -107,8 +105,8 @@ then return to `hir_functions.cpp::substitute_signature_template_type`.
 
 ## Proof
 
-Step 4 blocked-route restoration proof passed with:
+Step 4 deferred member typedef owner bridge proof passed with:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-Result: build passed and 62/62 selected CTest tests passed after reverting the
-unsafe prototype. Proof log: `test_after.log`. `git diff --check` passed.
+Result: build passed and 62/62 selected CTest tests passed. Proof log:
+`test_after.log`. `git diff --check` passed.
