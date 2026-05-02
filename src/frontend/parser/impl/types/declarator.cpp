@@ -1093,7 +1093,11 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         for (const Parser::TemplateArgParseResult& arg : parsed_args) {
             if (arg.is_value || arg.type.base != TB_TYPEDEF || !arg.type.tag)
                 continue;
-            const TextId arg_text_id = parser.find_parser_text_id(arg.type.tag);
+            TextId arg_text_id = arg.type.template_param_text_id;
+            if (arg_text_id == kInvalidText) arg_text_id = arg.type.tag_text_id;
+            if (arg_text_id == kInvalidText) {
+                arg_text_id = parser.find_parser_text_id(arg.type.tag);
+            }
             if (parser.is_template_scope_type_param(arg_text_id)) {
                 has_dependent_type_arg = true;
                 break;
