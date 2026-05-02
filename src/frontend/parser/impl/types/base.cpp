@@ -829,6 +829,33 @@ TypeSpec Parser::parse_base_type() {
         if (mangled.empty() && arg.type.tag) return arg.type.tag;
         return mangled;
     };
+    auto rematerialize_captured_template_arg_expr =
+        [&](const ParsedTemplateArg& arg) -> Node* {
+            if (arg.expr) return arg.expr;
+            if (arg.type.array_size_expr) return arg.type.array_size_expr;
+            if (arg.captured_expr_tokens.empty()) return nullptr;
+
+            std::vector<Token> saved_tokens = tokens_;
+            const int saved_pos = pos_;
+            const int saved_template_arg_depth =
+                active_context_state_.template_arg_expr_depth;
+            tokens_ = arg.captured_expr_tokens;
+            pos_ = 0;
+            ++active_context_state_.template_arg_expr_depth;
+            Node* reparsed_expr = nullptr;
+            try {
+                reparsed_expr = parse_assign_expr(*this);
+            } catch (...) {
+                reparsed_expr = nullptr;
+            }
+            const bool reparsed_all =
+                reparsed_expr && pos_ == static_cast<int>(tokens_.size());
+            active_context_state_.template_arg_expr_depth =
+                saved_template_arg_depth;
+            tokens_ = std::move(saved_tokens);
+            pos_ = saved_pos;
+            return reparsed_all ? reparsed_expr : nullptr;
+        };
     auto set_template_arg_refs_from_parsed_args =
         [&](TypeSpec* target, const std::vector<ParsedTemplateArg>& args) {
             if (!target) return;
@@ -847,7 +874,8 @@ TypeSpec Parser::parse_base_type() {
                 if (arg.is_value) {
                     out.type.array_size = -1;
                     out.type.inner_rank = -1;
-                    out.type.array_size_expr = arg.expr;
+                    out.type.array_size_expr =
+                        rematerialize_captured_template_arg_expr(arg);
                 }
                 out.value = arg.is_value ? arg.value : 0;
                 out.nttp_text_id =
@@ -3823,6 +3851,11 @@ TypeSpec Parser::parse_base_type() {
                     bool has_deferred_nttp_arg = false;
                     for (const auto& arg : concrete_args) {
                         if (arg.is_value && arg.nttp_name && arg.nttp_name[0]) {
+                            has_deferred_nttp_arg = true;
+                            break;
+                        }
+                        if (arg.is_value &&
+                            parsed_nttp_arg_has_structured_carrier(arg)) {
                             has_deferred_nttp_arg = true;
                             break;
                         }

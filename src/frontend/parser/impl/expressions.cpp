@@ -1712,7 +1712,8 @@ Node* parse_primary(Parser& parser) {
                     // Template<A,B>::member — resolve as qualified name.
                     // Re-parse from ident_start to trigger template struct
                     // instantiation and get the mangled tag.
-                    if (parser.check(TokenKind::ColonColon)) {
+                    bool first_template_scope_member = true;
+                    while (parser.check(TokenKind::ColonColon)) {
                         parser.consume(); // eat ::
                         std::string member;
                         TextId member_text_id = kInvalidText;
@@ -1730,90 +1731,148 @@ Node* parse_primary(Parser& parser) {
                                                                 member);
                         }
                         if (!member.empty()) {
-                            std::string struct_tag = ident->name;
-                            TextId owner_text_id = kInvalidText;
-                            int owner_namespace_context_id = -1;
-                            // Try to instantiate via parse_base_type to get mangled tag
-                            int after_member_pos = parser.pos_;
-                            parser.pos_ = ident_start;
-                            bool template_owner_requires_structured_metadata = false;
-                            try {
-                                TypeSpec ts = parser.parse_base_type();
-                                owner_namespace_context_id = ts.namespace_context_id;
-                                template_owner_requires_structured_metadata =
-                                    template_owner_requires_structured_metadata ||
-                                    ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
-                                    (ts.tpl_struct_args.data &&
-                                     ts.tpl_struct_args.size > 0);
-                                if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
-                                    // Deferred template struct: keep the
-                                    // original template name for display/HIR,
-                                    // but carry structured owner identity when
-                                    // the parser has already materialized it.
-                                    struct_tag = ts.tpl_struct_origin;
-                                    if (ts.record_def &&
-                                        ts.record_def->unqualified_text_id != kInvalidText) {
+                            Parser::QualifiedNameRef member_qn;
+                            std::string owner_name =
+                                ident->name ? ident->name : "";
+                            int owner_namespace_context_id =
+                                ident->namespace_context_id;
+                            if (first_template_scope_member) {
+                                TextId owner_text_id = kInvalidText;
+                                // Try to instantiate via parse_base_type to get
+                                // the structured owner for Template<Args>.
+                                int after_member_pos = parser.pos_;
+                                parser.pos_ = ident_start;
+                                bool template_owner_requires_structured_metadata = false;
+                                try {
+                                    TypeSpec ts = parser.parse_base_type();
+                                    owner_namespace_context_id =
+                                        ts.namespace_context_id;
+                                    template_owner_requires_structured_metadata =
+                                        template_owner_requires_structured_metadata ||
+                                        ts.tpl_struct_origin_key.base_text_id !=
+                                            kInvalidText ||
+                                        (ts.tpl_struct_args.data &&
+                                         ts.tpl_struct_args.size > 0);
+                                    if (ts.tpl_struct_origin &&
+                                        ts.tpl_struct_origin[0]) {
+                                        owner_name = ts.tpl_struct_origin;
+                                        if (ts.record_def &&
+                                            ts.record_def->unqualified_text_id !=
+                                                kInvalidText) {
+                                            owner_text_id =
+                                                ts.record_def->unqualified_text_id;
+                                            if (ts.record_def->namespace_context_id >= 0) {
+                                                owner_namespace_context_id =
+                                                    ts.record_def
+                                                        ->namespace_context_id;
+                                            }
+                                        } else if (ts.tag_text_id !=
+                                                   kInvalidText) {
+                                            owner_text_id = ts.tag_text_id;
+                                        }
+                                    } else if (ts.record_def &&
+                                               ts.record_def->unqualified_text_id !=
+                                                   kInvalidText) {
+                                        owner_name =
+                                            ts.record_def->name &&
+                                                    ts.record_def->name[0]
+                                                ? ts.record_def->name
+                                                : owner_name;
                                         owner_text_id =
                                             ts.record_def->unqualified_text_id;
                                         if (ts.record_def->namespace_context_id >= 0) {
                                             owner_namespace_context_id =
-                                                ts.record_def->namespace_context_id;
+                                                ts.record_def
+                                                    ->namespace_context_id;
                                         }
                                     } else if (ts.tag_text_id != kInvalidText) {
+                                        if (ts.tag && ts.tag[0])
+                                            owner_name = ts.tag;
                                         owner_text_id = ts.tag_text_id;
+                                    } else if (ts.tag && ts.tag[0]) {
+                                        owner_name = ts.tag;
                                     }
-                                } else if (ts.record_def &&
-                                           ts.record_def->unqualified_text_id != kInvalidText) {
-                                    struct_tag = ts.record_def->name && ts.record_def->name[0]
-                                                     ? ts.record_def->name
-                                                     : struct_tag;
-                                    owner_text_id = ts.record_def->unqualified_text_id;
-                                    if (ts.record_def->namespace_context_id >= 0) {
-                                        owner_namespace_context_id =
-                                            ts.record_def->namespace_context_id;
-                                    }
-                                } else if (ts.tag_text_id != kInvalidText) {
-                                    if (ts.tag && ts.tag[0]) struct_tag = ts.tag;
-                                    owner_text_id = ts.tag_text_id;
-                                } else if (ts.tag && ts.tag[0]) {
-                                    struct_tag = ts.tag;
+                                } catch (...) {
+                                    // fallback: use current expression owner
                                 }
-                            } catch (...) {
-                                // fallback: use raw name
-                            }
-                            parser.pos_ = after_member_pos;
-                            std::string member_name = struct_tag + "::" + member;
-                            ident->name = parser.arena_.strdup(member_name.c_str());
-                            Parser::QualifiedNameRef member_qn;
-                            std::string owner_name = struct_tag;
-                            if (owner_name.rfind("::", 0) == 0) {
-                                member_qn.is_global_qualified = true;
-                                owner_name.erase(0, 2);
-                            }
-                            if (owner_text_id != kInvalidText) {
-                                member_qn.qualifier_segments.push_back(owner_name);
-                                member_qn.qualifier_text_ids.push_back(owner_text_id);
-                            } else if (!template_owner_requires_structured_metadata) {
-                                size_t segment_start = 0;
-                                while (segment_start <= owner_name.size()) {
-                                    const size_t segment_end =
-                                        owner_name.find("::", segment_start);
-                                    const std::string segment =
-                                        segment_end == std::string::npos
-                                            ? owner_name.substr(segment_start)
-                                            : owner_name.substr(
-                                                  segment_start,
-                                                  segment_end - segment_start);
-                                    if (!segment.empty()) {
-                                        member_qn.qualifier_segments.push_back(segment);
-                                        member_qn.qualifier_text_ids.push_back(
-                                            parser.parser_text_id_for_token(
-                                                kInvalidText, segment));
+                                parser.pos_ = after_member_pos;
+                                if (owner_name.rfind("::", 0) == 0) {
+                                    member_qn.is_global_qualified = true;
+                                    owner_name.erase(0, 2);
+                                }
+                                if (owner_text_id != kInvalidText) {
+                                    member_qn.qualifier_segments.push_back(
+                                        owner_name);
+                                    member_qn.qualifier_text_ids.push_back(
+                                        owner_text_id);
+                                } else if (!template_owner_requires_structured_metadata) {
+                                    size_t segment_start = 0;
+                                    while (segment_start <= owner_name.size()) {
+                                        const size_t segment_end =
+                                            owner_name.find("::",
+                                                            segment_start);
+                                        const std::string segment =
+                                            segment_end == std::string::npos
+                                                ? owner_name.substr(
+                                                      segment_start)
+                                                : owner_name.substr(
+                                                      segment_start,
+                                                      segment_end -
+                                                          segment_start);
+                                        if (!segment.empty()) {
+                                            member_qn.qualifier_segments
+                                                .push_back(segment);
+                                            member_qn.qualifier_text_ids
+                                                .push_back(
+                                                    parser
+                                                        .parser_text_id_for_token(
+                                                            kInvalidText,
+                                                            segment));
+                                        }
+                                        if (segment_end == std::string::npos)
+                                            break;
+                                        segment_start = segment_end + 2;
                                     }
-                                    if (segment_end == std::string::npos) break;
-                                    segment_start = segment_end + 2;
+                                }
+                            } else {
+                                member_qn.is_global_qualified =
+                                    ident->is_global_qualified;
+                                for (int qi = 0;
+                                     qi < ident->n_qualifier_segments; ++qi) {
+                                    const char* segment =
+                                        ident->qualifier_segments
+                                            ? ident->qualifier_segments[qi]
+                                            : nullptr;
+                                    if (!segment || !segment[0]) continue;
+                                    member_qn.qualifier_segments.emplace_back(
+                                        segment);
+                                    member_qn.qualifier_text_ids.push_back(
+                                        ident->qualifier_text_ids
+                                            ? ident->qualifier_text_ids[qi]
+                                            : parser.parser_text_id_for_token(
+                                                  kInvalidText, segment));
+                                }
+                                const char* owner_segment =
+                                    ident->unqualified_name
+                                        ? ident->unqualified_name
+                                        : member_qn.qualifier_segments.empty()
+                                              ? owner_name.c_str()
+                                              : nullptr;
+                                if (owner_segment && owner_segment[0]) {
+                                    member_qn.qualifier_segments.emplace_back(
+                                        owner_segment);
+                                    member_qn.qualifier_text_ids.push_back(
+                                        ident->unqualified_text_id != kInvalidText
+                                            ? ident->unqualified_text_id
+                                            : parser.parser_text_id_for_token(
+                                                  kInvalidText,
+                                                  owner_segment));
                                 }
                             }
+                            const std::string member_name =
+                                owner_name + "::" + member;
+                            ident->name =
+                                parser.arena_.strdup(member_name.c_str());
                             member_qn.base_name = member;
                             member_qn.base_text_id = member_text_id;
                             parser.apply_qualified_name(ident, member_qn,
@@ -1823,6 +1882,7 @@ Node* parse_primary(Parser& parser) {
                                     owner_namespace_context_id;
                             }
                         }
+                        first_template_scope_member = false;
                     }
                     // Brace-init after template: Type<Args>{} or Type<Args>{a, b}
                     // Preserve empty-brace temporaries as a zero-arg call shape.

@@ -3680,6 +3680,56 @@ void test_pending_template_nttp_carriers_suppress_rendered_debug_text() {
               "debug authority");
 }
 
+void test_nested_template_static_member_value_arg_carries_expr_node() {
+  const char* source =
+      "template <typename T, int N = 7>\n"
+      "struct Outer { struct Count { static constexpr int value = N; }; };\n"
+      "template <int V>\n"
+      "struct Buffer { int data[V]; };\n"
+      "template <typename T>\n"
+      "struct Wrap { Buffer<Outer<T>::Count::value + 1> data; };\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+  const c4c::Node* wrap = find_record(root, "Wrap");
+  const c4c::Node* data = find_field(wrap, "data");
+  expect_true(data && data->type.tpl_struct_args.data &&
+                  data->type.tpl_struct_args.size == 1,
+              "Wrap::data should preserve Buffer's structured template arg");
+
+  const c4c::TemplateArgRef& value_arg =
+      data->type.tpl_struct_args.data[0];
+  expect_true(value_arg.kind == c4c::TemplateArgKind::Value,
+              "Buffer value argument should remain a value TemplateArgRef");
+  const c4c::Node* expr = value_arg.type.array_size_expr;
+  expect_true(expr && expr->kind == c4c::NK_BINOP && expr->op &&
+                  std::string(expr->op) == "+",
+              "nested-owner value argument should carry a parsed expression");
+  expect_true(expr->left && expr->left->kind == c4c::NK_VAR &&
+                  expr->left->name &&
+                  std::string(expr->left->name) ==
+                      "Outer::Count::value",
+              "template-id nested static-member owner should be preserved as "
+              "a structured NK_VAR carrier");
+  expect_true(expr->left->n_qualifier_segments == 2 &&
+                  expr->left->qualifier_text_ids &&
+                  expr->left->qualifier_text_ids[0] != c4c::kInvalidText &&
+                  expr->left->qualifier_text_ids[1] != c4c::kInvalidText &&
+                  expr->left->unqualified_text_id != c4c::kInvalidText,
+              "nested static-member carrier should include qualifier and "
+              "member TextIds");
+  expect_true(expr->right && expr->right->kind == c4c::NK_INT_LIT &&
+                  expr->right->ival == 1,
+              "nested-owner expression should preserve the additive RHS");
+  expect_true(!value_arg.debug_text ||
+                  std::string(value_arg.debug_text).find("$expr:") ==
+                      std::string::npos,
+              "structured expression carrier should suppress `$expr:` debug "
+              "authority");
+}
+
 void test_nested_pending_template_arg_rendering_suppresses_expr_debug_text() {
   const char* source =
       "template <typename T, int N>\n"
@@ -4082,6 +4132,7 @@ int main() {
   test_default_only_template_base_uses_cached_default_metadata();
   test_direct_template_explicit_nttp_expr_ignores_stale_display_text();
   test_pending_template_nttp_carriers_suppress_rendered_debug_text();
+  test_nested_template_static_member_value_arg_carries_expr_node();
   test_nested_pending_template_arg_rendering_suppresses_expr_debug_text();
   test_typespec_template_origin_equality_uses_structured_key();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();

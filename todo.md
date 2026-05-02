@@ -8,31 +8,34 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 addressed the reviewer rejection in
-`review/step4_nested_value_arg_carrier_review.md` by removing the rejected
-bespoke captured-token mini-parser from `base.cpp`, removing the speculative
-nested-owner HIR evaluator from `value_args.cpp`, and restoring the focused HIR
-test to its pre-slice coverage.
+Step 4 repaired the general expression parser path for chained template-id
+static-member references. `parse_assign_expr` now continues through repeated
+`::member` segments after `Template<Args>::member`, so expressions such as
+`Outer<T>::Count::value + 1` produce a complete structured `NK_VAR`/`NK_BINOP`
+carrier instead of truncating at `Outer<T>::Count`.
 
-The attempted acceptable route is blocked inside the general expression
-parser, outside this packet's owned implementation files. The existing
-`parse_assign_expr` rematerialization path does not currently produce a
-complete structured carrier for captured tokens such as
-`Outer<T>::Count::value + 1`: the normal expression parser materializes only
-the template owner/member prefix (`Outer_T_int_N_7::Count` in the concrete
-probe) and does not preserve the remaining nested static member access as
-`NK_VAR`/expression metadata. Reconstructing that carrier acceptably requires a
-generic expression-parser repair for chained `Template<Args>::Nested::member`
-scope handling, not another `parse_base_type()` token-shape fallback.
+`base.cpp` now uses that normal parser rematerialization path for
+`captured_expr_tokens` when populating
+`TemplateArgRef::type.array_size_expr`; it does not contain a local
+token-shape parser. Focused parser coverage in
+`frontend_parser_lookup_authority_tests` verifies that
+`Buffer<Outer<T>::Count::value + 1>` carries a structured value expression with
+qualifier/member `TextId`s and no `$expr:` debug-text authority.
+
+HIR materialization still needs separate consumer work for nested-owner static
+member value evaluation: the concrete `Wrap<int>` probe still lowers
+`Buffer<Outer<T>::Count::value + 1>` as `Buffer_V_0` after the parser carrier
+repair. This appears to be a HIR value-argument consumer gap and should be
+handled under idea 140 or explicitly justified as a consumer-side follow-up to
+this handoff before editing HIR.
 
 ## Suggested Next
 
-Continue Step 4 with a packet that owns the general expression parser path
-needed by captured NTTP expression rematerialization, likely
-`src/frontend/parser/impl/expressions.cpp` plus the existing focused test. The
-repair should make `parse_assign_expr` produce a structured carrier for
-`Template<Args>::Nested::member` expressions generically before any HIR
-consumer work is considered.
+Decide whether the remaining HIR nested-owner value-argument evaluator belongs
+as a justified consumer-side continuation of Step 4 or should move to idea 140.
+If continuing here, the next packet should own the HIR value-argument consumer
+and prove that it consumes the parser-produced structured carrier without
+rendered owner parsing.
 
 ## Watchouts
 
@@ -83,24 +86,22 @@ consumer work is considered.
   owner namespace context plus final owner `TextId`. This packet repairs the
   parser carrier for available nested record identity; it does not add an
   enclosing-record path to the Sema key.
-- The removed HIR nested-owner evaluator was mostly carrier-driven but was not
-  kept in this idea-139 slice because the parser/Sema producer is still
-  blocked. If the generic expression-parser repair later proves HIR still needs
-  a nested-owner consumer, either justify that as a consumer of the completed
-  handoff in `todo.md` or move it to idea 140/a narrower HIR metadata blocker.
+- The removed HIR nested-owner evaluator was mostly carrier-driven but is still
+  not kept in this idea-139 slice. The parser/Sema producer is now repaired;
+  if HIR work is approved here, keep it strictly as a consumer of
+  `NK_VAR` qualifier/template-arg carriers. Otherwise move it to idea 140/a
+  narrower HIR metadata blocker.
 - The `cpp_positive_sema_template_nttp_default_runtime_cpp` proof case covers
   the default-NTTP side of this path: static-member value expressions must carry
   enclosing type bindings when evaluating defaults such as
   `is_void<T>::value || is_void<T>::value`.
-- Current blocker: within the owned files, `base.cpp` can invoke
-  `parse_assign_expr` over `captured_expr_tokens`, but it cannot make the
-  expression parser consume and preserve chained scope after a template-id.
-  Keeping a local token parser in `base.cpp` was rejected as testcase-shaped
-  overfit, so no speculative implementation remains.
+- Current blocker: HIR still does not evaluate the parser-produced nested-owner
+  value carrier for materialization. Do not broaden `$expr:` compatibility or
+  reintroduce the rejected parser mini-parser to cover that consumer gap.
 
 ## Proof
 
-Ran the delegated proof command after removing the rejected implementation:
+Ran the delegated proof command after the general expression-parser repair:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp|cpp_hir_template_struct_arg_materialization|cpp_hir_template_value_arg_static_member_trait)$' | tee test_after.log`.
 
 Result: build completed successfully; CTest passed `888/888` matched tests.
