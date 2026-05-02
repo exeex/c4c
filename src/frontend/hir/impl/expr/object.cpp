@@ -290,13 +290,12 @@ bool Lowerer::describe_initializer_list_struct(const TypeSpec& ts,
                                                TypeSpec* elem_ts,
                                                TypeSpec* data_ptr_ts,
                                                TypeSpec* len_ts) const {
-  if (ts.base != TB_STRUCT || ts.ptr_level != 0 || !ts.tag) return false;
-  auto sit = module_->struct_defs.find(ts.tag);
-  if (sit == module_->struct_defs.end()) return false;
+  const HirStructDef* layout = find_struct_def_for_layout_type(ts);
+  if (!layout) return false;
 
   const HirStructField* data_field = nullptr;
   const HirStructField* len_field = nullptr;
-  for (const auto& field : sit->second.fields) {
+  for (const auto& field : layout->fields) {
     if (field.name == "_M_array") {
       data_field = &field;
     } else if (field.name == "_M_len") {
@@ -393,10 +392,10 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
       lhs.resolved_owner_tag = *owner_tag;
       lhs.member_symbol_id = find_struct_member_symbol_id(
           param_ts, *owner_tag, field_name, lhs.field_text_id);
-    } else if (param_ts.tag && param_ts.tag[0]) {
-      lhs.resolved_owner_tag = param_ts.tag;
+    } else if (const HirStructDef* layout = find_struct_def_for_layout_type(param_ts)) {
+      lhs.resolved_owner_tag = layout->tag;
       lhs.member_symbol_id = find_struct_member_symbol_id(
-          param_ts, param_ts.tag, field_name, lhs.field_text_id);
+          param_ts, layout->tag, field_name, lhs.field_text_id);
     }
     lhs.is_arrow = false;
     ExprId lhs_id = append_expr(list_node, lhs, field_ts, ValueCategory::LValue);
