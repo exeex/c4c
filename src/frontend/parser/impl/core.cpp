@@ -846,10 +846,25 @@ const char* typespec_legacy_nominal_tag_if_present(const TypeSpec&, long) {
     return nullptr;
 }
 
+template <typename T>
+auto typespec_legacy_typedef_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, static_cast<const char*>(nullptr)) {
+    return ts.tag;
+}
+
+const char* typespec_legacy_typedef_tag_if_present(const TypeSpec&, long) {
+    return nullptr;
+}
+
 bool typespec_has_nominal_identity_carrier(const TypeSpec& ts) {
     return ts.record_def || ts.tag_text_id != kInvalidText ||
            ts.template_param_text_id != kInvalidText ||
            ts.deferred_member_type_text_id != kInvalidText;
+}
+
+bool typespec_has_typedef_lookup_identity_carrier(const TypeSpec& ts) {
+    return ts.tag_text_id != kInvalidText || ts.namespace_context_id >= 0 ||
+           ts.is_global_qualified || ts.n_qualifier_segments > 0;
 }
 
 bool same_legacy_tag_only_nominal_typespec_identity(const TypeSpec& lhs,
@@ -961,8 +976,8 @@ TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
                 find_typedef_type_by_typespec_metadata(*this, type)) {
             return structured;
         }
-        if (type.tag_text_id != kInvalidText) return nullptr;
-        const char* tag = type.tag;
+        if (typespec_has_typedef_lookup_identity_carrier(type)) return nullptr;
+        const char* tag = typespec_legacy_typedef_tag_if_present(type, 0);
         if (!tag || !tag[0]) return nullptr;
         const std::string_view name(tag);
         const TextId name_text_id = find_parser_text_id(name);
@@ -974,7 +989,10 @@ TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
         if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) {
             break;
         }
-        if (!ts.tag && ts.tag_text_id == kInvalidText) break;
+        if (!typespec_has_typedef_lookup_identity_carrier(ts) &&
+            !typespec_legacy_typedef_tag_if_present(ts, 0)) {
+            break;
+        }
         const TypeSpec* next = find_chain_typedef(ts);
         if (!next) break;
         const bool is_const = ts.is_const;
