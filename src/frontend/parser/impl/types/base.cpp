@@ -4244,29 +4244,6 @@ TypeSpec Parser::parse_base_type() {
                                                                     base_prelim_nb,
                                                                     &ev,
                                                                     &base_prelim_nb_meta);
-                                                            if (!evaluated_default &&
-                                                                base_primary
-                                                                    ->template_param_default_exprs &&
-                                                                base_primary
-                                                                    ->template_param_default_exprs
-                                                                        [pi]) {
-                                                                std::vector<Token>
-                                                                    expr_toks =
-                                                                        lex_template_expr_text(
-                                                                            base_primary
-                                                                                ->template_param_default_exprs
-                                                                                    [pi],
-                                                                            core_input_state_
-                                                                                .source_profile);
-                                                                evaluated_default =
-                                                                    eval_deferred_nttp_expr_tokens(
-                                                                        origin,
-                                                                        expr_toks,
-                                                                        base_prelim_tb,
-                                                                        base_prelim_nb,
-                                                                        &ev,
-                                                                        &base_prelim_nb_meta);
-                                                            }
                                                             if (!evaluated_default) {
                                                                 can_use_typed_args =
                                                                     false;
@@ -4386,15 +4363,17 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                         }
                                     }
-                                    if (base_primary &&
-                                        inst->base_types[bi]
-                                            .tpl_struct_args.data &&
-                                        inst->base_types[bi]
-                                                .tpl_struct_args.size >
-                                            0) {
+                                    const bool base_has_structured_arg_carrier =
+                                        inst->base_types[bi].tpl_struct_args.data &&
+                                        inst->base_types[bi].tpl_struct_args.size > 0;
+                                    if (base_primary && base_has_structured_arg_carrier) {
                                         restore_deferred_member_lookup();
                                         continue;
                                     }
+                                    // No-carrier compatibility fallback: this branch
+                                    // reconstructs args from legacy rendered debug refs
+                                    // only after the structured carrier path above has
+                                    // declined to use tpl_struct_args.
                                     std::string arg_refs_str =
                                         template_arg_refs_text(inst->base_types[bi]);
                                     // Substitute template param names in arg_refs

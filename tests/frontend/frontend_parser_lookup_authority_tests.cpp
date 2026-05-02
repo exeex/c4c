@@ -2247,6 +2247,16 @@ void test_dependent_member_typedef_base_carries_structured_record_def() {
             arena.strdup("$expr:0");
       }
     }
+    const c4c::TextId helper_text =
+        lexer.text_table().intern("is_signed_helper");
+    c4c::Node* helper_primary = parser.find_template_struct_primary(
+        parser.current_namespace_context_id(), helper_text);
+    expect_true(helper_primary && helper_primary->n_template_params >= 2 &&
+                    helper_primary->template_param_default_exprs &&
+                    helper_primary->template_param_default_exprs[1],
+                "is_signed_helper primary should carry a rendered deferred "
+                "NTTP default expression for drift coverage");
+    helper_primary->template_param_default_exprs[1] = arena.strdup("0");
 
     auto make_type_arg = [](c4c::TypeBase base) {
       c4c::Parser::TemplateArgParseResult arg{};

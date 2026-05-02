@@ -8,27 +8,26 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 parked the alias-template rendered template-argument substitution
-fallback behind a no-structured-carrier gate. The alias-template path now runs
-`substitute_template_arg_refs_structured(&ts)` first; the old
-`template_arg_refs_text(ts)` plus `substitute_template_arg_refs(...)` rewrite is
-retained only when the template-arg list contains unstructured debug-only refs
-and no structured `TemplateArgRef` carrier such as an NTTP `TextId`, literal
-value, typed argument, or nested structured payload.
+Step 4 removed the template default-expression re-lex retry from the structured
+base-instantiation typed-argument handoff. When
+`eval_deferred_nttp_default(...)` misses for a defaulted NTTP in the structured
+`base_primary` path, the parser now declines the structured route instead of
+falling back to `base_primary->template_param_default_exprs[...]`,
+`lex_template_expr_text(...)`, and `eval_deferred_nttp_expr_tokens(...)`.
 
-Focused lookup-authority coverage now builds a mixed alias result containing one
-debug-only no-carrier arg and one structured NTTP arg with stale rendered
-`debug_text`. The test requires the no-carrier arg to remain compatibility data
-while the structured NTTP is substituted to `7` and regenerates debug text from
-the structured argument, proving stale rendered arg refs cannot drive the mixed
-structured path.
+The later rendered-arg reconstruction branch is now explicitly documented as a
+no-carrier compatibility fallback and remains reachable only after a
+`tpl_struct_args` structured carrier is absent or declined. Focused drift
+coverage poisons the rendered default-expression text on `is_signed_helper`
+while the structured cached default tokens still drive dependent member-typedef
+base instantiation and `record_def` attachment.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing the remaining parser/Sema rendered lookup or
-template-argument compatibility fallbacks that are not yet gated by structured
-carrier availability, and either remove the next parser/Sema-owned route or
-record the exact missing carrier that prevents removal.
+Continue Step 4 by reviewing the remaining parser/Sema `$expr:` and
+default-expression compatibility routes. The direct template primary
+instantiation path still has source-string default-expression fallbacks outside
+this base-handoff packet and should be handled as a separate bounded slice.
 
 ## Watchouts
 
@@ -55,6 +54,13 @@ record the exact missing carrier that prevents removal.
 - Retained `$expr:` carriers and template default-expression re-lex paths are
   compatibility fallbacks, not completed structured cleanup. Successful Step 4
   routes should continue to use parser/Sema structural metadata where present.
+- The structured base-instantiation typed-argument path no longer re-lexes
+  `template_param_default_exprs` after `eval_deferred_nttp_default(...)` misses.
+  If a future case needs that route, add or repair the cached token/default
+  metadata producer instead of restoring source-string evaluation.
+- The rendered base-arg reconstruction path still contains a no-carrier
+  compatibility default-expression re-lex fallback. It is explicitly behind the
+  absence of `tpl_struct_args`; do not use it as structured progress.
 - The alias-template comma-split/rendered arg-ref fallback still exists only for
   template-arg lists with unstructured debug-only refs and no structured
   carrier. Do not restore it as a recovery path for mixed carrier lists or stale
