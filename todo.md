@@ -8,22 +8,24 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired one ordinary known-function call/reference handoff gap.
-Sema function, ref-overload, and C++ overload lookup now consult the parser's
-`using_value_alias_target_*` structured carrier before rendered callee spelling.
-Sema also mirrors qualified function declarations under the normalized
-qualified `TextId` key shape used by that parser carrier, so a using-imported
-function call can preserve target identity through parser-to-Sema without
-rendered-name rediscovery. Focused lookup-authority coverage now proves a
-drifted rendered callee spelling still resolves through the structured using
-target key.
+Step 4 traced the NTTP default-expression reference route and recorded a
+parser/Sema-owned metadata blocker instead of widening the packet. The exact
+missing carrier is a TextId/structured NTTP binding environment for deferred
+default-expression evaluation: `Parser::eval_deferred_nttp_default` and
+`Parser::eval_deferred_nttp_expr_tokens` receive NTTP bindings only as
+`std::vector<std::pair<std::string, long long>>`, while the AST default payload
+is still `Node::template_param_default_exprs` rendered text plus parser-local
+token caches. Because the evaluator's primary identifier path compares
+`token_spelling(tok)` to rendered binding names, a drifted rendered name cannot
+be proven subordinate to parser-owned TextId metadata until that carrier is
+added through the parser template default-expression binding boundary.
 
 ## Suggested Next
 
-Continue Step 4 by tracing NTTP default expression references or another
-ordinary call-reference variant that is not covered by `using_value_alias_target_*`,
-and either repair one concrete metadata drop or record the exact missing
-carrier.
+Continue Step 4 with a different ordinary parser-to-Sema call/reference
+variant, or delegate a focused parser template metadata packet to add a
+TextId-keyed NTTP binding carrier for deferred NTTP default-expression
+evaluation before removing the rendered binding comparisons.
 
 ## Watchouts
 
@@ -40,6 +42,11 @@ carrier.
   does not fix parser production of resolved namespace context ids for
   namespaced free-function declarations that are rendered as `ns::fn`; that
   should be treated as a separate parser/Sema carrier packet if needed.
+- The NTTP default-expression blocker is specifically at
+  `Parser::eval_deferred_nttp_default` ->
+  `Parser::eval_deferred_nttp_expr_tokens`: callers pass rendered NTTP binding
+  names, and the AST default-expression surface does not expose a structured
+  expression node or TextId-keyed binding list for Sema-style lookup authority.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
 - `review/step33_final_route_review.md` and prior review artifacts are
