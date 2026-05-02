@@ -9,20 +9,19 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the
-`lower_delete_expr` deletion-probe blocker in
-`src/frontend/hir/impl/expr/object.cpp` while preserving the prior
-`lower_new_expr` cleanup. Class-specific delete lookup now gates on a struct
-pointer and lets `resolve_struct_method_lookup_owner_tag` resolve the owner
-through structured metadata or its existing bounded compatibility path instead
-of requiring a direct rendered `TypeSpec::tag` read.
+`src/frontend/hir/impl/inspect/printer.cpp` deletion-probe blocker. HIR dump
+type rendering now treats struct/union/enum names as display/final-spelling
+payload: it prefers valid `record_def` spelling, structured HIR owner metadata,
+and deletion-safe legacy spelling before falling back to TextId display text.
+The printer no longer has deletion-probe-blocking direct `TypeSpec::tag` reads.
 
 ## Suggested Next
 
-Continue Step 4 by taking the next first deletion-probe blocker in
-`src/frontend/hir/impl/inspect/printer.cpp`. The current probe has moved past
-`lower_delete_expr`; residual direct `TypeSpec::tag` reads remain in
-`inspect/printer.cpp`, followed by `expr/operator.cpp` and
-`expr/scalar_control.cpp` surfaces.
+Continue Step 4 by taking the next deletion-probe blocker in
+`src/frontend/hir/impl/expr/scalar_control.cpp`, keeping it split from the
+later `src/frontend/hir/impl/expr/operator.cpp` operator/member-call cluster.
+The current parallel build reports both files, with `scalar_control.cpp`
+emitted first in the refreshed probe log.
 
 ## Watchouts
 
@@ -136,9 +135,15 @@ Continue Step 4 by taking the next first deletion-probe blocker in
   `resolve_struct_method_lookup_owner_tag` so structured owner metadata remains
   authoritative and the global delete fallback remains unchanged.
 - The current deletion probe first reports direct `TypeSpec::tag` reads in
-  `src/frontend/hir/impl/inspect/printer.cpp`, followed by
-  `src/frontend/hir/impl/expr/operator.cpp`, and
-  `src/frontend/hir/impl/expr/scalar_control.cpp`.
+  `src/frontend/hir/impl/expr/scalar_control.cpp`, followed by
+  `src/frontend/hir/impl/expr/operator.cpp`.
+- `inspect/printer.cpp` is display/final-spelling only. Its retained
+  `typespec_legacy_tag_if_present` helper is a deletion-safe compatibility
+  bridge, not a semantic owner lookup; keep semantic ownership on `record_def`
+  and HIR owner metadata.
+- Some HIR dump TypeSpecs carry parser TextIds that render local/member names
+  such as `value` or `box`; do not print those as record names when structured
+  record metadata or an unambiguous HIR struct display spelling is available.
 - Direct struct constructor lowering now treats rendered struct tags as
   final-spelling payload only. Keep its lookup path structured through
   `record_def`, template-origin metadata, and TextId/template binding carriers.
@@ -168,24 +173,22 @@ Continue Step 4 by taking the next first deletion-probe blocker in
 
 Executor proof:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(cpp_positive_sema_inherited_(base_aggregate_init|base_member_access|base_method_call|implicit_member_out_of_class|static_member_lookup_simple)_runtime_cpp|frontend_hir_lookup_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
 Result: command exited 0 and `test_after.log` was preserved as the canonical
-executor proof log. The build passed, and CTest passed 78 of 78 delegated
-tests, including the five inherited-base runtime regressions,
-`frontend_hir_lookup_tests`, and all `cpp_hir_.*` tests.
+executor proof log. The build passed, and CTest passed 72 of 72 delegated
+tests.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_delete_expr.log 2>&1`, and restored
-the temporary edit. The probe moved past both `lower_new_expr` and
-`lower_delete_expr` in `src/frontend/hir/impl/expr/object.cpp`. The first
-residual errors are direct `TypeSpec::tag` reads in
-`src/frontend/hir/impl/inspect/printer.cpp`, followed by
-`src/frontend/hir/impl/expr/operator.cpp` and
-`src/frontend/hir/impl/expr/scalar_control.cpp`.
+/tmp/c4c_typespec_tag_deletion_probe_step4_printer.log 2>&1`, and restored
+the temporary edit. The probe moved past
+`src/frontend/hir/impl/inspect/printer.cpp`. The first residual errors are
+direct `TypeSpec::tag` reads in
+`src/frontend/hir/impl/expr/scalar_control.cpp`, followed by
+`src/frontend/hir/impl/expr/operator.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.

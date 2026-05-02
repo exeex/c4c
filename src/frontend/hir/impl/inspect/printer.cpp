@@ -46,7 +46,99 @@ static std::string_view module_decl_lookup_authority_str(ModuleDeclLookupAuthori
 
 // ── TypeSpec -> readable string ───────────────────────────────────────────────
 
-static std::string ts_str(const TypeSpec& ts) {
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, std::string_view{}) {
+  return ts.tag ? std::string_view(ts.tag) : std::string_view{};
+}
+
+template <typename T>
+std::string_view typespec_legacy_tag_if_present(const T&, long) {
+  return {};
+}
+
+static NamespaceQualifier type_ns_qual_for_display(const TypeSpec& ts) {
+  NamespaceQualifier ns;
+  ns.context_id = ts.namespace_context_id;
+  ns.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns.segment_text_ids.assign(
+        ts.qualifier_text_ids, ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  if (ts.qualifier_segments && ts.n_qualifier_segments > 0) {
+    ns.segments.assign(
+        ts.qualifier_segments, ts.qualifier_segments + ts.n_qualifier_segments);
+  }
+  return ns;
+}
+
+static std::string type_tag_display_spelling(const TypeSpec& ts,
+                                             const Module& module) {
+  const TextTable* texts = module.link_name_texts.get();
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    if (ts.record_def->name) return ts.record_def->name;
+    if (ts.record_def->unqualified_name) return ts.record_def->unqualified_name;
+    if (ts.record_def->unqualified_text_id != kInvalidText && texts) {
+      const std::string_view spelling =
+          texts->lookup(ts.record_def->unqualified_text_id);
+      if (!spelling.empty()) return std::string(spelling);
+    }
+  }
+  if (ts.tag_text_id != kInvalidText) {
+    if (const SymbolName* tag = module.find_struct_def_tag_by_owner(
+            make_hir_record_owner_key(type_ns_qual_for_display(ts),
+                                      ts.tag_text_id))) {
+      if (module.struct_defs.count(*tag)) return *tag;
+    }
+    const SymbolName* unique_tag = nullptr;
+    for (const auto& [key, rendered_tag] : module.struct_def_owner_index) {
+      if (key.declaration_text_id != ts.tag_text_id) continue;
+      if (!module.struct_defs.count(rendered_tag)) continue;
+      if (unique_tag && *unique_tag != rendered_tag) {
+        unique_tag = nullptr;
+        break;
+      }
+      unique_tag = &rendered_tag;
+    }
+    if (unique_tag) return *unique_tag;
+  }
+  const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  if (!legacy_tag.empty()) return std::string(legacy_tag);
+  if (ts.tag_text_id != kInvalidText && texts) {
+    const std::string_view spelling = texts->lookup(ts.tag_text_id);
+    if (!spelling.empty()) {
+      const std::string rendered(spelling);
+      if (module.struct_defs.count(rendered)) return rendered;
+      const SymbolName* unique_tag = nullptr;
+      for (const auto& [tag, def] : module.struct_defs) {
+        if (tag.size() > rendered.size() &&
+            tag.compare(tag.size() - rendered.size(), rendered.size(),
+                        rendered) == 0 &&
+            tag[tag.size() - rendered.size() - 1] == ':') {
+          if (unique_tag && *unique_tag != tag) {
+            unique_tag = nullptr;
+            break;
+          }
+          unique_tag = &tag;
+        }
+        for (const HirStructField& field : def.fields) {
+          if (field.name != rendered) continue;
+          if (unique_tag && *unique_tag != tag) {
+            unique_tag = nullptr;
+            break;
+          }
+          unique_tag = &tag;
+        }
+      }
+      if (unique_tag) return *unique_tag;
+      if (module.struct_defs.size() == 1) return module.struct_defs.begin()->first;
+      return rendered;
+    }
+  }
+  return {};
+}
+
+static std::string ts_str(const TypeSpec& ts, const Module& module) {
   std::string s;
   if (ts.is_const) s += "const ";
 
@@ -68,9 +160,21 @@ static std::string ts_str(const TypeSpec& ts) {
     case TB_BOOL:          s += "bool"; break;
     case TB_COMPLEX_FLOAT: s += "cfloat"; break;
     case TB_COMPLEX_DOUBLE:s += "cdouble"; break;
-    case TB_STRUCT:        s += ts.tag ? std::string("struct ") + ts.tag : "struct<?>"; break;
-    case TB_UNION:         s += ts.tag ? std::string("union ") + ts.tag : "union<?>"; break;
-    case TB_ENUM:          s += ts.tag ? std::string("enum ") + ts.tag : "enum<?>"; break;
+    case TB_STRUCT: {
+      const std::string tag = type_tag_display_spelling(ts, module);
+      s += tag.empty() ? "struct<?>" : "struct " + tag;
+      break;
+    }
+    case TB_UNION: {
+      const std::string tag = type_tag_display_spelling(ts, module);
+      s += tag.empty() ? "union<?>" : "union " + tag;
+      break;
+    }
+    case TB_ENUM: {
+      const std::string tag = type_tag_display_spelling(ts, module);
+      s += tag.empty() ? "enum<?>" : "enum " + tag;
+      break;
+    }
     case TB_FUNC_PTR:      s += "fn"; break;
     default:               s += "?"; break;
   }
@@ -267,7 +371,7 @@ class Printer {
       bool first = true;
       for (const auto& [param, ts] : inst.bindings) {
         if (!first) out << ", ";
-        out << param << "=" << ts_str(ts);
+        out << param << "=" << ts_str(ts, m_);
         first = false;
       }
       out << "}";
@@ -285,7 +389,7 @@ class Printer {
       bool first = true;
       for (const auto& [param, ts] : ce.template_bindings) {
         if (!first) out << ", ";
-        out << param << "=" << ts_str(ts);
+        out << param << "=" << ts_str(ts, m_);
         first = false;
       }
       out << ">";
@@ -304,7 +408,8 @@ class Printer {
         << " align=" << sd.align_bytes
         << ns_qual_str(sd.ns_qual) << "\n";
     for (const auto& field : sd.fields) {
-      out << "    field " << struct_field_name_text(field) << ": " << ts_str(field.elem_type);
+      out << "    field " << struct_field_name_text(field) << ": "
+          << ts_str(field.elem_type, m_);
       if (field.array_first_dim >= 0) out << "[" << field.array_first_dim << "]";
       if (field.is_flexible_array) out << " flexible";
       out << " llvm_idx=" << field.llvm_idx
@@ -324,7 +429,8 @@ class Printer {
   }
 
   void print_global(std::ostringstream& out, const GlobalVar& g) {
-    out << "  global " << g.name << ": " << ts_str(g.type.spec);
+    out << "  global " << g.name << ": "
+        << ts_str(g.type.spec, m_);
     out << ns_qual_str(g.ns_qual);
     if (g.linkage.is_static) out << " static";
     if (g.linkage.is_extern) out << " extern";
@@ -340,9 +446,10 @@ class Printer {
     out << "\nfn " << fn.name << "(";
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (i) out << ", ";
-      out << fn.params[i].name << ": " << ts_str(fn.params[i].type.spec);
+      out << fn.params[i].name << ": "
+          << ts_str(fn.params[i].type.spec, m_);
     }
-    out << ") -> " << ts_str(fn.return_type.spec);
+    out << ") -> " << ts_str(fn.return_type.spec, m_);
     out << ns_qual_str(fn.ns_qual);
     if (fn.attrs.variadic) out << " variadic";
     if (fn.linkage.is_static) out << " static";
@@ -376,7 +483,8 @@ class Printer {
   }
 
   void print_stmt_payload(std::ostringstream& out, const LocalDecl& d) {
-    out << "decl " << d.name << ": " << ts_str(d.type.spec);
+    out << "decl " << d.name << ": "
+        << ts_str(d.type.spec, m_);
     if (d.storage == StorageClass::Static) out << " static";
     if (d.init) {
       out << " = ";
@@ -592,7 +700,7 @@ class Printer {
   }
 
   void print_expr_payload(std::ostringstream& out, const CastExpr& x) {
-    out << "((" << ts_str(x.to_type.spec) << ")";
+    out << "((" << ts_str(x.to_type.spec, m_) << ")";
     print_expr_inline(out, x.expr);
     out << ")";
   }
@@ -602,7 +710,7 @@ class Printer {
       out << x.template_info->source_template << "<";
       for (size_t i = 0; i < x.template_info->template_args.size(); ++i) {
         if (i) out << ", ";
-        out << ts_str(x.template_info->template_args[i]);
+        out << ts_str(x.template_info->template_args[i], m_);
       }
       out << ">";
     } else {
@@ -654,7 +762,7 @@ class Printer {
   }
 
   void print_expr_payload(std::ostringstream& out, const SizeofTypeExpr& x) {
-    out << "sizeof(" << ts_str(x.type.spec) << ")";
+    out << "sizeof(" << ts_str(x.type.spec, m_) << ")";
   }
 
   void print_expr_payload(std::ostringstream& out, const LabelAddrExpr& x) {
@@ -673,7 +781,7 @@ class Printer {
       bool first = true;
       for (const auto& [k, v] : x.tpl_bindings) {
         if (!first) out << ", ";
-        out << k << "=" << ts_str(v);
+        out << k << "=" << ts_str(v, m_);
         first = false;
       }
       out << ">";
