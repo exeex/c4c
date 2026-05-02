@@ -9,26 +9,25 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries migrated the first residual
-`src/frontend/hir/impl/templates/deduction.cpp` deletion-probe blocker away from
+`src/frontend/hir/impl/templates/global.cpp` deletion-probe blocker away from
 direct semantic `TypeSpec::tag` use.
 
-Template deduction nominal comparison now stops at `record_def` or complete
-TextId/namespace identity for nominal types instead of falling back to rendered
-`TypeSpec::tag` spelling. Template type-parameter deduction and explicit
-template-argument rebinding now derive legacy string map keys from structured
-template-parameter metadata/TextId carriers when present, with only an
-unambiguous single-binding fallback for structured carriers that cannot be
-spelled through the active text table. Complete structured misses do not fall
-back to rendered `TypeSpec::tag` spelling.
+Template global instantiation now substitutes forwarded enclosing template type
+arguments through `FunctionCtx::tpl_bindings_by_text` using
+`template_param_text_id`/`tag_text_id` carriers while preserving outer
+pointer/ref/cv modifiers. Deferred member typedef resolution in the same path
+uses structured `record_def` owner keys or template-origin materialization when
+present. Complete structured misses do not fall back to rendered
+`TypeSpec::tag` spelling.
 
 ## Suggested Next
 
 Return Step 4 to the next deletion-probe blocker in
-`src/frontend/hir/impl/templates/global.cpp`, starting at
-`ensure_template_global_instance` lines 54 and 60 where `TB_TYPEDEF`
-substitution still probes `ts.tag` and `ctx->tpl_bindings.find(ts.tag)`. Keep
-the parallel template materialization, member typedef, and struct instantiation
-residuals split unless the supervisor routes those template families together.
+`src/frontend/hir/impl/templates/member_typedef.cpp`, starting at
+`resolve_deferred_member_typedef_type` line 119 where the final owner fallback
+still probes `owner_ts.tag`. Keep the parallel template materialization and
+struct instantiation residuals split unless the supervisor routes those
+template families together.
 
 ## Watchouts
 
@@ -52,12 +51,13 @@ residuals split unless the supervisor routes those template families together.
   constructor-map keys after structured owner resolution, not
   `TypeSpec::tag` as semantic input.
 - The current deletion probe moves past `decl.cpp`, `range_for.cpp`,
-  `stmt.cpp`, and `src/frontend/hir/impl/templates/deduction.cpp`. The first
-  residual errors are now in `src/frontend/hir/impl/templates/global.cpp`;
-  parallel build output also reports
+  `stmt.cpp`, `src/frontend/hir/impl/templates/deduction.cpp`, and
+  `src/frontend/hir/impl/templates/global.cpp`. The first residual errors are
+  now in `src/frontend/hir/impl/templates/member_typedef.cpp`; parallel build
+  output also reports
   `src/frontend/hir/impl/templates/materialization.cpp`,
-  `src/frontend/hir/impl/templates/member_typedef.cpp`, and
-  `src/frontend/hir/impl/templates/struct_instantiation.cpp`.
+  `src/frontend/hir/impl/templates/struct_instantiation.cpp`, and
+  `src/frontend/hir/impl/templates/templates.cpp`.
 - Non-canonical deletion probe artifacts for recent packets include
   `/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log`,
   `/tmp/c4c_typespec_tag_deletion_probe_step4_object.log`,
@@ -70,7 +70,8 @@ residuals split unless the supervisor routes those template families together.
 - Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_decl_regression.log`.
 - Recent packets added `/tmp/c4c_typespec_tag_deletion_probe_step4_stmt.log`.
-- This packet added `/tmp/c4c_typespec_tag_deletion_probe_step4_deduction.log`.
+- Recent packets added `/tmp/c4c_typespec_tag_deletion_probe_step4_deduction.log`.
+- This packet added `/tmp/c4c_typespec_tag_deletion_probe_step4_global.log`.
 
 ## Proof
 
@@ -79,22 +80,21 @@ Executor proof:
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
 Result: command exited 0 after restoring the temporary deletion-probe edit. The
-supervisor accepted the matching before/after guard and rolled `test_after.log`
-forward to `test_before.log`. The build passed, and CTest passed 72 of 72
-delegated tests.
+build passed, and CTest passed 72 of 72 delegated tests.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_deduction.log 2>&1`, and restored
-the temporary edit. The probe moved past
-`src/frontend/hir/impl/templates/deduction.cpp`. The first residual errors are
+/tmp/c4c_typespec_tag_deletion_probe_step4_global.log 2>&1`, and restored the
+temporary edit. The probe moved past
+`src/frontend/hir/impl/templates/global.cpp`. The first residual errors are
 direct `TypeSpec::tag` reads in
-`src/frontend/hir/impl/templates/global.cpp:54` and `:60`, with same-build
-residuals in `src/frontend/hir/impl/templates/materialization.cpp`,
-`src/frontend/hir/impl/templates/member_typedef.cpp`, and
-`src/frontend/hir/impl/templates/struct_instantiation.cpp`.
+`src/frontend/hir/impl/templates/member_typedef.cpp:119` and `:125`, with
+same-build residuals in
+`src/frontend/hir/impl/templates/materialization.cpp`,
+`src/frontend/hir/impl/templates/struct_instantiation.cpp`, and
+`src/frontend/hir/impl/templates/templates.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.
