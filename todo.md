@@ -8,31 +8,34 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired the parser-to-Sema static-member metadata handoff for
-parser-generated `NK_VAR` references to `Owner::member`.
+Step 4 extended the parser-to-Sema static-member metadata handoff for
+parser-generated `NK_VAR` references from simple/alias owners to nested record
+owners such as `Outer::Inner::value`.
 
-The exact route proved was an alias-qualified static member reference
-(`Alias::value`) where the parser can resolve the alias owner to the canonical
-record. The generated `NK_VAR` now carries the canonical owner `TextId` in
-`qualifier_text_ids`, the member `unqualified_text_id`, and the owner namespace
-context before Sema sees the node. The focused test mutates the rendered owner
-and member spelling after parsing; Sema still validates through the structured
-owner/member metadata instead of the stale rendered spelling.
+The parser static-member owner canonicalizer now resolves the owner path by
+splitting any namespace prefix from the first record segment, then walking
+nested record carriers through `TypeSpec::record_def` on the owning record's
+member field. The generated reference keeps the structured final owner
+`TextId`, member `unqualified_text_id`, and owner namespace context before Sema
+sees the node. The focused test mutates the rendered owner path and member
+spelling after parsing; Sema still validates through the structured
+owner/member metadata.
 
 ## Suggested Next
 
-Continue Step 4 with the next parser/Sema handoff gap where parser-created
-qualified references have owner identity available but Sema still needs a
-carrier promotion, preferably nested or namespace-qualified static member
-owners if review finds an uncovered same-feature case.
+Continue Step 4 by probing namespace-qualified nested static-member owners
+(`Ns::Outer::Inner::value`) and same-name nested owners in different enclosing
+records. If Sema still only keys static members by namespace plus final owner
+`TextId`, split that ambiguity into the next carrier packet instead of
+recovering through rendered qualified text.
 
 ## Watchouts
 
 - The source idea remains active; Step 4 progress is not source-idea closure.
-- Parser static-member references now canonicalize the final owner qualifier
-  `TextId` only when the owner prefix resolves to a structured record/type
-  alias. Namespace-qualified ordinary values should continue through the normal
-  qualified value path.
+- Parser static-member references now canonicalize nested owner paths only when
+  the path resolves through structured record/type metadata or nested
+  `TypeSpec::record_def` carriers. Namespace-qualified ordinary values should
+  continue through the normal qualified value path.
 - `SourceLanguage` is declaration provenance, not linkage. Keep
   `linkage_spec` authoritative for explicit `extern "C"` conflict behavior.
 - Manually constructed AST tests default zero-initialized nodes to C source
@@ -71,13 +74,10 @@ owners if review finds an uncovered same-feature case.
   spelling, expectation downgrades, or named-test shortcuts.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
-- The nested consteval handoff fixture is intentionally three frames deep; a
-  direct `bind_consteval_call_env()` test would not catch regressions where the
-  interpreter's `NK_CALL` branch forgets to forward the structured maps.
-- `is_complete_object_type()` still intentionally keeps rendered tag fallback
-  for struct/union object types with no direct `record_def` and no
-  `tag_text_id`/namespace metadata. Removing that compatibility path needs a
-  separate carrier-promotion packet.
+- Nested static-member owner metadata still uses Sema's existing owner key:
+  owner namespace context plus final owner `TextId`. This packet repairs the
+  parser carrier for available nested record identity; it does not add an
+  enclosing-record path to the Sema key.
 
 ## Proof
 

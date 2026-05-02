@@ -1116,6 +1116,54 @@ void test_parsed_template_static_member_lookup_uses_structured_owner_after_rende
                        : std::string(": ") + result.diagnostics.front().message));
 }
 
+void test_parsed_nested_static_member_lookup_uses_structured_owner_after_rendered_path_drift() {
+  const char* source =
+      "struct Outer {\n"
+      "  struct Inner {\n"
+      "    static int value;\n"
+      "  };\n"
+      "};\n"
+      "int read() { return Outer::Inner::value; }\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  const c4c::Node* outer = find_record(root, "Outer");
+  const c4c::Node* inner_carrier = find_field(outer, "Inner");
+  const c4c::Node* inner =
+      inner_carrier ? inner_carrier->type.record_def : nullptr;
+  const c4c::Node* field = find_field(inner, "value");
+  c4c::Node* reader = find_function(root, "read");
+  c4c::Node* ref = find_return_var(reader);
+  expect_true(outer != nullptr, "parsed Outer record should exist");
+  expect_true(inner != nullptr, "parsed nested Inner record should exist");
+  expect_true(field != nullptr && field->is_static,
+              "parsed nested static member should exist");
+  expect_true(ref != nullptr,
+              "parsed nested static member reference should exist");
+  expect_true(ref->namespace_context_id == inner->namespace_context_id,
+              "nested static member reference should carry owner namespace context");
+  expect_true(ref->n_qualifier_segments == 2 && ref->qualifier_text_ids &&
+                  ref->qualifier_text_ids[1] == inner->unqualified_text_id,
+              "nested static member reference should carry nested owner TextId");
+  expect_true(ref->unqualified_text_id == field->unqualified_text_id,
+              "nested static member reference should carry member TextId");
+
+  ref->name = arena.strdup("RenderedOuterDrift::RenderedInnerDrift::rendered_value");
+  ref->unqualified_name = arena.strdup("rendered_value");
+  ref->qualifier_segments[0] = arena.strdup("RenderedOuterDrift");
+  ref->qualifier_segments[1] = arena.strdup("RenderedInnerDrift");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema nested static-member lookup should use parser owner/member "
+              "metadata instead of rendered owner path spelling" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_sema_instance_field_lookup_rejects_stale_member_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3996,6 +4044,7 @@ int main() {
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
   test_parsed_static_member_alias_owner_uses_canonical_owner_metadata();
   test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift();
+  test_parsed_nested_static_member_lookup_uses_structured_owner_after_rendered_path_drift();
   test_sema_instance_field_lookup_rejects_stale_member_spelling();
   test_parsed_record_fields_carry_member_text_ids_into_sema();
   test_parsed_nested_record_fields_carry_member_text_ids();

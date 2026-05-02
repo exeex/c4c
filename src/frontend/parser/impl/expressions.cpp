@@ -41,6 +41,72 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
     if (ts.is_rvalue_ref) out += "_rref";
 }
 
+static const Node* nested_record_definition_from_member_carrier(
+    const Node* owner, TextId nested_text_id) {
+    if (!owner || owner->n_fields <= 0 || !owner->fields ||
+        nested_text_id == kInvalidText) {
+        return nullptr;
+    }
+
+    for (int i = 0; i < owner->n_fields; ++i) {
+        const Node* field = owner->fields[i];
+        if (!field || field->unqualified_text_id != nested_text_id) continue;
+        if (field->type.record_def &&
+            field->type.record_def->kind == NK_STRUCT_DEF) {
+            return field->type.record_def;
+        }
+    }
+    return nullptr;
+}
+
+static TextId qualified_name_qualifier_text_id(
+    const Parser& parser, const Parser::QualifiedNameRef& qn, size_t index) {
+    if (index < qn.qualifier_text_ids.size() &&
+        qn.qualifier_text_ids[index] != kInvalidText) {
+        return qn.qualifier_text_ids[index];
+    }
+    if (index >= qn.qualifier_segments.size()) return kInvalidText;
+    return parser.parser_text_id_for_token(kInvalidText,
+                                           qn.qualifier_segments[index]);
+}
+
+static const Node* static_member_owner_record_from_structured_path(
+    const Parser& parser, const Parser::QualifiedNameRef& qn) {
+    const size_t owner_segment_count = qn.qualifier_segments.size();
+    if (owner_segment_count == 0) return nullptr;
+
+    for (size_t first_record = 0; first_record < owner_segment_count;
+         ++first_record) {
+        Parser::QualifiedNameRef record_qn;
+        record_qn.is_global_qualified = qn.is_global_qualified;
+        record_qn.qualifier_segments.assign(qn.qualifier_segments.begin(),
+                                            qn.qualifier_segments.begin() +
+                                                first_record);
+        for (size_t i = 0; i < first_record; ++i) {
+            record_qn.qualifier_text_ids.push_back(
+                qualified_name_qualifier_text_id(parser, qn, i));
+        }
+        record_qn.base_name = qn.qualifier_segments[first_record];
+        record_qn.base_text_id =
+            qualified_name_qualifier_text_id(parser, qn, first_record);
+
+        const Node* record =
+            qualified_type_record_definition_from_structured_authority(
+                parser, record_qn);
+        if (!record) continue;
+
+        for (size_t nested_index = first_record + 1;
+             record && nested_index < owner_segment_count; ++nested_index) {
+            record = nested_record_definition_from_member_carrier(
+                record,
+                qualified_name_qualifier_text_id(parser, qn, nested_index));
+        }
+        if (record) return record;
+    }
+
+    return nullptr;
+}
+
 static const Node* canonical_static_member_owner_record(
     const Parser& parser, Parser::QualifiedNameRef& qn) {
     if (qn.qualifier_segments.empty()) return nullptr;
@@ -63,6 +129,9 @@ static const Node* canonical_static_member_owner_record(
     const Node* owner =
         qualified_type_record_definition_from_structured_authority(parser,
                                                                    owner_qn);
+    if (!owner) {
+        owner = static_member_owner_record_from_structured_path(parser, qn);
+    }
     if (!owner || owner->unqualified_text_id == kInvalidText) return nullptr;
 
     qn.qualifier_text_ids.resize(owner_segment_count, kInvalidText);
