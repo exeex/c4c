@@ -8,22 +8,25 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 tightened the parser expression handoff for
-`Template<Args>::member`: when `parse_base_type()` exposes structured template
-owner metadata, the generated member reference now carries the materialized
-owner `TextId` from `record_def` or `tag_text_id` and does not synthesize
-qualifier TextIds by splitting rendered owner text after a structured miss.
-The route still preserves `tpl_struct_origin` as display/HIR spelling. Added
-lookup-authority coverage that corrupts rendered owner/member spelling for
-`Trait<int>::value` while preserving parser-carried owner/member TextIds and
-verifies Sema resolves through the structured metadata.
+Step 4 audited the preliminary direct template-instantiation NTTP value-arg
+`$expr:` re-lex branch. The high-value structured routes already bypass it:
+`try_parse_template_non_type_expr(...)` fills `ParsedTemplateArg::expr`,
+forwarded single-name NTTP args fill `ParsedTemplateArg::nttp_text_id`, and
+`TemplateArgRef`/`TypeSpec::array_size_expr` carriers are consumed before the
+compatibility branch. The only remaining producer is
+`capture_template_arg_expr(...)`, which intentionally records debug text only
+after expression parsing fails. No code was changed because no parser-owned
+structured carrier was found to be dropped on this route; the precise blocker is
+to add a structured producer for currently unparsed captured template-argument
+expressions before deleting the compatibility re-lex.
 
 ## Suggested Next
 
 Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
-the supervisor, prioritizing any remaining route where an available
-`QualifiedNameKey`, `TextId`, `TemplateArgRef`, `record_def`, or `tag_text_id`
-carrier is still shadowed by rendered compatibility text.
+the supervisor. If the supervisor keeps this route active, the next coherent
+packet is to identify a concrete `capture_template_arg_expr(...)` input that
+should be parseable as a structured `Node*` and repair
+`try_parse_template_non_type_expr(...)` or the expression parser for that input.
 
 ## Watchouts
 
@@ -80,6 +83,15 @@ carrier is still shadowed by rendered compatibility text.
   for captured expression text with no `ParsedTemplateArg::expr`, no
   value-arg `TypeSpec::array_size_expr`, and no `nttp_text_id`; a future packet
   should repair the capture producer if a high-value case still reaches it.
+- Current `$expr:` blocker: the remaining preliminary direct-instantiation
+  re-lex branch is fed by `capture_template_arg_expr(...)` in
+  `src/frontend/parser/impl/types/declarator.cpp`, which has only token text
+  after `try_parse_template_non_type_expr(...)` fails. The missing producer
+  contract is a structured `Node*` or `TextId` carrier for that captured
+  expression; do not delete the branch until a concrete captured expression is
+  made structured, and do not make the re-lex branch semantic authority when
+  `ParsedTemplateArg::expr`, `TypeSpec::array_size_expr`,
+  `ParsedTemplateArg::nttp_text_id`, or `TemplateArgRef::nttp_text_id` exists.
 - The alias-template comma-split/rendered arg-ref fallback has been removed.
   The only exercised fully no-carrier `TB_VOID` debug-only type-ref case is now
   the focused parser lookup-authority fixture, which intentionally remains
@@ -110,8 +122,7 @@ carrier is still shadowed by rendered compatibility text.
 Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build succeeded, rebuilding `expressions.cpp` and dependent frontend
-targets.
+Result: build was up to date (`ninja: no work to do`).
 CTest passed `886/886` matched tests, including
 `frontend_parser_lookup_authority_tests`,
 `eastl_cpp_external_utility_frontend_basic_cpp`, and the
