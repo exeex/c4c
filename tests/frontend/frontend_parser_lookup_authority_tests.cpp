@@ -2150,6 +2150,177 @@ void test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrie
               "template-param key metadata is present");
 }
 
+void test_nested_consteval_call_preserves_structured_template_bindings() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [&](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  auto make_template_consteval = [&](const char* name, int n_template_params) {
+    c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+    fn->name = arena.strdup(name);
+    fn->unqualified_name = arena.strdup(name);
+    fn->unqualified_text_id = texts.intern(name);
+    fn->namespace_context_id = parser.current_namespace_context_id();
+    fn->type = make_ts(c4c::TB_INT);
+    fn->is_consteval = true;
+    fn->n_template_params = n_template_params;
+    if (n_template_params > 0) {
+      fn->template_param_names = arena.alloc_array<const char*>(n_template_params);
+      fn->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(n_template_params);
+      fn->template_param_is_nttp = arena.alloc_array<bool>(n_template_params);
+    }
+    return fn;
+  };
+
+  const c4c::TextId inner_t_text = texts.intern("InnerT");
+  const c4c::TextId inner_n_text = texts.intern("InnerN");
+  c4c::Node* inner = make_template_consteval("inner", 2);
+  inner->template_param_names[0] = arena.strdup("InnerT");
+  inner->template_param_name_text_ids[0] = inner_t_text;
+  inner->template_param_is_nttp[0] = false;
+  inner->template_param_names[1] = arena.strdup("InnerN");
+  inner->template_param_name_text_ids[1] = inner_n_text;
+  inner->template_param_is_nttp[1] = true;
+
+  c4c::TypeSpec inner_type_ref{};
+  inner_type_ref.array_size = -1;
+  inner_type_ref.inner_rank = -1;
+  inner_type_ref.base = c4c::TB_TYPEDEF;
+  inner_type_ref.tag = arena.strdup("RenderedInnerT");
+  inner_type_ref.tag_text_id = inner_t_text;
+  inner_type_ref.template_param_owner_namespace_context_id =
+      parser.current_namespace_context_id();
+  inner_type_ref.template_param_owner_text_id = inner->unqualified_text_id;
+  inner_type_ref.template_param_index = 0;
+  inner_type_ref.template_param_text_id = inner_t_text;
+
+  c4c::Node* sizeof_inner_t = parser.make_node(c4c::NK_SIZEOF_TYPE, 2);
+  sizeof_inner_t->type = inner_type_ref;
+
+  c4c::Node* inner_n_ref = parser.make_node(c4c::NK_VAR, 2);
+  inner_n_ref->name = arena.strdup("RenderedInnerN");
+  inner_n_ref->unqualified_name = arena.strdup("InnerN");
+  inner_n_ref->unqualified_text_id = inner_n_text;
+  inner_n_ref->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::Node* inner_sum = parser.make_node(c4c::NK_BINOP, 2);
+  inner_sum->op = arena.strdup("+");
+  inner_sum->left = sizeof_inner_t;
+  inner_sum->right = inner_n_ref;
+
+  c4c::Node* inner_ret = parser.make_node(c4c::NK_RETURN, 2);
+  inner_ret->left = inner_sum;
+  inner->body = parser.make_node(c4c::NK_BLOCK, 2);
+  inner->body->n_children = 1;
+  inner->body->children = arena.alloc_array<c4c::Node*>(1);
+  inner->body->children[0] = inner_ret;
+
+  const c4c::TextId outer_t_text = texts.intern("OuterT");
+  const c4c::TextId outer_n_text = texts.intern("OuterN");
+  c4c::Node* outer = make_template_consteval("outer", 2);
+  outer->template_param_names[0] = arena.strdup("OuterT");
+  outer->template_param_name_text_ids[0] = outer_t_text;
+  outer->template_param_is_nttp[0] = false;
+  outer->template_param_names[1] = arena.strdup("OuterN");
+  outer->template_param_name_text_ids[1] = outer_n_text;
+  outer->template_param_is_nttp[1] = true;
+
+  c4c::Node* inner_callee = parser.make_node(c4c::NK_VAR, 3);
+  inner_callee->name = arena.strdup("inner");
+  inner_callee->unqualified_name = arena.strdup("inner");
+  inner_callee->unqualified_text_id = inner->unqualified_text_id;
+  inner_callee->namespace_context_id = parser.current_namespace_context_id();
+  inner_callee->has_template_args = true;
+  inner_callee->n_template_args = 2;
+  inner_callee->template_arg_types = arena.alloc_array<c4c::TypeSpec>(2);
+  inner_callee->template_arg_types[0] = make_ts(c4c::TB_TYPEDEF);
+  inner_callee->template_arg_types[0].tag = arena.strdup("RenderedOuterT");
+  inner_callee->template_arg_types[0].tag_text_id = outer_t_text;
+  inner_callee->template_arg_types[0].template_param_owner_namespace_context_id =
+      parser.current_namespace_context_id();
+  inner_callee->template_arg_types[0].template_param_owner_text_id =
+      outer->unqualified_text_id;
+  inner_callee->template_arg_types[0].template_param_index = 0;
+  inner_callee->template_arg_types[0].template_param_text_id = outer_t_text;
+  inner_callee->template_arg_types[1] = make_ts(c4c::TB_INT);
+  inner_callee->template_arg_is_value = arena.alloc_array<bool>(2);
+  inner_callee->template_arg_is_value[0] = false;
+  inner_callee->template_arg_is_value[1] = true;
+  inner_callee->template_arg_values = arena.alloc_array<long long>(2);
+  inner_callee->template_arg_values[0] = 0;
+  inner_callee->template_arg_values[1] = 0;
+  inner_callee->template_arg_nttp_names = arena.alloc_array<const char*>(2);
+  inner_callee->template_arg_nttp_names[0] = nullptr;
+  inner_callee->template_arg_nttp_names[1] = arena.strdup("RenderedOuterN");
+  inner_callee->template_arg_nttp_text_ids = arena.alloc_array<c4c::TextId>(2);
+  inner_callee->template_arg_nttp_text_ids[0] = c4c::kInvalidText;
+  inner_callee->template_arg_nttp_text_ids[1] = outer_n_text;
+
+  c4c::Node* inner_call = parser.make_node(c4c::NK_CALL, 3);
+  inner_call->left = inner_callee;
+  c4c::Node* outer_ret = parser.make_node(c4c::NK_RETURN, 3);
+  outer_ret->left = inner_call;
+  outer->body = parser.make_node(c4c::NK_BLOCK, 3);
+  outer->body->n_children = 1;
+  outer->body->children = arena.alloc_array<c4c::Node*>(1);
+  outer->body->children[0] = outer_ret;
+
+  c4c::Node* root = make_template_consteval("root", 0);
+  c4c::Node* outer_callee = parser.make_node(c4c::NK_VAR, 4);
+  outer_callee->name = arena.strdup("outer");
+  outer_callee->unqualified_name = arena.strdup("outer");
+  outer_callee->unqualified_text_id = outer->unqualified_text_id;
+  outer_callee->namespace_context_id = parser.current_namespace_context_id();
+  outer_callee->has_template_args = true;
+  outer_callee->n_template_args = 2;
+  outer_callee->template_arg_types = arena.alloc_array<c4c::TypeSpec>(2);
+  outer_callee->template_arg_types[0] = make_ts(c4c::TB_INT);
+  outer_callee->template_arg_types[1] = make_ts(c4c::TB_INT);
+  outer_callee->template_arg_is_value = arena.alloc_array<bool>(2);
+  outer_callee->template_arg_is_value[0] = false;
+  outer_callee->template_arg_is_value[1] = true;
+  outer_callee->template_arg_values = arena.alloc_array<long long>(2);
+  outer_callee->template_arg_values[0] = 0;
+  outer_callee->template_arg_values[1] = 7;
+
+  c4c::Node* explicit_seven = parser.make_node(c4c::NK_INT_LIT, 4);
+  explicit_seven->ival = 7;
+  outer_callee->template_arg_exprs = arena.alloc_array<c4c::Node*>(2);
+  outer_callee->template_arg_exprs[0] = nullptr;
+  outer_callee->template_arg_exprs[1] = explicit_seven;
+
+  c4c::Node* outer_call = parser.make_node(c4c::NK_CALL, 4);
+  outer_call->left = outer_callee;
+  c4c::Node* root_ret = parser.make_node(c4c::NK_RETURN, 4);
+  root_ret->left = outer_call;
+  root->body = parser.make_node(c4c::NK_BLOCK, 4);
+  root->body->n_children = 1;
+  root->body->children = arena.alloc_array<c4c::Node*>(1);
+  root->body->children[0] = root_ret;
+
+  std::unordered_map<std::string, const c4c::Node*> consteval_fns;
+  consteval_fns["inner"] = inner;
+  consteval_fns["outer"] = outer;
+
+  c4c::hir::ConstEvalEnv env;
+  const c4c::hir::ConstEvalResult result =
+      c4c::hir::evaluate_consteval_call(root, {}, env, consteval_fns);
+  expect_true(result.ok() && result.as_int() == 11,
+              "nested consteval calls should pass structured type-binding "
+              "and NTTP maps through bind_consteval_call_env instead of "
+              "falling back to stale rendered argument names");
+}
+
 void test_parser_deferred_nttp_default_uses_structured_binding_metadata() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3711,6 +3882,7 @@ int main() {
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();
   test_consteval_nttp_rejects_rendered_after_structured_or_text_miss();
   test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrier();
+  test_nested_consteval_call_preserves_structured_template_bindings();
   test_parser_deferred_nttp_default_uses_structured_binding_metadata();
   test_alias_template_deferred_nttp_bases_carry_structured_record_def();
   test_alias_template_nttp_base_carrier_ignores_stale_debug_text();

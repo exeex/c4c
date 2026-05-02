@@ -8,30 +8,25 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 tightened the consteval type-binding route in
-`resolve_type(TypeSpec, ConstEvalEnv)`. The exact route examined was a
-`TB_TYPEDEF` `TypeSpec` with intrinsic `tag_text_id` or template-param owner
-metadata plus a stale rendered `TypeSpec::tag`: after intrinsic key/text probes
-missed, `resolve_type()` could still rediscover structured/TextId metadata by
-looking up the rendered tag, and could then fall through to flat
-`type_bindings`.
+Step 4 covered the nested consteval `NK_CALL` handoff route inside
+`interp_expr()`. The exact route proved was `root()` calling
+`outer<int, 7>()`, then `outer<OuterT, OuterN>()` calling
+`inner<OuterT, OuterN>()` through stale rendered template-argument spellings
+plus parser/Sema TextId and structured carriers.
 
-`resolve_type()` now checks intrinsic TypeSpec key/text carriers before any
-rendered-name metadata lookup. When a structured/TextId type-binding channel is
-present and the intrinsic carrier does not resolve, it returns the original
-`TypeSpec` instead of reopening rendered `TypeSpec::tag` lookup. Legacy flat
-`type_bindings` remains available for flat-only/no-carrier environments so
-existing consteval callers that do not yet supply structured maps continue to
-work. Added focused drift coverage through `bind_consteval_call_env()` proving
-the legacy no-carrier route still works while `tag_text_id` and structured
-template-param carriers suppress stale rendered type-binding re-entry.
+Confirmed the `NK_CALL` path passes the structured type-binding maps,
+type-binding name maps, and NTTP TextId/structured maps into
+`bind_consteval_call_env()`. Added focused regression coverage proving nested
+consteval template calls preserve structured type and NTTP binding metadata
+across both call frames, so `inner` resolves `sizeof(InnerT) + InnerN` from
+structured carriers instead of relying on stale rendered names.
 
 ## Suggested Next
 
-Continue Step 4 by selecting another parser/Sema metadata handoff that remains
-inside parser/Sema ownership, with special attention to consteval call paths
-that still pass only flat type bindings and no structured/TextId binding
-channels.
+Continue Step 4 by selecting the next parser/Sema metadata handoff gap that
+still depends on rendered fallback, preferably one with a direct structured
+carrier already present so the route can be repaired without crossing module
+boundaries.
 
 ## Watchouts
 
@@ -74,6 +69,9 @@ channels.
   spelling, expectation downgrades, or named-test shortcuts.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
+- The nested consteval handoff fixture is intentionally three frames deep; a
+  direct `bind_consteval_call_env()` test would not catch regressions where the
+  interpreter's `NK_CALL` branch forgets to forward the structured maps.
 
 ## Proof
 
