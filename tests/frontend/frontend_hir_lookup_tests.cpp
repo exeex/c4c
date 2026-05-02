@@ -2549,6 +2549,150 @@ void test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_n
               "ordinary variable fallback should record legacy rendered parity mismatch");
 }
 
+void test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* unresolved_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  unresolved_record->name = arena.strdup("UnresolvedDirectAggOwner");
+  unresolved_record->unqualified_name = arena.strdup("UnresolvedDirectAggOwner");
+  unresolved_record->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::TypeSpec missing_ts{};
+  missing_ts.array_size = -1;
+  missing_ts.inner_rank = -1;
+  missing_ts.base = c4c::TB_STRUCT;
+  missing_ts.tag = arena.strdup("StaleDirectAggOwner");
+  missing_ts.tag_text_id = module.link_name_texts->intern("StaleDirectAggOwner");
+  missing_ts.record_def = unresolved_record;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleDirectAggOwner";
+  stale_def.tag_text_id = missing_ts.tag_text_id;
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* array_source = parser.make_node(c4c::NK_VAR, 1);
+  array_source->name = arena.strdup("source");
+  array_source->unqualified_name = arena.strdup("source");
+  array_source->type = missing_ts;
+  c4c::Node* array_init = parser.make_node(c4c::NK_INIT_LIST, 1);
+  array_init->children = arena.alloc_array<c4c::Node*>(1);
+  array_init->children[0] = array_source;
+  array_init->n_children = 1;
+
+  c4c::TypeSpec array_ts = missing_ts;
+  array_ts.array_rank = 1;
+  array_ts.array_size = 1;
+  array_ts.array_dims[0] = 1;
+  c4c::Node* array_decl = parser.make_node(c4c::NK_DECL, 1);
+  array_decl->name = arena.strdup("items");
+  array_decl->unqualified_name = arena.strdup("items");
+  array_decl->type = array_ts;
+  array_decl->init = array_init;
+
+  c4c::hir::Lowerer::FunctionCtx array_ctx;
+  c4c::hir::Function array_fn;
+  array_ctx.fn = &array_fn;
+  array_ctx.current_block = c4c::hir::BlockId{0};
+  const c4c::hir::LocalId source_id{42};
+  array_ctx.locals["source"] = source_id;
+  array_ctx.local_types.insert(source_id, missing_ts);
+  lowerer.lower_local_decl_stmt(array_ctx, array_decl);
+
+  bool used_array_direct_assign = false;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* assign = std::get_if<c4c::hir::AssignExpr>(&expr.payload);
+    if (!assign) continue;
+    const c4c::hir::Expr* lhs = module.find_expr(assign->lhs);
+    const c4c::hir::Expr* rhs = module.find_expr(assign->rhs);
+    const auto* index =
+        lhs ? std::get_if<c4c::hir::IndexExpr>(&lhs->payload) : nullptr;
+    const auto* ref =
+        rhs ? std::get_if<c4c::hir::DeclRef>(&rhs->payload) : nullptr;
+    if (index && ref && ref->name == "source") used_array_direct_assign = true;
+  }
+  expect_true(!used_array_direct_assign,
+              "array aggregate direct assignment must not use stale rendered tags after structured owner miss");
+
+  c4c::Node* outer_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  outer_record->name = arena.strdup("RealDirectAggOuter");
+  outer_record->unqualified_name = arena.strdup("RealDirectAggOuter");
+  outer_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> outer_key =
+      lowerer.make_struct_def_node_owner_key(outer_record);
+  expect_true(outer_key.has_value(),
+              "fixture should build a structured owner key for direct aggregate outer");
+  c4c::hir::HirStructField field;
+  field.name = "field";
+  field.field_text_id = module.link_name_texts->intern("field");
+  field.elem_type = missing_ts;
+  field.member_symbol_id =
+      module.member_symbols.intern("RealDirectAggOuter::field");
+  c4c::hir::HirStructDef outer_def;
+  outer_def.tag = "RealDirectAggOuter";
+  outer_def.tag_text_id = module.link_name_texts->intern("RealDirectAggOuter");
+  outer_def.ns_qual.context_id = parser.current_namespace_context_id();
+  outer_def.fields.push_back(field);
+  module.index_struct_def_owner(*outer_key, outer_def.tag, true);
+  module.struct_defs[outer_def.tag] = outer_def;
+
+  c4c::TypeSpec outer_ts{};
+  outer_ts.array_size = -1;
+  outer_ts.inner_rank = -1;
+  outer_ts.base = c4c::TB_STRUCT;
+  outer_ts.tag = arena.strdup("RealDirectAggOuter");
+  outer_ts.record_def = outer_record;
+
+  c4c::Node* field_source = parser.make_node(c4c::NK_VAR, 1);
+  field_source->name = arena.strdup("field_source");
+  field_source->unqualified_name = arena.strdup("field_source");
+  field_source->type = missing_ts;
+  c4c::Node* field_init = parser.make_node(c4c::NK_INIT_LIST, 1);
+  field_init->children = arena.alloc_array<c4c::Node*>(1);
+  field_init->children[0] = field_source;
+  field_init->n_children = 1;
+  c4c::Node* field_decl = parser.make_node(c4c::NK_DECL, 1);
+  field_decl->name = arena.strdup("holder");
+  field_decl->unqualified_name = arena.strdup("holder");
+  field_decl->type = outer_ts;
+  field_decl->init = field_init;
+
+  c4c::hir::Lowerer::FunctionCtx field_ctx;
+  c4c::hir::Function field_fn;
+  field_ctx.fn = &field_fn;
+  field_ctx.current_block = c4c::hir::BlockId{0};
+  const c4c::hir::LocalId field_source_id{43};
+  field_ctx.locals["field_source"] = field_source_id;
+  field_ctx.local_types.insert(field_source_id, missing_ts);
+  const size_t field_expr_start = module.expr_pool.size();
+  lowerer.lower_local_decl_stmt(field_ctx, field_decl);
+
+  bool used_field_direct_assign = false;
+  for (size_t i = field_expr_start; i < module.expr_pool.size(); ++i) {
+    const auto* assign =
+        std::get_if<c4c::hir::AssignExpr>(&module.expr_pool[i].payload);
+    if (!assign) continue;
+    const c4c::hir::Expr* lhs = module.find_expr(assign->lhs);
+    const c4c::hir::Expr* rhs = module.find_expr(assign->rhs);
+    const auto* member =
+        lhs ? std::get_if<c4c::hir::MemberExpr>(&lhs->payload) : nullptr;
+    const auto* ref =
+        rhs ? std::get_if<c4c::hir::DeclRef>(&rhs->payload) : nullptr;
+    if (member && member->field == "field" && ref &&
+        ref->name == "field_source") {
+      used_field_direct_assign = true;
+    }
+  }
+  expect_true(!used_field_direct_assign,
+              "initializer-list aggregate direct assignment must not use stale rendered tags after structured owner miss");
+}
+
 void test_deferred_member_typedef_record_def_miss_rejects_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2637,6 +2781,7 @@ int main() {
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
   test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name();
   test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_name();
+  test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag();
   test_deferred_member_typedef_record_def_miss_rejects_stale_tag();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;

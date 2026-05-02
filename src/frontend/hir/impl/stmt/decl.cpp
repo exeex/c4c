@@ -277,6 +277,32 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     return rendered_typespec_tag_for_decl_compatibility(module_, owner_ts)
         .value_or(std::string{});
   };
+  auto can_use_rendered_decl_agg_compatibility =
+      [&](const TypeSpec& lhs_ts, const TypeSpec& rhs_ts) {
+    return !has_decl_structured_owner_identity(lhs_ts) &&
+           !has_decl_structured_owner_identity(rhs_ts);
+  };
+  auto structured_owner_miss_blocks_direct_agg =
+      [&](const TypeSpec& lhs_ts, const Node* rhs_node) {
+    if (!rhs_node) return false;
+    if ((lhs_ts.base != TB_STRUCT && lhs_ts.base != TB_UNION) ||
+        lhs_ts.ptr_level != 0 || lhs_ts.array_rank != 0) {
+      return false;
+    }
+    const TypeSpec rhs_ts = infer_generic_ctrl_type(&ctx, rhs_node);
+    if (rhs_ts.ptr_level != 0 || rhs_ts.array_rank != 0 ||
+        rhs_ts.base != lhs_ts.base) {
+      return false;
+    }
+    if (can_use_rendered_decl_agg_compatibility(lhs_ts, rhs_ts)) {
+      return false;
+    }
+    const std::string lhs_owner_tag =
+        resolve_decl_struct_owner_tag(lhs_ts, "decl-direct-assign-lhs-owner");
+    const std::string rhs_owner_tag =
+        resolve_decl_struct_owner_tag(rhs_ts, "decl-direct-assign-rhs-owner");
+    return lhs_owner_tag.empty() && rhs_owner_tag.empty();
+  };
   const std::string decl_struct_owner_tag =
       resolve_decl_struct_owner_tag(
           d.type.spec, std::string("local-decl-struct-owner:") + d.name);
@@ -790,7 +816,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
                     st, std::string("decl-array-scalar-direct-owner:") + d.name);
             if (!elem_owner_tag.empty() || !scalar_owner_tag.empty()) {
               direct_agg = elem_owner_tag == scalar_owner_tag;
-            } else {
+            } else if (can_use_rendered_decl_agg_compatibility(elem_ts, st)) {
               const std::string elem_compat_tag =
                   rendered_typespec_tag_for_decl_compatibility(module_, elem_ts)
                       .value_or(std::string{});
@@ -949,6 +975,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
           if (!lhs_owner_tag.empty() || !rhs_owner_tag.empty()) {
             return lhs_owner_tag == rhs_owner_tag;
           }
+          if (!can_use_rendered_decl_agg_compatibility(lhs_ts, rhs_ts)) {
+            return false;
+          }
         }
         const std::string lhs_compat_tag =
             rendered_typespec_tag_for_decl_compatibility(module_, lhs_ts)
@@ -1054,6 +1083,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
                   } else if (can_direct_assign_agg(base_ts, val_node)) {
                     append_assign(base_lhs, base_ts, val_node);
                     ++cursor;
+                  } else if (structured_owner_miss_blocks_direct_agg(
+                                 base_ts, val_node)) {
+                    ++cursor;
                   } else {
                     consume_from_list(base_ts, base_lhs, list_node, cursor);
                   }
@@ -1103,6 +1135,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
                   ++cursor;
                 } else if (can_direct_assign_agg(field_ts, val_node)) {
                   append_assign(me_id, field_ts, val_node);
+                  ++cursor;
+                } else if (structured_owner_miss_blocks_direct_agg(
+                               field_ts, val_node)) {
                   ++cursor;
                 } else {
                   consume_from_list(field_ts, me_id, list_node, cursor);
@@ -1162,6 +1197,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
                   ++cursor;
                 } else if (can_direct_assign_agg(elem_ts, val_node)) {
                   append_assign(ie_id, elem_ts, val_node);
+                  ++cursor;
+                } else if (structured_owner_miss_blocks_direct_agg(
+                               elem_ts, val_node)) {
                   ++cursor;
                 } else {
                   consume_from_list(elem_ts, ie_id, list_node, cursor);
