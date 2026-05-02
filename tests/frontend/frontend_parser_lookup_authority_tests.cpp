@@ -2574,6 +2574,166 @@ void test_alias_member_typedef_origin_key_only_materializes_record_def() {
               "instead of stale debug text");
 }
 
+void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
+  const char* source =
+      "template <typename T>\n"
+      "struct Inner {};\n"
+      "template <typename T>\n"
+      "struct Outer {};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const c4c::TextId param_text = lexer.text_table().intern("T");
+  const c4c::TextId inner_text = lexer.text_table().intern("Inner");
+  const c4c::TextId outer_text = lexer.text_table().intern("Outer");
+  expect_true(parser.find_template_struct_primary(
+                  parser.current_namespace_context_id(), inner_text) != nullptr,
+              "Inner primary should be registered for the nested origin-key "
+              "argument test");
+  expect_true(parser.find_template_struct_primary(
+                  parser.current_namespace_context_id(), outer_text) != nullptr,
+              "Outer primary should be registered for the nested origin-key "
+              "argument test");
+
+  c4c::TypeSpec param_type{};
+  param_type.array_size = -1;
+  param_type.inner_rank = -1;
+  param_type.base = c4c::TB_TYPEDEF;
+  param_type.tag = arena.strdup("T");
+  param_type.tag_text_id = param_text;
+
+  c4c::TypeSpec inner_arg{};
+  inner_arg.array_size = -1;
+  inner_arg.inner_rank = -1;
+  inner_arg.base = c4c::TB_STRUCT;
+  inner_arg.tag = arena.strdup("RenderedInnerTagDrift");
+  inner_arg.tpl_struct_origin = arena.strdup("RenderedInnerOriginDrift");
+  inner_arg.tpl_struct_origin_key.context_id =
+      parser.current_namespace_context_id();
+  inner_arg.tpl_struct_origin_key.base_text_id = inner_text;
+  inner_arg.tpl_struct_args.size = 1;
+  inner_arg.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  inner_arg.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
+  inner_arg.tpl_struct_args.data[0].type = param_type;
+  inner_arg.tpl_struct_args.data[0].value = 0;
+  inner_arg.tpl_struct_args.data[0].nttp_text_id = c4c::kInvalidText;
+  inner_arg.tpl_struct_args.data[0].debug_text =
+      arena.strdup("RenderedParamDebugDrift");
+
+  c4c::TypeSpec aliased{};
+  aliased.array_size = -1;
+  aliased.inner_rank = -1;
+  aliased.base = c4c::TB_STRUCT;
+  aliased.tag = arena.strdup("RenderedOuterTagDrift");
+  aliased.tpl_struct_origin = arena.strdup("RenderedOuterOriginDrift");
+  aliased.tpl_struct_origin_key.context_id =
+      parser.current_namespace_context_id();
+  aliased.tpl_struct_origin_key.base_text_id = outer_text;
+  aliased.tpl_struct_args.size = 1;
+  aliased.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  aliased.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
+  aliased.tpl_struct_args.data[0].type = inner_arg;
+  aliased.tpl_struct_args.data[0].value = 0;
+  aliased.tpl_struct_args.data[0].nttp_text_id = c4c::kInvalidText;
+  aliased.tpl_struct_args.data[0].debug_text =
+      arena.strdup("@RenderedInnerDebugDrift:RenderedParamDebugDrift");
+
+  c4c::ParserAliasTemplateInfo info{};
+  info.param_names.push_back(arena.strdup("T"));
+  info.param_name_text_ids.push_back(param_text);
+  info.param_is_nttp.push_back(false);
+  info.param_is_pack.push_back(false);
+  info.param_has_default.push_back(false);
+  info.aliased_type = aliased;
+
+  c4c::TypeSpec alias_typedef{};
+  alias_typedef.array_size = -1;
+  alias_typedef.inner_rank = -1;
+  alias_typedef.base = c4c::TB_TYPEDEF;
+  alias_typedef.tag = arena.strdup("Alias");
+  alias_typedef.tag_text_id = alias_text;
+  parser.register_typedef_binding(alias_text, alias_typedef, true);
+  parser.register_alias_template_info_for_testing(
+      parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                           alias_text),
+      info);
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  std::string detail = " tag=";
+  detail += resolved.tag ? resolved.tag : "<null>";
+  detail += " origin=";
+  detail += resolved.tpl_struct_origin ? resolved.tpl_struct_origin : "<null>";
+  detail += " args=";
+  detail += std::to_string(resolved.tpl_struct_args.size);
+  detail += " key=";
+  detail += std::to_string(resolved.tpl_struct_origin_key.base_text_id);
+  if (resolved.tpl_struct_args.data && resolved.tpl_struct_args.size > 0) {
+    const c4c::TemplateArgRef& arg = resolved.tpl_struct_args.data[0];
+    detail += " arg_kind=";
+    detail += std::to_string(static_cast<int>(arg.kind));
+    detail += " arg_tag=";
+    detail += arg.type.tag ? arg.type.tag : "<null>";
+    detail += " arg_origin=";
+    detail += arg.type.tpl_struct_origin ? arg.type.tpl_struct_origin : "<null>";
+    detail += " arg_record=";
+    detail += arg.type.record_def ? "yes" : "no";
+    detail += " arg_key=";
+    detail += std::to_string(arg.type.tpl_struct_origin_key.base_text_id);
+  }
+  expect_true(resolved.tpl_struct_origin &&
+                  std::string(resolved.tpl_struct_origin) == "Outer",
+              "origin-key-only alias substitution should normalize the outer "
+              "origin from the structured key instead of rendered text" +
+                  detail);
+  expect_true(resolved.tag && std::string(resolved.tag) == "Outer_@Inner:int",
+              "origin-key-only alias substitution should render follow-on "
+              "display text from structured nested args, not stale debug text" +
+                  detail);
+  expect_true(resolved.tpl_struct_args.data &&
+                  resolved.tpl_struct_args.size == 1 &&
+                  resolved.tpl_struct_args.data[0].kind ==
+                      c4c::TemplateArgKind::Type,
+              "outer alias result should keep the nested template argument as "
+              "a structured type arg" +
+                  detail);
+  const c4c::TemplateArgRef& nested_ref = resolved.tpl_struct_args.data[0];
+  expect_true(nested_ref.debug_text &&
+                  std::string(nested_ref.debug_text).find("Rendered") !=
+                      std::string::npos,
+              "test fixture should keep stale nested debug text present");
+  const c4c::TypeSpec& nested = nested_ref.type;
+  expect_true(nested.tpl_struct_origin_key.base_text_id == inner_text,
+              "nested template argument should preserve the structured origin "
+              "key");
+  expect_true(nested.tpl_struct_origin &&
+                  std::string(nested.tpl_struct_origin) == "Inner",
+              "nested template argument should normalize from the origin key "
+              "rather than stale rendered debug text");
+  expect_true(nested.tpl_struct_args.data && nested.tpl_struct_args.size == 1 &&
+                  nested.tpl_struct_args.data[0].kind ==
+                      c4c::TemplateArgKind::Type &&
+                  nested.tpl_struct_args.data[0].type.base == c4c::TB_INT,
+              "nested template argument should substitute the structured alias "
+              "argument instead of the stale rendered parameter text");
+}
+
 void test_alias_template_no_carrier_debug_arg_stays_debug_only() {
   c4c::Arena arena;
   c4c::Lexer lexer("Alias<int>",
@@ -3324,6 +3484,7 @@ int main() {
   test_alias_template_origin_key_blocks_debug_arg_substitution();
   test_alias_template_origin_key_only_blocks_debug_arg_substitution();
   test_alias_member_typedef_origin_key_only_materializes_record_def();
+  test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text();
   test_alias_template_no_carrier_debug_arg_stays_debug_only();
   test_dependent_member_typedef_base_carries_structured_record_def();
   test_default_only_template_base_uses_cached_default_metadata();

@@ -8,30 +8,28 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 resolved the ordinary global-scope C++ overload declaration blocker by
-adding parser-to-Sema structured source-language metadata on AST nodes and
-using it as Sema authority for C++ overload-set eligibility. Parser nodes now
-carry `SourceLanguage::Cxx` when produced from C++/C4 mode, while C-mode nodes
-remain `SourceLanguage::C`.
+Step 4 repaired the parser type-handling handoff for origin-key-only nested
+template arguments in the alias/template-arg route. A type `TemplateArgRef`
+with `tpl_struct_origin_key` or nested `tpl_struct_args` is no longer treated
+as an unstructured debug-text fallback, and template-arg rendering now prefers
+the structured template-origin key over stale `tpl_struct_origin` or
+`TemplateArgRef::debug_text` spelling.
 
-Sema now permits ordinary global C++ overload declarations through that
-structured source-language carrier, still rejects same-parameter
-different-return declarations, and still rejects C declarations. Explicit
-linkage blocks now propagate `linkage_spec` to their parsed children, so
-`extern "C"` overload declarations remain C-linkage conflicts instead of
-being accepted through the C++ source-language carrier.
-
-The source-language/linkage slice was reviewed in
-`review/step4_source_language_overload_review.md` and accepted as on-track
-Step 4 progress. The full-suite baseline candidate was also accepted: the
-canonical baseline now records `2987/2987` passing tests at commit
-`fc35474ce`.
+The removed/gated fallback route is the alias/template-arg refresh path that
+rebuilt follow-on `tag` text through rendered `template_arg_refs_text(...)`
+while stale nested debug text was still present. Alias substitution now
+normalizes origin-key carriers before refreshing display text, so a drifted
+`@RenderedInner...` debug payload remains display-only while the structured
+`Outer`/`Inner` origin keys and substituted structured `int` arg drive the
+result.
 
 ## Suggested Next
 
 Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
-the supervisor. Keep the packet narrow and name the exact rendered-string or
-missing-carrier route before delegating implementation.
+the supervisor. A coherent next packet would be direct nested template-origin
+record materialization, but it should stay separate from this alias handoff
+because direct nested pending-template args still feed existing HIR owner-struct
+work.
 
 ## Watchouts
 
@@ -54,9 +52,11 @@ missing-carrier route before delegating implementation.
 - `tpl_struct_origin` remains compatibility/display spelling. Do not use it to
   rediscover template primaries or decide Sema `TypeSpec` equivalence when
   `tpl_struct_origin_key` or structured arg carriers exist.
-- Simple type-only pending template args now use `TemplateArgRef` structure;
-  nested template-origin args still stay on the legacy display path to avoid
-  recursive canonical type keys.
+- Simple type-only pending template args now use `TemplateArgRef` structure.
+  The broad direct nested template-origin path still stays on the legacy
+  display route to avoid HIR `owner struct still pending` regressions; this
+  packet only tightened the alias/template-arg origin-key handoff so stale
+  nested debug text is not semantic authority there.
 - Do not reintroduce rendered qualified-text parsing, `$expr:` debug-text
   semantic authority, string/string_view semantic lookup parameters, fallback
   spelling, expectation downgrades, or named-test shortcuts.

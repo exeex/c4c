@@ -713,6 +713,9 @@ TypeSpec Parser::parse_base_type() {
             }
             return !arg.type.tag && !arg.type.record_def &&
                    !arg.type.tpl_struct_origin &&
+                   arg.type.tpl_struct_origin_key.base_text_id == kInvalidText &&
+                   !(arg.type.tpl_struct_args.data &&
+                     arg.type.tpl_struct_args.size > 0) &&
                    !arg.type.deferred_member_type_name &&
                    arg.type.base == TB_VOID;
         };
@@ -722,9 +725,50 @@ TypeSpec Parser::parse_base_type() {
             if (arg.nttp_name && arg.nttp_name[0]) return arg.nttp_name;
             return std::to_string(arg.value);
         }
-        if (arg.type.tpl_struct_origin) {
+        if (arg.type.tpl_struct_origin ||
+            arg.type.tpl_struct_origin_key.base_text_id != kInvalidText) {
+            std::string origin;
+            if (arg.type.tpl_struct_origin_key.base_text_id != kInvalidText) {
+                if (const Node* primary =
+                        find_template_struct_primary(
+                            arg.type.tpl_struct_origin_key)) {
+                    if (primary->template_origin_name &&
+                        primary->template_origin_name[0]) {
+                        origin = primary->template_origin_name;
+                    } else if (primary->unqualified_name &&
+                               primary->unqualified_name[0]) {
+                        origin = primary->unqualified_name;
+                    } else if (primary->name && primary->name[0]) {
+                        origin = primary->name;
+                    }
+                }
+                if (origin.empty() &&
+                    arg.type.tpl_struct_origin_key.context_id >= 0) {
+                    if (const Node* primary = find_template_struct_primary(
+                            arg.type.tpl_struct_origin_key.context_id,
+                            arg.type.tpl_struct_origin_key.base_text_id)) {
+                        if (primary->template_origin_name &&
+                            primary->template_origin_name[0]) {
+                            origin = primary->template_origin_name;
+                        } else if (primary->unqualified_name &&
+                                   primary->unqualified_name[0]) {
+                            origin = primary->unqualified_name;
+                        } else if (primary->name && primary->name[0]) {
+                            origin = primary->name;
+                        }
+                    }
+                }
+                if (origin.empty()) {
+                    origin = std::string(parser_text(
+                        arg.type.tpl_struct_origin_key.base_text_id, {}));
+                }
+            }
+            if (origin.empty() && arg.type.tpl_struct_origin &&
+                arg.type.tpl_struct_origin[0]) {
+                origin = arg.type.tpl_struct_origin;
+            }
             std::string ref = "@";
-            ref += arg.type.tpl_struct_origin;
+            ref += origin;
             ref += ":";
             if (arg.type.tpl_struct_args.data && arg.type.tpl_struct_args.size > 0) {
                 for (int i = 0; i < arg.type.tpl_struct_args.size; ++i) {
@@ -849,7 +893,14 @@ TypeSpec Parser::parse_base_type() {
             } else if (arg.kind == TemplateArgKind::Type) {
                 std::string mangled;
                 append_type_mangled_suffix(mangled, arg.type);
-                if (unstructured_type_arg_ref_uses_debug_fallback(arg))
+                if (arg.type.tpl_struct_origin ||
+                    arg.type.tpl_struct_origin_key.base_text_id !=
+                        kInvalidText) {
+                    ParsedTemplateArg parsed{};
+                    parsed.is_value = false;
+                    parsed.type = arg.type;
+                    refs += render_template_arg_ref(parsed);
+                } else if (unstructured_type_arg_ref_uses_debug_fallback(arg))
                     refs += arg.debug_text;
                 else if (mangled.empty() && arg.type.tag) refs += arg.type.tag;
                 else if (!mangled.empty()) refs += mangled;
@@ -859,6 +910,58 @@ TypeSpec Parser::parse_base_type() {
             }
         }
         return refs;
+    };
+    std::function<bool(TypeSpec*)> normalize_template_origin_key_spelling =
+        [&](TypeSpec* spec) -> bool {
+        if (!spec) return false;
+        bool changed = false;
+        if (spec->tpl_struct_origin_key.base_text_id != kInvalidText) {
+            std::string origin;
+            if (const Node* primary =
+                    find_template_struct_primary(spec->tpl_struct_origin_key)) {
+                if (primary->template_origin_name &&
+                    primary->template_origin_name[0]) {
+                    origin = primary->template_origin_name;
+                } else if (primary->unqualified_name &&
+                           primary->unqualified_name[0]) {
+                    origin = primary->unqualified_name;
+                } else if (primary->name && primary->name[0]) {
+                    origin = primary->name;
+                }
+            } else if (spec->tpl_struct_origin_key.context_id >= 0) {
+                if (const Node* primary = find_template_struct_primary(
+                        spec->tpl_struct_origin_key.context_id,
+                        spec->tpl_struct_origin_key.base_text_id)) {
+                    if (primary->template_origin_name &&
+                        primary->template_origin_name[0]) {
+                        origin = primary->template_origin_name;
+                    } else if (primary->unqualified_name &&
+                               primary->unqualified_name[0]) {
+                        origin = primary->unqualified_name;
+                    } else if (primary->name && primary->name[0]) {
+                        origin = primary->name;
+                    }
+                }
+            }
+            if (origin.empty()) {
+                origin = std::string(parser_text(
+                    spec->tpl_struct_origin_key.base_text_id, {}));
+            }
+            if (!origin.empty()) {
+                spec->tpl_struct_origin = arena_.strdup(origin.c_str());
+                changed = true;
+            }
+        }
+        if (spec->tpl_struct_args.data && spec->tpl_struct_args.size > 0) {
+            for (int ai = 0; ai < spec->tpl_struct_args.size; ++ai) {
+                TemplateArgRef& arg = spec->tpl_struct_args.data[ai];
+                if (arg.kind == TemplateArgKind::Type &&
+                    normalize_template_origin_key_spelling(&arg.type)) {
+                    changed = true;
+                }
+            }
+        }
+        return changed;
     };
     auto deferred_member_lookup_name = [&](const TypeSpec& spec) -> std::string {
         if (spec.deferred_member_type_text_id != kInvalidText) {
@@ -3064,6 +3167,8 @@ TypeSpec Parser::parse_base_type() {
                                     if (!substitute_template_arg_refs_structured(&ts)) {
                                         alias_parse_ok = false;
                                     } else {
+                                        normalize_template_origin_key_spelling(
+                                            &ts);
                                         materialize_template_origin_record_def(
                                             &ts);
                                     }
