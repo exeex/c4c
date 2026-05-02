@@ -651,6 +651,110 @@ void test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry() {
               "fallback after structured owner/member miss");
 }
 
+void test_sema_template_static_member_lookup_rejects_stale_rendered_owner_reentry() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId rendered_owner_text = texts.intern("RenderedOwner");
+  const c4c::TextId structured_owner_text = texts.intern("StructuredOwner<int>");
+  const c4c::TextId stale_text = texts.intern("stale");
+
+  c4c::Node* rendered_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  rendered_owner->name = arena.strdup("RenderedOwner");
+  rendered_owner->unqualified_name = arena.strdup("RenderedOwner");
+  rendered_owner->unqualified_text_id = rendered_owner_text;
+  rendered_owner->namespace_context_id = parser.current_namespace_context_id();
+  rendered_owner->n_fields = 1;
+  rendered_owner->fields = arena.alloc_array<c4c::Node*>(1);
+
+  c4c::Node* stale = parser.make_node(c4c::NK_DECL, 1);
+  stale->name = arena.strdup("stale");
+  stale->unqualified_name = arena.strdup("stale");
+  stale->unqualified_text_id = stale_text;
+  stale->namespace_context_id = rendered_owner->namespace_context_id;
+  stale->is_static = true;
+  stale->type = make_ts(c4c::TB_INT);
+  rendered_owner->fields[0] = stale;
+
+  c4c::Node* structured_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  structured_owner->name = arena.strdup("StructuredOwner<int>");
+  structured_owner->unqualified_name = arena.strdup("StructuredOwner<int>");
+  structured_owner->unqualified_text_id = structured_owner_text;
+  structured_owner->namespace_context_id = rendered_owner->namespace_context_id;
+  structured_owner->template_origin_name = arena.strdup("StructuredOwner");
+  structured_owner->n_fields = 1;
+  structured_owner->fields = arena.alloc_array<c4c::Node*>(1);
+  c4c::Node* other = parser.make_node(c4c::NK_DECL, 1);
+  other->name = arena.strdup("other");
+  other->unqualified_name = arena.strdup("other");
+  other->unqualified_text_id = texts.intern("other");
+  other->namespace_context_id = structured_owner->namespace_context_id;
+  other->is_static = true;
+  other->type = make_ts(c4c::TB_INT);
+  structured_owner->fields[0] = other;
+  structured_owner->n_template_args = 1;
+  structured_owner->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+  structured_owner->template_arg_types[0] = make_ts(c4c::TB_INT);
+  structured_owner->template_arg_is_value = arena.alloc_array<bool>(1);
+  structured_owner->template_arg_is_value[0] = false;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("RenderedOwner::stale");
+  ref->unqualified_name = arena.strdup("stale");
+  ref->unqualified_text_id = stale_text;
+  ref->namespace_context_id = rendered_owner->namespace_context_id;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("StructuredOwner<int>");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = structured_owner_text;
+  ref->has_template_args = true;
+  ref->n_template_args = 1;
+  ref->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+  ref->template_arg_types[0] = make_ts(c4c::TB_INT);
+  ref->template_arg_is_value = arena.alloc_array<bool>(1);
+  ref->template_arg_is_value[0] = false;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("returns_missing_template_member");
+  fn->unqualified_name = arena.strdup("returns_missing_template_member");
+  fn->unqualified_text_id = texts.intern("returns_missing_template_member");
+  fn->namespace_context_id = rendered_owner->namespace_context_id;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
+  program->children[0] = rendered_owner;
+  program->children[1] = structured_owner;
+  program->children[2] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema template static-member lookup should reject stale rendered "
+              "owner fallback after structured owner/member miss");
+}
+
 void test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift() {
   const char* source =
       "struct Owner {\n"
@@ -2153,6 +2257,7 @@ int main() {
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
   test_dependent_typename_rejects_visible_type_rendered_reentry();
   test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry();
+  test_sema_template_static_member_lookup_rejects_stale_rendered_owner_reentry();
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
   test_sema_instance_field_lookup_rejects_stale_member_spelling();
   test_parsed_record_fields_carry_member_text_ids_into_sema();

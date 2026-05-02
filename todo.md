@@ -8,37 +8,38 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired Sema ordinary namespace C++ overload declarations so
-`eastl::AssertionFailure(const char*)` and
-`eastl::AssertionFailure(void*, const char*)` are admitted as one structured
-overload set instead of a C-style conflicting redeclaration. The declaration
-path now gates overload admission from function metadata, keeps `extern "C"`
-declarations out of C++ overload sets, and still rejects same-parameter
-different-return declarations as conflicts. The focused lookup-authority tests
-cover the accepted ordinary namespace overload, the return-only conflict, and
-the C-linkage rejection.
-The accepted-declaration test also covers `ZeroArg()` plus `ZeroArg(int)` so
-the C++ path does not reuse C K&R unspecified-parameter compatibility when
-forming overload sets.
-Global-scope ordinary C++ overload declarations remain intentionally outside
-this packet: Sema receives no source-profile flag, and parsed C and C++ global
-ordinary declarations have the same Sema-visible unqualified/global metadata.
-Admitting unqualified global overloads in this gate would also weaken C
-conflicting-redeclaration checks, so that needs a separate parser-to-Sema
-language-mode or linkage metadata handoff before it can be repaired safely.
+Step 4 tightened Sema static-member lookup for generated/template-specialized
+references. Template-specialized references with structured owner/member
+metadata now treat existing structured static-member/base metadata as
+authoritative: after such metadata is present, Sema no longer retries through
+the rendered owner/member spelling on a structured miss. The lookup-authority
+test now covers a templated static-member reference whose rendered owner names
+a stale record while the structured owner key names a different templated
+record with static-member metadata.
+
+The remaining compatibility route is narrowed to template-specialized
+references whose parser handoff still lacks structured static-member/base
+metadata. The exact missing carrier observed during this packet is
+`is_signed<T> : is_signed_helper<T>::type`: instantiated `is_signed_T_*` bases
+still reach Sema as unresolved `is_signed_helper` template carriers with
+debug `$expr:arithmetic<T>::value` argument text and no `record_def` base key
+for inherited `value`. That carrier needs parser-side structured NTTP default
+expression/base-record metadata before the final rendered owner acceptance can
+be deleted safely.
 
 ## Suggested Next
 
-Continue Step 4 with the supervisor-selected next focused metadata handoff
-cleanup, likely the remaining template-specialization static-member
-compatibility route if that is still the active priority.
+Continue Step 4 by repairing the dependent member-typedef base carrier for
+`is_signed<T> : is_signed_helper<T>::type`, specifically the structured NTTP
+default expression `arithmetic<T>::value` and resulting `record_def` base key
+for instantiated `is_signed_T_*` records.
 
 ## Watchouts
 
 - The source idea remains active; Step 3.3 closure is not source-idea closure.
 - This packet did not touch parser carrier files or the alias NTTP base carrier.
-  It only repaired Sema declaration admission for structured ordinary namespace
-  overload sets.
+  It only tightened Sema static-member lookup around template-specialized
+  references when structured static-member/base metadata is already present.
 - Ordinary global-scope C++ overload declarations are still a separate blocker
   because the current AST handoff does not let Sema distinguish them from C
   global redeclarations without weakening C behavior. Preserve C and
@@ -68,8 +69,15 @@ compatibility route if that is still the active priority.
   the prior rendered-name skip as namespace-function conflict behavior.
 - Static-member lookup is now strict for concrete references with parser owner
   qualifier metadata plus member `TextId`. Generated template-specialization
-  references still use their established compatibility route and should be
-  handled in the next focused packet if Step 4 continues there.
+  references are strict once Sema has structured static-member/base metadata;
+  the remaining rendered acceptance is limited to template-specialized
+  references with no such metadata.
+- The remaining static-member blocker is not the alias-template deferred NTTP
+  base carrier covered by `signed_probe`/`is_enum`. It is the dependent
+  member-typedef base path where `is_signed<T>` inherits through
+  `is_signed_helper<T>::type`, and the instantiated base still carries
+  debug `$expr:arithmetic<T>::value` text instead of a structured NTTP/default
+  and concrete base `record_def`.
 - The new base carrier intentionally preserves structured value-argument
   payloads only where pending template args contain NTTP values; type-only
   pending template structs keep the prior debug carrier to avoid widening into
@@ -93,7 +101,7 @@ compatibility route if that is still the active priority.
 Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build succeeded. CTest passed `886/886` matched tests, including
-`frontend_parser_lookup_authority_tests`,
+Result: build succeeded/up to date. CTest passed `886/886` matched tests,
+including `frontend_parser_lookup_authority_tests`,
 `eastl_cpp_external_utility_frontend_basic_cpp`, and the corrected
 `cpp_positive_sema_.*` subset. Final proof log path: `test_after.log`.

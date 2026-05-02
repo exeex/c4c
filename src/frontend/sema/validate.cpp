@@ -1556,8 +1556,11 @@ class Validator {
     if (!reference || reference->unqualified_text_id == kInvalidText) return false;
     auto reference_key = static_member_owner_key_from_reference(reference);
     if (reference_key.has_value() && reference_key->valid()) {
-      if (reference->n_template_args > 0) return false;
-      return true;
+      if (reference->n_template_args <= 0) return true;
+      bool has_metadata = false;
+      (void)lookup_struct_static_member_type_by_key(
+          *reference_key, reference->unqualified_text_id, &has_metadata);
+      return has_metadata;
     }
     return false;
   }
@@ -1567,9 +1570,11 @@ class Validator {
     if (reference && reference->unqualified_text_id != kInvalidText) {
       auto reference_key = static_member_owner_key_from_reference(reference);
       if (reference_key.has_value() && reference_key->valid()) {
+        bool has_metadata = false;
         auto structured = lookup_struct_static_member_type_by_key(
-            *reference_key, reference->unqualified_text_id);
-        if (structured.has_value() || reference->n_template_args <= 0) {
+            *reference_key, reference->unqualified_text_id, &has_metadata);
+        if (structured.has_value() || reference->n_template_args <= 0 ||
+            has_metadata) {
           return structured;
         }
       }
