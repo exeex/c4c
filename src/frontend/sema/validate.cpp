@@ -1403,6 +1403,21 @@ class Validator {
     return it->second;
   }
 
+  std::optional<SemaStructuredNameKey> structured_record_key_for_type(
+      const TypeSpec& ts) const {
+    if (auto key = sema_symbol_name_key(ts.record_def); key.has_value()) {
+      return key;
+    }
+    if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
+      SemaStructuredNameKey key;
+      key.namespace_context_id = ts.namespace_context_id;
+      key.base_text_id = ts.tag_text_id;
+      return key;
+    }
+    if (ts.tag && ts.tag[0]) return structured_record_key_for_tag(ts.tag);
+    return std::nullopt;
+  }
+
   void note_structured_record_key_for_tag(const std::string& tag,
                                           const SemaStructuredNameKey& key) {
     if (ambiguous_structured_record_tags_.count(tag) > 0) return;
@@ -1452,8 +1467,8 @@ class Validator {
     }
     for (int i = 0; i < n->n_bases; ++i) {
       const TypeSpec& base = n->base_types[i];
-      if (record_key.has_value() && record_key->valid() && base.tag && base.tag[0]) {
-        if (auto base_key = structured_record_key_for_tag(base.tag); base_key.has_value()) {
+      if (record_key.has_value() && record_key->valid()) {
+        if (auto base_key = structured_record_key_for_type(base); base_key.has_value()) {
           struct_base_keys_by_key_[*record_key].push_back(*base_key);
         }
       }
@@ -1501,16 +1516,12 @@ class Validator {
 
   bool static_member_lookup_has_structured_metadata(
       const std::string& tag, const Node* reference) const {
+    (void)tag;
     if (!reference || reference->unqualified_text_id == kInvalidText) return false;
     auto reference_key = static_member_owner_key_from_reference(reference);
     if (reference_key.has_value() && reference_key->valid()) {
-      bool has_metadata = false;
-      (void)lookup_struct_static_member_type_by_key(
-          *reference_key, reference->unqualified_text_id, &has_metadata);
       if (reference->n_template_args > 0) return false;
-      if (has_metadata) return true;
-      auto rendered_key = structured_record_key_for_tag(tag);
-      return rendered_key.has_value() && *rendered_key != *reference_key;
+      return true;
     }
     return false;
   }
@@ -1520,11 +1531,9 @@ class Validator {
     if (reference && reference->unqualified_text_id != kInvalidText) {
       auto reference_key = static_member_owner_key_from_reference(reference);
       if (reference_key.has_value() && reference_key->valid()) {
-        bool has_metadata = false;
         auto structured = lookup_struct_static_member_type_by_key(
-            *reference_key, reference->unqualified_text_id, &has_metadata);
-        if (structured.has_value() ||
-            (has_metadata && reference->n_template_args <= 0)) {
+            *reference_key, reference->unqualified_text_id);
+        if (structured.has_value() || reference->n_template_args <= 0) {
           return structured;
         }
       }

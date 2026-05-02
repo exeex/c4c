@@ -3048,8 +3048,15 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
         }
     }
     if (resolved_name && resolved_name[0]) {
-        QualifiedNameRef qualifier_only = qn;
-        node->namespace_context_id = resolve_namespace_context(qualifier_only);
+        node->namespace_context_id = resolve_namespace_context(qn);
+        if (node->namespace_context_id < 0 && qn.qualifier_segments.size() > 0) {
+            QualifiedNameRef owner_namespace = qn;
+            owner_namespace.qualifier_segments.pop_back();
+            if (!owner_namespace.qualifier_text_ids.empty()) {
+                owner_namespace.qualifier_text_ids.pop_back();
+            }
+            node->namespace_context_id = resolve_namespace_context(owner_namespace);
+        }
     }
 }
 

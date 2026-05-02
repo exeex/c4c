@@ -8,21 +8,23 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired the Sema method-owner handoff for parsed out-of-class methods:
-`validate_function` now establishes the current method owner from direct
-record ownership or the parser-produced qualifier `TextId` plus namespace key,
-and the `enclosing_method_owner_struct_compatibility` rendered-owner fallback
-was removed. Focused authority coverage now parses `Owner::method`, verifies
-the owner qualifier metadata, mutates rendered `Node::name` so it no longer
-contains an owner, and proves implicit field lookup still validates through
-structured owner metadata.
+Step 4 repaired the parsed static-member lookup handoff for concrete
+owner/member references. Parser qualified-name metadata now records the owner
+namespace context for class-owner qualifiers, template-instantiated records and
+their cloned fields carry structured record/member `TextId` metadata, and Sema
+now treats a non-template static-member reference with a valid qualifier owner
+key plus member `TextId` as authoritative instead of retrying through
+`structured_record_key_for_tag(tag)` or rendered owner spelling. Focused
+authority coverage mutates rendered static owner/member spelling while
+preserving qualifier/member metadata, and strengthens the stale rendered-owner
+negative case so the old same-member fallback would have accepted it.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining Sema owner/member helpers for
-rendered compatibility after structured parser/Sema metadata exists, especially
-routes that still infer owner/member identity from final spelling instead of a
-record key, declaration object, qualifier `TextId`, or namespace context.
+Continue Step 4 by auditing the remaining template-specialization static-member
+compatibility routes. This slice kept existing `n_template_args > 0`
+specialization behavior intact while removing the concrete non-template
+rendered-owner fallback.
 
 ## Watchouts
 
@@ -50,6 +52,10 @@ record key, declaration object, qualifier `TextId`, or namespace context.
   child ownership. Qualified function templates with parser qualifier metadata
   remain outside the C-style redeclaration signature table to avoid reviving
   the prior rendered-name skip as namespace-function conflict behavior.
+- Static-member lookup is now strict for concrete references with parser owner
+  qualifier metadata plus member `TextId`. Generated template-specialization
+  references still use their established compatibility route and should be
+  handled in a separate focused packet if Step 4 continues there.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
 - `review/step33_final_route_review.md` and prior review artifacts are

@@ -3188,6 +3188,18 @@ TypeSpec Parser::parse_base_type() {
                         tpl_def->template_origin_name ? tpl_def->template_origin_name : tpl_name;
                     std::string mangled = build_template_struct_mangled_name(
                         tpl_name, primary_tpl, tpl_def, concrete_args);
+                    const size_t mangled_sep = mangled.rfind("::");
+                    const std::string mangled_unqualified =
+                        mangled_sep == std::string::npos
+                            ? mangled
+                            : mangled.substr(mangled_sep + 2);
+                    const TextId mangled_text_id =
+                        parser_text_id_for_token(kInvalidText,
+                                                 mangled_unqualified);
+                    const int mangled_namespace_context =
+                        primary_tpl && primary_tpl->namespace_context_id >= 0
+                            ? primary_tpl->namespace_context_id
+                            : current_namespace_context_id();
                     // Check if any type arg is an unresolved template param
                     // or a pending template struct (e.g. Pair<T> inside Box<Pair<T>>).
                     // If so, defer instantiation to HIR template function lowering.
@@ -3273,6 +3285,8 @@ TypeSpec Parser::parse_base_type() {
                         ts.tpl_struct_origin = arena_.strdup(family_name.c_str());
                         set_template_arg_debug_refs_text(&ts, arg_refs);
                         ts.tag = arena_.strdup(mangled.c_str());
+                        ts.tag_text_id = mangled_text_id;
+                        ts.namespace_context_id = mangled_namespace_context;
                         return ts;
                     }
 
@@ -3284,6 +3298,10 @@ TypeSpec Parser::parse_base_type() {
                         // Create a concrete NK_STRUCT_DEF with substituted field types
                         Node* inst = make_node(NK_STRUCT_DEF, tpl_def->line);
                         inst->name = arena_.strdup(mangled.c_str());
+                        inst->unqualified_name =
+                            arena_.strdup(mangled_unqualified.c_str());
+                        inst->unqualified_text_id = mangled_text_id;
+                        inst->namespace_context_id = mangled_namespace_context;
                         inst->template_origin_name = arena_.strdup(family_name.c_str());
                         inst->is_union = tpl_def->is_union;
                         inst->pack_align = tpl_def->pack_align;
@@ -3929,6 +3947,19 @@ TypeSpec Parser::parse_base_type() {
                             const Node* orig_f = tpl_def->fields[fi];
                             Node* new_f = make_node(NK_DECL, orig_f->line);
                             new_f->name = orig_f->name;
+                            new_f->unqualified_name =
+                                orig_f->unqualified_name ? orig_f->unqualified_name
+                                                         : orig_f->name;
+                            new_f->unqualified_text_id =
+                                orig_f->unqualified_text_id != kInvalidText
+                                    ? orig_f->unqualified_text_id
+                                    : parser_text_id_for_token(
+                                          kInvalidText,
+                                          new_f->unqualified_name
+                                              ? new_f->unqualified_name
+                                              : "");
+                            new_f->namespace_context_id =
+                                inst->namespace_context_id;
                             new_f->type = orig_f->type;
                             new_f->ival = orig_f->ival;
                             new_f->is_anon_field = orig_f->is_anon_field;
@@ -4049,6 +4080,8 @@ TypeSpec Parser::parse_base_type() {
                         }
                     }
                     ts.tag = arena_.strdup(mangled.c_str());
+                    ts.tag_text_id = mangled_text_id;
+                    ts.namespace_context_id = mangled_namespace_context;
                     ts.record_def = instantiated_record;
                 }
                 // C++ template using alias: typedef resolved but the resolved

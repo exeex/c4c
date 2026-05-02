@@ -1601,11 +1601,19 @@ Node* parse_primary(Parser& parser) {
                     if (parser.check(TokenKind::ColonColon)) {
                         parser.consume(); // eat ::
                         std::string member;
+                        TextId member_text_id = kInvalidText;
                         if (parser.check(TokenKind::Identifier)) {
+                            const Token& member_tok = parser.cur();
                             member = parser.token_spelling(parser.cur());
+                            member_text_id =
+                                parser.parser_text_id_for_token(member_tok.text_id,
+                                                                member);
                             parser.consume();
                         } else {
                             parser.try_parse_operator_function_id(member);
+                            member_text_id =
+                                parser.parser_text_id_for_token(kInvalidText,
+                                                                member);
                         }
                         if (!member.empty()) {
                             std::string struct_tag = ident->name;
@@ -1628,6 +1636,35 @@ Node* parse_primary(Parser& parser) {
                             parser.pos_ = after_member_pos;
                             std::string member_name = struct_tag + "::" + member;
                             ident->name = parser.arena_.strdup(member_name.c_str());
+                            Parser::QualifiedNameRef member_qn;
+                            std::string owner_name = struct_tag;
+                            if (owner_name.rfind("::", 0) == 0) {
+                                member_qn.is_global_qualified = true;
+                                owner_name.erase(0, 2);
+                            }
+                            size_t segment_start = 0;
+                            while (segment_start <= owner_name.size()) {
+                                const size_t segment_end =
+                                    owner_name.find("::", segment_start);
+                                const std::string segment =
+                                    segment_end == std::string::npos
+                                        ? owner_name.substr(segment_start)
+                                        : owner_name.substr(
+                                              segment_start,
+                                              segment_end - segment_start);
+                                if (!segment.empty()) {
+                                    member_qn.qualifier_segments.push_back(segment);
+                                    member_qn.qualifier_text_ids.push_back(
+                                        parser.parser_text_id_for_token(
+                                            kInvalidText, segment));
+                                }
+                                if (segment_end == std::string::npos) break;
+                                segment_start = segment_end + 2;
+                            }
+                            member_qn.base_name = member;
+                            member_qn.base_text_id = member_text_id;
+                            parser.apply_qualified_name(ident, member_qn,
+                                                        ident->name);
                         }
                     }
                     // Brace-init after template: Type<Args>{} or Type<Args>{a, b}
