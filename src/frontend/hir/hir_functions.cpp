@@ -161,7 +161,11 @@ const HirStructDef* find_struct_def_for_callable_type(Module* module,
   if (auto owner_key = record_owner_key_from_type_metadata(
           ts, module->link_name_texts.get())) {
     if (hir_record_owner_key_has_complete_metadata(*owner_key)) {
-      return module->find_struct_def_by_owner_structured(*owner_key);
+      if (const HirStructDef* structured =
+              module->find_struct_def_by_owner_structured(*owner_key)) {
+        return structured;
+      }
+      return nullptr;
     }
   }
   const std::string tag = compatibility_binding_key_from_tag(ts);

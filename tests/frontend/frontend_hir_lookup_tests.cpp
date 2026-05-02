@@ -2099,6 +2099,60 @@ void test_lvalue_cast_structured_miss_rejects_stale_tag() {
               "lvalue cast should reject stale rendered tag after structured binding miss");
 }
 
+void test_callable_zero_sized_return_structured_miss_rejects_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node missing_record{};
+  missing_record.kind = c4c::NK_STRUCT_DEF;
+  missing_record.name = "MissingCallableReturn";
+  missing_record.unqualified_name = "MissingCallableReturn";
+  missing_record.unqualified_text_id =
+      module.link_name_texts->intern("MissingCallableReturn");
+  missing_record.namespace_context_id = 61;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleCallableZeroReturn";
+  stale_def.tag_text_id =
+      module.link_name_texts->intern("StaleCallableZeroReturn");
+  stale_def.ns_qual.context_id = missing_record.namespace_context_id;
+  stale_def.size_bytes = 0;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node literal{};
+  literal.kind = c4c::NK_INT_LIT;
+  literal.ival = 7;
+
+  c4c::Node ret{};
+  ret.kind = c4c::NK_RETURN;
+  ret.left = &literal;
+
+  c4c::Node fn{};
+  fn.kind = c4c::NK_FUNCTION;
+  fn.name = "callable_zero_return_miss";
+  fn.unqualified_name = "callable_zero_return_miss";
+  fn.unqualified_text_id =
+      module.link_name_texts->intern("callable_zero_return_miss");
+  fn.type.base = c4c::TB_STRUCT;
+  fn.type.tag = "StaleCallableZeroReturn";
+  fn.type.tag_text_id = missing_record.unqualified_text_id;
+  fn.type.namespace_context_id = missing_record.namespace_context_id;
+  fn.type.record_def = &missing_record;
+  fn.type.array_size = -1;
+  fn.type.inner_rank = -1;
+  fn.body = &ret;
+
+  lowerer.lower_function(&fn);
+
+  expect_true(!module.functions.empty(),
+              "callable zero-sized return fixture should lower a function");
+  expect_true(module.functions[0].return_type.spec.base == c4c::TB_STRUCT,
+              "callable zero-sized return normalization must not use stale rendered tag after structured owner miss");
+  expect_true(module.functions[0].return_type.spec.record_def == &missing_record,
+              "callable zero-sized return should preserve structured owner metadata after miss");
+}
+
 void test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -2470,6 +2524,7 @@ int main() {
   test_builtin_query_type_no_metadata_keeps_compatibility_shape();
   test_lvalue_cast_uses_template_param_text_id_binding();
   test_lvalue_cast_structured_miss_rejects_stale_tag();
+  test_callable_zero_sized_return_structured_miss_rejects_stale_tag();
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
