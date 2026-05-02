@@ -20,6 +20,24 @@ bool is_generated_anonymous_record_tag(const char* name) {
   return name && std::strncmp(name, "_anon_", 6) == 0;
 }
 
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, static_cast<const char*>(nullptr)) {
+  return ts.tag;
+}
+
+const char* typespec_legacy_tag_if_present(const TypeSpec&, long) {
+  return nullptr;
+}
+
+template <typename T>
+auto assign_typespec_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void assign_typespec_legacy_tag_if_present(TypeSpec&, const char*, long) {}
+
 bool is_signed_trait_type(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
   switch (ts.base) {
@@ -166,39 +184,137 @@ std::string family_root(const std::string& tag) {
   return (tpl_sep == std::string::npos) ? tag : tag.substr(0, tpl_sep);
 }
 
+std::optional<HirRecordOwnerKey> template_origin_owner_key_from_type(
+    const TypeSpec& ts) {
+  const QualifiedNameKey& origin_key = ts.tpl_struct_origin_key;
+  if (origin_key.base_text_id == kInvalidText) return std::nullopt;
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = origin_key.context_id;
+  ns_qual.is_global_qualified = origin_key.is_global_qualified;
+  if (origin_key.qualifier_path_id != kInvalidNamePath &&
+      (!ts.qualifier_text_ids || ts.n_qualifier_segments <= 0)) {
+    return std::nullopt;
+  }
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(
+        ts.qualifier_text_ids,
+        ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  HirRecordOwnerKey key =
+      make_hir_record_owner_key(ns_qual, origin_key.base_text_id);
+  if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+  return key;
+}
+
+std::optional<HirRecordOwnerKey> record_owner_key_from_type_tag_metadata(
+    const TypeSpec& ts) {
+  if (ts.tag_text_id == kInvalidText) return std::nullopt;
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(
+        ts.qualifier_text_ids,
+        ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+  if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+  return key;
+}
+
 }  // namespace
 
 bool Lowerer::recover_template_struct_identity_from_tag(
     TypeSpec* ts,
     const std::string* current_struct_tag) const {
-  if (!ts || (ts->tpl_struct_origin && ts->tpl_struct_origin[0]) ||
-      !ts->tag || !ts->tag[0]) {
+  if (!ts || (ts->tpl_struct_origin && ts->tpl_struct_origin[0])) {
     return false;
   }
-  auto it = struct_def_nodes_.find(ts->tag);
-  if ((it == struct_def_nodes_.end() || !it->second) && current_struct_tag &&
-      !current_struct_tag->empty()) {
-    auto current_it = struct_def_nodes_.find(*current_struct_tag);
-    if (current_it != struct_def_nodes_.end() && current_it->second) {
-      const Node* current_owner = current_it->second;
-      const std::string raw_tag = ts->tag ? ts->tag : "";
-      const std::string raw_unqualified = unqualified_name(raw_tag);
-      const std::string owner_name =
-          current_owner->name ? current_owner->name : "";
-      const std::string owner_unqualified = unqualified_name(owner_name);
-      const std::string owner_origin =
-          current_owner->template_origin_name ? current_owner->template_origin_name : "";
-      const std::string owner_origin_unqualified = unqualified_name(owner_origin);
-      if ((!owner_name.empty() &&
-           (raw_tag == owner_name || raw_unqualified == owner_unqualified)) ||
-          (!owner_origin.empty() &&
-           (raw_tag == owner_origin || raw_unqualified == owner_origin_unqualified))) {
-        ts->tag = current_struct_tag->c_str();
-        it = current_it;
+  const Node* owner = nullptr;
+  bool has_structured_owner_metadata = false;
+
+  if (auto origin_key = template_origin_owner_key_from_type(*ts)) {
+    has_structured_owner_metadata = true;
+    auto origin_it = template_struct_defs_by_owner_.find(*origin_key);
+    if (origin_it != template_struct_defs_by_owner_.end()) {
+      owner = origin_it->second;
+    } else {
+      return false;
+    }
+  }
+
+  if (!owner && ts->record_def && ts->record_def->kind == NK_STRUCT_DEF) {
+    has_structured_owner_metadata = true;
+    owner = ts->record_def;
+    if (auto record_key = make_struct_def_node_owner_key(ts->record_def)) {
+      auto node_it = struct_def_nodes_by_owner_.find(*record_key);
+      if (node_it != struct_def_nodes_by_owner_.end() && node_it->second) {
+        owner = node_it->second;
       }
     }
   }
-  const Node* owner = (it != struct_def_nodes_.end()) ? it->second : nullptr;
+
+  if (!owner) {
+    if (auto tag_key = record_owner_key_from_type_tag_metadata(*ts)) {
+      has_structured_owner_metadata = true;
+      auto node_it = struct_def_nodes_by_owner_.find(*tag_key);
+      if (node_it != struct_def_nodes_by_owner_.end() && node_it->second) {
+        owner = node_it->second;
+      } else if (module_) {
+        if (const SymbolName* rendered_tag =
+                module_->find_struct_def_tag_by_owner(*tag_key)) {
+          auto rendered_it = struct_def_nodes_.find(*rendered_tag);
+          if (rendered_it != struct_def_nodes_.end()) {
+            owner = rendered_it->second;
+          }
+        }
+      }
+    }
+  }
+
+  if (!owner && ts->tag_text_id != kInvalidText && module_ &&
+      module_->link_name_texts) {
+    has_structured_owner_metadata = true;
+    const std::string_view tag_text = module_->link_name_texts->lookup(ts->tag_text_id);
+    if (!tag_text.empty()) {
+      auto text_it = struct_def_nodes_.find(std::string(tag_text));
+      if (text_it != struct_def_nodes_.end()) {
+        owner = text_it->second;
+      }
+    }
+  }
+
+  if (!owner && has_structured_owner_metadata) return false;
+
+  if (!owner) {
+    const char* legacy_tag = typespec_legacy_tag_if_present(*ts, 0);
+    if (!legacy_tag || !legacy_tag[0]) return false;
+    auto it = struct_def_nodes_.find(legacy_tag);
+    if ((it == struct_def_nodes_.end() || !it->second) && current_struct_tag &&
+        !current_struct_tag->empty()) {
+      auto current_it = struct_def_nodes_.find(*current_struct_tag);
+      if (current_it != struct_def_nodes_.end() && current_it->second) {
+        const Node* current_owner = current_it->second;
+        const std::string raw_tag = legacy_tag;
+        const std::string raw_unqualified = unqualified_name(raw_tag);
+        const std::string owner_name =
+            current_owner->name ? current_owner->name : "";
+        const std::string owner_unqualified = unqualified_name(owner_name);
+        const std::string owner_origin =
+            current_owner->template_origin_name ? current_owner->template_origin_name : "";
+        const std::string owner_origin_unqualified = unqualified_name(owner_origin);
+        if ((!owner_name.empty() &&
+             (raw_tag == owner_name || raw_unqualified == owner_unqualified)) ||
+            (!owner_origin.empty() &&
+             (raw_tag == owner_origin || raw_unqualified == owner_origin_unqualified))) {
+          assign_typespec_legacy_tag_if_present(*ts, current_struct_tag->c_str(), 0);
+          it = current_it;
+        }
+      }
+    }
+    owner = (it != struct_def_nodes_.end()) ? it->second : nullptr;
+  }
+
   if (!owner) {
     owner = canonical_template_struct_primary(*ts, owner);
   }
