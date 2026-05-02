@@ -163,8 +163,7 @@ bool has_type_binding_metadata_channel(const ConstEvalEnv& env) {
 
 // Resolve a TypeSpec through type_bindings if it's a TB_TYPEDEF with a known substitution.
 TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
-  if (ts.base != TB_TYPEDEF || !ts.tag) return ts;
-  const std::string name = ts.tag;
+  if (ts.base != TB_TYPEDEF) return ts;
   const bool has_intrinsic_carrier =
       has_type_binding_typespec_key_carrier(ts) ||
       has_type_binding_typespec_text_carrier(ts);
@@ -179,6 +178,9 @@ TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (intrinsic_text.status == TypeBindingLookupStatus::Found) return *intrinsic_text.type;
   if (intrinsic_text.status == TypeBindingLookupStatus::Miss) return ts;
   if (has_intrinsic_carrier && has_type_binding_metadata_channel(env)) return ts;
+
+  if (!ts.tag) return ts;
+  const std::string name = ts.tag;
 
   bool has_authoritative_metadata = false;
 

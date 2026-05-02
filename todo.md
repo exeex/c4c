@@ -8,36 +8,36 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 audited the remaining Sema `validate.cpp` rendered-tag compatibility
-mirrors: `complete_structs_`, `complete_unions_`, and
-`structured_record_keys_by_tag_`. No code route was removed: the semantic
-completion path in `is_complete_object_type` already returns `record_def`
-authority first, then `namespace_context_id + tag_text_id` structured-key
-authority, and only uses `complete_structs_`/`complete_unions_` as no-carrier
-legacy fallback. `structured_record_keys_by_tag_` is likewise only the
-no-carrier bridge for `structured_record_key_for_type` when neither
-`record_def` nor `namespace_context_id + tag_text_id` is present.
+Step 4 removed one Sema rendered `TypeSpec::tag` gate in
+`hir::resolve_type`: typedef substitution now tries the intrinsic
+`template_param_*` key and `tag_text_id` carriers before requiring rendered
+`TypeSpec::tag` spelling, and only enters the rendered `type_bindings`/
+name-mirror compatibility path when no intrinsic carrier is present. Added
+`test_consteval_type_binding_resolve_uses_tag_text_id_without_tag` to prove
+Sema consteval `sizeof(T)` substitution works with `tag_text_id` and a null
+rendered tag.
 
 ## Suggested Next
 
 Continue Step 4 review after the next review trigger. A likely next narrow
-inspection route is another rendered `TypeSpec::tag` semantic use in Sema that
-can be converted to a structured carrier without weakening no-carrier
-compatibility.
+inspection route is Sema `lookup_record_layout` in `consteval.cpp`: it still
+uses `env.struct_defs` keyed by rendered `TypeSpec::tag` for HIR-backed
+`sizeof`/`alignof`, but `ConstEvalEnv` currently exposes only the rendered
+HIR struct map, not the HIR `struct_def_owner_index`/owner-key carrier.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- Do not remove `complete_structs_`, `complete_unions_`, or
-  `structured_record_keys_by_tag_` wholesale without first proving that all
-  callers have `record_def` or `namespace_context_id + tag_text_id`; current
-  inspected uses include deliberate no-carrier compatibility fallbacks.
+- `lookup_record_layout` appears to need an env-carried structured HIR record
+  owner/index before its rendered `TypeSpec::tag` lookup can be removed; adding
+  that carrier crosses into HIR env construction and should be delegated
+  explicitly if selected next.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.
 
 ## Proof
 
-Ran the delegated proof command after the no-code `validate.cpp` audit:
+Ran the delegated proof command after the Sema `resolve_type` route removal:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
 Result: build completed successfully; CTest passed `886/886` matched tests.

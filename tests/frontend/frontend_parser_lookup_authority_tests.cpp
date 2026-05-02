@@ -2395,6 +2395,39 @@ void test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrie
               "template-param key metadata is present");
 }
 
+void test_consteval_type_binding_resolve_uses_tag_text_id_without_tag() {
+  c4c::TextTable texts;
+  const c4c::TextId param_text = texts.intern("T");
+
+  c4c::TypeSpec int_type{};
+  int_type.array_size = -1;
+  int_type.inner_rank = -1;
+  int_type.base = c4c::TB_INT;
+
+  c4c::hir::TypeBindingTextMap text_bindings;
+  text_bindings[param_text] = int_type;
+
+  c4c::TypeSpec typedef_type{};
+  typedef_type.array_size = -1;
+  typedef_type.inner_rank = -1;
+  typedef_type.base = c4c::TB_TYPEDEF;
+  typedef_type.tag = nullptr;
+  typedef_type.tag_text_id = param_text;
+
+  c4c::Node sizeof_type{};
+  sizeof_type.kind = c4c::NK_SIZEOF_TYPE;
+  sizeof_type.type = typedef_type;
+
+  c4c::hir::ConstEvalEnv env;
+  env.type_bindings_by_text = &text_bindings;
+
+  const c4c::hir::ConstEvalResult result =
+      c4c::hir::evaluate_constant_expr(&sizeof_type, env);
+  expect_true(result.ok() && result.as_int() == 4,
+              "consteval TypeSpec substitution should use tag_text_id even "
+              "when rendered TypeSpec::tag spelling is absent");
+}
+
 void test_nested_consteval_call_preserves_structured_template_bindings() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5300,6 +5333,7 @@ int main() {
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();
   test_consteval_nttp_rejects_rendered_after_structured_or_text_miss();
   test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrier();
+  test_consteval_type_binding_resolve_uses_tag_text_id_without_tag();
   test_nested_consteval_call_preserves_structured_template_bindings();
   test_parser_deferred_nttp_default_uses_structured_binding_metadata();
   test_alias_template_deferred_nttp_bases_carry_structured_record_def();
