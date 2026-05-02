@@ -3,31 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Structured HIR Record-Layout Handoff
+Current Step ID: 4
+Current Step Title: Convert Or Demote Legacy HIR Lookup Routes
 
 ## Just Finished
 
-Step 3 - Add Structured HIR Record-Layout Handoff now has a bounded
-member/object owner recovery migration. Implicit `this` field recovery in
-`Lowerer::lower_var_expr` now builds a `TypeSpec` for the current method owner,
-uses `record_def` / TextId metadata through `find_struct_def_for_layout_type`
-and `find_struct_instance_field_including_bases`, and only falls back to
-rendered `ctx.method_struct_tag` through the layout helper compatibility path.
+Plan-owner review accepted Step 3 - Add Structured HIR Record-Layout Handoff as
+complete enough for this runbook. Step 3 now has the Sema consteval structured
+owner-index bridge, HIR builtin layout query migration, aggregate-init
+normalization migration, implicit-this field recovery migration,
+stale-rendered-tag tests, and residual direct `struct_defs` classification.
 
-The recovered member expression now carries the structured owner tag when owner
-metadata is available, and member-symbol lookup uses the `TypeSpec` owner route
-before rendered member-symbol names.
-
-Focused coverage proves stale rendered `ctx.method_struct_tag` loses to the
-structured owner layout for implicit `this->field` recovery.
+Step 4 - Convert Or Demote Legacy HIR Lookup Routes is now the active
+execution step.
 
 ## Suggested Next
 
-Continue Step 3 by auditing inherited-field and defaulted-method/destructor
-member traversal routes that still start from rendered `struct_defs` tags, or
-ask supervisor/plan-owner whether Step 3 has enough representative structured
-record-layout handoffs to move toward Step 4.
+Start Step 4 with one narrow legacy HIR lookup route. Prefer a route with an
+existing structured carrier and focused stale-rendered-name coverage, such as a
+caller of `find_function_by_name_legacy`, `find_global_by_name_legacy`,
+`ModuleDeclLookupAuthority::LegacyRendered`, `has_legacy_mangled_entry`, or a
+rendered-name compatibility index. Convert that caller to structured authority
+where metadata exists, or demote the rendered route to explicitly named
+no-metadata compatibility.
 
 ## Watchouts
 
@@ -44,6 +42,11 @@ record-layout handoffs to move toward Step 4.
   and implicit-this member recovery now receive/use owner metadata, but several
   HIR lowering/layout consumers still query rendered `Module::struct_defs`
   directly.
+- Step 3 residual direct `struct_defs` consumers are classified boundaries, not
+  Step 4 targets by default. Step 4 should focus on legacy declaration,
+  function/global/template/member lookup authority unless a rendered
+  `struct_defs` route is also acting as normal semantic lookup with an existing
+  structured carrier.
 - Residual rendered `NttpBindings` uses should not be removed mechanically:
   several are ABI/display/cache payloads, pack synthetic-key compatibility, or
   deferred expression/debug-text boundaries without a complete structured
@@ -60,8 +63,11 @@ record-layout handoffs to move toward Step 4.
 
 ## Proof
 
-Focused pre-proof passed:
+Step 3 focused pre-proof passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`.
 
-Delegated proof passed and wrote `test_after.log`:
+Step 3 delegated proof passed and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+
+No new validation was run for this lifecycle-only Step 3 review and Step 4
+pointer update.
