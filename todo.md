@@ -8,25 +8,24 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 narrowed a remaining Sema no-carrier template-argument compatibility
-consumer in `bind_consteval_call_env`. When `Node::template_arg_exprs` carries
-the NTTP expression but evaluation misses, Sema now treats that structured
-carrier as authoritative and does not fall through to stale rendered
-`template_arg_nttp_names` lookup.
+Step 4 repaired the remaining `substitute_record_carrier_arg` NTTP
+parameter-index path in `src/frontend/parser/impl/types/base.cpp`. Value
+carrier substitution now uses a carried `nttp_text_id` to select the template
+parameter slot and only falls back to rendered `nttp_name` spelling when no
+TextId carrier exists.
 
 Focused authority coverage in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now builds a
-callee with an unevaluable structured NTTP expression plus stale `$expr:`
-fallback text and proves no consteval NTTP binding is produced from the
-rendered name.
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now drives the
+record-member typedef sidecar path with a concrete wrapper carrying `N=3` and
+`M=9`, then drifts the sidecar's rendered NTTP name to `M`; resolution still
+selects the `N`/`Owner<3>` member typedef through the carried TextId.
 
 ## Suggested Next
 
-Continue Step 4 by inspecting remaining parser/Sema no-carrier
-template-argument compatibility consumers. Prefer routes where
-`template_arg_nttp_text_ids`, `captured_expr_tokens`, `expr`,
-`TypeSpec::array_size_expr`, or another direct domain carrier is already
-present before removing rendered fallback behavior.
+Continue Step 4 by reviewing whether any remaining parser/Sema
+template-argument compatibility consumers still choose semantic slots from
+rendered names when a structured TextId, expression, token, or TypeSpec carrier
+is already present.
 
 ## Watchouts
 
@@ -38,7 +37,7 @@ present before removing rendered fallback behavior.
 - This packet did not alter `make_template_instantiation_argument_key`; its
   no-carrier `$expr:` compatibility route remains a separate watch item.
 - The no-carrier template-argument compatibility routes remain separate Step 4
-  watch items. Do not count this packet as source-idea closure.
+  watch items. Do not count this packet alone as source-idea closure.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.
 
 ## Proof

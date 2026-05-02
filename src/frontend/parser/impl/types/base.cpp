@@ -1314,12 +1314,19 @@ TypeSpec Parser::parse_base_type() {
                             return -1;
                         };
                         if (carrier_arg.is_value) {
-                            if (!(carrier_arg.nttp_name &&
-                                  carrier_arg.nttp_name[0])) {
+                            TextId nttp_text_id = carrier_arg.nttp_text_id;
+                            if (nttp_text_id == kInvalidText) {
+                                if (!(carrier_arg.nttp_name &&
+                                      carrier_arg.nttp_name[0])) {
+                                    return true;
+                                }
+                                nttp_text_id = parser_text_id_for_token(
+                                    kInvalidText, carrier_arg.nttp_name);
+                            }
+                            if (nttp_text_id == kInvalidText) {
                                 return true;
                             }
-                            const int pi = param_index(parser_text_id_for_token(
-                                kInvalidText, carrier_arg.nttp_name));
+                            const int pi = param_index(nttp_text_id);
                             if (pi < 0 ||
                                 pi >= static_cast<int>(actual_args.size())) {
                                 return true;
