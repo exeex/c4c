@@ -8,27 +8,24 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 narrowed the alias-template member-typedef carrier substitution paths in
-`src/frontend/parser/impl/types/base.cpp`. `substitute_carrier_arg` and the
-nested owner-alias substitution now select template parameter slots from
-`ParsedTemplateArg::nttp_text_id` and `TypeSpec::tag_text_id` when present, only
-falling back to rendered `nttp_name`/`tag` spelling when no structured carrier
-exists.
+Step 4 narrowed the remaining alias-template type-parameter consumers in
+`src/frontend/parser/impl/types/base.cpp`. The dependent owner-arg detector and
+the direct alias typedef substitution fallback now select alias parameter slots
+from `TypeSpec::tag_text_id` before consulting rendered `tag` spelling; rendered
+lookup remains only as the no-carrier compatibility path.
 
 Focused authority coverage in
 `tests/frontend/frontend_parser_lookup_authority_tests.cpp` now drives
-`Alias<3, 9>` through an alias-template member-typedef owner arg whose carried
-TextId names `N` while stale rendered `nttp_name` says `M`; resolution still
-selects the registered `Owner<3>::type` binding instead of `Owner<9>`.
+`Alias<int>` through an aliased `TB_TYPEDEF` whose structured TextId names `T`
+while stale rendered `tag` says `RenderedDrift`; resolution still substitutes
+the actual `int` argument.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing whether any remaining parser/Sema
-template-argument compatibility consumers still choose semantic slots from
-rendered names when a structured TextId, expression, token, or TypeSpec carrier
-is already present; likely next candidates are the remaining `alias_param_ref_text_id`
-and `owner_alias_param_ref_text_id` type-arg consumers that still need route-by-route
-inspection for available carriers.
+Continue Step 4 by reviewing the remaining no-carrier template-argument
+compatibility routes, especially `make_template_instantiation_argument_key` and
+any `$expr:` display-text consumers, for places where parsed expression or
+TextId carriers should become authoritative before rendered strings.
 
 ## Watchouts
 
@@ -37,6 +34,9 @@ inspection for available carriers.
 - The rendered-name branches in the edited substitution lambdas remain only as
   no-carrier compatibility paths for older payloads that lack `nttp_text_id` or
   `tag_text_id`.
+- Remaining `alias_param_ref_text_id` and `owner_alias_param_ref_text_id` calls
+  in `base.cpp` are now either value-name fallbacks after `nttp_text_id` misses
+  or type-name fallbacks after `TypeSpec::tag_text_id` misses.
 - `$expr:` text is still produced for compatibility/display and remains a
   no-carrier fallback only where no parsed expression, token, TextId, or other
   structured carrier exists at that consumer.

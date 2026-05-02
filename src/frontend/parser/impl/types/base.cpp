@@ -2622,13 +2622,21 @@ TypeSpec Parser::parse_base_type() {
                                         [&](const TypeSpec& type) -> bool {
                                         std::function<bool(const TypeSpec&)> type_mentions_dep_params =
                                             [&](const TypeSpec& inner) -> bool {
-                                                if (inner.base == TB_TYPEDEF &&
-                                                    inner.tag &&
-                                                    inner.tag[0] &&
-                                                    is_template_scope_type_param(
-                                                        alias_param_ref_text_id(
-                                                            inner.tag))) {
-                                                    return true;
+                                                if (inner.base == TB_TYPEDEF) {
+                                                    TextId type_text_id =
+                                                        inner.tag_text_id;
+                                                    if (type_text_id ==
+                                                            kInvalidText &&
+                                                        inner.tag &&
+                                                        inner.tag[0]) {
+                                                        type_text_id =
+                                                            alias_param_ref_text_id(
+                                                                inner.tag);
+                                                    }
+                                                    if (is_template_scope_type_param(
+                                                            type_text_id)) {
+                                                        return true;
+                                                    }
                                                 }
                                                 if (!inner.tpl_struct_args.data ||
                                                     inner.tpl_struct_args.size <= 0) {
@@ -3162,9 +3170,12 @@ TypeSpec Parser::parse_base_type() {
                                             ati->param_is_nttp[ai]) {
                                             continue;
                                         }
-                                        const TextId tag_text_id =
-                                            ts.tag ? alias_param_ref_text_id(ts.tag)
-                                                   : kInvalidText;
+                                        TextId tag_text_id = ts.tag_text_id;
+                                        if (tag_text_id == kInvalidText) {
+                                            tag_text_id =
+                                                ts.tag ? alias_param_ref_text_id(ts.tag)
+                                                       : kInvalidText;
+                                        }
                                         if (ts.base == TB_TYPEDEF && ts.tag &&
                                             tag_text_id != kInvalidText &&
                                             tag_text_id ==
