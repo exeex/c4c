@@ -8,41 +8,36 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 narrowed the dependent template-specialization value-argument consumer
-in `src/frontend/parser/ast.hpp`. `is_dependent_template_struct_specialization`
-now treats `Node::template_arg_nttp_text_ids` as authoritative when present and
-only consults rendered `template_arg_nttp_names` as the no-carrier compatibility
-path.
+Step 4 narrowed the Sema consteval forwarded-NTTP handoff in
+`src/frontend/sema/consteval.cpp`. `bind_consteval_call_env` now treats a
+present forwarded `template_arg_nttp_text_ids` slot as authoritative even when
+the outer consteval environment has no TextId/key map available, so it no longer
+reopens legacy rendered `template_arg_nttp_names` lookup in that carrier-present
+case.
 
 Focused authority coverage in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now drives a
-template value arg whose structured TextId names `N` while stale rendered text
-says `RenderedDrift`, verifies the specialization is still dependent, verifies a
-non-matching TextId blocks rendered-name recovery, and preserves rendered-name
-compatibility when no TextId carrier exists.
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now extends
+`test_consteval_forwarded_nttp_uses_text_id_not_rendered_name` with a no-map
+outer environment whose legacy rendered name would otherwise bind. The test
+verifies the TextId carrier blocks that rendered-name recovery.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing the remaining no-carrier template-argument
-compatibility routes, especially `make_template_instantiation_argument_key` and
-any `$expr:` display-text consumers, for places where parsed expression or
-TextId carriers should become authoritative before rendered strings. The
-specific `is_dependent_template_struct_specialization` value-arg route is now
-narrowed to TextId-first/no-carrier-name fallback.
+Continue Step 4 review after the next review trigger. The remaining rendered
+template-argument routes to scrutinize are no-carrier fallbacks only; verify any
+next route has no parsed expression, token, TextId, record-def, or origin-key
+carrier before preserving rendered-string compatibility.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- `Node::template_arg_nttp_names` remains a compatibility path in the edited
-  dependency check only when the parallel `template_arg_nttp_text_ids` slot is
-  absent or invalid.
+- `Node::template_arg_nttp_names` remains a compatibility path in
+  `bind_consteval_call_env` only when there is no parsed expression carrier and
+  no forwarded TextId carrier for the template argument.
 - `$expr:` text is still produced for compatibility/display and remains a
   no-carrier fallback only where no parsed expression, token, TextId, or other
   structured carrier exists at that consumer.
-- This packet inspected `make_template_instantiation_argument_key`; its value
-  route already prefers parsed expression and captured-token carriers before the
-  `$expr:` no-carrier fallback, so it was left unchanged.
 - The no-carrier template-argument compatibility routes remain separate Step 4
   watch items. Do not count this packet alone as source-idea closure.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.

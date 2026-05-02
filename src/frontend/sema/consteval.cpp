@@ -606,6 +606,9 @@ ConstEvalEnv bind_consteval_call_env(
             out_nttp_bindings_by_text, out_nttp_bindings_by_key);
         continue;
       }
+      if (forwarded_text_id != kInvalidText) {
+        continue;
+      }
       if (text_result.status == ConstEvalValueLookupStatus::Miss) {
         continue;
       }

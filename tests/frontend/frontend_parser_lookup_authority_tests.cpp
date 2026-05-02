@@ -2225,6 +2225,20 @@ void test_consteval_forwarded_nttp_uses_text_id_not_rendered_name() {
               "TextId output metadata");
 
   outer_env.nttp_bindings = &legacy_outer;
+  outer_env.nttp_bindings_by_text = nullptr;
+  nttp_bindings.clear();
+  nttp_bindings_by_text.clear();
+  nttp_bindings_by_key.clear();
+  (void)c4c::hir::bind_consteval_call_env(
+      callee, func_def, outer_env, &type_bindings, &nttp_bindings, nullptr,
+      nullptr, nullptr, nullptr, &nttp_bindings_by_text,
+      &nttp_bindings_by_key);
+  expect_true(nttp_bindings.empty(),
+              "forwarded consteval NTTP binding should not reopen rendered "
+              "name lookup when parser TextId metadata exists but no "
+              "TextId environment map is available");
+
+  outer_env.nttp_bindings = &legacy_outer;
   c4c::hir::ConstTextMap mismatched_text_outer;
   mismatched_text_outer[texts.intern("OtherOuter")] = 17;
   outer_env.nttp_bindings_by_text = &mismatched_text_outer;
