@@ -475,6 +475,22 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     if (legacy_tag && legacy_tag[0]) return std::string(legacy_tag);
     return std::nullopt;
   };
+  auto nested_deferred_member_ready = [&](const TypeSpec& member) -> bool {
+    if (!member.deferred_member_type_name || !member.deferred_member_type_name[0]) {
+      return false;
+    }
+    if (member.record_def && member.record_def->kind == NK_STRUCT_DEF) return true;
+    if (member.tpl_struct_origin && member.tpl_struct_origin[0]) return true;
+    if (owner_key_from_type(member)) return true;
+
+    const bool has_structured_owner_carrier =
+        member.tag_text_id != kInvalidText ||
+        member.tpl_struct_origin_key.base_text_id != kInvalidText;
+    if (has_structured_owner_carrier) return false;
+
+    const char* legacy_tag = typespec_legacy_tag_if_present(member, 0);
+    return legacy_tag && legacy_tag[0];
+  };
   const bool has_origin = ts && ts->tpl_struct_origin && ts->tpl_struct_origin[0];
   const bool has_record_def = ts && ts->record_def;
   const std::optional<std::string> owner_tag = owner_tag_from_metadata();
@@ -568,10 +584,7 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
             selected.type_bindings.size() == 1) {
           resolved_member = selected.type_bindings.begin()->second;
         }
-        if (resolved_member.deferred_member_type_name &&
-            ((resolved_member.tpl_struct_origin &&
-              resolved_member.tpl_struct_origin[0]) ||
-             (resolved_member.tag && resolved_member.tag[0]))) {
+        if (nested_deferred_member_ready(resolved_member)) {
           while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
           }
         }

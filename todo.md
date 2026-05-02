@@ -9,27 +9,26 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries migrated the targeted
-`resolve_struct_member_typedef_if_ready` local `apply_bindings`
-template-binding fallback in
-`src/frontend/hir/impl/templates/type_resolution.cpp` away from direct
-`resolved_member.tag` lookup. The origin member-typedef path now reuses the
-structured `find_template_typedef_binding` helper, so
-`template_param_text_id`, `tag_text_id`, `template_param_index`, and template
-owner metadata are consulted before the explicit no-metadata legacy rendered
-tag fallback. Added focused coverage in
-`cpp_hir_member_typedef_origin_binding_structured_metadata` proving structured
-template-parameter metadata beats a stale rendered tag, structured owner
-mismatch blocks stale fallback, and tag-only no-metadata compatibility still
-binds.
+`resolve_struct_member_typedef_if_ready` nested deferred-member readiness check
+in `src/frontend/hir/impl/templates/type_resolution.cpp` away from direct
+`resolved_member.tag` lookup. Nested member-typedef results now use structured
+readiness from `record_def`, template origin, or complete owner-key metadata
+before the explicit no-metadata legacy rendered-tag compatibility path. Added
+focused coverage in
+`cpp_hir_member_typedef_nested_readiness_structured_metadata` proving nested
+record-def metadata resolves without a rendered tag, tag-only no-metadata
+compatibility still resolves, and structured owner misses do not recover
+through stale rendered tags.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected deletion-probe blocker. The
 current probe's first emitted errors are still in
-`src/frontend/hir/impl/templates/type_resolution.cpp`, now downstream of the
-template-binding fallback in nested deferred-member and template-owner rendered
-tag checks. Keep those type-resolution residuals split from the parser/core and
-`value_args.cpp` residuals unless the supervisor routes them together.
+`src/frontend/hir/impl/templates/type_resolution.cpp`, now at the later
+`owner_ts.tag` template-owner rendered-tag fallback in
+`resolve_struct_member_typedef_if_ready`. Keep that type-resolution residual
+split from parser/core and `value_args.cpp` residuals unless the supervisor
+routes them together.
 
 ## Watchouts
 
@@ -61,21 +60,25 @@ tag checks. Keep those type-resolution residuals split from the parser/core and
   parameter metadata. Its no-metadata rendered-tag fallback is explicit through
   `find_template_typedef_binding`, and structured owner mismatch does not fall
   back to stale rendered names.
+- `resolve_struct_member_typedef_if_ready` nested deferred-member readiness is
+  now semantically cleared for structured owner/deferred-member metadata. Its
+  no-metadata rendered-tag fallback is explicit and field-detection guarded,
+  and nested record-def metadata can recurse without any rendered tag.
 - Deletion probe residuals from the previous packet no longer include the
   targeted readiness guard around former
   `src/frontend/hir/impl/templates/type_resolution.cpp:438`. Same-build
   residuals from this packet no longer include the targeted
   `resolved_member.tag` template-binding fallback around current pre-change
-  lines 496/502. Current same-build residuals begin later in the same file at
-  probe line 574 (`resolved_member.tag` nested deferred-member readiness
-  check), followed by 605/608 (`owner_ts.tag` template-owner fallback). The
+  lines 496/502 or the targeted nested deferred-member readiness check around
+  current pre-change line 574. Current same-build residuals begin later in the
+  same file at probe lines 618/621 (`owner_ts.tag` template-owner fallback). The
   first remaining parser/core residual is current
   `src/frontend/parser/impl/core.cpp:1073`, with later parser/core residuals
   around current lines 1077-1081, 1167, 1183, and 1872-1882. The probe also
   still reports `src/frontend/hir/impl/templates/value_args.cpp` residuals
   outside this packet's owned files.
 - This packet added
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_hir_origin_binding.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_hir_nested_readiness.log`.
 
 ## Proof
 
@@ -83,23 +86,23 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 86 of 86 delegated
+Result: command exited 0. The build passed, and CTest passed 87 of 87 delegated
 tests after this packet, increasing the focused subset with new
-`cpp_hir_member_typedef_origin_binding_structured_metadata` coverage for the
-migrated origin member-typedef template-binding fallback. `test_after.log` is
-the canonical proof log.
+`cpp_hir_member_typedef_nested_readiness_structured_metadata` coverage for the
+migrated nested deferred-member readiness check. `test_after.log` is the
+canonical proof log.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_hir_origin_binding.log 2>&1`,
+/tmp/c4c_typespec_tag_deletion_probe_step4_hir_nested_readiness.log 2>&1`,
 and restored the temporary edit. The probe moved past the targeted
-`resolve_struct_member_typedef_if_ready` local `apply_bindings`
-`resolved_member.tag` template-binding fallback around current pre-change lines
-496/502. The first emitted errors are now later in
-`src/frontend/hir/impl/templates/type_resolution.cpp` around current probe line
-574, followed by 605/608; parser/core residuals still include current
+`resolve_struct_member_typedef_if_ready` nested deferred-member
+`resolved_member.tag` readiness check around current pre-change line 574. The
+first emitted errors are now later in
+`src/frontend/hir/impl/templates/type_resolution.cpp` around current probe lines
+618/621; parser/core residuals still include current
 `src/frontend/parser/impl/core.cpp:1073`, and `value_args.cpp` residuals remain
 outside this packet's ownership.
 
