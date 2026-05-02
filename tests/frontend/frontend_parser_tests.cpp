@@ -7016,6 +7016,44 @@ void test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_t
               "canonical template struct type key should include the structured value argument");
 }
 
+void test_template_instantiation_key_prefers_expr_carrier_over_expr_text() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId structured_text = texts.intern("Structured");
+  c4c::Node* lhs = parser.make_node(c4c::NK_VAR, 1);
+  lhs->kind = c4c::NK_VAR;
+  lhs->name = arena.strdup("Structured");
+  lhs->unqualified_text_id = structured_text;
+  c4c::Node* rhs = parser.make_node(c4c::NK_INT_LIT, 1);
+  rhs->kind = c4c::NK_INT_LIT;
+  rhs->ival = 1;
+  c4c::Node* expr = parser.make_node(c4c::NK_BINOP, 1);
+  expr->kind = c4c::NK_BINOP;
+  expr->op = arena.strdup("+");
+  expr->left = lhs;
+  expr->right = rhs;
+
+  c4c::Parser::TemplateArgParseResult first{};
+  first.is_value = true;
+  first.expr = expr;
+  first.nttp_name = arena.strdup("$expr:RenderedFallback+1");
+  c4c::Parser::TemplateArgParseResult second = first;
+  second.nttp_name = arena.strdup("$expr:DifferentRenderedFallback+100");
+
+  const auto first_key = c4c::make_template_instantiation_argument_key(first);
+  const auto second_key = c4c::make_template_instantiation_argument_key(second);
+
+  expect_eq(first_key.canonical_key, second_key.canonical_key,
+            "template instantiation keys should use structured expression "
+            "metadata instead of stale `$expr:` text");
+  expect_true(first_key.canonical_key.find("$expr:") == std::string::npos,
+              "structured expression keys should not retain `$expr:` text");
+}
+
 void test_parser_template_arg_ref_rendering_prefers_structured_nested_arg() {
   c4c::Lexer lexer("Outer<InnerAlias> after", c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -8259,6 +8297,7 @@ int main() {
   test_type_binding_equivalence_uses_deferred_member_text_id_authority();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
+  test_template_instantiation_key_prefers_expr_carrier_over_expr_text();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
   test_consteval_template_arg_expr_payload_ignores_stale_rendered_name();
   test_parser_consteval_parameter_preserves_unqualified_text_metadata();

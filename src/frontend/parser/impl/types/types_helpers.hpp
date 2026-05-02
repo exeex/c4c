@@ -1253,12 +1253,53 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
     return out;
 }
 
+std::string canonical_template_nttp_expr_key(const Node* expr) {
+    if (!expr) return {};
+    std::string out = "expr:";
+    out += std::to_string(static_cast<int>(expr->kind));
+    if (expr->op && expr->op[0]) {
+        out += ":op=";
+        out += expr->op;
+    }
+    switch (expr->kind) {
+        case NK_INT_LIT:
+        case NK_CHAR_LIT:
+            out += ":ival=";
+            out += std::to_string(expr->ival);
+            break;
+        case NK_VAR:
+            out += ":var=";
+            out += std::to_string(expr->unqualified_text_id);
+            if (expr->is_global_qualified) out += ":global";
+            if (expr->qualifier_text_ids && expr->n_qualifier_segments > 0) {
+                out += ":q=";
+                for (int i = 0; i < expr->n_qualifier_segments; ++i) {
+                    if (i > 0) out += ".";
+                    out += std::to_string(expr->qualifier_text_ids[i]);
+                }
+            }
+            break;
+        default:
+            break;
+    }
+    if (expr->left) out += ":l{" + canonical_template_nttp_expr_key(expr->left) + "}";
+    if (expr->right) out += ":r{" + canonical_template_nttp_expr_key(expr->right) + "}";
+    if (expr->cond) out += ":c{" + canonical_template_nttp_expr_key(expr->cond) + "}";
+    if (expr->then_) out += ":t{" + canonical_template_nttp_expr_key(expr->then_) + "}";
+    if (expr->else_) out += ":e{" + canonical_template_nttp_expr_key(expr->else_) + "}";
+    return out;
+}
+
 ParserTemplateState::TemplateInstantiationKey::Argument
 make_template_instantiation_argument_key(const ParsedTemplateArg& arg) {
     ParserTemplateState::TemplateInstantiationKey::Argument key;
     key.is_value = arg.is_value;
     if (arg.is_value) {
-        if (!arg.captured_expr_tokens.empty()) {
+        const Node* structured_expr =
+            arg.expr ? arg.expr : arg.type.array_size_expr;
+        if (structured_expr) {
+            key.canonical_key = canonical_template_nttp_expr_key(structured_expr);
+        } else if (!arg.captured_expr_tokens.empty()) {
             key.canonical_key = "$tokens:";
             for (const Token& tok : arg.captured_expr_tokens) {
                 key.canonical_key += std::to_string(static_cast<int>(tok.kind));

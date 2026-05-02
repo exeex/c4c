@@ -8,40 +8,33 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired the parser-owned template-parameter pattern lookup route in
-`src/frontend/parser/impl/types/types_helpers.hpp`. `find_template_param_index`
-no longer accepts or interns a fallback spelling, and its type/value callers now
-bind only from structured `TextId` carriers: `TypeSpec::template_param_text_id`
-or `TypeSpec::tag_text_id` for type patterns, and
-`template_arg_nttp_text_ids` for value patterns.
+Step 4 repaired one retained `$expr:` template-argument compatibility route in
+`src/frontend/parser/impl/types/types_helpers.hpp`. Template instantiation
+argument keys now prefer the structured parsed NTTP expression carrier
+(`TemplateArgParseResult::expr` or `TypeSpec::array_size_expr`) over the
+compatibility `$expr:` spelling when the carrier is present.
 
-Focused lookup-authority coverage now proves stale rendered type and NTTP
-pattern names still bind when the structured carriers are present, and do not
-recover through rendered spelling when those carriers are absent. The existing
-specialization TextId test was updated to provide the structured type-pattern
-carrier explicitly.
+Focused parser coverage in `tests/frontend/frontend_parser_tests.cpp` now proves
+two value arguments with the same structured expression carrier but different
+stale `$expr:` strings produce the same instantiation key, and that the key no
+longer retains `$expr:` text on the structured route.
 
 ## Suggested Next
 
-Continue Step 4 with another parser/Sema-owned handoff inventory pass and pick
-one remaining route with both producer and consumer in `src/frontend/parser` or
-`src/frontend/sema`. Prefer one of the retained `$expr:` or no-carrier
-template-argument compatibility routes only if the parser/Sema producer can
-publish structured metadata without widening into HIR.
+Continue Step 4 by inspecting the remaining no-carrier template-argument
+compatibility consumers. Prefer a route where parser/Sema already has
+`template_arg_nttp_text_ids`, `captured_expr_tokens`, `expr`, or another direct
+domain carrier at the consumer before removing rendered fallback behavior.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- Rendered typedef spelling is still allowed for display and diagnostics, but
-  `last_resolved_typedef` should not be used as semantic authority unless its
-  `TextId` is present.
-- Rendered template parameter spellings are still retained for compatibility
-  output and debug/display text, but `find_template_param_index` is no longer a
-  spelling-to-identity recovery path.
-- The retained `$expr:` and no-carrier template-argument compatibility routes
-  remain separate Step 4 watch items. Do not count this packet as source-idea
-  closure.
+- `$expr:` text is still produced for compatibility/display and remains the
+  no-carrier fallback in `make_template_instantiation_argument_key` when no
+  parsed expression or token carrier exists.
+- The no-carrier template-argument compatibility routes remain separate Step 4
+  watch items. Do not count this packet as source-idea closure.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.
 
 ## Proof
