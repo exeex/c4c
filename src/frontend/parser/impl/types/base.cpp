@@ -796,12 +796,18 @@ TypeSpec Parser::parse_base_type() {
                     : arena_.strdup(debug_ref.c_str());
             }
         };
-    auto parsed_args_have_value_carrier =
+    auto parsed_args_have_simple_structured_carrier =
         [](const std::vector<ParsedTemplateArg>& args) -> bool {
+        if (args.empty()) return false;
         for (const ParsedTemplateArg& arg : args) {
             if (arg.is_value) return true;
+            if (arg.type.tpl_struct_origin ||
+                (arg.type.tpl_struct_args.data &&
+                 arg.type.tpl_struct_args.size > 0)) {
+                return false;
+            }
         }
-        return false;
+        return true;
     };
     auto structured_nttp_expr_carrier =
         [](const ParsedTemplateArg& arg) -> Node* {
@@ -2483,13 +2489,12 @@ TypeSpec Parser::parse_base_type() {
                                         return false;
                                     };
                                     std::function<bool(const TypeSpec&, int)>
-                                        type_has_resolved_template_origin_carrier =
+                                        type_has_template_origin_carrier =
                                             [&](const TypeSpec& type,
                                                 int depth) -> bool {
                                         if (depth > 64) return false;
                                         if (type.tpl_struct_origin_key.base_text_id !=
-                                                kInvalidText &&
-                                            type.record_def) {
+                                                kInvalidText) {
                                             return true;
                                         }
                                         if (!type.tpl_struct_args.data ||
@@ -2501,12 +2506,112 @@ TypeSpec Parser::parse_base_type() {
                                             const TemplateArgRef& arg =
                                                 type.tpl_struct_args.data[ai];
                                             if (arg.kind == TemplateArgKind::Type &&
-                                                type_has_resolved_template_origin_carrier(
+                                                type_has_template_origin_carrier(
                                                     arg.type, depth + 1)) {
                                                 return true;
                                             }
                                         }
                                         return false;
+                                    };
+                                    auto materialize_template_origin_record_def =
+                                        [&](TypeSpec* target) -> bool {
+                                        if (!target ||
+                                            target->record_def ||
+                                            target->tpl_struct_origin_key
+                                                    .base_text_id ==
+                                                kInvalidText ||
+                                            !target->tpl_struct_args.data ||
+                                            target->tpl_struct_args.size <= 0) {
+                                            return false;
+                                        }
+                                        const Node* primary =
+                                            find_template_struct_primary(
+                                                target->tpl_struct_origin_key);
+                                        if (!primary) return false;
+
+                                        std::vector<ParsedTemplateArg> args;
+                                        args.reserve(
+                                            target->tpl_struct_args.size);
+                                        for (int ai = 0;
+                                             ai < target->tpl_struct_args.size;
+                                             ++ai) {
+                                            const TemplateArgRef& src =
+                                                target->tpl_struct_args.data[ai];
+                                            ParsedTemplateArg arg{};
+                                            if (src.kind ==
+                                                TemplateArgKind::Value) {
+                                                if (zero_value_arg_ref_uses_debug_fallback(
+                                                        src)) {
+                                                    return false;
+                                                }
+                                                arg.is_value = true;
+                                                arg.value = src.value;
+                                                arg.expr =
+                                                    src.type.array_size_expr;
+                                                if (arg.expr) {
+                                                    return false;
+                                                }
+                                                arg.nttp_text_id =
+                                                    src.nttp_text_id;
+                                            } else {
+                                                if (unstructured_type_arg_ref_uses_debug_fallback(
+                                                        src)) {
+                                                    return false;
+                                                }
+                                                if (src.type.tpl_struct_origin ||
+                                                    (src.type.tpl_struct_args
+                                                         .data &&
+                                                     src.type.tpl_struct_args
+                                                             .size > 0)) {
+                                                    return false;
+                                                }
+                                                arg.is_value = false;
+                                                arg.type = src.type;
+                                            }
+                                            args.push_back(arg);
+                                        }
+
+                                        const char* origin =
+                                            primary->name && primary->name[0]
+                                                ? primary->name
+                                            : primary->template_origin_name &&
+                                                    primary
+                                                        ->template_origin_name[0]
+                                                ? primary->template_origin_name
+                                            : primary->unqualified_name &&
+                                                    primary->unqualified_name[0]
+                                                ? primary->unqualified_name
+                                                : target->tpl_struct_origin;
+                                        const char* saved_member_name =
+                                            target->deferred_member_type_name;
+                                        const TextId saved_member_text_id =
+                                            target->deferred_member_type_text_id;
+                                        if (!origin || !origin[0]) {
+                                            return false;
+                                        }
+                                        TypeSpec resolved = *target;
+                                        std::string mangled;
+                                        if (!ensure_template_struct_instantiated_from_args(
+                                                origin, primary, args,
+                                                cur().line, &mangled,
+                                                "alias_template_origin_key_record_def",
+                                                &resolved)) {
+                                            return false;
+                                        }
+                                        if (!resolved.record_def) {
+                                            if (Node* record =
+                                                    resolve_record_type_spec(
+                                                        resolved, nullptr)) {
+                                                resolved.record_def = record;
+                                            }
+                                        }
+                                        if (!resolved.record_def) return false;
+                                        resolved.deferred_member_type_name =
+                                            saved_member_name;
+                                        resolved.deferred_member_type_text_id =
+                                            saved_member_text_id;
+                                        *target = resolved;
+                                        return true;
                                     };
                                     auto type_mentions_template_scope_param =
                                         [&](const TypeSpec& type) -> bool {
@@ -3070,14 +3175,19 @@ TypeSpec Parser::parse_base_type() {
                                     const bool had_structured_refs =
                                         type_has_structured_template_arg_ref(
                                             ts, 0);
-                                    const bool had_resolved_template_origin_carrier =
-                                        type_has_resolved_template_origin_carrier(
+                                    const bool had_template_origin_carrier =
+                                        type_has_template_origin_carrier(
                                             ts, 0);
                                     if (!substitute_template_arg_refs_structured(&ts)) {
                                         alias_parse_ok = false;
-                                    } else if (had_unstructured_refs &&
-                                               !had_structured_refs &&
-                                               !had_resolved_template_origin_carrier) {
+                                    } else {
+                                        materialize_template_origin_record_def(
+                                            &ts);
+                                    }
+                                    if (alias_parse_ok &&
+                                        had_unstructured_refs &&
+                                        !had_structured_refs &&
+                                        !had_template_origin_carrier) {
                                         const std::string new_refs =
                                             substitute_template_arg_refs(
                                                 template_arg_refs_text(ts).c_str());
@@ -3235,7 +3345,7 @@ TypeSpec Parser::parse_base_type() {
                         ts.tpl_struct_origin_key =
                             template_instantiation_name_key_for_direct_emit(
                                 *this, primary_tpl, tpl_name);
-                        if (parsed_args_have_value_carrier(actual_args))
+                        if (parsed_args_have_simple_structured_carrier(actual_args))
                             set_template_arg_refs_from_parsed_args(&ts, actual_args);
                         else
                             set_template_arg_debug_refs_text(&ts, arg_refs);
@@ -3786,7 +3896,7 @@ TypeSpec Parser::parse_base_type() {
                         ts.tpl_struct_origin = arena_.strdup(family_name.c_str());
                         ts.tpl_struct_origin_key =
                             structured_emitted_instance_key.template_key;
-                        if (parsed_args_have_value_carrier(concrete_args))
+                        if (parsed_args_have_simple_structured_carrier(concrete_args))
                             set_template_arg_refs_from_parsed_args(&ts, concrete_args);
                         else
                             set_template_arg_debug_refs_text(&ts, arg_refs);

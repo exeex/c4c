@@ -8,21 +8,22 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 tightened the alias-template rendered arg-ref fallback outside the local
-`$expr:` re-lex branch. The comma-split
-`substitute_template_arg_refs(template_arg_refs_text(...))` path now refuses to
-rewrite debug-only template args when the type already has a resolved
-template-origin carrier (`tpl_struct_origin_key` plus `record_def`), leaving
-rendered spelling as display/mangling data instead of semantic authority.
-Added same-feature drift coverage for a stale debug-only type arg on a
-resolved template-origin carrier.
+Step 4 repaired the origin-key-only alias/member-typedef handoff. Pending
+template TypeSpecs now preserve simple structured type-only `ParsedTemplateArg`
+carriers instead of falling back to rendered arg text, and alias substitution
+can materialize a `record_def` from `tpl_struct_origin_key` plus structured
+`TemplateArgRef` args before HIR/Sema sees the owner. The rendered comma-split
+arg substitution gate now treats `tpl_struct_origin_key` itself as semantic
+authority, not only `tpl_struct_origin_key` plus `record_def`.
+
+Added same-feature drift coverage proving an origin-key-only alias carrier with
+debug-only stale arg text does not authorize rendered substitution.
 
 ## Suggested Next
 
-Continue Step 4 by repairing the unresolved origin-key-only alias/member-typedef
-producer gap: `cpp_positive_sema_template_variable_alias_inherited_member_typedef_runtime_cpp`
-still needs rendered arg substitution when `tpl_struct_origin_key` exists but
-`record_def` is not attached yet.
+Continue Step 4 by tightening the remaining alias-template rendered arg-ref
+fallback to the smallest legacy compatibility surface, now that origin-key-only
+owners and simple type-only pending args have structured carriers.
 
 ## Watchouts
 
@@ -67,15 +68,17 @@ still needs rendered arg substitution when `tpl_struct_origin_key` exists but
   for captured expression text with no `ParsedTemplateArg::expr`, no
   value-arg `TypeSpec::array_size_expr`, and no `nttp_text_id`; a future packet
   should repair the capture producer if a high-value case still reaches it.
-- The alias-template comma-split/rendered arg-ref fallback still exists only for
-  template-arg lists with unstructured debug-only refs and no structured
-  carrier. Do not restore it as a recovery path for mixed carrier lists or stale
-  `TemplateArgRef::debug_text`.
-- A broader attempt to block that fallback whenever `tpl_struct_origin_key` was
-  present regressed unresolved alias/member-typedef owner instantiation. The
-  missing producer is parser-side arg metadata or earlier `record_def`
-  attachment for origin-key-only routes; keep the current gate limited to
-  resolved origin carriers until that producer exists.
+- The alias-template comma-split/rendered arg-ref fallback now excludes
+  origin-key carriers even when `record_def` is not attached yet. It should
+  remain limited to template-arg lists with unstructured debug-only refs and no
+  structured carrier.
+- Origin-key materialization is deliberately conservative: it uses simple
+  structured args only, rejects debug-only refs, nested template-origin args,
+  and unevaluated NTTP expression carriers, and preserves deferred member
+  metadata while attaching `record_def`.
+- Simple type-only pending template args now use `TemplateArgRef` structure.
+  Nested template-origin args still stay on the legacy display path to avoid
+  recursive canonical type keys.
 - `zero_value_arg_ref_uses_debug_fallback(...)` still represents legacy
   compatibility policy elsewhere; recent packets made the alias-template
   fallback gate treat `nttp_text_id` and resolved template-origin carriers as
