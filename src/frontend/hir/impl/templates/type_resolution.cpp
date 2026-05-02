@@ -345,11 +345,9 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
                   type_bindings.size() == 1) {
                 *resolved = type_bindings.begin()->second;
               }
-              if (resolved->deferred_member_type_name &&
-                  resolved->tag && resolved->tag[0]) {
-                TypeSpec nested{};
-                if (resolve_struct_member_typedef_type(
-                        resolved->tag, resolved->deferred_member_type_name, &nested)) {
+              if (resolved->deferred_member_type_name) {
+                TypeSpec nested = *resolved;
+                if (resolve_struct_member_typedef_if_ready(&nested)) {
                   *resolved = nested;
                 }
               }

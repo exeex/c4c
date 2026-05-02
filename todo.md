@@ -8,30 +8,27 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries migrated the first
+Step 4 - Probe Field Removal And Split Boundaries migrated the nested
+deferred-member typedef resolution inside
 `src/frontend/hir/impl/templates/type_resolution.cpp`
-`resolve_struct_member_typedef_type` local `apply_bindings` template-parameter
-binding path away from direct `TypeSpec::tag` reads around the former
-deletion-probe lines 97-103. The local binding path now uses
-`template_param_text_id` and `tag_text_id` against the owning template
-parameter metadata first, then a validated owner/index carrier, and only falls
-back to rendered legacy tag lookup when no structured carrier exists. The
-legacy fallback is SFINAE-gated through `typespec_legacy_tag_if_present`, so it
-compiles away during the deletion probe instead of becoming a replacement
-semantic key. Added focused CTest coverage in
-`tests/frontend/cpp_hir_member_typedef_binding_metadata_test.cpp` proving
-structured metadata wins over stale rendered tag text, mismatched structured
-metadata does not recover through stale tag fallback, and tag-only no-metadata
-compatibility still binds.
+`resolve_struct_member_typedef_type` away from direct `TypeSpec::tag` reads
+around the former deletion-probe lines 349-352. Nested deferred member aliases
+now route through `resolve_struct_member_typedef_if_ready`, which tries the
+structured `record_def` owner and template-origin carriers before any later
+legacy rendered-tag fallback. Added focused coverage in the new
+`cpp_hir_nested_member_typedef_record_def_structured_metadata` CTest proving a
+nested deferred member typedef resolves through `record_def` even when the
+rendered tag spelling is stale.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected deletion-probe blocker. The
-current probe's first emitted blocker is the next
-`resolve_struct_member_typedef_type` residual in
-`src/frontend/hir/impl/templates/type_resolution.cpp` around current lines
-348-352. Keep parser/core, parser declarations, parser type helpers, and
-`value_args.cpp` residuals split unless the supervisor routes them together.
+current probe's first emitted blocker is the
+`resolve_struct_member_typedef_if_ready` entry guard in
+`src/frontend/hir/impl/templates/type_resolution.cpp` around current line 438,
+with same-function residuals later in the function. Keep parser/core, parser
+declarations, parser type helpers, and `value_args.cpp` residuals split unless
+the supervisor routes them together.
 
 ## Watchouts
 
@@ -93,6 +90,11 @@ current probe's first emitted blocker is the next
   disabled whenever `template_param_text_id`, `tag_text_id`, validated
   owner/index, or owner metadata is present. Focused regression coverage is
   `cpp_hir_member_typedef_binding_structured_metadata`.
+- The nested deferred-member lookup inside `resolve_struct_member_typedef_type`
+  is now semantically cleared for structured owner forwarding through
+  `resolve_struct_member_typedef_if_ready`. Focused regression coverage is
+  `cpp_hir_nested_member_typedef_record_def_structured_metadata`, split out as
+  its own CTest so the regression guard sees the new pass count.
 - The explicit tag-only fallback in `hir_type_template_param_index` is gated
   behind a no-structured-carrier check and a field-detection helper so the
   Step 4 deletion probe still classifies later residuals first.
@@ -132,8 +134,10 @@ current probe's first emitted blocker is the next
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_canonical_primary.log`.
 - Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_realize_struct.log`.
-- This packet added
+- Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_type_resolution_apply_bindings.log`.
+- This packet added
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_type_resolution_nested_member.log`.
 
 ## Proof
 
@@ -141,25 +145,25 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 80 of 80 delegated
+Result: command exited 0. The build passed, and CTest passed 81 of 81 delegated
 tests, including new
-`cpp_hir_member_typedef_binding_structured_metadata` coverage for the migrated
-`resolve_struct_member_typedef_type` local `apply_bindings` path.
+`cpp_hir_nested_member_typedef_record_def_structured_metadata` coverage for the
+migrated `resolve_struct_member_typedef_type` nested deferred-member owner path.
 `test_after.log` is the canonical proof log.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_type_resolution_apply_bindings.log 2>&1`,
+/tmp/c4c_typespec_tag_deletion_probe_step4_type_resolution_nested_member.log 2>&1`,
 and restored the temporary edit. The probe moved past the targeted
-`resolve_struct_member_typedef_type` local `apply_bindings` direct
-`TypeSpec::tag` reads at the former lines 97-103. The first emitted residual
+`resolve_struct_member_typedef_type` nested deferred-member direct
+`TypeSpec::tag` reads at the former lines 349-352. The first emitted residual
 blocker is now
-`src/frontend/hir/impl/templates/type_resolution.cpp:349`, with same-file
-residuals around current lines 349-352, 440-464, 550-584, and 594-597, plus
-same-build residuals in parser/core, parser declarations, parser type helpers,
-and `value_args.cpp`.
+`src/frontend/parser/impl/core.cpp:855`; same-build residuals include
+`src/frontend/hir/impl/templates/type_resolution.cpp:438`, with same-function
+residuals around current lines 438, 456-462, 548, 579-582, and 592-595, plus
+parser declarations, parser type helpers, and `value_args.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.
