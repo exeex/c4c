@@ -580,7 +580,9 @@ ConstEvalEnv bind_consteval_call_env(
           !callee_expr->template_arg_is_value[i]) {
         continue;
       }
-      if (callee_expr->template_arg_exprs && callee_expr->template_arg_exprs[i]) {
+      const bool has_expr_carrier =
+          callee_expr->template_arg_exprs && callee_expr->template_arg_exprs[i];
+      if (has_expr_carrier) {
         auto expr_value =
             evaluate_constant_expr(callee_expr->template_arg_exprs[i], outer_env);
         if (expr_value.ok()) {
@@ -605,6 +607,9 @@ ConstEvalEnv bind_consteval_call_env(
         continue;
       }
       if (text_result.status == ConstEvalValueLookupStatus::Miss) {
+        continue;
+      }
+      if (has_expr_carrier) {
         continue;
       }
       if (callee_expr->template_arg_nttp_names && callee_expr->template_arg_nttp_names[i] &&

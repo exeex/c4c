@@ -3987,6 +3987,56 @@ void test_node_template_arg_reconstruction_preserves_expr_carrier() {
               "present");
 }
 
+void test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->kind = c4c::NK_FUNCTION;
+  fn->n_template_params = 1;
+  fn->template_param_names = arena.alloc_array<const char*>(1);
+  fn->template_param_names[0] = arena.strdup("N");
+  fn->template_param_is_nttp = arena.alloc_array<bool>(1);
+  fn->template_param_is_nttp[0] = true;
+
+  c4c::Node* expr = parser.make_node(c4c::NK_VAR, 1);
+  expr->kind = c4c::NK_VAR;
+  expr->name = arena.strdup("StructuredOnly");
+  expr->unqualified_name = arena.strdup("StructuredOnly");
+  expr->unqualified_text_id = texts.intern("StructuredOnly");
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
+  callee->kind = c4c::NK_VAR;
+  callee->name = arena.strdup("fn");
+  callee->has_template_args = true;
+  callee->n_template_args = 1;
+  callee->template_arg_is_value = arena.alloc_array<bool>(1);
+  callee->template_arg_is_value[0] = true;
+  callee->template_arg_values = arena.alloc_array<long long>(1);
+  callee->template_arg_values[0] = 0;
+  callee->template_arg_nttp_names = arena.alloc_array<const char*>(1);
+  callee->template_arg_nttp_names[0] =
+      arena.strdup("$expr:RenderedFallback");
+  callee->template_arg_exprs = arena.alloc_array<c4c::Node*>(1);
+  callee->template_arg_exprs[0] = expr;
+
+  c4c::hir::ConstMap outer_nttp;
+  outer_nttp["RenderedFallback"] = 99;
+  outer_nttp["$expr:RenderedFallback"] = 100;
+  c4c::hir::ConstEvalEnv outer_env{};
+  outer_env.nttp_bindings = &outer_nttp;
+  c4c::hir::NttpBindings nttp_bindings;
+  c4c::hir::bind_consteval_call_env(callee, fn, outer_env, nullptr,
+                                    &nttp_bindings);
+
+  expect_true(nttp_bindings.count("N") == 0,
+              "failed structured NTTP expression evaluation should not fall "
+              "back to stale rendered template-argument text");
+}
+
 void test_typespec_template_origin_equality_uses_structured_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4357,6 +4407,7 @@ int main() {
   test_nested_template_static_member_value_arg_carries_expr_node();
   test_nested_pending_template_arg_rendering_suppresses_expr_debug_text();
   test_node_template_arg_reconstruction_preserves_expr_carrier();
+  test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss();
   test_typespec_template_origin_equality_uses_structured_key();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();

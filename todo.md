@@ -8,37 +8,35 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired a remaining parser-side no-carrier handoff route where
-`Node::template_arg_exprs` was already available but local `ParsedTemplateArg`
-reconstruction dropped it before member-typedef and template-instantiation
-lookup. `parsed_template_arg_from_node_slot` now carries the structured NTTP
-expression node along with value/name/TextId metadata, and the inspected
-parser consumers use that helper instead of rebuilding partial no-expr args.
+Step 4 narrowed a remaining Sema no-carrier template-argument compatibility
+consumer in `bind_consteval_call_env`. When `Node::template_arg_exprs` carries
+the NTTP expression but evaluation misses, Sema now treats that structured
+carrier as authoritative and does not fall through to stale rendered
+`template_arg_nttp_names` lookup.
 
 Focused authority coverage in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now proves a
-reconstructed value argument with stale `$expr:` display text keeps the parsed
-expression carrier, omits `$expr:` from the canonical key, and remains stable
-when the stale rendered text changes.
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now builds a
+callee with an unevaluable structured NTTP expression plus stale `$expr:`
+fallback text and proves no consteval NTTP binding is produced from the
+rendered name.
 
 ## Suggested Next
 
-Continue Step 4 by inspecting the remaining no-carrier template-argument
-compatibility consumers. Prefer another route where parser/Sema already has
-`template_arg_nttp_text_ids`, `template_arg_exprs`, `captured_expr_tokens`,
-`expr`, or another direct domain carrier at the consumer before removing
-rendered fallback behavior.
+Continue Step 4 by inspecting remaining parser/Sema no-carrier
+template-argument compatibility consumers. Prefer routes where
+`template_arg_nttp_text_ids`, `captured_expr_tokens`, `expr`,
+`TypeSpec::array_size_expr`, or another direct domain carrier is already
+present before removing rendered fallback behavior.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- `$expr:` text is still produced for compatibility/display and remains the
-  no-carrier fallback in `make_template_instantiation_argument_key` when no
-  parsed expression or token carrier exists.
-- `parsed_template_arg_from_node_slot` intentionally does not synthesize a
-  structured carrier when the AST node lacks `template_arg_exprs`; no-carrier
-  compatibility behavior remains limited to those truly carrierless cases.
+- `$expr:` text is still produced for compatibility/display and remains a
+  no-carrier fallback only where no parsed expression, token, TextId, or other
+  structured carrier exists at that consumer.
+- This packet did not alter `make_template_instantiation_argument_key`; its
+  no-carrier `$expr:` compatibility route remains a separate watch item.
 - The no-carrier template-argument compatibility routes remain separate Step 4
   watch items. Do not count this packet as source-idea closure.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.
