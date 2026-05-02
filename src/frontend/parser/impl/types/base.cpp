@@ -3204,10 +3204,14 @@ TypeSpec Parser::parse_base_type() {
                                         TextId tag_text_id = ts.tag_text_id;
                                         if (tag_text_id == kInvalidText) {
                                             tag_text_id =
-                                                ts.tag ? alias_param_ref_text_id(ts.tag)
-                                                       : kInvalidText;
+                                                ts.template_param_text_id;
                                         }
-                                        if (ts.base == TB_TYPEDEF && ts.tag &&
+                                        if (tag_text_id == kInvalidText &&
+                                            ts.tag && ts.tag[0]) {
+                                            tag_text_id =
+                                                alias_param_ref_text_id(ts.tag);
+                                        }
+                                        if (ts.base == TB_TYPEDEF &&
                                             tag_text_id != kInvalidText &&
                                             tag_text_id ==
                                                 alias_param_text_id(ai)) {

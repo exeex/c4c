@@ -3898,6 +3898,52 @@ void test_alias_template_direct_type_substitution_uses_tag_text_id() {
               "test setup should intern the stale rendered tag spelling");
 }
 
+void test_alias_template_direct_type_substitution_uses_template_param_text_id_without_tag() {
+  c4c::Arena arena;
+  c4c::Lexer lexer("Alias<int>",
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const c4c::TextId param_text = lexer.text_table().intern("T");
+
+  c4c::TypeSpec aliased{};
+  aliased.array_size = -1;
+  aliased.inner_rank = -1;
+  aliased.base = c4c::TB_TYPEDEF;
+  aliased.tag = nullptr;
+  aliased.template_param_text_id = param_text;
+
+  c4c::ParserAliasTemplateInfo info{};
+  info.param_names.push_back(arena.strdup("T"));
+  info.param_name_text_ids.push_back(param_text);
+  info.param_is_nttp.push_back(false);
+  info.param_is_pack.push_back(false);
+  info.param_has_default.push_back(false);
+  info.aliased_type = aliased;
+
+  c4c::TypeSpec alias_typedef{};
+  alias_typedef.array_size = -1;
+  alias_typedef.inner_rank = -1;
+  alias_typedef.base = c4c::TB_TYPEDEF;
+  alias_typedef.tag = arena.strdup("Alias");
+  alias_typedef.tag_text_id = alias_text;
+  parser.register_typedef_binding(alias_text, alias_typedef, true);
+  parser.register_alias_template_info_for_testing(
+      parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                           alias_text),
+      info);
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  expect_true(resolved.base == c4c::TB_INT,
+              "direct alias type substitution should use "
+              "TypeSpec::template_param_text_id when rendered tag spelling is "
+              "absent");
+}
+
 void test_alias_template_nested_type_arg_substitution_uses_text_id_without_tag() {
   c4c::Arena arena;
   c4c::Lexer lexer("Alias<int>",
@@ -5215,6 +5261,7 @@ int main() {
   test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text();
   test_alias_template_no_carrier_debug_arg_stays_debug_only();
   test_alias_template_direct_type_substitution_uses_tag_text_id();
+  test_alias_template_direct_type_substitution_uses_template_param_text_id_without_tag();
   test_alias_template_nested_type_arg_substitution_uses_text_id_without_tag();
   test_dependent_member_typedef_base_carries_structured_record_def();
   test_default_only_template_base_uses_cached_default_metadata();

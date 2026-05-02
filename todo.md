@@ -8,32 +8,31 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 narrowed sibling alias/member-typedef carrier substitution in
-`src/frontend/parser/impl/types/base.cpp`. The record member-typedef,
-alias-template, and nested owner-alias carrier helpers now treat
-`TypeSpec::tag_text_id` and `TypeSpec::template_param_text_id` as structured
-template-parameter keys before falling back to rendered `TypeSpec::tag`
-spelling.
+Step 4 narrowed the direct alias-template type-parameter substitution route in
+`src/frontend/parser/impl/types/base.cpp`. The route now consults
+`TypeSpec::template_param_text_id` after `tag_text_id` and before the rendered
+`TypeSpec::tag` compatibility fallback, and it no longer requires rendered
+`tag` spelling when a structured template-parameter carrier is present.
 
 Focused coverage in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now proves both
-`ConcreteWrapper::type` and `Alias<int, double>` member-typedef owner-arg
-substitution work from TextId-only type carriers with absent rendered `tag`
-spelling.
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now proves
+`Alias<int>` direct alias substitution works when the aliased `TypeSpec` has
+only `template_param_text_id` and no rendered `tag` spelling.
 
 ## Suggested Next
 
 Continue Step 4 review after the next review trigger. A likely next narrow
-inspection route is the remaining rendered `tag`, `deferred_member_type_name`,
-and `debug_text` fallbacks in `base.cpp`; verify each is true no-carrier
-compatibility before preserving it.
+inspection route is another remaining rendered `tag`,
+`deferred_member_type_name`, or `debug_text` fallback in `base.cpp`; verify each
+is true no-carrier compatibility before preserving it.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- The patched helpers intentionally preserve rendered `tag` lookup only when
-  both `tag_text_id` and `template_param_text_id` are absent.
+- The patched direct alias-template substitution route intentionally preserves
+  rendered `tag` lookup only when both `tag_text_id` and
+  `template_param_text_id` are absent.
 - Rendered `tag`, `deferred_member_type_name`, and `debug_text` fallback still
   exists for no-carrier compatibility. Do not reclassify those fallback paths
   as semantic authority in later packets.
