@@ -8,22 +8,19 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared the later
-`src/frontend/hir/impl/expr/object.cpp` initializer/aggregate
-type-comparison cluster. Aggregate direct-assignment type comparison now uses
-structured nominal carriers through `generic_type_compatible` first and keeps
-legacy rendered spelling only behind a deletion-safe no-structured-metadata
-compatibility helper; the coupled aggregate owner fallback no longer directly
-reads `TypeSpec::tag`.
+Step 4 - Probe Field Removal And Split Boundaries cleared the
+`src/frontend/hir/impl/expr/object.cpp` `lower_new_expr` allocation-owner
+family. Class-specific `operator new` lookup and constructor overload lookup
+now share the structured `resolve_struct_method_lookup_owner_tag` result
+instead of directly gating on or indexing with `TypeSpec::tag`.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next first deletion-probe blocker in
 `src/frontend/hir/impl/expr/object.cpp`. The current probe first reports direct
-`TypeSpec::tag` reads in `lower_new_expr` around `object.cpp:849`, followed by
-constructor lookup around `object.cpp:898`, delete-expression owner lookup
-around `object.cpp:957`, then `inspect/printer.cpp`, `expr/operator.cpp`, and
-`expr/scalar_control.cpp` surfaces.
+`TypeSpec::tag` reads in `lower_delete_expr` around `object.cpp:958`, followed
+by `inspect/printer.cpp`, `expr/operator.cpp`, and `expr/scalar_control.cpp`
+surfaces.
 
 ## Watchouts
 
@@ -124,9 +121,10 @@ around `object.cpp:957`, then `inspect/printer.cpp`, `expr/operator.cpp`, and
   `try_lower_direct_struct_constructor_call`,
   `describe_initializer_list_struct`, the adjacent initializer-list member
   assignment owner fallback, and the later initializer/aggregate
-  type-comparison cluster. The first residual blocker is now
-  `src/frontend/hir/impl/expr/object.cpp:849` in `lower_new_expr`; later
-  residuals remain in `src/frontend/hir/impl/expr/object.cpp`,
+  type-comparison cluster, plus the `lower_new_expr` allocation-owner and
+  constructor lookup reads. The first residual blocker is now
+  `src/frontend/hir/impl/expr/object.cpp:958` in `lower_delete_expr`; later
+  residuals remain in
   `src/frontend/hir/impl/inspect/printer.cpp`,
   `src/frontend/hir/impl/expr/operator.cpp`, and
   `src/frontend/hir/impl/expr/scalar_control.cpp`.
@@ -141,6 +139,9 @@ around `object.cpp:957`, then `inspect/printer.cpp`, `expr/operator.cpp`, and
   carriers as authoritative and rendered tags only as deletion-safe
   no-structured-metadata compatibility spelling. Do not turn this path back
   into direct rendered tag equality.
+- `lower_new_expr` no longer directly reads `TypeSpec::tag`; keep both
+  class-specific allocation lookup and constructor overload lookup on the
+  single structured allocation-owner result.
 - The rejected `ft.tag` layout repair route was replaced with a structured
   AST-node-to-HIR-owner carrier. Do not reintroduce rendered field type tag
   lookup for layout ownership.
@@ -148,6 +149,8 @@ around `object.cpp:957`, then `inspect/printer.cpp`, `expr/operator.cpp`, and
   `/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log`,
   `/tmp/c4c_typespec_tag_deletion_probe_step4_object.log`, and
   `/tmp/c4c_typespec_tag_deletion_probe_step4_object_next.log`.
+  This packet also left
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_object_new_expr.log`.
 
 ## Proof
 
@@ -163,12 +166,12 @@ Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_object_next.log 2>&1`, and restored
+/tmp/c4c_typespec_tag_deletion_probe_step4_object_new_expr.log 2>&1`, and restored
 the temporary edit. The probe no longer reports the later
-initializer/aggregate type-comparison cluster as the first blocker. The first
-residual error is direct `TypeSpec::tag` use in `lower_new_expr` at
-`src/frontend/hir/impl/expr/object.cpp:849`, with later residual errors in
-`src/frontend/hir/impl/expr/object.cpp`,
+initializer/aggregate type-comparison cluster or `lower_new_expr` allocation
+owner/constructor lookup as the first blocker. The first residual error is
+direct `TypeSpec::tag` use in `lower_delete_expr` at
+`src/frontend/hir/impl/expr/object.cpp:958`, with later residual errors in
 `src/frontend/hir/impl/inspect/printer.cpp`,
 `src/frontend/hir/impl/expr/operator.cpp`, and
 `src/frontend/hir/impl/expr/scalar_control.cpp`.

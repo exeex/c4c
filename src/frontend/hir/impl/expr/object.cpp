@@ -846,20 +846,21 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
   }
   std::string op_fn;
   bool is_class_specific = false;
-  if (!n->is_global_qualified && alloc_ts.base == TB_STRUCT && alloc_ts.tag) {
+  const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
+  const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+  const std::string* current_struct_tag =
+      (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
+  const std::string alloc_owner_tag =
+      alloc_ts.base == TB_STRUCT
+          ? resolve_struct_method_lookup_owner_tag(
+                alloc_ts, false, tpl_bindings, nttp_bindings, current_struct_tag,
+                n, "new-expression-owner")
+          : std::string{};
+  if (!n->is_global_qualified && !alloc_owner_tag.empty()) {
     const char* method_name = is_array ? "operator_new_array" : "operator_new";
-    const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
-    const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
-    const std::string* current_struct_tag =
-        (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
-    const std::string owner_tag = resolve_struct_method_lookup_owner_tag(
-        alloc_ts, false, tpl_bindings, nttp_bindings, current_struct_tag, n,
-        "new-expression-operator");
-    if (!owner_tag.empty()) {
-      if (auto method = find_struct_method_mangled(owner_tag, method_name, false)) {
-        op_fn = *method;
-        is_class_specific = true;
-      }
+    if (auto method = find_struct_method_mangled(alloc_owner_tag, method_name, false)) {
+      op_fn = *method;
+      is_class_specific = true;
     }
   }
   if (op_fn.empty()) op_fn = is_array ? "operator_new_array" : "operator_new";
@@ -895,8 +896,8 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
   cast.to_type = qtype_from(result_ts, ValueCategory::RValue);
   cast.expr = raw_ptr;
   ExprId typed_ptr = append_expr(n, cast, result_ts);
-  if (n->n_children > 0 && alloc_ts.base == TB_STRUCT && alloc_ts.tag) {
-    auto cit = struct_constructors_.find(alloc_ts.tag);
+  if (n->n_children > 0 && !alloc_owner_tag.empty()) {
+    auto cit = struct_constructors_.find(alloc_owner_tag);
     if (cit != struct_constructors_.end() && !cit->second.empty()) {
       const CtorOverload* best = nullptr;
       if (cit->second.size() == 1) {
