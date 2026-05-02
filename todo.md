@@ -3,44 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Preserve Display And Link Text Boundaries
+Current Step ID: 6
+Current Step Title: Record Boundaries And Validate
 
 ## Just Finished
 
-Step 5 - Preserve Display And Link Text Boundaries audited the string payloads
-touched by Steps 2-4 and kept them classified as payloads rather than semantic
-authority:
+Plan-owner review accepted Step 5 - Preserve Display And Link Text Boundaries
+as complete enough for this runbook. Step 5 classified display, diagnostic,
+dump, final spelling, link-visible, mangling, generated-name, and compatibility
+strings touched by Steps 2-4 as payloads rather than semantic authority.
+Focused preservation coverage now verifies a structured-selected global keeps
+its `LinkNameId` / link-visible payload.
 
-- Display, diagnostic, and dump strings such as HIR names, `debug_text`,
-  rendered dump labels, and mismatch/debug logging remain string payloads.
-- Final spelling and link-visible strings such as `Function::name`,
-  `GlobalVar::name`, `DeclRef::name`, `LinkNameId`, and `LinkNameTable` entries
-  remain output/ABI/link payloads; structured lookup may select the declaration
-  identity, but the resolved declaration still supplies the visible/link text.
-- Mangling, generated specialization names, and template materialization keys
-  such as `mangle_template_name`, specialization keys, template-global mangled
-  names, and struct/method generated link names remain compatibility and final
-  spelling payloads.
-- Compatibility string maps such as rendered `NttpBindings`,
-  `ConstEvalEnv::struct_defs`, `ModuleDeclLookupAuthority::LegacyRendered`,
-  rendered resolver fallback, pack synthetic keys, and no-metadata fallback
-  routes remain explicitly named compatibility boundaries.
-- Semantic lookup authority introduced or migrated by Steps 2-4 stays on
-  TextId/namespace metadata, NTTP structured carriers, `HirRecordOwnerKey`, and
-  central structured-first function/global resolvers when complete metadata is
-  available.
-
-Added focused preservation coverage for the Step 4 ordinary variable global
-fallback: a stale rendered global and structured global now carry distinct
-`LinkNameId` payloads, and the lowered `DeclRef` must keep the structured
-global's link-visible payload after structured metadata selects the declaration.
+Step 6 - Record Boundaries And Validate is now the active execution step.
 
 ## Suggested Next
 
-Ask the supervisor/plan-owner whether Step 5 is complete enough to advance the
-runbook, or whether one more preservation packet should cover HIR dump/mangling
-payloads before moving on.
+Start Step 6 by auditing the remaining boundaries recorded in `todo.md` and
+the final diff. Create separate `ideas/open/` follow-up files only for true
+missing upstream/downstream metadata initiatives, then run supervisor-selected
+broader validation and record the final proof.
 
 ## Watchouts
 
@@ -82,6 +64,11 @@ payloads before moving on.
 - Preserve `LegacyRendered` tests for missing or incomplete metadata; Step 4
   moved metadata-backed callers to central structured-first resolver APIs
   without deleting compatibility fallback.
+- Step 6 should decide which residual boundaries are acceptable compatibility
+  for this runbook versus separate open ideas. Do not hide true missing carrier
+  work only in `todo.md` if it needs durable follow-up.
+- Step 6 validation should be broader than the narrow executor subset if the
+  supervisor treats this as a runbook milestone.
 
 ## Proof
 
@@ -90,3 +77,6 @@ Step 5 focused pre-proof passed:
 
 Step 5 delegated proof passed and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+
+No new validation was run for this lifecycle-only Step 5 review and Step 6
+pointer update.
