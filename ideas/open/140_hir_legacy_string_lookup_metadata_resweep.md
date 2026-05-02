@@ -27,7 +27,11 @@ The active parser/Sema runbook must not absorb HIR carrier migration. In
 particular, deleting the rendered-name
 `eval_const_int(..., const std::unordered_map<std::string, long long>*)`
 compatibility overload is blocked while HIR still passes `NttpBindings` as a
-string-keyed map.
+string-keyed map. The same boundary now covers Sema
+`lookup_record_layout`: `ConstEvalEnv` exposes rendered-keyed HIR
+`struct_defs`, while structured record-layout lookup authority lives on
+`hir::Module` through `struct_def_owner_index` and
+`find_struct_def_by_owner_structured(...)`.
 
 This idea preserves that blocker as explicit open lifecycle state so idea 139
 can keep parser-owned const-int cleanup on `TextId` or structured maps without
@@ -49,6 +53,9 @@ silently expanding into `src/frontend/hir`.
 - Migrate HIR `NttpBindings` and any equivalent consteval metadata handoff to
   structured or `TextId` keyed carriers where parser/Sema already provides the
   source identity.
+- Add or migrate a structured HIR record-layout carrier for consteval layout
+  lookup so Sema does not have to resolve `TypeSpec::tag` through rendered
+  `ConstEvalEnv::struct_defs` keys when record owner metadata is available.
 - Convert or demote HIR lookup paths where structured keys already exist.
 - Preserve rendered names for diagnostics, dumps, mangling, link-visible final
   spelling, and explicit no-metadata compatibility input.
@@ -76,6 +83,10 @@ move here instead of widening idea 139:
   blocks deleting the parser/Sema rendered-name
   `eval_const_int(..., const std::unordered_map<std::string, long long>*)`
   compatibility overload.
+- HIR record-layout handoff into Sema consteval: `lookup_record_layout`
+  currently receives rendered-keyed `ConstEvalEnv::struct_defs` but no
+  structured HIR record owner/index or equivalent layout map, which blocks
+  deleting `env.struct_defs->find(ts.tag)`.
 - Any parser/Sema route whose only remaining blocker is a HIR producer or
   consumer contract rather than missing parser/Sema metadata.
 
@@ -97,6 +108,10 @@ move here instead of widening idea 139:
   `eval_const_int(..., const std::unordered_map<std::string, long long>*)`
   compatibility overload for metadata-backed routes, or any remaining
   no-metadata compatibility path is explicitly classified.
+- Sema consteval record-layout lookup can use a structured HIR record-layout
+  carrier when record owner metadata is available, or any retained
+  rendered-keyed `ConstEvalEnv::struct_defs` path is explicitly classified as
+  no-metadata compatibility.
 - Remaining HIR string surfaces are classified as display, diagnostics, dump,
   final spelling, compatibility, local scratch, or unresolved metadata
   boundary.
@@ -110,6 +125,9 @@ move here instead of widening idea 139:
 - The change deletes or narrows the parser/Sema `eval_const_int` compatibility
   overload without first migrating the HIR caller contract or proving an
   equivalent structured carrier.
+- The route claims `lookup_record_layout` cleanup while leaving metadata-backed
+  record layout lookup dependent on rendered `TypeSpec::tag` and rendered
+  `ConstEvalEnv::struct_defs` keys.
 - A rendered-name fallback is renamed, wrapped, or reclassified as structured
   progress while still deciding HIR semantic identity after structured metadata
   exists.

@@ -140,6 +140,14 @@ Parser and Sema lookup should follow this order:
   explicit owner/member/template metadata, but the field deletion itself and
   cross-stage migration belong in
   `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`.
+- Sema `lookup_record_layout` deletion is parked at the HIR
+  record-layout metadata boundary found in
+  `review/step4_post_consteval_layout_blocker_review.md`: `ConstEvalEnv`
+  exposes only rendered-keyed `struct_defs`, while the structured HIR record
+  owner index lives on `hir::Module`. Adding a HIR owner-index/layout carrier
+  to `ConstEvalEnv` belongs in
+  `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md`, not this
+  parser/Sema runbook.
 
 ## Steps
 
@@ -1140,13 +1148,25 @@ Completion check:
 - Narrow Sema tests and a fresh build pass, with fresh canonical
   `test_after.log`, are produced by the executor.
 
-### Step 4: Repair Parser-to-Sema Metadata Handoff Gaps
+### Step 4: Complete Parser-to-Sema Metadata Handoff Gaps And Park HIR Boundary
 
-Goal: prevent parser-to-Sema handoff from dropping metadata and forcing later
-string rediscovery.
+Goal: finish parser/Sema-owned handoff repairs and stop before cross-module
+HIR metadata carrier work.
 
 Primary target: AST and semantic handoff fields carrying `TextId`, namespace
 context, record identity, `TypeSpec::record_def`, declarations, and owner keys.
+
+Status:
+
+- Complete for the active idea 139 route unless a later audit finds a new
+  parser/Sema-owned handoff gap.
+- Parked at the Sema `lookup_record_layout` boundary: removing
+  `env.struct_defs->find(ts.tag)` needs a structured HIR record-layout carrier
+  in `ConstEvalEnv`, such as a HIR owner-key lookup channel backed by
+  `hir::Module::struct_def_owner_index` or an equivalent structured layout
+  map.
+- That HIR carrier is routed to
+  `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md`.
 
 Actions:
 
@@ -1158,15 +1178,22 @@ Actions:
 - Preserve `TextId` only as text identity. When lookup requires namespace,
   owner, declaration, record, template, or value meaning, hand off the domain
   carrier instead of adding fallback spelling.
-- Create separate open ideas for larger cross-module carriers.
+- Do not add HIR implementation or `ConstEvalEnv` HIR owner-index/layout
+  carriers in idea 139.
+- Route larger cross-module carriers through existing idea 140 or a narrower
+  open metadata idea.
 - Add tests where handoff preserves structured identity despite drifted
   rendered spelling.
 
 Completion check:
 
-- Covered handoff paths preserve available structured metadata.
-- New metadata blockers, if any, are represented as separate open ideas.
-- Focused frontend tests and a fresh build pass.
+- Covered parser/Sema-owned handoff paths preserve available structured
+  metadata.
+- Sema `lookup_record_layout` is explicitly parked as a HIR metadata blocker,
+  not carried forward as more idea 139 Step 4 execution.
+- New parser/Sema metadata blockers, if any, are represented as separate open
+  ideas.
+- Focused frontend tests and a fresh build pass are recorded in `todo.md`.
 
 ### Step 5: Audit For Rename-Only Or Wrapper-Only Work
 
