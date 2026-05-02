@@ -354,6 +354,9 @@ bool generic_type_compatible(TypeSpec a, TypeSpec b) {
     const std::optional<HirRecordOwnerKey> b_key =
         make_record_owner_key_for_type(b, nullptr);
     if (a_key && b_key) return *a_key == *b_key;
+    if (a_key || b_key) return false;
+    // Compatibility bridge for legacy TypeSpec producers that still lack
+    // complete structured owner metadata.
     const char* atag = a.tag ? a.tag : "";
     const char* btag = b.tag ? b.tag : "";
     return std::strcmp(atag, btag) == 0;
@@ -400,8 +403,29 @@ class LayoutQueries {
                 ts, module_.link_name_texts ? module_.link_name_texts.get() : nullptr)) {
       return module_.find_struct_def_by_owner_structured(*owner_key);
     }
+    // Compatibility bridge for legacy TypeSpec producers that still lack
+    // complete structured owner metadata.
     if (!ts.tag || !ts.tag[0]) return nullptr;
     const auto it = module_.struct_defs.find(ts.tag);
+    return it == module_.struct_defs.end() ? nullptr : &it->second;
+  }
+
+  const HirStructDef* find_base_struct_def_for_layout(
+      const HirStructDef& def,
+      size_t base_index) const {
+    if (base_index >= def.base_tags.size()) return nullptr;
+    const auto& base_tag = def.base_tags[base_index];
+    if (base_tag.empty()) return nullptr;
+    if (base_index < def.base_tag_text_ids.size()) {
+      const HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(def.ns_qual, def.base_tag_text_ids[base_index]);
+      if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+        return module_.find_struct_def_by_owner_structured(owner_key);
+      }
+    }
+    // Compatibility bridge for legacy base metadata that still lacks a
+    // complete structured owner key.
+    const auto it = module_.struct_defs.find(base_tag);
     return it == module_.struct_defs.end() ? nullptr : &it->second;
   }
 
@@ -539,19 +563,13 @@ void compute_record_layout(const hir::Module& module, HirStructDef& def, int pac
   for (size_t base_index = 0; base_index < def.base_tags.size(); ++base_index) {
     const auto& base_tag = def.base_tags[base_index];
     if (base_tag.empty()) continue;
-    TypeSpec base_ts{};
-    base_ts.base = TB_STRUCT;
-    base_ts.tag = base_tag.c_str();
-    if (base_index < def.base_tag_text_ids.size()) {
-      base_ts.tag_text_id = def.base_tag_text_ids[base_index];
-      base_ts.namespace_context_id = def.ns_qual.context_id;
-      base_ts.is_global_qualified = def.ns_qual.is_global_qualified;
-    }
 
-    int base_align = queries.type_align_bytes(base_ts);
+    const HirStructDef* base_def =
+        queries.find_base_struct_def_for_layout(def, base_index);
+    int base_align = base_def ? std::max(1, base_def->align_bytes) : 4;
     if (pack > 0 && base_align > pack) base_align = pack;
     offset = align_to(offset, base_align);
-    offset += queries.type_size_bytes(base_ts);
+    offset += base_def ? base_def->size_bytes : 4;
     def.align_bytes = std::max(def.align_bytes, base_align);
   }
 
