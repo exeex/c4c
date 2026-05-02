@@ -1319,6 +1319,28 @@ make_template_instantiation_argument_key(const ParsedTemplateArg& arg) {
     return key;
 }
 
+ParsedTemplateArg parsed_template_arg_from_node_slot(const Node* owner, int index) {
+    ParsedTemplateArg arg;
+    if (!owner || index < 0 || index >= owner->n_template_args) return arg;
+    arg.is_value =
+        owner->template_arg_is_value && owner->template_arg_is_value[index];
+    if (arg.is_value) {
+        arg.value =
+            owner->template_arg_values ? owner->template_arg_values[index] : 0;
+        arg.nttp_name = owner->template_arg_nttp_names
+                            ? owner->template_arg_nttp_names[index]
+                            : nullptr;
+        arg.nttp_text_id = owner->template_arg_nttp_text_ids
+                               ? owner->template_arg_nttp_text_ids[index]
+                               : kInvalidText;
+        arg.expr =
+            owner->template_arg_exprs ? owner->template_arg_exprs[index] : nullptr;
+    } else if (owner->template_arg_types) {
+        arg.type = owner->template_arg_types[index];
+    }
+    return arg;
+}
+
 std::vector<ParserTemplateState::TemplateInstantiationKey::Argument>
 make_template_instantiation_argument_keys(
     const std::vector<ParsedTemplateArg>& concrete_args) {

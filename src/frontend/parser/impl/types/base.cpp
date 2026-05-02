@@ -1279,25 +1279,8 @@ TypeSpec Parser::parse_base_type() {
                         out_args->clear();
                         out_args->reserve(owner->n_template_args);
                         for (int i = 0; i < owner->n_template_args; ++i) {
-                            ParsedTemplateArg arg;
-                            arg.is_value = owner->template_arg_is_value &&
-                                           owner->template_arg_is_value[i];
-                            if (arg.is_value) {
-                                arg.value = owner->template_arg_values
-                                                ? owner->template_arg_values[i]
-                                                : 0;
-                                arg.nttp_name =
-                                    owner->template_arg_nttp_names
-                                        ? owner->template_arg_nttp_names[i]
-                                        : nullptr;
-                                arg.nttp_text_id =
-                                    owner->template_arg_nttp_text_ids
-                                        ? owner->template_arg_nttp_text_ids[i]
-                                        : kInvalidText;
-                            } else if (owner->template_arg_types) {
-                                arg.type = owner->template_arg_types[i];
-                            }
-                            out_args->push_back(arg);
+                            out_args->push_back(
+                                parsed_template_arg_from_node_slot(owner, i));
                         }
                         return !out_args->empty();
                     };
@@ -1472,16 +1455,8 @@ TypeSpec Parser::parse_base_type() {
                         std::vector<ParsedTemplateArg> actual_args;
                         actual_args.reserve(owner->n_template_args);
                         for (int i = 0; i < owner->n_template_args; ++i) {
-                            ParsedTemplateArg arg;
-                            arg.is_value =
-                                owner->template_arg_is_value &&
-                                owner->template_arg_is_value[i];
-                            if (arg.is_value) {
-                                arg.value = owner->template_arg_values[i];
-                            } else if (owner->template_arg_types) {
-                                arg.type = owner->template_arg_types[i];
-                            }
-                            actual_args.push_back(arg);
+                            actual_args.push_back(
+                                parsed_template_arg_from_node_slot(owner, i));
                         }
 
                         std::vector<std::pair<std::string, TypeSpec>> type_bindings;
@@ -1579,25 +1554,8 @@ TypeSpec Parser::parse_base_type() {
                         std::vector<ParsedTemplateArg> actual_args;
                         actual_args.reserve(owner->n_template_args);
                         for (int i = 0; i < owner->n_template_args; ++i) {
-                            ParsedTemplateArg arg;
-                            arg.is_value = owner->template_arg_is_value &&
-                                           owner->template_arg_is_value[i];
-                            if (arg.is_value) {
-                                arg.value = owner->template_arg_values
-                                                ? owner->template_arg_values[i]
-                                                : 0;
-                                arg.nttp_name =
-                                    owner->template_arg_nttp_names
-                                        ? owner->template_arg_nttp_names[i]
-                                        : nullptr;
-                                arg.nttp_text_id =
-                                    owner->template_arg_nttp_text_ids
-                                        ? owner->template_arg_nttp_text_ids[i]
-                                        : kInvalidText;
-                            } else if (owner->template_arg_types) {
-                                arg.type = owner->template_arg_types[i];
-                            }
-                            actual_args.push_back(arg);
+                            actual_args.push_back(
+                                parsed_template_arg_from_node_slot(owner, i));
                         }
                         const ParserTemplateState::TemplateInstantiationKey
                             concrete_owner{

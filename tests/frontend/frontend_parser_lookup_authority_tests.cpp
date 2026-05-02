@@ -3933,6 +3933,60 @@ void test_nested_pending_template_arg_rendering_suppresses_expr_debug_text() {
   }
 }
 
+void test_node_template_arg_reconstruction_preserves_expr_carrier() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* lhs = parser.make_node(c4c::NK_VAR, 1);
+  lhs->kind = c4c::NK_VAR;
+  lhs->name = arena.strdup("StructuredN");
+  lhs->unqualified_text_id = texts.intern("StructuredN");
+  c4c::Node* rhs = parser.make_node(c4c::NK_INT_LIT, 1);
+  rhs->kind = c4c::NK_INT_LIT;
+  rhs->ival = 1;
+  c4c::Node* expr = parser.make_node(c4c::NK_BINOP, 1);
+  expr->kind = c4c::NK_BINOP;
+  expr->op = arena.strdup("+");
+  expr->left = lhs;
+  expr->right = rhs;
+
+  c4c::Node* owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner->n_template_args = 1;
+  owner->template_arg_is_value = arena.alloc_array<bool>(1);
+  owner->template_arg_is_value[0] = true;
+  owner->template_arg_values = arena.alloc_array<long long>(1);
+  owner->template_arg_values[0] = 0;
+  owner->template_arg_nttp_names = arena.alloc_array<const char*>(1);
+  owner->template_arg_nttp_names[0] =
+      arena.strdup("$expr:StaleRenderedName+99");
+  owner->template_arg_nttp_text_ids = arena.alloc_array<c4c::TextId>(1);
+  owner->template_arg_nttp_text_ids[0] = c4c::kInvalidText;
+  owner->template_arg_exprs = arena.alloc_array<c4c::Node*>(1);
+  owner->template_arg_exprs[0] = expr;
+
+  const c4c::Parser::TemplateArgParseResult arg =
+      c4c::parsed_template_arg_from_node_slot(owner, 0);
+  const auto key = c4c::make_template_instantiation_argument_key(arg);
+  c4c::Parser::TemplateArgParseResult stale_text_variant = arg;
+  stale_text_variant.nttp_name = arena.strdup("$expr:DifferentRenderedName+123");
+  const auto variant_key =
+      c4c::make_template_instantiation_argument_key(stale_text_variant);
+
+  expect_true(arg.expr == expr,
+              "node template-arg reconstruction should preserve the parsed "
+              "NTTP expression carrier");
+  expect_true(key.canonical_key.find("$expr:") == std::string::npos,
+              "reconstructed template-arg keys should not consume stale "
+              "`$expr:` text when a Node::template_arg_exprs carrier exists");
+  expect_true(key.canonical_key == variant_key.canonical_key,
+              "reconstructed template-arg keys should be stable across stale "
+              "rendered NTTP expression text when the structured carrier is "
+              "present");
+}
+
 void test_typespec_template_origin_equality_uses_structured_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4302,6 +4356,7 @@ int main() {
   test_template_specialization_param_lookup_rejects_rendered_fallback();
   test_nested_template_static_member_value_arg_carries_expr_node();
   test_nested_pending_template_arg_rendering_suppresses_expr_debug_text();
+  test_node_template_arg_reconstruction_preserves_expr_carrier();
   test_typespec_template_origin_equality_uses_structured_key();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
