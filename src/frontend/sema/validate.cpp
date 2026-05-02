@@ -2484,14 +2484,6 @@ class Validator {
           }
         }
         auto sym = lookup_symbol(n->name, n);
-        if (!sym.has_value() && !n->is_global_qualified &&
-            n->n_qualifier_segments == 0 && n->unqualified_name &&
-            n->unqualified_name[0] &&
-            std::string(n->unqualified_name) != n->name) {
-          // Compatibility for producers that still render unqualified ids as a
-          // visible namespace spelling before sema has bound locals.
-          sym = lookup_symbol(n->unqualified_name, n);
-        }
         if (!sym.has_value()) {
           // In an out-of-class method body, unqualified names may refer to
           // struct fields (implicit this->field).  Accept them here; the HIR

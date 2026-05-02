@@ -8,23 +8,18 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired the namespaced free-function declaration handoff where a
-qualified declarator such as `Api::target` was carried to Sema primarily as a
-rendered declaration spelling. Parser function declaration construction now
-recognizes qualified declarators whose qualifier resolves to a namespace and
-projects the declaration as resolved namespace context plus base `TextId`
-metadata before Sema mirrors function lookup keys. Known-function registration
-for that path also uses the namespace context and base `TextId`, so namespaced
-call/reference lookup no longer needs to rediscover identity from `ns::fn`.
-`frontend_parser_lookup_authority_tests` now mutates both declaration and call
-rendered spellings after parsing and proves Sema validates through the
-structured namespace/base metadata.
+Step 4 removed the `infer_expr` var-ref compatibility retry that re-entered
+`lookup_symbol(n->unqualified_name, n)` after a miss on rendered `Node::name`.
+Local var-ref Sema lookup now relies on the parser-produced structured local
+name key already carried by `unqualified_text_id`. A focused parsed authority
+test now mutates only the rendered local reference spelling and proves Sema
+validates through the declaration/reference TextId handoff.
 
 ## Suggested Next
 
 Continue Step 4 with the next parser/Sema handoff gap that still has
 producer-side `TextId`, namespace, owner, or declaration metadata available but
-also keeps a rendered compatibility spelling in the semantic lookup path.
+also keeps rendered compatibility lookup in the semantic path.
 
 ## Watchouts
 
@@ -32,6 +27,9 @@ also keeps a rendered compatibility spelling in the semantic lookup path.
 - Step 4 should preserve structured metadata that already exists. Do not add
   fallback spelling, rendered qualified-text parsing, helper-only renames, or
   string/string_view semantic lookup routes.
+- The var-ref path now depends on parser local declarations and references
+  carrying `unqualified_text_id`; if a future local-like producer has no TextId
+  carrier, fix that producer instead of reintroducing a rendered retry in Sema.
 - The deferred NTTP default-expression carrier covers parser-local evaluation
   of simple NTTP identifier references where producer template parameter
   metadata exists. It does not claim cleanup of expression-string `$expr:`

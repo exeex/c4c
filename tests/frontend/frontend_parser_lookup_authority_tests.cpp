@@ -84,6 +84,18 @@ c4c::Node* find_return_var(c4c::Node* fn) {
   return nullptr;
 }
 
+c4c::Node* find_local_decl(c4c::Node* fn, const char* name) {
+  if (!fn || !fn->body || fn->body->kind != c4c::NK_BLOCK) return nullptr;
+  for (int i = 0; i < fn->body->n_children; ++i) {
+    c4c::Node* child = fn->body->children[i];
+    if (child && child->kind == c4c::NK_DECL && child->name &&
+        std::string(child->name) == name) {
+      return child;
+    }
+  }
+  return nullptr;
+}
+
 c4c::Node* find_return_call_callee(c4c::Node* fn) {
   if (!fn || !fn->body || fn->body->kind != c4c::NK_BLOCK) return nullptr;
   for (int i = 0; i < fn->body->n_children; ++i) {
@@ -343,6 +355,40 @@ void test_namespace_qualified_function_decl_handoff_uses_context_metadata() {
   expect_true(result.ok,
               "Sema function lookup should use namespace/base TextId metadata "
               "instead of rendered qualified spelling" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
+void test_parsed_local_var_ref_handoff_uses_text_id_not_rendered_spelling() {
+  const char* source =
+      "int uses_local() {\n"
+      "  int value = 3;\n"
+      "  return value;\n"
+      "}\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  c4c::Node* fn = find_function(root, "uses_local");
+  c4c::Node* decl = find_local_decl(fn, "value");
+  c4c::Node* ref = find_return_var(fn);
+  expect_true(decl != nullptr, "parsed local declaration exists");
+  expect_true(ref != nullptr, "parsed local return reference exists");
+  expect_true(decl->unqualified_text_id != c4c::kInvalidText,
+              "local declaration should carry parser TextId metadata");
+  expect_true(ref->unqualified_text_id == decl->unqualified_text_id,
+              "local reference should preserve the declaration TextId identity");
+  expect_true(ref->unqualified_name && std::string(ref->unqualified_name) == "value",
+              "local reference should keep base spelling separate from rendered name");
+
+  ref->name = arena.strdup("stale_rendered_local_name");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema local var-ref lookup should use parser TextId metadata "
+              "instead of rendered Node::name spelling" +
                   (result.diagnostics.empty()
                        ? std::string()
                        : std::string(": ") + result.diagnostics.front().message));
@@ -1610,6 +1656,7 @@ int main() {
   test_sema_function_call_uses_using_value_alias_target_key();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
   test_namespace_qualified_function_decl_handoff_uses_context_metadata();
+  test_parsed_local_var_ref_handoff_uses_text_id_not_rendered_spelling();
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
   test_dependent_typename_rejects_visible_type_rendered_reentry();
