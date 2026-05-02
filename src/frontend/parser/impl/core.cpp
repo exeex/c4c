@@ -1010,8 +1010,8 @@ TypeSpec Parser::resolve_struct_like_typedef_type(TypeSpec ts) const {
                 find_typedef_type_by_typespec_metadata(*this, type)) {
             return structured;
         }
-        if (type.tag_text_id != kInvalidText) return nullptr;
-        const char* tag = type.tag;
+        if (typespec_has_typedef_lookup_identity_carrier(type)) return nullptr;
+        const char* tag = typespec_legacy_typedef_tag_if_present(type, 0);
         if (!tag || !tag[0]) return nullptr;
         const std::string_view name(tag);
         const TextId name_text_id = find_parser_text_id(name);
@@ -1020,7 +1020,9 @@ TypeSpec Parser::resolve_struct_like_typedef_type(TypeSpec ts) const {
                    : find_typedef_type(name_text_id);
     };
     ts = resolve_typedef_type_chain(ts);
-    if (ts.base == TB_TYPEDEF && (ts.tag || ts.tag_text_id != kInvalidText)) {
+    if (ts.base == TB_TYPEDEF &&
+        (typespec_has_typedef_lookup_identity_carrier(ts) ||
+         typespec_legacy_typedef_tag_if_present(ts, 0))) {
         if (const TypeSpec* typedef_type = find_chain_typedef(ts)) {
             ts = *typedef_type;
         }
