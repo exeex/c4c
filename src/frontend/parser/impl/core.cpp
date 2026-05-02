@@ -889,6 +889,45 @@ const TypeSpec* find_typedef_type_by_typespec_metadata(const Parser& parser,
     return parser.find_visible_typedef_type(ts.tag_text_id);
 }
 
+bool typespec_resolves_to_structured_record_ctor_type(const Parser& parser,
+                                                      const TypeSpec& ts) {
+    if (resolve_record_type_spec(ts, nullptr)) return true;
+
+    if (ts.tag_text_id == kInvalidText) return false;
+
+    if (const TypeSpec* type = find_typedef_type_by_typespec_metadata(parser, ts)) {
+        TypeSpec resolved = parser.resolve_struct_like_typedef_type(*type);
+        if (resolve_record_type_spec(resolved, nullptr)) return true;
+        if (resolved.base == TB_STRUCT || resolved.base == TB_UNION) return true;
+    }
+
+    const int context_id = ts.namespace_context_id >= 0
+                               ? ts.namespace_context_id
+                               : parser.current_namespace_context_id();
+    if (parser.has_template_struct_primary(context_id, ts.tag_text_id)) {
+        return true;
+    }
+    if (context_id != 0 &&
+        parser.has_template_struct_primary(0, ts.tag_text_id)) {
+        return true;
+    }
+
+    for (const auto& [rendered_tag, record] :
+         parser.definition_state_.struct_tag_def_map) {
+        (void)rendered_tag;
+        if (!record || record->kind != NK_STRUCT_DEF ||
+            record->unqualified_text_id != ts.tag_text_id) {
+            continue;
+        }
+        if (ts.namespace_context_id >= 0 &&
+            record->namespace_context_id != ts.namespace_context_id) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
     auto find_chain_typedef = [&](const TypeSpec& type) -> const TypeSpec* {
         if (const TypeSpec* structured =
@@ -980,11 +1019,12 @@ bool Parser::are_types_compatible(const TypeSpec& lhs,
 
 bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
     ts = resolve_struct_like_typedef_type(ts);
-    if (resolve_record_type_spec(ts, &definition_state_.struct_tag_def_map)) {
+    if (typespec_resolves_to_structured_record_ctor_type(*this, ts)) {
         return true;
     }
     if (ts.base == TB_STRUCT || ts.base == TB_UNION) return true;
     if (ts.base != TB_TYPEDEF || !ts.tag || !ts.tag[0]) return false;
+    if (ts.tag_text_id != kInvalidText) return false;
     // Compatibility fallback for TextId-less or tag-only paths that have not
     // carried structured record identity through the parser yet.
     return definition_state_.defined_struct_tags.count(ts.tag) > 0 ||

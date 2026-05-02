@@ -9,29 +9,29 @@ Current Step Title: Migrate Parser-Owned Semantic Producers
 ## Just Finished
 
 Step 2 - Migrate Parser-Owned Semantic Producers migrated
-`src/frontend/parser/impl/core.cpp::Parser::are_types_compatible`.
+`src/frontend/parser/impl/core.cpp::Parser::resolves_to_record_ctor_type`.
 
-Parser nominal type compatibility now uses structured identity before rendered
-`TypeSpec::tag`: shared `record_def` identity when both sides carry record
-definitions, then namespace context plus `tag_text_id`, global qualification,
-and qualifier TextIds when complete metadata is available. Rendered tag
-comparison remains explicit no-metadata compatibility only when neither side
-has structured nominal identity.
+Record-constructor classification now checks structured metadata before
+rendered `TypeSpec::tag`: direct `record_def`, structured typedef resolution
+from `tag_text_id`, template struct primary lookup by TextId/context, and
+record definitions matched by parser-owned record TextId metadata. Rendered tag
+fallback remains explicit compatibility only when the incoming `TypeSpec` has
+no `tag_text_id` carrier.
 
 Added focused stale-rendered-spelling coverage in
-`frontend_parser_lookup_authority_tests`: `are_types_compatible` accepts shared
-`record_def` or matching enum `tag_text_id`/namespace metadata despite stale
-rendered tags, rejects mismatched structured record/TextId identity even when
-rendered tags match, rejects one-sided structured metadata fallback, and keeps
-rendered-only compatibility working.
+`frontend_parser_lookup_authority_tests`: record-constructor classification
+uses structured typedef/record metadata before a stale rendered tag, rejects
+rendered fallback after a structured TextId miss, preserves no-metadata
+rendered fallback, and accepts direct `record_def` metadata even with different
+rendered spelling.
 
 ## Suggested Next
 
-Continue Step 2 by auditing another parser-owned semantic `TypeSpec::tag`
-consumer with existing metadata, likely `Parser::resolves_to_record_ctor_type`
-or parser struct/enum completeness helpers. Prefer `record_def` and
-`tag_text_id`/structured visible-name metadata before rendered tag fallback,
-with stale-rendered-spelling coverage and the same focused proof subset.
+Continue Step 2 by auditing parser struct/enum completeness helpers or another
+parser-owned semantic `TypeSpec::tag` consumer with existing `record_def` or
+`tag_text_id` metadata. Prefer structured record/visible-name metadata before
+rendered tag fallback, with stale-rendered-spelling coverage and the same
+focused proof subset.
 
 ## Watchouts
 
@@ -49,8 +49,8 @@ with stale-rendered-spelling coverage and the same focused proof subset.
 
 ## Proof
 
-Step 2 delegated proof passed for the parser `are_types_compatible` packet
-and wrote `test_after.log`:
+Step 2 delegated proof passed for the parser
+`resolves_to_record_ctor_type` packet and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_hir_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
 `git diff --check` passed.

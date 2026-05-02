@@ -5210,6 +5210,64 @@ void test_parser_type_compatibility_uses_structured_nominal_identity() {
               "when no nominal metadata exists");
 }
 
+void test_parser_record_ctor_classification_uses_structured_metadata() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId structured_alias_text = texts.intern("StructuredRecordAlias");
+  const c4c::TextId stale_record_text = texts.intern("StaleRenderedRecord");
+  const c4c::TextId missing_text = texts.intern("MissingStructuredRecord");
+
+  c4c::Node record{};
+  record.kind = c4c::NK_STRUCT_DEF;
+
+  c4c::TypeSpec structured_record{};
+  structured_record.array_size = -1;
+  structured_record.inner_rank = -1;
+  structured_record.base = c4c::TB_STRUCT;
+  structured_record.tag = arena.strdup("StructuredRecord");
+  structured_record.record_def = &record;
+
+  parser.register_typedef_binding(structured_alias_text, structured_record,
+                                  false);
+  parser.definition_state_.defined_struct_tags.insert("StaleRenderedRecord");
+
+  c4c::TypeSpec query{};
+  query.array_size = -1;
+  query.inner_rank = -1;
+  query.base = c4c::TB_TYPEDEF;
+  query.tag = arena.strdup("StaleRenderedRecord");
+  query.tag_text_id = structured_alias_text;
+
+  expect_true(parser.resolves_to_record_ctor_type(query),
+              "record-constructor classification should use structured "
+              "typedef/record metadata before stale rendered TypeSpec::tag");
+
+  query.tag_text_id = missing_text;
+  expect_true(!parser.resolves_to_record_ctor_type(query),
+              "record-constructor classification should not fall back to "
+              "rendered tag after structured TextId metadata misses");
+
+  query.tag_text_id = c4c::kInvalidText;
+  expect_true(parser.resolves_to_record_ctor_type(query),
+              "record-constructor classification should retain rendered tag "
+              "fallback when no structured metadata carrier exists");
+
+  c4c::TypeSpec direct_record{};
+  direct_record.array_size = -1;
+  direct_record.inner_rank = -1;
+  direct_record.base = c4c::TB_TYPEDEF;
+  direct_record.tag = arena.strdup("DifferentRenderedRecord");
+  direct_record.tag_text_id = stale_record_text;
+  direct_record.record_def = &record;
+  expect_true(parser.resolves_to_record_ctor_type(direct_record),
+              "record-constructor classification should accept direct "
+              "record_def metadata before rendered tag spelling");
+}
+
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5559,6 +5617,7 @@ int main() {
   test_typespec_equality_uses_structured_type_identity_before_rendered_tag();
   test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag();
   test_parser_type_compatibility_uses_structured_nominal_identity();
+  test_parser_record_ctor_classification_uses_structured_metadata();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();
