@@ -1458,6 +1458,44 @@ void test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_n
               "ordinary variable fallback should record legacy rendered parity mismatch");
 }
 
+void test_deferred_member_typedef_record_def_miss_rejects_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealOwnerWithoutAlias");
+
+  c4c::Node* stale_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  stale_record->name = arena.strdup("StaleRenderedOwnerWithAlias");
+  stale_record->n_member_typedefs = 1;
+  stale_record->member_typedef_names = arena.alloc_array<const char*>(1);
+  stale_record->member_typedef_names[0] = arena.strdup("value_type");
+  stale_record->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  stale_record->member_typedef_types[0].array_size = -1;
+  stale_record->member_typedef_types[0].inner_rank = -1;
+  stale_record->member_typedef_types[0].base = c4c::TB_LONG;
+
+  c4c::TypeSpec owner{};
+  owner.array_size = -1;
+  owner.inner_rank = -1;
+  owner.base = c4c::TB_STRUCT;
+  owner.tag = arena.strdup("StaleRenderedOwnerWithAlias");
+  owner.record_def = real_record;
+  owner.deferred_member_type_name = arena.strdup("value_type");
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.struct_def_nodes_["StaleRenderedOwnerWithAlias"] = stale_record;
+  const bool resolved = lowerer.resolve_struct_member_typedef_if_ready(&owner);
+
+  expect_true(!resolved,
+              "structured record_def member typedef miss must not fall back to stale rendered owner tag");
+  expect_true(owner.base == c4c::TB_STRUCT &&
+                  owner.deferred_member_type_name != nullptr,
+              "failed structured member typedef lookup should leave the pending owner type intact");
+}
+
 }  // namespace
 
 int main() {
@@ -1479,6 +1517,7 @@ int main() {
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
   test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name();
   test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_name();
+  test_deferred_member_typedef_record_def_miss_rejects_stale_tag();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

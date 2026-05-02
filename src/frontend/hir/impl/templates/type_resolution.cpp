@@ -487,6 +487,7 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   };
 
   if (try_resolve_from_origin()) return true;
+  if (has_record_def) return false;
   if (!ts->tag || !ts->tag[0]) return false;
   TypeSpec resolved_member{};
   if (!resolve_struct_member_typedef_type(

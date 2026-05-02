@@ -8,68 +8,44 @@ Current Step Title: Migrate HIR Type And Record Consumers
 
 ## Just Finished
 
-Plan-owner review accepted Step 2 - Migrate Parser-Owned Semantic Producers as
-complete enough to advance after five parser/Sema migration slices through
-HEAD `54adc0651`:
+Step 3 - Migrate HIR Type And Record Consumers migrated the deferred member
+typedef resolver in
+`src/frontend/hir/impl/templates/type_resolution.cpp::resolve_struct_member_typedef_if_ready`.
+When a `TypeSpec` carries `record_def`, the resolver now treats that structured
+record owner as authoritative after also trying template-origin metadata; it no
+longer falls through to rendered `TypeSpec::tag`/`struct_def_nodes_` lookup
+after a structured `record_def` miss. Rendered owner-tag lookup remains the
+explicit compatibility path for TypeSpecs that lack `record_def` and template
+origin metadata.
 
-- `src/frontend/sema/type_utils.cpp::type_binding_values_equivalent` compares
-  TypeSpec bindings through template parameter owner/index/TextId metadata,
-  `record_def`, complete namespace plus `tag_text_id` plus qualifier TextIds,
-  `tpl_struct_origin_key`, and `deferred_member_type_text_id` before rendered
-  compatibility.
-- Parser typedef-chain resolution uses TypeSpec `tag_text_id` and structured
-  typedef keys before tag spelling, and blocks rendered fallback once a TextId
-  carrier exists but misses.
-- Parser nominal type compatibility compares shared `record_def` or complete
-  structured text identity before tag spelling.
-- Parser record-constructor classification uses `record_def`, structured
-  typedef metadata, template primary keys, and record-node metadata keyed by
-  `unqualified_text_id` before rendered compatibility.
-- `src/frontend/parser/impl/support.cpp::types_compatible_p` mirrors the
-  structured nominal identity policy used by `Parser::are_types_compatible`.
-
-Step 2 tests in `frontend_parser_lookup_authority_tests` cover stale rendered
-type spelling for the migrated parser/Sema routes, including positive
-structured-carrier wins, structured mismatch rejection despite matching
-rendered tags, one-sided metadata rejection, and rendered-only compatibility.
-
-Residual parser `TypeSpec::tag` classifications accepted for this transition:
-
-- `support.cpp::resolve_typedef_chain` remains rendered-key compatibility
-  because its only input binding map is `std::unordered_map<std::string,
-  TypeSpec>`; migrating it needs a structured typedef binding map at the API
-  boundary and is not required before HIR consumer migration.
-- `support.cpp` layout helpers (`struct_sizeof`, `field_align`,
-  `compute_offsetof`, `eval_const_int`) already flow through
-  `resolve_record_type_spec`, which prefers `record_def`; rendered
-  `struct_tag_def_map` is layout compatibility storage for tag-only callers.
-- `declarations.cpp` duplicated `is_incomplete_object_type` lambdas already
-  call `resolve_record_type_spec`, so `record_def` wins for complete record
-  metadata. The remaining `ts.tag` self-reference check is a display/current
-  record spelling compatibility route; extracting a helper or proving stale
-  rendered drift there can wait for a later parser helper packet if deletion
-  probing shows it still blocks.
-- Parser generated names, anonymous record tags, enum diagnostic text,
-  mangled template instantiation tags, and template argument debug rendering
-  remain display/final-spelling/debug payloads, not Step 2 semantic lookup
-  targets.
+Focused coverage in `frontend_hir_lookup_tests` adds a stale rendered spelling
+fixture where `record_def` points at an owner without the requested member
+typedef while the stale rendered tag names a different owner that does define
+the alias. The resolver now rejects the stale rendered fallback and leaves the
+pending owner type intact.
 
 ## Suggested Next
 
-Start Step 3 - Migrate HIR Type And Record Consumers with one narrow
-metadata-backed HIR consumer migration. Prefer a route where `record_def`,
-`tag_text_id` plus namespace/qualifier TextIds, `HirRecordOwnerKey`, module
-declaration lookup keys, member keys, template metadata, or module type refs
-are already present, and leave rendered `TypeSpec::tag`/`struct_defs` lookup
-only as explicit no-metadata compatibility or output spelling. Add focused HIR
-coverage where valid structured metadata wins over stale rendered type
-spelling.
+Continue Step 3 with another bounded HIR `TypeSpec::tag` consumer where
+structured owner metadata is already present. A good next packet is one
+template/type route that still compares or indexes by rendered `tag`, such as
+`src/frontend/hir/compile_time_engine.hpp` TypeSpec template-argument matching
+or a narrow `src/frontend/hir/impl/templates/type_resolution.cpp` caller that
+can pass `record_def`, `tag_text_id`, owner keys, or template metadata instead
+of only rendered owner spelling.
 
 ## Watchouts
 
 - Do not replace `TypeSpec::tag` with another rendered-string semantic field.
 - Preserve diagnostics, dumps, mangling, ABI/link-visible text, and final
   spelling as payloads.
+- The deferred member typedef resolver still intentionally uses rendered
+  `resolve_struct_member_typedef_type(tag, ...)` for no-metadata compatibility
+  and for concrete realized template-origin base traversal after origin
+  materialization.
+- The default preset used for this packet does not register
+  `frontend_hir_tests`; focused coverage for this route was therefore added to
+  `frontend_hir_lookup_tests`, which the delegated regex compiles and runs.
 - Do not weaken tests, mark supported cases unsupported, or add named-case
   shortcuts.
 - Keep downstream LIR/BIR/backend carrier gaps as separate follow-up ideas
@@ -81,12 +57,8 @@ spelling.
 
 ## Proof
 
-Step 2 delegated packets recorded focused proof with:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_hir_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+Step 3 delegated proof passed with:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-Code review in `review/step2_typespec_tag_parser_route_review.md` reported no
-blocking findings, no overfit, and the route on track. The current workspace
-does not contain `test_after.log`; this lifecycle-only Step 2 review did not
-rerun build/test proof.
-
-`git diff --check -- todo.md` passed after the plan-owner transition.
+Result: build passed and 60/60 selected tests passed. Proof log:
+`test_after.log`. `git diff --check` passed.
