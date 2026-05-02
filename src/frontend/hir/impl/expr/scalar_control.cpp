@@ -275,21 +275,26 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       if (ts.base == TB_VOID) ts.base = TB_INT;
       return append_expr(n, IntLiteral{*v, false}, ts);
     }
-    auto sit = module_->struct_defs.find(ctx->method_struct_tag);
-    if (sit != module_->struct_defs.end() &&
-        find_struct_instance_field_including_bases(*module_, ctx->method_struct_tag, r.name)) {
+    TypeSpec this_owner_ts{};
+    this_owner_ts.base = TB_STRUCT;
+    this_owner_ts.tag = ctx->method_struct_tag.c_str();
+    this_owner_ts.array_size = -1;
+    this_owner_ts.inner_rank = -1;
+    auto owner_sdit = struct_def_nodes_.find(ctx->method_struct_tag);
+    if (owner_sdit != struct_def_nodes_.end()) {
+      this_owner_ts.record_def = const_cast<Node*>(owner_sdit->second);
+    }
+    const HirStructDef* owner_layout =
+        find_struct_def_for_layout_type(this_owner_ts);
+    if (owner_layout &&
+        find_struct_instance_field_including_bases(this_owner_ts, r.name)) {
       DeclRef this_ref{};
       this_ref.name = "this";
       auto pit = ctx->params.find("this");
       if (pit != ctx->params.end()) this_ref.param_index = pit->second;
-      TypeSpec this_ts{};
-      this_ts.base = TB_STRUCT;
-      this_ts.tag = sit->second.tag.c_str();
+      TypeSpec this_ts = this_owner_ts;
+      this_ts.tag = owner_layout->tag.c_str();
       this_ts.ptr_level = 1;
-      auto sdit = struct_def_nodes_.find(ctx->method_struct_tag);
-      if (sdit != struct_def_nodes_.end()) {
-        this_ts.record_def = const_cast<Node*>(sdit->second);
-      }
       ExprId this_id = append_expr(n, this_ref, this_ts, ValueCategory::LValue);
       MemberExpr me{};
       me.base = this_id;
@@ -299,9 +304,10 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
           this_ts, true, &ctx->tpl_bindings, &ctx->nttp_bindings,
           &ctx->method_struct_tag, n, std::string("implicit-this-member:") + r.name);
-      me.resolved_owner_tag = owner_tag.value_or(ctx->method_struct_tag);
+      me.resolved_owner_tag = owner_tag.value_or(owner_layout->tag);
       me.member_symbol_id =
-          find_struct_member_symbol_id(me.resolved_owner_tag, r.name);
+          find_struct_member_symbol_id(
+              this_owner_ts, me.resolved_owner_tag, r.name, me.field_text_id);
       me.is_arrow = true;
       return append_expr(n, me, n->type, ValueCategory::LValue);
     }

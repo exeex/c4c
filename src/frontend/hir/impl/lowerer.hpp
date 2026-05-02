@@ -755,6 +755,10 @@ class Lowerer {
 
   const HirStructDef* find_struct_def_for_layout_type(const TypeSpec& ts) const;
 
+  const HirStructField* find_struct_instance_field_including_bases(
+      const TypeSpec& owner_ts,
+      const std::string& field) const;
+
   long long flat_scalar_count(const TypeSpec& ts) const;
 
   long long deduce_array_size_from_init(const GlobalInit& init) const;

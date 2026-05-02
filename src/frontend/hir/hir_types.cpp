@@ -963,6 +963,28 @@ const HirStructDef* Lowerer::find_struct_def_for_layout_type(const TypeSpec& ts)
   return it == module_->struct_defs.end() ? nullptr : &it->second;
 }
 
+const HirStructField* Lowerer::find_struct_instance_field_including_bases(
+    const TypeSpec& owner_ts,
+    const std::string& field) const {
+  const HirStructDef* layout = find_struct_def_for_layout_type(owner_ts);
+  if (!layout) return nullptr;
+  for (const auto& fld : layout->fields) {
+    if (fld.name == field) return &fld;
+  }
+  for (const auto& base_tag : layout->base_tags) {
+    TypeSpec base_ts{};
+    base_ts.base = TB_STRUCT;
+    base_ts.tag = base_tag.c_str();
+    base_ts.array_size = -1;
+    base_ts.inner_rank = -1;
+    if (const HirStructField* inherited =
+            find_struct_instance_field_including_bases(base_ts, field)) {
+      return inherited;
+    }
+  }
+  return nullptr;
+}
+
 long long Lowerer::flat_scalar_count(const TypeSpec& ts) const {
   if (is_vector_ty(ts)) return ts.vector_lanes > 0 ? ts.vector_lanes : 1;
   if (ts.array_rank > 0) {

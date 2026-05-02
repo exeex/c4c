@@ -3419,6 +3419,12 @@ void test_hir_implicit_this_member_symbol_prefers_record_def_over_stale_tag() {
   real_def.tag = "RealThisOwner";
   real_def.tag_text_id = module.link_name_texts->intern("RealThisOwner");
   real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  c4c::hir::HirStructField real_field;
+  real_field.name = "field";
+  real_field.field_text_id = module.link_name_texts->intern("field");
+  real_field.elem_type = int_ts;
+  real_field.member_symbol_id = real_id;
+  real_def.fields.push_back(real_field);
   module.index_struct_def_owner(*owner_key, real_def.tag, true);
   module.struct_defs[real_def.tag] = real_def;
 

@@ -1249,6 +1249,81 @@ void test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_t
               "aggregate init normalization should map the second structured owner field");
 }
 
+void test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  c4c::Arena arena;
+
+  c4c::Node* record_node = arena.alloc_array<c4c::Node>(1);
+  record_node->kind = c4c::NK_STRUCT_DEF;
+  record_node->name = arena.strdup("RealThisLayout");
+  record_node->unqualified_name = arena.strdup("RealThisLayout");
+  record_node->unqualified_text_id = module.link_name_texts->intern("RealThisLayout");
+  record_node->namespace_context_id = 41;
+  lowerer.struct_def_nodes_["StaleThisLayout"] = record_node;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  const c4c::MemberSymbolId real_id =
+      module.member_symbols.intern("RealThisLayout::field");
+  const c4c::MemberSymbolId stale_id =
+      module.member_symbols.intern("StaleThisLayout::field");
+
+  c4c::hir::HirStructField real_field;
+  real_field.name = "field";
+  real_field.field_text_id = module.link_name_texts->intern("field");
+  real_field.elem_type = int_ts;
+  real_field.member_symbol_id = real_id;
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealThisLayout";
+  real_def.tag_text_id = record_node->unqualified_text_id;
+  real_def.ns_qual.context_id = record_node->namespace_context_id;
+  real_def.fields.push_back(real_field);
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(record_node);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for implicit-this recovery");
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructField stale_field = real_field;
+  stale_field.member_symbol_id = stale_id;
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleThisLayout";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleThisLayout");
+  stale_def.ns_qual.context_id = record_node->namespace_context_id;
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* var = arena.alloc_array<c4c::Node>(1);
+  var->kind = c4c::NK_VAR;
+  var->name = arena.strdup("field");
+  var->unqualified_name = arena.strdup("field");
+  var->unqualified_text_id = real_field.field_text_id;
+  var->type = int_ts;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.method_struct_tag = "StaleThisLayout";
+  ctx.params["this"] = 0;
+
+  const c4c::hir::ExprId field_id = lowerer.lower_var_expr(&ctx, var);
+  const c4c::hir::Expr* field_expr = module.find_expr(field_id);
+  const auto* member =
+      field_expr ? std::get_if<c4c::hir::MemberExpr>(&field_expr->payload) : nullptr;
+  expect_true(member != nullptr,
+              "implicit-this field recovery should synthesize a member expression");
+  expect_true(member->resolved_owner_tag == "RealThisLayout",
+              "implicit-this field recovery should prefer structured owner layout");
+  expect_true(member->member_symbol_id == real_id &&
+                  member->member_symbol_id != stale_id,
+              "implicit-this field recovery should not use stale rendered owner symbol");
+}
+
 }  // namespace
 
 int main() {
@@ -1266,6 +1341,7 @@ int main() {
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
+  test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

@@ -8,29 +8,26 @@ Current Step Title: Add Structured HIR Record-Layout Handoff
 
 ## Just Finished
 
-Step 3 - Add Structured HIR Record-Layout Handoff now has a bounded global
-aggregate-init normalization migration. `Lowerer::find_struct_def_for_layout_type`
-centralizes metadata-backed layout lookup for `TypeSpec`, preferring
-`record_def` / TextId-derived `HirRecordOwnerKey` and
-`Module::find_struct_def_by_owner_structured` before falling back to rendered
-`TypeSpec::tag`.
+Step 3 - Add Structured HIR Record-Layout Handoff now has a bounded
+member/object owner recovery migration. Implicit `this` field recovery in
+`Lowerer::lower_var_expr` now builds a `TypeSpec` for the current method owner,
+uses `record_def` / TextId metadata through `find_struct_def_for_layout_type`
+and `find_struct_instance_field_including_bases`, and only falls back to
+rendered `ctx.method_struct_tag` through the layout helper compatibility path.
 
-The aggregate-init normalization family now uses that helper for flat scalar
-counting, struct/union normalization eligibility, recursive flat-list
-consumption, and top-level struct/union normalization. Rendered
-`Module::struct_defs` lookup remains the explicit no-metadata compatibility
-fallback inside the helper.
+The recovered member expression now carries the structured owner tag when owner
+metadata is available, and member-symbol lookup uses the `TypeSpec` owner route
+before rendered member-symbol names.
 
-Focused coverage proves global aggregate-init normalization maps fields from
-the structured owner layout when the rendered tag points at a stale one-field
-record.
+Focused coverage proves stale rendered `ctx.method_struct_tag` loses to the
+structured owner layout for implicit `this->field` recovery.
 
 ## Suggested Next
 
-Continue Step 3 by auditing the remaining metadata-backed HIR record-layout
-consumers outside consteval, builtin layout queries, and aggregate-init
-normalization; member/object owner recovery and inherited field lookup are the
-next likely semantic routes if Step 3 needs another slice.
+Continue Step 3 by auditing inherited-field and defaulted-method/destructor
+member traversal routes that still start from rendered `struct_defs` tags, or
+ask supervisor/plan-owner whether Step 3 has enough representative structured
+record-layout handoffs to move toward Step 4.
 
 ## Watchouts
 
@@ -43,9 +40,10 @@ next likely semantic routes if Step 3 needs another slice.
 - Do not count mangled/link-visible strings or HIR dump strings as cleanup
   targets unless they are used to recover semantic identity.
 - Record-layout cleanup is a separate boundary from NTTP cleanup. Sema
-  consteval, HIR builtin layout queries, and global aggregate-init
-  normalization now receive/use owner metadata, but several HIR lowering/layout
-  consumers still query rendered `Module::struct_defs` directly.
+  consteval, HIR builtin layout queries, global aggregate-init normalization,
+  and implicit-this member recovery now receive/use owner metadata, but several
+  HIR lowering/layout consumers still query rendered `Module::struct_defs`
+  directly.
 - Residual rendered `NttpBindings` uses should not be removed mechanically:
   several are ABI/display/cache payloads, pack synthetic-key compatibility, or
   deferred expression/debug-text boundaries without a complete structured
@@ -63,7 +61,7 @@ next likely semantic routes if Step 3 needs another slice.
 ## Proof
 
 Focused pre-proof passed:
-`cmake --build --preset default --target frontend_hir_lookup_tests && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`.
 
 Delegated proof passed and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
