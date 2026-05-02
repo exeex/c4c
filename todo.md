@@ -3,28 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Convert Or Demote Legacy HIR Lookup Routes
+Current Step ID: 5
+Current Step Title: Preserve Display And Link Text Boundaries
 
 ## Just Finished
 
-Step 4 - Convert Or Demote Legacy HIR Lookup Routes now has an ordinary
-variable global fallback demotion. `Lowerer::lower_var_expr` no longer calls
-rendered `module_->lookup_global_id(r.name)` for the global fallback; it uses
-the metadata-backed `DeclRef` already built from the AST variable node and
-resolves through `Module::resolve_global_decl`, preserving rendered fallback
-through the central resolver when structured metadata is absent or incomplete.
+Plan-owner review accepted Step 4 - Convert Or Demote Legacy HIR Lookup Routes
+as complete enough for this runbook. Step 4 converted local extern global
+lookup, local function prototype lookup, and ordinary variable global fallback
+from direct rendered lookup to central structured-first resolvers, with
+stale-rendered-name tests.
 
-Focused coverage proves a stale rendered variable name resolves to the
-structured global, rewrites the lowered `DeclRef` to that resolved global, and
-records a legacy rendered parity mismatch.
+Remaining direct `lookup_function_id` / `lookup_global_id` surfaces are
+classified as central legacy helper fallback in `hir_ir.hpp` or
+template-global generated/mangled-name materialization in
+`impl/templates/global.cpp`, not active metadata-backed lookup routes for this
+runbook.
+
+Step 5 - Preserve Display And Link Text Boundaries is now the active execution
+step.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining direct `lookup_function_id` /
-`lookup_global_id` callers. Template/global materialization by mangled names
-should likely stay compatibility payload; remaining AST-backed callee/global
-references should route through `resolve_*_decl` when they still bypass it.
+Start Step 5 by auditing the strings touched by Steps 2-4 and adding or
+confirming focused assertions that display, diagnostics, dumps, mangling,
+final spelling, ABI/link-visible names, and explicit compatibility payloads are
+preserved while structured metadata decides semantic identity.
 
 ## Watchouts
 
@@ -59,9 +63,13 @@ references should route through `resolve_*_decl` when they still bypass it.
 - Do not mechanically replace `struct_defs` lookups in dump/codegen/template
   materialization paths: those often consume rendered storage names or generated
   specialization names as compatibility payloads, not semantic lookup authority.
-- Step 4 should preserve `LegacyRendered` tests for missing or incomplete
-  metadata; the goal is to move metadata-backed callers to the central
-  structured-first resolver APIs, not to remove compatibility fallback.
+- Step 5 is an audit/preservation step, not a license to remove every remaining
+  string. Link-visible names, mangled names, generated specialization names,
+  HIR dumps, diagnostics, and explicit no-metadata compatibility routes should
+  remain strings when they are payloads rather than lookup authority.
+- Preserve `LegacyRendered` tests for missing or incomplete metadata; Step 4
+  moved metadata-backed callers to central structured-first resolver APIs
+  without deleting compatibility fallback.
 
 ## Proof
 
@@ -74,5 +82,8 @@ Step 3 delegated proof passed and wrote `test_after.log`:
 Step 4 focused pre-proof passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`.
 
-Delegated proof passed and wrote `test_after.log`:
+Step 4 delegated proof passed and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+
+No new validation was run for this lifecycle-only Step 4 review and Step 5
+pointer update.
