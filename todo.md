@@ -8,36 +8,27 @@ Current Step Title: Final Frontend Coverage And Regression Check
 
 ## Just Finished
 
-Step 5 passed post-blocker-fix review in
-`review/step5_post_blocker_fixes_audit.md`: route alignment is on track, no
-blocking testcase-overfit was found, and the reviewer recommends continuing
-into Step 6 with broader validation before acceptance.
+Step 6 fixed the final `frontend_parser_tests` validation failure:
+`enum constant lookup should reject stale qualified rendered names after a
+structured enum miss`.
 
-The prior parser `find_known_fn_name_key_from_spelling` /
-`intern_known_fn_name_key_from_spelling` wrapper blocker is fixed. Semantic key
-construction from separate `TextId` plus namespace-context carriers now goes
-through `qualified_key_in_context`; the only retained rendered-string parsing
-is visibly named `*_compatibility_key_from_rendered_qualified_spelling` and is
-classified as a no-segment-carrier compatibility boundary for single `TextId`
-values whose text already contains `::`.
+The failure reproduced under the delegated Step 6 proof command. Sema
+`lookup_symbol` already suppressed rendered compatibility re-entry for
+qualified-name segment metadata, but a leading `::` without owner segments was
+not counted as qualified structured metadata. That let
+`structured_enum_const_keys_by_name_` rescue a stale rendered enum spelling
+after the structured enum lookup missed.
 
-The prior Sema rendered global/enum compatibility return blocker is fixed for
-Step 5: returned authority now comes through structured keys, though
-`lookup_symbol(const std::string& name, const Node* reference)` remains in
-Step 6 watch scope because its public shape is still string-taking and the
-no-reference/no-qualified-metadata path can still use rendered spelling to
-find a structured key.
+`src/frontend/sema/validate.cpp` now treats `reference->is_global_qualified`
+as qualified structured metadata for the rendered-key guard. The fix preserves
+structured-key authority and does not weaken the stale-qualified enum
+expectation.
 
 ## Suggested Next
 
-Execute Step 6 validation with a fresh canonical proof artifact. Minimum
-review-required scope:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`
-
-Because idea 139 has many commits since the active contract checkpoint and has
-touched several parser/Sema lookup families, Step 6 should also run a broader
-frontend CTest pass or the repo's regression guard before final acceptance.
+Supervisor should review this narrow Step 6 slice and decide whether final
+acceptance also needs the broader frontend pass or regression guard noted by
+the Step 5 audit.
 
 ## Watchouts
 
@@ -57,14 +48,12 @@ frontend CTest pass or the repo's regression guard before final acceptance.
   `ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` before
   execution resumes on that boundary.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.
+- Existing untracked `review/step5_*.md` artifacts were also left untouched.
 
 ## Proof
 
-Step 5 executor-reported proof after replacing the parser-side
-`*_from_spelling` semantic wrapper route:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
+Step 6 delegated proof:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Reported result: build completed successfully; CTest passed `886/886` matched
-tests. The Step 5 audit notes that the root `test_after.log` artifact was not
-present during review, so Step 6 must produce a fresh canonical
-`test_after.log` before acceptance.
+Result: build completed successfully; CTest passed `887/887` matched tests.
+Canonical proof log: `test_after.log`.

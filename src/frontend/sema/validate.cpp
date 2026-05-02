@@ -1097,7 +1097,8 @@ class Validator {
     const TypeSpec* rendered_global_compatibility = g != globals_.end() ? &g->second : nullptr;
     const bool reference_has_qualified_structured_metadata =
         qualified_structured_key.has_value() &&
-        !qualified_structured_key->qualifier_text_ids.empty();
+        ((reference && reference->is_global_qualified) ||
+         !qualified_structured_key->qualifier_text_ids.empty());
     if (qualified_structured_key.has_value()) {
       const TypeSpec* structured_global = lookup_global_by_key(*qualified_structured_key);
       (void)compare_sema_lookup_ptrs(rendered_global_compatibility, structured_global);
