@@ -8,27 +8,20 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared the HIR
-specialization-key display deletion-probe cluster in
-`src/frontend/hir/hir_ir.hpp::canonical_type_str`. Record/enum/union key text
-now uses `record_def` namespace/unqualified TextId, `tag_text_id` plus
-namespace/qualifier metadata, template-parameter TextIds, deferred-member
-TextIds, or template-origin keys before emitting the explicit unknown marker.
-It no longer reads rendered `TypeSpec::tag`.
+Step 4 - Probe Field Removal And Split Boundaries fixed the full-baseline
+regression in
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp` after the parser
+helper contract changed. The
+`is_dependent_template_struct_specialization` coverage now asserts that
+tag-only/no-carrier type arguments do not recover dependency from rendered
+`TypeSpec::tag` spelling. This aligns the test with the cleared
+`typespec_mentions_template_param` deletion-probe cluster, where structured
+carriers (`tag_text_id`, `template_param_text_id`,
+`deferred_member_type_text_id`, and nested carriers) are authoritative.
 
-Compatibility tradeoff: tag-only/no-metadata canonical type strings now render
-as `struct.?`/`union.?`/`enum.?` for this key helper instead of preserving the
-legacy rendered tag spelling. Human-facing HIR dump binding text still keeps
-the final display spelling (`{T=struct Probe}`); the specialization key text is
-now metadata-derived (`struct.tag.ctx...text...`) for no-tag future
-compatibility.
-
-Focused coverage in `frontend_hir_lookup_tests` proves stale rendered tag
-spelling is absent when structured record metadata is present and no-metadata
-canonical type strings use explicit unknown spelling. The
-`cpp_hir_template_function_deduction_binding` dump expectation was updated to
-assert the structured specialization-key spelling while preserving the
-human-facing binding display.
+The nearby deferred-member-name no-carrier compatibility assertion remains in
+place as an explicit non-`tag` rendered fallback. No implementation change was
+needed; the regression was a stale test expectation.
 
 ## Suggested Next
 
@@ -36,9 +29,9 @@ Continue Step 4 by choosing another compile-failure cluster and either
 migrating it or explicitly demoting it to display/final-spelling/no-metadata
 compatibility. A good next packet is to isolate the remaining HIR
 ABI/final-spelling helper `type_suffix_for_mangling` behind named compatibility
-rendering, or to migrate a narrow HIR semantic consumer in `hir_types.cpp` such as
-`resolve_typedef_to_struct` or `find_struct_def_for_layout_type` fallback when
-existing `record_def`/TextId owner metadata is available.
+rendering, or to migrate a narrow HIR semantic consumer in `hir_types.cpp` such
+as `resolve_typedef_to_struct` or `find_struct_def_for_layout_type` fallback
+when existing `record_def`/TextId owner metadata is available.
 
 ## Watchouts
 
@@ -54,7 +47,8 @@ existing `record_def`/TextId owner metadata is available.
 - The parser `ast.hpp` helper cluster from the first probe is cleared for
   `encode_template_arg_debug_ref` and `typespec_mentions_template_param`;
   plain rendered template-parameter tag detection is no longer compatibility in
-  that helper.
+  that helper. `frontend_parser_lookup_authority_tests` now asserts this
+  tag-only/no-carrier rejection.
 - The HIR pending-type-ref display/debug cluster is cleared for
   `encode_pending_type_ref`; plain rendered tag spelling is intentionally not
   preserved there when the future no-tag field removal lands.
@@ -80,8 +74,8 @@ existing `record_def`/TextId owner metadata is available.
 
 ## Proof
 
-Step 4 delegated proof passed with:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+Step 4 baseline-regression proof passed with:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-Result: build passed and 61/61 selected tests passed. Proof log:
+Result: build passed and 62/62 selected tests passed. Proof log:
 `test_after.log`. `git diff --check` passed.

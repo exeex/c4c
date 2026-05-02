@@ -4844,8 +4844,8 @@ void test_dependent_template_specialization_uses_typespec_carriers_before_text()
 
   specialization->template_arg_types[0] = make_type();
   specialization->template_arg_types[0].tag_text_id = c4c::kInvalidText;
-  expect_true(c4c::is_dependent_template_struct_specialization(specialization),
-              "no-carrier type args should keep rendered tag compatibility");
+  expect_true(!c4c::is_dependent_template_struct_specialization(specialization),
+              "no-carrier type args should not recover dependency from rendered TypeSpec tag spelling");
 
   specialization->template_arg_types[0] = make_type();
   specialization->template_arg_types[0].tag_text_id = c4c::kInvalidText;
