@@ -147,27 +147,45 @@ TypeBindingLookupResult lookup_type_binding_by_typespec_key(const ConstEvalEnv& 
   return {TypeBindingLookupStatus::Found, &it->second};
 }
 
+bool has_type_binding_typespec_key_carrier(const TypeSpec& ts) {
+  return ts.template_param_owner_text_id != kInvalidText &&
+         ts.template_param_index >= 0;
+}
+
+bool has_type_binding_typespec_text_carrier(const TypeSpec& ts) {
+  return ts.tag_text_id != kInvalidText;
+}
+
+bool has_type_binding_metadata_channel(const ConstEvalEnv& env) {
+  return env.type_bindings_by_text || env.type_bindings_by_key ||
+         env.type_binding_text_ids_by_name || env.type_binding_keys_by_name;
+}
+
 // Resolve a TypeSpec through type_bindings if it's a TB_TYPEDEF with a known substitution.
 TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (ts.base != TB_TYPEDEF || !ts.tag) return ts;
   const std::string name = ts.tag;
+  const bool has_intrinsic_carrier =
+      has_type_binding_typespec_key_carrier(ts) ||
+      has_type_binding_typespec_text_carrier(ts);
 
   const TypeBindingLookupResult intrinsic_key =
       lookup_type_binding_by_typespec_key(env, ts);
   if (intrinsic_key.status == TypeBindingLookupStatus::Found) return *intrinsic_key.type;
   if (intrinsic_key.status == TypeBindingLookupStatus::Miss) return ts;
+
+  const TypeBindingLookupResult intrinsic_text =
+      lookup_type_binding_by_text_id(env, ts.tag_text_id);
+  if (intrinsic_text.status == TypeBindingLookupStatus::Found) return *intrinsic_text.type;
+  if (intrinsic_text.status == TypeBindingLookupStatus::Miss) return ts;
+  if (has_intrinsic_carrier && has_type_binding_metadata_channel(env)) return ts;
+
   bool has_authoritative_metadata = false;
 
   const TypeBindingLookupResult structured = lookup_type_binding_by_key(env, name);
   if (structured.status == TypeBindingLookupStatus::Found) return *structured.type;
   has_authoritative_metadata =
       has_authoritative_metadata || structured.status == TypeBindingLookupStatus::Miss;
-
-  const TypeBindingLookupResult intrinsic_text =
-      lookup_type_binding_by_text_id(env, ts.tag_text_id);
-  if (intrinsic_text.status == TypeBindingLookupStatus::Found) return *intrinsic_text.type;
-  has_authoritative_metadata =
-      has_authoritative_metadata || intrinsic_text.status == TypeBindingLookupStatus::Miss;
 
   const TypeBindingLookupResult text = lookup_type_binding_by_text(env, name);
   if (text.status == TypeBindingLookupStatus::Found) return *text.type;

@@ -8,26 +8,30 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 tightened the Sema consteval NTTP rendered-name compatibility route in
-`ConstEvalEnv::lookup_rendered_nttp_compatibility()`. The exact route examined
-was `ConstEvalEnv::lookup(Node*)` after a structured or TextId metadata miss:
-the compatibility helper still checked structured/TextId NTTP maps first, but
-could then fall through to flat rendered `nttp_bindings` unless the miss was
-classified as local-binding metadata.
+Step 4 tightened the consteval type-binding route in
+`resolve_type(TypeSpec, ConstEvalEnv)`. The exact route examined was a
+`TB_TYPEDEF` `TypeSpec` with intrinsic `tag_text_id` or template-param owner
+metadata plus a stale rendered `TypeSpec::tag`: after intrinsic key/text probes
+missed, `resolve_type()` could still rediscover structured/TextId metadata by
+looking up the rendered tag, and could then fall through to flat
+`type_bindings`.
 
-The helper now rejects rendered `nttp_bindings` lookup whenever
-`nttp_bindings_by_key` or `nttp_bindings_by_text` has authoritative metadata
-for the carried NTTP name and misses. The legacy rendered map remains available
-only when no NTTP structured/TextId carrier participates. Added focused drift
-coverage proving the legacy no-metadata path still works, while mismatched
-NTTP TextId and structured metadata both block stale rendered `nttp_bindings`
-re-entry.
+`resolve_type()` now checks intrinsic TypeSpec key/text carriers before any
+rendered-name metadata lookup. When a structured/TextId type-binding channel is
+present and the intrinsic carrier does not resolve, it returns the original
+`TypeSpec` instead of reopening rendered `TypeSpec::tag` lookup. Legacy flat
+`type_bindings` remains available for flat-only/no-carrier environments so
+existing consteval callers that do not yet supply structured maps continue to
+work. Added focused drift coverage through `bind_consteval_call_env()` proving
+the legacy no-carrier route still works while `tag_text_id` and structured
+template-param carriers suppress stale rendered type-binding re-entry.
 
 ## Suggested Next
 
 Continue Step 4 by selecting another parser/Sema metadata handoff that remains
-inside parser/Sema ownership, with special attention to any remaining flat
-rendered compatibility maps that sit behind structured/TextId miss results.
+inside parser/Sema ownership, with special attention to consteval call paths
+that still pass only flat type bindings and no structured/TextId binding
+channels.
 
 ## Watchouts
 
@@ -48,6 +52,11 @@ rendered compatibility maps that sit behind structured/TextId miss results.
   NTTP parameter references that have no NTTP structured/TextId binding
   carrier. Do not broaden the gate to all local/named const metadata misses
   without first promoting those references to structured NTTP metadata.
+- Some existing consteval producers still call `bind_consteval_call_env()` or
+  `resolve_type()` with flat `type_bindings` only. This packet intentionally
+  preserves that flat-only compatibility path; removing it requires a separate
+  handoff packet that supplies structured/TextId type-binding channels at those
+  producers.
 - `captured_expr_tokens` is parser-local structured metadata. Do not promote
   stale `nttp_name`/`$expr:` text back to semantic authority when the token
   carrier exists.

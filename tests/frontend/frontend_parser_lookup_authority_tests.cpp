@@ -2052,6 +2052,104 @@ void test_consteval_nttp_rejects_rendered_after_structured_or_text_miss() {
               "lookup after authoritative structured metadata misses");
 }
 
+void test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrier() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId param_text = texts.intern("T");
+  const c4c::TextId structured_text = texts.intern("StructuredT");
+  const c4c::TextId owner_text = texts.intern("OwnerTemplate");
+
+  c4c::Node* func_def = parser.make_node(c4c::NK_FUNCTION, 1);
+  func_def->name = arena.strdup("templated_type");
+  func_def->unqualified_name = arena.strdup("templated_type");
+  func_def->unqualified_text_id = texts.intern("templated_type");
+  func_def->namespace_context_id = parser.current_namespace_context_id();
+  func_def->n_template_params = 1;
+  func_def->template_param_names = arena.alloc_array<const char*>(1);
+  func_def->template_param_names[0] = arena.strdup("T");
+  func_def->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  func_def->template_param_name_text_ids[0] = param_text;
+  func_def->template_param_is_nttp = arena.alloc_array<bool>(1);
+  func_def->template_param_is_nttp[0] = false;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 2);
+  callee->name = arena.strdup("templated_type");
+  callee->unqualified_name = arena.strdup("templated_type");
+  callee->unqualified_text_id = func_def->unqualified_text_id;
+  callee->namespace_context_id = parser.current_namespace_context_id();
+  callee->has_template_args = true;
+  callee->n_template_args = 1;
+  callee->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+
+  c4c::TypeSpec legacy_type{};
+  legacy_type.array_size = -1;
+  legacy_type.inner_rank = -1;
+  legacy_type.base = c4c::TB_SHORT;
+  std::unordered_map<std::string, c4c::TypeSpec> rendered_types;
+  rendered_types["RenderedT"] = legacy_type;
+  c4c::hir::TypeBindingTextMap text_channel;
+  c4c::hir::TypeBindingStructuredMap structured_channel;
+  bool expose_text_channel = false;
+  bool expose_structured_channel = false;
+
+  auto bind_arg = [&]() {
+    c4c::hir::ConstEvalEnv outer_env;
+    outer_env.type_bindings = &rendered_types;
+    if (expose_text_channel) outer_env.type_bindings_by_text = &text_channel;
+    if (expose_structured_channel) {
+      outer_env.type_bindings_by_key = &structured_channel;
+    }
+    c4c::hir::TypeBindings type_bindings;
+    (void)c4c::hir::bind_consteval_call_env(
+        callee, func_def, outer_env, &type_bindings, nullptr);
+    auto it = type_bindings.find("T");
+    expect_true(it != type_bindings.end(),
+                "consteval type binding test should bind template parameter");
+    return it->second;
+  };
+
+  c4c::TypeSpec rendered_only{};
+  rendered_only.array_size = -1;
+  rendered_only.inner_rank = -1;
+  rendered_only.base = c4c::TB_TYPEDEF;
+  rendered_only.tag = arena.strdup("RenderedT");
+  callee->template_arg_types[0] = rendered_only;
+  c4c::TypeSpec resolved = bind_arg();
+  expect_true(resolved.base == c4c::TB_SHORT,
+              "legacy rendered type binding lookup remains available when no "
+              "TypeSpec metadata carrier exists");
+
+  expose_text_channel = true;
+  c4c::TypeSpec text_carrier = rendered_only;
+  text_carrier.tag_text_id = structured_text;
+  callee->template_arg_types[0] = text_carrier;
+  resolved = bind_arg();
+  expect_true(resolved.base == c4c::TB_TYPEDEF &&
+                  resolved.tag_text_id == structured_text,
+              "consteval type binding resolve should not reopen rendered "
+              "TypeSpec::tag lookup when tag_text_id is present");
+
+  expose_text_channel = false;
+  expose_structured_channel = true;
+  c4c::TypeSpec key_carrier = rendered_only;
+  key_carrier.template_param_owner_namespace_context_id =
+      parser.current_namespace_context_id();
+  key_carrier.template_param_owner_text_id = owner_text;
+  key_carrier.template_param_index = 0;
+  key_carrier.template_param_text_id = structured_text;
+  callee->template_arg_types[0] = key_carrier;
+  resolved = bind_arg();
+  expect_true(resolved.base == c4c::TB_TYPEDEF &&
+                  resolved.template_param_owner_text_id == owner_text,
+              "consteval type binding resolve should not rediscover "
+              "structured metadata through rendered TypeSpec::tag when "
+              "template-param key metadata is present");
+}
+
 void test_parser_deferred_nttp_default_uses_structured_binding_metadata() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3612,6 +3710,7 @@ int main() {
   test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();
   test_consteval_nttp_rejects_rendered_after_structured_or_text_miss();
+  test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrier();
   test_parser_deferred_nttp_default_uses_structured_binding_metadata();
   test_alias_template_deferred_nttp_bases_carry_structured_record_def();
   test_alias_template_nttp_base_carrier_ignores_stale_debug_text();
