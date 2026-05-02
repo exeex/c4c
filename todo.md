@@ -25,17 +25,28 @@ qualifier/member `TextId`s and no `$expr:` debug-text authority.
 HIR materialization still needs separate consumer work for nested-owner static
 member value evaluation: the concrete `Wrap<int>` probe still lowers
 `Buffer<Outer<T>::Count::value + 1>` as `Buffer_V_0` after the parser carrier
-repair. This appears to be a HIR value-argument consumer gap and should be
-handled under idea 140 or explicitly justified as a consumer-side follow-up to
-this handoff before editing HIR.
+repair. Per the post-commit review in
+`review/step4_post_nested_expr_carrier_review.md`, this is now parked under
+`ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md` rather than
+continued as idea 139 Step 4 work. Idea 139 keeps the parser/Sema producer
+repair; HIR value-argument consumer migration must be handled by idea 140 or a
+narrower HIR metadata idea after a lifecycle switch.
 
 ## Suggested Next
 
-Decide whether the remaining HIR nested-owner value-argument evaluator belongs
-as a justified consumer-side continuation of Step 4 or should move to idea 140.
-If continuing here, the next packet should own the HIR value-argument consumer
-and prove that it consumes the parser-produced structured carrier without
-rendered owner parsing.
+Continue Step 4 only with parser/Sema-owned handoff work. The next executor
+packet should re-inventory remaining parser-to-Sema metadata drops for typedef,
+value, record, template, static-member, and consteval-reference handoff, then
+pick the smallest route whose producer and consumer are both in
+`src/frontend/parser` or `src/frontend/sema`. The packet must either preserve
+an existing structured carrier through that parser/Sema boundary or record a
+separate metadata blocker; it must not edit HIR.
+
+The nested-owner static-member value-argument materialization gap is parked for
+idea 140: when that idea is active, the HIR packet should consume the
+parser-produced `NK_VAR` qualifier/template-arg carriers without rendered owner
+parsing and should delete or narrow rendered HIR fallback authority on the
+covered path.
 
 ## Watchouts
 
@@ -86,18 +97,18 @@ rendered owner parsing.
   owner namespace context plus final owner `TextId`. This packet repairs the
   parser carrier for available nested record identity; it does not add an
   enclosing-record path to the Sema key.
-- The removed HIR nested-owner evaluator was mostly carrier-driven but is still
-  not kept in this idea-139 slice. The parser/Sema producer is now repaired;
-  if HIR work is approved here, keep it strictly as a consumer of
-  `NK_VAR` qualifier/template-arg carriers. Otherwise move it to idea 140/a
-  narrower HIR metadata blocker.
+- The removed HIR nested-owner evaluator was mostly carrier-driven but is not
+  part of idea 139. The parser/Sema producer is now repaired; HIR consumer
+  work for nested-owner value-argument materialization belongs to idea 140 or
+  a narrower HIR metadata blocker after a lifecycle switch.
 - The `cpp_positive_sema_template_nttp_default_runtime_cpp` proof case covers
   the default-NTTP side of this path: static-member value expressions must carry
   enclosing type bindings when evaluating defaults such as
   `is_void<T>::value || is_void<T>::value`.
-- Current blocker: HIR still does not evaluate the parser-produced nested-owner
-  value carrier for materialization. Do not broaden `$expr:` compatibility or
-  reintroduce the rejected parser mini-parser to cover that consumer gap.
+- Parked blocker for idea 140: HIR still does not evaluate the
+  parser-produced nested-owner value carrier for materialization. Do not
+  broaden `$expr:` compatibility, edit HIR under idea 139, or reintroduce the
+  rejected parser mini-parser to cover that consumer gap.
 
 ## Proof
 
