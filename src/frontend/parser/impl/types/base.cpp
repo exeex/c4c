@@ -719,10 +719,29 @@ TypeSpec Parser::parse_base_type() {
                    !arg.type.deferred_member_type_name &&
                    arg.type.base == TB_VOID;
         };
+    auto structured_nttp_expr_carrier =
+        [](const ParsedTemplateArg& arg) -> Node* {
+        if (arg.expr) return arg.expr;
+        return arg.type.array_size_expr;
+    };
+    auto parsed_nttp_arg_has_structured_carrier =
+        [&](const ParsedTemplateArg& arg) -> bool {
+        return structured_nttp_expr_carrier(arg) ||
+               !arg.captured_expr_tokens.empty() ||
+               arg.nttp_text_id != kInvalidText;
+    };
+    auto value_arg_ref_has_structured_carrier =
+        [](const TemplateArgRef& arg) -> bool {
+            return arg.type.array_size_expr ||
+                   arg.nttp_text_id != kInvalidText;
+        };
     auto render_template_arg_ref = [&](const ParsedTemplateArg& arg)
         -> std::string {
         if (arg.is_value) {
-            if (arg.nttp_name && arg.nttp_name[0]) return arg.nttp_name;
+            if (!parsed_nttp_arg_has_structured_carrier(arg) &&
+                arg.nttp_name && arg.nttp_name[0]) {
+                return arg.nttp_name;
+            }
             return std::to_string(arg.value);
         }
         if (arg.type.tpl_struct_origin ||
@@ -775,10 +794,8 @@ TypeSpec Parser::parse_base_type() {
                     if (i > 0) ref += ",";
                     const TemplateArgRef& nested = arg.type.tpl_struct_args.data[i];
                     if (nested.kind == TemplateArgKind::Value) {
-                        if (nested.type.array_size_expr && nested.debug_text &&
-                            nested.debug_text[0]) {
-                            ref += nested.debug_text;
-                        } else if (zero_value_arg_ref_uses_debug_fallback(nested)) {
+                        if (!value_arg_ref_has_structured_carrier(nested) &&
+                            zero_value_arg_ref_uses_debug_fallback(nested)) {
                             ref += nested.debug_text;
                         } else {
                             ref += std::to_string(nested.value);
@@ -854,17 +871,6 @@ TypeSpec Parser::parse_base_type() {
         }
         return true;
     };
-    auto structured_nttp_expr_carrier =
-        [](const ParsedTemplateArg& arg) -> Node* {
-        if (arg.expr) return arg.expr;
-        return arg.type.array_size_expr;
-    };
-    auto parsed_nttp_arg_has_structured_carrier =
-        [&](const ParsedTemplateArg& arg) -> bool {
-        return structured_nttp_expr_carrier(arg) ||
-               !arg.captured_expr_tokens.empty() ||
-               arg.nttp_text_id != kInvalidText;
-    };
     auto set_template_arg_debug_refs_text =
         [&](TypeSpec* target, const std::string& refs_text) {
             if (!target) return;
@@ -882,10 +888,8 @@ TypeSpec Parser::parse_base_type() {
             if (i > 0) refs += ",";
             const TemplateArgRef& arg = spec.tpl_struct_args.data[i];
             if (arg.kind == TemplateArgKind::Value) {
-                if (arg.type.array_size_expr && arg.debug_text &&
-                    arg.debug_text[0]) {
-                    refs += arg.debug_text;
-                } else if (zero_value_arg_ref_uses_debug_fallback(arg)) {
+                if (!value_arg_ref_has_structured_carrier(arg) &&
+                    zero_value_arg_ref_uses_debug_fallback(arg)) {
                     refs += arg.debug_text;
                 } else {
                     refs += std::to_string(arg.value);

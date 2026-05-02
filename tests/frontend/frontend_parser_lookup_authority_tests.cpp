@@ -3131,6 +3131,98 @@ void test_direct_template_explicit_nttp_expr_ignores_stale_display_text() {
               "display text when a parsed expression carrier exists");
 }
 
+void test_pending_template_nttp_carriers_suppress_rendered_debug_text() {
+  const char* source =
+      "template <typename T, int N>\n"
+      "struct carrier_base {};\n"
+      "template <typename T, int N>\n"
+      "struct expr_wrapper : carrier_base<T, (N + 1)> {};\n"
+      "template <typename T, int N>\n"
+      "struct id_wrapper : carrier_base<T, N> {};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId expr_wrapper_text =
+      lexer.text_table().intern("expr_wrapper");
+  c4c::Node* expr_wrapper = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), expr_wrapper_text);
+  expect_true(expr_wrapper && expr_wrapper->n_bases == 1 &&
+                  expr_wrapper->base_types &&
+                  expr_wrapper->base_types[0].tpl_struct_args.size >= 2,
+              "expr_wrapper should preserve pending base template args");
+  const c4c::TemplateArgRef& expr_arg =
+      expr_wrapper->base_types[0].tpl_struct_args.data[1];
+  expect_true(expr_arg.kind == c4c::TemplateArgKind::Value &&
+                  expr_arg.type.array_size_expr,
+              "dependent NTTP expression should retain its parsed expression "
+              "carrier");
+  expect_true(!expr_arg.debug_text ||
+                  std::string(expr_arg.debug_text).find("$expr:") ==
+                      std::string::npos,
+              "parsed expression carrier should suppress `$expr:` rendered "
+              "debug text");
+
+  const c4c::TextId id_wrapper_text = lexer.text_table().intern("id_wrapper");
+  c4c::Node* id_wrapper = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), id_wrapper_text);
+  expect_true(id_wrapper && id_wrapper->n_bases == 1 &&
+                  id_wrapper->base_types &&
+                  id_wrapper->base_types[0].tpl_struct_args.size >= 2,
+              "id_wrapper should preserve pending base template args");
+  const c4c::TemplateArgRef& id_arg =
+      id_wrapper->base_types[0].tpl_struct_args.data[1];
+  expect_true(id_arg.kind == c4c::TemplateArgKind::Value &&
+                  id_arg.nttp_text_id != c4c::kInvalidText,
+              "forwarded NTTP identifier should retain its text-id carrier");
+  expect_true(!id_arg.debug_text || std::string(id_arg.debug_text) != "N",
+              "nttp_text_id carrier should suppress rendered identifier "
+              "debug authority");
+}
+
+void test_nested_pending_template_arg_rendering_suppresses_expr_debug_text() {
+  const char* source =
+      "template <typename T, int N>\n"
+      "struct inner_carrier {};\n"
+      "template <typename U>\n"
+      "struct outer_carrier {};\n"
+      "template <typename T, int N>\n"
+      "struct nested_wrapper : outer_carrier<inner_carrier<T, (N + 1)> > {};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId nested_wrapper_text =
+      lexer.text_table().intern("nested_wrapper");
+  c4c::Node* nested_wrapper = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), nested_wrapper_text);
+  expect_true(nested_wrapper && nested_wrapper->n_bases == 1 &&
+                  nested_wrapper->base_types &&
+                  nested_wrapper->base_types[0].tpl_struct_args.data &&
+                  nested_wrapper->base_types[0].tpl_struct_args.size > 0,
+              "nested_wrapper should preserve rendered pending base args");
+  const c4c::TypeSpec& base = nested_wrapper->base_types[0];
+  for (int i = 0; i < base.tpl_struct_args.size; ++i) {
+    const char* debug_text = base.tpl_struct_args.data[i].debug_text;
+    expect_true(!debug_text ||
+                    std::string(debug_text).find("$expr:") == std::string::npos,
+                "nested rendered template-arg route should not preserve "
+                "`$expr:` text when TypeSpec::array_size_expr was available");
+  }
+}
+
 void test_typespec_template_origin_equality_uses_structured_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3489,6 +3581,8 @@ int main() {
   test_dependent_member_typedef_base_carries_structured_record_def();
   test_default_only_template_base_uses_cached_default_metadata();
   test_direct_template_explicit_nttp_expr_ignores_stale_display_text();
+  test_pending_template_nttp_carriers_suppress_rendered_debug_text();
+  test_nested_pending_template_arg_rendering_suppresses_expr_debug_text();
   test_typespec_template_origin_equality_uses_structured_key();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();

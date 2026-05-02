@@ -8,33 +8,28 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 investigated the direct nested template-origin pending-arg handoff in
-`Parser::parse_base_type`. The exact rendered/display route examined is the
-direct pending-template branch that enters `if (has_unresolved_type_arg ||
-has_deferred_nttp_arg || has_incomplete_nttp_default)`, builds `arg_refs` for a
-nested pending template through `ats.tpl_struct_origin` plus
-`template_arg_refs_text(ats)`, and then stores those rendered refs through
-`set_template_arg_debug_refs_text(&ts, arg_refs)` because
-`parsed_args_have_simple_structured_carrier(concrete_args)` rejects nested
-`tpl_struct_origin` / `tpl_struct_args` carriers.
+Step 4 tightened the remaining parser-owned `$expr:` / rendered-template-arg
+route in `Parser::parse_base_type`. The exact routes examined were the direct
+template prelim evaluator branch that previously re-lexed `ParsedTemplateArg`
+`nttp_name` when it began with `$expr:`, plus the rendered pending-template
+helpers `render_template_arg_ref()` and `template_arg_refs_text()` that could
+preserve `$expr:` debug spelling for value args even when `ParsedTemplateArg`
+`expr`, `captured_expr_tokens`, `nttp_text_id`, or `TemplateArgRef` value
+`TypeSpec::array_size_expr` carriers existed.
 
-An exploratory parser-only repair that switched nested origin-key/arg-carrier
-pending args to typed `TemplateArgRef` storage was not kept. It passed the
-focused `frontend_parser_lookup_authority_tests` check, but the delegated proof
-then failed existing direct nested-template positive cases at the HIR
-owner-struct pending boundary: `cpp_positive_sema_template_struct_advanced_cpp`
-and `cpp_positive_sema_template_struct_nested_cpp` reported `delegated to owner
-struct work` followed by `owner struct still pending` for function return,
-function parameter, local declaration, member owner, member-owner AST, and
-operator-call contexts. No parser implementation or test changes are left dirty.
+The evaluator-side `$expr:` re-lex branch is now gated by
+`parsed_nttp_arg_has_structured_carrier()`, and the rendered helpers now avoid
+debug-text fallback when a value arg has a structured parser carrier. Added
+same-feature drift coverage for pending direct value args with parsed-expression
+and `nttp_text_id` carriers, plus nested pending rendered args that previously
+could preserve `$expr:` text after a `TypeSpec::array_size_expr` carrier was
+available.
 
 ## Suggested Next
 
-Treat direct nested template-origin pending-arg carrier promotion as blocked on
-HIR owner-struct pending resolution, not as a parser-only Step 4 slice. The next
-coherent packet should either route to a HIR-owned owner-struct pending carrier
-fix/split, or select a different parser/Sema metadata handoff that does not
-cross the pending-template owner boundary.
+Continue Step 4 by selecting another parser/Sema metadata handoff that remains
+inside parser/Sema ownership, or route direct nested template-origin carrier
+promotion separately through the known HIR owner-struct pending blocker.
 
 ## Watchouts
 
@@ -71,12 +66,8 @@ cross the pending-template owner boundary.
 
 ## Proof
 
-Ran the delegated proof command during the blocked repair attempt:
+Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build completed successfully; CTest failed `2/887` matched tests:
-`cpp_positive_sema_template_struct_advanced_cpp` and
-`cpp_positive_sema_template_struct_nested_cpp`. Both failures are HIR
-owner-struct pending blockers caused by the exploratory direct nested structured
-carrier handoff. Final proof log path: `test_after.log`. The exploratory
-implementation and test edits were reverted after capturing the blocker.
+Result: build completed successfully; CTest passed `887/887` matched tests.
+Final proof log path: `test_after.log`.
