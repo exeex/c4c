@@ -8,31 +8,30 @@ Current Step Title: Migrate HIR Type And Record Consumers
 
 ## Just Finished
 
-Step 3 - Migrate HIR Type And Record Consumers migrated the deferred member
-typedef resolver in
-`src/frontend/hir/impl/templates/type_resolution.cpp::resolve_struct_member_typedef_if_ready`.
-When a `TypeSpec` carries `record_def`, the resolver now treats that structured
-record owner as authoritative after also trying template-origin metadata; it no
-longer falls through to rendered `TypeSpec::tag`/`struct_def_nodes_` lookup
-after a structured `record_def` miss. Rendered owner-tag lookup remains the
-explicit compatibility path for TypeSpecs that lack `record_def` and template
-origin metadata.
+Step 3 - Migrate HIR Type And Record Consumers migrated function template
+specialization TypeSpec argument matching in
+`src/frontend/hir/compile_time_engine.hpp::InstantiationRegistry::select_function_specialization`.
+The matcher now compares structured nominal TypeSpec identity before rendered
+`TypeSpec::tag`: shared `record_def` wins first, complete namespace plus
+`tag_text_id` plus qualifier TextIds can match next, and one-sided or
+mismatched structured nominal metadata rejects the specialization without
+falling through to rendered spelling. Rendered `tag` comparison remains the
+explicit no-structured-metadata compatibility path.
 
-Focused coverage in `frontend_hir_lookup_tests` adds a stale rendered spelling
-fixture where `record_def` points at an owner without the requested member
-typedef while the stale rendered tag names a different owner that does define
-the alias. The resolver now rejects the stale rendered fallback and leaves the
-pending owner type intact.
+Focused coverage in `frontend_hir_lookup_tests` adds direct compile-time
+registry fixtures proving a specialization matches through shared `record_def`
+despite stale rendered TypeSpec tags, and proving mismatched `record_def`
+identity does not fall back to a matching rendered tag.
 
 ## Suggested Next
 
 Continue Step 3 with another bounded HIR `TypeSpec::tag` consumer where
-structured owner metadata is already present. A good next packet is one
-template/type route that still compares or indexes by rendered `tag`, such as
-`src/frontend/hir/compile_time_engine.hpp` TypeSpec template-argument matching
-or a narrow `src/frontend/hir/impl/templates/type_resolution.cpp` caller that
-can pass `record_def`, `tag_text_id`, owner keys, or template metadata instead
-of only rendered owner spelling.
+structured owner metadata is already present. A good next packet is a narrow
+template/type route that still indexes by rendered `tag`, such as
+`src/frontend/hir/impl/templates/templates.cpp` base/specialization lookup or a
+caller in `src/frontend/hir/impl/templates/value_args.cpp` that can pass
+`record_def`, `tag_text_id`, owner keys, or template metadata instead of only
+rendered owner spelling.
 
 ## Watchouts
 
@@ -43,6 +42,11 @@ of only rendered owner spelling.
   `resolve_struct_member_typedef_type(tag, ...)` for no-metadata compatibility
   and for concrete realized template-origin base traversal after origin
   materialization.
+- Function specialization TypeSpec argument matching still intentionally uses
+  rendered `tag` comparison when both sides lack structured nominal metadata.
+  Template parameter name lookup remains keyed by rendered parameter names in
+  `TypeBindings`; migrating that boundary needs a separate structured template
+  parameter binding packet.
 - The default preset used for this packet does not register
   `frontend_hir_tests`; focused coverage for this route was therefore added to
   `frontend_hir_lookup_tests`, which the delegated regex compiles and runs.

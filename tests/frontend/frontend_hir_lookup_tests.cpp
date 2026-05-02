@@ -818,6 +818,91 @@ void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered
               "consteval definition lookup should preserve rendered fallback when declaration key is absent");
 }
 
+void test_compile_time_function_specialization_type_arg_uses_record_def_identity() {
+  c4c::hir::InstantiationRegistry registry;
+
+  const char* template_params[] = {"T"};
+  c4c::Node primary{};
+  primary.kind = c4c::NK_FUNCTION;
+  primary.name = "pick";
+  primary.template_param_names = template_params;
+  primary.n_template_params = 1;
+
+  c4c::Node shared_record{};
+  shared_record.kind = c4c::NK_STRUCT_DEF;
+  shared_record.name = "StructuredArg";
+
+  c4c::TypeSpec spec_arg{};
+  spec_arg.array_size = -1;
+  spec_arg.inner_rank = -1;
+  spec_arg.base = c4c::TB_STRUCT;
+  spec_arg.tag = "StaleRenderedSpecArg";
+  spec_arg.record_def = &shared_record;
+
+  c4c::TypeSpec binding_arg = spec_arg;
+  binding_arg.tag = "StaleRenderedBindingArg";
+
+  c4c::Node specialization{};
+  specialization.kind = c4c::NK_FUNCTION;
+  specialization.name = "pick<StructuredArg>";
+  specialization.template_arg_types = &spec_arg;
+  specialization.n_template_args = 1;
+  registry.register_function_specialization(&primary, &specialization);
+
+  c4c::hir::TypeBindings bindings;
+  bindings["T"] = binding_arg;
+  const c4c::hir::SelectedFunctionTemplatePattern selected =
+      registry.select_function_specialization(&primary, bindings, {},
+                                              c4c::hir::SpecializationKey{});
+
+  expect_true(selected.selected_pattern == &specialization,
+              "function specialization TypeSpec arg matching should use shared record_def before stale rendered tags");
+}
+
+void test_compile_time_function_specialization_type_arg_record_def_mismatch_rejects_tag() {
+  c4c::hir::InstantiationRegistry registry;
+
+  const char* template_params[] = {"T"};
+  c4c::Node primary{};
+  primary.kind = c4c::NK_FUNCTION;
+  primary.name = "reject";
+  primary.template_param_names = template_params;
+  primary.n_template_params = 1;
+
+  c4c::Node spec_record{};
+  spec_record.kind = c4c::NK_STRUCT_DEF;
+  spec_record.name = "SpecRecord";
+  c4c::Node binding_record{};
+  binding_record.kind = c4c::NK_STRUCT_DEF;
+  binding_record.name = "BindingRecord";
+
+  c4c::TypeSpec spec_arg{};
+  spec_arg.array_size = -1;
+  spec_arg.inner_rank = -1;
+  spec_arg.base = c4c::TB_STRUCT;
+  spec_arg.tag = "SharedRenderedArg";
+  spec_arg.record_def = &spec_record;
+
+  c4c::TypeSpec binding_arg = spec_arg;
+  binding_arg.record_def = &binding_record;
+
+  c4c::Node specialization{};
+  specialization.kind = c4c::NK_FUNCTION;
+  specialization.name = "reject<SharedRenderedArg>";
+  specialization.template_arg_types = &spec_arg;
+  specialization.n_template_args = 1;
+  registry.register_function_specialization(&primary, &specialization);
+
+  c4c::hir::TypeBindings bindings;
+  bindings["T"] = binding_arg;
+  const c4c::hir::SelectedFunctionTemplatePattern selected =
+      registry.select_function_specialization(&primary, bindings, {},
+                                              c4c::hir::SpecializationKey{});
+
+  expect_true(selected.selected_pattern == &primary,
+              "function specialization TypeSpec arg matching must reject mismatched record_def even when rendered tags match");
+}
+
 void test_pending_consteval_nttp_handoff_carries_text_id_bindings() {
   constexpr std::string_view source = R"cpp(
 template<int N>
@@ -1506,6 +1591,8 @@ int main() {
   test_range_for_method_callee_lookup_uses_authoritative_decl_identity();
   test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps();
   test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names();
+  test_compile_time_function_specialization_type_arg_uses_record_def_identity();
+  test_compile_time_function_specialization_type_arg_record_def_mismatch_rejects_tag();
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();

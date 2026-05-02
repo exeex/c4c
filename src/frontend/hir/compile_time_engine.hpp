@@ -557,6 +557,58 @@ inline std::string make_pending_template_type_key(
   return key;
 }
 
+inline bool typespec_has_complete_text_identity(const TypeSpec& ts) {
+  if (ts.namespace_context_id < 0 || ts.tag_text_id == kInvalidText) {
+    return false;
+  }
+  if (ts.n_qualifier_segments < 0) return false;
+  if (ts.n_qualifier_segments > 0 && !ts.qualifier_text_ids) return false;
+  for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+    if (ts.qualifier_text_ids[i] == kInvalidText) return false;
+  }
+  return true;
+}
+
+inline bool typespec_has_structured_nominal_identity(const TypeSpec& ts) {
+  return (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) ||
+         typespec_has_complete_text_identity(ts);
+}
+
+inline std::optional<bool> structured_typespec_nominal_match(
+    const TypeSpec& spec_ts,
+    const TypeSpec& bind_ts) {
+  const bool spec_has_record =
+      spec_ts.record_def && spec_ts.record_def->kind == NK_STRUCT_DEF;
+  const bool bind_has_record =
+      bind_ts.record_def && bind_ts.record_def->kind == NK_STRUCT_DEF;
+  if (spec_has_record && bind_has_record) {
+    return spec_ts.record_def == bind_ts.record_def;
+  }
+
+  const bool spec_has_text = typespec_has_complete_text_identity(spec_ts);
+  const bool bind_has_text = typespec_has_complete_text_identity(bind_ts);
+  if (spec_has_text && bind_has_text) {
+    if (spec_ts.namespace_context_id != bind_ts.namespace_context_id ||
+        spec_ts.tag_text_id != bind_ts.tag_text_id ||
+        spec_ts.is_global_qualified != bind_ts.is_global_qualified ||
+        spec_ts.n_qualifier_segments != bind_ts.n_qualifier_segments) {
+      return false;
+    }
+    for (int i = 0; i < spec_ts.n_qualifier_segments; ++i) {
+      if (spec_ts.qualifier_text_ids[i] != bind_ts.qualifier_text_ids[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (typespec_has_structured_nominal_identity(spec_ts) ||
+      typespec_has_structured_nominal_identity(bind_ts)) {
+    return false;
+  }
+  return std::nullopt;
+}
+
 // ── InstantiationRegistry ───────────────────────────────────────────────────
 //
 // Centralized bookkeeping for template instantiation discovery and
@@ -653,6 +705,9 @@ class InstantiationRegistry {
           const TypeSpec& bind_ts = it->second;
           if (spec_ts.base != bind_ts.base || spec_ts.ptr_level != bind_ts.ptr_level)
             match = false;
+          else if (std::optional<bool> structured_match =
+                       structured_typespec_nominal_match(spec_ts, bind_ts))
+            match = *structured_match;
           else if (spec_ts.tag && bind_ts.tag && std::strcmp(spec_ts.tag, bind_ts.tag) != 0)
             match = false;
           else if (spec_ts.tag && !bind_ts.tag)
