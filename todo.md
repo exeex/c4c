@@ -9,24 +9,26 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries migrated the bounded
-frontend/HIR ref-overload grouping cluster in `src/frontend/hir/hir_build.cpp`.
+frontend/HIR member-symbol lookup cluster in `src/frontend/hir/hir_types.cpp`.
 
-`collect_ref_overloaded_free_functions` now derives complete structured record
-owner keys from `record_def` or `tag_text_id` metadata for struct/union
-parameters and compares those keys before consulting rendered `TypeSpec::tag`.
-Rendered tag compatibility remains only for the no-complete-metadata fallback.
-Focused `frontend_hir_tests` coverage now proves stale rendered tags cannot
-split same-owner ref overloads, merge different complete record owners, or
-bridge partial structured metadata back to rendered tags.
+`Lowerer::find_struct_member_symbol_id(const TypeSpec&, ...)` now forms
+complete owner/member keys from either `record_def` or TextId-backed
+`TypeSpec` namespace metadata before rendered owner-tag fallback. Complete
+structured misses return no rendered stale owner hit, while structured hits can
+come from the owner lookup map or the structured `HirStructDef` field table.
+Rendered compatibility remains only when complete structured member metadata is
+absent. Focused `frontend_hir_tests` coverage now proves record_def miss
+rejection, TextId miss rejection, and no-metadata rendered fallback.
 
 ## Suggested Next
 
 Continue Step 4 with the next bounded frontend/HIR deletion-probe cluster from
 the remaining inventory. The callable helper blocker in `hir_functions.cpp` and
 the standalone layout helper cluster in `hir_lowering_core.cpp` are cleared, and
-the bounded ref-overload grouping path in `hir_build.cpp` is now migrated.
-Remaining probe inventory still includes parser-owned semantic
-producers/consumers and first-failure HIR clusters in
+the bounded ref-overload grouping path in `hir_build.cpp` plus the
+member-symbol lookup path in `hir_types.cpp` are now migrated. Remaining probe
+inventory still includes parser-owned semantic producers/consumers and
+first-failure HIR clusters in
 `src/frontend/hir/impl/compile_time/compile_time_engine.hpp`,
 `src/frontend/hir/hir_types.cpp`, `src/frontend/hir/hir_ir.hpp`,
 `src/frontend/hir/impl/expr/builtin.cpp`, and
@@ -42,6 +44,10 @@ other `src/frontend/hir/hir_build.cpp` rendered-name compatibility paths.
 - The ref-overload grouping path now has the same no-complete-metadata rendered
   fallback boundary; do not reintroduce tag comparison after complete owner-key
   mismatch.
+- The member-symbol lookup path now treats complete owner/member metadata as
+  authoritative; stale rendered owner symbols are not a fallback after a
+  complete miss, but `HirStructDef` fields remain a structured hit source when
+  the owner lookup mirror is absent.
 - Step 4 is a probe, not the final field removal. Do not commit a broken
   deletion build.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend

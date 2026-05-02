@@ -447,12 +447,26 @@ std::optional<HirStructMemberLookupKey> Lowerer::make_struct_member_lookup_key(
 std::optional<HirStructMemberLookupKey> Lowerer::make_struct_member_lookup_key(
     const TypeSpec& owner_ts,
     TextId member_text_id) const {
-  if (!owner_ts.record_def || owner_ts.record_def->kind != NK_STRUCT_DEF) {
-    return std::nullopt;
+  if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
+    const auto owner_key = make_struct_def_node_owner_key(owner_ts.record_def);
+    if (!owner_key) return std::nullopt;
+    return make_struct_member_lookup_key(*owner_key, member_text_id);
   }
-  const auto owner_key = make_struct_def_node_owner_key(owner_ts.record_def);
-  if (!owner_key) return std::nullopt;
-  return make_struct_member_lookup_key(*owner_key, member_text_id);
+  if (owner_ts.namespace_context_id >= 0 &&
+      owner_ts.tag_text_id != kInvalidText) {
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = owner_ts.namespace_context_id;
+    ns_qual.is_global_qualified = owner_ts.is_global_qualified;
+    if (owner_ts.qualifier_text_ids && owner_ts.n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          owner_ts.qualifier_text_ids,
+          owner_ts.qualifier_text_ids + owner_ts.n_qualifier_segments);
+    }
+    return make_struct_member_lookup_key(
+        make_hir_record_owner_key(ns_qual, owner_ts.tag_text_id),
+        member_text_id);
+  }
+  return std::nullopt;
 }
 
 std::string Lowerer::resolve_struct_method_lookup_owner_tag(
@@ -1575,6 +1589,15 @@ MemberSymbolId Lowerer::find_struct_member_symbol_id(
     const MemberSymbolId owner_id = find_struct_member_symbol_id(
         *owner_key, &tag, &member);
     if (owner_id != kInvalidMemberSymbol) return owner_id;
+    if (const HirStructDef* structured =
+            module_->find_struct_def_by_owner_structured(owner_key->owner_key)) {
+      for (const auto& base_tag : structured->base_tags) {
+        const MemberSymbolId inherited_id =
+            find_struct_member_symbol_id(base_tag, member);
+        if (inherited_id != kInvalidMemberSymbol) return inherited_id;
+      }
+    }
+    return kInvalidMemberSymbol;
   }
   const MemberSymbolId direct_id =
       module_->member_symbols.find(tag + "::" + member);
@@ -1602,6 +1625,27 @@ MemberSymbolId Lowerer::find_struct_member_symbol_id(
   }
   const auto owner_it = struct_member_symbol_ids_by_owner_.find(key);
   if (owner_it == struct_member_symbol_ids_by_owner_.end()) {
+    if (!module_ || !module_->link_name_texts) return kInvalidMemberSymbol;
+    const std::string_view member_text =
+        module_->link_name_texts->lookup(key.member_text_id);
+    if (member_text.empty()) return kInvalidMemberSymbol;
+    const HirStructDef* structured =
+        module_->find_struct_def_by_owner_structured(key.owner_key);
+    if (!structured) return kInvalidMemberSymbol;
+    for (const auto& field : structured->fields) {
+      const bool field_matches =
+          (field.field_text_id != kInvalidText &&
+           field.field_text_id == key.member_text_id) ||
+          field.name == member_text;
+      if (field_matches && field.member_symbol_id != kInvalidMemberSymbol) {
+        return field.member_symbol_id;
+      }
+    }
+    for (const auto& base_tag : structured->base_tags) {
+      const MemberSymbolId inherited_id =
+          find_struct_member_symbol_id(base_tag, std::string(member_text));
+      if (inherited_id != kInvalidMemberSymbol) return inherited_id;
+    }
     return kInvalidMemberSymbol;
   }
   if (rendered_tag && rendered_member) {
@@ -1626,6 +1670,15 @@ MemberSymbolId Lowerer::find_struct_member_symbol_id(
     const MemberSymbolId owner_id =
         find_struct_member_symbol_id(*key, &rendered_tag, &member);
     if (owner_id != kInvalidMemberSymbol) return owner_id;
+    if (const HirStructDef* structured =
+            module_->find_struct_def_by_owner_structured(key->owner_key)) {
+      for (const auto& base_tag : structured->base_tags) {
+        const MemberSymbolId inherited_id =
+            find_struct_member_symbol_id(base_tag, member);
+        if (inherited_id != kInvalidMemberSymbol) return inherited_id;
+      }
+    }
+    return kInvalidMemberSymbol;
   }
   if (!rendered_tag.empty()) {
     return find_struct_member_symbol_id(rendered_tag, member);

@@ -2462,6 +2462,83 @@ void test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spellin
               "TypeSpec-carried member-symbol lookup should also detect stale rendered spelling");
 }
 
+void test_hir_member_symbol_lookup_rejects_stale_rendered_after_record_def_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node real_record{};
+  real_record.kind = c4c::NK_STRUCT_DEF;
+  real_record.name = "RealSymbolOwner";
+  real_record.unqualified_name = "RealSymbolOwner";
+  real_record.namespace_context_id = 6;
+
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(&real_record);
+  expect_true(owner_key.has_value(),
+              "fixture record_def member-symbol miss should have structured identity");
+  module.index_struct_def_owner(*owner_key, "RealSymbolOwner", true);
+  module.member_symbols.intern("StaleRenderedOwner::field");
+
+  const c4c::TextId field_text_id = module.link_name_texts->intern("field");
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = "StaleRenderedOwner";
+  owner_ts.record_def = &real_record;
+
+  const c4c::MemberSymbolId id = lowerer.find_struct_member_symbol_id(
+      owner_ts, "StaleRenderedOwner", "field", field_text_id);
+
+  expect_true(id == c4c::kInvalidMemberSymbol,
+              "complete record_def/member key misses should not consult stale rendered owner tags");
+}
+
+void test_hir_member_symbol_lookup_rejects_stale_rendered_after_text_key_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId owner_text_id = module.link_name_texts->intern("RealSymbolOwner");
+  c4c::hir::NamespaceQualifier ns;
+  ns.context_id = 6;
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(ns, owner_text_id);
+  module.index_struct_def_owner(owner_key, "RealSymbolOwner", true);
+  module.member_symbols.intern("StaleRenderedOwner::field");
+
+  const c4c::TextId field_text_id = module.link_name_texts->intern("field");
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = "StaleRenderedOwner";
+  owner_ts.tag_text_id = owner_text_id;
+  owner_ts.namespace_context_id = ns.context_id;
+
+  const c4c::MemberSymbolId id = lowerer.find_struct_member_symbol_id(
+      owner_ts, "StaleRenderedOwner", "field", field_text_id);
+
+  expect_true(id == c4c::kInvalidMemberSymbol,
+              "complete TextId/member key misses should not consult stale rendered owner tags");
+}
+
+void test_hir_member_symbol_lookup_keeps_rendered_fallback_without_structured_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::MemberSymbolId rendered_id =
+      module.member_symbols.intern("LegacyRendered::field");
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = "LegacyRendered";
+
+  const c4c::MemberSymbolId id = lowerer.find_struct_member_symbol_id(
+      owner_ts, "LegacyRendered", "field", c4c::kInvalidText);
+
+  expect_true(id == rendered_id,
+              "member-symbol lookup should keep rendered fallback when complete structured metadata is absent");
+}
+
 void test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -5242,6 +5319,9 @@ int main() {
   test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spelling();
+  test_hir_member_symbol_lookup_rejects_stale_rendered_after_record_def_miss();
+  test_hir_member_symbol_lookup_rejects_stale_rendered_after_text_key_miss();
+  test_hir_member_symbol_lookup_keeps_rendered_fallback_without_structured_key();
   test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag();
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
