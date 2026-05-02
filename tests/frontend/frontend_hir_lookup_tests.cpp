@@ -1861,6 +1861,113 @@ void test_builtin_record_layout_structured_owner_miss_rejects_stale_tag() {
               "HIR builtin alignof should reject stale rendered tag after structured owner miss");
 }
 
+void test_builtin_query_type_uses_template_param_text_id_binding() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node record_node{};
+  record_node.kind = c4c::NK_STRUCT_DEF;
+  record_node.name = "ResolvedBuiltinQuery";
+  record_node.unqualified_name = "ResolvedBuiltinQuery";
+  record_node.unqualified_text_id =
+      module.link_name_texts->intern("ResolvedBuiltinQuery");
+  record_node.namespace_context_id = 51;
+
+  c4c::TypeSpec concrete{};
+  concrete.base = c4c::TB_STRUCT;
+  concrete.tag = "RenderedBindingPayload";
+  concrete.tag_text_id = record_node.unqualified_text_id;
+  concrete.namespace_context_id = record_node.namespace_context_id;
+  concrete.record_def = &record_node;
+  concrete.ptr_level = 1;
+  concrete.array_size = -1;
+  concrete.inner_rank = -1;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.tpl_bindings["T"] = concrete;
+
+  c4c::TypeSpec target{};
+  target.base = c4c::TB_TYPEDEF;
+  target.tag = "StaleRenderedTemplateParam";
+  target.template_param_text_id = module.link_name_texts->intern("T");
+  target.ptr_level = 2;
+  target.array_size = -1;
+  target.inner_rank = -1;
+
+  const c4c::TypeSpec resolved =
+      lowerer.resolve_builtin_query_type(&ctx, target);
+  expect_true(resolved.base == c4c::TB_STRUCT,
+              "builtin query type should resolve through template parameter TextId");
+  expect_true(resolved.record_def == &record_node &&
+                  resolved.tag_text_id == record_node.unqualified_text_id,
+              "builtin query type should copy structured binding metadata");
+  expect_true(resolved.ptr_level == 3,
+              "builtin query type should preserve existing pointer composition");
+}
+
+void test_builtin_query_type_structured_miss_rejects_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node record_node{};
+  record_node.kind = c4c::NK_STRUCT_DEF;
+  record_node.name = "WrongBuiltinQuery";
+  record_node.unqualified_name = "WrongBuiltinQuery";
+  record_node.unqualified_text_id = module.link_name_texts->intern("WrongBuiltinQuery");
+  record_node.namespace_context_id = 52;
+
+  c4c::TypeSpec concrete{};
+  concrete.base = c4c::TB_STRUCT;
+  concrete.tag = "StaleRenderedTemplateParam";
+  concrete.tag_text_id = record_node.unqualified_text_id;
+  concrete.namespace_context_id = record_node.namespace_context_id;
+  concrete.record_def = &record_node;
+  concrete.array_size = -1;
+  concrete.inner_rank = -1;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.tpl_bindings["StaleRenderedTemplateParam"] = concrete;
+
+  c4c::TypeSpec target{};
+  target.base = c4c::TB_TYPEDEF;
+  target.tag = "StaleRenderedTemplateParam";
+  target.template_param_text_id = module.link_name_texts->intern("T");
+  target.array_size = -1;
+  target.inner_rank = -1;
+
+  const c4c::TypeSpec resolved =
+      lowerer.resolve_builtin_query_type(&ctx, target);
+  expect_true(resolved.base == c4c::TB_TYPEDEF && resolved.record_def == nullptr,
+              "builtin query type should not fall back to rendered tag after structured miss");
+}
+
+void test_builtin_query_type_no_metadata_keeps_compatibility_shape() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec concrete{};
+  concrete.base = c4c::TB_INT;
+  concrete.array_size = -1;
+  concrete.inner_rank = -1;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.tpl_bindings["LegacyRenderedParam"] = concrete;
+
+  c4c::TypeSpec target{};
+  target.base = c4c::TB_TYPEDEF;
+  target.tag = "LegacyRenderedParam";
+  target.array_size = -1;
+  target.inner_rank = -1;
+
+  const c4c::TypeSpec resolved =
+      lowerer.resolve_builtin_query_type(&ctx, target);
+  expect_true(resolved.base == c4c::TB_TYPEDEF,
+              "builtin query type should not use rendered tag as semantic authority without metadata");
+}
+
 void test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -2225,6 +2332,9 @@ int main() {
   test_layout_type_lookup_structured_owner_miss_rejects_stale_tag();
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_builtin_record_layout_structured_owner_miss_rejects_stale_tag();
+  test_builtin_query_type_uses_template_param_text_id_binding();
+  test_builtin_query_type_structured_miss_rejects_stale_tag();
+  test_builtin_query_type_no_metadata_keeps_compatibility_shape();
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();

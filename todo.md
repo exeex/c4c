@@ -9,27 +9,28 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries migrated the HIR builtin
-layout lookup route in
-`src/frontend/hir/impl/expr/builtin.cpp::LayoutQueries::find_struct_layout`.
-Complete structured owner metadata from `record_def` or `tag_text_id` plus
-namespace/qualifier data is now authoritative: a structured owner hit returns
-the metadata-backed layout, and a structured owner miss returns `nullptr`
-instead of falling through to rendered `TypeSpec::tag` / `Module::struct_defs`.
-Rendered `struct_defs` lookup remains only for no-metadata compatibility.
+template-binding query route in
+`src/frontend/hir/impl/expr/builtin.cpp::Lowerer::resolve_builtin_query_type`.
+Template typedef query resolution now derives the binding key from
+`template_param_text_id` through the module text table and treats that
+structured carrier as authoritative: a TextId-backed hit applies the concrete
+binding's structured `TypeSpec` metadata without copying rendered `tag`, while
+a TextId-backed miss returns the original query type instead of falling through
+to rendered `target.tag`. Tag-only/no-metadata builtin query substitution is
+left as an explicit no-tag future boundary in this helper rather than a
+semantic fallback.
 
-Focused coverage in `frontend_hir_lookup_tests` proves builtin
-`sizeof`/`alignof` still prefer structured owner metadata over stale rendered
-tags and now reject stale rendered layouts after a structured owner miss.
+Focused coverage in `frontend_hir_lookup_tests` proves builtin query type
+resolution accepts stale rendered tags when `template_param_text_id` matches,
+rejects stale rendered tags after a structured miss, and leaves no-carrier
+queries unchanged instead of resolving through rendered `TypeSpec::tag`.
 
 ## Suggested Next
 
-Continue Step 4 by choosing another compile-failure cluster and either
-migrating it or explicitly demoting it to display/final-spelling/no-metadata
-compatibility. Suggested next packet: migrate
-`src/frontend/hir/impl/expr/builtin.cpp::Lowerer::resolve_builtin_query_type`
-so template binding lookup uses existing structured type-parameter metadata
-where available and rendered binding names remain an explicit compatibility
-boundary.
+Continue Step 4 by rerunning the `TypeSpec::tag` deletion probe or choosing the
+next frontend/HIR compile-failure cluster now that both builtin layout and
+builtin query-template-binding routes in `builtin.cpp` no longer use rendered
+tags as semantic lookup authority.
 
 ## Watchouts
 
@@ -64,6 +65,10 @@ boundary.
 - The HIR builtin layout route is cleared for
   `LayoutQueries::find_struct_layout`; complete structured owner misses no
   longer fall back to rendered `struct_defs`.
+- The HIR builtin query type route is cleared for
+  `resolve_builtin_query_type`; `template_param_text_id` lookup is authoritative
+  when present, and tag-only/no-metadata substitution is intentionally not
+  preserved for the future no-tag field removal.
 - The third deletion probe still stops in frontend/HIR compilation; no
   LIR/BIR/backend downstream metadata gap has been reached yet.
 - Remaining first-probe clusters include HIR display/final-spelling helpers,
@@ -85,8 +90,8 @@ boundary.
 
 ## Proof
 
-Step 4 builtin layout proof passed with:
+Step 4 builtin query type proof passed with:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-Result: build passed and 62/62 selected tests passed. Proof log:
+Result: build passed and 62/62 selected CTest tests passed. Proof log:
 `test_after.log`. `git diff --check` passed.

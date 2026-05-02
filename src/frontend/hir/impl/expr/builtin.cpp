@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <string>
 
 namespace c4c::hir {
 
@@ -128,6 +129,32 @@ class LayoutQueries {
   const hir::Module& module_;
 };
 
+TypeSpec apply_builtin_query_template_binding(TypeSpec target,
+                                              const TypeSpec& concrete) {
+  const int target_ptr_level = target.ptr_level;
+  target.base = concrete.base;
+  target.enum_underlying_base = concrete.enum_underlying_base;
+  target.tag_text_id = concrete.tag_text_id;
+  target.template_param_owner_namespace_context_id =
+      concrete.template_param_owner_namespace_context_id;
+  target.template_param_owner_text_id = concrete.template_param_owner_text_id;
+  target.template_param_index = concrete.template_param_index;
+  target.template_param_text_id = concrete.template_param_text_id;
+  target.record_def = concrete.record_def;
+  target.qualifier_segments = concrete.qualifier_segments;
+  target.qualifier_text_ids = concrete.qualifier_text_ids;
+  target.n_qualifier_segments = concrete.n_qualifier_segments;
+  target.is_global_qualified = concrete.is_global_qualified;
+  target.namespace_context_id = concrete.namespace_context_id;
+  target.deferred_member_type_name = concrete.deferred_member_type_name;
+  target.deferred_member_type_text_id = concrete.deferred_member_type_text_id;
+  target.tpl_struct_origin = concrete.tpl_struct_origin;
+  target.tpl_struct_origin_key = concrete.tpl_struct_origin_key;
+  target.tpl_struct_args = concrete.tpl_struct_args;
+  target.ptr_level = target_ptr_level + concrete.ptr_level;
+  return target;
+}
+
 }  // namespace
 
 TypeSpec Lowerer::builtin_query_result_type() const {
@@ -137,16 +164,20 @@ TypeSpec Lowerer::builtin_query_result_type() const {
 }
 
 TypeSpec Lowerer::resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) const {
-  if (!ctx || ctx->tpl_bindings.empty() || target.base != TB_TYPEDEF || !target.tag) {
+  if (!ctx || ctx->tpl_bindings.empty() || target.base != TB_TYPEDEF) {
     return target;
   }
-  auto it = ctx->tpl_bindings.find(target.tag);
+  if (target.template_param_text_id == kInvalidText || !module_ ||
+      !module_->link_name_texts) {
+    return target;
+  }
+
+  const std::string binding_key(
+      module_->link_name_texts->lookup(target.template_param_text_id));
+  if (binding_key.empty()) return target;
+  auto it = ctx->tpl_bindings.find(binding_key);
   if (it == ctx->tpl_bindings.end()) return target;
-  const TypeSpec& concrete = it->second;
-  target.base = concrete.base;
-  target.tag = concrete.tag;
-  if (concrete.ptr_level > 0) target.ptr_level += concrete.ptr_level;
-  return target;
+  return apply_builtin_query_template_binding(target, it->second);
 }
 
 ExprId Lowerer::lower_builtin_sizeof_type(FunctionCtx* ctx, const Node* n) {
