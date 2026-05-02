@@ -78,9 +78,10 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0 after restoring the temporary deletion-probe edit, and
-`test_after.log` was preserved as the canonical executor proof log. The build
-passed, and CTest passed 72 of 72 delegated tests.
+Result: command exited 0 after restoring the temporary deletion-probe edit. The
+supervisor accepted the matching before/after guard and rolled `test_after.log`
+forward to `test_before.log`. The build passed, and CTest passed 72 of 72
+delegated tests.
 
 Deletion probe:
 
