@@ -804,8 +804,57 @@ const TypeSpec* Parser::find_visible_typedef_type(TextId name_text_id) const {
     return find_typedef_type(resolved_text_id);
 }
 
+bool typespec_has_complete_qualifier_text_ids(const TypeSpec& ts) {
+    if (ts.n_qualifier_segments <= 0) return false;
+    if (!ts.qualifier_text_ids) return false;
+    for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        if (ts.qualifier_text_ids[i] == kInvalidText) return false;
+    }
+    return true;
+}
+
+const TypeSpec* find_typedef_type_by_typespec_metadata(const Parser& parser,
+                                                       const TypeSpec& ts) {
+    if (ts.tag_text_id == kInvalidText) return nullptr;
+
+    if (typespec_has_complete_qualifier_text_ids(ts)) {
+        std::vector<TextId> qualifier_text_ids(
+            ts.qualifier_text_ids,
+            ts.qualifier_text_ids + ts.n_qualifier_segments);
+        QualifiedNameKey key;
+        key.context_id = 0;
+        key.is_global_qualified = ts.is_global_qualified;
+        key.base_text_id = ts.tag_text_id;
+        key.qualifier_path_id =
+            parser.shared_lookup_state_.parser_name_paths.find(
+                qualifier_text_ids);
+        if (key.qualifier_path_id != kInvalidNamePath) {
+            if (const TypeSpec* type = parser.find_typedef_type(key)) {
+                return type;
+            }
+        }
+        return nullptr;
+    }
+
+    if (ts.namespace_context_id >= 0) {
+        if (const TypeSpec* type = parser.find_typedef_type(
+                parser.struct_typedef_key_in_context(ts.namespace_context_id,
+                                                     ts.tag_text_id))) {
+            return type;
+        }
+    }
+
+    return parser.find_visible_typedef_type(ts.tag_text_id);
+}
+
 TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
-    auto find_chain_typedef = [&](const char* tag) -> const TypeSpec* {
+    auto find_chain_typedef = [&](const TypeSpec& type) -> const TypeSpec* {
+        if (const TypeSpec* structured =
+                find_typedef_type_by_typespec_metadata(*this, type)) {
+            return structured;
+        }
+        if (type.tag_text_id != kInvalidText) return nullptr;
+        const char* tag = type.tag;
         if (!tag || !tag[0]) return nullptr;
         const std::string_view name(tag);
         const TextId name_text_id = find_parser_text_id(name);
@@ -817,8 +866,8 @@ TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
         if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) {
             break;
         }
-        if (!ts.tag) break;
-        const TypeSpec* next = find_chain_typedef(ts.tag);
+        if (!ts.tag && ts.tag_text_id == kInvalidText) break;
+        const TypeSpec* next = find_chain_typedef(ts);
         if (!next) break;
         const bool is_const = ts.is_const;
         const bool is_volatile = ts.is_volatile;
@@ -830,7 +879,13 @@ TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
 }
 
 TypeSpec Parser::resolve_struct_like_typedef_type(TypeSpec ts) const {
-    auto find_chain_typedef = [&](const char* tag) -> const TypeSpec* {
+    auto find_chain_typedef = [&](const TypeSpec& type) -> const TypeSpec* {
+        if (const TypeSpec* structured =
+                find_typedef_type_by_typespec_metadata(*this, type)) {
+            return structured;
+        }
+        if (type.tag_text_id != kInvalidText) return nullptr;
+        const char* tag = type.tag;
         if (!tag || !tag[0]) return nullptr;
         const std::string_view name(tag);
         const TextId name_text_id = find_parser_text_id(name);
@@ -839,8 +894,8 @@ TypeSpec Parser::resolve_struct_like_typedef_type(TypeSpec ts) const {
                    : find_typedef_type(name_text_id);
     };
     ts = resolve_typedef_type_chain(ts);
-    if (ts.base == TB_TYPEDEF && ts.tag) {
-        if (const TypeSpec* typedef_type = find_chain_typedef(ts.tag)) {
+    if (ts.base == TB_TYPEDEF && (ts.tag || ts.tag_text_id != kInvalidText)) {
+        if (const TypeSpec* typedef_type = find_chain_typedef(ts)) {
             ts = *typedef_type;
         }
     }

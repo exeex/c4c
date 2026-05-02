@@ -5093,6 +5093,49 @@ void test_typespec_equality_uses_structured_type_identity_before_rendered_tag() 
               "TextIds even when rendered tag spelling matches");
 }
 
+void test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId structured_typedef_text = texts.intern("StructuredAlias");
+  const c4c::TextId stale_typedef_text = texts.intern("StaleRenderedAlias");
+
+  c4c::TypeSpec structured_target{};
+  structured_target.array_size = -1;
+  structured_target.inner_rank = -1;
+  structured_target.base = c4c::TB_INT;
+
+  c4c::TypeSpec stale_target{};
+  stale_target.array_size = -1;
+  stale_target.inner_rank = -1;
+  stale_target.base = c4c::TB_LONG;
+
+  parser.register_typedef_binding(structured_typedef_text, structured_target,
+                                  false);
+  parser.register_typedef_binding(stale_typedef_text, stale_target, false);
+
+  c4c::TypeSpec query{};
+  query.array_size = -1;
+  query.inner_rank = -1;
+  query.base = c4c::TB_TYPEDEF;
+  query.tag = arena.strdup("StaleRenderedAlias");
+  query.tag_text_id = structured_typedef_text;
+
+  const c4c::TypeSpec resolved = parser.resolve_typedef_type_chain(query);
+  expect_true(resolved.base == c4c::TB_INT,
+              "parser typedef-chain resolution should use tag_text_id before "
+              "stale rendered TypeSpec::tag spelling");
+
+  query.tag_text_id = c4c::kInvalidText;
+  const c4c::TypeSpec fallback = parser.resolve_typedef_type_chain(query);
+  expect_true(fallback.base == c4c::TB_LONG,
+              "parser typedef-chain resolution should retain rendered tag "
+              "fallback when no tag_text_id carrier exists");
+}
+
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5440,6 +5483,7 @@ int main() {
   test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss();
   test_typespec_template_origin_equality_uses_structured_key();
   test_typespec_equality_uses_structured_type_identity_before_rendered_tag();
+  test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();

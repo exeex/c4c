@@ -9,35 +9,30 @@ Current Step Title: Migrate Parser-Owned Semantic Producers
 ## Just Finished
 
 Step 2 - Migrate Parser-Owned Semantic Producers migrated
-`src/frontend/sema/type_utils.cpp::type_binding_values_equivalent`.
+`src/frontend/parser/impl/core.cpp` typedef-chain resolution.
 
-The equality route now compares `TypeSpec` semantic identity through structured
-carriers before rendered `tag` / qualifier strings:
-
-- template parameter owner namespace, owner TextId, parameter index, and
-  parameter TextId
-- shared `record_def` identity when both sides carry parser record definitions
-- namespace context plus `tag_text_id`, global qualification, and qualifier
-  TextIds when complete type-name metadata is available
-- existing `tpl_struct_origin_key` and `deferred_member_type_text_id`
-
-Rendered `tag`, rendered qualifier segments, `tpl_struct_origin`, and
-`deferred_member_type_name` remain compatibility fallback only when the matching
-structured carrier family is absent on both sides.
+`Parser::resolve_typedef_type_chain` and
+`Parser::resolve_struct_like_typedef_type` now resolve typedef references by
+`TypeSpec::tag_text_id` first. The metadata-backed route checks qualified
+TextId paths, namespace-context structured typedef keys, and visible typedef
+bindings before considering rendered spelling. Rendered `TypeSpec::tag`
+fallback remains explicit no-metadata compatibility only when the incoming
+`TypeSpec` has no `tag_text_id` carrier.
 
 Added focused stale-rendered-spelling coverage in
-`frontend_parser_lookup_authority_tests`: `TypeSpec` equality now accepts
-matching `record_def`, matching namespace/tag TextId metadata, and matching
-template parameter metadata despite drifted rendered tags, and rejects
-different structured TextIds even when rendered spelling matches.
+`frontend_parser_lookup_authority_tests`: a typedef query with
+`tag = "StaleRenderedAlias"` and `tag_text_id = StructuredAlias` resolves to
+the structured alias target, while the same query without `tag_text_id` still
+uses the rendered compatibility fallback.
 
 ## Suggested Next
 
-Continue Step 2 with a parser-owned producer/consumer that still uses
-`TypeSpec::tag` for semantic typedef or record identity despite carrying
-`tag_text_id` or `record_def`. A good next target is the parser typedef-chain
-or compatibility/type-comparison helpers in `parser/impl/core.cpp`, with a
-stale-rendered-spelling parser/Sema test and the same focused proof subset.
+Continue Step 2 by auditing another parser-owned semantic `TypeSpec::tag`
+consumer with existing metadata, likely `Parser::are_types_compatible` for
+record/enum identity or `resolves_to_record_ctor_type` for record constructor
+classification. Prefer `record_def` and `tag_text_id`/structured visible-name
+metadata before rendered tag fallback, with stale-rendered-spelling coverage
+and the same focused proof subset.
 
 ## Watchouts
 
@@ -55,7 +50,8 @@ stale-rendered-spelling parser/Sema test and the same focused proof subset.
 
 ## Proof
 
-Step 2 delegated proof passed and wrote `test_after.log`:
+Step 2 delegated proof passed for the parser `core.cpp` typedef-chain packet
+and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_hir_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
 `git diff --check` passed.
