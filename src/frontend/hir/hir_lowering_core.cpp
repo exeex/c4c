@@ -59,6 +59,52 @@ TextId make_unqualified_text_id(const Node* n, TextTable* texts) {
   return kInvalidText;
 }
 
+NamespaceQualifier make_type_ns_qual(const TypeSpec& ts) {
+  NamespaceQualifier q;
+  q.context_id = ts.namespace_context_id;
+  q.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    q.segment_text_ids.assign(
+        ts.qualifier_text_ids,
+        ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  return q;
+}
+
+std::optional<HirRecordOwnerKey> make_record_owner_key_for_type(
+    const TypeSpec& ts,
+    TextTable* texts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = ts.record_def->namespace_context_id;
+    ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
+    if (ts.record_def->qualifier_text_ids &&
+        ts.record_def->n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          ts.record_def->qualifier_text_ids,
+          ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
+    } else if (texts && ts.record_def->qualifier_segments &&
+               ts.record_def->n_qualifier_segments > 0) {
+      for (int i = 0; i < ts.record_def->n_qualifier_segments; ++i) {
+        ns_qual.segment_text_ids.push_back(
+            make_text_id(ts.record_def->qualifier_segments[i], texts));
+      }
+    }
+    TextId declaration_text_id = ts.record_def->unqualified_text_id;
+    if (declaration_text_id == kInvalidText) {
+      declaration_text_id = make_unqualified_text_id(ts.record_def, texts);
+    }
+    HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, declaration_text_id);
+    if (hir_record_owner_key_has_complete_metadata(key)) return key;
+  }
+  if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
+    HirRecordOwnerKey key =
+        make_hir_record_owner_key(make_type_ns_qual(ts), ts.tag_text_id);
+    if (hir_record_owner_key_has_complete_metadata(key)) return key;
+  }
+  return std::nullopt;
+}
+
 std::string decode_string_node(const Node* n) {
   if (!n || n->kind != NK_STR_LIT || !n->sval) return {};
   std::string raw = n->sval;
@@ -303,6 +349,11 @@ bool generic_type_compatible(TypeSpec a, TypeSpec b) {
   if (a.array_rank != b.array_rank) return false;
   if (a.is_fn_ptr != b.is_fn_ptr) return false;
   if (a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM) {
+    const std::optional<HirRecordOwnerKey> a_key =
+        make_record_owner_key_for_type(a, nullptr);
+    const std::optional<HirRecordOwnerKey> b_key =
+        make_record_owner_key_for_type(b, nullptr);
+    if (a_key && b_key) return *a_key == *b_key;
     const char* atag = a.tag ? a.tag : "";
     const char* btag = b.tag ? b.tag : "";
     return std::strcmp(atag, btag) == 0;
@@ -340,6 +391,20 @@ class LayoutQueries {
     return std::max(1, it->second.align_bytes);
   }
 
+  const HirStructDef* find_struct_def_for_layout_type(const TypeSpec& ts) const {
+    if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0) {
+      return nullptr;
+    }
+    if (const std::optional<HirRecordOwnerKey> owner_key =
+            make_record_owner_key_for_type(
+                ts, module_.link_name_texts ? module_.link_name_texts.get() : nullptr)) {
+      return module_.find_struct_def_by_owner_structured(*owner_key);
+    }
+    if (!ts.tag || !ts.tag[0]) return nullptr;
+    const auto it = module_.struct_defs.find(ts.tag);
+    return it == module_.struct_defs.end() ? nullptr : &it->second;
+  }
+
   int type_size_bytes(const TypeSpec& ts) const {
     if (ts.array_rank > 0) {
       if (ts.array_size == 0) return 0;
@@ -353,7 +418,10 @@ class LayoutQueries {
     if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
     if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
     if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
-      return struct_size_bytes(ts.tag);
+      if (const HirStructDef* def = find_struct_def_for_layout_type(ts)) {
+        return def->size_bytes;
+      }
+      return 4;
     }
     return sizeof_type_spec(ts);
   }
@@ -367,7 +435,11 @@ class LayoutQueries {
     } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
       natural = 8;
     } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
-      natural = struct_align_bytes(ts.tag);
+      if (const HirStructDef* def = find_struct_def_for_layout_type(ts)) {
+        natural = std::max(1, def->align_bytes);
+      } else {
+        natural = 4;
+      }
     } else {
       natural = std::max(1, static_cast<int>(alignof_type_spec(ts)));
     }
@@ -464,11 +536,17 @@ void compute_record_layout(const hir::Module& module, HirStructDef& def, int pac
   def.align_bytes = 1;
   int offset = 0;
 
-  for (const auto& base_tag : def.base_tags) {
+  for (size_t base_index = 0; base_index < def.base_tags.size(); ++base_index) {
+    const auto& base_tag = def.base_tags[base_index];
     if (base_tag.empty()) continue;
     TypeSpec base_ts{};
     base_ts.base = TB_STRUCT;
     base_ts.tag = base_tag.c_str();
+    if (base_index < def.base_tag_text_ids.size()) {
+      base_ts.tag_text_id = def.base_tag_text_ids[base_index];
+      base_ts.namespace_context_id = def.ns_qual.context_id;
+      base_ts.is_global_qualified = def.ns_qual.is_global_qualified;
+    }
 
     int base_align = queries.type_align_bytes(base_ts);
     if (pack > 0 && base_align > pack) base_align = pack;

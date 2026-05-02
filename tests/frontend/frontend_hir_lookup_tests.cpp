@@ -1,5 +1,6 @@
 #include "hir/hir_ir.hpp"
 #include "hir/compile_time_engine.hpp"
+#include "hir/impl/hir_impl.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema/consteval.hpp"
@@ -1743,6 +1744,110 @@ void test_layout_type_lookup_structured_owner_miss_rejects_stale_tag() {
               "layout TypeSpec lookup should reject stale rendered tag after structured owner miss");
 }
 
+void test_compute_struct_layout_field_uses_record_def_before_stale_tag() {
+  c4c::hir::Module module;
+  c4c::Arena arena;
+
+  c4c::Node* record_node = arena.alloc_array<c4c::Node>(1);
+  *record_node = {};
+  record_node->kind = c4c::NK_STRUCT_DEF;
+  record_node->name = arena.strdup("RealFieldLayoutOwner");
+  record_node->unqualified_name = arena.strdup("RealFieldLayoutOwner");
+  record_node->unqualified_text_id =
+      module.link_name_texts->intern("RealFieldLayoutOwner");
+  record_node->namespace_context_id = 24;
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealFieldLayoutOwner";
+  real_def.tag_text_id = record_node->unqualified_text_id;
+  real_def.ns_qual.context_id = record_node->namespace_context_id;
+  real_def.size_bytes = 32;
+  real_def.align_bytes = 8;
+  module.index_struct_def_owner(c4c::hir::make_hir_record_owner_key(real_def),
+                                real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleFieldLayoutOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleFieldLayoutOwner");
+  stale_def.ns_qual.context_id = record_node->namespace_context_id;
+  stale_def.size_bytes = 4;
+  stale_def.align_bytes = 4;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec field_ts{};
+  field_ts.base = c4c::TB_STRUCT;
+  field_ts.tag = "StaleFieldLayoutOwner";
+  field_ts.tag_text_id = record_node->unqualified_text_id;
+  field_ts.namespace_context_id = record_node->namespace_context_id;
+  field_ts.record_def = record_node;
+  field_ts.array_size = -1;
+  field_ts.inner_rank = -1;
+
+  c4c::hir::HirStructField field;
+  field.name = "payload";
+  field.elem_type = field_ts;
+
+  c4c::hir::HirStructDef container;
+  container.tag = "Container";
+  container.tag_text_id = module.link_name_texts->intern("Container");
+  container.fields.push_back(field);
+
+  c4c::hir::compute_struct_layout(&module, container);
+
+  expect_true(container.fields.front().size_bytes == 32,
+              "struct layout field sizing should prefer record_def owner metadata over stale rendered tag");
+  expect_true(container.fields.front().align_bytes == 8,
+              "struct layout field alignment should prefer record_def owner metadata over stale rendered tag");
+}
+
+void test_compute_struct_layout_field_structured_miss_rejects_stale_tag() {
+  c4c::hir::Module module;
+  c4c::Arena arena;
+
+  c4c::Node* record_node = arena.alloc_array<c4c::Node>(1);
+  *record_node = {};
+  record_node->kind = c4c::NK_STRUCT_DEF;
+  record_node->name = arena.strdup("MissingFieldLayoutOwner");
+  record_node->unqualified_name = arena.strdup("MissingFieldLayoutOwner");
+  record_node->unqualified_text_id =
+      module.link_name_texts->intern("MissingFieldLayoutOwner");
+  record_node->namespace_context_id = 25;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleFieldLayoutMiss";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleFieldLayoutMiss");
+  stale_def.ns_qual.context_id = record_node->namespace_context_id;
+  stale_def.size_bytes = 64;
+  stale_def.align_bytes = 16;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec field_ts{};
+  field_ts.base = c4c::TB_STRUCT;
+  field_ts.tag = "StaleFieldLayoutMiss";
+  field_ts.tag_text_id = record_node->unqualified_text_id;
+  field_ts.namespace_context_id = record_node->namespace_context_id;
+  field_ts.record_def = record_node;
+  field_ts.array_size = -1;
+  field_ts.inner_rank = -1;
+
+  c4c::hir::HirStructField field;
+  field.name = "payload";
+  field.elem_type = field_ts;
+
+  c4c::hir::HirStructDef container;
+  container.tag = "ContainerMiss";
+  container.tag_text_id = module.link_name_texts->intern("ContainerMiss");
+  container.fields.push_back(field);
+
+  c4c::hir::compute_struct_layout(&module, container);
+
+  expect_true(container.fields.front().size_bytes == 4,
+              "struct layout field sizing should reject stale rendered tag after structured owner miss");
+  expect_true(container.fields.front().align_bytes == 4,
+              "struct layout field alignment should reject stale rendered tag after structured owner miss");
+}
+
 void test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -2515,6 +2620,8 @@ int main() {
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_layout_type_lookup_prefers_structured_owner_over_stale_tag();
   test_layout_type_lookup_structured_owner_miss_rejects_stale_tag();
+  test_compute_struct_layout_field_uses_record_def_before_stale_tag();
+  test_compute_struct_layout_field_structured_miss_rejects_stale_tag();
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_builtin_record_layout_structured_owner_miss_rejects_stale_tag();
   test_builtin_record_layout_no_owner_uses_tag_text_id_compatibility();
