@@ -15,6 +15,14 @@ bool is_generated_anonymous_record_tag(const char* name) {
   return name && std::strncmp(name, "_anon_", 6) == 0;
 }
 
+template <typename T>
+auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_typespec_final_spelling_tag_if_present(TypeSpec&, const char*, long) {}
+
 }  // namespace
 
 ExprId Lowerer::hoist_compound_literal_to_global(const Node* addr_node,
@@ -60,14 +68,14 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
     TypeSpec owner_ts = n->left->type;
     bool has_structured_owner = false;
     if (owner_ts.base == TB_STRUCT) {
-      if (!owner_ts.tag || !owner_ts.tag[0]) owner_ts.tag = callee_name.c_str();
+      set_typespec_final_spelling_tag_if_present(owner_ts, callee_name.c_str(), 0);
       has_structured_owner =
           owner_ts.record_def || owner_ts.tpl_struct_origin ||
           (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0);
     } else {
       owner_ts = TypeSpec{};
       owner_ts.base = TB_STRUCT;
-      owner_ts.tag = callee_name.c_str();
+      set_typespec_final_spelling_tag_if_present(owner_ts, callee_name.c_str(), 0);
     }
     owner_ts.array_size = -1;
     owner_ts.inner_rank = -1;
@@ -122,7 +130,8 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
         (cit == struct_constructors_.end() || cit->second.empty())) {
       TypeSpec tmp_ts{};
       tmp_ts.base = TB_STRUCT;
-      tmp_ts.tag = sit->second.tag.c_str();
+      set_typespec_final_spelling_tag_if_present(
+          tmp_ts, sit->second.tag.c_str(), 0);
       tmp_ts.array_size = -1;
       tmp_ts.inner_rank = -1;
 
@@ -215,7 +224,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
 
   TypeSpec tmp_ts{};
   tmp_ts.base = TB_STRUCT;
-  tmp_ts.tag = sit->second.tag.c_str();
+  set_typespec_final_spelling_tag_if_present(tmp_ts, sit->second.tag.c_str(), 0);
   tmp_ts.array_size = -1;
   tmp_ts.inner_rank = -1;
 

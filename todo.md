@@ -8,23 +8,22 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared the
-`src/frontend/hir/impl/expr/expr.cpp` deletion-probe blocker family. The
-lvalue cast template-binding path now resolves typedef/template bindings by
-`template_param_text_id` or `tag_text_id` through `tpl_bindings_by_text` before
-considering the no-text legacy binding map. A structured TextId carrier is
-authoritative on miss, so stale rendered `TypeSpec::tag` spelling is not used
-as a fallback after structured binding metadata exists. The remaining rendered
-fallback is deletion-safe and limited to legacy TypeSpec producers that still
-lack usable text metadata.
+Step 4 - Probe Field Removal And Split Boundaries cleared the first
+`src/frontend/hir/impl/expr/object.cpp` deletion-probe blocker in
+`try_lower_direct_struct_constructor_call`. The direct constructor owner
+TypeSpec now keeps rendered struct names only through a deletion-safe final
+spelling setter while semantic owner lookup continues through `record_def`,
+template origin/arguments, and `resolve_member_lookup_owner_tag`. The temporary
+constructor result TypeSpecs use the same deletion-safe final-spelling payload
+bridge instead of direct `TypeSpec::tag` writes.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next first deletion-probe blocker in
 `src/frontend/hir/impl/expr/object.cpp`. The current probe first reports direct
-`TypeSpec::tag` reads in `try_lower_direct_struct_constructor_call` around
-`object.cpp:63`, followed by more `object.cpp` compatibility/display surfaces
-and later `expr/operator.cpp` surfaces.
+`TypeSpec::tag` reads in `describe_initializer_list_struct` around
+`object.cpp:293`, followed by more `object.cpp` compatibility/display surfaces,
+then `inspect/printer.cpp` and `expr/operator.cpp` surfaces.
 
 ## Watchouts
 
@@ -122,14 +121,20 @@ and later `expr/operator.cpp` surfaces.
   misses authoritative; do not fall back to rendered spelling when either
   structured carrier is present.
 - The current deletion probe moved past `expr.cpp`. The first residual blocker
-  is now `src/frontend/hir/impl/expr/object.cpp:63`; later residuals remain in
-  `src/frontend/hir/impl/expr/object.cpp` and
-  `src/frontend/hir/impl/expr/operator.cpp`.
+  moved past `try_lower_direct_struct_constructor_call`. The first residual
+  blocker is now `src/frontend/hir/impl/expr/object.cpp:293` in
+  `describe_initializer_list_struct`; later residuals remain in
+  `src/frontend/hir/impl/expr/object.cpp`, `src/frontend/hir/impl/inspect/printer.cpp`,
+  and `src/frontend/hir/impl/expr/operator.cpp`.
+- Direct struct constructor lowering now treats rendered struct tags as
+  final-spelling payload only. Keep its lookup path structured through
+  `record_def`, template-origin metadata, and TextId/template binding carriers.
 - The rejected `ft.tag` layout repair route was replaced with a structured
   AST-node-to-HIR-owner carrier. Do not reintroduce rendered field type tag
   lookup for layout ownership.
-- Non-canonical deletion probe artifacts for this packet:
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log`.
+- Non-canonical deletion probe artifacts for recent packets:
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log` and
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_object.log`.
 
 ## Proof
 
@@ -145,12 +150,14 @@ Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_expr.log 2>&1`, and restored the
-temporary edit. The probe no longer reports the `call.cpp` family or
-`expr.cpp` lvalue template binding family. The first residual error is direct
-`TypeSpec::tag` use in `try_lower_direct_struct_constructor_call` at
-`src/frontend/hir/impl/expr/object.cpp:63`, with later residual errors in
-`src/frontend/hir/impl/expr/object.cpp` and
+/tmp/c4c_typespec_tag_deletion_probe_step4_object.log 2>&1`, and restored the
+temporary edit. The probe no longer reports
+`try_lower_direct_struct_constructor_call` as the first blocker. The first
+residual error is direct `TypeSpec::tag` use in
+`describe_initializer_list_struct` at
+`src/frontend/hir/impl/expr/object.cpp:293`, with later residual errors in
+`src/frontend/hir/impl/expr/object.cpp`,
+`src/frontend/hir/impl/inspect/printer.cpp`, and
 `src/frontend/hir/impl/expr/operator.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
