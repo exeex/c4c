@@ -1064,6 +1064,75 @@ void test_compile_time_function_specialization_type_arg_record_def_mismatch_reje
               "function specialization TypeSpec arg matching must reject mismatched record_def even when rendered tags match");
 }
 
+void test_compile_time_function_specialization_tag_only_nominal_args_do_not_match() {
+  c4c::hir::InstantiationRegistry registry;
+
+  const char* template_params[] = {"T"};
+  c4c::Node primary{};
+  primary.kind = c4c::NK_FUNCTION;
+  primary.name = "tag_only";
+  primary.template_param_names = template_params;
+  primary.n_template_params = 1;
+
+  c4c::TypeSpec spec_arg{};
+  spec_arg.array_size = -1;
+  spec_arg.inner_rank = -1;
+  spec_arg.base = c4c::TB_STRUCT;
+  spec_arg.tag = "RenderedOnlyArg";
+
+  c4c::TypeSpec binding_arg = spec_arg;
+
+  c4c::Node specialization{};
+  specialization.kind = c4c::NK_FUNCTION;
+  specialization.name = "tag_only<RenderedOnlyArg>";
+  specialization.template_arg_types = &spec_arg;
+  specialization.n_template_args = 1;
+  registry.register_function_specialization(&primary, &specialization);
+
+  c4c::hir::TypeBindings bindings;
+  bindings["T"] = binding_arg;
+  const c4c::hir::SelectedFunctionTemplatePattern selected =
+      registry.select_function_specialization(&primary, bindings, {},
+                                              c4c::hir::SpecializationKey{});
+
+  expect_true(selected.selected_pattern == &primary,
+              "tag-only nominal specialization args should not match without structured metadata");
+}
+
+void test_compile_time_function_specialization_primitive_args_still_match() {
+  c4c::hir::InstantiationRegistry registry;
+
+  const char* template_params[] = {"T"};
+  c4c::Node primary{};
+  primary.kind = c4c::NK_FUNCTION;
+  primary.name = "primitive";
+  primary.template_param_names = template_params;
+  primary.n_template_params = 1;
+
+  c4c::TypeSpec spec_arg{};
+  spec_arg.array_size = -1;
+  spec_arg.inner_rank = -1;
+  spec_arg.base = c4c::TB_INT;
+
+  c4c::TypeSpec binding_arg = spec_arg;
+
+  c4c::Node specialization{};
+  specialization.kind = c4c::NK_FUNCTION;
+  specialization.name = "primitive<int>";
+  specialization.template_arg_types = &spec_arg;
+  specialization.n_template_args = 1;
+  registry.register_function_specialization(&primary, &specialization);
+
+  c4c::hir::TypeBindings bindings;
+  bindings["T"] = binding_arg;
+  const c4c::hir::SelectedFunctionTemplatePattern selected =
+      registry.select_function_specialization(&primary, bindings, {},
+                                              c4c::hir::SpecializationKey{});
+
+  expect_true(selected.selected_pattern == &specialization,
+              "primitive specialization args should continue matching by base shape");
+}
+
 void test_template_deduction_forwarding_consistency_uses_record_def_identity() {
   c4c::hir::Lowerer lowerer;
 
@@ -2083,6 +2152,8 @@ int main() {
   test_inherited_static_member_eval_base_record_def_miss_rejects_stale_tag();
   test_compile_time_function_specialization_type_arg_uses_record_def_identity();
   test_compile_time_function_specialization_type_arg_record_def_mismatch_rejects_tag();
+  test_compile_time_function_specialization_tag_only_nominal_args_do_not_match();
+  test_compile_time_function_specialization_primitive_args_still_match();
   test_template_deduction_forwarding_consistency_uses_record_def_identity();
   test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag();
   test_pending_type_ref_uses_structured_debug_payload_not_tag();

@@ -9,35 +9,26 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the HIR
-ABI/final-spelling deletion-probe cluster in
-`src/frontend/hir/compile_time_engine.hpp::type_suffix_for_mangling`.
-Nominal mangling now goes through `nominal_type_suffix_for_mangling`, which
-prefers `record_def` spelling, then structured ids from `tag_text_id`,
-template-parameter TextIds, deferred-member TextIds, or `tpl_struct_origin_key`.
-It no longer reads rendered `TypeSpec::tag`.
+no-metadata specialization fallback deletion-probe cluster in
+`src/frontend/hir/compile_time_engine.hpp::InstantiationRegistry::select_function_specialization`.
+After the structured nominal matcher returns no result, nominal TypeSpecs
+(`struct`, `union`, `enum`, and `typedef`) without structured identity no
+longer compare or match through rendered `TypeSpec::tag`. Primitive/non-nominal
+types continue to match by the existing base/pointer shape checks.
 
-Compatibility tradeoff: tag-only/no-metadata mangling now uses the explicit
-`unknown` suffix. Common record-backed cases preserve existing link spelling
-through `record_def->name`; tag-TextId-only cases now use deterministic
-`Ttag_ctx..._text...` suffixes because this helper has no text-table authority
-to render the old spelling after `TypeSpec::tag` removal.
-
-Focused coverage in `frontend_hir_lookup_tests` proves stale rendered tag
-spelling is ignored when structured record metadata is present, and
-no-metadata inputs use the explicit unknown suffix. The
-`cpp_hir_template_function_deduction_binding` expectation was updated for the
-tag-TextId-only link-name suffix while preserving human-facing `{T=struct
-Probe}` display and structured specialization-key text.
+Focused coverage in `frontend_hir_lookup_tests` proves structured record
+matching still selects the specialization, structured record mismatches still
+reject even with matching rendered tags, tag-only/no-metadata nominal args
+reject, and primitive args still match.
 
 ## Suggested Next
 
 Continue Step 4 by choosing another compile-failure cluster and either
 migrating it or explicitly demoting it to display/final-spelling/no-metadata
-compatibility. Suggested next packet: migrate
-`compile_time_engine.hpp::InstantiationRegistry::select_function_specialization`
-so no-metadata specialization fallback comparisons prefer structured TypeSpec
-identity and treat structured misses as authoritative before rendered
-compatibility.
+compatibility. Suggested next packet: migrate the narrow
+`src/frontend/hir/impl/expr/builtin.cpp` layout/builtin fallback cluster
+(`LayoutQueries::find_struct_layout` or `resolve_builtin_query_type`) so
+structured metadata is authoritative and rendered compatibility is explicit.
 
 ## Watchouts
 
@@ -67,12 +58,14 @@ compatibility.
 - The HIR ABI/final-spelling mangling route is cleared for
   `type_suffix_for_mangling`; tag-TextId-only suffixes intentionally become
   deterministic id suffixes unless a record definition supplies final spelling.
+- The HIR function specialization selector no longer matches tag-only nominal
+  TypeSpecs after structured matching declines to decide.
 - The second deletion probe still stops in frontend/HIR compilation; no
   LIR/BIR/backend downstream metadata gap has been reached yet.
 - Remaining first-probe clusters include HIR display/final-spelling helpers,
-  HIR no-metadata specialization fallback comparisons, HIR builtin/layout
-  helpers, and mixed HIR semantic consumers in `hir_functions.cpp`,
-  `hir_lowering_core.cpp`, `hir_build.cpp`, and `hir_types.cpp`.
+  HIR builtin/layout helpers, and mixed HIR semantic consumers in
+  `hir_functions.cpp`, `hir_lowering_core.cpp`, `hir_build.cpp`, and
+  `hir_types.cpp`.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend
   failures after frontend/HIR compile blockers are cleared.
 - Classify each failure as parser/HIR-owned, compatibility/display/final
@@ -88,7 +81,7 @@ compatibility.
 
 ## Proof
 
-Step 4 ABI/final-spelling proof passed with:
+Step 4 specialization fallback proof passed with:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
 Result: build passed and 62/62 selected tests passed. Proof log:

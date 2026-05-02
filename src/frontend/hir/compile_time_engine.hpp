@@ -628,6 +628,11 @@ inline bool typespec_has_structured_nominal_identity(const TypeSpec& ts) {
          typespec_has_complete_text_identity(ts);
 }
 
+inline bool typespec_requires_nominal_identity(const TypeSpec& ts) {
+  return ts.base == TB_STRUCT || ts.base == TB_UNION || ts.base == TB_ENUM ||
+         ts.base == TB_TYPEDEF;
+}
+
 inline std::optional<bool> structured_typespec_nominal_match(
     const TypeSpec& spec_ts,
     const TypeSpec& bind_ts) {
@@ -762,11 +767,8 @@ class InstantiationRegistry {
           else if (std::optional<bool> structured_match =
                        structured_typespec_nominal_match(spec_ts, bind_ts))
             match = *structured_match;
-          else if (spec_ts.tag && bind_ts.tag && std::strcmp(spec_ts.tag, bind_ts.tag) != 0)
-            match = false;
-          else if (spec_ts.tag && !bind_ts.tag)
-            match = false;
-          else if (!spec_ts.tag && bind_ts.tag && bind_ts.base == TB_TYPEDEF)
+          else if (typespec_requires_nominal_identity(spec_ts) ||
+                   typespec_requires_nominal_identity(bind_ts))
             match = false;
         }
       }
