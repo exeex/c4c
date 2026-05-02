@@ -8,50 +8,28 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries reran the
-`TypeSpec::tag` deletion probe after the `compile_time_engine` cleanup slices.
-The temporary deletion in `src/frontend/parser/ast.hpp` was reverted before
-this todo update, and the restored tree builds.
+Step 4 - Probe Field Removal And Split Boundaries migrated the HIR builtin
+layout lookup route in
+`src/frontend/hir/impl/expr/builtin.cpp::LayoutQueries::find_struct_layout`.
+Complete structured owner metadata from `record_def` or `tag_text_id` plus
+namespace/qualifier data is now authoritative: a structured owner hit returns
+the metadata-backed layout, and a structured owner miss returns `nullptr`
+instead of falling through to rendered `TypeSpec::tag` / `Module::struct_defs`.
+Rendered `struct_defs` lookup remains only for no-metadata compatibility.
 
-Third-probe first failure clusters:
-
-- `src/frontend/hir/impl/expr/builtin.cpp::LayoutQueries::find_struct_layout`
-  still falls back through `ts.tag` / `Module::struct_defs`; classify as HIR
-  semantic layout lookup with rendered no-metadata compatibility.
-- `src/frontend/hir/impl/expr/builtin.cpp::Lowerer::resolve_builtin_query_type`
-  still resolves typedef template bindings by rendered `target.tag`;
-  classify as HIR template-binding compatibility/key-format boundary.
-- `src/frontend/hir/hir_functions.cpp` still has return/param substitution,
-  member typedef return/param recovery, zero-sized struct return normalization,
-  and pack binding fallback reads; classify as mixed HIR semantic and
-  final-spelling compatibility.
-- `src/frontend/hir/hir_lowering_core.cpp` still has generic type compatibility
-  and record layout computation reads; classify as HIR semantic compatibility
-  plus final layout storage payload.
-- `src/frontend/hir/hir_build.cpp::collect_ref_overloaded_free_functions`
-  still compares record args by rendered tags; classify as HIR semantic
-  overload-signature compatibility.
-- `src/frontend/hir/hir_types.cpp` still has typedef-to-struct, method owner,
-  parity, base/member recovery, lower-struct base-tag payload, and expression
-  inference reads; classify as mixed HIR semantic consumers plus
-  display/final-spelling compatibility.
-- `src/frontend/hir/impl/expr/call.cpp` now appears in the first-failure set
-  for template-struct construction, pack expansion, member call, lower-call,
-  and consteval-call template binding reads; classify as mixed HIR semantic
-  call lowering and template-binding compatibility.
-
-Cleared from the third-probe front line: all direct
-`compile_time_engine.hpp` failures, including `type_suffix_for_mangling` and
-`select_function_specialization`.
+Focused coverage in `frontend_hir_lookup_tests` proves builtin
+`sizeof`/`alignof` still prefer structured owner metadata over stale rendered
+tags and now reject stale rendered layouts after a structured owner miss.
 
 ## Suggested Next
 
 Continue Step 4 by choosing another compile-failure cluster and either
 migrating it or explicitly demoting it to display/final-spelling/no-metadata
-compatibility. Suggested next packet: migrate the narrow
-`src/frontend/hir/impl/expr/builtin.cpp::LayoutQueries::find_struct_layout`
-route so structured owner metadata is authoritative and rendered
-`struct_defs` lookup is explicit no-metadata compatibility.
+compatibility. Suggested next packet: migrate
+`src/frontend/hir/impl/expr/builtin.cpp::Lowerer::resolve_builtin_query_type`
+so template binding lookup uses existing structured type-parameter metadata
+where available and rendered binding names remain an explicit compatibility
+boundary.
 
 ## Watchouts
 
@@ -83,6 +61,9 @@ route so structured owner metadata is authoritative and rendered
   deterministic id suffixes unless a record definition supplies final spelling.
 - The HIR function specialization selector no longer matches tag-only nominal
   TypeSpecs after structured matching declines to decide.
+- The HIR builtin layout route is cleared for
+  `LayoutQueries::find_struct_layout`; complete structured owner misses no
+  longer fall back to rendered `struct_defs`.
 - The third deletion probe still stops in frontend/HIR compilation; no
   LIR/BIR/backend downstream metadata gap has been reached yet.
 - Remaining first-probe clusters include HIR display/final-spelling helpers,
@@ -104,10 +85,8 @@ route so structured owner metadata is authoritative and rendered
 
 ## Proof
 
-Step 4 third deletion probe ran:
-`cmake --build --preset default` after temporarily disabling
-`TypeSpec::tag` in `src/frontend/parser/ast.hpp`.
+Step 4 builtin layout proof passed with:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-Result: build failed as expected in frontend/HIR compile. The temporary
-`ast.hpp` deletion edit was reverted, then `cmake --build --preset default`
-passed on the restored tree. `git diff --check` passed.
+Result: build passed and 62/62 selected tests passed. Proof log:
+`test_after.log`. `git diff --check` passed.

@@ -108,6 +108,7 @@ class LayoutQueries {
               module_.find_struct_def_by_owner_structured(*key)) {
         return structured;
       }
+      return nullptr;
     }
     if (!ts.tag || !ts.tag[0]) return nullptr;
     const auto it = module_.struct_defs.find(ts.tag);

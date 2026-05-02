@@ -1807,6 +1807,60 @@ void test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag() {
               "HIR builtin alignof should prefer structured owner layout over stale rendered tag");
 }
 
+void test_builtin_record_layout_structured_owner_miss_rejects_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  c4c::Arena arena;
+
+  c4c::Node* record_node = arena.alloc_array<c4c::Node>(1);
+  record_node->kind = c4c::NK_STRUCT_DEF;
+  record_node->name = arena.strdup("MissingBuiltinLayout");
+  record_node->unqualified_name = arena.strdup("MissingBuiltinLayout");
+  record_node->unqualified_text_id =
+      module.link_name_texts->intern("MissingBuiltinLayout");
+  record_node->namespace_context_id = 24;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleBuiltinLayoutMiss";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleBuiltinLayoutMiss");
+  stale_def.ns_qual.context_id = record_node->namespace_context_id;
+  stale_def.size_bytes = 64;
+  stale_def.align_bytes = 32;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  query.tag = "StaleBuiltinLayoutMiss";
+  query.tag_text_id = record_node->unqualified_text_id;
+  query.namespace_context_id = record_node->namespace_context_id;
+  query.record_def = record_node;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  c4c::Node sizeof_node{};
+  sizeof_node.kind = c4c::NK_SIZEOF_TYPE;
+  sizeof_node.type = query;
+  const c4c::hir::ExprId sizeof_id =
+      lowerer.lower_builtin_sizeof_type(nullptr, &sizeof_node);
+  const c4c::hir::Expr* sizeof_expr = module.find_expr(sizeof_id);
+  const auto* sizeof_lit =
+      sizeof_expr ? std::get_if<c4c::hir::IntLiteral>(&sizeof_expr->payload) : nullptr;
+  expect_true(sizeof_lit && sizeof_lit->value == 4,
+              "HIR builtin sizeof should reject stale rendered tag after structured owner miss");
+
+  c4c::Node alignof_node{};
+  alignof_node.kind = c4c::NK_ALIGNOF_TYPE;
+  alignof_node.type = query;
+  const c4c::hir::ExprId alignof_id =
+      lowerer.lower_builtin_alignof_type(nullptr, &alignof_node);
+  const c4c::hir::Expr* alignof_expr = module.find_expr(alignof_id);
+  const auto* alignof_lit =
+      alignof_expr ? std::get_if<c4c::hir::IntLiteral>(&alignof_expr->payload) : nullptr;
+  expect_true(alignof_lit && alignof_lit->value == 4,
+              "HIR builtin alignof should reject stale rendered tag after structured owner miss");
+}
+
 void test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -2170,6 +2224,7 @@ int main() {
   test_layout_type_lookup_prefers_structured_owner_over_stale_tag();
   test_layout_type_lookup_structured_owner_miss_rejects_stale_tag();
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
+  test_builtin_record_layout_structured_owner_miss_rejects_stale_tag();
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
