@@ -10,28 +10,26 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 Step 4 - Probe Field Removal And Split Boundaries migrated
 `src/frontend/hir/impl/templates/templates.cpp`
-`hir_match_type_pattern` and `hir_specialization_match_score` away from direct
-`TypeSpec::tag` reads around the former lines 388-413. Type-pattern matching now
-identifies type template parameters through parser-owned carriers
-(`template_param_text_id`, `tag_text_id`, and validated template-param index
-metadata) and then stores bindings under the owning parameter name, with a
-narrow SFINAE-style rendered-tag compatibility fallback only when no structured
-carrier is present. Partial specialization scoring uses the same structured
-parameter-name lookup instead of classifying template parameters by rendered
-`TypeSpec::tag`. Added focused CTest coverage in
-`tests/frontend/cpp_hir_template_pattern_match_metadata_test.cpp` proving
-structured parameter metadata beats stale rendered `TypeSpec::tag` text,
-mismatched structured metadata does not recover through stale tag fallback, and
-tag-only no-metadata compatibility remains available.
+`Lowerer::canonical_template_struct_primary` away from direct `TypeSpec::tag`
+reads around the former line 787. Canonical template primary lookup now probes
+the structured `tpl_struct_origin_key` owner carrier before rendered origin
+strings and uses `tag_text_id` spelling only as the final rendered family-root
+compatibility path when no complete structured origin carrier exists. A
+complete structured origin key is authoritative: lookup miss returns `nullptr`
+instead of recovering through stale rendered text. Added focused coverage in
+`tests/frontend/cpp_hir_template_canonical_primary_origin_metadata_test.cpp`
+proving structured origin-key metadata selects the real primary before stale
+rendered origin/tag family fallbacks and structured origin-key miss rejects
+stale rendered fallback.
 
 ## Suggested Next
 
 Continue Step 4 with the next deletion-probe blocker in
 `src/frontend/hir/impl/templates/templates.cpp`, starting with
-`canonical_template_struct_primary` direct `TypeSpec::tag` reads around current
-deletion-probe errors at line 787, then `realize_template_struct` if the
-supervisor keeps those together. Keep `type_resolution.cpp`, parser/core, and
-parser type-helper residuals split unless the supervisor routes them together.
+`realize_template_struct` direct `TypeSpec::tag` reads around current
+deletion-probe errors at lines 896 and 941. Keep `type_resolution.cpp`,
+parser/core, and parser type-helper residuals split unless the supervisor
+routes them together.
 
 ## Watchouts
 
@@ -66,14 +64,18 @@ parser type-helper residuals split unless the supervisor routes them together.
   `hir_match_type_pattern`/`hir_specialization_match_score` direct reads in
   `src/frontend/hir/impl/templates/templates.cpp`. First residual errors now
   remain in `src/frontend/hir/impl/templates/templates.cpp` at
-  `canonical_template_struct_primary`, with same-build residuals also reported
-  in `realize_template_struct`, `type_resolution.cpp`, parser/core, and parser
-  type helpers.
+  `realize_template_struct`, with same-build residuals also reported in
+  `type_resolution.cpp`, parser/core, and parser type helpers.
 - `hir_match_type_pattern` and `hir_specialization_match_score` are now
   semantically cleared for type template-parameter matching/scoring. The HIR
   binding map still uses the canonical parameter-name string as the binding
   key after resolving the parameter by structured metadata; broader binding-map
   key migration is outside this packet.
+- `canonical_template_struct_primary` is now semantically cleared for primary
+  lookup from template origin metadata. A complete `tpl_struct_origin_key`
+  selects the owner-key primary or rejects stale rendered fallback on miss; the
+  final `tag_text_id` spelling path remains compatibility-only for rendered
+  family-root lookup when no complete structured origin key exists.
 - The explicit tag-only fallback in `hir_type_template_param_index` is gated
   behind a no-structured-carrier check and a field-detection helper so the
   Step 4 deletion probe still classifies later residuals first.
@@ -109,6 +111,8 @@ parser type-helper residuals split unless the supervisor routes them together.
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_static_member.log`.
 - This packet added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_pattern_match.log`.
+- This packet added
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_canonical_primary.log`.
 
 ## Proof
 
@@ -116,24 +120,25 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0 after the pattern/specialization matching migration
-revision. The build passed, and CTest passed 77 of 77 delegated tests,
+Result: command exited 0 after the canonical template primary migration
+revision. The build passed, and CTest passed 78 of 78 delegated tests,
 including new
-`cpp_hir_template_pattern_match_structured_metadata`. `test_after.log` is the
-canonical proof log.
+`cpp_hir_template_canonical_primary_origin_structured_metadata` coverage for
+structured origin-key win and structured origin-key miss rejection.
+`test_after.log` is the canonical proof log.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_templates_pattern_match.log 2>&1`,
+/tmp/c4c_typespec_tag_deletion_probe_step4_templates_canonical_primary.log 2>&1`,
 and restored the temporary edit. The probe moved past the targeted
-`hir_match_type_pattern` and `hir_specialization_match_score` direct
-`TypeSpec::tag` reads. The first residual blocker is now
-`src/frontend/hir/impl/templates/templates.cpp:787` in
-`canonical_template_struct_primary`, with same-build residuals also reported in
-`realize_template_struct`, `type_resolution.cpp`, parser/core, and parser type
-helpers.
+`canonical_template_struct_primary` direct `TypeSpec::tag` reads. The first
+residual blocker is now
+`src/frontend/hir/impl/templates/templates.cpp:896` in
+`realize_template_struct`, with another same-function residual at line 941 and
+same-build residuals also reported in `type_resolution.cpp`, parser/core, and
+parser type helpers.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.

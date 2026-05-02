@@ -73,6 +73,37 @@ const char* typespec_legacy_tag_if_present(const TypeSpec&, long) {
   return nullptr;
 }
 
+std::optional<HirRecordOwnerKey> template_origin_owner_key_hir(
+    const TypeSpec& ts) {
+  const QualifiedNameKey& origin_key = ts.tpl_struct_origin_key;
+  if (origin_key.base_text_id == kInvalidText) return std::nullopt;
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = origin_key.context_id;
+  ns_qual.is_global_qualified = origin_key.is_global_qualified;
+  if (origin_key.qualifier_path_id != kInvalidNamePath &&
+      (!ts.qualifier_text_ids || ts.n_qualifier_segments <= 0)) {
+    return std::nullopt;
+  }
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(
+        ts.qualifier_text_ids,
+        ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  HirRecordOwnerKey key =
+      make_hir_record_owner_key(ns_qual, origin_key.base_text_id);
+  if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+  return key;
+}
+
+std::optional<std::string> typespec_tag_text_spelling_hir(
+    const TypeSpec& ts,
+    const TextTable* texts) {
+  if (ts.tag_text_id == kInvalidText || !texts) return std::nullopt;
+  const std::string_view spelling = texts->lookup(ts.tag_text_id);
+  if (spelling.empty()) return std::nullopt;
+  return std::string(spelling);
+}
+
 std::string template_type_arg_nominal_payload_hir(const TypeSpec& ts,
                                                   const char* fallback) {
   if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
@@ -752,6 +783,14 @@ const Node* Lowerer::canonical_template_struct_primary(
     const TypeSpec& ts,
     const Node* primary_tpl) const {
   if (primary_tpl) return primary_tpl;
+  if (auto origin_key = template_origin_owner_key_hir(ts)) {
+    auto origin_it = template_struct_defs_by_owner_.find(*origin_key);
+    if (origin_it != template_struct_defs_by_owner_.end()) {
+      record_template_struct_primary_lookup_parity(origin_it->second);
+      return origin_it->second;
+    }
+    return nullptr;
+  }
   const std::string rendered_origin =
       (ts.tpl_struct_origin && ts.tpl_struct_origin[0])
           ? std::string(ts.tpl_struct_origin)
@@ -784,8 +823,9 @@ const Node* Lowerer::canonical_template_struct_primary(
     return nullptr;
   };
   if (const Node* primary = try_family_root(ts.tpl_struct_origin)) return primary;
-  if (ts.tag && ts.tag[0]) {
-    if (const Node* primary = try_family_root(ts.tag)) return primary;
+  if (auto tag_text = typespec_tag_text_spelling_hir(
+          ts, module_ ? module_->link_name_texts.get() : nullptr)) {
+    if (const Node* primary = try_family_root(*tag_text)) return primary;
   }
   return nullptr;
 }

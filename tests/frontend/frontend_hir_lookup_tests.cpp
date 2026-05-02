@@ -883,6 +883,53 @@ void test_template_struct_primary_record_def_miss_rejects_stale_origin() {
               "template struct primary lookup must not use stale rendered origin after structured record_def miss");
 }
 
+void test_template_struct_primary_lookup_uses_origin_key_before_stale_tag() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text = texts.intern("StaleOriginKeyPrimary");
+  const c4c::TextId stale_inst_text = texts.intern("StaleOriginKeyPrimary_T0");
+  const c4c::TextId structured_text = texts.intern("StructuredOriginKeyPrimary");
+
+  c4c::Node stale_primary{};
+  stale_primary.kind = c4c::NK_STRUCT_DEF;
+  stale_primary.name = "StaleOriginKeyPrimary";
+  stale_primary.unqualified_name = "StaleOriginKeyPrimary";
+  stale_primary.unqualified_text_id = stale_text;
+  stale_primary.namespace_context_id = 0;
+  stale_primary.n_template_params = 1;
+
+  c4c::Node structured_primary{};
+  structured_primary.kind = c4c::NK_STRUCT_DEF;
+  structured_primary.name = "StructuredOriginKeyPrimary";
+  structured_primary.unqualified_name = "StructuredOriginKeyPrimary";
+  structured_primary.unqualified_text_id = structured_text;
+  structured_primary.namespace_context_id = 0;
+  structured_primary.n_template_params = 1;
+
+  lowerer.register_template_struct_primary("StaleOriginKeyPrimary",
+                                           &stale_primary);
+  lowerer.register_template_struct_primary("StructuredOriginKeyPrimary",
+                                           &structured_primary);
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tpl_struct_origin = "StaleOriginKeyPrimary_T0";
+  ts.tpl_struct_origin_key.context_id = 0;
+  ts.tpl_struct_origin_key.base_text_id = structured_text;
+  ts.tag = "StaleOriginKeyPrimary_T0";
+  ts.tag_text_id = stale_inst_text;
+
+  expect_true(lowerer.canonical_template_struct_primary(ts) ==
+                  &structured_primary,
+              "template struct primary lookup should use structured origin key before stale rendered tag family fallback");
+}
+
 void test_inherited_static_member_eval_uses_base_record_def_before_stale_tag() {
   c4c::Node real_value{};
   real_value.kind = c4c::NK_INT_LIT;
@@ -2846,6 +2893,7 @@ int main() {
   test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names();
   test_template_struct_primary_lookup_uses_record_def_before_stale_origin();
   test_template_struct_primary_record_def_miss_rejects_stale_origin();
+  test_template_struct_primary_lookup_uses_origin_key_before_stale_tag();
   test_inherited_static_member_eval_uses_base_record_def_before_stale_tag();
   test_inherited_static_member_eval_base_record_def_miss_rejects_stale_tag();
   test_compile_time_function_specialization_type_arg_uses_record_def_identity();
