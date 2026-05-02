@@ -684,8 +684,11 @@ inline bool template_arg_list_mentions_template_param(const TypeSpec& ts,
 inline std::string encode_template_arg_debug_ref(const TypeSpec& ts) {
     std::string out;
     out += "base=" + std::to_string(static_cast<int>(ts.base));
-    out += ",tag=";
-    out += ts.tag ? ts.tag : "";
+    out += ",tag_text_id=" + std::to_string(ts.tag_text_id);
+    out += ",template_param_text_id=" +
+           std::to_string(ts.template_param_text_id);
+    out += ",deferred_member_type_text_id=" +
+           std::to_string(ts.deferred_member_type_text_id);
     out += ",ptr=" + std::to_string(ts.ptr_level);
     out += ",arr=" + std::to_string(ts.array_rank);
     return out;
@@ -743,9 +746,6 @@ inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* nod
     }
     if (typespec_has_template_param_dependency_carrier(ts)) {
         return false;
-    }
-    if (node_has_template_param_name(node, ts.tag)) {
-        return true;
     }
     return text_mentions_template_param(node, ts.deferred_member_type_name);
 }

@@ -6955,6 +6955,69 @@ void test_typespec_mentions_template_param_uses_deferred_member_text_id() {
               "deferred owner-member dependency checks should keep rendered compatibility when structured metadata is absent");
 }
 
+void test_typespec_mentions_template_param_uses_template_param_text_id_without_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+
+  c4c::Node owner{};
+  owner.kind = c4c::NK_STRUCT_DEF;
+  owner.n_template_params = 1;
+  owner.template_param_names = arena.alloc_array<const char*>(1);
+  owner.template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  owner.template_param_names[0] = arena.strdup("T");
+  owner.template_param_name_text_ids[0] = texts.intern("T");
+
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_TYPEDEF;
+  ts.tag = nullptr;
+  ts.template_param_text_id = owner.template_param_name_text_ids[0];
+
+  expect_true(c4c::typespec_mentions_template_param(ts, &owner),
+              "template parameter dependency checks should use template_param_text_id without rendered tag spelling");
+}
+
+void test_typespec_mentions_template_param_rejects_structured_miss_despite_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+
+  c4c::Node owner{};
+  owner.kind = c4c::NK_STRUCT_DEF;
+  owner.n_template_params = 1;
+  owner.template_param_names = arena.alloc_array<const char*>(1);
+  owner.template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  owner.template_param_names[0] = arena.strdup("T");
+  owner.template_param_name_text_ids[0] = texts.intern("T");
+
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_TYPEDEF;
+  ts.tag = arena.strdup("T");
+  ts.template_param_text_id = texts.intern("Other");
+
+  expect_true(!c4c::typespec_mentions_template_param(ts, &owner),
+              "template parameter dependency checks should not fall back to rendered tag after structured TextId miss");
+}
+
+void test_template_arg_debug_ref_uses_structured_debug_payload_not_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_TYPEDEF;
+  ts.tag = arena.strdup("StaleRenderedParam");
+  ts.tag_text_id = texts.intern("StructuredParam");
+  ts.template_param_text_id = texts.intern("T");
+  ts.deferred_member_type_text_id = texts.intern("type");
+  ts.ptr_level = 1;
+
+  const std::string encoded = c4c::encode_template_arg_debug_ref(ts);
+
+  expect_true(encoded.find("StaleRenderedParam") == std::string::npos,
+              "template argument debug refs should not depend on stale rendered tag spelling");
+  expect_true(encoded.find("tag_text_id=") != std::string::npos &&
+                  encoded.find("template_param_text_id=") != std::string::npos,
+              "template argument debug refs should expose structured debug payload ids");
+}
+
 void test_type_binding_equivalence_uses_deferred_member_text_id_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -8316,6 +8379,9 @@ int main() {
   test_parser_qualified_alias_template_member_typedef_substitution_uses_structured_carrier();
   test_parser_alias_of_alias_member_typedef_substitution_uses_structured_carrier();
   test_typespec_mentions_template_param_uses_deferred_member_text_id();
+  test_typespec_mentions_template_param_uses_template_param_text_id_without_tag();
+  test_typespec_mentions_template_param_rejects_structured_miss_despite_tag();
+  test_template_arg_debug_ref_uses_structured_debug_payload_not_tag();
   test_type_binding_equivalence_uses_deferred_member_text_id_authority();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();

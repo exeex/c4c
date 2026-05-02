@@ -8,56 +8,32 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries temporarily deleted
-`TypeSpec::tag` from `src/frontend/parser/ast.hpp` and ran
-`cmake --build --preset default`. The probe failed at compile time as
-expected, and the temporary `ast.hpp` deletion was restored before this packet
-ended. A follow-up `cmake --build --preset default` after restoration passed,
-so implementation files are buildable again.
+Step 4 - Probe Field Removal And Split Boundaries cleared the parser
+`TypeSpec::tag` deletion-probe helper cluster in `src/frontend/parser/ast.hpp`.
+`typespec_mentions_template_param` now relies on structured dependency
+carriers (`tag_text_id`, `template_param_text_id`,
+`deferred_member_type_text_id`, and nested template arg carriers) plus
+deferred-member-name compatibility only when no structured carrier exists; it
+no longer falls back to rendered `ts.tag` for semantic template-parameter
+detection. `encode_template_arg_debug_ref` now emits explicit structured debug
+payload ids instead of rendered tag spelling, so debug output is no longer a
+semantic dependency on `TypeSpec::tag`.
 
-First failure clusters from the removal probe:
-
-- Parser-owned semantic/display helpers in `src/frontend/parser/ast.hpp`:
-  `encode_template_arg_debug_ref` still renders template argument debug text
-  from `ts.tag`, and `typespec_mentions_template_param` still checks rendered
-  template parameter names via `ts.tag`. Classification: parser/HIR-owned plus
-  display/debug for encoding; rendered template-parameter compatibility for the
-  mention check.
-- HIR display/final-spelling helpers in `src/frontend/hir/hir_ir.hpp` and
-  `src/frontend/hir/compile_time_engine.hpp`: `canonical_type_str`,
-  `type_suffix_for_mangling`, and `encode_pending_type_ref` still need final
-  spelling/debug/mangling text for TypeSpecs. Classification:
-  display/final-spelling/mangling compatibility, not a semantic lookup
-  blocker by itself.
-- HIR template compatibility fallbacks in
-  `src/frontend/hir/compile_time_engine.hpp::select_function_specialization`
-  still contain rendered tag comparisons for no-structured-metadata TypeSpec
-  argument matching. Classification: HIR-owned no-metadata compatibility
-  surface already intentionally retained; next packet can isolate it behind an
-  explicit compatibility helper or remove it when deletion is the active goal.
-- HIR overload and type-route consumers in `src/frontend/hir/hir_build.cpp`
-  and `src/frontend/hir/hir_types.cpp` still have direct `ts.tag` references:
-  ref-overload struct receiver comparison, `resolve_typedef_to_struct`,
-  `resolve_struct_method_lookup_owner_tag`, parity display comparison,
-  layout fallback in `find_struct_def_for_layout_type`, inherited field/base
-  traversal, member-symbol fallback, struct base recording/final spelling,
-  generic control inference, template binding map lookup, and constructor/call
-  type inference. Classification: mixed HIR-owned semantic consumers,
-  no-metadata compatibility bridges, and final-spelling/base-tag payloads.
-- No downstream LIR/BIR/backend failure appeared before frontend/HIR compile
-  stopped. Classification: no downstream metadata-gap idea created in this
-  packet; parser/HIR work remains owned by this runbook.
+Focused coverage in `frontend_parser_tests` proves `template_param_text_id`
+works without rendered tag spelling, structured TextId mismatch rejects
+fallback despite a matching rendered tag, and template-argument debug refs do
+not include stale rendered tag spelling.
 
 ## Suggested Next
 
 Continue Step 4 by choosing one compile-failure cluster and either migrating it
 or explicitly demoting it to display/final-spelling/no-metadata compatibility.
-A good next packet is to isolate display/final-spelling helpers
-(`canonical_type_str`, `type_suffix_for_mangling`, `encode_pending_type_ref`,
-or parser `encode_template_arg_debug_ref`) behind named compatibility
-rendering, or to migrate a narrow HIR semantic consumer in `hir_types.cpp` such
-as `resolve_typedef_to_struct` or `find_struct_def_for_layout_type` fallback
-when existing `record_def`/TextId owner metadata is available.
+A good next packet is to isolate the HIR display/final-spelling helpers
+(`canonical_type_str`, `type_suffix_for_mangling`, or
+`encode_pending_type_ref`) behind named compatibility rendering, or to migrate
+a narrow HIR semantic consumer in `hir_types.cpp` such as
+`resolve_typedef_to_struct` or `find_struct_def_for_layout_type` fallback when
+existing `record_def`/TextId owner metadata is available.
 
 ## Watchouts
 
@@ -70,6 +46,13 @@ when existing `record_def`/TextId owner metadata is available.
 - The first probe stopped in frontend/HIR compilation; later deletion probes
   may reveal additional parser/Sema/backend failures after these clusters are
   migrated or demoted.
+- The parser `ast.hpp` helper cluster from the first probe is cleared for
+  `encode_template_arg_debug_ref` and `typespec_mentions_template_param`;
+  plain rendered template-parameter tag detection is no longer compatibility in
+  that helper.
+- Remaining first-probe clusters include HIR display/final-spelling helpers,
+  HIR no-metadata specialization fallback comparisons, and mixed HIR semantic
+  consumers in `hir_build.cpp`/`hir_types.cpp`.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend
   failures after frontend/HIR compile blockers are cleared.
 - Classify each failure as parser/HIR-owned, compatibility/display/final
@@ -85,14 +68,8 @@ when existing `record_def`/TextId owner metadata is available.
 
 ## Proof
 
-Probe command:
-`cmake --build --preset default`.
+Step 4 delegated proof passed with:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-Result while `TypeSpec::tag` was temporarily deleted: build failed with
-frontend/HIR compile errors beginning in `src/frontend/parser/ast.hpp`,
-`src/frontend/hir/hir_ir.hpp`, `src/frontend/hir/compile_time_engine.hpp`,
-`src/frontend/hir/hir_build.cpp`, and `src/frontend/hir/hir_types.cpp`.
-
-Restoration proof: after restoring `src/frontend/parser/ast.hpp`,
-`cmake --build --preset default` passed. `git diff --check` passed. No scratch
-probe log was left behind.
+Result: build passed and 61/61 selected tests passed. Proof log:
+`test_after.log`. `git diff --check` passed.
