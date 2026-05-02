@@ -8,6 +8,19 @@
 
 namespace c4c::hir {
 
+namespace {
+
+template <typename T>
+auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+template <typename T>
+void set_typespec_final_spelling_tag_if_present(T&, const char*, long) {}
+
+}  // namespace
+
 const HirStructField* find_struct_instance_field_including_bases(
     const hir::Module& module,
     const std::string& tag,
@@ -63,7 +76,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
           tmp_ts, ctx ? ctx->tpl_bindings : tpl_empty,
           ctx ? ctx->nttp_bindings : nttp_empty, n,
           PendingTemplateTypeKind::OwnerStruct, "nameref-tpl-ctor", primary_tpl);
-      if (tmp_ts.tag && module_->struct_defs.count(tmp_ts.tag)) {
+      if (find_struct_def_for_layout_type(tmp_ts)) {
         const LocalId tmp_lid = next_local_id();
         const std::string tmp_name = "__tmp_struct_" + std::to_string(tmp_lid.value);
         LocalDecl tmp{};
@@ -107,7 +120,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
         owner_ts.base = TB_STRUCT;
         owner_ts.array_size = -1;
         owner_ts.inner_rank = -1;
-        owner_ts.tag = struct_tag.c_str();
+        set_typespec_final_spelling_tag_if_present(owner_ts, struct_tag.c_str(), 0);
         auto sdit = struct_def_nodes_.find(struct_tag);
         if (sdit != struct_def_nodes_.end() && sdit->second) {
           owner_ts.record_def = const_cast<Node*>(sdit->second);
@@ -195,7 +208,12 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
             pending_ts, ctx ? ctx->tpl_bindings : tpl_empty,
             ctx ? ctx->nttp_bindings : nttp_empty, n,
             PendingTemplateTypeKind::OwnerStruct, "nameref-scope-tpl", primary_tpl);
-        if (pending_ts.tag && pending_ts.tag[0]) struct_tag = pending_ts.tag;
+        if (auto pending_owner_tag = resolve_member_lookup_owner_tag(
+                pending_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
+                ctx ? &ctx->nttp_bindings : nullptr, nullptr, n,
+                "nameref-scope-tpl-owner")) {
+          struct_tag = *pending_owner_tag;
+        }
       }
       const std::string final_lookup_struct_tag =
           structured_lookup.owner_tag.value_or(struct_tag);
@@ -279,7 +297,8 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
     }
     TypeSpec this_owner_ts{};
     this_owner_ts.base = TB_STRUCT;
-    this_owner_ts.tag = ctx->method_struct_tag.c_str();
+    set_typespec_final_spelling_tag_if_present(
+        this_owner_ts, ctx->method_struct_tag.c_str(), 0);
     this_owner_ts.array_size = -1;
     this_owner_ts.inner_rank = -1;
     auto owner_sdit = struct_def_nodes_.find(ctx->method_struct_tag);
@@ -295,7 +314,11 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       auto pit = ctx->params.find("this");
       if (pit != ctx->params.end()) this_ref.param_index = pit->second;
       TypeSpec this_ts = this_owner_ts;
-      this_ts.tag = owner_layout->tag.c_str();
+      set_typespec_final_spelling_tag_if_present(
+          this_ts, owner_layout->tag.c_str(), 0);
+      this_ts.tag_text_id = owner_layout->tag_text_id;
+      this_ts.namespace_context_id = owner_layout->ns_qual.context_id;
+      this_ts.is_global_qualified = owner_layout->ns_qual.is_global_qualified;
       this_ts.ptr_level = 1;
       ExprId this_id = append_expr(n, this_ref, this_ts, ValueCategory::LValue);
       MemberExpr me{};

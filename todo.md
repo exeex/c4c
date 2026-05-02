@@ -9,19 +9,21 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the
-`src/frontend/hir/impl/inspect/printer.cpp` deletion-probe blocker. HIR dump
-type rendering now treats struct/union/enum names as display/final-spelling
-payload: it prefers valid `record_def` spelling, structured HIR owner metadata,
-and deletion-safe legacy spelling before falling back to TextId display text.
-The printer no longer has deletion-probe-blocking direct `TypeSpec::tag` reads.
+`src/frontend/hir/impl/expr/scalar_control.cpp` deletion-probe blocker. The
+`lower_var_expr` template-constructor temp lookup now uses
+`find_struct_def_for_layout_type` instead of reading realized `TypeSpec::tag`;
+scoped static-member owner setup and implicit-`this` owner setup now keep
+rendered owner names as deletion-safe final-spelling payload while structured
+lookup flows through `record_def`, layout metadata, `tag_text_id`, and
+`resolve_member_lookup_owner_tag`. `scalar_control.cpp` no longer has
+deletion-probe-blocking direct `TypeSpec::tag` reads or writes.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next deletion-probe blocker in
-`src/frontend/hir/impl/expr/scalar_control.cpp`, keeping it split from the
-later `src/frontend/hir/impl/expr/operator.cpp` operator/member-call cluster.
-The current parallel build reports both files, with `scalar_control.cpp`
-emitted first in the refreshed probe log.
+`src/frontend/hir/impl/expr/operator.cpp`, keeping that operator/member-call
+cluster split from any broader HIR or backend carrier work. The refreshed
+deletion probe now reports `operator.cpp` first.
 
 ## Watchouts
 
@@ -141,6 +143,13 @@ emitted first in the refreshed probe log.
   `typespec_legacy_tag_if_present` helper is a deletion-safe compatibility
   bridge, not a semantic owner lookup; keep semantic ownership on `record_def`
   and HIR owner metadata.
+- `scalar_control.cpp` now uses a local deletion-safe
+  `set_typespec_final_spelling_tag_if_present` bridge only for rendered
+  final-spelling compatibility. Do not turn those owner setup paths back into
+  direct `TypeSpec::tag` semantic lookup.
+- The implicit-`this` path now copies layout `tag_text_id` and namespace
+  metadata onto the pointer receiver before member-owner resolution; keep
+  `record_def` and layout metadata authoritative for owner lookup.
 - Some HIR dump TypeSpecs carry parser TextIds that render local/member names
   such as `value` or `box`; do not print those as record names when structured
   record metadata or an unambiguous HIR struct display spelling is available.
@@ -175,20 +184,19 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0 and `test_after.log` was preserved as the canonical
-executor proof log. The build passed, and CTest passed 72 of 72 delegated
-tests.
+Result: command exited 0 after restoring the temporary deletion-probe edit, and
+`test_after.log` was preserved as the canonical executor proof log. The build
+passed, and CTest passed 72 of 72 delegated tests.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_printer.log 2>&1`, and restored
-the temporary edit. The probe moved past
-`src/frontend/hir/impl/inspect/printer.cpp`. The first residual errors are
-direct `TypeSpec::tag` reads in
-`src/frontend/hir/impl/expr/scalar_control.cpp`, followed by
-`src/frontend/hir/impl/expr/operator.cpp`.
+/tmp/c4c_typespec_tag_deletion_probe_step4_scalar_control.log 2>&1`, and
+restored the temporary edit. The probe moved past
+`src/frontend/hir/impl/expr/scalar_control.cpp`. The first residual errors are
+direct `TypeSpec::tag` reads in `src/frontend/hir/impl/expr/operator.cpp`
+(`try_lower_operator_call`, `lower_member_expr`, and `maybe_bool_convert`).
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.
