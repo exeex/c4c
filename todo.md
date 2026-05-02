@@ -8,27 +8,39 @@ Current Step Title: Preserve Display And Link Text Boundaries
 
 ## Just Finished
 
-Plan-owner review accepted Step 4 - Convert Or Demote Legacy HIR Lookup Routes
-as complete enough for this runbook. Step 4 converted local extern global
-lookup, local function prototype lookup, and ordinary variable global fallback
-from direct rendered lookup to central structured-first resolvers, with
-stale-rendered-name tests.
+Step 5 - Preserve Display And Link Text Boundaries audited the string payloads
+touched by Steps 2-4 and kept them classified as payloads rather than semantic
+authority:
 
-Remaining direct `lookup_function_id` / `lookup_global_id` surfaces are
-classified as central legacy helper fallback in `hir_ir.hpp` or
-template-global generated/mangled-name materialization in
-`impl/templates/global.cpp`, not active metadata-backed lookup routes for this
-runbook.
+- Display, diagnostic, and dump strings such as HIR names, `debug_text`,
+  rendered dump labels, and mismatch/debug logging remain string payloads.
+- Final spelling and link-visible strings such as `Function::name`,
+  `GlobalVar::name`, `DeclRef::name`, `LinkNameId`, and `LinkNameTable` entries
+  remain output/ABI/link payloads; structured lookup may select the declaration
+  identity, but the resolved declaration still supplies the visible/link text.
+- Mangling, generated specialization names, and template materialization keys
+  such as `mangle_template_name`, specialization keys, template-global mangled
+  names, and struct/method generated link names remain compatibility and final
+  spelling payloads.
+- Compatibility string maps such as rendered `NttpBindings`,
+  `ConstEvalEnv::struct_defs`, `ModuleDeclLookupAuthority::LegacyRendered`,
+  rendered resolver fallback, pack synthetic keys, and no-metadata fallback
+  routes remain explicitly named compatibility boundaries.
+- Semantic lookup authority introduced or migrated by Steps 2-4 stays on
+  TextId/namespace metadata, NTTP structured carriers, `HirRecordOwnerKey`, and
+  central structured-first function/global resolvers when complete metadata is
+  available.
 
-Step 5 - Preserve Display And Link Text Boundaries is now the active execution
-step.
+Added focused preservation coverage for the Step 4 ordinary variable global
+fallback: a stale rendered global and structured global now carry distinct
+`LinkNameId` payloads, and the lowered `DeclRef` must keep the structured
+global's link-visible payload after structured metadata selects the declaration.
 
 ## Suggested Next
 
-Start Step 5 by auditing the strings touched by Steps 2-4 and adding or
-confirming focused assertions that display, diagnostics, dumps, mangling,
-final spelling, ABI/link-visible names, and explicit compatibility payloads are
-preserved while structured metadata decides semantic identity.
+Ask the supervisor/plan-owner whether Step 5 is complete enough to advance the
+runbook, or whether one more preservation packet should cover HIR dump/mangling
+payloads before moving on.
 
 ## Watchouts
 
@@ -73,17 +85,8 @@ preserved while structured metadata decides semantic identity.
 
 ## Proof
 
-Step 3 focused pre-proof passed:
+Step 5 focused pre-proof passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`.
 
-Step 3 delegated proof passed and wrote `test_after.log`:
+Step 5 delegated proof passed and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
-
-Step 4 focused pre-proof passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`.
-
-Step 4 delegated proof passed and wrote `test_after.log`:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
-
-No new validation was run for this lifecycle-only Step 4 review and Step 5
-pointer update.

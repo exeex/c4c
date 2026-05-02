@@ -1418,13 +1418,17 @@ void test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_n
 
   const c4c::TextId stale_text = texts.intern("stale_var_global");
   const c4c::TextId structured_text = texts.intern("structured_var_global");
+  const c4c::LinkNameId stale_link =
+      module.link_names.intern("stale_var_global_link");
+  const c4c::LinkNameId structured_link =
+      module.link_names.intern("structured_var_global_link");
   c4c::hir::NamespaceQualifier local_ns;
   local_ns.context_id = 0;
 
   add_global(module, c4c::hir::GlobalId{70}, "stale_var_global",
-             stale_text, c4c::kInvalidLinkName, local_ns);
+             stale_text, stale_link, local_ns);
   add_global(module, c4c::hir::GlobalId{71}, "structured_var_global",
-             structured_text, c4c::kInvalidLinkName, local_ns);
+             structured_text, structured_link, local_ns);
 
   c4c::Node var{};
   var.kind = c4c::NK_VAR;
@@ -1443,6 +1447,8 @@ void test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_n
               "ordinary variable fallback should prefer structured global metadata over stale rendered name");
   expect_true(ref->name == "structured_var_global",
               "ordinary variable fallback should rewrite DeclRef name to the resolved structured global");
+  expect_true(ref->link_name_id == structured_link,
+              "ordinary variable fallback should preserve the resolved global link-visible payload");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
                       c4c::hir::ModuleDeclLookupAuthority::Structured,
                       "stale_var_global", 71),
