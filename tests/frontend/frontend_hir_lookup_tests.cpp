@@ -1017,6 +1017,29 @@ int use_template_global_nttp() { return value<39>; }
               "template-global initializer should reduce through TextId NTTP FunctionCtx binding despite stale rendered name");
 }
 
+void test_static_member_nttp_const_eval_prefers_text_id_binding() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId param_text_id = module.link_name_texts->intern("V");
+  c4c::Node stale_ref{};
+  stale_ref.kind = c4c::NK_VAR;
+  stale_ref.name = "__stale_rendered_nttp";
+  stale_ref.unqualified_name = "V";
+  stale_ref.unqualified_text_id = param_text_id;
+
+  c4c::hir::NttpBindings rendered_bindings;
+  rendered_bindings["__stale_rendered_nttp"] = 7;
+  c4c::hir::NttpTextBindings text_bindings;
+  text_bindings[param_text_id] = 39;
+
+  const long long value = lowerer.eval_const_int_with_nttp_bindings(
+      &stale_ref, rendered_bindings, &text_bindings);
+  expect_true(value == 39,
+              "static-member NTTP const eval should prefer TextId bindings over stale rendered names");
+}
+
 }  // namespace
 
 int main() {
@@ -1030,6 +1053,7 @@ int main() {
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();
+  test_static_member_nttp_const_eval_prefers_text_id_binding();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

@@ -8,36 +8,48 @@ Current Step Title: Migrate HIR NTTP And Consteval Handoff
 
 ## Just Finished
 
-Step 2 - Migrate HIR NTTP And Consteval Handoff continued through the remaining
-FunctionCtx/template-call NTTP consumer surfaces in the Step 2 area. HIR now
-uses a `lookup_nttp_binding` helper that prefers `FunctionCtx::nttp_bindings_by_text`
-from AST `TextId` metadata before falling back to rendered `NttpBindings`.
-`infer_call_result_type` passes enclosing TextId NTTP bindings into
-`build_call_nttp_bindings`, template value-argument evaluation seeds
-`ConstEvalEnv::nttp_bindings_by_text`, and direct NTTP expression/var lowering
-uses the TextId-first helper.
+Step 2 - Migrate HIR NTTP And Consteval Handoff audited the residual
+`NttpBindings` consumers and migrated one remaining metadata-backed HIR route:
+static constexpr struct/member NTTP const evaluation. `eval_const_int_with_nttp_bindings`
+now accepts an optional `NttpTextBindings` mirror and prefers an AST
+`unqualified_text_id` lookup before falling back to the rendered name map.
+Template struct instantiation and ordinary struct lowering build that mirror
+from template parameter `TextId` metadata before evaluating static constexpr
+member initializers.
 
-Template-global and template-struct method handoff paths now construct and pass
-TextId NTTP mirrors into `lower_global`, pending struct methods, and
-`lower_struct_method`, so metadata-backed initializer and method bodies can
-populate their compile-time env before using rendered names as compatibility.
-`build_call_nttp_text_bindings` no longer requires a call AST node, allowing
-defaulted or materialized NTTP maps to be mirrored from template parameter
-metadata.
+Focused coverage in `frontend_hir_lookup_tests` now checks a stale rendered
+NTTP name with a valid TextId mirror and verifies static-member NTTP const eval
+uses the TextId value instead of the rendered-map value.
 
-Focused coverage in `frontend_hir_lookup_tests` now includes a template-global
-initializer route that stales the rendered NTTP parameter spelling for
-`template<int V> int value = lift<V>();` after Sema validation and verifies the
-instantiated global still reduces to `42` through the TextId-backed
-`FunctionCtx` binding.
+Residual Step 2 `NttpBindings` classification:
+- Compatibility payloads: `TemplateCallInfo::nttp_args`,
+  `PendingConstevalExpr::nttp_bindings`, `HirTemplateInstantiation::nttp_bindings`,
+  and `FunctionCtx::nttp_bindings` remain rendered mirrors beside TextId maps
+  for older callers and no-metadata fallback.
+- Mangling/spec-key payloads: `mangle_template_name`,
+  `make_specialization_key`, instance registry keys, and template-global/struct
+  emitted names intentionally use rendered parameter names and values as stable
+  ABI/cache/display payloads, not lookup authority.
+- Pack naming/counting compatibility: `pack_binding_name`,
+  `parse_pack_binding_name`, `count_pack_bindings_for_name`, and pack loops in
+  template materialization use rendered synthetic keys such as `Ts#0`; there is
+  no current per-pack-element TextId carrier, so treating those keys as
+  semantic TextIds would be a parser/Sema carrier boundary.
+- Template struct materialization and member-typedef helpers still contain
+  rendered `nttp_bindings.find(...)` probes for encoded debug strings,
+  deferred `$expr:` text, `TemplateArgRef::debug_text`, and inherited/selected
+  pattern maps. These are compatibility/no-metadata or generated-name surfaces
+  unless a future carrier gives each encoded template argument a structured
+  identity.
+- Deferred NTTP expression helpers consume vectorized rendered env pairs for
+  `$expr:` evaluation. That route is a compatibility boundary shared with the
+  deferred expression representation, not a HIR TextId-backed lookup path.
 
 ## Suggested Next
 
-Continue Step 2 by auditing residual rendered `NttpBindings` uses that are
-outside the migrated compile-time/template-call handoff, especially template
-struct pattern selection/materialization and pack NTTP surfaces. Split any
-missing parser/Sema TextId carrier boundary into a follow-up instead of
-widening this HIR packet.
+Step 2 appears ready for supervisor/plan-owner review before moving to Step 3.
+If more NTTP cleanup is requested, split a new follow-up for structured pack
+element/template-argument carriers instead of expanding this HIR resweep packet.
 
 ## Watchouts
 
@@ -52,11 +64,10 @@ widening this HIR packet.
 - Record-layout cleanup is a separate boundary from NTTP cleanup: HIR has
   `HirRecordOwnerKey`/`struct_def_owner_index`, but Sema consteval does not yet
   receive a structured layout map.
-- This slice migrated the remaining obvious Step 2 FunctionCtx/template-call
-  consumers that already had AST TextId metadata. Rendered `NttpBindings`
-  remain compatibility payloads and are still used for pack naming,
-  specialization-key/mangling payloads, and unresolved surfaces without a
-  complete TextId carrier.
+- Residual rendered `NttpBindings` uses should not be removed mechanically:
+  several are ABI/display/cache payloads, pack synthetic-key compatibility, or
+  deferred expression/debug-text boundaries without a complete structured
+  carrier.
 
 ## Proof
 

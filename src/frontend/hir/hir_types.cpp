@@ -197,10 +197,16 @@ std::optional<FnPtrSig> Lowerer::fn_ptr_sig_from_decl_node(const Node* n) {
 }
 
 long long Lowerer::eval_const_int_with_nttp_bindings(
-    const Node* n, const NttpBindings& nttp_bindings) const {
+    const Node* n,
+    const NttpBindings& nttp_bindings,
+    const NttpTextBindings* nttp_bindings_by_text) const {
   if (!n) return 0;
   if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) return n->ival;
   if (n->kind == NK_VAR && n->name) {
+    if (nttp_bindings_by_text && n->unqualified_text_id != kInvalidText) {
+      auto text_it = nttp_bindings_by_text->find(n->unqualified_text_id);
+      if (text_it != nttp_bindings_by_text->end()) return text_it->second;
+    }
     auto nttp_it = nttp_bindings.find(n->name);
     if (nttp_it != nttp_bindings.end()) return nttp_it->second;
     auto enum_it = enum_consts_.find(n->name);
@@ -208,7 +214,8 @@ long long Lowerer::eval_const_int_with_nttp_bindings(
     return 0;
   }
   if (n->kind == NK_CAST && n->left) {
-    long long v = eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
+    long long v =
+        eval_const_int_with_nttp_bindings(n->left, nttp_bindings, nttp_bindings_by_text);
     TypeSpec ts = n->type;
     if (ts.ptr_level == 0) {
       int bits = 0;
@@ -235,15 +242,20 @@ long long Lowerer::eval_const_int_with_nttp_bindings(
   }
   if (n->kind == NK_UNARY && n->op && n->left) {
     if (strcmp(n->op, "-") == 0)
-      return -eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
+      return -eval_const_int_with_nttp_bindings(
+          n->left, nttp_bindings, nttp_bindings_by_text);
     if (strcmp(n->op, "+") == 0)
-      return eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
+      return eval_const_int_with_nttp_bindings(
+          n->left, nttp_bindings, nttp_bindings_by_text);
     if (strcmp(n->op, "~") == 0)
-      return ~eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
+      return ~eval_const_int_with_nttp_bindings(
+          n->left, nttp_bindings, nttp_bindings_by_text);
   }
   if (n->kind == NK_BINOP && n->op && n->left && n->right) {
-    long long l = eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
-    long long r = eval_const_int_with_nttp_bindings(n->right, nttp_bindings);
+    long long l =
+        eval_const_int_with_nttp_bindings(n->left, nttp_bindings, nttp_bindings_by_text);
+    long long r =
+        eval_const_int_with_nttp_bindings(n->right, nttp_bindings, nttp_bindings_by_text);
     if (strcmp(n->op, "+") == 0) return l + r;
     if (strcmp(n->op, "-") == 0) return l - r;
     if (strcmp(n->op, "*") == 0) return l * r;
@@ -1870,11 +1882,17 @@ void Lowerer::lower_struct_def(const Node* sd) {
   // members that reference NTTP parameters (e.g. `static constexpr T value = v;`)
   // are evaluated correctly.
   NttpBindings struct_nttp_bindings;
+  NttpTextBindings struct_nttp_bindings_by_text;
   if (sd->n_template_args > 0 && sd->n_template_params > 0) {
     for (int pi = 0; pi < sd->n_template_params && pi < sd->n_template_args; ++pi) {
       const char* pname = sd->template_param_names[pi];
       if (sd->template_param_is_nttp[pi]) {
         struct_nttp_bindings[pname] = sd->template_arg_values[pi];
+        if (sd->template_param_name_text_ids &&
+            sd->template_param_name_text_ids[pi] != kInvalidText) {
+          struct_nttp_bindings_by_text[sd->template_param_name_text_ids[pi]] =
+              sd->template_arg_values[pi];
+        }
       }
     }
   }
@@ -1891,7 +1909,11 @@ void Lowerer::lower_struct_def(const Node* sd) {
       static_const_value =
           struct_nttp_bindings.empty()
               ? static_eval_int(f->init, enum_consts_)
-              : eval_const_int_with_nttp_bindings(f->init, struct_nttp_bindings);
+              : eval_const_int_with_nttp_bindings(
+                    f->init, struct_nttp_bindings,
+                    struct_nttp_bindings_by_text.empty()
+                        ? nullptr
+                        : &struct_nttp_bindings_by_text);
     }
     if (f->name && f->name[0]) {
       struct_static_member_decls_[tag][f->name] = f;

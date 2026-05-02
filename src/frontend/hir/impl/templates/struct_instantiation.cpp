@@ -100,12 +100,15 @@ void Lowerer::record_instantiated_template_struct_field_metadata(
     const std::string& mangled,
     const std::optional<HirRecordOwnerKey>& owner_key,
     const Node* orig_f,
-    const NttpBindings& selected_nttp_bindings_map) {
+    const NttpBindings& selected_nttp_bindings_map,
+    const NttpTextBindings* selected_nttp_bindings_by_text) {
   if (!orig_f || !orig_f->name) return;
   std::optional<long long> static_const_value;
   if (orig_f->is_static && orig_f->is_constexpr && orig_f->init) {
     static_const_value =
-        eval_const_int_with_nttp_bindings(orig_f->init, selected_nttp_bindings_map);
+        eval_const_int_with_nttp_bindings(
+            orig_f->init, selected_nttp_bindings_map,
+            selected_nttp_bindings_by_text);
   }
   struct_static_member_decls_[mangled][orig_f->name] = orig_f;
   if (static_const_value) {
@@ -161,13 +164,15 @@ void Lowerer::append_instantiated_template_struct_fields(
     const std::optional<HirRecordOwnerKey>& owner_key,
     const Node* tpl_def,
     const TypeBindings& selected_type_bindings,
-    const NttpBindings& selected_nttp_bindings_map) {
+    const NttpBindings& selected_nttp_bindings_map,
+    const NttpTextBindings* selected_nttp_bindings_by_text) {
   const int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
   int llvm_idx = 0;
   for (int fi = 0; fi < num_fields; ++fi) {
     const Node* orig_f = tpl_def->fields[fi];
     record_instantiated_template_struct_field_metadata(
-        mangled, owner_key, orig_f, selected_nttp_bindings_map);
+        mangled, owner_key, orig_f, selected_nttp_bindings_map,
+        selected_nttp_bindings_by_text);
     std::optional<HirStructField> hf = instantiate_template_struct_field(
         orig_f, mangled, owner_key, selected_type_bindings, selected_nttp_bindings_map,
         tpl_def, llvm_idx);
@@ -221,6 +226,8 @@ void Lowerer::instantiate_template_struct_body(
 
   const TypeBindings& selected_type_bindings = selected_pattern.type_bindings;
   const NttpBindings& selected_nttp_bindings_map = selected_pattern.nttp_bindings;
+  NttpTextBindings selected_nttp_bindings_by_text =
+      build_call_nttp_text_bindings(nullptr, primary_tpl, selected_nttp_bindings_map);
 
   HirStructDef def;
   def.tag = mangled;
@@ -238,7 +245,10 @@ void Lowerer::instantiate_template_struct_body(
       make_template_struct_instance_owner_key(def, primary_tpl, instance_key);
   append_instantiated_template_struct_fields(
       def, mangled, owner_key, tpl_def, selected_type_bindings,
-      selected_nttp_bindings_map);
+      selected_nttp_bindings_map,
+      selected_nttp_bindings_by_text.empty()
+          ? nullptr
+          : &selected_nttp_bindings_by_text);
 
   compute_struct_layout(module_, def);
   owner_key =

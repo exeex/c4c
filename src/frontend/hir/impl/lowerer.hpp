@@ -391,7 +391,9 @@ class Lowerer {
       const std::string& tag, const std::string& member) const;
 
   long long eval_const_int_with_nttp_bindings(
-      const Node* n, const NttpBindings& nttp_bindings) const;
+      const Node* n,
+      const NttpBindings& nttp_bindings,
+      const NttpTextBindings* nttp_bindings_by_text = nullptr) const;
 
   std::optional<std::string> find_struct_method_mangled(
       const std::string& tag,
@@ -545,7 +547,8 @@ class Lowerer {
       const std::string& mangled,
       const std::optional<HirRecordOwnerKey>& owner_key,
       const Node* orig_f,
-      const NttpBindings& selected_nttp_bindings_map);
+      const NttpBindings& selected_nttp_bindings_map,
+      const NttpTextBindings* selected_nttp_bindings_by_text = nullptr);
 
   std::optional<HirStructField> instantiate_template_struct_field(
       const Node* orig_f,
@@ -562,7 +565,8 @@ class Lowerer {
       const std::optional<HirRecordOwnerKey>& owner_key,
       const Node* tpl_def,
       const TypeBindings& selected_type_bindings,
-      const NttpBindings& selected_nttp_bindings_map);
+      const NttpBindings& selected_nttp_bindings_map,
+      const NttpTextBindings* selected_nttp_bindings_by_text = nullptr);
 
   void instantiate_template_struct_body(
       const std::string& mangled,
