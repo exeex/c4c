@@ -2134,6 +2134,9 @@ TypeSpec Parser::parse_base_type() {
                     ts.is_global_qualified || ts.namespace_context_id >= 0 ||
                     ts.n_qualifier_segments > 0 ||
                     ts.tag_text_id != kInvalidText;
+                const bool typedef_type_has_structured_typedef_identity =
+                    typedef_type->base == TB_TYPEDEF &&
+                    typedef_type->tag_text_id != kInvalidText;
                 const TextId save_tag_text_id = ts.tag_text_id;
                 const bool save_is_global_qualified = ts.is_global_qualified;
                 const int save_namespace_context_id = ts.namespace_context_id;
@@ -2141,7 +2144,8 @@ TypeSpec Parser::parse_base_type() {
                 const char** save_qualifier_segments = ts.qualifier_segments;
                 TextId* save_qualifier_text_ids = ts.qualifier_text_ids;
                 ts = *typedef_type;
-                if (has_qualified_type_metadata) {
+                if (has_qualified_type_metadata &&
+                    !typedef_type_has_structured_typedef_identity) {
                     ts.tag_text_id = save_tag_text_id;
                     ts.is_global_qualified = save_is_global_qualified;
                     ts.namespace_context_id = save_namespace_context_id;
@@ -5198,11 +5202,21 @@ TypeSpec Parser::parse_base_type() {
                         if (inst->n_member_typedefs > 0) {
                             inst->member_typedef_names =
                                 arena_.alloc_array<const char*>(inst->n_member_typedefs);
+                            inst->member_typedef_text_ids =
+                                arena_.alloc_array<TextId>(inst->n_member_typedefs);
                             inst->member_typedef_types =
                                 arena_.alloc_array<TypeSpec>(inst->n_member_typedefs);
                             for (int ti = 0; ti < inst->n_member_typedefs; ++ti) {
                                 inst->member_typedef_names[ti] =
                                     tpl_def->member_typedef_names[ti];
+                                inst->member_typedef_text_ids[ti] =
+                                    tpl_def->member_typedef_text_ids
+                                        ? tpl_def->member_typedef_text_ids[ti]
+                                        : parser_text_id_for_token(
+                                              kInvalidText,
+                                              inst->member_typedef_names[ti]
+                                                  ? inst->member_typedef_names[ti]
+                                                  : "");
                                 TypeSpec member_ts = tpl_def->member_typedef_types[ti];
                                 if (tpl_def->template_arg_types &&
                                     tpl_def->template_arg_is_value) {

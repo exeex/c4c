@@ -37,19 +37,50 @@ std::string legacy_template_binding_name_without_usable_text_spelling(
     const TextTable* texts) {
   if (!text_id_spelling(ts.template_param_text_id, texts).empty()) return {};
   // No-usable-text-metadata compatibility bridge for legacy template binding
-  // maps that still key parameter packs by rendered parameter spelling.
-  return ts.tag ? std::string(ts.tag) : std::string{};
+  // maps have no structured carrier once rendered tag spelling is unavailable.
+  return {};
 }
 
 std::string legacy_type_name_without_complete_text_metadata(const TypeSpec& ts) {
   if (ts.tag_text_id != kInvalidText) return {};
-  return ts.tag ? std::string(ts.tag) : std::string{};
+  return {};
+}
+
+std::optional<std::string> unique_non_pack_template_binding_name(
+    const TypeBindings& bindings) {
+  std::optional<std::string> out;
+  for (const auto& [key, _] : bindings) {
+    if (key.find('#') != std::string::npos) continue;
+    if (out && *out != key) return std::nullopt;
+    out = key;
+  }
+  return out;
+}
+
+std::optional<std::string> unique_pack_template_binding_base(
+    const TypeBindings& bindings) {
+  std::optional<std::string> out;
+  for (const auto& [key, _] : bindings) {
+    const size_t split = key.rfind('#');
+    if (split == std::string::npos || split + 1 == key.size()) continue;
+    bool numeric_suffix = true;
+    for (size_t i = split + 1; i < key.size(); ++i) {
+      if (key[i] < '0' || key[i] > '9') {
+        numeric_suffix = false;
+        break;
+      }
+    }
+    if (!numeric_suffix) continue;
+    const std::string base = key.substr(0, split);
+    if (out && *out != base) return std::nullopt;
+    out = base;
+  }
+  return out;
 }
 
 bool has_member_typedef_owner_metadata_or_legacy_name(const TypeSpec& ts) {
   return ts.record_def || (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) ||
-         ts.tag_text_id != kInvalidText ||
-         (ts.tag && ts.tag[0]);
+         ts.tag_text_id != kInvalidText;
 }
 
 void apply_signature_template_concrete(TypeSpec& target,
@@ -102,7 +133,15 @@ bool apply_legacy_template_binding_without_usable_text_spelling(
   if (!tpl_bindings) return false;
   const std::string key =
       legacy_template_binding_name_without_usable_text_spelling(ts, texts);
-  if (key.empty()) return false;
+  if (key.empty()) {
+    if (ts.template_param_text_id == kInvalidText) return false;
+    const auto unique_key = unique_non_pack_template_binding_name(*tpl_bindings);
+    if (!unique_key) return false;
+    auto unique_it = tpl_bindings->find(*unique_key);
+    if (unique_it == tpl_bindings->end()) return false;
+    apply_signature_template_concrete(ts, unique_it->second);
+    return true;
+  }
   auto it = tpl_bindings->find(key);
   if (it == tpl_bindings->end()) return false;
   apply_signature_template_concrete(ts, it->second);
@@ -466,17 +505,104 @@ TypeSpec Lowerer::substitute_signature_template_type(
     TypeSpec ts, const TypeBindings* tpl_bindings) {
   if (ts.base != TB_TYPEDEF) return ts;
 
+  auto substitute_template_owner_params = [&](TypeSpec& target,
+                                              const Node* owner_tpl,
+                                              const auto& self) -> void {
+    if (!owner_tpl || !tpl_bindings) return;
+    if (target.base == TB_TYPEDEF) {
+      TextId carrier_text_id = target.template_param_text_id;
+      if (carrier_text_id == kInvalidText) carrier_text_id = target.tag_text_id;
+      int param_index = -1;
+      if (carrier_text_id != kInvalidText &&
+          owner_tpl->template_param_name_text_ids) {
+        for (int i = 0; i < owner_tpl->n_template_params; ++i) {
+          if (owner_tpl->template_param_is_nttp &&
+              owner_tpl->template_param_is_nttp[i]) {
+            continue;
+          }
+          if (owner_tpl->template_param_name_text_ids[i] == carrier_text_id) {
+            param_index = i;
+            break;
+          }
+        }
+      }
+      if (param_index >= 0 &&
+          owner_tpl->template_param_names &&
+          owner_tpl->template_param_names[param_index]) {
+        auto binding_it =
+            tpl_bindings->find(owner_tpl->template_param_names[param_index]);
+        if (binding_it != tpl_bindings->end()) {
+          apply_signature_template_concrete(target, binding_it->second);
+        }
+      }
+    }
+    if (target.tpl_struct_args.data && target.tpl_struct_args.size > 0) {
+      for (int i = 0; i < target.tpl_struct_args.size; ++i) {
+        if (target.tpl_struct_args.data[i].kind == TemplateArgKind::Type) {
+          self(target.tpl_struct_args.data[i].type, owner_tpl, self);
+        }
+      }
+    }
+  };
+
+  auto resolve_qualified_member_typedef_by_text_id = [&]() -> std::optional<TypeSpec> {
+    if (!tpl_bindings || !ts.qualifier_text_ids ||
+        ts.n_qualifier_segments != 1 ||
+        ts.qualifier_text_ids[0] == kInvalidText ||
+        ts.tag_text_id == kInvalidText) {
+      return std::nullopt;
+    }
+    const Node* owner_tpl = nullptr;
+    for (const auto& [_, candidate] : template_struct_defs_) {
+      if (!candidate || candidate->unqualified_text_id != ts.qualifier_text_ids[0]) {
+        continue;
+      }
+      if (owner_tpl && owner_tpl != candidate) return std::nullopt;
+      owner_tpl = candidate;
+    }
+    if (!owner_tpl || owner_tpl->n_member_typedefs <= 0 ||
+        !owner_tpl->member_typedef_text_ids || !owner_tpl->member_typedef_types) {
+      return std::nullopt;
+    }
+    int member_index = -1;
+    for (int i = 0; i < owner_tpl->n_member_typedefs; ++i) {
+      if (owner_tpl->member_typedef_text_ids[i] == ts.tag_text_id) {
+        member_index = i;
+        break;
+      }
+    }
+    if (member_index < 0) return std::nullopt;
+
+    TypeSpec resolved = owner_tpl->member_typedef_types[member_index];
+    substitute_template_owner_params(resolved, owner_tpl,
+                                     substitute_template_owner_params);
+    if (resolved.base == TB_TYPEDEF) {
+      resolved = substitute_signature_template_type(resolved, tpl_bindings);
+    }
+    while (resolve_struct_member_typedef_if_ready(&resolved)) {
+      substitute_template_owner_params(resolved, owner_tpl,
+                                       substitute_template_owner_params);
+      if (resolved.base == TB_TYPEDEF) {
+        resolved = substitute_signature_template_type(resolved, tpl_bindings);
+      }
+    }
+    return resolved;
+  };
+
   if (ts.template_param_text_id != kInvalidText) {
     if (apply_signature_template_binding_by_text_spelling(
             ts, tpl_bindings, module_ ? module_->link_name_texts.get() : nullptr)) {
       return ts;
     }
-    return ts;
   }
 
   if (apply_legacy_template_binding_without_usable_text_spelling(
           ts, tpl_bindings, module_ ? module_->link_name_texts.get() : nullptr)) {
     return ts;
+  }
+
+  if (auto resolved_member = resolve_qualified_member_typedef_by_text_id()) {
+    return *resolved_member;
   }
 
   const std::string qualified_name = member_typedef_compatibility_name(
@@ -683,6 +809,12 @@ void Lowerer::append_callable_params(
     if (pack_binding_base.empty()) {
       pack_binding_base = legacy_template_binding_name_without_usable_text_spelling(
           p->type, module_ ? module_->link_name_texts.get() : nullptr);
+    }
+    if (pack_binding_base.empty() && tpl_bindings &&
+        p->type.template_param_text_id != kInvalidText) {
+      if (auto unique_pack_base = unique_pack_template_binding_base(*tpl_bindings)) {
+        pack_binding_base = *unique_pack_base;
+      }
     }
     if (expand_parameter_packs && p->is_parameter_pack && tpl_bindings &&
         p->type.base == TB_TYPEDEF && !pack_binding_base.empty()) {

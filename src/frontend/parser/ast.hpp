@@ -433,6 +433,7 @@ struct Node {
     Node** fields;
     int    n_fields;
     const char** member_typedef_names; // struct-scope typedef/using alias names
+    TextId* member_typedef_text_ids;   // parallel parser-owned identity for member_typedef_names
     TypeSpec* member_typedef_types;    // parallel alias target types
     int    n_member_typedefs;
     TypeSpec* base_types; // C++ base classes for NK_STRUCT_DEF

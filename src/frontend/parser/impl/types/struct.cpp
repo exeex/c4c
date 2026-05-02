@@ -2421,10 +2421,18 @@ void store_record_body_members(
     if (sd->n_member_typedefs > 0) {
         sd->member_typedef_names =
             parser.arena_.alloc_array<const char*>(sd->n_member_typedefs);
+        sd->member_typedef_text_ids =
+            parser.arena_.alloc_array<TextId>(sd->n_member_typedefs);
         sd->member_typedef_types =
             parser.arena_.alloc_array<TypeSpec>(sd->n_member_typedefs);
         for (int i = 0; i < sd->n_member_typedefs; ++i) {
             sd->member_typedef_names[i] = body_state.member_typedef_names[i];
+            sd->member_typedef_text_ids[i] =
+                parser.parser_text_id_for_token(
+                    kInvalidText,
+                    body_state.member_typedef_names[i]
+                        ? body_state.member_typedef_names[i]
+                        : "");
             sd->member_typedef_types[i] = body_state.member_typedef_types[i];
         }
     }
