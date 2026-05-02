@@ -9,16 +9,18 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries migrated the bounded
-frontend/HIR member-symbol lookup cluster in `src/frontend/hir/hir_types.cpp`.
+frontend/HIR generic member-inference cluster in
+`src/frontend/hir/hir_types.cpp`.
 
-`Lowerer::find_struct_member_symbol_id(const TypeSpec&, ...)` now forms
-complete owner/member keys from either `record_def` or TextId-backed
-`TypeSpec` namespace metadata before rendered owner-tag fallback. Complete
-structured misses return no rendered stale owner hit, while structured hits can
-come from the owner lookup map or the structured `HirStructDef` field table.
-Rendered compatibility remains only when complete structured member metadata is
-absent. Focused `frontend_hir_tests` coverage now proves record_def miss
-rejection, TextId miss rejection, and no-metadata rendered fallback.
+`Lowerer::infer_generic_ctrl_type` now resolves `NK_MEMBER` field types through
+`find_struct_def_for_layout_type(base_ts)` instead of looking up
+`module_->struct_defs` by rendered `TypeSpec::tag`. Complete `record_def` and
+TextId-backed owner metadata are therefore authoritative for member field-type
+inference; complete structured misses do not infer from stale rendered owner
+tags, while the existing layout resolver still preserves rendered-tag
+compatibility when no complete structured owner metadata exists. Focused
+`frontend_hir_tests` coverage now proves record_def hit, TextId hit, and TextId
+miss rejection against stale rendered owner spelling.
 
 ## Suggested Next
 
@@ -26,9 +28,9 @@ Continue Step 4 with the next bounded frontend/HIR deletion-probe cluster from
 the remaining inventory. The callable helper blocker in `hir_functions.cpp` and
 the standalone layout helper cluster in `hir_lowering_core.cpp` are cleared, and
 the bounded ref-overload grouping path in `hir_build.cpp` plus the
-member-symbol lookup path in `hir_types.cpp` are now migrated. Remaining probe
-inventory still includes parser-owned semantic producers/consumers and
-first-failure HIR clusters in
+member-symbol lookup path and generic member-inference path in
+`hir_types.cpp` are now migrated. Remaining probe inventory still includes
+parser-owned semantic producers/consumers and first-failure HIR clusters in
 `src/frontend/hir/impl/compile_time/compile_time_engine.hpp`,
 `src/frontend/hir/hir_types.cpp`, `src/frontend/hir/hir_ir.hpp`,
 `src/frontend/hir/impl/expr/builtin.cpp`, and
@@ -48,6 +50,9 @@ other `src/frontend/hir/hir_build.cpp` rendered-name compatibility paths.
   authoritative; stale rendered owner symbols are not a fallback after a
   complete miss, but `HirStructDef` fields remain a structured hit source when
   the owner lookup mirror is absent.
+- The generic `NK_MEMBER` inference path now delegates owner lookup to the
+  layout resolver; do not reintroduce direct `struct_defs[TypeSpec::tag]`
+  lookup when complete `record_def` or TextId owner metadata is present.
 - Step 4 is a probe, not the final field removal. Do not commit a broken
   deletion build.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend

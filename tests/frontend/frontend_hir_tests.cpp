@@ -3146,6 +3146,191 @@ void test_hir_generic_ctrl_operator_call_method_owner_prefers_record_def_over_st
               "generic ctrl operator_call return-type lookup should use structured record_def owner before stale rendered spelling");
 }
 
+void test_hir_generic_ctrl_member_inference_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealGenericMemberOwner");
+  real_record->unqualified_name = arena.strdup("RealGenericMemberOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for generic member inference");
+
+  c4c::TypeSpec real_field_ts{};
+  real_field_ts.base = c4c::TB_LONG;
+  c4c::hir::HirStructField real_field;
+  real_field.name = "field";
+  real_field.field_text_id = module.link_name_texts->intern("field");
+  real_field.elem_type = real_field_ts;
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealGenericMemberOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealGenericMemberOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  real_def.fields.push_back(real_field);
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::TypeSpec stale_field_ts{};
+  stale_field_ts.base = c4c::TB_INT;
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "field";
+  stale_field.field_text_id = module.link_name_texts->intern("field");
+  stale_field.elem_type = stale_field_ts;
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleGenericMemberOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleGenericMemberOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleGenericMemberOwner");
+  owner_ts.record_def = real_record;
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+
+  c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
+  obj->name = arena.strdup("obj");
+  obj->type = owner_ts;
+  c4c::Node* member = parser.make_node(c4c::NK_MEMBER, 1);
+  member->left = obj;
+  member->name = arena.strdup("field");
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  const c4c::hir::LocalId obj_local{0};
+  ctx.locals["obj"] = obj_local;
+  ctx.local_types.insert(obj_local, owner_ts);
+
+  const c4c::TypeSpec inferred = lowerer.infer_generic_ctrl_type(&ctx, member);
+  expect_true(inferred.base == c4c::TB_LONG,
+              "generic member inference should use record_def owner before stale rendered tag");
+}
+
+void test_hir_generic_ctrl_member_inference_prefers_text_owner_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId real_owner_text =
+      module.link_name_texts->intern("RealTextGenericMemberOwner");
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = parser.current_namespace_context_id();
+  c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, real_owner_text);
+
+  c4c::TypeSpec real_field_ts{};
+  real_field_ts.base = c4c::TB_LONG;
+  c4c::hir::HirStructField real_field;
+  real_field.name = "field";
+  real_field.field_text_id = module.link_name_texts->intern("field");
+  real_field.elem_type = real_field_ts;
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealTextGenericMemberOwner";
+  real_def.tag_text_id = real_owner_text;
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  real_def.fields.push_back(real_field);
+  module.index_struct_def_owner(owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::TypeSpec stale_field_ts{};
+  stale_field_ts.base = c4c::TB_INT;
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "field";
+  stale_field.field_text_id = module.link_name_texts->intern("field");
+  stale_field.elem_type = stale_field_ts;
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleTextGenericMemberOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleTextGenericMemberOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleTextGenericMemberOwner");
+  owner_ts.tag_text_id = real_owner_text;
+  owner_ts.namespace_context_id = parser.current_namespace_context_id();
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+
+  c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
+  obj->name = arena.strdup("obj");
+  obj->type = owner_ts;
+  c4c::Node* member = parser.make_node(c4c::NK_MEMBER, 1);
+  member->left = obj;
+  member->name = arena.strdup("field");
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  const c4c::hir::LocalId obj_local{0};
+  ctx.locals["obj"] = obj_local;
+  ctx.local_types.insert(obj_local, owner_ts);
+
+  const c4c::TypeSpec inferred = lowerer.infer_generic_ctrl_type(&ctx, member);
+  expect_true(inferred.base == c4c::TB_LONG,
+              "generic member inference should use TextId owner before stale rendered tag");
+}
+
+void test_hir_generic_ctrl_member_inference_rejects_stale_tag_after_text_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec stale_field_ts{};
+  stale_field_ts.base = c4c::TB_LONG;
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "field";
+  stale_field.field_text_id = module.link_name_texts->intern("field");
+  stale_field.elem_type = stale_field_ts;
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleMissGenericMemberOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleMissGenericMemberOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleMissGenericMemberOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("UnresolvedGenericMemberOwner");
+  owner_ts.namespace_context_id = parser.current_namespace_context_id();
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+
+  c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
+  obj->name = arena.strdup("obj");
+  obj->type = owner_ts;
+  c4c::Node* member = parser.make_node(c4c::NK_MEMBER, 1);
+  member->left = obj;
+  member->name = arena.strdup("field");
+  member->type.base = c4c::TB_DOUBLE;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  const c4c::hir::LocalId obj_local{0};
+  ctx.locals["obj"] = obj_local;
+  ctx.local_types.insert(obj_local, owner_ts);
+
+  const c4c::TypeSpec inferred = lowerer.infer_generic_ctrl_type(&ctx, member);
+  expect_true(inferred.base == c4c::TB_DOUBLE,
+              "complete TextId owner miss should not infer from a stale rendered tag");
+}
+
 void test_hir_member_call_method_owner_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5332,6 +5517,9 @@ int main() {
   test_hir_operator_call_method_owner_keeps_rendered_fallback();
   test_hir_generic_ctrl_deref_method_owner_prefers_record_def_over_stale_tag();
   test_hir_generic_ctrl_operator_call_method_owner_prefers_record_def_over_stale_tag();
+  test_hir_generic_ctrl_member_inference_prefers_record_def_over_stale_tag();
+  test_hir_generic_ctrl_member_inference_prefers_text_owner_over_stale_tag();
+  test_hir_generic_ctrl_member_inference_rejects_stale_tag_after_text_miss();
   test_hir_member_call_method_owner_prefers_record_def_over_stale_tag();
   test_hir_direct_constructor_call_prefers_record_def_over_stale_tag();
   test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag();

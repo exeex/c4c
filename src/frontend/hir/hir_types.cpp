@@ -2572,10 +2572,10 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
     case NK_MEMBER: {
       TypeSpec base_ts = infer_generic_ctrl_type(ctx, n->left);
       if (n->is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level -= 1;
-      if (base_ts.tag) {
-        auto it = module_->struct_defs.find(base_ts.tag);
-        if (it != module_->struct_defs.end()) {
-          for (const auto& f : it->second.fields) {
+      if ((base_ts.base == TB_STRUCT || base_ts.base == TB_UNION) &&
+          base_ts.ptr_level == 0) {
+        if (const HirStructDef* layout = find_struct_def_for_layout_type(base_ts)) {
+          for (const auto& f : layout->fields) {
             if (f.name == (n->name ? n->name : "")) return field_type_of(f);
           }
         }
