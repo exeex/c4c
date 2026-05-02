@@ -1,4 +1,8 @@
 #include "hir/hir_ir.hpp"
+#include "lexer.hpp"
+#include "parser.hpp"
+#include "sema.hpp"
+#include "source_profile.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -766,6 +770,57 @@ void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered
               "consteval definition lookup should preserve rendered fallback when declaration key is absent");
 }
 
+void test_pending_consteval_nttp_handoff_carries_text_id_bindings() {
+  constexpr std::string_view source = R"cpp(
+template<int N>
+consteval int plus_one() { return N + 1; }
+
+int use_consteval_nttp() { return plus_one<41>(); }
+)cpp";
+
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_hir_lookup_tests.cpp");
+  c4c::Node* root = parser.parse();
+  auto sema_result = c4c::sema::analyze_program(
+      root, c4c::sema_profile_from(c4c::SourceProfile::CppSubset));
+  expect_true(sema_result.validation.ok,
+              "pending consteval NTTP fixture should validate");
+
+  auto initial = c4c::hir::build_initial_hir(
+      root, &sema_result.canonical.resolved_types);
+  const c4c::Node* plus_one_def =
+      initial.ct_state->find_consteval_def("plus_one");
+  expect_true(plus_one_def && plus_one_def->template_param_name_text_ids &&
+                  plus_one_def->template_param_name_text_ids[0] != c4c::kInvalidText,
+              "fixture NTTP parameter should carry parser TextId metadata");
+
+  const c4c::hir::PendingConstevalExpr* pending = nullptr;
+  for (const auto& expr : initial.module->expr_pool) {
+    if (const auto* candidate =
+            std::get_if<c4c::hir::PendingConstevalExpr>(&expr.payload)) {
+      pending = candidate;
+      break;
+    }
+  }
+  expect_true(pending != nullptr,
+              "initial HIR should retain a pending consteval call before reduction");
+  expect_true(pending->nttp_bindings.size() == 1 &&
+                  pending->nttp_bindings.at("N") == 41,
+              "pending consteval should retain rendered NTTP compatibility bindings");
+
+  const c4c::TextId n_text_id = plus_one_def->template_param_name_text_ids[0];
+  const auto text_it = pending->nttp_bindings_by_text.find(n_text_id);
+  expect_true(text_it != pending->nttp_bindings_by_text.end(),
+              "pending consteval should carry TextId NTTP binding mirror");
+  expect_true(text_it->second == 41,
+              "TextId NTTP binding mirror should preserve the constant value");
+}
+
 }  // namespace
 
 int main() {
@@ -776,6 +831,7 @@ int main() {
   test_range_for_method_callee_lookup_uses_authoritative_decl_identity();
   test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps();
   test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names();
+  test_pending_consteval_nttp_handoff_carries_text_id_bindings();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

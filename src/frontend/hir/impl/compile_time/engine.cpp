@@ -161,6 +161,8 @@ ConstEvalResult evaluate_pending_consteval(
   env.type_bindings = &tpl_bindings;
   NttpBindings nttp_copy = pce.nttp_bindings;
   if (!nttp_copy.empty()) env.nttp_bindings = &nttp_copy;
+  NttpTextBindings nttp_text_copy = pce.nttp_bindings_by_text;
+  if (!nttp_text_copy.empty()) env.nttp_bindings_by_text = &nttp_text_copy;
   env.struct_defs = &module.struct_defs;
   return evaluate_consteval_call(
       ce_fn_def, args, env, ct_state.consteval_fn_defs());

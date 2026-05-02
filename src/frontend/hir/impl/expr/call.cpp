@@ -30,6 +30,19 @@ TypeSpec direct_call_callee_type(const Module& mod, const DeclRef& dr,
   return fallback;
 }
 
+void record_nttp_text_binding(const Node* fn_def,
+                              int param_index,
+                              long long value,
+                              NttpTextBindings* out) {
+  if (!fn_def || !out || !fn_def->template_param_name_text_ids ||
+      param_index < 0 || param_index >= fn_def->n_template_params) {
+    return;
+  }
+  const TextId text_id = fn_def->template_param_name_text_ids[param_index];
+  if (text_id == kInvalidText) return;
+  (*out)[text_id] = value;
+}
+
 DeclRef make_direct_call_decl_ref(Module& mod, std::string name,
                                   LinkNameId link_name_id = kInvalidLinkName) {
   DeclRef dr{};
@@ -581,6 +594,7 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
       structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
   TypeBindings tpl_bindings;
   NttpBindings ce_nttp_bindings;
+  NttpTextBindings ce_nttp_bindings_by_text;
   const Node* fn_def = ce_fn_def;
   if ((n->left->n_template_args > 0 || n->left->has_template_args) &&
       fn_def->n_template_params > 0) {
@@ -593,8 +607,9 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
             auto expr_value = evaluate_constant_expr(
                 n->left->template_arg_exprs[i], arg_env);
             if (expr_value.ok()) {
-              ce_nttp_bindings[fn_def->template_param_names[i]] =
-                  expr_value.as_int();
+              const long long value = expr_value.as_int();
+              ce_nttp_bindings[fn_def->template_param_names[i]] = value;
+              record_nttp_text_binding(fn_def, i, value, &ce_nttp_bindings_by_text);
               continue;
             }
           }
@@ -603,10 +618,13 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
             auto it = ctx->nttp_bindings.find(n->left->template_arg_nttp_names[i]);
             if (it != ctx->nttp_bindings.end()) {
               ce_nttp_bindings[fn_def->template_param_names[i]] = it->second;
+              record_nttp_text_binding(
+                  fn_def, i, it->second, &ce_nttp_bindings_by_text);
             }
           } else {
-            ce_nttp_bindings[fn_def->template_param_names[i]] =
-                n->left->template_arg_values[i];
+            const long long value = n->left->template_arg_values[i];
+            ce_nttp_bindings[fn_def->template_param_names[i]] = value;
+            record_nttp_text_binding(fn_def, i, value, &ce_nttp_bindings_by_text);
           }
         }
         continue;
@@ -623,8 +641,9 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
         if (!fn_def->template_param_names[i]) continue;
         if (!fn_def->template_param_has_default[i]) continue;
         if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) {
-          ce_nttp_bindings[fn_def->template_param_names[i]] =
-              fn_def->template_param_default_values[i];
+          const long long value = fn_def->template_param_default_values[i];
+          ce_nttp_bindings[fn_def->template_param_names[i]] = value;
+          record_nttp_text_binding(fn_def, i, value, &ce_nttp_bindings_by_text);
         } else {
           tpl_bindings[fn_def->template_param_names[i]] =
               fn_def->template_param_default_types[i];
@@ -633,6 +652,9 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
     }
     arg_env.type_bindings = &tpl_bindings;
     if (!ce_nttp_bindings.empty()) arg_env.nttp_bindings = &ce_nttp_bindings;
+    if (!ce_nttp_bindings_by_text.empty()) {
+      arg_env.nttp_bindings_by_text = &ce_nttp_bindings_by_text;
+    }
   }
   std::vector<ConstValue> args;
   bool all_const = true;
@@ -657,6 +679,7 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
   for (const auto& cv : args) pce.const_args.push_back(cv.as_int());
   pce.tpl_bindings = tpl_bindings;
   pce.nttp_bindings = ce_nttp_bindings;
+  pce.nttp_bindings_by_text = ce_nttp_bindings_by_text;
   pce.call_span = make_span(n);
   pce.unlocked_by_deferred_instantiation = lowering_deferred_instantiation_;
   TypeSpec ts = n->type;

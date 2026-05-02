@@ -199,6 +199,7 @@ struct ModuleDeclLookupKeyHash {
 
 /// Non-type template parameter value bindings (forward decl for TemplateCallInfo).
 using NttpBindings = std::unordered_map<std::string, long long>;
+using NttpTextBindings = std::unordered_map<TextId, long long>;
 
 struct SourceLoc {
   int line = 0;
@@ -515,6 +516,7 @@ struct PendingConstevalExpr {
   std::vector<long long> const_args;                             // evaluated constant argument values
   std::unordered_map<std::string, TypeSpec> tpl_bindings;        // template param → concrete type
   std::unordered_map<std::string, long long> nttp_bindings;      // NTTP param → constant value
+  NttpTextBindings nttp_bindings_by_text;                        // TextId NTTP param → constant value
   SourceSpan call_span{};
   bool unlocked_by_deferred_instantiation = false;
 };
