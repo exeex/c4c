@@ -3,12 +3,13 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory TypeSpec Tag Surfaces
+Current Step ID: 2
+Current Step Title: Migrate Parser-Owned Semantic Producers
 
 ## Just Finished
 
-Step 1 - Inventory TypeSpec Tag Surfaces used `rg` across
+Plan-owner review accepted Step 1 - Inventory TypeSpec Tag Surfaces as
+complete enough to advance. The inventory used `rg` across
 `src/frontend/parser`, `src/frontend/sema`, and `src/frontend/hir`; raw text was
 enough to separate the current surface families.
 
@@ -95,9 +96,16 @@ drifted rendered tags but matching structured metadata.
 
 ## Suggested Next
 
-Execute the `type_binding_values_equivalent` migration in Sema as the first
-bounded code packet, with a focused stale-rendered-type-spelling test. Suggested
-proof subset:
+Start Step 2 - Migrate Parser-Owned Semantic Producers with the
+`type_binding_values_equivalent` migration in Sema as the first bounded code
+packet. Compare `TypeSpec` identity through structured carriers before rendered
+`tag`/qualifier strings: `record_def` identity when both sides have it,
+namespace context plus `tag_text_id` and qualifier TextIds when available,
+template parameter owner/index/TextId for type params, existing
+`tpl_struct_origin_key`, and `deferred_member_type_text_id`. Retain rendered
+`tag`/qualifier/deferred-name fallback only as explicit no-metadata
+compatibility. Add focused stale-rendered-type-spelling coverage for the
+migrated equality route. Suggested proof subset:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_hir_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
 ## Watchouts
@@ -109,6 +117,8 @@ proof subset:
   shortcuts.
 - Keep downstream LIR/BIR/backend carrier gaps as separate follow-up ideas
   instead of broadening this runbook.
+- Do not attempt `TypeSpec::tag` field deletion in Step 2; removal belongs to
+  the later deletion/probe and removal steps.
 - Treat a `TypeSpec::tag` deletion build as a temporary probe only until the
   runbook reaches the removal step.
 
@@ -116,5 +126,8 @@ proof subset:
 
 Inventory-only packet; no build required by the delegated proof. `rg` was used
 for classification and c4c-clang-tools was not needed.
+
+Lifecycle-only Step 1 review advanced the current pointer to Step 2; no build
+was required for this plan-owner transition.
 
 `git diff --check -- todo.md` passed.
