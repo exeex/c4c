@@ -89,6 +89,32 @@ std::string template_type_arg_nominal_payload_hir(const TypeSpec& ts,
   return fallback ? fallback : "";
 }
 
+const Node* resolve_static_member_base_def_hir(
+    const TypeSpec& base_ts,
+    const std::unordered_map<std::string, const Node*>& struct_defs) {
+  if (base_ts.record_def && base_ts.record_def->kind == NK_STRUCT_DEF) {
+    return base_ts.record_def;
+  }
+  if (base_ts.tag_text_id != kInvalidText) {
+    for (const auto& entry : struct_defs) {
+      const Node* candidate = entry.second;
+      if (!candidate || candidate->kind != NK_STRUCT_DEF) continue;
+      if (candidate->unqualified_text_id != base_ts.tag_text_id) continue;
+      if (base_ts.namespace_context_id >= 0 &&
+          candidate->namespace_context_id != base_ts.namespace_context_id) {
+        continue;
+      }
+      return candidate;
+    }
+  }
+  if (const char* legacy_tag = typespec_legacy_tag_if_present(base_ts, 0);
+      legacy_tag && legacy_tag[0]) {
+    auto it = struct_defs.find(legacy_tag);
+    if (it != struct_defs.end()) return it->second;
+  }
+  return nullptr;
+}
+
 bool matches_trait_family(const std::string& name, const char* suffix);
 
 std::optional<TypeSpec> try_resolve_unary_type_transform_trait(
@@ -259,19 +285,12 @@ bool eval_struct_static_member_value_hir(
   if (search_decl_array(sdef->children, sdef->n_children)) return true;
   for (int bi = 0; bi < sdef->n_bases; ++bi) {
     const TypeSpec& base_ts = sdef->base_types[bi];
-    if (base_ts.record_def && base_ts.record_def->kind == NK_STRUCT_DEF) {
+    if (const Node* base_def =
+            resolve_static_member_base_def_hir(base_ts, struct_defs)) {
       if (eval_struct_static_member_value_hir(
-              base_ts.record_def, struct_defs, member_name, nttp_bindings, out)) {
+              base_def, struct_defs, member_name, nttp_bindings, out)) {
         return true;
       }
-      continue;
-    }
-    if (!base_ts.tag || !base_ts.tag[0]) continue;
-    auto it = struct_defs.find(base_ts.tag);
-    if (it == struct_defs.end()) continue;
-    if (eval_struct_static_member_value_hir(it->second, struct_defs, member_name,
-                                            nttp_bindings, out)) {
-      return true;
     }
   }
   if (sdef->template_origin_name && sdef->template_origin_name[0]) {

@@ -2,6 +2,7 @@ set(frontend_test_targets frontend_lexer_tests frontend_parser_tests
                           frontend_parser_lookup_authority_tests
                           frontend_hir_lookup_tests
                           cpp_hir_template_type_arg_encoding_test
+                          cpp_hir_static_member_base_metadata_test
                           frontend_lir_global_type_ref_test
                           frontend_lir_function_signature_type_ref_test
                           frontend_lir_extern_decl_type_ref_test
@@ -34,6 +35,8 @@ add_test(NAME frontend_parser_lookup_authority_tests
 add_test(NAME frontend_hir_lookup_tests COMMAND frontend_hir_lookup_tests)
 add_test(NAME cpp_hir_template_type_arg_encoding_structured_metadata
          COMMAND cpp_hir_template_type_arg_encoding_test)
+add_test(NAME cpp_hir_static_member_base_structured_metadata
+         COMMAND cpp_hir_static_member_base_metadata_test)
 add_test(NAME frontend_lir_global_type_ref COMMAND frontend_lir_global_type_ref_test)
 add_test(NAME frontend_lir_function_signature_type_ref
          COMMAND frontend_lir_function_signature_type_ref_test)
@@ -46,6 +49,8 @@ set_tests_properties(frontend_parser_lookup_authority_tests
                      PROPERTIES LABELS "internal;parse")
 set_tests_properties(frontend_hir_lookup_tests PROPERTIES LABELS "internal;hir")
 set_tests_properties(cpp_hir_template_type_arg_encoding_structured_metadata
+                     PROPERTIES LABELS "internal;hir;cpp")
+set_tests_properties(cpp_hir_static_member_base_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
 set_tests_properties(frontend_lir_global_type_ref PROPERTIES LABELS "internal;hir;lir")
 set_tests_properties(frontend_lir_function_signature_type_ref PROPERTIES LABELS "internal;hir;lir")
