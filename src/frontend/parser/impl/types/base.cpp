@@ -803,6 +803,16 @@ TypeSpec Parser::parse_base_type() {
         }
         return false;
     };
+    auto structured_nttp_expr_carrier =
+        [](const ParsedTemplateArg& arg) -> Node* {
+        if (arg.expr) return arg.expr;
+        return arg.type.array_size_expr;
+    };
+    auto parsed_nttp_arg_has_structured_carrier =
+        [&](const ParsedTemplateArg& arg) -> bool {
+        return structured_nttp_expr_carrier(arg) ||
+               arg.nttp_text_id != kInvalidText;
+    };
     auto set_template_arg_debug_refs_text =
         [&](TypeSpec* target, const std::string& refs_text) {
             if (!target) return;
@@ -3483,10 +3493,16 @@ TypeSpec Parser::parse_base_type() {
                             if (primary_tpl->template_param_is_nttp[pi]) {
                                 if (actual_args[pi].is_value) {
                                     long long ev = 0;
-                                    if (actual_args[pi].expr &&
+                                    Node* structured_expr =
+                                        structured_nttp_expr_carrier(
+                                            actual_args[pi]);
+                                    if (structured_expr &&
                                         eval_prelim_structured_nttp_expr(
-                                            actual_args[pi].expr, &ev)) {
+                                            structured_expr, &ev)) {
                                         actual_args[pi].value = ev;
+                                        actual_args[pi].expr = nullptr;
+                                        actual_args[pi].type.array_size_expr =
+                                            nullptr;
                                         actual_args[pi].nttp_name = nullptr;
                                     } else if (actual_args[pi].nttp_text_id !=
                                                kInvalidText) {
@@ -3500,9 +3516,8 @@ TypeSpec Parser::parse_base_type() {
                                             actual_args[pi].nttp_name =
                                                 nullptr;
                                         }
-                                    } else if (!actual_args[pi].expr &&
-                                               actual_args[pi].nttp_text_id ==
-                                                   kInvalidText &&
+                                    } else if (!parsed_nttp_arg_has_structured_carrier(
+                                                   actual_args[pi]) &&
                                                actual_args[pi].nttp_name &&
                                                std::strncmp(
                                                    actual_args[pi].nttp_name,

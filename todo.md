@@ -8,24 +8,20 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 removed direct template-instantiation authority from explicit value-arg
-`$expr:` display strings in the preliminary binding pass. `parse_base_type()`
-now evaluates explicit NTTP args through structured `ParsedTemplateArg::expr`
-or `nttp_text_id` metadata first, clears stale display names once a value is
-resolved, and gates the legacy `lex_template_expr_text(actual.nttp_name + 6,
-...)` path to no-carrier args with neither parsed expression nor TextId.
-
-Focused drift coverage now injects an explicit NTTP expression whose parsed
-token kind evaluates true while its `$expr:` display spelling says `false`; the
-direct instantiation must materialize the `true` value from structured parser
-expression metadata.
+Step 4 tightened the remaining direct template-instantiation
+`lex_template_expr_text(actual.nttp_name + 6, ...)` fallback. The preliminary
+NTTP binding pass now treats both `ParsedTemplateArg::expr` and
+`TypeSpec::array_size_expr` copied from a value `TemplateArgRef` as structured
+expression carriers, clears both after successful structured evaluation, and
+only reaches `$expr:` re-lexing when no parsed expression, TemplateArgRef
+expression, or `nttp_text_id` carrier exists.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing the remaining `lex_template_expr_text(...)`
-callers and separating true no-carrier compatibility from paths where
-`TemplateArgRef`, cached default tokens, parsed expressions, or TextId metadata
-already exist.
+Continue Step 4 by reviewing remaining rendered-template-argument fallback
+policy outside this local `lex_template_expr_text(...)` call site, especially
+legacy debug-text paths that still need producer repair before they can stop
+being compatibility-only.
 
 ## Watchouts
 
@@ -65,9 +61,10 @@ already exist.
   lookup after instantiation fails to attach `TypeSpec::record_def`; do not use
   that map lookup as template-argument semantic authority.
 - Direct template-instantiation explicit value args now have a structured
-  parsed-expression/TextId first path. The remaining `$expr:` re-lex branch in
-  that preliminary binding pass is compatibility-only for captured expression
-  text with no `ParsedTemplateArg::expr` and no `nttp_text_id`; a future packet
+  parsed-expression/TemplateArgRef-expression/TextId first path. The remaining
+  `$expr:` re-lex branch in that preliminary binding pass is compatibility-only
+  for captured expression text with no `ParsedTemplateArg::expr`, no
+  value-arg `TypeSpec::array_size_expr`, and no `nttp_text_id`; a future packet
   should repair the capture producer if a high-value case still reaches it.
 - The alias-template comma-split/rendered arg-ref fallback still exists only for
   template-arg lists with unstructured debug-only refs and no structured
