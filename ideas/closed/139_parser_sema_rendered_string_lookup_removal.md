@@ -1,8 +1,9 @@
 # Parser Sema Rendered String Lookup Removal
 
-Status: Open
+Status: Closed
 Created: 2026-04-30
 Rewritten: 2026-04-30
+Closed: 2026-05-02
 
 Historical Inputs:
 - Idea 123 parser lookup removal convergence
@@ -136,3 +137,16 @@ LIR, BIR, and backend cleanup depend on frontend metadata being reliable.
   instead of proving same-feature structured-vs-rendered disagreement.
 - A `TextId` route is treated as carrying namespace, owner, declaration, record,
   template, or value semantics that require a richer domain key.
+
+## Closure Notes
+
+Idea 139 closed after Step 6 final validation completed the parser/Sema
+rendered-string lookup removal route. The active runbook parked cross-module
+HIR metadata blockers, including HIR `NttpBindings` const-int compatibility and
+Sema consteval record-layout lookup through `ConstEvalEnv::struct_defs`, under
+`ideas/open/140_hir_legacy_string_lookup_metadata_resweep.md`.
+
+Close-time proof used the existing full-suite logs:
+`test_baseline.log` and `test_after.log` both reported `2987/2987` passing
+tests, and the regression guard passed in non-decreasing mode with no new
+failures.
