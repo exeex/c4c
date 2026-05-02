@@ -3212,22 +3212,311 @@ TypeSpec Parser::parse_base_type() {
                         std::vector<std::pair<std::string, TypeSpec>> prelim_tb;
                         std::vector<std::pair<std::string, long long>> prelim_nb;
                         std::vector<ParserNttpBindingMetadata> prelim_nb_meta;
+                        auto prelim_type_for_type =
+                            [&](TypeSpec type) -> TypeSpec {
+                            if (type.base == TB_TYPEDEF && type.tag &&
+                                type.tag[0]) {
+                                for (const auto& [pname, pts] : prelim_tb) {
+                                    if (pname == type.tag) return pts;
+                                }
+                            }
+                            return type;
+                        };
+                        auto prelim_nttp_value_for_ref =
+                            [&](const Node* node, long long* out) -> bool {
+                            if (!node || !out) return false;
+                            const TextId ref_text_id =
+                                node->unqualified_text_id;
+                            if (ref_text_id != kInvalidText) {
+                                for (const ParserNttpBindingMetadata& meta :
+                                     prelim_nb_meta) {
+                                    if (meta.name_text_id == ref_text_id ||
+                                        meta.name_key.base_text_id ==
+                                            ref_text_id) {
+                                        *out = meta.value;
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }
+                            if (!node->name) return false;
+                            for (const auto& [pname, value] : prelim_nb) {
+                                if (pname == node->name) {
+                                    *out = value;
+                                    return true;
+                                }
+                            }
+                            return false;
+                        };
+                        auto prelim_type_is_unsigned_integer =
+                            [&](TypeSpec type) -> bool {
+                            type = prelim_type_for_type(type);
+                            switch (type.base) {
+                                case TB_UCHAR:
+                                case TB_USHORT:
+                                case TB_UINT:
+                                case TB_ULONG:
+                                case TB_ULONGLONG:
+                                case TB_UINT128:
+                                    return true;
+                                default:
+                                    return false;
+                            }
+                        };
+                        auto prelim_functional_cast_type =
+                            [&](const Node* node, TypeSpec* out_type) -> bool {
+                            if (!node || node->kind != NK_CALL || !node->left ||
+                                node->left->kind != NK_VAR ||
+                                !node->left->name || !out_type) {
+                                return false;
+                            }
+                            TypeSpec candidate{};
+                            candidate.base = TB_TYPEDEF;
+                            candidate.tag = node->left->name;
+                            candidate.tag_text_id =
+                                node->left->unqualified_text_id;
+                            candidate.array_size = -1;
+                            candidate.inner_rank = -1;
+                            *out_type = prelim_type_for_type(candidate);
+                            return out_type->base != TB_TYPEDEF ||
+                                   out_type->record_def ||
+                                   out_type->tag != candidate.tag;
+                        };
+                        std::function<bool(const Node*)>
+                            prelim_expr_has_unsigned_type =
+                                [&](const Node* node) -> bool {
+                            if (!node) return false;
+                            if (node->kind == NK_CAST ||
+                                node->kind == NK_SIZEOF_TYPE) {
+                                return prelim_type_is_unsigned_integer(
+                                    node->type);
+                            }
+                            TypeSpec cast_type{};
+                            if (prelim_functional_cast_type(node,
+                                                            &cast_type)) {
+                                return prelim_type_is_unsigned_integer(
+                                    cast_type);
+                            }
+                            return false;
+                        };
+                        std::function<bool(const Node*, long long*)>
+                            eval_prelim_structured_nttp_expr =
+                                [&](const Node* node,
+                                    long long* out) -> bool {
+                            if (!node || !out) return false;
+                            if (node->kind == NK_INT_LIT ||
+                                node->kind == NK_CHAR_LIT) {
+                                *out = node->ival;
+                                return true;
+                            }
+                            if (node->kind == NK_VAR)
+                                return prelim_nttp_value_for_ref(node, out);
+                            if (node->kind == NK_CAST && node->left)
+                                return eval_prelim_structured_nttp_expr(
+                                    node->left, out);
+                            if (node->kind == NK_CALL &&
+                                node->n_children == 1 && node->children) {
+                                TypeSpec cast_type{};
+                                if (prelim_functional_cast_type(node,
+                                                                &cast_type)) {
+                                    return eval_prelim_structured_nttp_expr(
+                                        node->children[0], out);
+                                }
+                            }
+                            if (node->kind == NK_SIZEOF_TYPE) {
+                                const TypeSpec sized =
+                                    prelim_type_for_type(node->type);
+                                if (sized.base == TB_TYPEDEF && sized.tag)
+                                    return false;
+                                *out = sizeof_type_spec(sized);
+                                return true;
+                            }
+                            if (node->kind == NK_UNARY && node->op &&
+                                node->left) {
+                                long long v = 0;
+                                if (!eval_prelim_structured_nttp_expr(
+                                        node->left, &v)) {
+                                    return false;
+                                }
+                                if (std::strcmp(node->op, "-") == 0) {
+                                    *out = -v;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "+") == 0) {
+                                    *out = v;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "!") == 0) {
+                                    *out = !v;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "~") == 0) {
+                                    *out = ~v;
+                                    return true;
+                                }
+                                return false;
+                            }
+                            if (node->kind == NK_BINOP && node->op &&
+                                node->left && node->right) {
+                                long long l = 0;
+                                long long r = 0;
+                                if (!eval_prelim_structured_nttp_expr(
+                                        node->left, &l) ||
+                                    !eval_prelim_structured_nttp_expr(
+                                        node->right, &r)) {
+                                    return false;
+                                }
+                                if (std::strcmp(node->op, "+") == 0) {
+                                    *out = l + r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "-") == 0) {
+                                    *out = l - r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "*") == 0) {
+                                    *out = l * r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "/") == 0 &&
+                                    r != 0) {
+                                    *out = l / r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "%") == 0 &&
+                                    r != 0) {
+                                    *out = l % r;
+                                    return true;
+                                }
+                                const bool compare_unsigned =
+                                    prelim_expr_has_unsigned_type(node->left) ||
+                                    prelim_expr_has_unsigned_type(node->right);
+                                if (std::strcmp(node->op, "<") == 0) {
+                                    *out = compare_unsigned
+                                               ? static_cast<unsigned long long>(
+                                                     l) <
+                                                     static_cast<
+                                                         unsigned long long>(r)
+                                               : l < r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, ">") == 0) {
+                                    *out = compare_unsigned
+                                               ? static_cast<unsigned long long>(
+                                                     l) >
+                                                     static_cast<
+                                                         unsigned long long>(r)
+                                               : l > r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "<=") == 0) {
+                                    *out = compare_unsigned
+                                               ? static_cast<unsigned long long>(
+                                                     l) <=
+                                                     static_cast<
+                                                         unsigned long long>(r)
+                                               : l <= r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, ">=") == 0) {
+                                    *out = compare_unsigned
+                                               ? static_cast<unsigned long long>(
+                                                     l) >=
+                                                     static_cast<
+                                                         unsigned long long>(r)
+                                               : l >= r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "==") == 0) {
+                                    *out = l == r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "!=") == 0) {
+                                    *out = l != r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "&&") == 0) {
+                                    *out = (l && r) ? 1 : 0;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "||") == 0) {
+                                    *out = (l || r) ? 1 : 0;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "&") == 0) {
+                                    *out = l & r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "|") == 0) {
+                                    *out = l | r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "^") == 0) {
+                                    *out = l ^ r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, "<<") == 0) {
+                                    *out = l << r;
+                                    return true;
+                                }
+                                if (std::strcmp(node->op, ">>") == 0) {
+                                    *out = l >> r;
+                                    return true;
+                                }
+                                return false;
+                            }
+                            if (node->kind == NK_TERNARY && node->cond &&
+                                node->then_ && node->else_) {
+                                long long c = 0;
+                                if (!eval_prelim_structured_nttp_expr(
+                                        node->cond, &c)) {
+                                    return false;
+                                }
+                                return eval_prelim_structured_nttp_expr(
+                                    c ? node->then_ : node->else_, out);
+                            }
+                            return false;
+                        };
                         for (int pi = 0; pi < static_cast<int>(actual_args.size()) &&
                                          pi < primary_tpl->n_template_params; ++pi) {
                             const char* pn = primary_tpl->template_param_names[pi];
                             if (primary_tpl->template_param_is_nttp[pi]) {
                                 if (actual_args[pi].is_value) {
-                                    if (actual_args[pi].nttp_name &&
-                                        std::strncmp(actual_args[pi].nttp_name, "$expr:", 6) == 0) {
+                                    long long ev = 0;
+                                    if (actual_args[pi].expr &&
+                                        eval_prelim_structured_nttp_expr(
+                                            actual_args[pi].expr, &ev)) {
+                                        actual_args[pi].value = ev;
+                                        actual_args[pi].nttp_name = nullptr;
+                                    } else if (actual_args[pi].nttp_text_id !=
+                                               kInvalidText) {
+                                        Node ref{};
+                                        ref.kind = NK_VAR;
+                                        ref.unqualified_text_id =
+                                            actual_args[pi].nttp_text_id;
+                                        if (prelim_nttp_value_for_ref(&ref,
+                                                                     &ev)) {
+                                            actual_args[pi].value = ev;
+                                            actual_args[pi].nttp_name =
+                                                nullptr;
+                                        }
+                                    } else if (!actual_args[pi].expr &&
+                                               actual_args[pi].nttp_text_id ==
+                                                   kInvalidText &&
+                                               actual_args[pi].nttp_name &&
+                                               std::strncmp(
+                                                   actual_args[pi].nttp_name,
+                                                   "$expr:", 6) == 0) {
                                         std::vector<Token> expr_toks = lex_template_expr_text(
                                             actual_args[pi].nttp_name + 6,
                                             core_input_state_.source_profile);
-                                        long long ev = 0;
                                         if (eval_deferred_nttp_expr_tokens(
                                                 tpl_name, expr_toks,
                                                 prelim_tb, prelim_nb, &ev,
                                                 &prelim_nb_meta)) {
                                             actual_args[pi].value = ev;
+                                            actual_args[pi].nttp_name =
+                                                nullptr;
                                         }
                                     }
                                     prelim_nb.push_back({pn, actual_args[pi].value});

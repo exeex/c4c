@@ -8,29 +8,24 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 removed the remaining no-carrier base-arg reconstruction path in
-`parse_base_type()`: the branch no longer renders `template_arg_refs_text(...)`
-for `inst->base_types[bi]`, comma-splits rendered refs, rewrites `$expr:` text,
-re-lexes expressions, calls `std::stoll`, or rebuilds types with
-`decode_type_ref_text(...)`.
+Step 4 removed direct template-instantiation authority from explicit value-arg
+`$expr:` display strings in the preliminary binding pass. `parse_base_type()`
+now evaluates explicit NTTP args through structured `ParsedTemplateArg::expr`
+or `nttp_text_id` metadata first, clears stale display names once a value is
+resolved, and gates the legacy `lex_template_expr_text(actual.nttp_name + 6,
+...)` path to no-carrier args with neither parsed expression nor TextId.
 
-The only parser/Sema-owned no-explicit-carrier case left there is default-only
-base instantiation, such as `Base<>`. It now builds args only from template
-defaults and evaluates deferred NTTP defaults through
-`eval_deferred_nttp_default(...)` cached token metadata. If the required
-default metadata is missing, the base is left unresolved/deferred rather than
-reopening `template_param_default_exprs` text.
-
-Focused drift coverage now poisons a default-only base template's rendered
-default-expression text and requires the inherited base `record_def` plus
-materialized NTTP value to come from parser-owned metadata before Sema.
+Focused drift coverage now injects an explicit NTTP expression whose parsed
+token kind evaluates true while its `$expr:` display spelling says `false`; the
+direct instantiation must materialize the `true` value from structured parser
+expression metadata.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing remaining parser/Sema `$expr:` compatibility
-routes outside the base-instantiation handoff, especially explicit value-arg
-paths that still parse `nttp_name` display strings before structured carriers
-exist.
+Continue Step 4 by reviewing the remaining `lex_template_expr_text(...)`
+callers and separating true no-carrier compatibility from paths where
+`TemplateArgRef`, cached default tokens, parsed expressions, or TextId metadata
+already exist.
 
 ## Watchouts
 
@@ -69,6 +64,11 @@ exist.
   handoff. The only remaining fallback in that local area is rendered-tag map
   lookup after instantiation fails to attach `TypeSpec::record_def`; do not use
   that map lookup as template-argument semantic authority.
+- Direct template-instantiation explicit value args now have a structured
+  parsed-expression/TextId first path. The remaining `$expr:` re-lex branch in
+  that preliminary binding pass is compatibility-only for captured expression
+  text with no `ParsedTemplateArg::expr` and no `nttp_text_id`; a future packet
+  should repair the capture producer if a high-value case still reaches it.
 - The alias-template comma-split/rendered arg-ref fallback still exists only for
   template-arg lists with unstructured debug-only refs and no structured
   carrier. Do not restore it as a recovery path for mixed carrier lists or stale

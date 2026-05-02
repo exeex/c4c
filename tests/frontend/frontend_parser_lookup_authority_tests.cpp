@@ -2460,6 +2460,74 @@ void test_default_only_template_base_uses_cached_default_metadata() {
               "rendered default-expression text");
 }
 
+void test_direct_template_explicit_nttp_expr_ignores_stale_display_text() {
+  const char* source =
+      "template <typename T, T v>\n"
+      "struct integral_constant {\n"
+      "  static constexpr T value = v;\n"
+      "  using type = integral_constant<T, v>;\n"
+      "};\n"
+      "using false_type = integral_constant<bool, false>;\n"
+      "template <typename T, bool = true>\n"
+      "struct is_signed_helper : integral_constant<bool, true> {};\n"
+      "template <typename T>\n"
+      "struct is_signed_helper<T, false> : false_type {};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId base_text = lexer.text_table().intern("is_signed_helper");
+  c4c::Node* primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), base_text);
+  expect_true(primary && primary->n_template_params == 2,
+              "is_signed_helper primary should be registered");
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier,
+                                 "is_signed_helper"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Comma, ","),
+      parser.make_injected_token(seed, c4c::TokenKind::Plus, "+"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwTrue, "false"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  std::string detail = " tag=";
+  detail += resolved.tag ? resolved.tag : "<null>";
+  detail += " origin=";
+  detail += resolved.tpl_struct_origin ? resolved.tpl_struct_origin : "<null>";
+  detail += " args=";
+  detail += std::to_string(resolved.tpl_struct_args.size);
+  if (resolved.tpl_struct_args.data && resolved.tpl_struct_args.size > 1) {
+    detail += " arg1_debug=";
+    detail += resolved.tpl_struct_args.data[1].debug_text
+                  ? resolved.tpl_struct_args.data[1].debug_text
+                  : "<null>";
+    detail += " arg1_value=";
+    detail += std::to_string(resolved.tpl_struct_args.data[1].value);
+  }
+  expect_true(resolved.record_def && resolved.record_def->n_template_args >= 2 &&
+                  resolved.record_def->template_arg_is_value &&
+                  resolved.record_def->template_arg_values,
+              "direct explicit NTTP expression should instantiate from "
+              "structured parser expression metadata" +
+                  detail);
+  expect_true(resolved.record_def->template_arg_is_value[1] &&
+                  resolved.record_def->template_arg_values[1] == 1,
+              "direct explicit NTTP expression should ignore stale `$expr:` "
+              "display text when a parsed expression carrier exists");
+}
+
 void test_typespec_template_origin_equality_uses_structured_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2807,6 +2875,7 @@ int main() {
   test_alias_template_mixed_carrier_skips_rendered_arg_fallback();
   test_dependent_member_typedef_base_carries_structured_record_def();
   test_default_only_template_base_uses_cached_default_metadata();
+  test_direct_template_explicit_nttp_expr_ignores_stale_display_text();
   test_typespec_template_origin_equality_uses_structured_key();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
