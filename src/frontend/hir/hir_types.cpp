@@ -600,7 +600,14 @@ std::string Lowerer::resolve_struct_method_lookup_owner_tag(
           span_node, context_name)) {
     return *owner_tag;
   }
-  return owner_ts.tag ? std::string(owner_ts.tag) : std::string{};
+  if (module_ && module_->link_name_texts &&
+      owner_ts.tag_text_id != kInvalidText) {
+    const std::string_view rendered_tag =
+        module_->link_name_texts->lookup(owner_ts.tag_text_id);
+    if (!rendered_tag.empty()) return std::string(rendered_tag);
+  }
+  const std::string_view legacy_tag = typespec_legacy_tag_if_present(owner_ts, 0);
+  return legacy_tag.empty() ? std::string{} : std::string(legacy_tag);
 }
 
 void Lowerer::record_struct_method_mangled_lookup_parity(
@@ -655,9 +662,37 @@ bool same_type_spec_for_struct_method_lookup_parity(
       a.is_global_qualified != b.is_global_qualified) {
     return false;
   }
-  const std::string a_tag = a.tag ? a.tag : "";
-  const std::string b_tag = b.tag ? b.tag : "";
-  if (a_tag != b_tag) return false;
+  auto same_record_owner_identity = [](const TypeSpec& lhs,
+                                       const TypeSpec& rhs) -> bool {
+    if (lhs.record_def || rhs.record_def) {
+      return lhs.record_def && rhs.record_def && lhs.record_def == rhs.record_def;
+    }
+    const bool lhs_has_text_identity = lhs.tag_text_id != kInvalidText;
+    const bool rhs_has_text_identity = rhs.tag_text_id != kInvalidText;
+    if (lhs_has_text_identity || rhs_has_text_identity) {
+      if (!lhs_has_text_identity || !rhs_has_text_identity ||
+          lhs.tag_text_id != rhs.tag_text_id ||
+          lhs.namespace_context_id != rhs.namespace_context_id ||
+          lhs.is_global_qualified != rhs.is_global_qualified ||
+          lhs.n_qualifier_segments != rhs.n_qualifier_segments) {
+        return false;
+      }
+      for (int i = 0; i < lhs.n_qualifier_segments; ++i) {
+        const TextId lhs_segment =
+            lhs.qualifier_text_ids ? lhs.qualifier_text_ids[i] : kInvalidText;
+        const TextId rhs_segment =
+            rhs.qualifier_text_ids ? rhs.qualifier_text_ids[i] : kInvalidText;
+        if (lhs_segment == kInvalidText || rhs_segment == kInvalidText ||
+            lhs_segment != rhs_segment) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return typespec_legacy_tag_if_present(lhs, 0) ==
+           typespec_legacy_tag_if_present(rhs, 0);
+  };
+  if (!same_record_owner_identity(a, b)) return false;
   for (int i = 0; i < a.array_rank && i < 8; ++i) {
     if (a.array_dims[i] != b.array_dims[i]) return false;
   }

@@ -8,20 +8,21 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared the first
+Step 4 - Probe Field Removal And Split Boundaries cleared the next
 `src/frontend/hir/hir_types.cpp` deletion-probe blocker in
-`resolve_typedef_to_struct`. Typedef-to-record resolution now applies
-structured `record_def` and TextId owner metadata before any compatibility
-bridge, restores final spelling through a deletion-safe payload helper, and
-keeps rendered tag lookup only as a no-complete-metadata fallback.
+`resolve_struct_method_lookup_owner_tag` and the tightly coupled struct-method
+return-type parity comparison. Struct-method owner fallback now prefers
+`tag_text_id` final spelling before the deletion-safe legacy payload helper,
+and return-type parity compares record owner identity through `record_def` or
+TextId qualifier metadata before falling back to legacy final spelling.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next first deletion-probe blocker in
 `src/frontend/hir/hir_types.cpp`. The current probe first reports direct
-`TypeSpec::tag` use in `resolve_struct_method_lookup_owner_tag` around
-`hir_types.cpp:608`, followed by the struct-method parity helper and
-layout/member compatibility surfaces.
+`TypeSpec::tag` use in `find_struct_def_for_layout_type` around
+`hir_types.cpp:1138`, followed by member-symbol/layout compatibility surfaces
+and later generic control/call TypeSpec final-spelling payload sites.
 
 ## Watchouts
 
@@ -50,6 +51,13 @@ layout/member compatibility surfaces.
   owner metadata as authoritative; rendered `TypeSpec::tag` is retained there
   only through deletion-safe final-spelling/no-complete-metadata compatibility
   helpers.
+- The struct-method lookup owner resolver no longer directly reads
+  `TypeSpec::tag`; its remaining rendered fallback is a compatibility/display
+  bridge through `tag_text_id` and the deletion-safe legacy payload helper.
+- Struct-method return-type lookup parity no longer directly compares
+  `TypeSpec::tag`; it now treats `record_def` and TextId owner metadata as the
+  semantic identity and keeps legacy spelling only as the no-metadata
+  compatibility comparison.
 - `hir_lowering_core.cpp` no longer has direct `TypeSpec::tag` reads in generic
   record compatibility or local layout TypeSpec lookup.
 - The base layout path still uses `HirStructDef::base_tags` as final spelling
@@ -85,9 +93,9 @@ layout/member compatibility surfaces.
 - Treat any `TypeSpec::tag` deletion build as temporary until Step 5.
 - The `hir_lowering_core.cpp` and `hir_build.cpp` deletion-probe clusters are
   now clear of direct `TypeSpec::tag` reads. The first residual probe blocker
-  moved past `resolve_typedef_to_struct` to
-  `src/frontend/hir/hir_types.cpp:608`, followed by later `hir_types.cpp`
-  surfaces and then `hir/impl/expr/call.cpp`.
+  moved past `resolve_struct_method_lookup_owner_tag` and the struct-method
+  parity helper to `src/frontend/hir/hir_types.cpp:1138`, followed by later
+  `hir_types.cpp` surfaces and then `hir/impl/expr/call.cpp`.
 - The rejected `ft.tag` layout repair route was replaced with a structured
   AST-node-to-HIR-owner carrier. Do not reintroduce rendered field type tag
   lookup for layout ownership.
@@ -110,9 +118,9 @@ Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
 /tmp/c4c_typespec_tag_deletion_probe_step4_hir_types.log 2>&1`, and restored
 the temporary edit. The probe no longer reports the
-`resolve_typedef_to_struct` construction/fallback cluster; the first residual
-error is `resolve_struct_method_lookup_owner_tag` in
-`src/frontend/hir/hir_types.cpp`, with later parallel errors in
+`resolve_struct_method_lookup_owner_tag` fallback or struct-method parity
+comparison cluster; the first residual error is `find_struct_def_for_layout_type`
+in `src/frontend/hir/hir_types.cpp:1138`, with later parallel errors in
 `src/frontend/hir/impl/expr/call.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
