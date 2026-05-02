@@ -355,11 +355,26 @@ bool generic_type_compatible(TypeSpec a, TypeSpec b) {
         make_record_owner_key_for_type(b, nullptr);
     if (a_key && b_key) return *a_key == *b_key;
     if (a_key || b_key) return false;
-    // Compatibility bridge for legacy TypeSpec producers that still lack
-    // complete structured owner metadata.
-    const char* atag = a.tag ? a.tag : "";
-    const char* btag = b.tag ? b.tag : "";
-    return std::strcmp(atag, btag) == 0;
+    if (a.record_def || b.record_def) return a.record_def == b.record_def;
+    if (a.tag_text_id != kInvalidText || b.tag_text_id != kInvalidText) {
+      if (a.tag_text_id == kInvalidText || b.tag_text_id == kInvalidText) return false;
+      if (a.tag_text_id != b.tag_text_id) return false;
+      if (a.namespace_context_id >= 0 && b.namespace_context_id >= 0 &&
+          a.namespace_context_id != b.namespace_context_id) {
+        return false;
+      }
+      if (a.is_global_qualified != b.is_global_qualified) return false;
+      if (a.n_qualifier_segments != b.n_qualifier_segments) return false;
+      for (int i = 0; i < a.n_qualifier_segments; ++i) {
+        const TextId a_segment =
+            a.qualifier_text_ids ? a.qualifier_text_ids[i] : kInvalidText;
+        const TextId b_segment =
+            b.qualifier_text_ids ? b.qualifier_text_ids[i] : kInvalidText;
+        if (a_segment != b_segment) return false;
+      }
+      return true;
+    }
+    return true;
   }
   return true;
 }
@@ -403,11 +418,7 @@ class LayoutQueries {
                 ts, module_.link_name_texts ? module_.link_name_texts.get() : nullptr)) {
       return module_.find_struct_def_by_owner_structured(*owner_key);
     }
-    // Compatibility bridge for legacy TypeSpec producers that still lack
-    // complete structured owner metadata.
-    if (!ts.tag || !ts.tag[0]) return nullptr;
-    const auto it = module_.struct_defs.find(ts.tag);
-    return it == module_.struct_defs.end() ? nullptr : &it->second;
+    return nullptr;
   }
 
   const HirStructDef* find_base_struct_def_for_layout(
