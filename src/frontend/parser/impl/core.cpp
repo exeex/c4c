@@ -1070,15 +1070,17 @@ bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
         return true;
     }
     if (ts.base == TB_STRUCT || ts.base == TB_UNION) return true;
-    if (ts.base != TB_TYPEDEF || !ts.tag || !ts.tag[0]) return false;
-    if (ts.tag_text_id != kInvalidText) return false;
+    if (ts.base != TB_TYPEDEF) return false;
+    if (typespec_has_typedef_lookup_identity_carrier(ts)) return false;
+    const char* tag = typespec_legacy_typedef_tag_if_present(ts, 0);
+    if (!tag || !tag[0]) return false;
     // Compatibility fallback for TextId-less or tag-only paths that have not
     // carried structured record identity through the parser yet.
-    return definition_state_.defined_struct_tags.count(ts.tag) > 0 ||
-           definition_state_.struct_tag_def_map.count(ts.tag) > 0 ||
+    return definition_state_.defined_struct_tags.count(tag) > 0 ||
+           definition_state_.struct_tag_def_map.count(tag) > 0 ||
            has_template_struct_primary(
                current_namespace_context_id(),
-               parser_text_id_for_token(kInvalidText, ts.tag));
+               parser_text_id_for_token(kInvalidText, tag));
 }
 
 bool Parser::is_user_typedef_name(TextId name_text_id) const {
