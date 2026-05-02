@@ -8,22 +8,22 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 tightened the remaining alias-template rendered arg-ref fallback after
-origin-key carriers and simple type-only pending args gained structured
-carriers. The fallback now treats any parser/Sema carrier, including
-`record_def`, nested template-origin keys, and structured `TemplateArgRef`
-metadata, as authority and only keeps the rendered comma-split substitution
-route for fully no-carrier debug-only refs.
+Step 4 removed the isolated alias-template rendered comma-split arg-ref
+fallback. Alias-template substitution now keeps fully no-carrier debug-only
+`TB_VOID` type refs as compatibility/display metadata instead of promoting
+their rendered text into semantic substitution authority.
 
-Added same-feature drift coverage proving a record-def-only alias carrier with
-debug-only stale arg text does not authorize rendered substitution.
+Added same-feature drift coverage for the removed route:
+`test_alias_template_no_carrier_debug_arg_stays_debug_only` constructs the
+fully no-carrier debug-only alias-template case and proves it remains
+debug-only after `Alias<int>` parsing.
 
 ## Suggested Next
 
-Continue Step 4 by deciding whether the now-isolated fully no-carrier
-debug-only alias-template fallback still maps to a real producer gap. If a
-high-value case still reaches it, repair that producer to emit structured
-`TemplateArgRef` metadata; otherwise remove the compatibility branch.
+Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
+the supervisor. Any future real producer that needs alias-template type-arg
+substitution must preserve the parsed `TypeSpec`/`TemplateArgRef` carrier
+instead of relying on rendered debug text.
 
 ## Watchouts
 
@@ -68,16 +68,10 @@ high-value case still reaches it, repair that producer to emit structured
   for captured expression text with no `ParsedTemplateArg::expr`, no
   value-arg `TypeSpec::array_size_expr`, and no `nttp_text_id`; a future packet
   should repair the capture producer if a high-value case still reaches it.
-- The alias-template comma-split/rendered arg-ref fallback now excludes
-  origin-key carriers even when `record_def` is not attached yet. It should
-  remain limited to template-arg lists with unstructured debug-only refs and no
-  structured carrier.
-- The remaining alias-template comma-split/rendered arg-ref fallback is now
-  limited to `TemplateArgRef` lists that are all debug-only/no-carrier: no
-  `record_def`, no `tpl_struct_origin_key`, no structured value/text-id carrier,
-  and no structured type carrier. The missing producer, if this route is still
-  needed, is whichever alias-template producer still creates `TB_VOID`
-  debug-only type refs instead of preserving the parsed type `TypeSpec`.
+- The alias-template comma-split/rendered arg-ref fallback has been removed.
+  The only exercised fully no-carrier `TB_VOID` debug-only type-ref case is now
+  the focused parser lookup-authority fixture, which intentionally remains
+  debug-only; no real producer was exposed by the delegated proof subset.
 - Origin-key materialization is deliberately conservative: it uses simple
   structured args only, rejects debug-only refs, nested template-origin args,
   and unevaluated NTTP expression carriers, and preserves deferred member

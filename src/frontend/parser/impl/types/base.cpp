@@ -2093,18 +2093,6 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 resolved_alias_args.push_back(default_arg);
                             }
-                            auto build_template_arg_refs =
-                                [&](const std::vector<TemplateArgParseResult>& args)
-                                -> std::string {
-                                    std::string arg_refs;
-                                    for (const auto& arg : args) {
-                                        if (!arg_refs.empty()) arg_refs += ",";
-                                        arg_refs += render_template_arg_ref(arg);
-                                    }
-                                    return arg_refs;
-                                };
-
-                            std::unordered_map<TextId, std::string> subst;
                             auto alias_param_text_id =
                                 [&](size_t param_index) -> TextId {
                                     if (param_index <
@@ -2156,21 +2144,15 @@ TypeSpec Parser::parse_base_type() {
                                 const bool expects_value =
                                     pi < ati->param_is_nttp.size() && ati->param_is_nttp[pi];
                                 if (is_pack) {
-                                    std::string packed_refs;
                                     while (bound_arg_index < resolved_alias_args.size()) {
                                         if (resolved_alias_args[bound_arg_index].is_value !=
                                             expects_value) {
                                             alias_parse_ok = false;
                                             break;
                                         }
-                                        if (!packed_refs.empty()) packed_refs += ",";
-                                        packed_refs +=
-                                            render_template_arg_ref(
-                                                resolved_alias_args[bound_arg_index]);
                                         ++bound_arg_index;
                                     }
                                     if (!alias_parse_ok) break;
-                                    subst[param_text_id] = packed_refs;
                                     continue;
                                 }
                                 if (bound_arg_index >= resolved_alias_args.size()) {
@@ -2182,9 +2164,6 @@ TypeSpec Parser::parse_base_type() {
                                     alias_parse_ok = false;
                                     break;
                                 }
-                                subst[param_text_id] =
-                                    render_template_arg_ref(
-                                        resolved_alias_args[bound_arg_index]);
                                 ++bound_arg_index;
                             }
                             if (alias_parse_ok &&
@@ -2247,27 +2226,6 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         parts.push_back(refs.substr(start));
                                         return parts;
-                                    };
-                                auto substitute_template_arg_refs =
-                                    [&](const char* refs_text) -> std::string {
-                                        if (!refs_text || !refs_text[0]) return {};
-                                        const auto old_parts =
-                                            split_template_arg_refs(refs_text);
-                                        std::string updated_refs;
-                                        bool first_part = true;
-                                        for (const auto& old_part : old_parts) {
-                                            std::string substituted = old_part;
-                                            const TextId ref_text_id =
-                                                alias_param_ref_text_id(old_part);
-                                            auto s_it = subst.find(ref_text_id);
-                                            if (s_it != subst.end())
-                                                substituted = s_it->second;
-                                            if (substituted.empty()) continue;
-                                            if (!first_part) updated_refs += ",";
-                                            updated_refs += substituted;
-                                            first_part = false;
-                                        }
-                                        return updated_refs;
                                     };
                                     auto alias_param_index_for_text_id =
                                         [&](TextId param_text_id) -> size_t {
@@ -2429,117 +2387,6 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                         }
                                         return true;
-                                    };
-                                    std::function<bool(const TypeSpec&, int)>
-                                        type_has_unstructured_template_arg_ref =
-                                            [&](const TypeSpec& type,
-                                                int depth) -> bool {
-                                        if (depth > 64 ||
-                                            !type.tpl_struct_args.data ||
-                                            type.tpl_struct_args.size <= 0) {
-                                            return false;
-                                        }
-                                        for (int ai = 0;
-                                             ai < type.tpl_struct_args.size; ++ai) {
-                                            const TemplateArgRef& arg =
-                                                type.tpl_struct_args.data[ai];
-                                            if (unstructured_type_arg_ref_uses_debug_fallback(
-                                                    arg)) {
-                                                return true;
-                                            }
-                                            if (arg.kind == TemplateArgKind::Type &&
-                                                type_has_unstructured_template_arg_ref(
-                                                    arg.type, depth + 1)) {
-                                                return true;
-                                            }
-                                        }
-                                        return false;
-                                    };
-                                    std::function<bool(const TypeSpec&, int)>
-                                        type_has_structured_template_arg_ref =
-                                            [&](const TypeSpec& type,
-                                                int depth) -> bool {
-                                        if (depth > 64 ||
-                                            !type.tpl_struct_args.data ||
-                                            type.tpl_struct_args.size <= 0) {
-                                            return false;
-                                        }
-                                        for (int ai = 0;
-                                             ai < type.tpl_struct_args.size; ++ai) {
-                                            const TemplateArgRef& arg =
-                                                type.tpl_struct_args.data[ai];
-                                            if (arg.kind == TemplateArgKind::Value) {
-                                                if (arg.nttp_text_id != kInvalidText ||
-                                                    !zero_value_arg_ref_uses_debug_fallback(
-                                                        arg)) {
-                                                    return true;
-                                                }
-                                            } else if (arg.kind ==
-                                                       TemplateArgKind::Type) {
-                                                if (!unstructured_type_arg_ref_uses_debug_fallback(
-                                                        arg)) {
-                                                    return true;
-                                                }
-                                                if (type_has_structured_template_arg_ref(
-                                                        arg.type, depth + 1)) {
-                                                    return true;
-                                                }
-                                            }
-                                        }
-                                        return false;
-                                    };
-                                    std::function<bool(const TypeSpec&, int)>
-                                        type_has_template_origin_carrier =
-                                            [&](const TypeSpec& type,
-                                                int depth) -> bool {
-                                        if (depth > 64) return false;
-                                        if (type.tpl_struct_origin_key.base_text_id !=
-                                                kInvalidText) {
-                                            return true;
-                                        }
-                                        if (!type.tpl_struct_args.data ||
-                                            type.tpl_struct_args.size <= 0) {
-                                            return false;
-                                        }
-                                        for (int ai = 0;
-                                             ai < type.tpl_struct_args.size; ++ai) {
-                                            const TemplateArgRef& arg =
-                                                type.tpl_struct_args.data[ai];
-                                            if (arg.kind == TemplateArgKind::Type &&
-                                                type_has_template_origin_carrier(
-                                                    arg.type, depth + 1)) {
-                                                return true;
-                                            }
-                                        }
-                                        return false;
-                                    };
-                                    std::function<bool(const TypeSpec&, int)>
-                                        type_has_parser_sema_carrier =
-                                            [&](const TypeSpec& type,
-                                                int depth) -> bool {
-                                        if (depth > 64) return false;
-                                        if (type.record_def ||
-                                            type_has_template_origin_carrier(
-                                                type, depth) ||
-                                            type_has_structured_template_arg_ref(
-                                                type, depth)) {
-                                            return true;
-                                        }
-                                        if (!type.tpl_struct_args.data ||
-                                            type.tpl_struct_args.size <= 0) {
-                                            return false;
-                                        }
-                                        for (int ai = 0;
-                                             ai < type.tpl_struct_args.size; ++ai) {
-                                            const TemplateArgRef& arg =
-                                                type.tpl_struct_args.data[ai];
-                                            if (arg.kind == TemplateArgKind::Type &&
-                                                type_has_parser_sema_carrier(
-                                                    arg.type, depth + 1)) {
-                                                return true;
-                                            }
-                                        }
-                                        return false;
                                     };
                                     auto materialize_template_origin_record_def =
                                         [&](TypeSpec* target) -> bool {
@@ -3197,29 +3044,11 @@ TypeSpec Parser::parse_base_type() {
                                     }
                                 }
                                 if (ts.tpl_struct_args.size > 0) {
-                                    const bool had_unstructured_refs =
-                                        type_has_unstructured_template_arg_ref(
-                                            ts, 0);
-                                    const bool had_structured_refs =
-                                        type_has_structured_template_arg_ref(
-                                            ts, 0);
-                                    const bool had_parser_sema_carrier =
-                                        type_has_parser_sema_carrier(
-                                            ts, 0);
                                     if (!substitute_template_arg_refs_structured(&ts)) {
                                         alias_parse_ok = false;
                                     } else {
                                         materialize_template_origin_record_def(
                                             &ts);
-                                    }
-                                    if (alias_parse_ok &&
-                                        had_unstructured_refs &&
-                                        !had_structured_refs &&
-                                        !had_parser_sema_carrier) {
-                                        const std::string new_refs =
-                                            substitute_template_arg_refs(
-                                                template_arg_refs_text(ts).c_str());
-                                        set_template_arg_debug_refs_text(&ts, new_refs);
                                     }
                                     // Update tag (mangled name) to reflect substituted args.
                                     if (alias_parse_ok && ts.tpl_struct_origin) {

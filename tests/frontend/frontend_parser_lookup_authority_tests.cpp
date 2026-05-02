@@ -2413,6 +2413,71 @@ void test_alias_template_origin_key_only_blocks_debug_arg_substitution() {
               "substitute debug-only type args as semantic metadata");
 }
 
+void test_alias_template_no_carrier_debug_arg_stays_debug_only() {
+  c4c::Arena arena;
+  c4c::Lexer lexer("Alias<int>",
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const c4c::TextId param_text = lexer.text_table().intern("T");
+
+  c4c::TypeSpec aliased{};
+  aliased.array_size = -1;
+  aliased.inner_rank = -1;
+  aliased.base = c4c::TB_STRUCT;
+  aliased.tag = arena.strdup("Carrier_T");
+  aliased.tpl_struct_origin = arena.strdup("Carrier");
+  aliased.tpl_struct_args.size = 1;
+  aliased.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  aliased.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
+  aliased.tpl_struct_args.data[0].type = {};
+  aliased.tpl_struct_args.data[0].type.base = c4c::TB_VOID;
+  aliased.tpl_struct_args.data[0].type.array_size = -1;
+  aliased.tpl_struct_args.data[0].type.inner_rank = -1;
+  aliased.tpl_struct_args.data[0].value = 0;
+  aliased.tpl_struct_args.data[0].nttp_text_id = c4c::kInvalidText;
+  aliased.tpl_struct_args.data[0].debug_text = arena.strdup("T");
+
+  c4c::ParserAliasTemplateInfo info{};
+  info.param_names.push_back(arena.strdup("T"));
+  info.param_name_text_ids.push_back(param_text);
+  info.param_is_nttp.push_back(false);
+  info.param_is_pack.push_back(false);
+  info.param_has_default.push_back(false);
+  info.aliased_type = aliased;
+
+  c4c::TypeSpec alias_typedef{};
+  alias_typedef.array_size = -1;
+  alias_typedef.inner_rank = -1;
+  alias_typedef.base = c4c::TB_TYPEDEF;
+  alias_typedef.tag = arena.strdup("Alias");
+  alias_typedef.tag_text_id = alias_text;
+  parser.register_typedef_binding(alias_text, alias_typedef, true);
+  parser.register_alias_template_info_for_testing(
+      parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                           alias_text),
+      info);
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  expect_true(resolved.record_def == nullptr &&
+                  resolved.tpl_struct_origin_key.base_text_id ==
+                      c4c::kInvalidText,
+              "test fixture should exercise the fully no-carrier path");
+  expect_true(resolved.tpl_struct_args.data != nullptr &&
+                  resolved.tpl_struct_args.size == 1,
+              "no-carrier alias substitution should preserve template arg "
+              "arity");
+  const c4c::TemplateArgRef& arg = resolved.tpl_struct_args.data[0];
+  expect_true(arg.kind == c4c::TemplateArgKind::Type && arg.type.base == c4c::TB_VOID &&
+                  arg.debug_text && std::string(arg.debug_text) == "T",
+              "fully no-carrier debug-only type args should not be promoted "
+              "into rendered substitution authority");
+}
+
 void test_dependent_member_typedef_base_carries_structured_record_def() {
   const char* definitions =
       "template <typename T, T v>\n"
@@ -3093,6 +3158,7 @@ int main() {
   test_alias_template_record_def_blocks_debug_arg_substitution();
   test_alias_template_origin_key_blocks_debug_arg_substitution();
   test_alias_template_origin_key_only_blocks_debug_arg_substitution();
+  test_alias_template_no_carrier_debug_arg_stays_debug_only();
   test_dependent_member_typedef_base_carries_structured_record_def();
   test_default_only_template_base_uses_cached_default_metadata();
   test_direct_template_explicit_nttp_expr_ignores_stale_display_text();
