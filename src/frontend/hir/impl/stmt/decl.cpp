@@ -267,6 +267,17 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         owner_ts.array_rank != 0) {
       return {};
     }
+    if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
+      if (const std::optional<HirRecordOwnerKey> record_owner_key =
+              make_struct_def_node_owner_key(owner_ts.record_def)) {
+        if (const SymbolName* owner_tag =
+                module_->find_struct_def_tag_by_owner(*record_owner_key)) {
+          if (module_->struct_defs.count(*owner_tag)) {
+            return std::string(*owner_tag);
+          }
+        }
+      }
+    }
     if (has_decl_structured_owner_identity(owner_ts)) {
       if (auto owner_tag =
               resolve_decl_structured_owner_tag(owner_ts, context_name)) {

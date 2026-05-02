@@ -2693,6 +2693,84 @@ void test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag() {
               "initializer-list aggregate direct assignment must not use stale rendered tags after structured owner miss");
 }
 
+void test_local_anonymous_aggregate_init_uses_record_owner_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::C);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* anon_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  anon_record->name = arena.strdup("_anon_0");
+  anon_record->unqualified_name = arena.strdup("_anon_0");
+  anon_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(anon_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build an owner key for generated anonymous record");
+
+  c4c::hir::HirStructField field;
+  field.name = "value";
+  field.field_text_id = module.link_name_texts->intern("value");
+  field.elem_type.base = c4c::TB_INT;
+  field.elem_type.array_size = -1;
+  field.elem_type.inner_rank = -1;
+  field.member_symbol_id = module.member_symbols.intern("_anon_0::value");
+
+  c4c::hir::HirStructDef def;
+  def.tag = "_anon_0";
+  def.tag_text_id = module.link_name_texts->intern("_anon_0");
+  def.ns_qual.context_id = parser.current_namespace_context_id();
+  def.fields.push_back(field);
+  module.index_struct_def_owner(*owner_key, def.tag, true);
+  module.struct_defs[def.tag] = def;
+
+  c4c::TypeSpec anon_ts{};
+  anon_ts.array_size = -1;
+  anon_ts.inner_rank = -1;
+  anon_ts.base = c4c::TB_STRUCT;
+  anon_ts.record_def = anon_record;
+
+  c4c::Node* literal = parser.make_node(c4c::NK_INT_LIT, 1);
+  literal->ival = 7;
+  c4c::Node* init = parser.make_node(c4c::NK_INIT_LIST, 1);
+  init->children = arena.alloc_array<c4c::Node*>(1);
+  init->children[0] = literal;
+  init->n_children = 1;
+
+  c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
+  decl->name = arena.strdup("local_anon");
+  decl->unqualified_name = arena.strdup("local_anon");
+  decl->type = anon_ts;
+  decl->init = init;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  lowerer.lower_local_decl_stmt(ctx, decl);
+
+  bool stored_field = false;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* assign = std::get_if<c4c::hir::AssignExpr>(&expr.payload);
+    if (!assign) continue;
+    const c4c::hir::Expr* lhs = module.find_expr(assign->lhs);
+    const c4c::hir::Expr* rhs = module.find_expr(assign->rhs);
+    const auto* member =
+        lhs ? std::get_if<c4c::hir::MemberExpr>(&lhs->payload) : nullptr;
+    const auto* value =
+        rhs ? std::get_if<c4c::hir::IntLiteral>(&rhs->payload) : nullptr;
+    if (member && member->field == "value" &&
+        member->resolved_owner_tag == "_anon_0" && value && value->value == 7) {
+      stored_field = true;
+    }
+  }
+  expect_true(stored_field,
+              "anonymous aggregate init should lower field stores through record owner metadata");
+}
+
 void test_deferred_member_typedef_record_def_miss_rejects_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2782,6 +2860,7 @@ int main() {
   test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name();
   test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_name();
   test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag();
+  test_local_anonymous_aggregate_init_uses_record_owner_key();
   test_deferred_member_typedef_record_def_miss_rejects_stale_tag();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
