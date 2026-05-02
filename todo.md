@@ -8,32 +8,32 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries fixed the full-suite
-regression from removing the builtin layout no-metadata fallback without
-restoring semantic dependence on `TypeSpec::tag` in
-`LayoutQueries::find_struct_layout`.
-`src/frontend/hir/impl/expr/builtin.cpp::LayoutQueries::find_struct_layout`
-now derives structured owner keys from `TypeSpec::record_def` by translating
-the parser node name/namespace through the HIR module text table. Complete
-structured owner misses remain authoritative; the residual no-owner
-compatibility path uses only named text payloads (`tag_text_id` or
-`record_def` text), not `ts.tag`.
+Step 4 - Probe Field Removal And Split Boundaries reran the controlled
+`TypeSpec::tag` deletion probe after the builtin layout/query producer cleanup
+and full-suite regression fix. The probe temporarily removed
+`TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
+`cmake --build --preset default`, captured the current frontend/HIR
+compile-failure clusters, then restored `ast.hpp` exactly and rebuilt the
+normal tree.
 
-Parser producers now carry the missing structured metadata into the affected
-queries: completed non-template record bindings retain `record_def`,
-`tag_text_id`, and namespace metadata, `struct S` references recover an
-existing completed record definition when available, and template parameter
-TypeSpecs carry `template_param_text_id` / index. `resolve_builtin_query_type`
-uses that template-param TextId first and only uses the rendered binding key as
-a compatibility spelling when the parser-owned TextId cannot be decoded by the
-HIR module text table and the same TypeSpec also carries matching template-param
-TextId metadata.
+Sixth-probe result: `LayoutQueries::find_struct_layout` remains cleared, but
+`src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type` is now the
+first visible builtin.cpp blocker because its guarded template-param
+compatibility bridge still reads `target.tag` after `template_param_text_id`
+lookup misses in the HIR module text table. The next first-failure clusters are
+HIR-owned signature/callable substitution in `hir_functions.cpp`, mixed
+semantic/layout/final-spelling helpers in `hir_lowering_core.cpp`, function
+overload collection in `hir_build.cpp`, and mixed semantic/display/layout
+consumers in `hir_types.cpp`.
 
 ## Suggested Next
 
-Continue Step 4 by rerunning the controlled `TypeSpec::tag` deletion probe
-after the builtin layout/query producer cleanup. Record the new first
-compile-failure clusters and confirm whether `builtin.cpp` remains cleared.
+Continue Step 4 with one bounded HIR compile-failure cluster migration.
+Suggested next packet: clear
+`src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type` by
+replacing the guarded rendered template-param binding-name bridge with a
+non-`TypeSpec::tag` payload, likely a TypeBindings-by-TextId bridge or a module
+text-table attachment path for parser template-param TextIds.
 
 ## Watchouts
 
@@ -68,7 +68,8 @@ compile-failure clusters and confirm whether `builtin.cpp` remains cleared.
 - The HIR builtin layout route is cleared for
   `LayoutQueries::find_struct_layout`; complete structured owner misses no
   longer fall back to rendered `struct_defs`, and the no-metadata rendered
-  `ts.tag` fallback has been intentionally removed.
+  `ts.tag` fallback has been intentionally removed. The sixth deletion probe
+  did not report direct `find_struct_layout` `ts.tag` reads.
 - The builtin layout full-suite regression is fixed by producer-side
   `record_def` / TextId metadata plus HIR-side translation from parser record
   nodes into module-owned owner keys. `LayoutQueries::find_struct_layout` still
@@ -77,17 +78,22 @@ compile-failure clusters and confirm whether `builtin.cpp` remains cleared.
   compatibility bridge for parser-owned template-param TextIds that cannot be
   decoded from the HIR module text table. This is guarded by
   `tag_text_id == template_param_text_id`; stale rendered tag-only miss tests
-  still reject fallback.
+  still reject fallback. The sixth deletion probe now classifies this as the
+  first builtin.cpp compile blocker for the future no-tag contract.
 - The HIR builtin query type route is cleared for
   `resolve_builtin_query_type`; `template_param_text_id` lookup is authoritative
   when present, and tag-only/no-metadata substitution is intentionally not
   preserved for the future no-tag field removal.
-- The fifth deletion probe still stops in frontend/HIR compilation; no
+- The sixth deletion probe still stops in frontend/HIR compilation; no
   LIR/BIR/backend downstream metadata gap has been reached yet.
-- `builtin.cpp` is cleared from the current first deletion-probe failure set.
-  Remaining first-probe clusters are HIR call-lowering helpers and mixed HIR
-  semantic/display consumers in `hir_functions.cpp`, `hir_lowering_core.cpp`,
-  `hir_build.cpp`, and `hir_types.cpp`.
+- Clusters cleared since the fifth probe: direct
+  `LayoutQueries::find_struct_layout` fallback behavior and the full-suite
+  layout/runtime regression. Current first-probe clusters are
+  `builtin.cpp::resolve_builtin_query_type`, HIR callable/signature helpers in
+  `hir_functions.cpp`, `hir_lowering_core.cpp` generic compatibility/layout
+  helpers, `hir_build.cpp` ref-overload collection, `hir_types.cpp`
+  typedef/layout/member/object inference helpers, and then call-lowering
+  helpers in `impl/expr/call.cpp`.
 - Deferred member typedef owner resolution now has a structured-derived
   instantiated-owner spelling bridge in `member_typedef.cpp` and
   `type_resolution.cpp`; rendered `tag` fallback remains explicit
@@ -114,20 +120,26 @@ compile-failure clusters and confirm whether `builtin.cpp` remains cleared.
 
 ## Proof
 
-Step 4 builtin layout regression proof was run with:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(positive_sema_ok_expr_access_misc_runtime_c|positive_sema_ok_pragma_pack_c|cpp_positive_sema_alignas_applies_alignment_runtime_cpp|cpp_positive_sema_alignas_decl_storage_runtime_cpp|cpp_positive_sema_scoped_enum_underlying_layout_runtime_cpp|cpp_positive_sema_template_sizeof_cpp|cpp_hir_builtin_layout_query_sizeof_type|cpp_hir_builtin_layout_query_alignof_type|cpp_hir_builtin_layout_query_alignof_expr|llvm_gcc_c_torture_src_20071018_1_c|llvm_gcc_c_torture_src_pr34456_c|llvm_gcc_c_torture_src_stkalign_c|frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+Sixth deletion probe proof:
+1. Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`.
+2. Ran `cmake --build --preset default`; result: expected probe failure in
+   frontend/HIR compilation. First useful clusters:
+   `src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type`
+   (`target.tag` guarded template-param compatibility),
+   `src/frontend/hir/hir_functions.cpp`
+   (`normalize_zero_sized_struct_return_from_body`,
+   `substitute_signature_template_type`, callable return/param preparation,
+   pack binding names),
+   `src/frontend/hir/hir_lowering_core.cpp`
+   (`generic_type_compatible`, local layout query helpers, base-tag layout
+   construction),
+   `src/frontend/hir/hir_build.cpp`
+   (`collect_ref_overloaded_free_functions`), and
+   `src/frontend/hir/hir_types.cpp` (typedef-to-struct, owner tag recovery,
+   layout/member/object inference helpers), followed by
+   `src/frontend/hir/impl/expr/call.cpp`.
+3. Restored `src/frontend/parser/ast.hpp` exactly.
+4. Ran `cmake --build --preset default`; result: restored tree builds.
+5. Ran `git diff --check`; result: passed.
 
-Result: build passed and selected CTest passed 74/74. The formerly failing
-layout/runtime regressions now pass, including
-`cpp_hir_builtin_layout_query_sizeof_type`,
-`cpp_hir_builtin_layout_query_alignof_type`,
-`cpp_hir_builtin_layout_query_alignof_expr`,
-`positive_sema_ok_expr_access_misc_runtime_c`,
-`positive_sema_ok_pragma_pack_c`,
-`cpp_positive_sema_alignas_applies_alignment_runtime_cpp`,
-`cpp_positive_sema_alignas_decl_storage_runtime_cpp`,
-`cpp_positive_sema_scoped_enum_underlying_layout_runtime_cpp`,
-`cpp_positive_sema_template_sizeof_cpp`,
-`llvm_gcc_c_torture_src_20071018_1_c`,
-`llvm_gcc_c_torture_src_pr34456_c`, and
-`llvm_gcc_c_torture_src_stkalign_c`. Proof log: `test_after.log`.
+No extra root-level probe logs were left behind.
