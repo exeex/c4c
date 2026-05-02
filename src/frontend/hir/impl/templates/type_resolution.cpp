@@ -435,11 +435,51 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
 }
 
 bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
-  const bool has_tag = ts && ts->tag && ts->tag[0];
+  auto owner_key_from_type = [](const TypeSpec& owner)
+      -> std::optional<HirRecordOwnerKey> {
+    if (owner.tag_text_id == kInvalidText) return std::nullopt;
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = owner.namespace_context_id;
+    ns_qual.is_global_qualified = owner.is_global_qualified;
+    if (owner.qualifier_text_ids && owner.n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          owner.qualifier_text_ids,
+          owner.qualifier_text_ids + owner.n_qualifier_segments);
+    }
+    HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, owner.tag_text_id);
+    if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+    return key;
+  };
+  auto owner_tag_from_metadata = [&]() -> std::optional<std::string> {
+    if (!ts) return std::nullopt;
+    if (std::optional<HirRecordOwnerKey> owner_key = owner_key_from_type(*ts)) {
+      if (module_) {
+        if (const SymbolName* tag =
+                module_->find_struct_def_tag_by_owner(*owner_key)) {
+          return *tag;
+        }
+      }
+      for (const auto& [rendered_tag, candidate] : struct_def_nodes_) {
+        if (!candidate || candidate->kind != NK_STRUCT_DEF) continue;
+        if (candidate->unqualified_text_id != ts->tag_text_id) continue;
+        if (ts->namespace_context_id >= 0 &&
+            candidate->namespace_context_id != ts->namespace_context_id) {
+          continue;
+        }
+        return rendered_tag;
+      }
+      return std::nullopt;
+    }
+    if (ts->tag_text_id != kInvalidText) return std::nullopt;
+    const char* legacy_tag = typespec_legacy_tag_if_present(*ts, 0);
+    if (legacy_tag && legacy_tag[0]) return std::string(legacy_tag);
+    return std::nullopt;
+  };
   const bool has_origin = ts && ts->tpl_struct_origin && ts->tpl_struct_origin[0];
   const bool has_record_def = ts && ts->record_def;
+  const std::optional<std::string> owner_tag = owner_tag_from_metadata();
   if (!ts || !ts->deferred_member_type_name ||
-      (!has_record_def && !has_tag && !has_origin)) {
+      (!has_record_def && !owner_tag && !has_origin)) {
     return false;
   }
   TypeSpec structured_member{};
@@ -589,10 +629,10 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
 
   if (try_resolve_from_origin()) return true;
   if (has_record_def) return false;
-  if (!ts->tag || !ts->tag[0]) return false;
+  if (!owner_tag || owner_tag->empty()) return false;
   TypeSpec resolved_member{};
   if (!resolve_struct_member_typedef_type(
-          ts->tag, ts->deferred_member_type_name, &resolved_member)) {
+          *owner_tag, ts->deferred_member_type_name, &resolved_member)) {
     return false;
   }
   *ts = resolved_member;
