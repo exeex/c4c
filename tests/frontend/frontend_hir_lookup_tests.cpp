@@ -2040,6 +2040,65 @@ void test_builtin_query_type_no_metadata_keeps_compatibility_shape() {
               "builtin query type should not use rendered tag as semantic authority without metadata");
 }
 
+void test_lvalue_cast_uses_template_param_text_id_binding() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec text_bound{};
+  text_bound.base = c4c::TB_INT;
+  text_bound.is_lvalue_ref = true;
+  text_bound.array_size = -1;
+  text_bound.inner_rank = -1;
+
+  c4c::TypeSpec stale_tag_bound{};
+  stale_tag_bound.base = c4c::TB_INT;
+  stale_tag_bound.array_size = -1;
+  stale_tag_bound.inner_rank = -1;
+
+  const c4c::TextId param_text_id = module.link_name_texts->intern("T");
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.tpl_bindings_by_text[param_text_id] = text_bound;
+  ctx.tpl_bindings["StaleRenderedTemplateParam"] = stale_tag_bound;
+
+  c4c::Node cast_node{};
+  cast_node.kind = c4c::NK_CAST;
+  cast_node.type.base = c4c::TB_TYPEDEF;
+  cast_node.type.tag = "StaleRenderedTemplateParam";
+  cast_node.type.template_param_text_id = param_text_id;
+  cast_node.type.array_size = -1;
+  cast_node.type.inner_rank = -1;
+
+  expect_true(lowerer.is_ast_lvalue(&cast_node, &ctx),
+              "lvalue cast should prefer template_param_text_id binding over stale rendered tag");
+}
+
+void test_lvalue_cast_structured_miss_rejects_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec stale_tag_bound{};
+  stale_tag_bound.base = c4c::TB_INT;
+  stale_tag_bound.is_lvalue_ref = true;
+  stale_tag_bound.array_size = -1;
+  stale_tag_bound.inner_rank = -1;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.tpl_bindings["StaleRenderedTemplateParam"] = stale_tag_bound;
+
+  c4c::Node cast_node{};
+  cast_node.kind = c4c::NK_CAST;
+  cast_node.type.base = c4c::TB_TYPEDEF;
+  cast_node.type.tag = "StaleRenderedTemplateParam";
+  cast_node.type.template_param_text_id = module.link_name_texts->intern("T");
+  cast_node.type.array_size = -1;
+  cast_node.type.inner_rank = -1;
+
+  expect_true(!lowerer.is_ast_lvalue(&cast_node, &ctx),
+              "lvalue cast should reject stale rendered tag after structured binding miss");
+}
+
 void test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -2409,6 +2468,8 @@ int main() {
   test_builtin_query_type_uses_text_binding_when_module_text_missing();
   test_builtin_query_type_structured_miss_rejects_stale_tag();
   test_builtin_query_type_no_metadata_keeps_compatibility_shape();
+  test_lvalue_cast_uses_template_param_text_id_binding();
+  test_lvalue_cast_structured_miss_rejects_stale_tag();
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();

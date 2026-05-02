@@ -7,6 +7,51 @@
 
 namespace c4c::hir {
 
+namespace {
+
+const char* compatibility_lvalue_template_binding_tag(const TypeSpec& ts) {
+  return ts.tag;
+}
+
+void apply_lvalue_template_concrete(TypeSpec& target, const TypeSpec& concrete) {
+  const int outer_ptr_level = target.ptr_level;
+  const bool outer_lref = target.is_lvalue_ref;
+  const bool outer_rref = target.is_rvalue_ref;
+  const bool outer_const = target.is_const;
+  const bool outer_volatile = target.is_volatile;
+
+  target = concrete;
+  target.ptr_level += outer_ptr_level;
+  target.is_lvalue_ref = target.is_lvalue_ref || outer_lref;
+  target.is_rvalue_ref =
+      !target.is_lvalue_ref && (target.is_rvalue_ref || outer_rref);
+  target.is_const = target.is_const || outer_const;
+  target.is_volatile = target.is_volatile || outer_volatile;
+}
+
+bool apply_lvalue_template_binding_by_text(
+    TypeSpec& ts,
+    const std::unordered_map<TextId, TypeSpec>& tpl_bindings_by_text) {
+  if (ts.template_param_text_id == kInvalidText) return false;
+  auto it = tpl_bindings_by_text.find(ts.template_param_text_id);
+  if (it == tpl_bindings_by_text.end()) return false;
+  apply_lvalue_template_concrete(ts, it->second);
+  return true;
+}
+
+bool apply_lvalue_template_binding_by_compatibility_tag(
+    TypeSpec& ts,
+    const TypeBindings& tpl_bindings) {
+  const char* tag = compatibility_lvalue_template_binding_tag(ts);
+  if (!tag || !tag[0]) return false;
+  auto it = tpl_bindings.find(tag);
+  if (it == tpl_bindings.end()) return false;
+  apply_lvalue_template_concrete(ts, it->second);
+  return true;
+}
+
+}  // namespace
+
 bool Lowerer::is_ast_lvalue(const Node* n, const FunctionCtx* ctx) {
   if (!n) return false;
   switch (n->kind) {
@@ -20,21 +65,13 @@ bool Lowerer::is_ast_lvalue(const Node* n, const FunctionCtx* ctx) {
       return n->is_arrow || is_ast_lvalue(n->left, ctx);
     case NK_CAST: {
       TypeSpec cast_ts = n->type;
-      if (ctx && cast_ts.base == TB_TYPEDEF && cast_ts.tag) {
-        const int outer_ptr_level = cast_ts.ptr_level;
-        const bool outer_lref = cast_ts.is_lvalue_ref;
-        const bool outer_rref = cast_ts.is_rvalue_ref;
-        const bool outer_const = cast_ts.is_const;
-        const bool outer_volatile = cast_ts.is_volatile;
-        auto it = ctx->tpl_bindings.find(cast_ts.tag);
-        if (it != ctx->tpl_bindings.end()) {
-          cast_ts = it->second;
-          cast_ts.ptr_level += outer_ptr_level;
-          cast_ts.is_lvalue_ref = cast_ts.is_lvalue_ref || outer_lref;
-          cast_ts.is_rvalue_ref =
-              !cast_ts.is_lvalue_ref && (cast_ts.is_rvalue_ref || outer_rref);
-          cast_ts.is_const = cast_ts.is_const || outer_const;
-          cast_ts.is_volatile = cast_ts.is_volatile || outer_volatile;
+      if (ctx && cast_ts.base == TB_TYPEDEF) {
+        if (cast_ts.template_param_text_id != kInvalidText) {
+          apply_lvalue_template_binding_by_text(
+              cast_ts, ctx->tpl_bindings_by_text);
+        } else {
+          apply_lvalue_template_binding_by_compatibility_tag(
+              cast_ts, ctx->tpl_bindings);
         }
       }
       return cast_ts.is_lvalue_ref;
