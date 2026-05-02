@@ -8,28 +8,30 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries migrated
-`src/frontend/hir/impl/templates/templates.cpp`
-`Lowerer::realize_template_struct` away from direct `TypeSpec::tag` reads/writes
-around the former deletion-probe lines 896 and 941. Realization now relies on
-the canonical primary/origin carrier and materialized template args for semantic
-lookup, removes the unused rendered-tag capture, and writes the realized
-instance final spelling only through the deletion-friendly legacy-tag assignment
-helper. The realized `HirStructDef` also refreshes `tag_text_id` and
-`namespace_context_id`, keeping rendered final spelling compatibility explicit
-without reintroducing semantic lookup through rendered `TypeSpec::tag`. Added
-focused CTest coverage in
-`tests/frontend/cpp_hir_template_realize_struct_metadata_test.cpp` proving a
-stale incoming rendered `TypeSpec::tag` does not block realization and the
-realized `HirStructDef` refreshes structured metadata.
+Step 4 - Probe Field Removal And Split Boundaries migrated the first
+`src/frontend/hir/impl/templates/type_resolution.cpp`
+`resolve_struct_member_typedef_type` local `apply_bindings` template-parameter
+binding path away from direct `TypeSpec::tag` reads around the former
+deletion-probe lines 97-103. The local binding path now uses
+`template_param_text_id` and `tag_text_id` against the owning template
+parameter metadata first, then a validated owner/index carrier, and only falls
+back to rendered legacy tag lookup when no structured carrier exists. The
+legacy fallback is SFINAE-gated through `typespec_legacy_tag_if_present`, so it
+compiles away during the deletion probe instead of becoming a replacement
+semantic key. Added focused CTest coverage in
+`tests/frontend/cpp_hir_member_typedef_binding_metadata_test.cpp` proving
+structured metadata wins over stale rendered tag text, mismatched structured
+metadata does not recover through stale tag fallback, and tag-only no-metadata
+compatibility still binds.
 
 ## Suggested Next
 
-Continue Step 4 with the next deletion-probe blocker in
-`src/frontend/hir/impl/templates/type_resolution.cpp`, starting with the first
-residual direct `TypeSpec::tag` reads at current deletion-probe line 97. Keep
-parser/core and parser type-helper residuals split unless the supervisor routes
-them together.
+Continue Step 4 with the next supervisor-selected deletion-probe blocker. The
+current probe's first emitted blocker is the next
+`resolve_struct_member_typedef_type` residual in
+`src/frontend/hir/impl/templates/type_resolution.cpp` around current lines
+348-352. Keep parser/core, parser declarations, parser type helpers, and
+`value_args.cpp` residuals split unless the supervisor routes them together.
 
 ## Watchouts
 
@@ -63,10 +65,12 @@ them together.
   `eval_struct_static_member_value_hir` direct reads and the targeted
   `hir_match_type_pattern`/`hir_specialization_match_score` direct reads in
   `src/frontend/hir/impl/templates/templates.cpp`, and the targeted
-  `realize_template_struct` direct reads/writes. First residual errors now
-  remain in `src/frontend/hir/impl/templates/type_resolution.cpp`, with
-  same-build residuals also reported in parser/core, parser declarations, and
-  parser type helpers.
+  `realize_template_struct` direct reads/writes, and the targeted first
+  `resolve_struct_member_typedef_type` local `apply_bindings` direct reads in
+  `src/frontend/hir/impl/templates/type_resolution.cpp`. First emitted residual
+  errors now begin in later `type_resolution.cpp`, with same-build residuals
+  also reported in parser/core, parser declarations, parser type helpers, and
+  `value_args.cpp`.
 - `hir_match_type_pattern` and `hir_specialization_match_score` are now
   semantically cleared for type template-parameter matching/scoring. The HIR
   binding map still uses the canonical parameter-name string as the binding
@@ -83,6 +87,12 @@ them together.
   is removed, the helper compiles away and the structured `tag_text_id` refresh
   remains. Focused regression coverage is
   `cpp_hir_template_realize_struct_structured_metadata`.
+- The first `resolve_struct_member_typedef_type` local `apply_bindings`
+  template-parameter binding path is now semantically cleared for structured
+  type-parameter binding. The rendered tag fallback is compatibility-only and
+  disabled whenever `template_param_text_id`, `tag_text_id`, validated
+  owner/index, or owner metadata is present. Focused regression coverage is
+  `cpp_hir_member_typedef_binding_structured_metadata`.
 - The explicit tag-only fallback in `hir_type_template_param_index` is gated
   behind a no-structured-carrier check and a field-detection helper so the
   Step 4 deletion probe still classifies later residuals first.
@@ -110,18 +120,20 @@ them together.
   `/tmp/c4c_typespec_tag_deletion_probe_step4_materialization_mangle.log`.
 - Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_struct_instantiation.log`.
-- This packet added
+- Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_struct_instantiation_bases.log`.
-- This packet added
+- Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_encode.log`.
-- This packet added
+- Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_static_member.log`.
-- This packet added
+- Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_pattern_match.log`.
-- This packet added
+- Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_canonical_primary.log`.
-- This packet added
+- Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_realize_struct.log`.
+- This packet added
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_type_resolution_apply_bindings.log`.
 
 ## Proof
 
@@ -129,23 +141,25 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0 after adding the focused realization metadata CTest.
-The build passed, and CTest passed 79 of 79 delegated tests, including new
-`cpp_hir_template_realize_struct_structured_metadata` coverage for structured
-metadata refresh from the realized `HirStructDef` despite stale incoming
-rendered `TypeSpec::tag`. `test_after.log` is the canonical proof log.
+Result: command exited 0. The build passed, and CTest passed 80 of 80 delegated
+tests, including new
+`cpp_hir_member_typedef_binding_structured_metadata` coverage for the migrated
+`resolve_struct_member_typedef_type` local `apply_bindings` path.
+`test_after.log` is the canonical proof log.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_templates_realize_struct.log 2>&1`,
+/tmp/c4c_typespec_tag_deletion_probe_step4_type_resolution_apply_bindings.log 2>&1`,
 and restored the temporary edit. The probe moved past the targeted
-`realize_template_struct` direct `TypeSpec::tag` reads/writes. The first
-residual blocker is now
-`src/frontend/hir/impl/templates/type_resolution.cpp:97`, with additional
-same-file residuals in `type_resolution.cpp` and same-build residuals also
-reported in parser/core, parser declarations, and parser type helpers.
+`resolve_struct_member_typedef_type` local `apply_bindings` direct
+`TypeSpec::tag` reads at the former lines 97-103. The first emitted residual
+blocker is now
+`src/frontend/hir/impl/templates/type_resolution.cpp:349`, with same-file
+residuals around current lines 349-352, 440-464, 550-584, and 594-597, plus
+same-build residuals in parser/core, parser declarations, parser type helpers,
+and `value_args.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.

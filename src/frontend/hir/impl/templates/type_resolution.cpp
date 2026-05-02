@@ -9,6 +9,103 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
 
 namespace {
 
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, static_cast<const char*>(nullptr)) {
+  return ts.tag;
+}
+
+const char* typespec_legacy_tag_if_present(const TypeSpec&, long) {
+  return nullptr;
+}
+
+bool template_param_owner_matches(const TypeSpec& ts, const Node* template_owner) {
+  if (!template_owner || ts.template_param_owner_text_id == kInvalidText ||
+      template_owner->unqualified_text_id == kInvalidText) {
+    return true;
+  }
+  if (ts.template_param_owner_text_id != template_owner->unqualified_text_id) {
+    return false;
+  }
+  return ts.template_param_owner_namespace_context_id < 0 ||
+         ts.template_param_owner_namespace_context_id ==
+             template_owner->namespace_context_id;
+}
+
+const TypeSpec* find_template_typedef_binding(
+    const TypeSpec& ts,
+    const TypeBindings& type_bindings,
+    const Node* template_owner) {
+  if (ts.base != TB_TYPEDEF || !template_param_owner_matches(ts, template_owner)) {
+    return nullptr;
+  }
+
+  auto binding_for_param_index = [&](int index) -> const TypeSpec* {
+    if (!template_owner || !template_owner->template_param_names ||
+        index < 0 || index >= template_owner->n_template_params) {
+      return nullptr;
+    }
+    if (template_owner->template_param_is_nttp &&
+        template_owner->template_param_is_nttp[index]) {
+      return nullptr;
+    }
+    const char* param_name = template_owner->template_param_names[index];
+    if (!param_name) return nullptr;
+    auto it = type_bindings.find(param_name);
+    return it == type_bindings.end() ? nullptr : &it->second;
+  };
+
+  auto binding_for_param_text = [&](TextId text_id) -> const TypeSpec* {
+    if (text_id == kInvalidText || !template_owner ||
+        !template_owner->template_param_name_text_ids) {
+      return nullptr;
+    }
+    for (int i = 0; i < template_owner->n_template_params; ++i) {
+      if (template_owner->template_param_name_text_ids[i] != text_id) continue;
+      if (const TypeSpec* bound = binding_for_param_index(i)) return bound;
+    }
+    return nullptr;
+  };
+
+  if (const TypeSpec* bound = binding_for_param_text(ts.template_param_text_id)) {
+    return bound;
+  }
+  if (const TypeSpec* bound = binding_for_param_text(ts.tag_text_id)) {
+    return bound;
+  }
+  if (const TypeSpec* bound = binding_for_param_index(ts.template_param_index)) {
+    return bound;
+  }
+
+  const bool has_structured_param_carrier =
+      ts.template_param_text_id != kInvalidText ||
+      ts.tag_text_id != kInvalidText ||
+      ts.template_param_index >= 0 ||
+      ts.template_param_owner_text_id != kInvalidText ||
+      ts.template_param_owner_namespace_context_id >= 0;
+  if (has_structured_param_carrier) return nullptr;
+
+  const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  if (!legacy_tag || !legacy_tag[0]) return nullptr;
+  auto it = type_bindings.find(legacy_tag);
+  return it == type_bindings.end() ? nullptr : &it->second;
+}
+
+void apply_template_typedef_binding(TypeSpec& target, const TypeSpec& concrete) {
+  const int outer_ptr_level = target.ptr_level;
+  const bool outer_lref = target.is_lvalue_ref;
+  const bool outer_rref = target.is_rvalue_ref;
+  const bool outer_const = target.is_const;
+  const bool outer_volatile = target.is_volatile;
+  target = concrete;
+  target.ptr_level += outer_ptr_level;
+  target.is_lvalue_ref = target.is_lvalue_ref || outer_lref;
+  target.is_rvalue_ref = !target.is_lvalue_ref &&
+                         (target.is_rvalue_ref || outer_rref);
+  target.is_const = target.is_const || outer_const;
+  target.is_volatile = target.is_volatile || outer_volatile;
+}
+
 std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
   if (arg.kind == TemplateArgKind::Value && arg.value == 0 &&
       arg.debug_text && arg.debug_text[0]) {
@@ -88,29 +185,18 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
   std::function<TypeSpec(TypeSpec,
                          const TypeBindings&,
                          const NttpBindings&,
+                         const Node*,
                          bool*)> apply_bindings =
       [&](TypeSpec ts,
           const TypeBindings& type_bindings,
           const NttpBindings& nttp_bindings,
+          const Node* binding_owner,
           bool* substituted_type = nullptr) -> TypeSpec {
     if (substituted_type) *substituted_type = false;
-    if (ts.base == TB_TYPEDEF && ts.tag) {
-      const int outer_ptr_level = ts.ptr_level;
-      const bool outer_lref = ts.is_lvalue_ref;
-      const bool outer_rref = ts.is_rvalue_ref;
-      const bool outer_const = ts.is_const;
-      const bool outer_volatile = ts.is_volatile;
-      auto it = type_bindings.find(ts.tag);
-      if (it != type_bindings.end()) {
-        ts = it->second;
-        ts.ptr_level += outer_ptr_level;
-        ts.is_lvalue_ref = ts.is_lvalue_ref || outer_lref;
-        ts.is_rvalue_ref = !ts.is_lvalue_ref &&
-                           (ts.is_rvalue_ref || outer_rref);
-        ts.is_const = ts.is_const || outer_const;
-        ts.is_volatile = ts.is_volatile || outer_volatile;
-        if (substituted_type) *substituted_type = true;
-      }
+    if (const TypeSpec* bound =
+            find_template_typedef_binding(ts, type_bindings, binding_owner)) {
+      apply_template_typedef_binding(ts, *bound);
+      if (substituted_type) *substituted_type = true;
     }
     if (ts.tpl_struct_origin && ts.tpl_struct_args.data &&
         ts.tpl_struct_args.size > 0) {
@@ -125,7 +211,8 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
           bool nested_substituted = false;
           if (has_concrete_type(src_arg.type) || src_arg.type.tpl_struct_origin) {
             dst_arg.type = apply_bindings(
-                src_arg.type, type_bindings, nttp_bindings, &nested_substituted);
+                src_arg.type, type_bindings, nttp_bindings, binding_owner,
+                &nested_substituted);
           } else if (src_arg.debug_text && src_arg.debug_text[0]) {
             auto tit = type_bindings.find(src_arg.debug_text);
             if (tit != type_bindings.end()) {
@@ -252,6 +339,7 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
               *resolved = apply_bindings(sdef->member_typedef_types[i],
                                          type_bindings,
                                          nttp_bindings,
+                                         sdef,
                                          &substituted_type);
               if (!substituted_type && member == "type" &&
                   type_bindings.size() == 1) {
