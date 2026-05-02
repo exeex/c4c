@@ -2384,6 +2384,82 @@ void test_dependent_member_typedef_base_carries_structured_record_def() {
                        : std::string(": ") + result.diagnostics.front().message));
 }
 
+void test_default_only_template_base_uses_cached_default_metadata() {
+  const char* source =
+      "template <typename T>\n"
+      "struct arithmetic {\n"
+      "  static constexpr bool value = true;\n"
+      "};\n"
+      "template <typename T = int, bool = arithmetic<T>::value>\n"
+      "struct default_only_base {};\n"
+      "template <typename T>\n"
+      "struct default_only_derived : default_only_base<> {};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId base_text = lexer.text_table().intern("default_only_base");
+  c4c::Node* base_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), base_text);
+  expect_true(base_primary && base_primary->n_template_params >= 2 &&
+                  base_primary->template_param_default_exprs &&
+                  base_primary->template_param_default_exprs[1],
+              "default_only_base should carry a rendered deferred NTTP default "
+              "expression for drift coverage");
+  base_primary->template_param_default_exprs[1] = arena.strdup("0");
+
+  const c4c::TextId derived_text =
+      lexer.text_table().intern("default_only_derived");
+  c4c::Node* derived_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), derived_text);
+  expect_true(derived_primary && derived_primary->n_bases == 1 &&
+                  derived_primary->base_types,
+              "default_only_derived should expose its default-only base");
+  expect_true(derived_primary->base_types[0].record_def ||
+                  derived_primary->base_types[0]
+                          .tpl_struct_origin_key.base_text_id !=
+                      c4c::kInvalidText,
+              "default-only base should carry parser-owned metadata before "
+              "instantiation");
+
+  c4c::Parser::TemplateArgParseResult int_arg{};
+  int_arg.is_value = false;
+  int_arg.type.array_size = -1;
+  int_arg.type.inner_rank = -1;
+  int_arg.type.base = c4c::TB_INT;
+  std::vector<c4c::Parser::TemplateArgParseResult> args;
+  args.push_back(int_arg);
+  std::string mangled;
+  c4c::TypeSpec resolved{};
+  expect_true(parser.ensure_template_struct_instantiated_from_args(
+                  "default_only_derived", derived_primary, args,
+                  derived_primary->line, &mangled,
+                  "default_only_base_cached_default_test", &resolved),
+              "default-only base inheritance should instantiate");
+
+  c4c::Node* derived_record = resolved.record_def;
+  expect_true(derived_record && derived_record->n_bases == 1 &&
+                  derived_record->base_types &&
+                  derived_record->base_types[0].record_def,
+              "default-only base should attach record_def before Sema");
+  c4c::Node* base_record = derived_record->base_types[0].record_def;
+  expect_true(base_record->n_template_args >= 2 &&
+                  base_record->template_arg_is_value &&
+                  base_record->template_arg_values,
+              "default-only base record should materialize defaulted template "
+              "args");
+  expect_true(base_record->template_arg_is_value[1] &&
+                  base_record->template_arg_values[1] == 1,
+              "default-only base should use cached default tokens before stale "
+              "rendered default-expression text");
+}
+
 void test_typespec_template_origin_equality_uses_structured_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2730,6 +2806,7 @@ int main() {
   test_alias_template_nttp_base_carrier_ignores_stale_debug_text();
   test_alias_template_mixed_carrier_skips_rendered_arg_fallback();
   test_dependent_member_typedef_base_carries_structured_record_def();
+  test_default_only_template_base_uses_cached_default_metadata();
   test_typespec_template_origin_equality_uses_structured_key();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();

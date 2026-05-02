@@ -8,27 +8,29 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 removed the template default-expression re-lex retry from the structured
-direct template-primary instantiation path in `parse_base_type()`. Both the
-preliminary specialization-selection fill and the later concrete-argument fill
-now use `eval_deferred_nttp_default(...)` cached token metadata for defaulted
-NTTP expressions; if that structured carrier is missing, the instantiation is
-left incomplete/deferred instead of re-lexing
-`primary_tpl->template_param_default_exprs[...]` or manufacturing `$expr:`
-source text.
+Step 4 removed the remaining no-carrier base-arg reconstruction path in
+`parse_base_type()`: the branch no longer renders `template_arg_refs_text(...)`
+for `inst->base_types[bi]`, comma-splits rendered refs, rewrites `$expr:` text,
+re-lexes expressions, calls `std::stoll`, or rebuilds types with
+`decode_type_ref_text(...)`.
 
-Focused drift coverage now poisons the rendered default-expression text on
-`is_signed_helper`, drives the direct `parse_base_type()` path for
-`is_signed_helper<int>`, and requires the materialized defaulted NTTP value to
-come from structured cached tokens. The same coverage still proves dependent
-member-typedef base instantiation attaches `record_def` before Sema despite
-rendered metadata drift.
+The only parser/Sema-owned no-explicit-carrier case left there is default-only
+base instantiation, such as `Base<>`. It now builds args only from template
+defaults and evaluates deferred NTTP defaults through
+`eval_deferred_nttp_default(...)` cached token metadata. If the required
+default metadata is missing, the base is left unresolved/deferred rather than
+reopening `template_param_default_exprs` text.
+
+Focused drift coverage now poisons a default-only base template's rendered
+default-expression text and requires the inherited base `record_def` plus
+materialized NTTP value to come from parser-owned metadata before Sema.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing the remaining parser/Sema `$expr:` compatibility
-routes that are not default-expression re-lex fallbacks in the direct
-template-primary or structured base-handoff paths.
+Continue Step 4 by reviewing remaining parser/Sema `$expr:` compatibility
+routes outside the base-instantiation handoff, especially explicit value-arg
+paths that still parse `nttp_name` display strings before structured carriers
+exist.
 
 ## Watchouts
 
@@ -52,7 +54,7 @@ template-primary or structured base-handoff paths.
   `tpl_struct_origin` carrier is present. Dependent template-origin routes now
   also have `tpl_struct_origin_key` where parser producers already know the
   primary key.
-- Retained `$expr:` carriers and template default-expression re-lex paths are
+- Retained `$expr:` carriers outside this base-instantiation handoff are
   compatibility fallbacks, not completed structured cleanup. Successful Step 4
   routes should continue to use parser/Sema structural metadata where present.
 - The structured base-instantiation typed-argument path no longer re-lexes
@@ -63,9 +65,10 @@ template-primary or structured base-handoff paths.
   defaulted NTTP expressions require cached default-token metadata, and a miss
   leaves the instantiation incomplete/deferred rather than reopening rendered
   `template_param_default_exprs` text.
-- The rendered base-arg reconstruction path still contains a no-carrier
-  compatibility default-expression re-lex fallback. It is explicitly behind the
-  absence of `tpl_struct_args`; do not use it as structured progress.
+- The rendered base-arg reconstruction path is removed for the Step 4 base
+  handoff. The only remaining fallback in that local area is rendered-tag map
+  lookup after instantiation fails to attach `TypeSpec::record_def`; do not use
+  that map lookup as template-argument semantic authority.
 - The alias-template comma-split/rendered arg-ref fallback still exists only for
   template-arg lists with unstructured debug-only refs and no structured
   carrier. Do not restore it as a recovery path for mixed carrier lists or stale

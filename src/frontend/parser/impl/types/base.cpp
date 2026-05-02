@@ -4326,288 +4326,141 @@ TypeSpec Parser::parse_base_type() {
                                         restore_deferred_member_lookup();
                                         continue;
                                     }
-                                    // No-carrier compatibility fallback: this branch
-                                    // reconstructs args from legacy rendered debug refs
-                                    // only after the structured carrier path above has
-                                    // declined to use tpl_struct_args.
-                                    std::string arg_refs_str =
-                                        template_arg_refs_text(inst->base_types[bi]);
-                                    // Substitute template param names in arg_refs
-                                    bool all_resolved = true;
-                                    std::vector<std::string> new_arg_parts;
-                                    if (!arg_refs_str.empty()) {
-                                        std::istringstream ss(arg_refs_str);
-                                        std::string part;
-                                        while (std::getline(ss, part, ',')) {
-                                            bool found = false;
-                                            for (const auto& [pname2, pts2] : type_bindings) {
-                                                if (part == pname2) {
-                                                    // Substitute with concrete type mangled suffix
-                                                    std::string sub;
-                                                    append_type_mangled_suffix(sub, pts2);
-                                                    new_arg_parts.push_back(sub);
-                                                    found = true;
+                                    base_primary = find_instantiated_base_primary();
+                                    if (base_primary) {
+                                        // No explicit carrier remains. The only
+                                        // parser/Sema-owned case here is a
+                                        // default-only base such as Base<>.
+                                        std::vector<ParsedTemplateArg> base_args;
+                                        std::vector<std::pair<std::string, TypeSpec>>
+                                            base_prelim_tb;
+                                        std::vector<std::pair<std::string, long long>>
+                                            base_prelim_nb;
+                                        std::vector<ParserNttpBindingMetadata>
+                                            base_prelim_nb_meta;
+                                        bool can_use_default_only_args = true;
+                                        int bsz = 0;
+                                        while (bsz < base_primary->n_template_params) {
+                                            if (!base_primary->template_param_has_default ||
+                                                !base_primary->template_param_has_default[bsz]) {
+                                                can_use_default_only_args = false;
+                                                break;
+                                            }
+                                            ParsedTemplateArg da{};
+                                            da.is_value =
+                                                base_primary->template_param_is_nttp[bsz];
+                                            if (da.is_value &&
+                                                base_primary->template_param_default_values[bsz] ==
+                                                    LLONG_MIN) {
+                                                long long ev = 0;
+                                                const QualifiedNameKey base_template_key =
+                                                    template_instantiation_name_key_for_direct_emit(
+                                                        *this, base_primary, origin);
+                                                if (!eval_deferred_nttp_default(
+                                                        base_template_key, bsz,
+                                                        base_prelim_tb, base_prelim_nb,
+                                                        &ev, &base_prelim_nb_meta)) {
+                                                    can_use_default_only_args = false;
                                                     break;
                                                 }
-                                            }
-                                            if (!found) {
-                                                for (const auto& [npname2, nval2] : nttp_bindings) {
-                                                    if (part == npname2) {
-                                                        new_arg_parts.push_back(std::to_string(nval2));
-                                                        found = true;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            if (!found) {
-                                                if (part.rfind("$expr:", 0) == 0) {
-                                                    // Substitute template param names inside $expr text.
-                                                    std::string expr_text = part.substr(6);
-                                                    for (const auto& [pname3, pts3] : type_bindings) {
-                                                        std::string mangled_name;
-                                                        append_type_mangled_suffix(mangled_name, pts3);
-                                                        // Replace whole-word occurrences of pname3 with mangled_name.
-                                                        size_t search_pos = 0;
-                                                        while ((search_pos = expr_text.find(pname3, search_pos)) != std::string::npos) {
-                                                            bool is_word_start = (search_pos == 0 ||
-                                                                (!std::isalnum((unsigned char)expr_text[search_pos - 1]) &&
-                                                                 expr_text[search_pos - 1] != '_'));
-                                                            size_t end_pos = search_pos + pname3.size();
-                                                            bool is_word_end = (end_pos >= expr_text.size() ||
-                                                                (!std::isalnum((unsigned char)expr_text[end_pos]) &&
-                                                                 expr_text[end_pos] != '_'));
-                                                            if (is_word_start && is_word_end) {
-                                                                expr_text.replace(search_pos, pname3.size(), mangled_name);
-                                                                search_pos += mangled_name.size();
-                                                            } else {
-                                                                search_pos += pname3.size();
-                                                            }
-                                                        }
-                                                    }
-                                                    for (const auto& [npname3, nval3] : nttp_bindings) {
-                                                        std::string val_str = std::to_string(nval3);
-                                                        size_t search_pos = 0;
-                                                        while ((search_pos = expr_text.find(npname3, search_pos)) != std::string::npos) {
-                                                            bool is_word_start = (search_pos == 0 ||
-                                                                (!std::isalnum((unsigned char)expr_text[search_pos - 1]) &&
-                                                                 expr_text[search_pos - 1] != '_'));
-                                                            size_t end_pos = search_pos + npname3.size();
-                                                            bool is_word_end = (end_pos >= expr_text.size() ||
-                                                                (!std::isalnum((unsigned char)expr_text[end_pos]) &&
-                                                                 expr_text[end_pos] != '_'));
-                                                            if (is_word_start && is_word_end) {
-                                                                expr_text.replace(search_pos, npname3.size(), val_str);
-                                                                search_pos += val_str.size();
-                                                            } else {
-                                                                search_pos += npname3.size();
-                                                            }
-                                                        }
-                                                    }
-                                                    Lexer expr_lexer(
-                                                        expr_text,
-                                                        lex_profile_from(core_input_state_.source_profile));
-                                                    std::vector<Token> expr_toks = expr_lexer.scan_all();
-                                                    if (!expr_toks.empty() &&
-                                                        expr_toks.back().kind == TokenKind::EndOfFile) {
-                                                        expr_toks.pop_back();
-                                                    }
-                                                    long long expr_value = 0;
-                                                    if (!expr_toks.empty() &&
-                                                        eval_deferred_nttp_expr_tokens(origin, expr_toks,
-                                                                                       type_bindings, nttp_bindings,
-                                                                                       &expr_value,
-                                                                                       &nttp_binding_meta)) {
-                                                        new_arg_parts.push_back(std::to_string(expr_value));
-                                                    } else {
-                                                        new_arg_parts.push_back("$expr:" + expr_text);
-                                                        all_resolved = false;
-                                                    }
-                                                    continue;
-                                                }
-                                                new_arg_parts.push_back(part);
-                                                // Check if this arg is still unresolved.
-                                                for (const auto& [pn, _] : type_bindings) {
-                                                    (void)_;
-                                                    if (part == pn) { all_resolved = false; break; }
-                                                }
-                                                for (const auto& [pn, _] : nttp_bindings) {
-                                                    (void)_;
-                                                    if (part == pn) { all_resolved = false; break; }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    // Always update arg_refs with substituted parts so
-                                    // the HIR resolver can see concrete type/NTTP names.
-                                    if (!new_arg_parts.empty()) {
-                                        std::string updated_refs;
-                                        for (size_t pi = 0; pi < new_arg_parts.size(); ++pi) {
-                                            if (pi > 0) updated_refs += ",";
-                                            updated_refs += new_arg_parts[pi];
-                                        }
-                                        set_template_arg_debug_refs_text(
-                                            &inst->base_types[bi], updated_refs);
-                                    }
-                                    base_primary = find_instantiated_base_primary();
-                                    if (all_resolved && base_primary) {
-                                        // Build ParsedTemplateArg list from resolved parts
-                                        // and fill in deferred NTTP defaults, then trigger
-                                        // a proper template instantiation.
-                                        std::vector<ParsedTemplateArg> base_args;
-                                        for (int pi = 0; pi < (int)new_arg_parts.size() &&
-                                             pi < base_primary->n_template_params; ++pi) {
-                                            ParsedTemplateArg ba;
-                                            if (base_primary->template_param_is_nttp[pi]) {
-                                                ba.is_value = true;
-                                                try { ba.value = std::stoll(new_arg_parts[pi]); }
-                                                catch (...) { ba.value = 0; }
+                                                da.value = ev;
+                                            } else if (da.is_value) {
+                                                da.value =
+                                                    base_primary
+                                                        ->template_param_default_values[bsz];
                                             } else {
-                                                ba.is_value = false;
-                                                if (!decode_type_ref_text(new_arg_parts[pi], &ba.type)) {
-                                                    // Look up as mangled struct tag
-                                                    ba.type = {};
-                                                    ba.type.array_size = -1;
-                                                    ba.type.inner_rank = -1;
-                                                    ba.type.base = TB_STRUCT;
-                                                    ba.type.tag = arena_.strdup(new_arg_parts[pi].c_str());
-                                                }
+                                                da.type =
+                                                    base_primary
+                                                        ->template_param_default_types[bsz];
                                             }
-                                            base_args.push_back(ba);
+                                            base_args.push_back(da);
+                                            if (da.is_value) {
+                                                base_prelim_nb.push_back(
+                                                    {base_primary
+                                                         ->template_param_names[bsz],
+                                                     da.value});
+                                                base_prelim_nb_meta.push_back(
+                                                    nttp_binding_metadata_for_template_param(
+                                                        *this, base_primary, bsz,
+                                                        base_primary
+                                                            ->template_param_names[bsz],
+                                                        da.value));
+                                            } else {
+                                                base_prelim_tb.push_back(
+                                                    {base_primary
+                                                         ->template_param_names[bsz],
+                                                     da.type});
+                                            }
+                                            ++bsz;
                                         }
-                                        // Fill in deferred NTTP defaults
-                                        {
-                                            std::vector<std::pair<std::string, TypeSpec>> base_prelim_tb;
-                                            std::vector<std::pair<std::string, long long>> base_prelim_nb;
-                                            std::vector<ParserNttpBindingMetadata>
-                                                base_prelim_nb_meta;
-                                            for (int pi = 0; pi < (int)base_args.size() &&
-                                                 pi < base_primary->n_template_params; ++pi) {
-                                                const char* pn = base_primary->template_param_names[pi];
-                                                if (base_primary->template_param_is_nttp[pi]) {
-                                                    if (base_args[pi].is_value) {
-                                                        base_prelim_nb.push_back({pn, base_args[pi].value});
-                                                        base_prelim_nb_meta.push_back(
-                                                            nttp_binding_metadata_for_template_param(
-                                                                *this, base_primary, pi, pn,
-                                                                base_args[pi].value));
+                                        if (can_use_default_only_args) {
+                                            std::string base_mangled;
+                                            if (ensure_template_struct_instantiated_from_args(
+                                                    origin, base_primary, base_args,
+                                                    tpl_def->line, &base_mangled,
+                                                    "template_base_instantiation",
+                                                    &inst->base_types[bi])) {
+                                                Node* base_def =
+                                                    resolve_record_type_spec(
+                                                        inst->base_types[bi],
+                                                        nullptr);
+                                                if (!base_def) {
+                                                    // Rendered-tag map lookup is a
+                                                    // compatibility fallback when
+                                                    // instantiation did not attach
+                                                    // TypeSpec::record_def.
+                                                    auto base_def_it =
+                                                        definition_state_
+                                                            .struct_tag_def_map
+                                                            .find(base_mangled);
+                                                    if (base_def_it !=
+                                                        definition_state_
+                                                            .struct_tag_def_map.end()) {
+                                                        base_def =
+                                                            base_def_it->second;
                                                     }
-                                                } else {
-                                                    if (!base_args[pi].is_value)
-                                                        base_prelim_tb.push_back({pn, base_args[pi].type});
                                                 }
-                                            }
-                                            int bsz = (int)base_args.size();
-                                            while (bsz < base_primary->n_template_params) {
-                                                if (!base_primary->template_param_has_default ||
-                                                    !base_primary->template_param_has_default[bsz]) break;
-                                                ParsedTemplateArg da;
-                                                da.is_value = base_primary->template_param_is_nttp[bsz];
-                                                if (da.is_value && base_primary->template_param_default_values[bsz] == LLONG_MIN) {
-                                                    long long ev = 0;
-                                                    const QualifiedNameKey base_template_key =
-                                                        template_instantiation_name_key_for_direct_emit(
-                                                            *this, base_primary, origin);
-                                                    if (eval_deferred_nttp_default(
-                                                            base_template_key, bsz,
-                                                            base_prelim_tb, base_prelim_nb,
-                                                            &ev,
-                                                            &base_prelim_nb_meta)) {
-                                                        da.value = ev;
-                                                        base_args.push_back(da);
-                                                    } else if (base_primary->template_param_default_exprs &&
-                                                               base_primary->template_param_default_exprs[bsz]) {
-                                                        std::vector<Token> expr_toks = lex_template_expr_text(
-                                                            base_primary->template_param_default_exprs[bsz],
-                                                            core_input_state_.source_profile);
-                                                        if (eval_deferred_nttp_expr_tokens(origin, expr_toks,
-                                                                                           base_prelim_tb, base_prelim_nb,
-                                                                                           &ev,
-                                                                                           &base_prelim_nb_meta)) {
-                                                            da.value = ev;
-                                                            base_args.push_back(da);
-                                                        } else {
-                                                            std::string tagged = "$expr:";
-                                                            tagged += base_primary->template_param_default_exprs[bsz];
-                                                            da.nttp_name = arena_.strdup(tagged.c_str());
-                                                            da.value = 0;
-                                                            base_args.push_back(da);
-                                                        }
-                                                    } else break;
-                                                } else if (da.is_value) {
-                                                    da.value = base_primary->template_param_default_values[bsz];
-                                                    base_args.push_back(da);
-                                                } else {
-                                                    da.type = base_primary->template_param_default_types[bsz];
-                                                    base_args.push_back(da);
+                                                if (base_def) {
+                                                    restore_deferred_member_lookup();
+                                                    if (!inst->base_types[bi].tag) {
+                                                        inst->base_types[bi] =
+                                                            TypeSpec{};
+                                                        inst->base_types[bi]
+                                                            .array_size = -1;
+                                                        inst->base_types[bi]
+                                                            .inner_rank = -1;
+                                                        inst->base_types[bi].base =
+                                                            TB_STRUCT;
+                                                        inst->base_types[bi].tag =
+                                                            arena_.strdup(
+                                                                base_mangled.c_str());
+                                                    }
+                                                    restore_deferred_member_lookup();
+                                                    inst->base_types[bi].record_def =
+                                                        base_def;
                                                 }
-                                                if (da.is_value) {
-                                                    base_prelim_nb.push_back(
-                                                        {base_primary->template_param_names[bsz],
-                                                         da.value});
-                                                    base_prelim_nb_meta.push_back(
-                                                        nttp_binding_metadata_for_template_param(
-                                                            *this, base_primary, bsz,
-                                                            base_primary->template_param_names[bsz],
-                                                            da.value));
-                                                } else {
-                                                    base_prelim_tb.push_back(
-                                                        {base_primary->template_param_names[bsz],
-                                                         da.type});
-                                                }
-                                                ++bsz;
-                                            }
-                                        }
-                                        std::string base_mangled;
-                                        if (ensure_template_struct_instantiated_from_args(
-                                                origin, base_primary, base_args,
-                                                tpl_def->line, &base_mangled,
-                                                "template_base_instantiation",
-                                                &inst->base_types[bi])) {
-                                            Node* base_def =
-                                                resolve_record_type_spec(
-                                                    inst->base_types[bi], nullptr);
-                                            if (!base_def) {
-                                                // Rendered-tag map lookup is a
-                                                // compatibility fallback when
-                                                // instantiation did not attach
-                                                // TypeSpec::record_def.
-                                                auto base_def_it =
-                                                    definition_state_.struct_tag_def_map.find(
-                                                        base_mangled);
-                                                if (base_def_it != definition_state_
-                                                                       .struct_tag_def_map.end()) {
-                                                    base_def = base_def_it->second;
-                                                }
-                                            }
-                                            if (base_def) {
+                                            } else if (auto base_def_it =
+                                                           definition_state_
+                                                               .struct_tag_def_map
+                                                               .find(base_mangled);
+                                                       base_def_it !=
+                                                       definition_state_
+                                                           .struct_tag_def_map.end()) {
+                                                // Rendered-tag map lookup is the only
+                                                // compatibility path left when
+                                                // instantiation failed to return a
+                                                // TypeSpec carrier.
+                                                inst->base_types[bi] = TypeSpec{};
+                                                inst->base_types[bi].array_size = -1;
+                                                inst->base_types[bi].inner_rank = -1;
+                                                inst->base_types[bi].base = TB_STRUCT;
+                                                inst->base_types[bi].tag =
+                                                    arena_.strdup(
+                                                        base_mangled.c_str());
+                                                inst->base_types[bi].record_def =
+                                                    base_def_it->second;
                                                 restore_deferred_member_lookup();
-                                                if (!inst->base_types[bi].tag) {
-                                                    inst->base_types[bi] = TypeSpec{};
-                                                    inst->base_types[bi].array_size = -1;
-                                                    inst->base_types[bi].inner_rank = -1;
-                                                    inst->base_types[bi].base = TB_STRUCT;
-                                                    inst->base_types[bi].tag =
-                                                        arena_.strdup(base_mangled.c_str());
-                                                }
-                                                restore_deferred_member_lookup();
-                                                inst->base_types[bi].record_def = base_def;
                                             }
-                                        } else if (auto base_def_it =
-                                                       definition_state_.struct_tag_def_map.find(
-                                                           base_mangled);
-                                                   base_def_it != definition_state_
-                                                                      .struct_tag_def_map.end()) {
-                                            // Rendered-tag map lookup is the only
-                                            // compatibility path left when
-                                            // instantiation failed to return a
-                                            // TypeSpec carrier.
-                                            inst->base_types[bi] = TypeSpec{};
-                                            inst->base_types[bi].array_size = -1;
-                                            inst->base_types[bi].inner_rank = -1;
-                                            inst->base_types[bi].base = TB_STRUCT;
-                                            inst->base_types[bi].tag = arena_.strdup(base_mangled.c_str());
-                                            inst->base_types[bi].record_def = base_def_it->second;
-                                            restore_deferred_member_lookup();
                                         }
                                     }
                                 }
