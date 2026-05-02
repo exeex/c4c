@@ -3321,6 +3321,7 @@ Node* Parser::make_node(NodeKind k, int line) {
     }
     n->ival = -1;  // -1 = not a bitfield (for struct field declarations)
     n->builtin_id = BuiltinId::Unknown;
+    n->source_language = is_cpp_mode() ? SourceLanguage::Cxx : SourceLanguage::C;
     n->using_value_alias_target_text_id = kInvalidText;
     n->using_value_alias_target_namespace_context_id = -1;
     n->type.array_size = -1;
@@ -3557,6 +3558,7 @@ void ast_dump(const Node* n, int indent) {
     }
     if (n->is_consteval) printf(" consteval");
     else if (n->is_constexpr) printf(" constexpr");
+    if (n->source_language == SourceLanguage::Cxx) printf(" lang=c++");
     if (n->linkage_spec) printf(" linkage=\"%s\"", n->linkage_spec);
     printf("\n");
 

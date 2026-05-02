@@ -424,6 +424,17 @@ const char* maybe_parse_linkage_spec(Parser* parser) {
     return nullptr;
 }
 
+void apply_linkage_spec_to_node(Node* node, const char* linkage_spec) {
+    if (!node || !linkage_spec || !linkage_spec[0]) return;
+    if (node->kind == NK_BLOCK || node->kind == NK_PROGRAM) {
+        for (int i = 0; node->children && i < node->n_children; ++i) {
+            apply_linkage_spec_to_node(node->children[i], linkage_spec);
+        }
+        return;
+    }
+    if (!node->linkage_spec) node->linkage_spec = linkage_spec;
+}
+
 const char* make_anon_template_param_name(Arena& arena, bool is_nttp, size_t index) {
     std::string name = is_nttp ? "__anon_nttp_" : "__anon_tparam_";
     name += std::to_string(index);
@@ -2236,7 +2247,10 @@ Node* parse_top_level(Parser& parser) {
         std::vector<Node*> items;
         while (!parser.at_end() && !parser.check(TokenKind::RBrace)) {
             Node* item = parse_top_level(parser);
-            if (item) items.push_back(item);
+            if (item) {
+                apply_linkage_spec_to_node(item, linkage_spec);
+                items.push_back(item);
+            }
         }
         parser.expect(TokenKind::RBrace);
         parser.match(TokenKind::Semi);

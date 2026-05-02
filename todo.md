@@ -8,37 +8,38 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 made the combined `$expr:` carrier packet acceptance-ready by repairing
-the parser-to-Sema member-typedef metadata handoff gap that blocked
-`frontend_parser_tests`. Record-body `using` and `typedef` member writers now
-publish non-template member typedefs into the structured direct
-record/member `QualifiedNameKey` table, without recreating rendered
-`Owner::Member` typedef storage.
+Step 4 resolved the ordinary global-scope C++ overload declaration blocker by
+adding parser-to-Sema structured source-language metadata on AST nodes and
+using it as Sema authority for C++ overload-set eligibility. Parser nodes now
+carry `SourceLanguage::Cxx` when produced from C++/C4 mode, while C-mode nodes
+remain `SourceLanguage::C`.
 
-The using-alias writer also seeds deferred member `TypeSpec` metadata from the
-structured alias-template member-typedef carrier when parsing the RHS did not
-preserve the member `TextId`, keeping alias-template member typedef metadata
-structured across the same Step 4 handoff family. The existing `$expr:`
-carrier changes remain intact.
+Sema now permits ordinary global C++ overload declarations through that
+structured source-language carrier, still rejects same-parameter
+different-return declarations, and still rejects C declarations. Explicit
+linkage blocks now propagate `linkage_spec` to their parsed children, so
+`extern "C"` overload declarations remain C-linkage conflicts instead of
+being accepted through the C++ source-language carrier.
 
 ## Suggested Next
 
-Supervisor can review and commit this coherent Step 4 slice: the `$expr:`
-token carrier work plus the direct record/member typedef writer repair are now
-covered by the delegated proof subset.
+Supervisor can review and commit this coherent Step 4 overload metadata slice.
+The remaining Step 4 work should continue with another parser-to-Sema
+handoff gap only after this source-language/linkage carrier change is accepted.
 
 ## Watchouts
 
 - The source idea remains active; Step 4 progress is not source-idea closure.
-- Ordinary global-scope C++ overload declarations are still a separate blocker
-  because the current AST handoff does not let Sema distinguish them from C
-  global redeclarations without weakening C behavior.
+- `SourceLanguage` is declaration provenance, not linkage. Keep
+  `linkage_spec` authoritative for explicit `extern "C"` conflict behavior.
+- Manually constructed AST tests default zero-initialized nodes to C source
+  language unless they are created through `Parser::make_node`.
 - Static-member lookup still depends on parser/Sema owner and member metadata.
   A generated `NK_VAR` for `Owner::member` must carry `qualifier_text_ids`,
   `unqualified_text_id`, and the correct owner namespace context when the
   parser has the owner identity; do not restore rendered owner lookup to cover
   missing carriers.
-- The remaining `$expr:` re-lex branch is now compatibility-only for value args
+- The remaining `$expr:` re-lex branch is compatibility-only for value args
   with no `ParsedTemplateArg::expr`, no value-arg `TypeSpec::array_size_expr`,
   no `ParsedTemplateArg::nttp_text_id`, and no `captured_expr_tokens`.
 - `captured_expr_tokens` is parser-local structured metadata. Do not promote
@@ -50,10 +51,6 @@ covered by the delegated proof subset.
 - Simple type-only pending template args now use `TemplateArgRef` structure;
   nested template-origin args still stay on the legacy display path to avoid
   recursive canonical type keys.
-- `src/frontend/parser/impl/declarations.cpp` was touched to keep the
-  alias-template member typedef carrier and `TypeSpec` deferred-member
-  metadata aligned; that file was required by the adjacent green
-  `frontend_parser_tests` assertion after the direct record/member key repair.
 - Do not reintroduce rendered qualified-text parsing, `$expr:` debug-text
   semantic authority, string/string_view semantic lookup parameters, fallback
   spelling, expectation downgrades, or named-test shortcuts.

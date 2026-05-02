@@ -33,6 +33,16 @@ c4c::Node* parse_cpp_source(c4c::Arena& arena, c4c::Lexer& lexer) {
   return root;
 }
 
+c4c::Node* parse_c_source(c4c::Arena& arena, c4c::Lexer& lexer) {
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::C,
+                     "frontend_parser_lookup_authority_tests.c");
+  c4c::Node* root = parser.parse();
+  expect_true(root != nullptr, "test source should produce a program node");
+  return root;
+}
+
 const c4c::Node* find_record(const c4c::Node* root, const char* name) {
   if (!root || root->kind != c4c::NK_PROGRAM) return nullptr;
   for (int i = 0; i < root->n_children; ++i) {
@@ -1693,6 +1703,24 @@ void test_sema_namespace_ordinary_cpp_overload_decls_use_structured_set() {
               "declarations through the structured overload set");
 }
 
+void test_sema_global_ordinary_cpp_overload_decls_use_source_language_carrier() {
+  c4c::Arena arena;
+  c4c::Lexer lexer(
+      R"cpp(
+        void GlobalCppOverload(const char*);
+        void GlobalCppOverload(void*, const char*);
+        void GlobalZeroArg();
+        void GlobalZeroArg(int);
+      )cpp",
+      c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema should accept ordinary global C++ overload declarations "
+              "through parser source-language metadata");
+}
+
 void test_sema_cpp_overload_decls_reject_same_params_different_return() {
   c4c::Arena arena;
   c4c::Lexer lexer(
@@ -1711,6 +1739,22 @@ void test_sema_cpp_overload_decls_reject_same_params_different_return() {
               "as conflicting types, not a C++ overload set");
 }
 
+void test_sema_global_cpp_overload_decls_reject_same_params_different_return() {
+  c4c::Arena arena;
+  c4c::Lexer lexer(
+      R"cpp(
+        int GlobalSameParams(int);
+        void GlobalSameParams(int);
+      )cpp",
+      c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(!result.ok,
+              "Sema should keep global same-parameter different-return "
+              "declarations as conflicting types");
+}
+
 void test_sema_cpp_overload_decls_reject_c_language_linkage() {
   c4c::Arena arena;
   c4c::Lexer lexer(
@@ -1726,6 +1770,22 @@ void test_sema_cpp_overload_decls_reject_c_language_linkage() {
   const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
   expect_true(!result.ok,
               "Sema should not turn extern C declarations into a C++ "
+              "overload set");
+}
+
+void test_sema_c_source_overload_decls_reject_source_language_carrier() {
+  c4c::Arena arena;
+  c4c::Lexer lexer(
+      R"c(
+        void c_source_linkage(int);
+        void c_source_linkage(short);
+      )c",
+      c4c::lex_profile_from(c4c::SourceProfile::C));
+
+  c4c::Node* root = parse_c_source(arena, lexer);
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(!result.ok,
+              "Sema should not turn C source declarations into a C++ "
               "overload set");
 }
 
@@ -3248,8 +3308,11 @@ int main() {
   test_sema_ref_overload_lookup_rejects_legacy_rendered_after_structured_miss();
   test_sema_cpp_overload_lookup_rejects_legacy_rendered_after_structured_miss();
   test_sema_namespace_ordinary_cpp_overload_decls_use_structured_set();
+  test_sema_global_ordinary_cpp_overload_decls_use_source_language_carrier();
   test_sema_cpp_overload_decls_reject_same_params_different_return();
+  test_sema_global_cpp_overload_decls_reject_same_params_different_return();
   test_sema_cpp_overload_decls_reject_c_language_linkage();
+  test_sema_c_source_overload_decls_reject_source_language_carrier();
   test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
   test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();

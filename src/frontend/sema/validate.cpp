@@ -489,6 +489,10 @@ bool has_c_language_linkage(const Node* n) {
   return n && n->linkage_spec && std::strcmp(n->linkage_spec, "C") == 0;
 }
 
+bool has_cpp_source_language(const Node* n) {
+  return n && n->source_language == SourceLanguage::Cxx;
+}
+
 bool supports_cpp_overload_set(const Node* n) {
   const char* name = sema_overload_base_name(n);
   if (!name || !name[0]) return false;
@@ -503,8 +507,8 @@ bool supports_cpp_overload_set(const Node* n) {
     return true;
   }
   if (has_c_language_linkage(n)) return false;
-  return n->namespace_context_id > 0 || n->n_qualifier_segments > 0 ||
-         n->is_global_qualified;
+  return has_cpp_source_language(n) || n->namespace_context_id > 0 ||
+         n->n_qualifier_segments > 0 || n->is_global_qualified;
 }
 
 bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {

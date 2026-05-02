@@ -29,6 +29,11 @@ enum class ExecutionDomain : uint8_t {
     HostDevice = 2,
 };
 
+enum class SourceLanguage : uint8_t {
+    C = 0,
+    Cxx = 1,
+};
+
 // Forward declaration
 struct Node;
 
@@ -473,6 +478,7 @@ struct Node {
     bool is_index_desig;// NK_INIT_ITEM (designator is index [N])
     long long desig_val;// NK_INIT_ITEM index designator value
     const char* desig_field; // NK_INIT_ITEM field designator name
+    SourceLanguage source_language; // parser source mode for declaration semantics
     const char* linkage_spec; // C++ subset linkage string, e.g. "C"
     OperatorKind operator_kind; // C++ operator overloading: which operator this method implements
     bool is_constructor;  // NK_FUNCTION: this method is a constructor (name == struct tag)
