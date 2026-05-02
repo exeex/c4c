@@ -3153,6 +3153,9 @@ TypeSpec Parser::parse_base_type() {
                             }
                         }
                         ts.tpl_struct_origin = arena_.strdup(tpl_name.c_str());
+                        ts.tpl_struct_origin_key =
+                            template_instantiation_name_key_for_direct_emit(
+                                *this, primary_tpl, tpl_name);
                         if (parsed_args_have_value_carrier(actual_args))
                             set_template_arg_refs_from_parsed_args(&ts, actual_args);
                         else
@@ -3452,6 +3455,8 @@ TypeSpec Parser::parse_base_type() {
                             }
                         }
                         ts.tpl_struct_origin = arena_.strdup(family_name.c_str());
+                        ts.tpl_struct_origin_key =
+                            structured_emitted_instance_key.template_key;
                         if (parsed_args_have_value_carrier(concrete_args))
                             set_template_arg_refs_from_parsed_args(&ts, concrete_args);
                         else
@@ -3497,20 +3502,18 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 // Resolve pending template base types: e.g. is_const<T> → is_const<const int>
                                 if (inst->base_types[bi].tpl_struct_origin) {
-                                    std::string origin = inst->base_types[bi].tpl_struct_origin;
+                                    std::string origin =
+                                        inst->base_types[bi].tpl_struct_origin;
                                     auto find_instantiated_base_primary =
                                         [&]() -> const Node* {
-                                        QualifiedNameRef origin_qn;
-                                        if (qualified_name_from_text(
-                                                *this, origin, &origin_qn) &&
-                                            (!origin_qn.qualifier_segments.empty() ||
-                                             origin_qn.is_global_qualified)) {
-                                            return find_template_struct_primary(origin_qn);
+                                        if (inst->base_types[bi]
+                                                .tpl_struct_origin_key
+                                                .base_text_id != kInvalidText) {
+                                            return find_template_struct_primary(
+                                                inst->base_types[bi]
+                                                    .tpl_struct_origin_key);
                                         }
-                                        return find_template_struct_primary(
-                                            current_namespace_context_id(),
-                                            parser_text_id_for_token(
-                                                kInvalidText, origin));
+                                        return nullptr;
                                     };
                                     auto type_mentions_bound_param =
                                         [&](const TypeSpec& candidate) -> bool {
@@ -3873,6 +3876,28 @@ TypeSpec Parser::parse_base_type() {
                                     };
                                     const Node* base_primary =
                                         find_instantiated_base_primary();
+                                    if (base_primary) {
+                                        if (base_primary->template_origin_name &&
+                                            base_primary
+                                                ->template_origin_name[0]) {
+                                            origin =
+                                                base_primary->template_origin_name;
+                                        } else if (base_primary
+                                                       ->unqualified_name &&
+                                                   base_primary
+                                                       ->unqualified_name[0]) {
+                                            origin =
+                                                base_primary->unqualified_name;
+                                        } else if (base_primary->name &&
+                                                   base_primary->name[0]) {
+                                            const char* unqualified =
+                                                std::strrchr(base_primary->name,
+                                                            ':');
+                                            origin = unqualified
+                                                         ? unqualified + 1
+                                                         : base_primary->name;
+                                        }
+                                    }
                                     const char* saved_deferred_member_name =
                                         inst->base_types[bi]
                                             .deferred_member_type_name;
@@ -3924,28 +3949,15 @@ TypeSpec Parser::parse_base_type() {
                                             !resolved_member.record_def &&
                                             resolved_member.tpl_struct_args.data &&
                                             resolved_member.tpl_struct_args.size > 0) {
-                                            std::string member_origin =
-                                                resolved_member.tpl_struct_origin;
                                             const Node* member_primary = nullptr;
-                                            QualifiedNameRef member_origin_qn;
-                                            if (qualified_name_from_text(
-                                                    *this, member_origin,
-                                                    &member_origin_qn) &&
-                                                (!member_origin_qn
-                                                      .qualifier_segments
-                                                      .empty() ||
-                                                 member_origin_qn
-                                                     .is_global_qualified)) {
+                                            if (resolved_member
+                                                    .tpl_struct_origin_key
+                                                    .base_text_id !=
+                                                kInvalidText) {
                                                 member_primary =
                                                     find_template_struct_primary(
-                                                        member_origin_qn);
-                                            } else {
-                                                member_primary =
-                                                    find_template_struct_primary(
-                                                        current_namespace_context_id(),
-                                                        parser_text_id_for_token(
-                                                            kInvalidText,
-                                                            member_origin));
+                                                        resolved_member
+                                                            .tpl_struct_origin_key);
                                             }
                                             if (member_primary) {
                                                 std::vector<ParsedTemplateArg>
@@ -4013,7 +4025,8 @@ TypeSpec Parser::parse_base_type() {
                                                 if (can_use_member_args) {
                                                     std::string member_mangled;
                                                     if (ensure_template_struct_instantiated_from_args(
-                                                            member_origin,
+                                                            resolved_member
+                                                                .tpl_struct_origin,
                                                             member_primary,
                                                             member_args,
                                                             tpl_def->line,

@@ -1094,6 +1094,7 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         out_ts->tag = parser.arena_.strdup(qualified_name.c_str());
         out_ts->tag_text_id = qn.base_text_id;
         out_ts->tpl_struct_origin = parser.arena_.strdup(qualified_name.c_str());
+        out_ts->tpl_struct_origin_key = parser.qualified_name_key(qn);
         attach_qualified_typespec_metadata();
         guard.commit();
         return true;

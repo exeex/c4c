@@ -18,6 +18,7 @@
 #include <string>
 
 #include "../builtin.hpp"
+#include "../../shared/qualified_name_table.hpp"
 #include "../../shared/text_id_table.hpp"
 
 namespace c4c {
@@ -159,6 +160,7 @@ struct TypeSpec {
     // template type params (e.g., Pair<T> inside a template function body).
     // The HIR resolves it during instantiation.
     const char* tpl_struct_origin;     // original template struct name (e.g., "Pair")
+    QualifiedNameKey tpl_struct_origin_key; // parser-owned identity for tpl_struct_origin
     TemplateArgRefList tpl_struct_args; // structured template arg payload
 
     // Legacy bridge spelling for dependent member typedefs; this is a pending

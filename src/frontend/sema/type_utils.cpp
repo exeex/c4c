@@ -469,6 +469,18 @@ bool same_template_arg_ref_list(const TemplateArgRefList& lhs,
   return true;
 }
 
+bool same_template_origin(const TypeSpec& lhs, const TypeSpec& rhs) {
+  const bool lhs_has_key =
+      lhs.tpl_struct_origin_key.base_text_id != kInvalidText;
+  const bool rhs_has_key =
+      rhs.tpl_struct_origin_key.base_text_id != kInvalidText;
+  if (lhs_has_key || rhs_has_key) {
+    return lhs_has_key && rhs_has_key &&
+           lhs.tpl_struct_origin_key == rhs.tpl_struct_origin_key;
+  }
+  return same_optional_cstr(lhs.tpl_struct_origin, rhs.tpl_struct_origin);
+}
+
 }  // namespace
 
 bool type_binding_values_equivalent(const TypeSpec& lhs, const TypeSpec& rhs) {
@@ -503,7 +515,7 @@ bool type_binding_values_equivalent(const TypeSpec& lhs, const TypeSpec& rhs) {
   if (lhs.is_packed != rhs.is_packed) return false;
   if (lhs.is_noinline != rhs.is_noinline) return false;
   if (lhs.is_always_inline != rhs.is_always_inline) return false;
-  if (!same_optional_cstr(lhs.tpl_struct_origin, rhs.tpl_struct_origin)) return false;
+  if (!same_template_origin(lhs, rhs)) return false;
   if (!same_template_arg_ref_list(lhs.tpl_struct_args, rhs.tpl_struct_args)) return false;
   if (lhs.deferred_member_type_text_id != kInvalidText ||
       rhs.deferred_member_type_text_id != kInvalidText) {

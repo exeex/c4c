@@ -3,6 +3,7 @@
 #include "impl/types/types_helpers.hpp"
 #include "parser.hpp"
 #include "sema/consteval.hpp"
+#include "sema/type_utils.hpp"
 #include "sema/validate.hpp"
 
 #include <cstdlib>
@@ -2148,6 +2149,12 @@ void test_dependent_member_typedef_base_carries_structured_record_def() {
         parser.current_namespace_context_id(), is_signed_text);
     expect_true(primary && primary->n_bases == 1 && primary->base_types,
                 "is_signed primary should expose its dependent base carrier");
+    expect_true(primary->base_types[0].tpl_struct_origin_key.base_text_id !=
+                    c4c::kInvalidText,
+                "dependent member typedef base template-origin key should be "
+                "structured");
+    primary->base_types[0].tpl_struct_origin =
+        arena.strdup("StaleRenderedTemplateOrigin");
     if (primary->base_types[0].tpl_struct_args.data &&
         primary->base_types[0].tpl_struct_args.size > 0) {
       for (int ai = 0; ai < primary->base_types[0].tpl_struct_args.size; ++ai) {
@@ -2259,6 +2266,44 @@ void test_dependent_member_typedef_base_carries_structured_record_def() {
                   (result.diagnostics.empty()
                        ? std::string()
                        : std::string(": ") + result.diagnostics.front().message));
+}
+
+void test_typespec_template_origin_equality_uses_structured_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  const c4c::TextId carrier_text = texts.intern("Carrier");
+  const c4c::TextId other_text = texts.intern("OtherCarrier");
+
+  c4c::TypeSpec lhs{};
+  lhs.array_size = -1;
+  lhs.inner_rank = -1;
+  lhs.base = c4c::TB_TYPEDEF;
+  lhs.tpl_struct_origin = arena.strdup("StaleLeftOrigin");
+  lhs.tpl_struct_origin_key.context_id = 0;
+  lhs.tpl_struct_origin_key.base_text_id = carrier_text;
+
+  c4c::TypeSpec rhs = lhs;
+  rhs.tpl_struct_origin = arena.strdup("StaleRightOrigin");
+
+  expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should use structured template-origin key "
+              "instead of stale rendered origin spelling");
+
+  rhs.tpl_struct_origin_key.base_text_id = other_text;
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should reject different structured "
+              "template-origin keys even when rendered spelling is ignored");
+
+  rhs.tpl_struct_origin_key = {};
+  rhs.tpl_struct_origin = lhs.tpl_struct_origin;
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should not fall back to rendered origin "
+              "when only one side has a structured key");
+
+  lhs.tpl_struct_origin_key = {};
+  expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should fall back to rendered origin only "
+              "when both structured template-origin keys are absent");
 }
 
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
@@ -2568,6 +2613,7 @@ int main() {
   test_alias_template_deferred_nttp_bases_carry_structured_record_def();
   test_alias_template_nttp_base_carrier_ignores_stale_debug_text();
   test_dependent_member_typedef_base_carries_structured_record_def();
+  test_typespec_template_origin_equality_uses_structured_key();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();

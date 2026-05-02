@@ -8,32 +8,32 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 deleted the retained non-template rendered-owner static-member
-acceptance. Sema no longer accepts `Owner::member` by slicing rendered
-`Node::name`, rediscovering the owner through `structured_record_key_for_tag`,
-or treating a rendered complete struct/union name as enough authority. Static
-member lookup now resolves through the reference's structured owner
-`qualifier_text_ids` plus `unqualified_text_id`, including inherited static
-members through recorded base keys, or fails.
+Step 4 removed the rendered `tpl_struct_origin` reconstruction from the
+deferred member-typedef base handoff. `TypeSpec` now carries a structured
+`tpl_struct_origin_key`, parser template-instantiation producers fill it when
+they already have the primary `QualifiedNameKey`, and
+`resolve_deferred_member_base()` consumes that key instead of parsing
+`resolved_member.tpl_struct_origin` through `qualified_name_from_text(...)`.
 
-The packet also repaired the adjacent parser handoff for
-`Template<qualified-type>::member`: when `parse_base_type()` produces a
-concrete instantiated owner without a template-origin carrier, the generated
-`NK_VAR` now carries the instantiated record/tag `TextId` as one owner segment
-instead of splitting `::` embedded inside the specialization spelling. Existing
-template-origin carriers are preserved for dependent trait/value routes.
+The same base-instantiation handoff now finds the pending base primary from
+`tpl_struct_origin_key` as well, while retaining the origin spelling only for
+instantiation naming/display. Focused lookup-authority coverage now corrupts
+the rendered dependent-base `tpl_struct_origin` before instantiation and still
+requires the structured key path to attach the concrete inherited `record_def`
+before Sema.
 
-The lookup-authority regression now includes a non-template
-`RenderedOwner::stale` reference with only member TextId metadata and no
-structured owner metadata. That case previously passed through rendered owner
-text and now fails.
+The follow-up tightening updated Sema `TypeSpec` equivalence so template-origin
+identity compares `tpl_struct_origin_key` whenever either side carries a valid
+key, falling back to `tpl_struct_origin` spelling only when both keys are
+absent. Focused coverage now proves equal structured keys ignore stale rendered
+origin spelling, different structured keys reject, one-sided keys reject, and
+the rendered fallback remains limited to the no-key compatibility case.
 
 ## Suggested Next
 
 Continue Step 4 by reviewing the remaining parser/Sema compatibility notes for
-`$expr:` carriers and deferred member-template origin lookup, and choose the
-next removable rendered/text authority route that can be proven without HIR
-edits.
+`$expr:` carriers and choose the next removable rendered/text authority route
+that can be proven without HIR edits.
 
 ## Watchouts
 
@@ -47,18 +47,16 @@ edits.
   `unqualified_text_id`, and the correct owner namespace context when the
   parser has the owner identity. Do not restore rendered owner lookup to cover
   missing carriers.
+- `tpl_struct_origin` remains a compatibility/display spelling and is still
+  passed to template-instantiation helpers for emitted names. Do not use it to
+  rediscover template primaries or decide Sema `TypeSpec` equivalence when
+  `tpl_struct_origin_key` is present.
 - The directly adjacent parser change in
   `src/frontend/parser/impl/expressions.cpp` is deliberately narrow: it only
   avoids splitting a concrete instantiated owner TextId when no
-  `tpl_struct_origin` carrier is present. Dependent template-origin routes are
-  still left on their existing carrier because runtime trait lowering depends
-  on that contract.
-- `resolve_deferred_member_base()` still finds the member template primary from
-  `resolved_member.tpl_struct_origin` via `qualified_name_from_text(...)` and
-  TextId-based lookup because `TypeSpec` does not yet carry a structured
-  template-origin key for that member-typedef route. Treat this as retained
-  parser metadata debt/compatibility, not completed removal of rendered or
-  text-keyed lookup from the path.
+  `tpl_struct_origin` carrier is present. Dependent template-origin routes now
+  also have `tpl_struct_origin_key` where parser producers already know the
+  primary key.
 - Retained `$expr:` carriers and template default-expression re-lex paths are
   compatibility fallbacks, not completed structured cleanup. Successful Step 4
   routes should continue to use parser/Sema structural metadata where present.
