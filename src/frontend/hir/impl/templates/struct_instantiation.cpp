@@ -2,17 +2,109 @@
 
 namespace c4c::hir {
 
+namespace {
+
+std::unordered_map<TextId, TypeSpec> build_template_type_bindings_by_text(
+    const Node* template_owner,
+    const TypeBindings& type_bindings) {
+  std::unordered_map<TextId, TypeSpec> out;
+  if (!template_owner || template_owner->n_template_params <= 0 ||
+      !template_owner->template_param_names ||
+      !template_owner->template_param_name_text_ids) {
+    return out;
+  }
+  for (int i = 0; i < template_owner->n_template_params; ++i) {
+    if (template_owner->template_param_is_nttp &&
+        template_owner->template_param_is_nttp[i]) {
+      continue;
+    }
+    const char* param_name = template_owner->template_param_names[i];
+    if (!param_name) continue;
+    const TextId text_id = template_owner->template_param_name_text_ids[i];
+    if (text_id == kInvalidText) continue;
+    auto it = type_bindings.find(param_name);
+    if (it != type_bindings.end()) out[text_id] = it->second;
+  }
+  return out;
+}
+
+bool template_param_owner_matches(const TypeSpec& ts, const Node* template_owner) {
+  if (!template_owner || ts.template_param_owner_text_id == kInvalidText ||
+      template_owner->unqualified_text_id == kInvalidText) {
+    return true;
+  }
+  if (ts.template_param_owner_text_id != template_owner->unqualified_text_id) {
+    return false;
+  }
+  return ts.template_param_owner_namespace_context_id < 0 ||
+         ts.template_param_owner_namespace_context_id ==
+             template_owner->namespace_context_id;
+}
+
+const TypeSpec* find_template_typedef_binding(
+    const TypeSpec& ts,
+    const TypeBindings& type_bindings,
+    const std::unordered_map<TextId, TypeSpec>& type_bindings_by_text,
+    const Node* template_owner) {
+  if (ts.base != TB_TYPEDEF || !template_param_owner_matches(ts, template_owner)) {
+    return nullptr;
+  }
+
+  const TextId carrier_text_id =
+      ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
+                                                : ts.tag_text_id;
+  if (carrier_text_id != kInvalidText) {
+    auto text_it = type_bindings_by_text.find(carrier_text_id);
+    if (text_it != type_bindings_by_text.end()) return &text_it->second;
+  }
+
+  if (!template_owner || !template_owner->template_param_names ||
+      ts.template_param_index < 0 ||
+      ts.template_param_index >= template_owner->n_template_params) {
+    return nullptr;
+  }
+  if (template_owner->template_param_is_nttp &&
+      template_owner->template_param_is_nttp[ts.template_param_index]) {
+    return nullptr;
+  }
+  const char* param_name =
+      template_owner->template_param_names[ts.template_param_index];
+  if (!param_name) return nullptr;
+  auto it = type_bindings.find(param_name);
+  return it == type_bindings.end() ? nullptr : &it->second;
+}
+
+void apply_template_typedef_concrete(TypeSpec& target, const TypeSpec& concrete) {
+  const TypeSpec outer = target;
+  target = concrete;
+  target.ptr_level += outer.ptr_level;
+  target.is_lvalue_ref = concrete.is_lvalue_ref || outer.is_lvalue_ref;
+  target.is_rvalue_ref =
+      !target.is_lvalue_ref && (concrete.is_rvalue_ref || outer.is_rvalue_ref);
+  target.array_size = outer.array_size;
+  target.array_rank = outer.array_rank;
+  for (int i = 0; i < 8; ++i) target.array_dims[i] = outer.array_dims[i];
+  target.is_ptr_to_array = outer.is_ptr_to_array;
+  target.inner_rank = outer.inner_rank;
+  target.array_size_expr = outer.array_size_expr;
+  target.is_const = concrete.is_const || outer.is_const;
+  target.is_volatile = concrete.is_volatile || outer.is_volatile;
+  target.is_fn_ptr = outer.is_fn_ptr;
+  target.is_packed = concrete.is_packed || outer.is_packed;
+  target.is_noinline = concrete.is_noinline || outer.is_noinline;
+  target.is_always_inline = concrete.is_always_inline || outer.is_always_inline;
+}
+
+}  // namespace
+
 void Lowerer::apply_template_typedef_bindings(
     TypeSpec& ts,
-    const TypeBindings& type_bindings) {
-  for (const auto& [pname, pts] : type_bindings) {
-    if (ts.base == TB_TYPEDEF && ts.tag && std::string(ts.tag) == pname) {
-      ts.base = pts.base;
-      ts.tag = pts.tag;
-      ts.ptr_level += pts.ptr_level;
-      ts.is_const |= pts.is_const;
-      ts.is_volatile |= pts.is_volatile;
-    }
+    const TypeBindings& type_bindings,
+    const std::unordered_map<TextId, TypeSpec>& type_bindings_by_text,
+    const Node* template_owner) {
+  if (const TypeSpec* bound = find_template_typedef_binding(
+          ts, type_bindings, type_bindings_by_text, template_owner)) {
+    apply_template_typedef_concrete(ts, *bound);
   }
 }
 
@@ -38,10 +130,12 @@ void Lowerer::append_instantiated_template_struct_bases(
     HirStructDef& def,
     const Node* tpl_def,
     const TypeBindings& method_tpl_bindings,
+    const std::unordered_map<TextId, TypeSpec>& method_tpl_bindings_by_text,
     const NttpBindings& method_nttp_bindings) {
   for (int bi = 0; bi < tpl_def->n_bases; ++bi) {
     TypeSpec base_ts = tpl_def->base_types[bi];
-    apply_template_typedef_bindings(base_ts, method_tpl_bindings);
+    apply_template_typedef_bindings(
+        base_ts, method_tpl_bindings, method_tpl_bindings_by_text, tpl_def);
     if (base_ts.tpl_struct_origin) {
       const Node* base_primary = find_template_struct_primary(base_ts.tpl_struct_origin);
       seed_and_resolve_pending_template_type_if_needed(
@@ -125,13 +219,15 @@ std::optional<HirStructField> Lowerer::instantiate_template_struct_field(
     const std::string& owner_tag,
     const std::optional<HirRecordOwnerKey>& owner_key,
     const TypeBindings& selected_type_bindings,
+    const std::unordered_map<TextId, TypeSpec>& selected_type_bindings_by_text,
     const NttpBindings& selected_nttp_bindings_map,
     const Node* tpl_def,
     int llvm_idx) {
   if (!orig_f || !orig_f->name || orig_f->is_static) return std::nullopt;
 
   TypeSpec ft = orig_f->type;
-  apply_template_typedef_bindings(ft, selected_type_bindings);
+  apply_template_typedef_bindings(
+      ft, selected_type_bindings, selected_type_bindings_by_text, tpl_def);
   materialize_template_array_extent(ft, selected_nttp_bindings_map);
 
   HirStructField hf;
@@ -164,6 +260,7 @@ void Lowerer::append_instantiated_template_struct_fields(
     const std::optional<HirRecordOwnerKey>& owner_key,
     const Node* tpl_def,
     const TypeBindings& selected_type_bindings,
+    const std::unordered_map<TextId, TypeSpec>& selected_type_bindings_by_text,
     const NttpBindings& selected_nttp_bindings_map,
     const NttpTextBindings* selected_nttp_bindings_by_text) {
   const int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
@@ -174,8 +271,8 @@ void Lowerer::append_instantiated_template_struct_fields(
         mangled, owner_key, orig_f, selected_nttp_bindings_map,
         selected_nttp_bindings_by_text);
     std::optional<HirStructField> hf = instantiate_template_struct_field(
-        orig_f, mangled, owner_key, selected_type_bindings, selected_nttp_bindings_map,
-        tpl_def, llvm_idx);
+        orig_f, mangled, owner_key, selected_type_bindings,
+        selected_type_bindings_by_text, selected_nttp_bindings_map, tpl_def, llvm_idx);
     if (!hf) continue;
     def.fields.push_back(std::move(*hf));
     if (!tpl_def->is_union) ++llvm_idx;
@@ -226,6 +323,8 @@ void Lowerer::instantiate_template_struct_body(
 
   const TypeBindings& selected_type_bindings = selected_pattern.type_bindings;
   const NttpBindings& selected_nttp_bindings_map = selected_pattern.nttp_bindings;
+  std::unordered_map<TextId, TypeSpec> selected_type_bindings_by_text =
+      build_template_type_bindings_by_text(tpl_def, selected_type_bindings);
   NttpTextBindings selected_nttp_bindings_by_text =
       build_call_nttp_text_bindings(nullptr, primary_tpl, selected_nttp_bindings_map);
 
@@ -238,14 +337,17 @@ void Lowerer::instantiate_template_struct_body(
   def.pack_align = tpl_def->pack_align;
   def.struct_align = tpl_def->struct_align;
   TypeBindings method_tpl_bindings = selected_type_bindings;
+  std::unordered_map<TextId, TypeSpec> method_tpl_bindings_by_text =
+      selected_type_bindings_by_text;
   NttpBindings method_nttp_bindings = selected_nttp_bindings_map;
   append_instantiated_template_struct_bases(
-      def, tpl_def, method_tpl_bindings, method_nttp_bindings);
+      def, tpl_def, method_tpl_bindings, method_tpl_bindings_by_text,
+      method_nttp_bindings);
   std::optional<HirRecordOwnerKey> owner_key =
       make_template_struct_instance_owner_key(def, primary_tpl, instance_key);
   append_instantiated_template_struct_fields(
       def, mangled, owner_key, tpl_def, selected_type_bindings,
-      selected_nttp_bindings_map,
+      selected_type_bindings_by_text, selected_nttp_bindings_map,
       selected_nttp_bindings_by_text.empty()
           ? nullptr
           : &selected_nttp_bindings_by_text);

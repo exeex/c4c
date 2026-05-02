@@ -526,7 +526,10 @@ class Lowerer {
       const ResolvedTemplateArgs& resolved);
 
   void apply_template_typedef_bindings(TypeSpec& ts,
-                                       const TypeBindings& type_bindings);
+                                       const TypeBindings& type_bindings,
+                                       const std::unordered_map<TextId, TypeSpec>&
+                                           type_bindings_by_text,
+                                       const Node* template_owner);
 
   void materialize_template_array_extent(TypeSpec& ts,
                                          const NttpBindings& nttp_bindings);
@@ -535,6 +538,7 @@ class Lowerer {
       HirStructDef& def,
       const Node* tpl_def,
       const TypeBindings& method_tpl_bindings,
+      const std::unordered_map<TextId, TypeSpec>& method_tpl_bindings_by_text,
       const NttpBindings& method_nttp_bindings);
 
   void register_instantiated_template_struct_methods(
@@ -556,6 +560,7 @@ class Lowerer {
       const std::string& owner_tag,
       const std::optional<HirRecordOwnerKey>& owner_key,
       const TypeBindings& selected_type_bindings,
+      const std::unordered_map<TextId, TypeSpec>& selected_type_bindings_by_text,
       const NttpBindings& selected_nttp_bindings_map,
       const Node* tpl_def,
       int llvm_idx);
@@ -566,6 +571,7 @@ class Lowerer {
       const std::optional<HirRecordOwnerKey>& owner_key,
       const Node* tpl_def,
       const TypeBindings& selected_type_bindings,
+      const std::unordered_map<TextId, TypeSpec>& selected_type_bindings_by_text,
       const NttpBindings& selected_nttp_bindings_map,
       const NttpTextBindings* selected_nttp_bindings_by_text = nullptr);
 
