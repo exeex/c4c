@@ -8,36 +8,42 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 removed one Sema rendered `TypeSpec::tag` gate in
-`hir::resolve_type`: typedef substitution now tries the intrinsic
-`template_param_*` key and `tag_text_id` carriers before requiring rendered
-`TypeSpec::tag` spelling, and only enters the rendered `type_bindings`/
-name-mirror compatibility path when no intrinsic carrier is present. Added
-`test_consteval_type_binding_resolve_uses_tag_text_id_without_tag` to prove
-Sema consteval `sizeof(T)` substitution works with `tag_text_id` and a null
-rendered tag.
+Step 4 inspected Sema `lookup_record_layout` in
+`src/frontend/sema/consteval.cpp` and did not remove its rendered
+`TypeSpec::tag` route. The only record-layout carrier exposed in
+`ConstEvalEnv` is `struct_defs`, a `std::unordered_map<std::string,
+HirStructDef>` keyed by rendered HIR tag spelling. Existing structured carriers
+are outside this env boundary: Sema has `TypeSpec::record_def` plus
+validator-local structured record maps, and HIR `Module` has
+`struct_def_owner_index`/`find_struct_def_by_owner_structured`, but no
+`ConstEvalEnv` field carries a HIR record owner key, owner-index map, or
+record-def-to-`HirStructDef` layout mapping into `lookup_record_layout`.
 
 ## Suggested Next
 
-Continue Step 4 review after the next review trigger. A likely next narrow
-inspection route is Sema `lookup_record_layout` in `consteval.cpp`: it still
-uses `env.struct_defs` keyed by rendered `TypeSpec::tag` for HIR-backed
-`sizeof`/`alignof`, but `ConstEvalEnv` currently exposes only the rendered
-HIR struct map, not the HIR `struct_def_owner_index`/owner-key carrier.
+Keep Step 4 in blocker/review mode unless the supervisor explicitly delegates a
+metadata handoff packet that adds a structured HIR record-layout carrier to
+`ConstEvalEnv`, such as an owner-key lookup channel backed by HIR
+`struct_def_owner_index` or an equivalent Sema/HIR record identity to
+`HirStructDef` map.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- `lookup_record_layout` appears to need an env-carried structured HIR record
-  owner/index before its rendered `TypeSpec::tag` lookup can be removed; adding
-  that carrier crosses into HIR env construction and should be delegated
-  explicitly if selected next.
+- `lookup_record_layout` remains a HIR-metadata/no-carrier blocker: removing
+  the rendered `env.struct_defs->find(ts.tag)` lookup requires an env-carried
+  structured HIR record owner/index or equivalent structured layout map outside
+  this packet's owned Sema-only scope.
+- The AST query attempt with `c4c-clang-tool-ccdb` could not load
+  `src/frontend/sema/consteval.cpp` from `build/compile_commands.json`; local
+  focused reads were used for the narrow inspection.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.
 
 ## Proof
 
-Ran the delegated proof command after the Sema `resolve_type` route removal:
+Ran the delegated proof command after the `lookup_record_layout` blocker
+classification:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
 Result: build completed successfully; CTest passed `886/886` matched tests.
