@@ -9,23 +9,22 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the
-`src/frontend/hir/impl/expr/call.cpp` deletion-probe blocker family. The
-call-expression compatibility cluster now avoids direct `TypeSpec::tag` reads
-in template-struct calls, member-call temporary materialization,
-operator-call gating, pack-forward template argument checks, implicit `this`
-payload construction, and consteval template typedef substitution. Structured
-lookup still flows through `record_def`, `tag_text_id`,
-`template_param_text_id`, existing method-owner resolution, and TextId-first
-template bindings; retained rendered spelling is limited to deletion-safe
-legacy/final-spelling helpers.
+`src/frontend/hir/impl/expr/expr.cpp` deletion-probe blocker family. The
+lvalue cast template-binding path now resolves typedef/template bindings by
+`template_param_text_id` or `tag_text_id` through `tpl_bindings_by_text` before
+considering the no-text legacy binding map. A structured TextId carrier is
+authoritative on miss, so stale rendered `TypeSpec::tag` spelling is not used
+as a fallback after structured binding metadata exists. The remaining rendered
+fallback is deletion-safe and limited to legacy TypeSpec producers that still
+lack usable text metadata.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next first deletion-probe blocker in
-`src/frontend/hir/impl/expr/expr.cpp`. The current probe first reports the
-direct `TypeSpec::tag` read in `compatibility_lvalue_template_binding_tag`
-around `expr.cpp:13`, followed by later `expr/object.cpp` and
-`expr/operator.cpp` compatibility/display surfaces.
+`src/frontend/hir/impl/expr/object.cpp`. The current probe first reports direct
+`TypeSpec::tag` reads in `try_lower_direct_struct_constructor_call` around
+`object.cpp:63`, followed by more `object.cpp` compatibility/display surfaces
+and later `expr/operator.cpp` surfaces.
 
 ## Watchouts
 
@@ -118,9 +117,13 @@ around `expr.cpp:13`, followed by later `expr/object.cpp` and
   rendered-name compatibility is deletion-safe legacy spelling or final
   spelling only. Do not regress the newly TextId-first consteval and
   pack-forward template binding paths back to rendered tag lookup.
-- The current deletion probe moved past `call.cpp`. The first residual blocker
-  is now `src/frontend/hir/impl/expr/expr.cpp:13`; later parallel residuals
-  remain in `src/frontend/hir/impl/expr/object.cpp` and
+- The lvalue cast template-binding path in `expr.cpp` no longer directly reads
+  `TypeSpec::tag`. Keep `template_param_text_id` and `tag_text_id` binding
+  misses authoritative; do not fall back to rendered spelling when either
+  structured carrier is present.
+- The current deletion probe moved past `expr.cpp`. The first residual blocker
+  is now `src/frontend/hir/impl/expr/object.cpp:63`; later residuals remain in
+  `src/frontend/hir/impl/expr/object.cpp` and
   `src/frontend/hir/impl/expr/operator.cpp`.
 - The rejected `ft.tag` layout repair route was replaced with a structured
   AST-node-to-HIR-owner carrier. Do not reintroduce rendered field type tag
@@ -142,11 +145,11 @@ Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log 2>&1`, and restored
-the temporary edit. The probe no longer reports the `call.cpp` family. The
-first residual error is
-`compatibility_lvalue_template_binding_tag` in
-`src/frontend/hir/impl/expr/expr.cpp:13`, with later parallel errors in
+/tmp/c4c_typespec_tag_deletion_probe_step4_expr.log 2>&1`, and restored the
+temporary edit. The probe no longer reports the `call.cpp` family or
+`expr.cpp` lvalue template binding family. The first residual error is direct
+`TypeSpec::tag` use in `try_lower_direct_struct_constructor_call` at
+`src/frontend/hir/impl/expr/object.cpp:63`, with later residual errors in
 `src/frontend/hir/impl/expr/object.cpp` and
 `src/frontend/hir/impl/expr/operator.cpp`.
 

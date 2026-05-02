@@ -4,13 +4,20 @@
 #include "expr.hpp"
 #include <cctype>
 #include <sstream>
+#include <string_view>
 
 namespace c4c::hir {
 
 namespace {
 
-const char* compatibility_lvalue_template_binding_tag(const TypeSpec& ts) {
-  return ts.tag;
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, std::string_view{}) {
+  return ts.tag ? std::string_view(ts.tag) : std::string_view{};
+}
+
+std::string_view typespec_legacy_tag_if_present(const TypeSpec&, long) {
+  return {};
 }
 
 void apply_lvalue_template_concrete(TypeSpec& target, const TypeSpec& concrete) {
@@ -32,22 +39,37 @@ void apply_lvalue_template_concrete(TypeSpec& target, const TypeSpec& concrete) 
 bool apply_lvalue_template_binding_by_text(
     TypeSpec& ts,
     const std::unordered_map<TextId, TypeSpec>& tpl_bindings_by_text) {
-  if (ts.template_param_text_id == kInvalidText) return false;
-  auto it = tpl_bindings_by_text.find(ts.template_param_text_id);
-  if (it == tpl_bindings_by_text.end()) return false;
-  apply_lvalue_template_concrete(ts, it->second);
-  return true;
+  if (ts.template_param_text_id != kInvalidText) {
+    auto it = tpl_bindings_by_text.find(ts.template_param_text_id);
+    if (it != tpl_bindings_by_text.end()) {
+      apply_lvalue_template_concrete(ts, it->second);
+      return true;
+    }
+  }
+  if (ts.tag_text_id != kInvalidText) {
+    auto it = tpl_bindings_by_text.find(ts.tag_text_id);
+    if (it != tpl_bindings_by_text.end()) {
+      apply_lvalue_template_concrete(ts, it->second);
+      return true;
+    }
+  }
+  return false;
 }
 
 bool apply_lvalue_template_binding_by_compatibility_tag(
     TypeSpec& ts,
     const TypeBindings& tpl_bindings) {
-  const char* tag = compatibility_lvalue_template_binding_tag(ts);
-  if (!tag || !tag[0]) return false;
-  auto it = tpl_bindings.find(tag);
+  const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  if (legacy_tag.empty()) return false;
+  auto it = tpl_bindings.find(std::string(legacy_tag));
   if (it == tpl_bindings.end()) return false;
   apply_lvalue_template_concrete(ts, it->second);
   return true;
+}
+
+bool has_lvalue_template_binding_text_carrier(const TypeSpec& ts) {
+  return ts.template_param_text_id != kInvalidText ||
+         ts.tag_text_id != kInvalidText;
 }
 
 }  // namespace
@@ -66,10 +88,9 @@ bool Lowerer::is_ast_lvalue(const Node* n, const FunctionCtx* ctx) {
     case NK_CAST: {
       TypeSpec cast_ts = n->type;
       if (ctx && cast_ts.base == TB_TYPEDEF) {
-        if (cast_ts.template_param_text_id != kInvalidText) {
-          apply_lvalue_template_binding_by_text(
-              cast_ts, ctx->tpl_bindings_by_text);
-        } else {
+        if (!apply_lvalue_template_binding_by_text(
+                cast_ts, ctx->tpl_bindings_by_text) &&
+            !has_lvalue_template_binding_text_carrier(cast_ts)) {
           apply_lvalue_template_binding_by_compatibility_tag(
               cast_ts, ctx->tpl_bindings);
         }
