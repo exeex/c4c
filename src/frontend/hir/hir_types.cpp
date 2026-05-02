@@ -2638,11 +2638,51 @@ void Lowerer::lower_global(const Node* gv,
 
 TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
   if (!n) return {};
+  auto find_template_type_binding = [&](const TypeSpec& ts) -> const TypeSpec* {
+    if (!ctx || ctx->tpl_bindings.empty()) return nullptr;
+    if (ts.template_param_text_id != kInvalidText) {
+      auto text_it = ctx->tpl_bindings_by_text.find(ts.template_param_text_id);
+      if (text_it != ctx->tpl_bindings_by_text.end()) return &text_it->second;
+      if (module_ && module_->link_name_texts) {
+        const std::string key(
+            module_->link_name_texts->lookup(ts.template_param_text_id));
+        auto it = ctx->tpl_bindings.find(key);
+        if (it != ctx->tpl_bindings.end()) return &it->second;
+      }
+    }
+    if (ts.tag_text_id != kInvalidText && module_ && module_->link_name_texts) {
+      const std::string key(module_->link_name_texts->lookup(ts.tag_text_id));
+      auto it = ctx->tpl_bindings.find(key);
+      if (it != ctx->tpl_bindings.end()) return &it->second;
+    }
+    const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+    if (legacy_tag.empty()) return nullptr;
+    auto it = ctx->tpl_bindings.find(std::string(legacy_tag));
+    return it == ctx->tpl_bindings.end() ? nullptr : &it->second;
+  };
+  auto apply_template_type_binding = [&](TypeSpec& target) -> bool {
+    const TypeSpec* concrete = find_template_type_binding(target);
+    if (!concrete) return false;
+    const int outer_ptr_level = target.ptr_level;
+    const bool outer_lref = target.is_lvalue_ref;
+    const bool outer_rref = target.is_rvalue_ref;
+    const bool outer_const = target.is_const;
+    const bool outer_volatile = target.is_volatile;
+
+    target = *concrete;
+    target.ptr_level += outer_ptr_level;
+    target.is_lvalue_ref = target.is_lvalue_ref || outer_lref;
+    target.is_rvalue_ref =
+        !target.is_lvalue_ref && (target.is_rvalue_ref || outer_rref);
+    target.is_const = target.is_const || outer_const;
+    target.is_volatile = target.is_volatile || outer_volatile;
+    return true;
+  };
   if (has_concrete_type(n->type)) {
     const bool needs_tpl_typedef_substitution =
         ctx && !ctx->tpl_bindings.empty() &&
-        n->type.base == TB_TYPEDEF && n->type.tag &&
-        ctx->tpl_bindings.count(n->type.tag) > 0;
+        n->type.base == TB_TYPEDEF &&
+        find_template_type_binding(n->type) != nullptr;
     const bool needs_pending_template_resolution =
         ctx && !ctx->tpl_bindings.empty() && n->type.tpl_struct_origin;
     if (!needs_tpl_typedef_substitution && !needs_pending_template_resolution)
@@ -2698,7 +2738,7 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
             ctx ? ctx->nttp_bindings : nttp_empty,
             n, PendingTemplateTypeKind::OwnerStruct, "generic-ctrl-type-var",
             primary_tpl);
-        if (tmp_ts.tag && module_->struct_defs.count(tmp_ts.tag)) return tmp_ts;
+        if (find_struct_def_for_layout_type(tmp_ts)) return tmp_ts;
       }
       if (ctx) {
         auto lit = ctx->locals.find(name);
@@ -2745,7 +2785,7 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
     }
     case NK_DEREF: {
       TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
-      if (ts.ptr_level == 0 && ts.base == TB_STRUCT && ts.tag) {
+      if (ts.ptr_level == 0 && ts.base == TB_STRUCT) {
         const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
         const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
         const std::string* current_struct_tag =
@@ -2789,12 +2829,8 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
     case NK_COMPOUND_LIT: {
       TypeSpec ts = n->type;
       if (ctx && !ctx->tpl_bindings.empty() &&
-          ts.base == TB_TYPEDEF && ts.tag) {
-        auto it = ctx->tpl_bindings.find(ts.tag);
-        if (it != ctx->tpl_bindings.end()) {
-          ts.base = it->second.base;
-          ts.tag = it->second.tag;
-        }
+          ts.base == TB_TYPEDEF) {
+        apply_template_type_binding(ts);
       }
       if (ctx && !ctx->tpl_bindings.empty() && ts.tpl_struct_origin) {
         seed_and_resolve_pending_template_type_if_needed(
@@ -2855,7 +2891,11 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
         if (sit != module_->struct_defs.end()) {
           TypeSpec ts{};
           ts.base = TB_STRUCT;
-          ts.tag = sit->second.tag.c_str();
+          set_typespec_final_spelling_tag_if_present(
+              ts, sit->second.tag.c_str(), 0);
+          ts.tag_text_id = sit->second.tag_text_id;
+          ts.namespace_context_id = sit->second.ns_qual.context_id;
+          ts.is_global_qualified = sit->second.ns_qual.is_global_qualified;
           return ts;
         }
       }
@@ -2873,7 +2913,7 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
           return reference_value_ts(fn->return_type.spec);
         }
         TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
-        if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
+        if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0) {
           const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
           const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
           const std::string* current_struct_tag =
