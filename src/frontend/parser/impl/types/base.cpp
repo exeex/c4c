@@ -88,6 +88,65 @@ static QualifiedNameKey template_instantiation_name_key_for_direct_emit(
     return parser.alias_template_key_in_context(context_id, name_text_id);
 }
 
+static ParserNttpBindingMetadata nttp_binding_metadata_for_template_param(
+    Parser& parser,
+    const Node* primary_tpl,
+    int param_idx,
+    const char* fallback_name,
+    long long value) {
+    ParserNttpBindingMetadata binding{};
+    binding.name = fallback_name;
+    binding.value = value;
+    if (!primary_tpl || param_idx < 0 ||
+        param_idx >= primary_tpl->n_template_params) {
+        return binding;
+    }
+    if (primary_tpl->template_param_names &&
+        primary_tpl->template_param_names[param_idx]) {
+        binding.name = primary_tpl->template_param_names[param_idx];
+    }
+    if (primary_tpl->template_param_name_text_ids) {
+        binding.name_text_id =
+            primary_tpl->template_param_name_text_ids[param_idx];
+    }
+    if (binding.name_text_id == kInvalidText && binding.name &&
+        binding.name[0]) {
+        binding.name_text_id =
+            parser.parser_text_id_for_token(kInvalidText, binding.name);
+    }
+    const int context_id = primary_tpl->namespace_context_id >= 0
+                               ? primary_tpl->namespace_context_id
+                               : parser.current_namespace_context_id();
+    binding.name_key =
+        parser.alias_template_key_in_context(context_id, binding.name_text_id);
+    return binding;
+}
+
+static std::vector<ParserNttpBindingMetadata>
+nttp_binding_metadata_for_template_params(
+    Parser& parser,
+    const Node* primary_tpl,
+    const std::vector<std::pair<std::string, long long>>& nttp_bindings) {
+    std::vector<ParserNttpBindingMetadata> bindings;
+    if (!primary_tpl || !primary_tpl->template_param_is_nttp) return bindings;
+    bindings.reserve(nttp_bindings.size());
+    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+        if (!primary_tpl->template_param_is_nttp[pi]) continue;
+        const char* name = primary_tpl->template_param_names
+                               ? primary_tpl->template_param_names[pi]
+                               : nullptr;
+        if (!name || !name[0]) continue;
+        for (const auto& [binding_name, binding_value] : nttp_bindings) {
+            if (binding_name == name) {
+                bindings.push_back(nttp_binding_metadata_for_template_param(
+                    parser, primary_tpl, pi, name, binding_value));
+                break;
+            }
+        }
+    }
+    return bindings;
+}
+
 static bool has_template_instantiation_dedup_key_for_direct_emit(
     Parser& parser,
     const ParserTemplateState::TemplateInstantiationKey& structured_key) {
@@ -2941,6 +3000,7 @@ TypeSpec Parser::parse_base_type() {
                         // Build preliminary type bindings from explicit args
                         std::vector<std::pair<std::string, TypeSpec>> prelim_tb;
                         std::vector<std::pair<std::string, long long>> prelim_nb;
+                        std::vector<ParserNttpBindingMetadata> prelim_nb_meta;
                         for (int pi = 0; pi < static_cast<int>(actual_args.size()) &&
                                          pi < primary_tpl->n_template_params; ++pi) {
                             const char* pn = primary_tpl->template_param_names[pi];
@@ -2954,11 +3014,16 @@ TypeSpec Parser::parse_base_type() {
                                         long long ev = 0;
                                         if (eval_deferred_nttp_expr_tokens(
                                                 tpl_name, expr_toks,
-                                                prelim_tb, prelim_nb, &ev)) {
+                                                prelim_tb, prelim_nb, &ev,
+                                                &prelim_nb_meta)) {
                                             actual_args[pi].value = ev;
                                         }
                                     }
                                     prelim_nb.push_back({pn, actual_args[pi].value});
+                                    prelim_nb_meta.push_back(
+                                        nttp_binding_metadata_for_template_param(
+                                            *this, primary_tpl, pi, pn,
+                                            actual_args[pi].value));
                                 }
                             } else {
                                 if (!actual_args[pi].is_value)
@@ -2976,7 +3041,8 @@ TypeSpec Parser::parse_base_type() {
                                 long long ev = 0;
                                 if (eval_deferred_nttp_default(
                                         primary_template_key, sz,
-                                        prelim_tb, prelim_nb, &ev)) {
+                                        prelim_tb, prelim_nb, &ev,
+                                        &prelim_nb_meta)) {
                                     da.value = ev;
                                     actual_args.push_back(da);
                                 } else if (primary_tpl->template_param_default_exprs &&
@@ -2985,7 +3051,8 @@ TypeSpec Parser::parse_base_type() {
                                         primary_tpl->template_param_default_exprs[sz],
                                         core_input_state_.source_profile);
                                     if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
-                                                                       prelim_tb, prelim_nb, &ev)) {
+                                                                       prelim_tb, prelim_nb, &ev,
+                                                                       &prelim_nb_meta)) {
                                         da.value = ev;
                                         actual_args.push_back(da);
                                     } else {
@@ -3014,6 +3081,20 @@ TypeSpec Parser::parse_base_type() {
                                 da.type = primary_tpl->template_param_default_types[sz];
                                 actual_args.push_back(da);
                             }
+                            if (da.is_value) {
+                                prelim_nb.push_back(
+                                    {primary_tpl->template_param_names[sz],
+                                     da.value});
+                                prelim_nb_meta.push_back(
+                                    nttp_binding_metadata_for_template_param(
+                                        *this, primary_tpl, sz,
+                                        primary_tpl->template_param_names[sz],
+                                        da.value));
+                            } else if (!da.is_value) {
+                                prelim_tb.push_back(
+                                    {primary_tpl->template_param_names[sz],
+                                     da.type});
+                            }
                             ++sz;
                         }
                     }
@@ -3025,6 +3106,9 @@ TypeSpec Parser::parse_base_type() {
                         actual_args, primary_tpl, specialization_patterns,
                         &type_bindings, &nttp_bindings);
                     if (!tpl_def) return ts;
+                    std::vector<ParserNttpBindingMetadata> nttp_binding_meta =
+                        nttp_binding_metadata_for_template_params(
+                            *this, primary_tpl, nttp_bindings);
                     std::vector<ParsedTemplateArg> concrete_args = actual_args;
                     while (primary_tpl && static_cast<int>(concrete_args.size()) < primary_tpl->n_template_params) {
                         int i = static_cast<int>(concrete_args.size());
@@ -3041,7 +3125,7 @@ TypeSpec Parser::parse_base_type() {
                                 if (eval_deferred_nttp_default(
                                         primary_template_key, i,
                                         type_bindings, nttp_bindings,
-                                        &eval_val)) {
+                                        &eval_val, &nttp_binding_meta)) {
                                     arg.value = eval_val;
                                 } else if (primary_tpl->template_param_default_exprs &&
                                            primary_tpl->template_param_default_exprs[i]) {
@@ -3050,7 +3134,8 @@ TypeSpec Parser::parse_base_type() {
                                         core_input_state_.source_profile);
                                     if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
                                                                        type_bindings, nttp_bindings,
-                                                                       &eval_val)) {
+                                                                       &eval_val,
+                                                                       &nttp_binding_meta)) {
                                         arg.value = eval_val;
                                     } else {
                                         std::string tagged = "$expr:";
@@ -3076,6 +3161,20 @@ TypeSpec Parser::parse_base_type() {
                             arg.type = primary_tpl->template_param_default_types[i];
                         }
                         concrete_args.push_back(arg);
+                        if (arg.is_value) {
+                            nttp_bindings.push_back(
+                                {primary_tpl->template_param_names[i],
+                                 arg.value});
+                            nttp_binding_meta.push_back(
+                                nttp_binding_metadata_for_template_param(
+                                    *this, primary_tpl, i,
+                                    primary_tpl->template_param_names[i],
+                                    arg.value));
+                        } else {
+                            type_bindings.push_back(
+                                {primary_tpl->template_param_names[i],
+                                 arg.type});
+                        }
                     }
                     const ParserTemplateState::TemplateInstantiationKey
                         structured_emitted_instance_key{
@@ -3284,6 +3383,8 @@ TypeSpec Parser::parse_base_type() {
                                                 base_prelim_tb;
                                             std::vector<std::pair<std::string, long long>>
                                                 base_prelim_nb;
+                                            std::vector<ParserNttpBindingMetadata>
+                                                base_prelim_nb_meta;
                                             for (int pi = 0;
                                                  pi < static_cast<int>(base_args.size()) &&
                                                  pi < base_primary->n_template_params; ++pi) {
@@ -3293,6 +3394,11 @@ TypeSpec Parser::parse_base_type() {
                                                     if (base_args[pi].is_value) {
                                                         base_prelim_nb.push_back(
                                                             {pn, base_args[pi].value});
+                                                        base_prelim_nb_meta.push_back(
+                                                            nttp_binding_metadata_for_template_param(
+                                                                *this, base_primary,
+                                                                pi, pn,
+                                                                base_args[pi].value));
                                                     }
                                                 } else if (!base_args[pi].is_value) {
                                                     base_prelim_tb.push_back(
@@ -3321,7 +3427,8 @@ TypeSpec Parser::parse_base_type() {
                                                             base_template_key,
                                                             bsz,
                                                             base_prelim_tb, base_prelim_nb,
-                                                            &ev)) {
+                                                            &ev,
+                                                            &base_prelim_nb_meta)) {
                                                         da.value = ev;
                                                     } else {
                                                         can_use_typed_args = false;
@@ -3335,6 +3442,21 @@ TypeSpec Parser::parse_base_type() {
                                                         base_primary->template_param_default_types[bsz];
                                                 }
                                                 base_args.push_back(da);
+                                                if (da.is_value) {
+                                                    base_prelim_nb.push_back(
+                                                        {base_primary->template_param_names[bsz],
+                                                         da.value});
+                                                    base_prelim_nb_meta.push_back(
+                                                        nttp_binding_metadata_for_template_param(
+                                                            *this, base_primary,
+                                                            bsz,
+                                                            base_primary->template_param_names[bsz],
+                                                            da.value));
+                                                } else {
+                                                    base_prelim_tb.push_back(
+                                                        {base_primary->template_param_names[bsz],
+                                                         da.type});
+                                                }
                                                 ++bsz;
                                             }
                                             if (can_use_typed_args) {
@@ -3463,7 +3585,8 @@ TypeSpec Parser::parse_base_type() {
                                                     if (!expr_toks.empty() &&
                                                         eval_deferred_nttp_expr_tokens(origin, expr_toks,
                                                                                        type_bindings, nttp_bindings,
-                                                                                       &expr_value)) {
+                                                                                       &expr_value,
+                                                                                       &nttp_binding_meta)) {
                                                         new_arg_parts.push_back(std::to_string(expr_value));
                                                     } else {
                                                         new_arg_parts.push_back("$expr:" + expr_text);
@@ -3525,12 +3648,19 @@ TypeSpec Parser::parse_base_type() {
                                         {
                                             std::vector<std::pair<std::string, TypeSpec>> base_prelim_tb;
                                             std::vector<std::pair<std::string, long long>> base_prelim_nb;
+                                            std::vector<ParserNttpBindingMetadata>
+                                                base_prelim_nb_meta;
                                             for (int pi = 0; pi < (int)base_args.size() &&
                                                  pi < base_primary->n_template_params; ++pi) {
                                                 const char* pn = base_primary->template_param_names[pi];
                                                 if (base_primary->template_param_is_nttp[pi]) {
-                                                    if (base_args[pi].is_value)
+                                                    if (base_args[pi].is_value) {
                                                         base_prelim_nb.push_back({pn, base_args[pi].value});
+                                                        base_prelim_nb_meta.push_back(
+                                                            nttp_binding_metadata_for_template_param(
+                                                                *this, base_primary, pi, pn,
+                                                                base_args[pi].value));
+                                                    }
                                                 } else {
                                                     if (!base_args[pi].is_value)
                                                         base_prelim_tb.push_back({pn, base_args[pi].type});
@@ -3550,7 +3680,8 @@ TypeSpec Parser::parse_base_type() {
                                                     if (eval_deferred_nttp_default(
                                                             base_template_key, bsz,
                                                             base_prelim_tb, base_prelim_nb,
-                                                            &ev)) {
+                                                            &ev,
+                                                            &base_prelim_nb_meta)) {
                                                         da.value = ev;
                                                         base_args.push_back(da);
                                                     } else if (base_primary->template_param_default_exprs &&
@@ -3560,7 +3691,8 @@ TypeSpec Parser::parse_base_type() {
                                                             core_input_state_.source_profile);
                                                         if (eval_deferred_nttp_expr_tokens(origin, expr_toks,
                                                                                            base_prelim_tb, base_prelim_nb,
-                                                                                           &ev)) {
+                                                                                           &ev,
+                                                                                           &base_prelim_nb_meta)) {
                                                             da.value = ev;
                                                             base_args.push_back(da);
                                                         } else {
@@ -3577,6 +3709,20 @@ TypeSpec Parser::parse_base_type() {
                                                 } else {
                                                     da.type = base_primary->template_param_default_types[bsz];
                                                     base_args.push_back(da);
+                                                }
+                                                if (da.is_value) {
+                                                    base_prelim_nb.push_back(
+                                                        {base_primary->template_param_names[bsz],
+                                                         da.value});
+                                                    base_prelim_nb_meta.push_back(
+                                                        nttp_binding_metadata_for_template_param(
+                                                            *this, base_primary, bsz,
+                                                            base_primary->template_param_names[bsz],
+                                                            da.value));
+                                                } else {
+                                                    base_prelim_tb.push_back(
+                                                        {base_primary->template_param_names[bsz],
+                                                         da.type});
                                                 }
                                                 ++bsz;
                                             }

@@ -1222,6 +1222,64 @@ void test_consteval_forwarded_nttp_uses_text_id_not_rendered_name() {
               "name lookup after authoritative TextId metadata misses");
 }
 
+void test_parser_deferred_nttp_default_uses_structured_binding_metadata() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  const c4c::TextId trait_text = texts.intern("Trait");
+  const c4c::TextId structured_text = texts.intern("StructuredN");
+  const c4c::TextId other_text = texts.intern("OtherN");
+  const c4c::QualifiedNameKey trait_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), trait_text);
+
+  parser.cache_nttp_default_expr_tokens(
+      trait_key, 1,
+      {parser.make_injected_token(seed, c4c::TokenKind::Identifier,
+                                  "StructuredN")});
+
+  std::vector<std::pair<std::string, long long>> rendered_bindings;
+  rendered_bindings.push_back({"StructuredN", 100});
+
+  std::vector<c4c::ParserNttpBindingMetadata> structured_bindings;
+  c4c::ParserNttpBindingMetadata binding{};
+  binding.name = "RenderedN";
+  binding.name_text_id = structured_text;
+  binding.name_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), structured_text);
+  binding.value = 6;
+  structured_bindings.push_back(binding);
+
+  long long value = 0;
+  expect_true(parser.eval_deferred_nttp_default(
+                  trait_key, 1, {}, rendered_bindings, &value,
+                  &structured_bindings),
+              "deferred NTTP defaults should use structured TextId binding "
+              "metadata before rendered binding names");
+  expect_true(value == 6,
+              "structured NTTP metadata should win over a rendered binding "
+              "with the same expression spelling");
+
+  parser.cache_nttp_default_expr_tokens(
+      trait_key, 2,
+      {parser.make_injected_token(seed, c4c::TokenKind::Identifier,
+                                  "RenderedN")});
+  rendered_bindings.clear();
+  rendered_bindings.push_back({"RenderedN", 100});
+  structured_bindings[0].name_text_id = other_text;
+  structured_bindings[0].name_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), other_text);
+  value = 0;
+  expect_true(!parser.eval_deferred_nttp_default(
+                  trait_key, 2, {}, rendered_bindings, &value,
+                  &structured_bindings),
+              "deferred NTTP defaults should not reopen rendered-name binding "
+              "lookup after authoritative structured metadata misses");
+}
+
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1512,6 +1570,7 @@ int main() {
   test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
   test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();
+  test_parser_deferred_nttp_default_uses_structured_binding_metadata();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();

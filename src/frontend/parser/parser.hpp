@@ -494,7 +494,9 @@ class Parser {
       int param_idx,
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,
-      long long* out);
+      long long* out,
+      const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata =
+          nullptr);
   void cache_nttp_default_expr_tokens(
       const QualifiedNameKey& template_key,
       int param_idx,
@@ -504,7 +506,9 @@ class Parser {
       const std::vector<Token>& toks,
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,
-      long long* out);
+      long long* out,
+      const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata =
+          nullptr);
   bool has_template_struct_primary(const QualifiedNameKey& key) const;
   bool has_template_struct_primary(int context_id, TextId name_text_id) const;
   bool has_template_struct_primary(const QualifiedNameRef& name) const;

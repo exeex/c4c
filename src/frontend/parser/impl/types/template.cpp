@@ -380,7 +380,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     const std::vector<Token>& toks,
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
-    long long* out) {
+    long long* out,
+    const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata) {
     if (toks.empty() || !out) return false;
 
     // Token-based mini expression evaluator for deferred NTTP defaults.
@@ -397,6 +398,29 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     std::function<bool(long long*)> eval_mul;
     std::function<bool(long long*)> eval_unary;
     std::function<bool(long long*)> eval_primary;
+
+    auto find_structured_nttp_binding =
+        [&](const Token& tok, long long* val,
+            bool* has_authoritative_metadata) -> bool {
+        if (has_authoritative_metadata) *has_authoritative_metadata = false;
+        if (!nttp_binding_metadata || nttp_binding_metadata->empty()) {
+            return false;
+        }
+        for (const ParserNttpBindingMetadata& binding :
+             *nttp_binding_metadata) {
+            const bool has_text = binding.name_text_id != kInvalidText;
+            const bool has_key = binding.name_key.base_text_id != kInvalidText;
+            if (!has_text && !has_key) continue;
+            if (has_authoritative_metadata) *has_authoritative_metadata = true;
+            if (tok.text_id != kInvalidText &&
+                (tok.text_id == binding.name_text_id ||
+                 tok.text_id == binding.name_key.base_text_id)) {
+                if (val) *val = binding.value;
+                return true;
+            }
+        }
+        return false;
+    };
 
     auto decode_type_tokens = [&](size_t start, size_t end, TypeSpec* out) -> bool {
         if (!out || start >= end || end > toks.size()) return false;
@@ -607,10 +631,21 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 }
             }
             if (!found) {
-                for (const auto& [pn, pv] : nttp_bindings) {
-                    if (token_spelling(tok) == pn) {
-                        ParsedTemplateArg a; a.is_value = true; a.value = pv;
-                        ref_args.push_back(a); found = true; break;
+                long long structured_value = 0;
+                bool has_structured_nttp_metadata = false;
+                if (find_structured_nttp_binding(
+                        tok, &structured_value,
+                        &has_structured_nttp_metadata)) {
+                    ParsedTemplateArg a; a.is_value = true;
+                    a.value = structured_value;
+                    ref_args.push_back(a); found = true;
+                }
+                if (!found && !has_structured_nttp_metadata) {
+                    for (const auto& [pn, pv] : nttp_bindings) {
+                        if (token_spelling(tok) == pn) {
+                            ParsedTemplateArg a; a.is_value = true; a.value = pv;
+                            ref_args.push_back(a); found = true; break;
+                        }
                     }
                 }
             }
@@ -830,8 +865,16 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         }
         // NTTP param name
         if (toks[ti].kind == TokenKind::Identifier) {
-            for (const auto& [pn, pv] : nttp_bindings) {
-                if (token_spelling(toks[ti]) == pn) { *val = pv; ++ti; return true; }
+            bool has_structured_nttp_metadata = false;
+            if (find_structured_nttp_binding(
+                    toks[ti], val, &has_structured_nttp_metadata)) {
+                ++ti;
+                return true;
+            }
+            if (!has_structured_nttp_metadata) {
+                for (const auto& [pn, pv] : nttp_bindings) {
+                    if (token_spelling(toks[ti]) == pn) { *val = pv; ++ti; return true; }
+                }
             }
         }
         // Member lookup: Trait<args>::member
@@ -981,7 +1024,8 @@ bool Parser::eval_deferred_nttp_default(
     int param_idx,
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
-    long long* out) {
+    long long* out,
+    const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata) {
     if (template_key.base_text_id == kInvalidText || param_idx < 0) {
         return false;
     }
@@ -995,7 +1039,8 @@ bool Parser::eval_deferred_nttp_default(
     const std::string template_name = render_name_in_context(
         template_key.context_id, template_key.base_text_id);
     return eval_deferred_nttp_expr_tokens(template_name, structured_it->second,
-                                          type_bindings, nttp_bindings, out);
+                                          type_bindings, nttp_bindings, out,
+                                          nttp_binding_metadata);
 }
 
 void Parser::cache_nttp_default_expr_tokens(

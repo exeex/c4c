@@ -150,6 +150,14 @@ struct ParserTemplateArgParseResult {
   Node* expr = nullptr;
 };
 
+// Boundary role: parser/Sema-owned identity for NTTP constant bindings.
+struct ParserNttpBindingMetadata {
+  const char* name = nullptr;
+  TextId name_text_id = kInvalidText;
+  QualifiedNameKey name_key;
+  long long value = 0;
+};
+
 // Boundary role: parser-owned structured source for alias-template RHS forms
 // like `typename Owner<Args>::member`, captured before TypeSpec flattening.
 struct ParserAliasTemplateMemberTypedefInfo {
