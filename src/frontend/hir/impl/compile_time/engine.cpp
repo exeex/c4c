@@ -164,6 +164,7 @@ ConstEvalResult evaluate_pending_consteval(
   NttpTextBindings nttp_text_copy = pce.nttp_bindings_by_text;
   if (!nttp_text_copy.empty()) env.nttp_bindings_by_text = &nttp_text_copy;
   env.struct_defs = &module.struct_defs;
+  env.struct_def_owner_index = &module.struct_def_owner_index;
   return evaluate_consteval_call(
       ce_fn_def, args, env, ct_state.consteval_fn_defs());
 }
@@ -420,6 +421,7 @@ bool try_evaluate_consteval_call_expr(
   EngineConstEvalStructuredMaps structured_maps;
   ConstEvalEnv env = make_engine_consteval_env(ct_state, structured_maps);
   env.struct_defs = &module.struct_defs;
+  env.struct_def_owner_index = &module.struct_def_owner_index;
   TypeBindings tpl_bindings;
   NttpBindings nttp_bindings;
   env = bind_consteval_call_env(expr->left, ce_fn_def, env, &tpl_bindings, &nttp_bindings);
@@ -447,6 +449,7 @@ bool try_evaluate_static_assert_expr(
   EngineConstEvalStructuredMaps structured_maps;
   ConstEvalEnv env = make_engine_consteval_env(ct_state, structured_maps);
   env.struct_defs = &module.struct_defs;
+  env.struct_def_owner_index = &module.struct_def_owner_index;
 
   if (auto r = evaluate_constant_expr(expr, env); r.ok()) {
     if (out_value) *out_value = r.as_int();

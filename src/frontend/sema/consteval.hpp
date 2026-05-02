@@ -170,8 +170,12 @@ struct ConstEvalEnv {
 
   // Optional late-known record layouts from HIR lowering. When present, the
   // constant evaluator can resolve sizeof/alignof on tagged records that were
-  // not immediately computable in the sema-only path.
+  // not immediately computable in the sema-only path. `struct_defs` remains a
+  // rendered-tag compatibility map; `struct_def_owner_index` is the structured
+  // HIR record-owner handoff when TypeSpec metadata can identify the record.
   const std::unordered_map<std::string, HirStructDef>* struct_defs = nullptr;
+  const std::unordered_map<HirRecordOwnerKey, std::string, HirRecordOwnerKeyHash>*
+      struct_def_owner_index = nullptr;
 
   std::optional<long long> lookup(const std::string& name) const {
     // 1. Scoped enum constants (innermost first).

@@ -112,6 +112,10 @@ ConstEvalEnv Lowerer::make_lowerer_consteval_env(
                    local_consts};
   env.enum_consts_by_key = &maps.enum_consts_by_key;
   if (include_named_consts) env.named_consts_by_key = &maps.named_consts_by_key;
+  if (module_) {
+    env.struct_defs = &module_->struct_defs;
+    env.struct_def_owner_index = &module_->struct_def_owner_index;
+  }
   return env;
 }
 

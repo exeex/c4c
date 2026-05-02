@@ -290,10 +290,66 @@ ConstEvalValueLookupResult lookup_forwarded_nttp_arg_by_text(
              : ConstEvalValueLookupResult{};
 }
 
+std::optional<HirRecordOwnerKey> record_owner_key_from_node(const Node* record_def) {
+  if (!record_def || record_def->kind != NK_STRUCT_DEF ||
+      record_def->unqualified_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = record_def->namespace_context_id;
+  ns_qual.is_global_qualified = record_def->is_global_qualified;
+  if (record_def->qualifier_text_ids && record_def->n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(
+        record_def->qualifier_text_ids,
+        record_def->qualifier_text_ids + record_def->n_qualifier_segments);
+  }
+
+  HirRecordOwnerKey key =
+      make_hir_record_owner_key(ns_qual, record_def->unqualified_text_id);
+  if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+  return key;
+}
+
+std::optional<HirRecordOwnerKey> record_owner_key_from_typespec(
+    const TypeSpec& ts) {
+  if (auto key = record_owner_key_from_node(ts.record_def); key.has_value()) {
+    return key;
+  }
+  if (ts.namespace_context_id < 0 || ts.tag_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(
+        ts.qualifier_text_ids,
+        ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+
+  HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+  if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+  return key;
+}
+
 const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv& env) {
-  if (!env.struct_defs || !ts.tag || (ts.base != TB_STRUCT && ts.base != TB_UNION)) {
+  if (ts.base != TB_STRUCT && ts.base != TB_UNION) {
     return nullptr;
   }
+  if (env.struct_defs && env.struct_def_owner_index) {
+    const std::optional<HirRecordOwnerKey> owner_key =
+        record_owner_key_from_typespec(ts);
+    if (owner_key.has_value()) {
+      const auto owner_it = env.struct_def_owner_index->find(*owner_key);
+      if (owner_it != env.struct_def_owner_index->end()) {
+        const auto layout_it = env.struct_defs->find(owner_it->second);
+        if (layout_it != env.struct_defs->end()) return &layout_it->second;
+      }
+    }
+  }
+  if (!env.struct_defs || !ts.tag) return nullptr;
   auto it = env.struct_defs->find(ts.tag);
   if (it == env.struct_defs->end()) return nullptr;
   return &it->second;

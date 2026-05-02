@@ -8,25 +8,25 @@ Current Step Title: Add Structured HIR Record-Layout Handoff
 
 ## Just Finished
 
-Plan-owner review accepted Step 2 - Migrate HIR NTTP And Consteval Handoff as
-complete enough for this runbook. The latest executor packet migrated the
-remaining metadata-backed HIR static constexpr struct/member NTTP const eval
-route to prefer a `NttpTextBindings` mirror before rendered compatibility, and
-classified residual `NttpBindings` uses as compatibility payloads,
-mangling/spec-key payloads, synthetic pack-key compatibility, or deferred
-expression/debug-text boundaries.
+Step 3 - Add Structured HIR Record-Layout Handoff now has a narrow structured
+consteval record-layout route. `ConstEvalEnv` carries an optional
+`struct_def_owner_index` alongside rendered `struct_defs`, and
+`lookup_record_layout` now derives a `HirRecordOwnerKey` from `TypeSpec`
+`record_def` / TextId metadata before falling back to rendered `TypeSpec::tag`.
 
-Step 3 - Add Structured HIR Record-Layout Handoff is now the active execution
-step.
+HIR-created consteval environments now thread `Module::struct_def_owner_index`
+through lowerer consteval and compile-time-engine consteval/static-assert
+routes. Rendered `ConstEvalEnv::struct_defs` remains the explicit
+compatibility payload for no-metadata paths and final layout storage.
+
+Focused coverage proves `sizeof` and `alignof` choose the structured HIR owner
+layout when `TypeSpec::tag` names a stale rendered record.
 
 ## Suggested Next
 
-Start Step 3 with one narrow structured HIR record-layout handoff: trace the
-current `ConstEvalEnv::struct_defs` setup from HIR, add or thread a structured
-record-owner carrier using existing `HirRecordOwnerKey` /
-`struct_def_owner_index` metadata where available, and keep rendered
-`TypeSpec::tag` / `struct_defs` lookup only as explicit no-metadata
-compatibility.
+Continue Step 3 by auditing remaining HIR record-layout consumers that still
+query `Module::struct_defs` directly from rendered tags and migrate one bounded
+metadata-backed route to resolve through `HirRecordOwnerKey` first.
 
 ## Watchouts
 
@@ -38,25 +38,24 @@ compatibility.
   spelling as payloads while removing rendered strings as semantic authority.
 - Do not count mangled/link-visible strings or HIR dump strings as cleanup
   targets unless they are used to recover semantic identity.
-- Record-layout cleanup is a separate boundary from NTTP cleanup: HIR has
-  `HirRecordOwnerKey`/`struct_def_owner_index`, but Sema consteval does not yet
-  receive a structured layout map.
+- Record-layout cleanup is a separate boundary from NTTP cleanup. Sema
+  consteval now receives HIR owner metadata, but many HIR lowering/layout
+  consumers still query rendered `Module::struct_defs` directly.
 - Residual rendered `NttpBindings` uses should not be removed mechanically:
   several are ABI/display/cache payloads, pack synthetic-key compatibility, or
   deferred expression/debug-text boundaries without a complete structured
   carrier.
-- Step 3 may require a minimal HIR-owned env bridge to Sema consteval because
-  `ConstEvalEnv::struct_defs` is currently rendered-keyed. Do not widen into
-  parser/Sema cleanup beyond the bridge needed to consume HIR record-owner
-  metadata.
-- Tests should prove structured record-layout lookup wins when rendered record
-  spelling drifts; do not rely only on unchanged happy-path `sizeof` /
-  `alignof` cases.
+- `ConstEvalEnv::struct_defs` remains rendered-keyed by design in this packet;
+  `struct_def_owner_index` only selects the authoritative rendered layout entry
+  when `TypeSpec` metadata can form a complete `HirRecordOwnerKey`.
+- Template-instantiation record-owner keys need specialization identity; this
+  packet covers declaration-owner layout lookup only. Do not infer that all
+  template-record layout paths are structured yet.
 
 ## Proof
 
-Step 2 delegated proof passed and wrote `test_after.log`:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+Focused pre-proof passed:
+`cmake --build --preset default --target frontend_hir_lookup_tests && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`.
 
-No new validation was run for this lifecycle-only Step 2 review and Step 3
-pointer update.
+Delegated proof passed and wrote `test_after.log`:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.

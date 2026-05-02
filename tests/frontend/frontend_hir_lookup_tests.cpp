@@ -2,6 +2,7 @@
 #include "hir/compile_time_engine.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
+#include "sema/consteval.hpp"
 #include "sema.hpp"
 #include "source_profile.hpp"
 
@@ -1040,6 +1041,68 @@ void test_static_member_nttp_const_eval_prefers_text_id_binding() {
               "static-member NTTP const eval should prefer TextId bindings over stale rendered names");
 }
 
+void test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag() {
+  c4c::hir::Module module;
+  c4c::Arena arena;
+
+  c4c::Node* record_node = arena.alloc_array<c4c::Node>(1);
+  record_node->kind = c4c::NK_STRUCT_DEF;
+  record_node->name = arena.strdup("RealLayout");
+  record_node->unqualified_name = arena.strdup("RealLayout");
+  record_node->unqualified_text_id = module.link_name_texts->intern("RealLayout");
+  record_node->namespace_context_id = 17;
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealLayout";
+  real_def.tag_text_id = record_node->unqualified_text_id;
+  real_def.ns_qual.context_id = record_node->namespace_context_id;
+  real_def.size_bytes = 24;
+  real_def.align_bytes = 8;
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(real_def);
+  module.index_struct_def_owner(owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleRenderedLayout";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleRenderedLayout");
+  stale_def.ns_qual.context_id = record_node->namespace_context_id;
+  stale_def.size_bytes = 4;
+  stale_def.align_bytes = 4;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  query.tag = "StaleRenderedLayout";
+  query.tag_text_id = record_node->unqualified_text_id;
+  query.namespace_context_id = record_node->namespace_context_id;
+  query.record_def = record_node;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  c4c::hir::ConstEvalEnv env;
+  env.struct_defs = &module.struct_defs;
+  env.struct_def_owner_index = &module.struct_def_owner_index;
+
+  c4c::Node sizeof_node{};
+  sizeof_node.kind = c4c::NK_SIZEOF_TYPE;
+  sizeof_node.type = query;
+
+  const c4c::hir::ConstEvalResult size =
+      c4c::hir::evaluate_constant_expr(&sizeof_node, env);
+  expect_true(size.ok() && size.as_int() == 24,
+              "consteval sizeof should prefer structured HIR owner layout over stale rendered tag");
+
+  c4c::Node alignof_node{};
+  alignof_node.kind = c4c::NK_ALIGNOF_TYPE;
+  alignof_node.type = query;
+
+  const c4c::hir::ConstEvalResult align =
+      c4c::hir::evaluate_constant_expr(&alignof_node, env);
+  expect_true(align.ok() && align.as_int() == 8,
+              "consteval alignof should prefer structured HIR owner layout over stale rendered tag");
+}
+
 }  // namespace
 
 int main() {
@@ -1054,6 +1117,7 @@ int main() {
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();
   test_static_member_nttp_const_eval_prefers_text_id_binding();
+  test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }
