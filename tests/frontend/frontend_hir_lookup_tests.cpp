@@ -903,6 +903,121 @@ void test_compile_time_function_specialization_type_arg_record_def_mismatch_reje
               "function specialization TypeSpec arg matching must reject mismatched record_def even when rendered tags match");
 }
 
+void test_template_deduction_forwarding_consistency_uses_record_def_identity() {
+  c4c::hir::Lowerer lowerer;
+
+  const char* template_params[] = {"T"};
+  c4c::TypeSpec param_ts{};
+  param_ts.array_size = -1;
+  param_ts.inner_rank = -1;
+  param_ts.base = c4c::TB_TYPEDEF;
+  param_ts.tag = "T";
+  param_ts.is_rvalue_ref = true;
+
+  c4c::Node param_a{};
+  param_a.kind = c4c::NK_VAR;
+  param_a.type = param_ts;
+  c4c::Node param_b = param_a;
+  c4c::Node* params[] = {&param_a, &param_b};
+  c4c::Node fn_def{};
+  fn_def.kind = c4c::NK_FUNCTION;
+  fn_def.name = "deduce_forward";
+  fn_def.template_param_names = template_params;
+  fn_def.n_template_params = 1;
+  fn_def.params = params;
+  fn_def.n_params = 2;
+
+  c4c::Node shared_record{};
+  shared_record.kind = c4c::NK_STRUCT_DEF;
+  shared_record.name = "StructuredForwardArg";
+
+  c4c::TypeSpec arg_a_ts{};
+  arg_a_ts.array_size = -1;
+  arg_a_ts.inner_rank = -1;
+  arg_a_ts.base = c4c::TB_STRUCT;
+  arg_a_ts.tag = "StaleRenderedForwardA";
+  arg_a_ts.record_def = &shared_record;
+  c4c::TypeSpec arg_b_ts = arg_a_ts;
+  arg_b_ts.tag = "StaleRenderedForwardB";
+
+  c4c::Node arg_a{};
+  arg_a.kind = c4c::NK_CAST;
+  arg_a.type = arg_a_ts;
+  c4c::Node arg_b{};
+  arg_b.kind = c4c::NK_CAST;
+  arg_b.type = arg_b_ts;
+  c4c::Node* args[] = {&arg_a, &arg_b};
+  c4c::Node call{};
+  call.kind = c4c::NK_CALL;
+  call.children = args;
+  call.n_children = 2;
+
+  c4c::hir::TypeBindings deduced =
+      lowerer.try_deduce_template_type_args(&call, &fn_def, nullptr);
+
+  auto it = deduced.find("T");
+  expect_true(it != deduced.end() && it->second.record_def == &shared_record,
+              "forwarding repeated deduction should use shared record_def before stale rendered tags");
+}
+
+void test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag() {
+  c4c::hir::Lowerer lowerer;
+
+  const char* template_params[] = {"T"};
+  c4c::TypeSpec param_ts{};
+  param_ts.array_size = -1;
+  param_ts.inner_rank = -1;
+  param_ts.base = c4c::TB_TYPEDEF;
+  param_ts.tag = "T";
+
+  c4c::Node param_a{};
+  param_a.kind = c4c::NK_VAR;
+  param_a.type = param_ts;
+  c4c::Node param_b = param_a;
+  c4c::Node* params[] = {&param_a, &param_b};
+  c4c::Node fn_def{};
+  fn_def.kind = c4c::NK_FUNCTION;
+  fn_def.name = "deduce_reject";
+  fn_def.template_param_names = template_params;
+  fn_def.n_template_params = 1;
+  fn_def.params = params;
+  fn_def.n_params = 2;
+
+  c4c::Node record_a{};
+  record_a.kind = c4c::NK_STRUCT_DEF;
+  record_a.name = "RecordA";
+  c4c::Node record_b{};
+  record_b.kind = c4c::NK_STRUCT_DEF;
+  record_b.name = "RecordB";
+
+  c4c::TypeSpec arg_a_ts{};
+  arg_a_ts.array_size = -1;
+  arg_a_ts.inner_rank = -1;
+  arg_a_ts.base = c4c::TB_STRUCT;
+  arg_a_ts.tag = "SharedRenderedDeductionArg";
+  arg_a_ts.record_def = &record_a;
+  c4c::TypeSpec arg_b_ts = arg_a_ts;
+  arg_b_ts.record_def = &record_b;
+
+  c4c::Node arg_a{};
+  arg_a.kind = c4c::NK_CAST;
+  arg_a.type = arg_a_ts;
+  c4c::Node arg_b{};
+  arg_b.kind = c4c::NK_CAST;
+  arg_b.type = arg_b_ts;
+  c4c::Node* args[] = {&arg_a, &arg_b};
+  c4c::Node call{};
+  call.kind = c4c::NK_CALL;
+  call.children = args;
+  call.n_children = 2;
+
+  c4c::hir::TypeBindings deduced =
+      lowerer.try_deduce_template_type_args(&call, &fn_def, nullptr);
+
+  expect_true(deduced.empty(),
+              "repeated type-parameter deduction should reject mismatched record_def despite matching rendered tags");
+}
+
 void test_pending_consteval_nttp_handoff_carries_text_id_bindings() {
   constexpr std::string_view source = R"cpp(
 template<int N>
@@ -1593,6 +1708,8 @@ int main() {
   test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names();
   test_compile_time_function_specialization_type_arg_uses_record_def_identity();
   test_compile_time_function_specialization_type_arg_record_def_mismatch_rejects_tag();
+  test_template_deduction_forwarding_consistency_uses_record_def_identity();
+  test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag();
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();

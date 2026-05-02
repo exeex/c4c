@@ -17,6 +17,77 @@ bool eval_template_arg_expr_with_nttp_bindings(const Node* expr,
   return true;
 }
 
+bool typespec_has_complete_text_identity_for_deduction(const TypeSpec& ts) {
+  if (ts.namespace_context_id < 0 || ts.tag_text_id == kInvalidText) {
+    return false;
+  }
+  if (ts.n_qualifier_segments < 0) return false;
+  if (ts.n_qualifier_segments > 0 && !ts.qualifier_text_ids) return false;
+  for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+    if (ts.qualifier_text_ids[i] == kInvalidText) return false;
+  }
+  return true;
+}
+
+bool typespec_has_structured_nominal_identity_for_deduction(const TypeSpec& ts) {
+  return (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) ||
+         typespec_has_complete_text_identity_for_deduction(ts);
+}
+
+std::optional<bool> structured_typespec_nominal_match_for_deduction(
+    const TypeSpec& existing_ts,
+    const TypeSpec& deduced_ts) {
+  const bool existing_has_record =
+      existing_ts.record_def && existing_ts.record_def->kind == NK_STRUCT_DEF;
+  const bool deduced_has_record =
+      deduced_ts.record_def && deduced_ts.record_def->kind == NK_STRUCT_DEF;
+  if (existing_has_record && deduced_has_record) {
+    return existing_ts.record_def == deduced_ts.record_def;
+  }
+
+  const bool existing_has_text =
+      typespec_has_complete_text_identity_for_deduction(existing_ts);
+  const bool deduced_has_text =
+      typespec_has_complete_text_identity_for_deduction(deduced_ts);
+  if (existing_has_text && deduced_has_text) {
+    if (existing_ts.namespace_context_id != deduced_ts.namespace_context_id ||
+        existing_ts.tag_text_id != deduced_ts.tag_text_id ||
+        existing_ts.is_global_qualified != deduced_ts.is_global_qualified ||
+        existing_ts.n_qualifier_segments != deduced_ts.n_qualifier_segments) {
+      return false;
+    }
+    for (int i = 0; i < existing_ts.n_qualifier_segments; ++i) {
+      if (existing_ts.qualifier_text_ids[i] != deduced_ts.qualifier_text_ids[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (typespec_has_structured_nominal_identity_for_deduction(existing_ts) ||
+      typespec_has_structured_nominal_identity_for_deduction(deduced_ts)) {
+    return false;
+  }
+  return std::nullopt;
+}
+
+bool typespec_rendered_tags_match_for_deduction(const TypeSpec& existing_ts,
+                                                const TypeSpec& deduced_ts) {
+  if (!existing_ts.tag && !deduced_ts.tag) return true;
+  if (!existing_ts.tag || !deduced_ts.tag) return false;
+  return std::strcmp(existing_ts.tag, deduced_ts.tag) == 0;
+}
+
+bool typespec_nominal_match_for_deduction(const TypeSpec& existing_ts,
+                                          const TypeSpec& deduced_ts) {
+  if (std::optional<bool> structured_match =
+          structured_typespec_nominal_match_for_deduction(existing_ts,
+                                                          deduced_ts)) {
+    return *structured_match;
+  }
+  return typespec_rendered_tags_match_for_deduction(existing_ts, deduced_ts);
+}
+
 }  // namespace
 
 TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_def,
@@ -366,7 +437,7 @@ TypeBindings Lowerer::try_deduce_template_type_args(
       if (existing != deduced.end()) {
         if (existing->second.base != deduced_ts.base ||
             existing->second.ptr_level != deduced_ts.ptr_level ||
-            existing->second.tag != deduced_ts.tag ||
+            !typespec_nominal_match_for_deduction(existing->second, deduced_ts) ||
             existing->second.is_lvalue_ref != deduced_ts.is_lvalue_ref ||
             existing->second.is_rvalue_ref != deduced_ts.is_rvalue_ref) {
           return {};
@@ -387,7 +458,7 @@ TypeBindings Lowerer::try_deduce_template_type_args(
       if (existing != deduced.end()) {
         if (existing->second.base != deduced_ts.base ||
             existing->second.ptr_level != deduced_ts.ptr_level ||
-            existing->second.tag != deduced_ts.tag) {
+            !typespec_nominal_match_for_deduction(existing->second, deduced_ts)) {
           return {};
         }
       } else {

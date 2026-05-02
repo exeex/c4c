@@ -8,20 +8,22 @@ Current Step Title: Migrate HIR Type And Record Consumers
 
 ## Just Finished
 
-Step 3 - Migrate HIR Type And Record Consumers migrated function template
-specialization TypeSpec argument matching in
-`src/frontend/hir/compile_time_engine.hpp::InstantiationRegistry::select_function_specialization`.
-The matcher now compares structured nominal TypeSpec identity before rendered
+Step 3 - Migrate HIR Type And Record Consumers migrated repeated template type
+argument deduction consistency in
+`src/frontend/hir/impl/templates/deduction.cpp::Lowerer::try_deduce_template_type_args`.
+The forwarding-reference and non-pointer type-parameter repeated deduction
+checks now compare structured nominal TypeSpec identity before rendered
 `TypeSpec::tag`: shared `record_def` wins first, complete namespace plus
 `tag_text_id` plus qualifier TextIds can match next, and one-sided or
-mismatched structured nominal metadata rejects the specialization without
-falling through to rendered spelling. Rendered `tag` comparison remains the
+mismatched structured nominal metadata rejects the repeated deduction without
+falling through to rendered spelling. Rendered tag comparison remains the
 explicit no-structured-metadata compatibility path.
 
-Focused coverage in `frontend_hir_lookup_tests` adds direct compile-time
-registry fixtures proving a specialization matches through shared `record_def`
-despite stale rendered TypeSpec tags, and proving mismatched `record_def`
-identity does not fall back to a matching rendered tag.
+Focused coverage in `frontend_hir_lookup_tests` adds direct deduction fixtures
+proving forwarding-reference repeated deduction accepts stale rendered TypeSpec
+tags when both inferences share `record_def`, and proving ordinary repeated
+type-parameter deduction rejects mismatched `record_def` identity even when the
+rendered tags match.
 
 ## Suggested Next
 
@@ -47,6 +49,11 @@ rendered owner spelling.
   Template parameter name lookup remains keyed by rendered parameter names in
   `TypeBindings`; migrating that boundary needs a separate structured template
   parameter binding packet.
+- Repeated template argument deduction consistency now compares structured
+  TypeSpec nominal identity, but the `TypeBindings` map keys remain rendered
+  template parameter names by packet contract. Pointer-depth deduction still
+  compares only the pre-existing shape fields and does not use nominal tag
+  identity in this packet.
 - The default preset used for this packet does not register
   `frontend_hir_tests`; focused coverage for this route was therefore added to
   `frontend_hir_lookup_tests`, which the delegated regex compiles and runs.
