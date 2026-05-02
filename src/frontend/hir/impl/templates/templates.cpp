@@ -73,6 +73,14 @@ const char* typespec_legacy_tag_if_present(const TypeSpec&, long) {
   return nullptr;
 }
 
+template <typename T>
+auto assign_typespec_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void assign_typespec_legacy_tag_if_present(TypeSpec&, const char*, long) {}
+
 std::optional<HirRecordOwnerKey> template_origin_owner_key_hir(
     const TypeSpec& ts) {
   const QualifiedNameKey& origin_key = ts.tpl_struct_origin_key;
@@ -892,12 +900,6 @@ void Lowerer::realize_template_struct(
   if (!primary_tpl) return;
   if (!origin) origin = primary_tpl->name;
   if (primary_tpl->name) ts.tpl_struct_origin = primary_tpl->name;
-  const std::string incoming_tag =
-      (ts.tag && ts.tag[0]) ? std::string(ts.tag) : std::string{};
-  const std::string lookup_key =
-      (ts.tpl_struct_origin && ts.tpl_struct_origin[0])
-          ? encode_template_type_arg_ref_hir(ts)
-          : std::string{};
 
   ResolvedTemplateArgs resolved =
       materialize_template_args(primary_tpl, ts, tpl_bindings, nttp_bindings);
@@ -938,8 +940,15 @@ void Lowerer::realize_template_struct(
       mangled, primary_tpl, tpl_def, selected_pattern,
       resolved.concrete_args, prepared_instance.instance_key);
 
-  ts.tag = module_->struct_defs.count(mangled) ?
-      module_->struct_defs.at(mangled).tag.c_str() : nullptr;
+  const auto realized_it = module_->struct_defs.find(mangled);
+  const HirStructDef* realized_def =
+      realized_it == module_->struct_defs.end() ? nullptr : &realized_it->second;
+  assign_typespec_legacy_tag_if_present(
+      ts, realized_def ? realized_def->tag.c_str() : nullptr, 0);
+  if (realized_def) {
+    ts.tag_text_id = realized_def->tag_text_id;
+    ts.namespace_context_id = realized_def->ns_qual.context_id;
+  }
   while (resolve_struct_member_typedef_if_ready(&ts)) {
   }
   if (!ts.deferred_member_type_name) {
