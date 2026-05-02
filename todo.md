@@ -8,27 +8,27 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 structurally bypassed the rendered `$expr:` template-argument fallback
-for the normal base-instantiation handoff when a base has both a resolved
-template primary and structured `TemplateArgRef` metadata. After the structured
-`TemplateArgRef` to `ParsedTemplateArg` path succeeds or declines, the handoff
-now restores deferred-member lookup state and continues instead of rendering
-`tpl_struct_args`, splitting comma text, substituting names inside `$expr:`
-debug spelling, re-lexing that spelling, or rebuilding arguments through
-`std::stoll`/`decode_type_ref_text`.
+Step 4 parked the alias-template rendered template-argument substitution
+fallback behind a no-structured-carrier gate. The alias-template path now runs
+`substitute_template_arg_refs_structured(&ts)` first; the old
+`template_arg_refs_text(ts)` plus `substitute_template_arg_refs(...)` rewrite is
+retained only when the template-arg list contains unstructured debug-only refs
+and no structured `TemplateArgRef` carrier such as an NTTP `TextId`, literal
+value, typed argument, or nested structured payload.
 
-Focused lookup-authority coverage now corrupts the producer-side dependent-base
-template-argument `debug_text` to a syntactically valid but wrong `$expr:0`
-before instantiation. The test still requires concrete inherited `record_def`
-attachment before Sema, proving stale rendered expression/debug text cannot
-drive the structured producer.
+Focused lookup-authority coverage now builds a mixed alias result containing one
+debug-only no-carrier arg and one structured NTTP arg with stale rendered
+`debug_text`. The test requires the no-carrier arg to remain compatibility data
+while the structured NTTP is substituted to `7` and regenerates debug text from
+the structured argument, proving stale rendered arg refs cannot drive the mixed
+structured path.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing the remaining rendered template-argument
-compatibility fallbacks that only run when structured metadata is absent, and
-either remove the next parser/Sema-owned route or record the exact missing
-carrier that prevents removal.
+Continue Step 4 by reviewing the remaining parser/Sema rendered lookup or
+template-argument compatibility fallbacks that are not yet gated by structured
+carrier availability, and either remove the next parser/Sema-owned route or
+record the exact missing carrier that prevents removal.
 
 ## Watchouts
 
@@ -55,10 +55,13 @@ carrier that prevents removal.
 - Retained `$expr:` carriers and template default-expression re-lex paths are
   compatibility fallbacks, not completed structured cleanup. Successful Step 4
   routes should continue to use parser/Sema structural metadata where present.
-- The comma-split/rendered `$expr:` fallback still exists for no-carrier
-  compatibility cases. It is now bypassed for resolved-base-primary plus
-  structured-argument handoff, so do not restore it as a recovery path for
-  stale `TemplateArgRef::debug_text`.
+- The alias-template comma-split/rendered arg-ref fallback still exists only for
+  template-arg lists with unstructured debug-only refs and no structured
+  carrier. Do not restore it as a recovery path for mixed carrier lists or stale
+  `TemplateArgRef::debug_text`.
+- `zero_value_arg_ref_uses_debug_fallback(...)` still represents legacy
+  compatibility policy elsewhere; this packet only made the alias-template
+  fallback gate treat `nttp_text_id` as structured carrier metadata.
 - Do not reintroduce rendered qualified-text parsing, `$expr:` debug-text
   semantic authority, string/string_view semantic lookup parameters, fallback
   spelling, expectation downgrades, or named-test shortcuts.
