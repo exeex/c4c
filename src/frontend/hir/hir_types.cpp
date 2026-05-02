@@ -142,6 +142,36 @@ std::string_view typespec_legacy_tag_if_present(const T&, long) {
   return {};
 }
 
+const HirStructDef* find_struct_def_by_layout_compatibility_tag(
+    const Module& module,
+    const TypeSpec& ts) {
+  if (ts.tag_text_id != kInvalidText && module.link_name_texts) {
+    const std::string_view rendered_tag =
+        module.link_name_texts->lookup(ts.tag_text_id);
+    if (!rendered_tag.empty()) {
+      const auto it = module.struct_defs.find(std::string(rendered_tag));
+      if (it != module.struct_defs.end()) return &it->second;
+    }
+  }
+  const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  if (legacy_tag.empty()) return nullptr;
+  const auto it = module.struct_defs.find(std::string(legacy_tag));
+  return it == module.struct_defs.end() ? nullptr : &it->second;
+}
+
+std::optional<std::string> rendered_typespec_tag_for_compatibility(
+    const Module& module,
+    const TypeSpec& ts) {
+  if (ts.tag_text_id != kInvalidText && module.link_name_texts) {
+    const std::string_view rendered_tag =
+        module.link_name_texts->lookup(ts.tag_text_id);
+    if (!rendered_tag.empty()) return std::string(rendered_tag);
+  }
+  const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  if (!legacy_tag.empty()) return std::string(legacy_tag);
+  return std::nullopt;
+}
+
 }  // namespace
 
 bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
@@ -1135,9 +1165,7 @@ const HirStructDef* Lowerer::find_struct_def_for_layout_type(const TypeSpec& ts)
   }
   // Compatibility bridge for legacy TypeSpec producers that still lack
   // complete structured owner metadata.
-  if (!ts.tag || !ts.tag[0]) return nullptr;
-  const auto it = module_->struct_defs.find(ts.tag);
-  return it == module_->struct_defs.end() ? nullptr : &it->second;
+  return find_struct_def_by_layout_compatibility_tag(*module_, ts);
 }
 
 const HirStructField* Lowerer::find_struct_instance_field_including_bases(
@@ -1825,8 +1853,11 @@ MemberSymbolId Lowerer::find_struct_member_symbol_id(
   if (!rendered_tag.empty()) {
     return find_struct_member_symbol_id(rendered_tag, member);
   }
-  if (owner_ts.tag && owner_ts.tag[0]) {
-    return find_struct_member_symbol_id(owner_ts.tag, member);
+  if (module_) {
+    if (std::optional<std::string> compatibility_tag =
+            rendered_typespec_tag_for_compatibility(*module_, owner_ts)) {
+      return find_struct_member_symbol_id(*compatibility_tag, member);
+    }
   }
   return kInvalidMemberSymbol;
 }
@@ -2127,18 +2158,26 @@ void Lowerer::lower_struct_def(const Node* sd) {
           PendingTemplateTypeKind::BaseType,
           std::string("struct-base:") + (tag ? tag : ""));
     }
+    const std::optional<std::string> base_tag =
+        module_ ? rendered_typespec_tag_for_compatibility(*module_, base)
+                : std::nullopt;
     if (!resolve_struct_member_typedef_if_ready(&base) &&
-        base.deferred_member_type_name && base.tag && base.tag[0]) {
+        base.deferred_member_type_name && base_tag && !base_tag->empty()) {
       TypeBindings empty_tb;
       NttpBindings empty_nb;
       seed_pending_template_type(
           base, empty_tb, empty_nb, sd, PendingTemplateTypeKind::MemberTypedef,
           std::string("struct-base-member:") + (tag ? tag : ""));
     }
-    if (base.tag && base.tag[0]) {
-      def.base_tags.push_back(base.tag);
+    if (base_tag && !base_tag->empty()) {
+      def.base_tags.push_back(*base_tag);
+      const TextId base_tag_text_id =
+          base.tag_text_id != kInvalidText
+              ? base.tag_text_id
+              : make_text_id(*base_tag,
+                             module_ ? module_->link_name_texts.get() : nullptr);
       def.base_tag_text_ids.push_back(
-          make_text_id(base.tag, module_ ? module_->link_name_texts.get() : nullptr));
+          base_tag_text_id);
     }
   }
 

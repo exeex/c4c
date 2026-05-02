@@ -10,19 +10,20 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the next
 `src/frontend/hir/hir_types.cpp` deletion-probe blocker in
-`resolve_struct_method_lookup_owner_tag` and the tightly coupled struct-method
-return-type parity comparison. Struct-method owner fallback now prefers
-`tag_text_id` final spelling before the deletion-safe legacy payload helper,
-and return-type parity compares record owner identity through `record_def` or
-TextId qualifier metadata before falling back to legacy final spelling.
+`find_struct_def_for_layout_type` and the immediately coupled layout/member
+compatibility surface. Layout struct lookup now prefers `record_def` and
+TextId owner metadata, then uses a TextId-first compatibility bridge before the
+deletion-safe legacy payload helper. The TypeSpec member-symbol fallback and
+base-layout `base_tags` compatibility storage now use the same TextId-first
+compatibility path instead of direct `TypeSpec::tag` reads.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next first deletion-probe blocker in
 `src/frontend/hir/hir_types.cpp`. The current probe first reports direct
-`TypeSpec::tag` use in `find_struct_def_for_layout_type` around
-`hir_types.cpp:1138`, followed by member-symbol/layout compatibility surfaces
-and later generic control/call TypeSpec final-spelling payload sites.
+`TypeSpec::tag` use in `infer_generic_ctrl_type` around `hir_types.cpp:2644`,
+followed by later generic control/call TypeSpec final-spelling payload sites
+and then `src/frontend/hir/impl/expr/call.cpp`.
 
 ## Watchouts
 
@@ -58,6 +59,16 @@ and later generic control/call TypeSpec final-spelling payload sites.
   `TypeSpec::tag`; it now treats `record_def` and TextId owner metadata as the
   semantic identity and keeps legacy spelling only as the no-metadata
   compatibility comparison.
+- `find_struct_def_for_layout_type` no longer directly reads `TypeSpec::tag`;
+  its retained rendered lookup is a TextId-first/no-complete-metadata
+  compatibility bridge.
+- The TypeSpec overload of `find_struct_member_symbol_id` no longer falls back
+  through `owner_ts.tag`; it uses rendered caller input first, then TextId-first
+  compatibility spelling, then the deletion-safe legacy payload helper.
+- Base-layout metadata in `lower_struct_def` no longer reads `base.tag`
+  directly while populating `HirStructDef::base_tags`; `base_tags` remains
+  rendered final spelling/compatibility storage, and `base_tag_text_ids` now
+  prefers existing TypeSpec TextId metadata.
 - `hir_lowering_core.cpp` no longer has direct `TypeSpec::tag` reads in generic
   record compatibility or local layout TypeSpec lookup.
 - The base layout path still uses `HirStructDef::base_tags` as final spelling
@@ -93,14 +104,16 @@ and later generic control/call TypeSpec final-spelling payload sites.
 - Treat any `TypeSpec::tag` deletion build as temporary until Step 5.
 - The `hir_lowering_core.cpp` and `hir_build.cpp` deletion-probe clusters are
   now clear of direct `TypeSpec::tag` reads. The first residual probe blocker
-  moved past `resolve_struct_method_lookup_owner_tag` and the struct-method
-  parity helper to `src/frontend/hir/hir_types.cpp:1138`, followed by later
-  `hir_types.cpp` surfaces and then `hir/impl/expr/call.cpp`.
+  moved past `resolve_struct_method_lookup_owner_tag`, the struct-method parity
+  helper, `find_struct_def_for_layout_type`, the TypeSpec member-symbol
+  fallback, and the base-layout metadata block to
+  `src/frontend/hir/hir_types.cpp:2644`, followed by later `hir_types.cpp`
+  surfaces and then `hir/impl/expr/call.cpp`.
 - The rejected `ft.tag` layout repair route was replaced with a structured
   AST-node-to-HIR-owner carrier. Do not reintroduce rendered field type tag
   lookup for layout ownership.
 - Non-canonical deletion probe artifacts for this packet:
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_hir_types.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_hir_types_layout.log`.
 
 ## Proof
 
@@ -116,12 +129,12 @@ Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_hir_types.log 2>&1`, and restored
-the temporary edit. The probe no longer reports the
-`resolve_struct_method_lookup_owner_tag` fallback or struct-method parity
-comparison cluster; the first residual error is `find_struct_def_for_layout_type`
-in `src/frontend/hir/hir_types.cpp:1138`, with later parallel errors in
-`src/frontend/hir/impl/expr/call.cpp`.
+/tmp/c4c_typespec_tag_deletion_probe_step4_hir_types_layout.log 2>&1`, and
+restored the temporary edit. The probe no longer reports
+`find_struct_def_for_layout_type`, the TypeSpec member-symbol fallback, or the
+base-layout metadata block. The first residual error is
+`infer_generic_ctrl_type` in `src/frontend/hir/hir_types.cpp:2644`, with later
+parallel errors in `src/frontend/hir/impl/expr/call.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.
