@@ -202,6 +202,13 @@ bool eval_struct_static_member_value_hir(
   if (search_decl_array(sdef->children, sdef->n_children)) return true;
   for (int bi = 0; bi < sdef->n_bases; ++bi) {
     const TypeSpec& base_ts = sdef->base_types[bi];
+    if (base_ts.record_def && base_ts.record_def->kind == NK_STRUCT_DEF) {
+      if (eval_struct_static_member_value_hir(
+              base_ts.record_def, struct_defs, member_name, nttp_bindings, out)) {
+        return true;
+      }
+      continue;
+    }
     if (!base_ts.tag || !base_ts.tag[0]) continue;
     auto it = struct_defs.find(base_ts.tag);
     if (it == struct_defs.end()) continue;

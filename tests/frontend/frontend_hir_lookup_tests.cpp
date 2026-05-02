@@ -882,6 +882,103 @@ void test_template_struct_primary_record_def_miss_rejects_stale_origin() {
               "template struct primary lookup must not use stale rendered origin after structured record_def miss");
 }
 
+void test_inherited_static_member_eval_uses_base_record_def_before_stale_tag() {
+  c4c::Node real_value{};
+  real_value.kind = c4c::NK_INT_LIT;
+  real_value.ival = 23;
+  c4c::Node real_member{};
+  real_member.kind = c4c::NK_DECL;
+  real_member.is_static = true;
+  real_member.name = "value";
+  real_member.init = &real_value;
+  c4c::Node* real_fields[] = {&real_member};
+  c4c::Node real_base{};
+  real_base.kind = c4c::NK_STRUCT_DEF;
+  real_base.name = "RealInheritedStaticBase";
+  real_base.fields = real_fields;
+  real_base.n_fields = 1;
+
+  c4c::Node stale_value{};
+  stale_value.kind = c4c::NK_INT_LIT;
+  stale_value.ival = 7;
+  c4c::Node stale_member{};
+  stale_member.kind = c4c::NK_DECL;
+  stale_member.is_static = true;
+  stale_member.name = "value";
+  stale_member.init = &stale_value;
+  c4c::Node* stale_fields[] = {&stale_member};
+  c4c::Node stale_base{};
+  stale_base.kind = c4c::NK_STRUCT_DEF;
+  stale_base.name = "StaleInheritedStaticBase";
+  stale_base.fields = stale_fields;
+  stale_base.n_fields = 1;
+
+  c4c::TypeSpec base_ts{};
+  base_ts.array_size = -1;
+  base_ts.inner_rank = -1;
+  base_ts.base = c4c::TB_STRUCT;
+  base_ts.tag = "StaleInheritedStaticBase";
+  base_ts.record_def = &real_base;
+  c4c::TypeSpec bases[] = {base_ts};
+  c4c::Node derived{};
+  derived.kind = c4c::NK_STRUCT_DEF;
+  derived.name = "DerivedInheritedStatic";
+  derived.base_types = bases;
+  derived.n_bases = 1;
+
+  std::unordered_map<std::string, const c4c::Node*> struct_defs;
+  struct_defs["StaleInheritedStaticBase"] = &stale_base;
+  long long value = 0;
+  const bool resolved = c4c::hir::eval_struct_static_member_value_hir(
+      &derived, struct_defs, "value", nullptr, &value);
+
+  expect_true(resolved && value == 23,
+              "inherited static member evaluation should use base record_def before stale rendered tag");
+}
+
+void test_inherited_static_member_eval_base_record_def_miss_rejects_stale_tag() {
+  c4c::Node missing_base{};
+  missing_base.kind = c4c::NK_STRUCT_DEF;
+  missing_base.name = "MissingInheritedStaticBase";
+
+  c4c::Node stale_value{};
+  stale_value.kind = c4c::NK_INT_LIT;
+  stale_value.ival = 7;
+  c4c::Node stale_member{};
+  stale_member.kind = c4c::NK_DECL;
+  stale_member.is_static = true;
+  stale_member.name = "value";
+  stale_member.init = &stale_value;
+  c4c::Node* stale_fields[] = {&stale_member};
+  c4c::Node stale_base{};
+  stale_base.kind = c4c::NK_STRUCT_DEF;
+  stale_base.name = "StaleMissInheritedStaticBase";
+  stale_base.fields = stale_fields;
+  stale_base.n_fields = 1;
+
+  c4c::TypeSpec base_ts{};
+  base_ts.array_size = -1;
+  base_ts.inner_rank = -1;
+  base_ts.base = c4c::TB_STRUCT;
+  base_ts.tag = "StaleMissInheritedStaticBase";
+  base_ts.record_def = &missing_base;
+  c4c::TypeSpec bases[] = {base_ts};
+  c4c::Node derived{};
+  derived.kind = c4c::NK_STRUCT_DEF;
+  derived.name = "DerivedInheritedStaticMiss";
+  derived.base_types = bases;
+  derived.n_bases = 1;
+
+  std::unordered_map<std::string, const c4c::Node*> struct_defs;
+  struct_defs["StaleMissInheritedStaticBase"] = &stale_base;
+  long long value = 0;
+  const bool resolved = c4c::hir::eval_struct_static_member_value_hir(
+      &derived, struct_defs, "value", nullptr, &value);
+
+  expect_true(!resolved,
+              "inherited static member evaluation must not use stale rendered base tag after record_def miss");
+}
+
 void test_compile_time_function_specialization_type_arg_uses_record_def_identity() {
   c4c::hir::InstantiationRegistry registry;
 
@@ -1772,6 +1869,8 @@ int main() {
   test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names();
   test_template_struct_primary_lookup_uses_record_def_before_stale_origin();
   test_template_struct_primary_record_def_miss_rejects_stale_origin();
+  test_inherited_static_member_eval_uses_base_record_def_before_stale_tag();
+  test_inherited_static_member_eval_base_record_def_miss_rejects_stale_tag();
   test_compile_time_function_specialization_type_arg_uses_record_def_identity();
   test_compile_time_function_specialization_type_arg_record_def_mismatch_rejects_tag();
   test_template_deduction_forwarding_consistency_uses_record_def_identity();

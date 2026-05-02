@@ -8,31 +8,29 @@ Current Step Title: Migrate HIR Type And Record Consumers
 
 ## Just Finished
 
-Step 3 - Migrate HIR Type And Record Consumers migrated canonical template
-struct primary selection in
-`src/frontend/hir/impl/templates/templates.cpp::Lowerer::canonical_template_struct_primary`
-and the declaration overload of `find_template_struct_primary`. When a
-TypeSpec carries `record_def` with a complete `HirRecordOwnerKey`, primary
-lookup now uses the structured owner maps/compile-time registry and rejects a
-structured miss instead of falling through to stale rendered
-`tpl_struct_origin`. Rendered primary-name fallback remains explicit
-compatibility only when the declaration lacks a structured owner key.
+Step 3 - Migrate HIR Type And Record Consumers migrated inherited static
+member evaluation in
+`src/frontend/hir/impl/templates/templates.cpp::eval_struct_static_member_value_hir`.
+For base-class traversal, a base `TypeSpec` carrying `record_def` now recurses
+through that structured AST owner before rendered `base_ts.tag`, and a
+structured base miss no longer falls through to a stale rendered base tag.
+Rendered `base_ts.tag`/`struct_defs` lookup remains explicit compatibility for
+base TypeSpecs without `record_def`.
 
-Focused coverage in `frontend_hir_lookup_tests` proves `record_def` owner
-identity wins over stale rendered template origin, and proves a structured
-`record_def` miss does not fall back to a registered stale rendered origin. The
-older `frontend_hir_tests` expectation for this route was aligned with the new
-no-stale-fallback boundary.
+Focused coverage in `frontend_hir_lookup_tests` proves inherited static member
+evaluation returns the value from the structured `record_def` base despite a
+stale rendered base tag, and proves a structured base miss does not fall back
+to a stale rendered base that defines the member.
 
 ## Suggested Next
 
 Continue Step 3 with another bounded HIR `TypeSpec::tag` consumer where
 structured owner metadata is already present. A good next packet is a narrow
-template/type route that still indexes by rendered `tag`, such as inherited
-static member evaluation in `src/frontend/hir/impl/templates/templates.cpp` or
-a `src/frontend/hir/impl/templates/value_args.cpp` caller that can pass
+template/type route that still indexes by rendered `tag`, such as a
+`src/frontend/hir/impl/templates/value_args.cpp` caller that can pass
 `record_def`, `tag_text_id`, owner keys, or template metadata instead of only
-rendered owner spelling.
+rendered owner spelling, or a remaining HIR `hir_types.cpp` semantic equality
+or typedef-to-struct route with existing structured carriers.
 
 ## Watchouts
 
@@ -58,6 +56,11 @@ rendered owner spelling.
   Rendered primary-name fallback remains for declarations without owner-key
   metadata. Template struct specialization lookup by primary owner remains a
   separate rendered-fallback surface for a later packet if needed.
+- Inherited static member evaluation now uses `base_ts.record_def` before
+  rendered `base_ts.tag` and blocks stale rendered fallback after a structured
+  base miss. The function still has no HIR owner-key map, so `tag_text_id` and
+  `HirRecordOwnerKey` lookup are residual surfaces for a later helper or API
+  packet if needed.
 - The default preset used for this packet does not register
   `frontend_hir_tests`; focused coverage for this route was therefore added to
   `frontend_hir_lookup_tests`, which the delegated regex compiles and runs.
