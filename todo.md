@@ -8,23 +8,24 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired the parsed static-member lookup handoff for concrete
-owner/member references. Parser qualified-name metadata now records the owner
-namespace context for class-owner qualifiers, template-instantiated records and
-their cloned fields carry structured record/member `TextId` metadata, and Sema
-now treats a non-template static-member reference with a valid qualifier owner
-key plus member `TextId` as authoritative instead of retrying through
-`structured_record_key_for_tag(tag)` or rendered owner spelling. Focused
-authority coverage mutates rendered static owner/member spelling while
-preserving qualifier/member metadata, and strengthens the stale rendered-owner
-negative case so the old same-member fallback would have accepted it.
+Step 4 audited the remaining `n_template_args > 0` static-member compatibility
+route. Removing the Sema retry through `structured_record_key_for_tag(tag)` and
+switching concrete template-member references to the instantiated owner exposed
+a missing parser-to-Sema carrier for inherited alias-template static members:
+`signed_probe<int>::value` and `is_enum<Color>::value` arrive with concrete
+reference owners, but their inherited base TypeSpecs still carry rendered
+deferred tags such as `integral_constant_bool_$expr:(T(-1)<T(0))` with no
+`record_def` or structured template-argument carrier Sema can traverse.
+The experimental code changes were backed out; no rendered owner/member lookup
+authority was added.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining template-specialization static-member
-compatibility routes. This slice kept existing `n_template_args > 0`
-specialization behavior intact while removing the concrete non-template
-rendered-owner fallback.
+Continue Step 4 by adding a structured parser carrier for alias-template
+deferred NTTP base instantiations before removing the template-specialization
+static-member compatibility route. The next coherent packet should make
+instantiated records such as `signed_probe_T_int` expose a base `record_def` or
+equivalent typed owner/argument metadata for `integral_constant<bool, expr>`.
 
 ## Watchouts
 
@@ -56,6 +57,13 @@ rendered-owner fallback.
   qualifier metadata plus member `TextId`. Generated template-specialization
   references still use their established compatibility route and should be
   handled in a separate focused packet if Step 4 continues there.
+- Removing the `n_template_args > 0` static-member fallback currently regresses
+  `cpp_positive_sema_template_alias_deferred_nttp_expr_runtime_cpp` and
+  `cpp_positive_sema_template_builtin_is_enum_inherited_value_runtime_cpp`.
+  The missing carrier observed during audit is the inherited base TypeSpec for
+  alias-template deferred NTTP expressions: it keeps `$expr:` rendered tag text
+  but lacks `record_def` or structured template-argument metadata after
+  substitution.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
 - `review/step33_final_route_review.md` and prior review artifacts are
@@ -67,6 +75,9 @@ Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)' | tee test_after.log`.
 
 Result: build succeeded and the filtered CTest subset passed
-`885/885` tests. The accepted proof log was rolled forward from
-`test_after.log` to canonical `test_before.log` after the regression guard
-passed.
+`885/885` tests on the restored worktree. During the audit, the attempted
+removal/replacement failed the same delegated subset at
+`cpp_positive_sema_template_alias_deferred_nttp_expr_runtime_cpp` and
+`cpp_positive_sema_template_builtin_is_enum_inherited_value_runtime_cpp`, which
+identified the missing alias-template deferred NTTP base carrier recorded
+above. Final proof log path: `test_after.log`.
