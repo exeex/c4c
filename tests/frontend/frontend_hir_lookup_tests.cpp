@@ -1179,6 +1179,50 @@ void test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag
               "repeated type-parameter deduction should reject mismatched record_def despite matching rendered tags");
 }
 
+void test_pending_type_ref_uses_structured_debug_payload_not_tag() {
+  c4c::TextTable texts;
+
+  c4c::Node record{};
+  record.kind = c4c::NK_STRUCT_DEF;
+  record.name = "StructuredPendingRecord";
+  record.unqualified_text_id = texts.intern("StructuredPendingRecord");
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tag = "StalePendingRenderedTag";
+  ts.tag_text_id = texts.intern("StructuredPendingTag");
+  ts.template_param_text_id = texts.intern("T");
+  ts.deferred_member_type_text_id = texts.intern("type");
+  ts.record_def = &record;
+  ts.ptr_level = 1;
+
+  const std::string encoded = c4c::hir::encode_pending_type_ref(ts);
+
+  expect_true(encoded.find("StalePendingRenderedTag") == std::string::npos,
+              "pending type refs should not depend on stale rendered TypeSpec tag spelling");
+  expect_true(encoded.find("tag_text_id=") != std::string::npos &&
+                  encoded.find("template_param_text_id=") != std::string::npos &&
+                  encoded.find("record_def_text_id=") != std::string::npos,
+              "pending type refs should expose structured debug payload ids");
+}
+
+void test_pending_type_ref_no_metadata_keeps_shape_payload() {
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_TYPEDEF;
+  ts.ptr_level = 2;
+
+  const std::string encoded = c4c::hir::encode_pending_type_ref(ts);
+
+  expect_true(encoded.find("base=") != std::string::npos &&
+                  encoded.find("|ptr=2") != std::string::npos &&
+                  encoded.find("tag_text_id=") != std::string::npos,
+              "pending type refs without name metadata should retain structural shape payload");
+}
+
 void test_pending_consteval_nttp_handoff_carries_text_id_bindings() {
   constexpr std::string_view source = R"cpp(
 template<int N>
@@ -1875,6 +1919,8 @@ int main() {
   test_compile_time_function_specialization_type_arg_record_def_mismatch_rejects_tag();
   test_template_deduction_forwarding_consistency_uses_record_def_identity();
   test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag();
+  test_pending_type_ref_uses_structured_debug_payload_not_tag();
+  test_pending_type_ref_no_metadata_keeps_shape_payload();
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();

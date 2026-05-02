@@ -505,8 +505,14 @@ inline std::string encode_pending_type_ref(const TypeSpec& ts) {
   };
   std::string out;
   out += "base=" + std::to_string(static_cast<int>(ts.base));
-  out += "|tag=";
-  out += ts.tag ? ts.tag : "";
+  out += "|tag_text_id=" + std::to_string(ts.tag_text_id);
+  out += "|template_param_text_id=" +
+         std::to_string(ts.template_param_text_id);
+  out += "|deferred_member_type_text_id=" +
+         std::to_string(ts.deferred_member_type_text_id);
+  out += "|record_def_text_id=" +
+         std::to_string(ts.record_def ? ts.record_def->unqualified_text_id
+                                      : kInvalidText);
   out += "|ptr=" + std::to_string(ts.ptr_level);
   out += "|arr=" + std::to_string(ts.array_rank);
   out += "|origin=";
