@@ -8,34 +8,29 @@ Current Step Title: Add Structured HIR Record-Layout Handoff
 
 ## Just Finished
 
-Step 3 - Add Structured HIR Record-Layout Handoff now has a second bounded HIR
-record-layout migration. The HIR builtin layout query helper used by lowered
-`sizeof(type)` / `alignof(type)` now accepts the full `TypeSpec`, derives a
-`HirRecordOwnerKey` from `record_def` / TextId metadata when present, and uses
+Step 3 - Add Structured HIR Record-Layout Handoff now has a bounded global
+aggregate-init normalization migration. `Lowerer::find_struct_def_for_layout_type`
+centralizes metadata-backed layout lookup for `TypeSpec`, preferring
+`record_def` / TextId-derived `HirRecordOwnerKey` and
 `Module::find_struct_def_by_owner_structured` before falling back to rendered
 `TypeSpec::tag`.
 
-Focused coverage proves both builtin `sizeof` and builtin `alignof` choose the
-structured HIR owner layout when the rendered tag points at a stale record.
+The aggregate-init normalization family now uses that helper for flat scalar
+counting, struct/union normalization eligibility, recursive flat-list
+consumption, and top-level struct/union normalization. Rendered
+`Module::struct_defs` lookup remains the explicit no-metadata compatibility
+fallback inside the helper.
 
-Step 3 direct `Module::struct_defs` consumer classification from this audit:
-layout storage/final payload (`Module::struct_defs`, insertion/order,
-`struct_def_owner_index` values), display/dump/codegen payloads
-(`inspect/printer`, `hir_build` emission checks, generated template struct
-names), metadata-backed semantic layout routes already migrated in this step
-(Sema consteval layout lookup and HIR builtin layout queries), metadata-backed
-semantic routes still worth future migration (global aggregate init
-normalization, flat scalar counting, member/object owner recovery, inherited
-field lookup), and no-metadata/generated-name compatibility routes (template
-materialization by mangled specialization name, pack/deferred template helpers,
-fallback method/constructor lookups when only a rendered tag is available).
+Focused coverage proves global aggregate-init normalization maps fields from
+the structured owner layout when the rendered tag points at a stale one-field
+record.
 
 ## Suggested Next
 
-Continue Step 3 with one more metadata-backed HIR semantic layout route if the
-supervisor wants a broader Step 3 slice: global aggregate-init normalization
-is the next likely candidate because it receives `TypeSpec` and currently
-recurses through rendered `struct_defs` lookups.
+Continue Step 3 by auditing the remaining metadata-backed HIR record-layout
+consumers outside consteval, builtin layout queries, and aggregate-init
+normalization; member/object owner recovery and inherited field lookup are the
+next likely semantic routes if Step 3 needs another slice.
 
 ## Watchouts
 
@@ -48,9 +43,9 @@ recurses through rendered `struct_defs` lookups.
 - Do not count mangled/link-visible strings or HIR dump strings as cleanup
   targets unless they are used to recover semantic identity.
 - Record-layout cleanup is a separate boundary from NTTP cleanup. Sema
-  consteval and HIR builtin layout queries now receive/use owner metadata, but
-  several HIR lowering/layout consumers still query rendered `Module::struct_defs`
-  directly.
+  consteval, HIR builtin layout queries, and global aggregate-init
+  normalization now receive/use owner metadata, but several HIR lowering/layout
+  consumers still query rendered `Module::struct_defs` directly.
 - Residual rendered `NttpBindings` uses should not be removed mechanically:
   several are ABI/display/cache payloads, pack synthetic-key compatibility, or
   deferred expression/debug-text boundaries without a complete structured

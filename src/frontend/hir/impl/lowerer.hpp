@@ -753,6 +753,8 @@ class Lowerer {
 
   bool is_string_scalar(const GlobalInit& init) const;
 
+  const HirStructDef* find_struct_def_for_layout_type(const TypeSpec& ts) const;
+
   long long flat_scalar_count(const TypeSpec& ts) const;
 
   long long deduce_array_size_from_init(const GlobalInit& init) const;

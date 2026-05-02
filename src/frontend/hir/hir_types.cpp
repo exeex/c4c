@@ -925,6 +925,44 @@ bool Lowerer::is_string_scalar(const GlobalInit& init) const {
   return std::holds_alternative<StringLiteral>(e.payload);
 }
 
+const HirStructDef* Lowerer::find_struct_def_for_layout_type(const TypeSpec& ts) const {
+  if (!module_ ||
+      (ts.base != TB_STRUCT && ts.base != TB_UNION) ||
+      ts.ptr_level != 0) {
+    return nullptr;
+  }
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    if (const std::optional<HirRecordOwnerKey> owner_key =
+            make_struct_def_node_owner_key(ts.record_def)) {
+      if (const HirStructDef* structured =
+              module_->find_struct_def_by_owner_structured(*owner_key)) {
+        return structured;
+      }
+    }
+  }
+  if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = ts.namespace_context_id;
+    ns_qual.is_global_qualified = ts.is_global_qualified;
+    if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          ts.qualifier_text_ids,
+          ts.qualifier_text_ids + ts.n_qualifier_segments);
+    }
+    const HirRecordOwnerKey owner_key =
+        make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+    if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+      if (const HirStructDef* structured =
+              module_->find_struct_def_by_owner_structured(owner_key)) {
+        return structured;
+      }
+    }
+  }
+  if (!ts.tag || !ts.tag[0]) return nullptr;
+  const auto it = module_->struct_defs.find(ts.tag);
+  return it == module_->struct_defs.end() ? nullptr : &it->second;
+}
+
 long long Lowerer::flat_scalar_count(const TypeSpec& ts) const {
   if (is_vector_ty(ts)) return ts.vector_lanes > 0 ? ts.vector_lanes : 1;
   if (ts.array_rank > 0) {
@@ -934,10 +972,10 @@ long long Lowerer::flat_scalar_count(const TypeSpec& ts) const {
     elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
     return ts.array_size * flat_scalar_count(elem_ts);
   }
-  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
-    const auto it = module_->struct_defs.find(ts.tag);
-    if (it == module_->struct_defs.end()) return 1;
-    const auto& sd = it->second;
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
+    const HirStructDef* layout = find_struct_def_for_layout_type(ts);
+    if (!layout) return 1;
+    const auto& sd = *layout;
     if (sd.fields.empty()) return 1;
     if (sd.is_union) return flat_scalar_count(field_type_of(sd.fields.front()));
     long long count = 0;
@@ -1010,10 +1048,10 @@ bool Lowerer::is_direct_char_array_init(const TypeSpec& ts, const GlobalInit& in
 }
 
 bool Lowerer::union_allows_init_normalization(const TypeSpec& ts) const {
-  if (ts.base != TB_UNION || ts.ptr_level != 0 || !ts.tag || !ts.tag[0]) return false;
-  const auto it = module_->struct_defs.find(ts.tag);
-  if (it == module_->struct_defs.end()) return false;
-  const auto& sd = it->second;
+  if (ts.base != TB_UNION || ts.ptr_level != 0) return false;
+  const HirStructDef* layout = find_struct_def_for_layout_type(ts);
+  if (!layout) return false;
+  const auto& sd = *layout;
   if (!sd.is_union || sd.fields.empty()) return false;
   for (const auto& field : sd.fields) {
     TypeSpec field_ts = field_init_type_of(field);
@@ -1031,10 +1069,10 @@ bool Lowerer::union_allows_init_normalization(const TypeSpec& ts) const {
 }
 
 bool Lowerer::struct_allows_init_normalization(const TypeSpec& ts) const {
-  if (ts.base != TB_STRUCT || ts.ptr_level != 0 || !ts.tag || !ts.tag[0]) return false;
-  const auto it = module_->struct_defs.find(ts.tag);
-  if (it == module_->struct_defs.end()) return false;
-  const auto& sd = it->second;
+  if (ts.base != TB_STRUCT || ts.ptr_level != 0) return false;
+  const HirStructDef* layout = find_struct_def_for_layout_type(ts);
+  if (!layout) return false;
+  const auto& sd = *layout;
   if (sd.is_union) return false;
   for (size_t fi = 0; fi < sd.fields.size(); ++fi) {
     const auto& field = sd.fields[fi];
@@ -1164,13 +1202,13 @@ GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& 
       return out;
     }
     if ((cur_ts.base == TB_STRUCT || cur_ts.base == TB_UNION) &&
-        cur_ts.ptr_level == 0 && cur_ts.tag) {
-      const auto sit = module_->struct_defs.find(cur_ts.tag);
-      if (sit == module_->struct_defs.end()) {
+        cur_ts.ptr_level == 0) {
+      const HirStructDef* layout = find_struct_def_for_layout_type(cur_ts);
+      if (!layout) {
         ++cursor;
         return std::monostate{};
       }
-      const auto& sd = sit->second;
+      const auto& sd = *layout;
       if (sd.is_union) {
         InitList out{};
         if (!sd.fields.empty()) {
@@ -1257,10 +1295,10 @@ GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& 
     return out;
   }
 
-  if (ts.base == TB_UNION && ts.ptr_level == 0 && ts.tag) {
-    const auto sit = module_->struct_defs.find(ts.tag);
-    if (sit == module_->struct_defs.end()) return init;
-    const auto& sd = sit->second;
+  if (ts.base == TB_UNION && ts.ptr_level == 0) {
+    const HirStructDef* layout = find_struct_def_for_layout_type(ts);
+    if (!layout) return init;
+    const auto& sd = *layout;
     if (!sd.is_union || sd.fields.empty()) return init;
 
     size_t idx = 0;
@@ -1295,13 +1333,13 @@ GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& 
     return out;
   }
 
-  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
     const auto* list = std::get_if<InitList>(&init);
-    const auto sit = module_->struct_defs.find(ts.tag);
-    if (sit == module_->struct_defs.end()) {
+    const HirStructDef* layout = find_struct_def_for_layout_type(ts);
+    if (!layout) {
       return list ? init : normalize_scalar_like(ts, init);
     }
-    const auto& sd = sit->second;
+    const auto& sd = *layout;
     if (sd.is_union) return init;
     if (!struct_allows_init_normalization(ts)) {
       return list ? init : normalize_scalar_like(ts, init);

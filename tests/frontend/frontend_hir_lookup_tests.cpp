@@ -1167,6 +1167,88 @@ void test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag() {
               "HIR builtin alignof should prefer structured owner layout over stale rendered tag");
 }
 
+void test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  c4c::Arena arena;
+
+  c4c::Node* record_node = arena.alloc_array<c4c::Node>(1);
+  record_node->kind = c4c::NK_STRUCT_DEF;
+  record_node->name = arena.strdup("RealAggregateLayout");
+  record_node->unqualified_name = arena.strdup("RealAggregateLayout");
+  record_node->unqualified_text_id =
+      module.link_name_texts->intern("RealAggregateLayout");
+  record_node->namespace_context_id = 31;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  auto make_field = [&](const char* name, int llvm_idx) {
+    c4c::hir::HirStructField field;
+    field.name = name;
+    field.field_text_id = module.link_name_texts->intern(name);
+    field.elem_type = int_ts;
+    field.llvm_idx = llvm_idx;
+    field.size_bytes = 4;
+    field.align_bytes = 4;
+    return field;
+  };
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealAggregateLayout";
+  real_def.tag_text_id = record_node->unqualified_text_id;
+  real_def.ns_qual.context_id = record_node->namespace_context_id;
+  real_def.size_bytes = 8;
+  real_def.align_bytes = 4;
+  real_def.fields.push_back(make_field("first", 0));
+  real_def.fields.push_back(make_field("second", 1));
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(real_def);
+  module.index_struct_def_owner(owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleAggregateLayout";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleAggregateLayout");
+  stale_def.ns_qual.context_id = record_node->namespace_context_id;
+  stale_def.size_bytes = 4;
+  stale_def.align_bytes = 4;
+  stale_def.fields.push_back(make_field("wrong", 0));
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  query.tag = "StaleAggregateLayout";
+  query.tag_text_id = record_node->unqualified_text_id;
+  query.namespace_context_id = record_node->namespace_context_id;
+  query.record_def = record_node;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  c4c::hir::InitList init;
+  c4c::hir::InitListItem first;
+  first.value = c4c::hir::InitScalar{c4c::hir::ExprId{0}};
+  init.items.push_back(first);
+  c4c::hir::InitListItem second;
+  second.value = c4c::hir::InitScalar{c4c::hir::ExprId{1}};
+  init.items.push_back(second);
+
+  const c4c::hir::GlobalInit normalized =
+      lowerer.normalize_global_init(query, c4c::hir::GlobalInit(init));
+  const auto* normalized_list = std::get_if<c4c::hir::InitList>(&normalized);
+  expect_true(normalized_list && normalized_list->items.size() == 2,
+              "aggregate init normalization should use the structured owner field count");
+  expect_true(normalized_list->items[0].field_designator &&
+                  *normalized_list->items[0].field_designator == "first",
+              "aggregate init normalization should map the first structured owner field");
+  expect_true(normalized_list->items[1].field_designator &&
+                  *normalized_list->items[1].field_designator == "second",
+              "aggregate init normalization should map the second structured owner field");
+}
+
 }  // namespace
 
 int main() {
@@ -1183,6 +1265,7 @@ int main() {
   test_static_member_nttp_const_eval_prefers_text_id_binding();
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
+  test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }
