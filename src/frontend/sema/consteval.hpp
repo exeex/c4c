@@ -229,9 +229,7 @@ struct ConstEvalEnv {
         has_authoritative_metadata ||
         text.status == ConstEvalValueLookupStatus::Miss;
     if (has_authoritative_metadata) {
-      if (auto nttp = lookup_rendered_nttp_compatibility(
-              n, structured.local_binding_metadata_miss ||
-                     text.local_binding_metadata_miss)) {
+      if (auto nttp = lookup_rendered_nttp_compatibility(n)) {
         return nttp;
       }
       return std::nullopt;
@@ -242,8 +240,7 @@ struct ConstEvalEnv {
 
  private:
   std::optional<long long> lookup_rendered_nttp_compatibility(
-      const Node* n,
-      bool local_binding_metadata_miss) const {
+      const Node* n) const {
     if (!n || !n->name || !nttp_bindings) return std::nullopt;
     const auto local = local_key(n);
     if (auto result = lookup_key_map_status(nttp_bindings_by_key, local);
@@ -260,11 +257,6 @@ struct ConstEvalEnv {
       } else if (result.status == ConstEvalValueLookupStatus::Miss) {
         return std::nullopt;
       }
-    }
-    if (local_binding_metadata_miss &&
-        ((nttp_bindings_by_key && !nttp_bindings_by_key->empty()) ||
-         (nttp_bindings_by_text && !nttp_bindings_by_text->empty()))) {
-      return std::nullopt;
     }
     auto it = nttp_bindings->find(n->name);
     if (it != nttp_bindings->end()) return it->second;

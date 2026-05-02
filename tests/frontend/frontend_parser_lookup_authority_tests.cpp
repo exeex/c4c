@@ -2009,6 +2009,49 @@ void test_consteval_forwarded_nttp_uses_text_id_not_rendered_name() {
               "name lookup after authoritative TextId metadata misses");
 }
 
+void test_consteval_nttp_rejects_rendered_after_structured_or_text_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId structured_text = texts.intern("StructuredN");
+  const c4c::TextId other_text = texts.intern("OtherN");
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 1);
+  ref->name = arena.strdup("RenderedN");
+  ref->unqualified_name = arena.strdup("StructuredN");
+  ref->unqualified_text_id = structured_text;
+  ref->namespace_context_id = parser.current_namespace_context_id();
+
+  std::unordered_map<std::string, long long> rendered_nttp;
+  rendered_nttp["RenderedN"] = 42;
+
+  c4c::hir::ConstEvalEnv env;
+  env.nttp_bindings = &rendered_nttp;
+  expect_true(env.lookup(ref).has_value() && *env.lookup(ref) == 42,
+              "legacy rendered NTTP lookup remains available when no "
+              "parser/Sema metadata exists");
+
+  c4c::hir::ConstTextMap nttp_by_text;
+  nttp_by_text[other_text] = 7;
+  env.nttp_bindings_by_text = &nttp_by_text;
+  expect_true(!env.lookup(ref).has_value(),
+              "consteval lookup should not reopen rendered NTTP binding "
+              "lookup after authoritative TextId metadata misses");
+
+  env.nttp_bindings_by_text = nullptr;
+  c4c::hir::ConstStructuredMap nttp_by_key;
+  c4c::hir::ConstEvalStructuredNameKey other_key;
+  other_key.base_text_id = other_text;
+  nttp_by_key[other_key] = 9;
+  env.nttp_bindings_by_key = &nttp_by_key;
+  expect_true(!env.lookup(ref).has_value(),
+              "consteval lookup should not reopen rendered NTTP binding "
+              "lookup after authoritative structured metadata misses");
+}
+
 void test_parser_deferred_nttp_default_uses_structured_binding_metadata() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3568,6 +3611,7 @@ int main() {
   test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
   test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();
+  test_consteval_nttp_rejects_rendered_after_structured_or_text_miss();
   test_parser_deferred_nttp_default_uses_structured_binding_metadata();
   test_alias_template_deferred_nttp_bases_carry_structured_record_def();
   test_alias_template_nttp_base_carrier_ignores_stale_debug_text();

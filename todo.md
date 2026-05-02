@@ -8,28 +8,26 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 tightened the remaining parser-owned `$expr:` / rendered-template-arg
-route in `Parser::parse_base_type`. The exact routes examined were the direct
-template prelim evaluator branch that previously re-lexed `ParsedTemplateArg`
-`nttp_name` when it began with `$expr:`, plus the rendered pending-template
-helpers `render_template_arg_ref()` and `template_arg_refs_text()` that could
-preserve `$expr:` debug spelling for value args even when `ParsedTemplateArg`
-`expr`, `captured_expr_tokens`, `nttp_text_id`, or `TemplateArgRef` value
-`TypeSpec::array_size_expr` carriers existed.
+Step 4 tightened the Sema consteval NTTP rendered-name compatibility route in
+`ConstEvalEnv::lookup_rendered_nttp_compatibility()`. The exact route examined
+was `ConstEvalEnv::lookup(Node*)` after a structured or TextId metadata miss:
+the compatibility helper still checked structured/TextId NTTP maps first, but
+could then fall through to flat rendered `nttp_bindings` unless the miss was
+classified as local-binding metadata.
 
-The evaluator-side `$expr:` re-lex branch is now gated by
-`parsed_nttp_arg_has_structured_carrier()`, and the rendered helpers now avoid
-debug-text fallback when a value arg has a structured parser carrier. Added
-same-feature drift coverage for pending direct value args with parsed-expression
-and `nttp_text_id` carriers, plus nested pending rendered args that previously
-could preserve `$expr:` text after a `TypeSpec::array_size_expr` carrier was
-available.
+The helper now rejects rendered `nttp_bindings` lookup whenever
+`nttp_bindings_by_key` or `nttp_bindings_by_text` has authoritative metadata
+for the carried NTTP name and misses. The legacy rendered map remains available
+only when no NTTP structured/TextId carrier participates. Added focused drift
+coverage proving the legacy no-metadata path still works, while mismatched
+NTTP TextId and structured metadata both block stale rendered `nttp_bindings`
+re-entry.
 
 ## Suggested Next
 
 Continue Step 4 by selecting another parser/Sema metadata handoff that remains
-inside parser/Sema ownership, or route direct nested template-origin carrier
-promotion separately through the known HIR owner-struct pending blocker.
+inside parser/Sema ownership, with special attention to any remaining flat
+rendered compatibility maps that sit behind structured/TextId miss results.
 
 ## Watchouts
 
@@ -46,6 +44,10 @@ promotion separately through the known HIR owner-struct pending blocker.
 - The remaining `$expr:` re-lex branch is compatibility-only for value args
   with no `ParsedTemplateArg::expr`, no value-arg `TypeSpec::array_size_expr`,
   no `ParsedTemplateArg::nttp_text_id`, and no `captured_expr_tokens`.
+- `lookup_rendered_nttp_compatibility()` is still needed for older consteval
+  NTTP parameter references that have no NTTP structured/TextId binding
+  carrier. Do not broaden the gate to all local/named const metadata misses
+  without first promoting those references to structured NTTP metadata.
 - `captured_expr_tokens` is parser-local structured metadata. Do not promote
   stale `nttp_name`/`$expr:` text back to semantic authority when the token
   carrier exists.
@@ -67,7 +69,7 @@ promotion separately through the known HIR owner-struct pending blocker.
 ## Proof
 
 Ran the delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build completed successfully; CTest passed `887/887` matched tests.
+Result: build completed successfully; CTest passed `886/886` matched tests.
 Final proof log path: `test_after.log`.
