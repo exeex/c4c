@@ -8,22 +8,19 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 removed the isolated alias-template rendered comma-split arg-ref
-fallback. Alias-template substitution now keeps fully no-carrier debug-only
-`TB_VOID` type refs as compatibility/display metadata instead of promoting
-their rendered text into semantic substitution authority.
-
-Added same-feature drift coverage for the removed route:
-`test_alias_template_no_carrier_debug_arg_stays_debug_only` constructs the
-fully no-carrier debug-only alias-template case and proves it remains
-debug-only after `Alias<int>` parsing.
+Step 4 tightened the base-instantiation handoff after
+`ensure_template_struct_instantiated_from_args(...)` succeeds or fails without
+attaching `TypeSpec::record_def`. Structured base carriers now materialize the
+record only after validating the instantiated node's template origin and
+concrete template arguments; rendered `struct_tag_def_map` lookup remains only
+for the no-carrier compatibility path.
 
 ## Suggested Next
 
 Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
-the supervisor. Any future real producer that needs alias-template type-arg
-substitution must preserve the parsed `TypeSpec`/`TemplateArgRef` carrier
-instead of relying on rendered debug text.
+the supervisor. A likely follow-up is moving the validated record
+materialization into the template-instantiation producer so callers do not need
+to repair a missing `record_def` after instantiation.
 
 ## Watchouts
 
@@ -59,9 +56,10 @@ instead of relying on rendered debug text.
   leaves the instantiation incomplete/deferred rather than reopening rendered
   `template_param_default_exprs` text.
 - The rendered base-arg reconstruction path is removed for the Step 4 base
-  handoff. The only remaining fallback in that local area is rendered-tag map
-  lookup after instantiation fails to attach `TypeSpec::record_def`; do not use
-  that map lookup as template-argument semantic authority.
+  handoff. The Step 4 base-instantiation path now gates rendered-tag map
+  recovery behind absence of structured carriers. If structured carriers exist,
+  the handoff validates the instantiated node's origin and concrete args before
+  attaching `record_def`; do not weaken that check into rendered-name authority.
 - Direct template-instantiation explicit value args now have a structured
   parsed-expression/TemplateArgRef-expression/TextId first path. The remaining
   `$expr:` re-lex branch in that preliminary binding pass is compatibility-only

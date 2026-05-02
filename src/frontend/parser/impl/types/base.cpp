@@ -12,6 +12,7 @@
 #include <unordered_set>
 
 #include "types_helpers.hpp"
+#include "sema/type_utils.hpp"
 
 namespace c4c {
 
@@ -4347,9 +4348,85 @@ TypeSpec Parser::parse_base_type() {
                                         inst->base_types[bi] = resolved_member;
                                         return true;
                                     };
+                                    auto materialize_structured_base_record =
+                                        [&](const std::string& base_mangled,
+                                            const Node* primary,
+                                            const std::vector<ParsedTemplateArg>& args)
+                                            -> Node* {
+                                        if (!primary || base_mangled.empty()) {
+                                            return nullptr;
+                                        }
+                                        auto it =
+                                            definition_state_.struct_tag_def_map.find(
+                                                base_mangled);
+                                        if (it ==
+                                            definition_state_.struct_tag_def_map.end()) {
+                                            return nullptr;
+                                        }
+                                        Node* candidate = it->second;
+                                        if (!candidate ||
+                                            candidate->kind != NK_STRUCT_DEF) {
+                                            return nullptr;
+                                        }
+                                        const char* expected_origin =
+                                            primary->template_origin_name &&
+                                                    primary->template_origin_name[0]
+                                                ? primary->template_origin_name
+                                                : primary->name;
+                                        const char* candidate_origin =
+                                            candidate->template_origin_name &&
+                                                    candidate->template_origin_name[0]
+                                                ? candidate->template_origin_name
+                                                : candidate->name;
+                                        if (!expected_origin || !candidate_origin ||
+                                            std::strcmp(expected_origin,
+                                                        candidate_origin) != 0) {
+                                            return nullptr;
+                                        }
+                                        if (candidate->n_template_args <
+                                                static_cast<int>(args.size()) ||
+                                            !candidate->template_arg_is_value) {
+                                            return nullptr;
+                                        }
+                                        for (int ai = 0;
+                                             ai < static_cast<int>(args.size());
+                                             ++ai) {
+                                            const ParsedTemplateArg& arg = args[ai];
+                                            if (candidate->template_arg_is_value[ai] !=
+                                                arg.is_value) {
+                                                return nullptr;
+                                            }
+                                            if (arg.is_value) {
+                                                if (!candidate->template_arg_values ||
+                                                    candidate
+                                                            ->template_arg_values[ai] !=
+                                                        arg.value) {
+                                                    return nullptr;
+                                                }
+                                                continue;
+                                            }
+                                            if (!candidate->template_arg_types ||
+                                                !type_binding_values_equivalent(
+                                                    candidate
+                                                        ->template_arg_types[ai],
+                                                    arg.type)) {
+                                                return nullptr;
+                                            }
+                                        }
+                                        return candidate;
+                                    };
                                     if (inst->base_types[bi].tpl_struct_args.data &&
                                         inst->base_types[bi].tpl_struct_args.size > 0 &&
                                         base_primary) {
+                                        const bool base_has_structured_carrier =
+                                            inst->base_types[bi].record_def ||
+                                            inst->base_types[bi]
+                                                    .tpl_struct_origin_key
+                                                    .base_text_id != kInvalidText ||
+                                            (inst->base_types[bi]
+                                                 .tpl_struct_args.data &&
+                                             inst->base_types[bi]
+                                                     .tpl_struct_args.size > 0);
                                         bool can_use_typed_args = true;
                                         std::vector<ParsedTemplateArg> base_args;
                                         std::vector<bool> base_arg_uses_default;
@@ -4586,11 +4663,20 @@ TypeSpec Parser::parse_base_type() {
                                                         resolve_record_type_spec(
                                                             inst->base_types[bi],
                                                             nullptr);
-                                                    if (!base_def) {
+                                                    if (!base_def &&
+                                                        base_has_structured_carrier) {
+                                                        base_def =
+                                                            materialize_structured_base_record(
+                                                                base_mangled,
+                                                                base_primary,
+                                                                base_args);
+                                                    } else if (!base_def) {
                                                         // Rendered-tag map lookup is a
-                                                        // compatibility fallback when
-                                                        // instantiation did not attach
-                                                        // TypeSpec::record_def.
+                                                        // no-carrier compatibility
+                                                        // fallback only. Structured
+                                                        // parser/Sema carriers must
+                                                        // not rediscover records by
+                                                        // rendered spelling here.
                                                         auto base_def_it =
                                                             definition_state_.struct_tag_def_map.find(
                                                                 base_mangled);
@@ -4629,6 +4715,12 @@ TypeSpec Parser::parse_base_type() {
                                     }
                                     base_primary = find_instantiated_base_primary();
                                     if (base_primary) {
+                                        const bool base_has_structured_carrier =
+                                            inst->base_types[bi].record_def ||
+                                            inst->base_types[bi]
+                                                    .tpl_struct_origin_key
+                                                    .base_text_id != kInvalidText ||
+                                            base_has_structured_arg_carrier;
                                         // No explicit carrier remains. The only
                                         // parser/Sema-owned case here is a
                                         // default-only base such as Base<>.
@@ -4705,11 +4797,20 @@ TypeSpec Parser::parse_base_type() {
                                                     resolve_record_type_spec(
                                                         inst->base_types[bi],
                                                         nullptr);
-                                                if (!base_def) {
+                                                if (!base_def &&
+                                                    base_has_structured_carrier) {
+                                                    base_def =
+                                                        materialize_structured_base_record(
+                                                            base_mangled,
+                                                            base_primary,
+                                                            base_args);
+                                                } else if (!base_def) {
                                                     // Rendered-tag map lookup is a
-                                                    // compatibility fallback when
-                                                    // instantiation did not attach
-                                                    // TypeSpec::record_def.
+                                                    // no-carrier compatibility
+                                                    // fallback only. Structured
+                                                    // parser/Sema carriers must
+                                                    // not rediscover records by
+                                                    // rendered spelling here.
                                                     auto base_def_it =
                                                         definition_state_
                                                             .struct_tag_def_map
@@ -4740,27 +4841,30 @@ TypeSpec Parser::parse_base_type() {
                                                     inst->base_types[bi].record_def =
                                                         base_def;
                                                 }
-                                            } else if (auto base_def_it =
+                                            } else if (!base_has_structured_carrier) {
+                                                if (auto base_def_it =
                                                            definition_state_
                                                                .struct_tag_def_map
                                                                .find(base_mangled);
                                                        base_def_it !=
                                                        definition_state_
                                                            .struct_tag_def_map.end()) {
-                                                // Rendered-tag map lookup is the only
-                                                // compatibility path left when
-                                                // instantiation failed to return a
-                                                // TypeSpec carrier.
-                                                inst->base_types[bi] = TypeSpec{};
-                                                inst->base_types[bi].array_size = -1;
-                                                inst->base_types[bi].inner_rank = -1;
-                                                inst->base_types[bi].base = TB_STRUCT;
-                                                inst->base_types[bi].tag =
-                                                    arena_.strdup(
-                                                        base_mangled.c_str());
-                                                inst->base_types[bi].record_def =
-                                                    base_def_it->second;
-                                                restore_deferred_member_lookup();
+                                                    // Rendered-tag map lookup is the
+                                                    // only compatibility path left when
+                                                    // instantiation failed and no
+                                                    // structured TypeSpec carrier is
+                                                    // available.
+                                                    inst->base_types[bi] = TypeSpec{};
+                                                    inst->base_types[bi].array_size = -1;
+                                                    inst->base_types[bi].inner_rank = -1;
+                                                    inst->base_types[bi].base = TB_STRUCT;
+                                                    inst->base_types[bi].tag =
+                                                        arena_.strdup(
+                                                            base_mangled.c_str());
+                                                    inst->base_types[bi].record_def =
+                                                        base_def_it->second;
+                                                    restore_deferred_member_lookup();
+                                                }
                                             }
                                         }
                                     }
