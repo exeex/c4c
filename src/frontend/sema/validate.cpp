@@ -1550,27 +1550,7 @@ class Validator {
     return key;
   }
 
-  static bool is_template_specialized_static_member_reference(const Node* reference) {
-    return reference && (reference->has_template_args || reference->n_template_args > 0);
-  }
-
-  bool static_member_lookup_has_structured_metadata(
-      const std::string& tag, const Node* reference) const {
-    (void)tag;
-    if (!reference || reference->unqualified_text_id == kInvalidText) return false;
-    auto reference_key = static_member_owner_key_from_reference(reference);
-    if (reference_key.has_value() && reference_key->valid()) {
-      if (reference->n_template_args <= 0) return true;
-      bool has_metadata = false;
-      (void)lookup_struct_static_member_type_by_key(
-          *reference_key, reference->unqualified_text_id, &has_metadata);
-      return has_metadata;
-    }
-    return false;
-  }
-
-  std::optional<TypeSpec> lookup_struct_static_member_type(
-      const std::string& tag, const Node* reference) const {
+  std::optional<TypeSpec> lookup_struct_static_member_type(const Node* reference) const {
     if (reference && reference->unqualified_text_id != kInvalidText) {
       auto reference_key = static_member_owner_key_from_reference(reference);
       if (reference_key.has_value() && reference_key->valid()) {
@@ -1581,11 +1561,6 @@ class Validator {
             has_metadata) {
           return structured;
         }
-      }
-      if (auto record_key = structured_record_key_for_tag(tag); record_key.has_value()) {
-        auto structured = lookup_struct_static_member_type_by_key(
-            *record_key, reference->unqualified_text_id);
-        if (structured.has_value()) return structured;
       }
     }
     return std::nullopt;
@@ -2470,24 +2445,13 @@ class Validator {
         std::string qname = n->name;
         size_t scope_pos = qname.rfind("::");
         if (scope_pos != std::string::npos) {
-          std::string struct_tag = qname.substr(0, scope_pos);
-          if (auto mts = lookup_struct_static_member_type(struct_tag, n)) {
+          if (auto mts = lookup_struct_static_member_type(n)) {
             out.valid = true;
             out.type = *mts;
             out.is_lvalue = true;
             out.is_const_lvalue = out.type.is_const &&
                                   out.type.ptr_level == 0 &&
                                   out.type.array_rank == 0;
-            return out;
-          }
-          // If base chain has unresolved pending template types ($expr:),
-          // accept the lookup optimistically — the HIR will resolve it.
-          if (!is_template_specialized_static_member_reference(n) &&
-              !static_member_lookup_has_structured_metadata(struct_tag, n) &&
-              (complete_structs_.count(struct_tag) || complete_unions_.count(struct_tag))) {
-            out.valid = true;
-            out.type = make_int_ts();
-            out.is_lvalue = true;
             return out;
           }
         }

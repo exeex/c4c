@@ -821,6 +821,75 @@ void test_sema_template_static_member_lookup_rejects_rendered_after_metadata_mis
               "owner acceptance when structured owner/member metadata is absent");
 }
 
+void test_sema_static_member_lookup_rejects_rendered_after_metadata_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId rendered_owner_text = texts.intern("RenderedOwner");
+  const c4c::TextId stale_text = texts.intern("stale");
+
+  c4c::Node* rendered_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  rendered_owner->name = arena.strdup("RenderedOwner");
+  rendered_owner->unqualified_name = arena.strdup("RenderedOwner");
+  rendered_owner->unqualified_text_id = rendered_owner_text;
+  rendered_owner->namespace_context_id = parser.current_namespace_context_id();
+  rendered_owner->n_fields = 1;
+  rendered_owner->fields = arena.alloc_array<c4c::Node*>(1);
+
+  c4c::Node* stale = parser.make_node(c4c::NK_DECL, 1);
+  stale->name = arena.strdup("stale");
+  stale->unqualified_name = arena.strdup("stale");
+  stale->unqualified_text_id = stale_text;
+  stale->namespace_context_id = rendered_owner->namespace_context_id;
+  stale->is_static = true;
+  stale->type = make_ts(c4c::TB_INT);
+  rendered_owner->fields[0] = stale;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("RenderedOwner::stale");
+  ref->unqualified_name = arena.strdup("stale");
+  ref->unqualified_text_id = stale_text;
+  ref->namespace_context_id = rendered_owner->namespace_context_id;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("rejects_rendered_member");
+  fn->unqualified_name = arena.strdup("rejects_rendered_member");
+  fn->unqualified_text_id = texts.intern("rejects_rendered_member");
+  fn->namespace_context_id = rendered_owner->namespace_context_id;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = rendered_owner;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema static-member lookup should reject rendered owner "
+              "acceptance when structured owner metadata is absent");
+}
+
 void test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift() {
   const char* source =
       "struct Owner {\n"
@@ -2476,6 +2545,7 @@ int main() {
   test_sema_static_member_lookup_rejects_stale_rendered_owner_reentry();
   test_sema_template_static_member_lookup_rejects_stale_rendered_owner_reentry();
   test_sema_template_static_member_lookup_rejects_rendered_after_metadata_miss();
+  test_sema_static_member_lookup_rejects_rendered_after_metadata_miss();
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
   test_sema_instance_field_lookup_rejects_stale_member_spelling();
   test_parsed_record_fields_carry_member_text_ids_into_sema();

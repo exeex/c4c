@@ -8,24 +8,32 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 removed the remaining rendered-owner static-member acceptance for
-template-specialized references that carry template-argument metadata. Sema now
-keeps the legacy rendered-owner completeness escape hatch only for
-non-template-specialized references; `NK_VAR` static-member references with
-`has_template_args` or `n_template_args > 0` must resolve through structured
-owner/member metadata or fail.
+Step 4 deleted the retained non-template rendered-owner static-member
+acceptance. Sema no longer accepts `Owner::member` by slicing rendered
+`Node::name`, rediscovering the owner through `structured_record_key_for_tag`,
+or treating a rendered complete struct/union name as enough authority. Static
+member lookup now resolves through the reference's structured owner
+`qualifier_text_ids` plus `unqualified_text_id`, including inherited static
+members through recorded base keys, or fails.
 
-The lookup-authority regression now includes a no-metadata
-`RenderedOwner<int>::stale` static-member reference that previously could pass
-only through rendered owner completeness. Existing alias NTTP and dependent
-member-typedef base routes still pass through structured base `record_def`
-metadata despite rendered/debug-text drift.
+The packet also repaired the adjacent parser handoff for
+`Template<qualified-type>::member`: when `parse_base_type()` produces a
+concrete instantiated owner without a template-origin carrier, the generated
+`NK_VAR` now carries the instantiated record/tag `TextId` as one owner segment
+instead of splitting `::` embedded inside the specialization spelling. Existing
+template-origin carriers are preserved for dependent trait/value routes.
+
+The lookup-authority regression now includes a non-template
+`RenderedOwner::stale` reference with only member TextId metadata and no
+structured owner metadata. That case previously passed through rendered owner
+text and now fails.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing whether the retained non-template rendered-owner
-static-member acceptance can be removed or narrowed without crossing into HIR
-or lifecycle source edits.
+Continue Step 4 by reviewing the remaining parser/Sema compatibility notes for
+`$expr:` carriers and deferred member-template origin lookup, and choose the
+next removable rendered/text authority route that can be proven without HIR
+edits.
 
 ## Watchouts
 
@@ -34,11 +42,17 @@ or lifecycle source edits.
   because the current AST handoff does not let Sema distinguish them from C
   global redeclarations without weakening C behavior. Preserve C and
   `extern "C"` rejection until a structured language/linkage carrier exists.
-- Template-specialized static-member lookup now depends on the parser setting
-  `has_template_args` or `n_template_args` on the generated reference. If a
-  future specialized reference still reaches rendered-owner acceptance, the
-  exact missing carrier is that template-specialization marker on the
-  static-member `NK_VAR`.
+- Static-member lookup now depends on parser/Sema owner and member metadata.
+  A generated `NK_VAR` for `Owner::member` must carry `qualifier_text_ids`,
+  `unqualified_text_id`, and the correct owner namespace context when the
+  parser has the owner identity. Do not restore rendered owner lookup to cover
+  missing carriers.
+- The directly adjacent parser change in
+  `src/frontend/parser/impl/expressions.cpp` is deliberately narrow: it only
+  avoids splitting a concrete instantiated owner TextId when no
+  `tpl_struct_origin` carrier is present. Dependent template-origin routes are
+  still left on their existing carrier because runtime trait lowering depends
+  on that contract.
 - `resolve_deferred_member_base()` still finds the member template primary from
   `resolved_member.tpl_struct_origin` via `qualified_name_from_text(...)` and
   TextId-based lookup because `TypeSpec` does not yet carry a structured
