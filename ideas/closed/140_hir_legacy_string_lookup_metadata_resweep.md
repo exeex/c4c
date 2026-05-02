@@ -1,8 +1,9 @@
 # HIR Legacy String Lookup Metadata Resweep
 
-Status: Open
+Status: Closed
 Created: 2026-05-01
 Restored: 2026-05-01
+Closed: 2026-05-02
 
 Parent Ideas:
 - `ideas/closed/124_hir_legacy_string_lookup_removal_convergence.md`
@@ -116,6 +117,33 @@ move here instead of widening idea 139:
   final spelling, compatibility, local scratch, or unresolved metadata
   boundary.
 - Cross-module metadata blockers are represented as open ideas.
+
+## Completion Notes
+
+Closed after the active runbook completed all six steps:
+
+- HIR rendered lookup surfaces were classified before behavior changes.
+- Metadata-backed NTTP/consteval handoff routes gained TextId/structured
+  carriers while rendered `NttpBindings` remains explicit compatibility.
+- Metadata-backed record-layout lookup can use HIR owner/index authority where
+  owner metadata is available; rendered `ConstEvalEnv::struct_defs` storage is
+  classified compatibility.
+- Covered local extern/global/prototype/ordinary variable lookup routes moved
+  to central structured-first resolvers, with legacy rendered fallback retained
+  for missing or incomplete metadata.
+- Display, diagnostics, dumps, final spelling, link-visible text, mangling, and
+  generated-name strings were preserved as payloads rather than lookup
+  authority.
+- Step 6 boundary audit found no new durable follow-up idea needed for this
+  runbook. Existing `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`
+  owns the broader `TypeSpec::tag` removal and type/record metadata migration
+  work that outlives this idea.
+
+Close validation:
+
+- Full suite passed in `test_after.log`: 2987/2987 tests.
+- Regression guard against `test_baseline.log` passed with before=2987,
+  after=2987, and no new failures.
 
 ## Reviewer Reject Signals
 
