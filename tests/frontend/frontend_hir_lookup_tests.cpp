@@ -1324,6 +1324,50 @@ void test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag() {
               "implicit-this field recovery should not use stale rendered owner symbol");
 }
 
+void test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text = texts.intern("stale_extern_global");
+  const c4c::TextId structured_text = texts.intern("structured_extern_global");
+  c4c::hir::NamespaceQualifier local_ns;
+  local_ns.context_id = 0;
+
+  add_global(module, c4c::hir::GlobalId{50}, "stale_extern_global",
+             stale_text, c4c::kInvalidLinkName, local_ns);
+  add_global(module, c4c::hir::GlobalId{51}, "structured_extern_global",
+             structured_text, c4c::kInvalidLinkName, local_ns);
+
+  c4c::Node decl{};
+  decl.kind = c4c::NK_DECL;
+  decl.name = "stale_extern_global";
+  decl.unqualified_name = "structured_extern_global";
+  decl.unqualified_text_id = structured_text;
+  decl.is_extern = true;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.locals["stale_extern_global"] = c4c::hir::LocalId{7};
+
+  lowerer.lower_local_decl_stmt(ctx, &decl);
+
+  const auto static_it = ctx.static_globals.find("stale_extern_global");
+  expect_true(static_it != ctx.static_globals.end() &&
+                  static_it->second.value == 51,
+              "local extern lowering should prefer structured global metadata over stale rendered name");
+  expect_true(ctx.locals.find("stale_extern_global") == ctx.locals.end(),
+              "local extern lowering should erase the shadowing local binding after global resolution");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                      c4c::hir::ModuleDeclLookupAuthority::Structured,
+                      "stale_extern_global", 51),
+              "local extern structured global lookup should record structured authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Global,
+                           "stale_extern_global", 51, 50),
+              "local extern structured global lookup should record legacy rendered parity mismatch");
+}
+
 }  // namespace
 
 int main() {
@@ -1342,6 +1386,7 @@ int main() {
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
+  test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

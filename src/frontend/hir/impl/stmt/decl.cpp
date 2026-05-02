@@ -25,10 +25,17 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   // the global with that name (C99 6.2.2p4). Erase any shadowing local
   // binding so the global is found by the NK_VAR resolution fallback.
   if (n->is_extern && !n->init && n->name && n->name[0]) {
-    const GlobalId global_id = module_->lookup_global_id(n->name);
-    if (global_id.valid()) {
+    DeclRef global_ref{};
+    global_ref.name = n->name;
+    global_ref.name_text_id = make_unqualified_text_id(
+        n, module_ ? module_->link_name_texts.get() : nullptr);
+    global_ref.ns_qual = make_ns_qual(
+        n, module_ ? module_->link_name_texts.get() : nullptr);
+    global_ref.link_name_id =
+        module_ ? module_->link_names.find(global_ref.name) : kInvalidLinkName;
+    if (const GlobalVar* global = module_->resolve_global_decl(global_ref)) {
       ctx.locals.erase(n->name);
-      ctx.static_globals[n->name] = global_id;
+      ctx.static_globals[n->name] = global->id;
     }
     return;
   }

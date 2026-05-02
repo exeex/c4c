@@ -8,24 +8,35 @@ Current Step Title: Convert Or Demote Legacy HIR Lookup Routes
 
 ## Just Finished
 
-Plan-owner review accepted Step 3 - Add Structured HIR Record-Layout Handoff as
-complete enough for this runbook. Step 3 now has the Sema consteval structured
-owner-index bridge, HIR builtin layout query migration, aggregate-init
-normalization migration, implicit-this field recovery migration,
-stale-rendered-tag tests, and residual direct `struct_defs` classification.
+Step 4 - Convert Or Demote Legacy HIR Lookup Routes now has its first bounded
+legacy declaration-lookup demotion. Local `extern` declaration lowering no
+longer calls rendered `Module::lookup_global_id` directly; it builds a
+metadata-backed `DeclRef` from the declaration node and resolves through
+`Module::resolve_global_decl`, so structured global metadata can win before
+rendered compatibility.
 
-Step 4 - Convert Or Demote Legacy HIR Lookup Routes is now the active
-execution step.
+Focused coverage proves a stale rendered local-extern name resolves to the
+structured global and records a legacy rendered parity mismatch instead of
+binding the stale rendered global.
+
+Step 4 classification from this audit:
+`find_function_by_name_legacy` / `find_global_by_name_legacy` are rendered-name
+compatibility helpers used by central resolvers and should remain explicit
+fallbacks; `ModuleDeclLookupAuthority::LegacyRendered` is the no-metadata or
+incomplete-metadata authority label; `resolve_function_decl` /
+`resolve_global_decl` are the structured-first declaration lookup APIs and
+record parity; direct `lookup_function_id` / `lookup_global_id` callers are
+the migration targets when they operate on AST-backed declarations or
+references with TextId metadata; rendered template/global mangled lookups
+remain compatibility payloads for generated names.
 
 ## Suggested Next
 
-Start Step 4 with one narrow legacy HIR lookup route. Prefer a route with an
-existing structured carrier and focused stale-rendered-name coverage, such as a
-caller of `find_function_by_name_legacy`, `find_global_by_name_legacy`,
-`ModuleDeclLookupAuthority::LegacyRendered`, `has_legacy_mangled_entry`, or a
-rendered-name compatibility index. Convert that caller to structured authority
-where metadata exists, or demote the rendered route to explicitly named
-no-metadata compatibility.
+Continue Step 4 by auditing the remaining direct `lookup_function_id` /
+`lookup_global_id` callers. The next likely bounded target is local function
+prototype handling in `lower_local_decl_stmt`, provided the declaration node
+has enough TextId/namespace metadata to call `resolve_function_decl` without
+weakening no-metadata compatibility.
 
 ## Watchouts
 
@@ -60,6 +71,9 @@ no-metadata compatibility.
 - Do not mechanically replace `struct_defs` lookups in dump/codegen/template
   materialization paths: those often consume rendered storage names or generated
   specialization names as compatibility payloads, not semantic lookup authority.
+- Step 4 should preserve `LegacyRendered` tests for missing or incomplete
+  metadata; the goal is to move metadata-backed callers to the central
+  structured-first resolver APIs, not to remove compatibility fallback.
 
 ## Proof
 
@@ -69,5 +83,8 @@ Step 3 focused pre-proof passed:
 Step 3 delegated proof passed and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-No new validation was run for this lifecycle-only Step 3 review and Step 4
-pointer update.
+Step 4 focused pre-proof passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`.
+
+Delegated proof passed and wrote `test_after.log`:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
