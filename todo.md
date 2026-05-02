@@ -8,20 +8,20 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired and tightened one parser-to-Sema forwarded NTTP metadata
-handoff gap. Parser template argument nodes now carry a parallel
-`template_arg_nttp_text_ids` carrier for simple forwarded NTTP arguments, and
-Sema consteval call-env binding consults that `TextId` metadata before the
-legacy rendered NTTP name map. The follow-up removed the structured lookup's
-accidental dependency on `outer_env.nttp_bindings`, so `nttp_bindings_by_text`
-alone can satisfy forwarded NTTP binding. Focused lookup-authority coverage
-now proves both stale rendered spelling rejection and success with no legacy
-rendered NTTP map.
+Step 4 repaired one ordinary known-function call/reference handoff gap.
+Sema function, ref-overload, and C++ overload lookup now consult the parser's
+`using_value_alias_target_*` structured carrier before rendered callee spelling.
+Sema also mirrors qualified function declarations under the normalized
+qualified `TextId` key shape used by that parser carrier, so a using-imported
+function call can preserve target identity through parser-to-Sema without
+rendered-name rediscovery. Focused lookup-authority coverage now proves a
+drifted rendered callee spelling still resolves through the structured using
+target key.
 
 ## Suggested Next
 
-Continue Step 4 by tracing another parser-to-Sema handoff family, preferably
-ordinary known-function call references or NTTP default expression references,
+Continue Step 4 by tracing NTTP default expression references or another
+ordinary call-reference variant that is not covered by `using_value_alias_target_*`,
 and either repair one concrete metadata drop or record the exact missing
 carrier.
 
@@ -35,6 +35,11 @@ carrier.
   simple forwarded NTTP names, including environments where only structured
   text metadata is present. It does not claim cleanup of expression-string
   `$expr:` template arguments or HIR `NttpBindings` string compatibility.
+- The known-function slice covers using-imported call references whose parser
+  carrier is target base `TextId` plus target qualifier `TextId` metadata. It
+  does not fix parser production of resolved namespace context ids for
+  namespaced free-function declarations that are rendered as `ns::fn`; that
+  should be treated as a separate parser/Sema carrier packet if needed.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
 - `review/step33_final_route_review.md` and prior review artifacts are

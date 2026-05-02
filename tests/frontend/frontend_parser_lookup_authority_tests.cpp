@@ -169,6 +169,93 @@ void test_sema_global_lookup_uses_using_value_alias_target_key() {
               "target key instead of rendered fallback spelling");
 }
 
+void test_sema_function_call_uses_using_value_alias_target_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId owner_text = texts.intern("Api");
+  const c4c::TextId target_text = texts.intern("target");
+  const int target_namespace_context = parser.current_namespace_context_id();
+
+  c4c::Node* target = parser.make_node(c4c::NK_FUNCTION, 1);
+  target->name = arena.strdup("target");
+  target->unqualified_name = arena.strdup("target");
+  target->unqualified_text_id = target_text;
+  target->namespace_context_id = target_namespace_context;
+  target->n_qualifier_segments = 1;
+  target->qualifier_segments = arena.alloc_array<const char*>(1);
+  target->qualifier_segments[0] = arena.strdup("Api");
+  target->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  target->qualifier_text_ids[0] = owner_text;
+  target->type = make_ts(c4c::TB_INT);
+  target->type.is_lvalue_ref = true;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 2);
+  callee->name = arena.strdup("target");
+  callee->unqualified_name = arena.strdup("target");
+  callee->unqualified_text_id = target_text;
+  callee->namespace_context_id = parser.current_namespace_context_id();
+  callee->using_value_alias_target_text_id = target_text;
+  callee->using_value_alias_target_namespace_context_id = 0;
+  callee->n_using_value_alias_target_qualifier_segments = 1;
+  callee->using_value_alias_target_qualifier_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  callee->using_value_alias_target_qualifier_text_ids[0] = owner_text;
+
+  c4c::Node* call = parser.make_node(c4c::NK_CALL, 2);
+  call->left = callee;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = call;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* caller = parser.make_node(c4c::NK_FUNCTION, 2);
+  caller->name = arena.strdup("caller");
+  caller->unqualified_name = arena.strdup("caller");
+  caller->unqualified_text_id = texts.intern("caller");
+  caller->namespace_context_id = parser.current_namespace_context_id();
+  caller->type = make_ts(c4c::TB_INT);
+  caller->type.is_lvalue_ref = true;
+  caller->body = body;
+
+  c4c::Node* root = parser.make_node(c4c::NK_PROGRAM, 1);
+  root->n_children = 2;
+  root->children = arena.alloc_array<c4c::Node*>(2);
+  root->children[0] = target;
+  root->children[1] = caller;
+
+  expect_true(callee->using_value_alias_target_text_id != c4c::kInvalidText,
+              "using-function call should carry target TextId");
+  expect_true(callee->n_using_value_alias_target_qualifier_segments == 1,
+              "using-function call should carry target qualifier metadata");
+
+  callee->name = arena.strdup("stale_rendered_function_alias");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema function-call lookup should use the structured "
+              "using-value-alias target key instead of rendered callee "
+              "spelling" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_qualified_known_function_lookup_uses_key_not_rendered_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1408,6 +1495,7 @@ void test_sema_enum_lookup_rejects_same_member_wrong_owner_reentry() {
 int main() {
   test_global_qualified_lookup_rejects_rendered_fallback_authority();
   test_sema_global_lookup_uses_using_value_alias_target_key();
+  test_sema_function_call_uses_using_value_alias_target_key();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();
