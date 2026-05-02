@@ -8,29 +8,26 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 re-inventoried the remaining parser/Sema metadata handoff routes and
-selected the smallest parser-owned route still restoring semantic identity from
-rendered spelling: the qualified typedef function-style cast probe in
-`parse_primary`, where `last_resolved_typedef` could be restored from
-`saved_typedef_fallback` even when no `TextId` metadata existed.
+Step 4 repaired the parser-owned template-parameter pattern lookup route in
+`src/frontend/parser/impl/types/types_helpers.hpp`. `find_template_param_index`
+no longer accepts or interns a fallback spelling, and its type/value callers now
+bind only from structured `TextId` carriers: `TypeSpec::template_param_text_id`
+or `TypeSpec::tag_text_id` for type patterns, and
+`template_arg_nttp_text_ids` for value patterns.
 
-The repair makes `last_resolved_typedef` a TextId-only semantic carrier.
-`Parser::set_last_resolved_typedef(kInvalidText, ...)` now clears the carrier
-instead of retaining rendered spelling, and the qualified typedef cast restore
-path no longer rehydrates a rendered-only saved typedef name. Focused parser
-authority coverage now seeds a rendered-only stale typedef state, parses a
-qualified structured typedef cast, verifies the structured typedef payload is
-used, and verifies the stale rendered typedef spelling is not restored.
+Focused lookup-authority coverage now proves stale rendered type and NTTP
+pattern names still bind when the structured carriers are present, and do not
+recover through rendered spelling when those carriers are absent. The existing
+specialization TextId test was updated to provide the structured type-pattern
+carrier explicitly.
 
 ## Suggested Next
 
 Continue Step 4 with another parser/Sema-owned handoff inventory pass and pick
 one remaining route with both producer and consumer in `src/frontend/parser` or
-`src/frontend/sema`. A good next candidate is the template-parameter helper
-route in `src/frontend/parser/impl/types/types_helpers.hpp`, where
-`find_template_param_index` still accepts a fallback spelling and can intern it
-when the caller lacks a `TextId`; repair that only if the callers can pass
-structured parameter metadata without widening into HIR.
+`src/frontend/sema`. Prefer one of the retained `$expr:` or no-carrier
+template-argument compatibility routes only if the parser/Sema producer can
+publish structured metadata without widening into HIR.
 
 ## Watchouts
 
@@ -39,6 +36,9 @@ structured parameter metadata without widening into HIR.
 - Rendered typedef spelling is still allowed for display and diagnostics, but
   `last_resolved_typedef` should not be used as semantic authority unless its
   `TextId` is present.
+- Rendered template parameter spellings are still retained for compatibility
+  output and debug/display text, but `find_template_param_index` is no longer a
+  spelling-to-identity recovery path.
 - The retained `$expr:` and no-carrier template-argument compatibility routes
   remain separate Step 4 watch items. Do not count this packet as source-idea
   closure.

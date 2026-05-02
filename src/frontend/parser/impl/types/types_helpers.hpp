@@ -1074,33 +1074,21 @@ TextId template_param_text_id(const Node* tpl_def, int param_index,
 }
 
 int find_template_param_index(const Node* tpl_def, TextId name_text_id,
-                              const char* fallback_name,
                               const Parser& parser) {
-    if (!tpl_def || !tpl_def->template_param_names) return -1;
-    if (name_text_id == kInvalidText && fallback_name && fallback_name[0]) {
-        name_text_id = parser.parser_text_id_for_token(kInvalidText,
-                                                       fallback_name);
-    }
-    if (name_text_id != kInvalidText) {
-        for (int i = 0; i < tpl_def->n_template_params; ++i) {
-            if (template_param_text_id(tpl_def, i, parser) == name_text_id)
-                return i;
-        }
+    if (!tpl_def || !tpl_def->template_param_names ||
+        name_text_id == kInvalidText) {
         return -1;
     }
-    if (!fallback_name || !fallback_name[0]) return -1;
     for (int i = 0; i < tpl_def->n_template_params; ++i) {
-        const char* param_name = tpl_def->template_param_names[i];
-        if (param_name && std::strcmp(param_name, fallback_name) == 0)
+        if (template_param_text_id(tpl_def, i, parser) == name_text_id)
             return i;
     }
     return -1;
 }
 
-TextId type_template_param_text_id(const Node* tpl_def, const char* name,
+TextId type_template_param_text_id(const Node* tpl_def, TextId name_text_id,
                                    const Parser& parser) {
-    const int index = find_template_param_index(tpl_def, kInvalidText, name,
-                                                parser);
+    const int index = find_template_param_index(tpl_def, name_text_id, parser);
     if (index < 0 || !tpl_def->template_param_is_nttp ||
         tpl_def->template_param_is_nttp[index]) {
         return kInvalidText;
@@ -1108,10 +1096,9 @@ TextId type_template_param_text_id(const Node* tpl_def, const char* name,
     return template_param_text_id(tpl_def, index, parser);
 }
 
-TextId value_template_param_text_id(const Node* tpl_def, const char* name,
+TextId value_template_param_text_id(const Node* tpl_def, TextId name_text_id,
                                     const Parser& parser) {
-    const int index = find_template_param_index(tpl_def, kInvalidText, name,
-                                                parser);
+    const int index = find_template_param_index(tpl_def, name_text_id, parser);
     if (index < 0 || !tpl_def->template_param_is_nttp ||
         !tpl_def->template_param_is_nttp[index]) {
         return kInvalidText;
@@ -1146,10 +1133,15 @@ bool match_type_pattern(const TypeSpec& pattern_raw, const TypeSpec& actual_raw,
     if (pattern.is_rvalue_ref && !actual.is_rvalue_ref) return false;
     if (pattern.array_rank > actual.array_rank) return false;
 
-    if (pattern.base == TB_TYPEDEF && pattern.tag &&
-        type_template_param_text_id(tpl_def, pattern.tag, parser) != kInvalidText) {
+    const TextId pattern_text_id =
+        pattern.template_param_text_id != kInvalidText
+            ? pattern.template_param_text_id
+            : pattern.tag_text_id;
+    if (pattern.base == TB_TYPEDEF &&
+        type_template_param_text_id(tpl_def, pattern_text_id, parser) !=
+            kInvalidText) {
         const TextId param_text_id =
-            type_template_param_text_id(tpl_def, pattern.tag, parser);
+            type_template_param_text_id(tpl_def, pattern_text_id, parser);
         TypeSpec bound = strip_pattern_qualifiers(actual, pattern);
         auto it = type_bindings->find(param_text_id);
         if (it == type_bindings->end()) {
@@ -1318,10 +1310,12 @@ const Node* select_template_struct_pattern(
                 cand->template_arg_is_value && cand->template_arg_is_value[i];
             if (pattern_is_value != actual.is_value) return;
             if (pattern_is_value) {
-                const char* pname = cand->template_arg_nttp_names ?
-                    cand->template_arg_nttp_names[i] : nullptr;
+                const TextId pname_text_id =
+                    cand->template_arg_nttp_text_ids
+                        ? cand->template_arg_nttp_text_ids[i]
+                        : kInvalidText;
                 const TextId param_text_id =
-                    value_template_param_text_id(cand, pname, parser);
+                    value_template_param_text_id(cand, pname_text_id, parser);
                 if (param_text_id != kInvalidText) {
                     auto it = value_bindings_map.find(param_text_id);
                     if (it == value_bindings_map.end())

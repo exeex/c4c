@@ -3729,6 +3729,123 @@ void test_pending_template_nttp_carriers_suppress_rendered_debug_text() {
               "debug authority");
 }
 
+void test_template_specialization_param_lookup_rejects_rendered_fallback() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  auto make_type = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    ts.tag_text_id = c4c::kInvalidText;
+    ts.template_param_owner_namespace_context_id = -1;
+    ts.template_param_owner_text_id = c4c::kInvalidText;
+    ts.template_param_index = -1;
+    ts.template_param_text_id = c4c::kInvalidText;
+    ts.deferred_member_type_text_id = c4c::kInvalidText;
+    return ts;
+  };
+
+  const c4c::TextId trait_text = texts.intern("Trait");
+  const c4c::TextId type_param_text = texts.intern("T");
+  const c4c::TextId value_param_text = texts.intern("N");
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Trait");
+  primary->unqualified_name = arena.strdup("Trait");
+  primary->unqualified_text_id = trait_text;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+
+  auto make_specialization = [&](bool with_text_ids) {
+    c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
+    specialization->name = arena.strdup("Trait_specialized");
+    specialization->unqualified_name = arena.strdup("Trait");
+    specialization->unqualified_text_id = trait_text;
+    specialization->namespace_context_id = parser.current_namespace_context_id();
+    specialization->template_origin_name = arena.strdup("Trait");
+    specialization->n_template_params = 2;
+    specialization->template_param_names = arena.alloc_array<const char*>(2);
+    specialization->template_param_names[0] = arena.strdup("StaleRenderedT");
+    specialization->template_param_names[1] = arena.strdup("StaleRenderedN");
+    specialization->template_param_name_text_ids =
+        arena.alloc_array<c4c::TextId>(2);
+    specialization->template_param_name_text_ids[0] = type_param_text;
+    specialization->template_param_name_text_ids[1] = value_param_text;
+    specialization->template_param_is_nttp = arena.alloc_array<bool>(2);
+    specialization->template_param_is_nttp[0] = false;
+    specialization->template_param_is_nttp[1] = true;
+    specialization->template_param_is_pack = arena.alloc_array<bool>(2);
+    specialization->template_param_is_pack[0] = false;
+    specialization->template_param_is_pack[1] = false;
+    specialization->template_param_has_default = arena.alloc_array<bool>(2);
+    specialization->template_param_has_default[0] = false;
+    specialization->template_param_has_default[1] = false;
+    specialization->n_template_args = 2;
+    specialization->template_arg_types = arena.alloc_array<c4c::TypeSpec>(2);
+    specialization->template_arg_types[0] = make_type(c4c::TB_TYPEDEF);
+    specialization->template_arg_types[0].tag = arena.strdup("T");
+    specialization->template_arg_types[0].tag_text_id =
+        with_text_ids ? type_param_text : c4c::kInvalidText;
+    specialization->template_arg_types[1] = make_type(c4c::TB_INT);
+    specialization->template_arg_is_value = arena.alloc_array<bool>(2);
+    specialization->template_arg_is_value[0] = false;
+    specialization->template_arg_is_value[1] = true;
+    specialization->template_arg_values = arena.alloc_array<long long>(2);
+    specialization->template_arg_values[0] = 0;
+    specialization->template_arg_values[1] = 0;
+    specialization->template_arg_nttp_names = arena.alloc_array<const char*>(2);
+    specialization->template_arg_nttp_names[0] = nullptr;
+    specialization->template_arg_nttp_names[1] = arena.strdup("N");
+    specialization->template_arg_nttp_text_ids =
+        arena.alloc_array<c4c::TextId>(2);
+    specialization->template_arg_nttp_text_ids[0] = c4c::kInvalidText;
+    specialization->template_arg_nttp_text_ids[1] =
+        with_text_ids ? value_param_text : c4c::kInvalidText;
+    return specialization;
+  };
+
+  c4c::Parser::TemplateArgParseResult type_actual{};
+  type_actual.is_value = false;
+  type_actual.type = make_type(c4c::TB_INT);
+  c4c::Parser::TemplateArgParseResult value_actual{};
+  value_actual.is_value = true;
+  value_actual.value = 7;
+  std::vector<c4c::Parser::TemplateArgParseResult> actual_args = {
+      type_actual, value_actual};
+
+  c4c::Node* structured = make_specialization(true);
+  std::vector<c4c::Node*> specializations = {structured};
+  std::vector<std::pair<std::string, c4c::TypeSpec>> type_bindings;
+  std::vector<std::pair<std::string, long long>> nttp_bindings;
+  const c4c::Node* selected = c4c::select_template_struct_pattern(
+      actual_args, primary, &specializations, parser, &type_bindings,
+      &nttp_bindings);
+  expect_true(selected == structured,
+              "template specialization param lookup should use TextId "
+              "carriers when rendered pattern names are stale");
+  expect_true(type_bindings.size() == 1 && nttp_bindings.size() == 1 &&
+                  nttp_bindings[0].second == 7,
+              "structured template-param lookup should bind both type and "
+              "value parameters");
+
+  c4c::Node* rendered_only = make_specialization(false);
+  specializations = {rendered_only};
+  type_bindings.clear();
+  nttp_bindings.clear();
+  selected = c4c::select_template_struct_pattern(
+      actual_args, primary, &specializations, parser, &type_bindings,
+      &nttp_bindings);
+  expect_true(selected != rendered_only,
+              "template specialization param lookup should not recover from "
+              "rendered pattern spellings when TextId carriers are absent");
+  expect_true(type_bindings.empty() && nttp_bindings.empty(),
+              "rendered-only template-param lookup should not produce "
+              "bindings");
+}
+
 void test_nested_template_static_member_value_arg_carries_expr_node() {
   const char* source =
       "template <typename T, int N = 7>\n"
@@ -4182,6 +4299,7 @@ int main() {
   test_default_only_template_base_uses_cached_default_metadata();
   test_direct_template_explicit_nttp_expr_ignores_stale_display_text();
   test_pending_template_nttp_carriers_suppress_rendered_debug_text();
+  test_template_specialization_param_lookup_rejects_rendered_fallback();
   test_nested_template_static_member_value_arg_carries_expr_node();
   test_nested_pending_template_arg_rendering_suppresses_expr_debug_text();
   test_typespec_template_origin_equality_uses_structured_key();
