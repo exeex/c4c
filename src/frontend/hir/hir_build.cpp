@@ -112,6 +112,40 @@ std::optional<HirStructMethodLookupKey> make_out_of_class_struct_method_lookup_k
   return method_key;
 }
 
+NamespaceQualifier make_type_ns_qual_for_ref_overload(const TypeSpec& ts) {
+  NamespaceQualifier q;
+  q.context_id = ts.namespace_context_id;
+  q.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    q.segment_text_ids.assign(
+        ts.qualifier_text_ids,
+        ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  return q;
+}
+
+std::optional<HirRecordOwnerKey> make_ref_overload_record_owner_key(
+    const TypeSpec& ts,
+    TextTable* texts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    const TextId declaration_text_id =
+        ts.record_def->unqualified_text_id != kInvalidText
+            ? ts.record_def->unqualified_text_id
+            : make_unqualified_text_id(ts.record_def, texts);
+    const HirRecordOwnerKey key =
+        make_hir_record_owner_key(make_ns_qual(ts.record_def, texts),
+                                  declaration_text_id);
+    if (hir_record_owner_key_has_complete_metadata(key)) return key;
+  }
+  if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
+    const HirRecordOwnerKey key =
+        make_hir_record_owner_key(make_type_ns_qual_for_ref_overload(ts),
+                                  ts.tag_text_id);
+    if (hir_record_owner_key_has_complete_metadata(key)) return key;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {
@@ -501,6 +535,7 @@ void Lowerer::collect_ref_overloaded_free_functions(
     if (prev->n_params != item->n_params) continue;
     bool has_ref_diff = false;
     bool base_match = true;
+    TextTable* texts = module_ ? module_->link_name_texts.get() : nullptr;
     for (int pi = 0; pi < item->n_params; ++pi) {
       const TypeSpec& a = prev->params[pi]->type;
       const TypeSpec& b = item->params[pi]->type;
@@ -511,8 +546,17 @@ void Lowerer::collect_ref_overloaded_free_functions(
         base_match = false;
         break;
       }
-      if ((a.base == TB_STRUCT || a.base == TB_UNION) && a.tag && b.tag) {
-        if (std::string(a.tag) != std::string(b.tag)) {
+      if (a.base == TB_STRUCT || a.base == TB_UNION) {
+        const std::optional<HirRecordOwnerKey> a_key =
+            make_ref_overload_record_owner_key(a, texts);
+        const std::optional<HirRecordOwnerKey> b_key =
+            make_ref_overload_record_owner_key(b, texts);
+        if (a_key || b_key) {
+          if (!a_key || !b_key || *a_key != *b_key) {
+            base_match = false;
+            break;
+          }
+        } else if (a.tag && b.tag && std::string(a.tag) != std::string(b.tag)) {
           base_match = false;
           break;
         }

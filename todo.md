@@ -9,28 +9,28 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries migrated the bounded
-frontend/HIR layout cluster in `src/frontend/hir/hir_lowering_core.cpp`.
+frontend/HIR ref-overload grouping cluster in `src/frontend/hir/hir_build.cpp`.
 
-`generic_type_compatible` now compares complete structured record owner keys
-before rendered tags, and `compute_struct_layout` field/base sizing now resolves
-record layouts through complete `record_def`/`tag_text_id` owner metadata before
-the explicit no-metadata rendered fallback. A complete structured owner-key miss
-returns the default unknown-record layout instead of consulting a stale rendered
-`TypeSpec::tag`. Focused `frontend_hir_lookup_tests` coverage now proves
-standalone struct layout field size/alignment prefer the structured owner and
-reject stale rendered tags after a complete structured miss.
+`collect_ref_overloaded_free_functions` now derives complete structured record
+owner keys from `record_def` or `tag_text_id` metadata for struct/union
+parameters and compares those keys before consulting rendered `TypeSpec::tag`.
+Rendered tag compatibility remains only for the no-complete-metadata fallback.
+Focused `frontend_hir_tests` coverage now proves stale rendered tags cannot
+split same-owner ref overloads, merge different complete record owners, or
+bridge partial structured metadata back to rendered tags.
 
 ## Suggested Next
 
 Continue Step 4 with the next bounded frontend/HIR deletion-probe cluster from
 the remaining inventory. The callable helper blocker in `hir_functions.cpp` and
-the standalone layout helper cluster in `hir_lowering_core.cpp` are cleared;
-remaining probe inventory still includes parser-owned semantic
+the standalone layout helper cluster in `hir_lowering_core.cpp` are cleared, and
+the bounded ref-overload grouping path in `hir_build.cpp` is now migrated.
+Remaining probe inventory still includes parser-owned semantic
 producers/consumers and first-failure HIR clusters in
 `src/frontend/hir/impl/compile_time/compile_time_engine.hpp`,
 `src/frontend/hir/hir_types.cpp`, `src/frontend/hir/hir_ir.hpp`,
 `src/frontend/hir/impl/expr/builtin.cpp`, and
-`src/frontend/hir/hir_build.cpp`.
+other `src/frontend/hir/hir_build.cpp` rendered-name compatibility paths.
 
 ## Watchouts
 
@@ -39,6 +39,9 @@ producers/consumers and first-failure HIR clusters in
   spelling as payloads.
 - The callable zero-sized-return path should keep rendered `TypeSpec::tag`
   compatibility only when no complete structured owner metadata exists.
+- The ref-overload grouping path now has the same no-complete-metadata rendered
+  fallback boundary; do not reintroduce tag comparison after complete owner-key
+  mismatch.
 - Step 4 is a probe, not the final field removal. Do not commit a broken
   deletion build.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend
