@@ -149,12 +149,37 @@ std::optional<HirRecordOwnerKey> make_ref_overload_record_owner_key(
 bool ref_overload_record_types_match_without_complete_owner_key(
     const TypeSpec& a,
     const TypeSpec& b) {
-  if (a.tag_text_id != kInvalidText || b.tag_text_id != kInvalidText) {
-    return a.tag_text_id != kInvalidText && b.tag_text_id != kInvalidText &&
-           a.tag_text_id == b.tag_text_id;
+  if (a.record_def || b.record_def) {
+    return a.record_def && b.record_def && a.record_def == b.record_def;
   }
-  // No-complete-metadata compatibility bridge for legacy TypeSpec producers.
-  if (a.tag && b.tag) return std::string(a.tag) == std::string(b.tag);
+
+  const bool a_has_text_identity = a.tag_text_id != kInvalidText;
+  const bool b_has_text_identity = b.tag_text_id != kInvalidText;
+  if (a_has_text_identity || b_has_text_identity) {
+    if (!a_has_text_identity || !b_has_text_identity ||
+        a.tag_text_id != b.tag_text_id ||
+        a.is_global_qualified != b.is_global_qualified ||
+        a.n_qualifier_segments != b.n_qualifier_segments) {
+      return false;
+    }
+    if ((a.namespace_context_id >= 0 || b.namespace_context_id >= 0) &&
+        a.namespace_context_id != b.namespace_context_id) {
+      return false;
+    }
+    for (int i = 0; i < a.n_qualifier_segments; ++i) {
+      const TextId a_segment =
+          a.qualifier_text_ids ? a.qualifier_text_ids[i] : kInvalidText;
+      const TextId b_segment =
+          b.qualifier_text_ids ? b.qualifier_text_ids[i] : kInvalidText;
+      if (a_segment == kInvalidText || b_segment == kInvalidText ||
+          a_segment != b_segment) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // No-structured-metadata compatibility bridge for legacy TypeSpec producers.
   return true;
 }
 

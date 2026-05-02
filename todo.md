@@ -8,26 +8,21 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries investigated the rejected
-`test_baseline.new.log` runtime cluster after `b46902cdc` and fixed the owned
-HIR layout regression and revised the fix to satisfy
-`review/step4_layout_regression_fix_review.md`. The failure was caused by
-struct/union field `TypeSpec`s carrying valid parser `record_def` metadata but
-crossing into HIR layout with parser-owned `TextId` values, so complete-looking
-owner keys could resolve to the wrong HIR record or leave nested records at the
-default 4-byte size. HIR lowering now records an AST-node-to-HIR-owner map for
-lowered struct definitions, copies HIR owner metadata from that structured map
-onto record fields, and interns record-def declaration spelling into the HIR
-text table when building HIR owner keys. The reviewer-blocking
-`ft.tag`/`struct_defs[ft.tag]` semantic lookup path in `Lowerer::lower_struct_def`
-is gone.
+Step 4 - Probe Field Removal And Split Boundaries cleared the
+`src/frontend/hir/hir_build.cpp`
+`ref_overload_record_types_match_without_complete_owner_key` deletion-probe
+blocker. Ref-overload record matching now treats `record_def` and TextId-backed
+type-name metadata as authoritative whenever either side carries it, and keeps
+the legacy compatibility bridge only for the bounded case where neither
+candidate has structured record/name identity. The helper no longer reads
+rendered `TypeSpec::tag` spelling.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next first deletion-probe blocker in
-`src/frontend/hir/hir_build.cpp`:
-`ref_overload_record_types_match_without_complete_owner_key` still compares
-rendered `TypeSpec::tag` spelling when complete owner metadata is absent.
+`src/frontend/hir/hir_types.cpp`. The current probe first reports direct
+`TypeSpec::tag` use around the local layout TypeSpec construction and
+typedef/layout/member lookup helpers, beginning at `hir_types.cpp:165`.
 
 ## Watchouts
 
@@ -42,9 +37,9 @@ rendered `TypeSpec::tag` spelling when complete owner metadata is absent.
   spelling as payloads.
 - The callable zero-sized-return path should keep rendered `TypeSpec::tag`
   compatibility only when no complete structured owner metadata exists.
-- The ref-overload grouping path now uses `tag_text_id` before rendered fallback
-  when complete owner metadata is absent; its retained rendered tag comparison
-  is only the named no-complete-metadata legacy bridge.
+- The ref-overload grouping path no longer reads rendered `TypeSpec::tag`.
+  It uses `record_def` and TextId-backed type-name identity before the bounded
+  no-structured-metadata compatibility bridge.
 - The member-symbol lookup path now treats complete owner/member metadata as
   authoritative; stale rendered owner symbols are not a fallback after a
   complete miss, but `HirStructDef` fields remain a structured hit source when
@@ -66,9 +61,7 @@ rendered `TypeSpec::tag` spelling when complete owner metadata is absent.
   lookup as no-complete-metadata compatibility. Base traversal should continue
   to prefer complete `base_tag_text_ids` owner metadata before rendered
   `base_tags`.
-- The `hir_build.cpp` retained ref-overload failure is already classified as a
-  fallback helper. It should stay separate unless the supervisor deliberately
-  groups compatibility-helper cleanup.
+- The `hir_build.cpp` retained ref-overload deletion-probe failure is cleared.
 - `hir_types.cpp` still contains lookup, parity, compatibility, and
   final-spelling payload surfaces outside the cleared layout/member-base helper
   family. Split those before editing so ABI/link-visible names, diagnostics,
@@ -90,36 +83,34 @@ rendered `TypeSpec::tag` spelling when complete owner metadata is absent.
 - Keep downstream LIR/BIR/backend carrier gaps as separate follow-up ideas
   instead of broadening this runbook.
 - Treat any `TypeSpec::tag` deletion build as temporary until Step 5.
-- The `hir_lowering_core.cpp` deletion-probe cluster is now clear of direct
-  `TypeSpec::tag` reads. The first residual probe blocker moved to
-  `src/frontend/hir/hir_build.cpp`, followed by remaining `hir_types.cpp` and
-  `hir/impl/expr/call.cpp` direct-tag clusters.
-- This packet did not rerun the deletion probe, but it did not add a
-  `hir_lowering_core.cpp` rendered-tag fallback; the next deletion-probe
-  blocker is still expected to remain `hir_build.cpp`.
+- The `hir_lowering_core.cpp` and `hir_build.cpp` deletion-probe clusters are
+  now clear of direct `TypeSpec::tag` reads. The first residual probe blocker
+  moved to `src/frontend/hir/hir_types.cpp`, followed by
+  `hir/impl/expr/call.cpp`.
 - The rejected `ft.tag` layout repair route was replaced with a structured
   AST-node-to-HIR-owner carrier. Do not reintroduce rendered field type tag
   lookup for layout ownership.
 - Non-canonical deletion probe artifacts for this packet:
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_next.log` and
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_after_hir_lowering_core.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_hir_build.log`.
 
 ## Proof
 
 Executor proof:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(positive_sema_ok_expr_access_misc_runtime_c|c_testsuite_src_00216_c|llvm_gcc_c_torture_src_20000603_1_c|llvm_gcc_c_torture_src_20030224_2_c|llvm_gcc_c_torture_src_20030717_1_c|llvm_gcc_c_torture_src_20050613_1_c|llvm_gcc_c_torture_src_20051113_1_c|llvm_gcc_c_torture_src_20071030_1_c|llvm_gcc_c_torture_src_pr87053_c|llvm_gcc_c_torture_src_strlen_5_c|frontend_hir_lookup_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
 Result: command exited 0 and `test_after.log` was preserved as the canonical
-executor proof log. The build passed, and CTest passed 83 of 83 delegated
-tests, including the 10 rejected baseline failures plus
-`frontend_hir_lookup_tests` and all `cpp_hir_.*` tests.
+executor proof log. The build passed, and CTest passed 73 of 73 delegated
+tests: `frontend_hir_lookup_tests` and all `cpp_hir_.*` tests.
 
-Supervisor acceptance proof:
+Deletion probe:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure' > test_after.log 2>&1`
+Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
+`bash -lc 'cmake --build --preset default' >
+/tmp/c4c_typespec_tag_deletion_probe_step4_hir_build.log 2>&1`, and restored
+the temporary edit. The probe no longer reports `hir_build.cpp`; the first
+residual errors are in `src/frontend/hir/hir_types.cpp`, with later parallel
+errors in `src/frontend/hir/impl/expr/call.cpp`.
 
-Result: command exited 0 with the full suite passing 2987 of 2987 tests.
-Regression checker against `test_baseline.log` with
-`--allow-non-decreasing-passed` passed: before 2987 passed / 0 failed, after
-2987 passed / 0 failed.
+Result: command exited 1 as expected for the controlled deletion probe, and the
+normal build proof above is green after reverting the temporary edit.
