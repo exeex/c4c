@@ -2513,6 +2513,34 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         return false;
                                     };
+                                    std::function<bool(const TypeSpec&, int)>
+                                        type_has_parser_sema_carrier =
+                                            [&](const TypeSpec& type,
+                                                int depth) -> bool {
+                                        if (depth > 64) return false;
+                                        if (type.record_def ||
+                                            type_has_template_origin_carrier(
+                                                type, depth) ||
+                                            type_has_structured_template_arg_ref(
+                                                type, depth)) {
+                                            return true;
+                                        }
+                                        if (!type.tpl_struct_args.data ||
+                                            type.tpl_struct_args.size <= 0) {
+                                            return false;
+                                        }
+                                        for (int ai = 0;
+                                             ai < type.tpl_struct_args.size; ++ai) {
+                                            const TemplateArgRef& arg =
+                                                type.tpl_struct_args.data[ai];
+                                            if (arg.kind == TemplateArgKind::Type &&
+                                                type_has_parser_sema_carrier(
+                                                    arg.type, depth + 1)) {
+                                                return true;
+                                            }
+                                        }
+                                        return false;
+                                    };
                                     auto materialize_template_origin_record_def =
                                         [&](TypeSpec* target) -> bool {
                                         if (!target ||
@@ -3175,8 +3203,8 @@ TypeSpec Parser::parse_base_type() {
                                     const bool had_structured_refs =
                                         type_has_structured_template_arg_ref(
                                             ts, 0);
-                                    const bool had_template_origin_carrier =
-                                        type_has_template_origin_carrier(
+                                    const bool had_parser_sema_carrier =
+                                        type_has_parser_sema_carrier(
                                             ts, 0);
                                     if (!substitute_template_arg_refs_structured(&ts)) {
                                         alias_parse_ok = false;
@@ -3187,7 +3215,7 @@ TypeSpec Parser::parse_base_type() {
                                     if (alias_parse_ok &&
                                         had_unstructured_refs &&
                                         !had_structured_refs &&
-                                        !had_template_origin_carrier) {
+                                        !had_parser_sema_carrier) {
                                         const std::string new_refs =
                                             substitute_template_arg_refs(
                                                 template_arg_refs_text(ts).c_str());
