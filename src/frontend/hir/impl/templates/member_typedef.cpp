@@ -2,6 +2,29 @@
 
 namespace c4c::hir {
 
+namespace {
+
+bool resolve_member_typedef_from_record_def(const Node* record_def,
+                                            const char* member,
+                                            TypeSpec* out) {
+  if (!record_def || record_def->kind != NK_STRUCT_DEF || !member ||
+      !member[0] || !out) {
+    return false;
+  }
+  if (!record_def->member_typedef_names || !record_def->member_typedef_types) {
+    return false;
+  }
+  for (int i = 0; i < record_def->n_member_typedefs; ++i) {
+    const char* alias_name = record_def->member_typedef_names[i];
+    if (!alias_name || std::string(alias_name) != member) continue;
+    *out = record_def->member_typedef_types[i];
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
+
 const Node* Lowerer::require_pending_template_type_primary(
     const TypeSpec& ts,
     const PendingTemplateTypeWorkItem& work_item,
@@ -77,6 +100,7 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
     const PendingTemplateTypeWorkItem& work_item) {
   TypeSpec owner_ts = work_item.pending_type;
   owner_ts.deferred_member_type_name = nullptr;
+  const char* member_name = work_item.pending_type.deferred_member_type_name;
   DeferredTemplateTypeResult result;
   if (!ensure_pending_template_owner_ready(
           owner_ts, work_item, true,
@@ -84,9 +108,30 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
           "owner struct still pending", &result)) {
     return result;
   }
+  bool has_structured_owner = false;
+  TypeSpec resolved_member{};
+  if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
+    has_structured_owner = true;
+    if (resolve_member_typedef_from_record_def(
+            owner_ts.record_def, member_name, &resolved_member)) {
+      return DeferredTemplateTypeResult::resolved();
+    }
+    const std::optional<HirRecordOwnerKey> owner_key =
+        make_struct_def_node_owner_key(owner_ts.record_def);
+    if (owner_key) {
+      if (const SymbolName* owner_tag =
+              module_->find_struct_def_tag_by_owner(*owner_key)) {
+        if (resolve_struct_member_typedef_type(
+                *owner_tag, member_name, &resolved_member)) {
+          return DeferredTemplateTypeResult::resolved();
+        }
+      }
+    }
+  }
   if (const Node* primary_tpl =
           canonical_template_struct_primary(work_item.pending_type,
                                             work_item.owner_primary_def)) {
+    has_structured_owner = true;
     ResolvedTemplateArgs resolved = materialize_template_args(
         primary_tpl, work_item.pending_type, work_item.type_bindings,
         work_item.nttp_bindings);
@@ -107,24 +152,16 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
             : (primary_tpl->name ? primary_tpl->name : ""),
         resolved);
     if (!structured_owner_tag.empty()) {
-      TypeSpec resolved_member{};
       if (resolve_struct_member_typedef_type(
               structured_owner_tag,
-              work_item.pending_type.deferred_member_type_name,
-              &resolved_member)) {
+              member_name, &resolved_member)) {
         return DeferredTemplateTypeResult::resolved();
       }
     }
   }
-  if (!owner_ts.tag || !owner_ts.tag[0]) {
+  if (!has_structured_owner) {
     return blocked_deferred_template_type(
-        work_item, "owner tag unavailable");
-  }
-  TypeSpec resolved_member{};
-  if (resolve_struct_member_typedef_type(
-          owner_ts.tag, work_item.pending_type.deferred_member_type_name,
-          &resolved_member)) {
-    return DeferredTemplateTypeResult::resolved();
+        work_item, "owner structured identity unavailable");
   }
   return terminal_deferred_template_type(
       work_item, "member typedef lookup failed");
