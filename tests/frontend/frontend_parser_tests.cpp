@@ -802,8 +802,53 @@ void test_parser_capture_template_arg_expr_uses_token_spelling() {
               "captured template arg expression should preserve text in nttp_name");
   expect_eq(arg.nttp_name, "$expr:Value+1",
             "template arg expression capture should use parser-owned token spelling");
+  expect_eq_int(static_cast<int>(arg.captured_expr_tokens.size()), 3,
+                "template arg expression capture should retain a structured token span");
+  expect_eq(parser.token_spelling(arg.captured_expr_tokens[0]), "Value",
+            "captured template arg token span should preserve the identifier token");
+  expect_eq(parser.token_spelling(arg.captured_expr_tokens[2]), "1",
+            "captured template arg token span should preserve the literal token");
   expect_eq_int(parser.token_cursor_for_testing(), 3,
                 "template arg expression capture should stop before template close");
+}
+
+void test_parser_captured_template_arg_expr_tokens_ignore_stale_debug_text() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
+      parser.make_injected_token(seed, c4c::TokenKind::Plus, "+"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "1"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  });
+  c4c::Parser::TemplateArgParseResult arg{};
+  expect_true(parser.capture_template_arg_expr(0, &arg),
+              "template arg expression capture should produce token metadata");
+  arg.nttp_name = arena.strdup("$expr:Value+100");
+
+  long long value = 0;
+  expect_true(parser.eval_captured_template_arg_expr_tokens(
+                  "CarrierDebugDrift", arg, {}, {{"Value", 6}}, &value),
+              "captured template arg evaluation should consume token metadata");
+  expect_eq_int(static_cast<int>(value), 7,
+                "stale $expr debug spelling must not override captured tokens");
+
+  const std::vector<c4c::Token> stale_debug_tokens = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
+      parser.make_injected_token(seed, c4c::TokenKind::Plus, "+"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "100"),
+  };
+  value = 0;
+  expect_true(parser.eval_deferred_nttp_expr_tokens(
+                  "CarrierDebugDrift", stale_debug_tokens, {},
+                  {{"Value", 6}}, &value),
+              "test fixture should demonstrate the stale debug spelling is different");
+  expect_eq_int(static_cast<int>(value), 106,
+                "stale debug spelling fixture should disagree with the carrier");
 }
 
 void test_parser_type_start_probes_use_token_spelling() {
@@ -8092,6 +8137,7 @@ int main() {
   test_parser_injected_token_helpers_preserve_qualified_name_spelling();
   test_parser_value_like_template_lookahead_uses_token_spelling();
   test_parser_capture_template_arg_expr_uses_token_spelling();
+  test_parser_captured_template_arg_expr_tokens_ignore_stale_debug_text();
   test_parser_type_start_probes_use_token_spelling();
   test_parser_exception_specs_and_attributes_use_token_spelling();
   test_parser_typeof_like_probes_use_token_spelling();

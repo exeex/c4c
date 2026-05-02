@@ -148,6 +148,7 @@ struct ParserTemplateArgParseResult {
   const char* nttp_name = nullptr;
   TextId nttp_text_id = kInvalidText;
   Node* expr = nullptr;
+  std::vector<Token> captured_expr_tokens;
 };
 
 // Boundary role: parser/Sema-owned identity for NTTP constant bindings.

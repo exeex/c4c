@@ -1020,6 +1020,19 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     return true;
 }
 
+bool Parser::eval_captured_template_arg_expr_tokens(
+    const std::string& tpl_name,
+    const TemplateArgParseResult& arg,
+    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+    long long* out,
+    const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata) {
+    if (arg.captured_expr_tokens.empty()) return false;
+    return eval_deferred_nttp_expr_tokens(tpl_name, arg.captured_expr_tokens,
+                                          type_bindings, nttp_bindings, out,
+                                          nttp_binding_metadata);
+}
+
 bool Parser::eval_deferred_nttp_default(
     const QualifiedNameKey& template_key,
     int param_idx,

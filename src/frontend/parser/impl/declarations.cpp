@@ -1555,6 +1555,22 @@ Node* parse_top_level(Parser& parser) {
                             parser.active_context_state_
                                 .last_using_alias_member_typedef;
                     }
+                    if (alias_member_typedef_info.valid &&
+                        alias_member_typedef_info.member_text_id !=
+                            kInvalidText &&
+                        alias_ts.deferred_member_type_text_id ==
+                            kInvalidText) {
+                        const std::string_view member_name =
+                            parser.parser_text(
+                                alias_member_typedef_info.member_text_id, {});
+                        if (!member_name.empty()) {
+                            alias_ts.deferred_member_type_name =
+                                parser.arena_.strdup(
+                                    std::string(member_name).c_str());
+                            alias_ts.deferred_member_type_text_id =
+                                alias_member_typedef_info.member_text_id;
+                        }
+                    }
                 } catch (const std::exception&) {
                     parser.pos_ = alias_type_pos;
                     recover_top_level_using_alias_or_boundary(parser, ln);

@@ -509,6 +509,14 @@ class Parser {
       long long* out,
       const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata =
           nullptr);
+  bool eval_captured_template_arg_expr_tokens(
+      const std::string& tpl_name,
+      const TemplateArgParseResult& arg,
+      const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+      const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+      long long* out,
+      const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata =
+          nullptr);
   bool has_template_struct_primary(const QualifiedNameKey& key) const;
   bool has_template_struct_primary(int context_id, TextId name_text_id) const;
   bool has_template_struct_primary(const QualifiedNameRef& name) const;

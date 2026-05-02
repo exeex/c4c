@@ -2495,15 +2495,20 @@ void register_record_member_typedef_bindings(
         if (!(member_name && member_name[0])) continue;
         const TextId member_text_id =
             parser.parser_text_id_for_token(kInvalidText, member_name);
-        const QualifiedNameKey member_key =
-            sd->unqualified_text_id != kInvalidText
-                ? parser.record_member_typedef_key_in_context(
-                      context_id, sd->unqualified_text_id, member_text_id)
-                : QualifiedNameKey{};
         const bool has_template_dependent_context =
             sd->n_template_params > 0 ||
             (sd->template_origin_name && sd->template_origin_name[0]) ||
             !parser.template_state_.template_scope_stack.empty();
+        const QualifiedNameKey member_key =
+            record_text_id != kInvalidText
+                ? parser.record_member_typedef_key_in_context(
+                      context_id, record_text_id, member_text_id)
+                : QualifiedNameKey{};
+        if (!has_template_dependent_context &&
+            member_key.base_text_id != kInvalidText) {
+            parser.register_structured_typedef_binding(
+                member_key, sd->member_typedef_types[i]);
+        }
         if (has_template_dependent_context &&
             owner_key.base_text_id != kInvalidText) {
             parser.register_dependent_record_member_typedef_binding(

@@ -818,6 +818,7 @@ TypeSpec Parser::parse_base_type() {
     auto parsed_nttp_arg_has_structured_carrier =
         [&](const ParsedTemplateArg& arg) -> bool {
         return structured_nttp_expr_carrier(arg) ||
+               !arg.captured_expr_tokens.empty() ||
                arg.nttp_text_id != kInvalidText;
     };
     auto set_template_arg_debug_refs_text =
@@ -3531,6 +3532,19 @@ TypeSpec Parser::parse_base_type() {
                                             actual_args[pi].value = ev;
                                             actual_args[pi].nttp_name =
                                                 nullptr;
+                                        }
+                                    } else if (!actual_args[pi]
+                                                    .captured_expr_tokens
+                                                    .empty()) {
+                                        if (eval_captured_template_arg_expr_tokens(
+                                                tpl_name, actual_args[pi],
+                                                prelim_tb, prelim_nb, &ev,
+                                                &prelim_nb_meta)) {
+                                            actual_args[pi].value = ev;
+                                            actual_args[pi].nttp_name =
+                                                nullptr;
+                                            actual_args[pi]
+                                                .captured_expr_tokens.clear();
                                         }
                                     } else if (!parsed_nttp_arg_has_structured_carrier(
                                                    actual_args[pi]) &&

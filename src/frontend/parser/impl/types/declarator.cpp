@@ -123,6 +123,7 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
                 out_arg->nttp_name = nullptr;
                 out_arg->nttp_text_id = kInvalidText;
                 out_arg->expr = nullptr;
+                out_arg->captured_expr_tokens.clear();
                 fast_guard.commit();
                 return true;
             }
@@ -161,6 +162,7 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->nttp_name = nullptr;
         out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
+        out_arg->captured_expr_tokens.clear();
         guard.commit();
         return true;
     } catch (...) {
@@ -180,6 +182,9 @@ bool Parser::capture_template_arg_expr(int expr_start, TemplateArgParseResult* o
     out_arg->expr = nullptr;
     out_arg->nttp_name = arena_.strdup((std::string("$expr:") + expr_text).c_str());
     out_arg->nttp_text_id = kInvalidText;
+    out_arg->captured_expr_tokens.assign(
+        core_input_state_.tokens.begin() + expr_start,
+        core_input_state_.tokens.begin() + expr_end);
     pos_ = expr_end;
     return true;
 }
@@ -204,6 +209,7 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
                 out_arg->nttp_name =
                     arena_.strdup((std::string("$expr:") + expr_text).c_str());
                 out_arg->nttp_text_id = kInvalidText;
+                out_arg->captured_expr_tokens.clear();
                 guard.commit();
                 return true;
             }
@@ -227,6 +233,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->nttp_name = nullptr;
         out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
+        out_arg->captured_expr_tokens.clear();
         consume();
         return true;
     }
@@ -236,6 +243,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->nttp_name = nullptr;
         out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
+        out_arg->captured_expr_tokens.clear();
         consume();
         return true;
     }
@@ -246,6 +254,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->nttp_name = nullptr;
         out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
+        out_arg->captured_expr_tokens.clear();
         return true;
     }
     if (check(TokenKind::IntLit)) {
@@ -255,6 +264,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->nttp_name = nullptr;
         out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
+        out_arg->captured_expr_tokens.clear();
         consume();
         return true;
     }
@@ -270,6 +280,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
             out_arg->nttp_name = name;
             out_arg->nttp_text_id = name_text_id;
             out_arg->expr = nullptr;
+            out_arg->captured_expr_tokens.clear();
             id_guard.commit();
             return true;
         }
