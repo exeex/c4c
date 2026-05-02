@@ -24,11 +24,18 @@ as qualified structured metadata for the rendered-key guard. The fix preserves
 structured-key authority and does not weaken the stale-qualified enum
 expectation.
 
+Review `review/step6_post_global_qualifier_fix_review.md` judged the Step 6
+global/enum lookup route on track, with no new testcase-shaped shortcut,
+unsupported expectation downgrade, or helper-only wrapper route found. The
+review also found this file's current-step metadata stale and noted that final
+acceptance still needs a fresh Step 6 validation proof because the reported
+`test_after.log` is not present.
+
 ## Suggested Next
 
-Supervisor should review this narrow Step 6 slice and decide whether final
-acceptance also needs the broader frontend pass or regression guard noted by
-the Step 5 audit.
+Supervisor should rerun the Step 6 validation command and produce the final
+canonical proof log before deciding whether the active runbook can close or
+needs a remaining metadata-blocker split.
 
 ## Watchouts
 
@@ -52,8 +59,9 @@ the Step 5 audit.
 
 ## Proof
 
-Step 6 delegated proof:
+Step 6 delegated proof to regenerate:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build completed successfully; CTest passed `887/887` matched tests.
-Canonical proof log: `test_after.log`.
+Current proof state: pending. The previous passing Step 6 proof was rolled into
+`test_before.log`, and `test_after.log` is absent, so final Step 6 acceptance
+requires fresh validation output.
