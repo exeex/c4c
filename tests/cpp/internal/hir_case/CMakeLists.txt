@@ -177,7 +177,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_template_function_deduction_binding PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "template forward_pick<typename T> \\[2 instantiations\\].*forward_pick_Ttag_ctx-1_local_text[0-9]+_ref \\{T=struct Probe&\\} key=forward_pick<T=struct\\.tag\\.ctx-1\\.local\\.text[0-9]+&>.*forward_pick_Ttag_ctx-1_local_text[0-9]+ \\{T=struct Probe\\} key=forward_pick<T=struct\\.tag\\.ctx-1\\.local\\.text[0-9]+>.*template read_ptr<typename T> \\[1 instantiation\\].*read_ptr_Ttag_ctx-1_local_text[0-9]+ \\{T=struct Probe\\} key=read_ptr<T=struct\\.tag\\.ctx-1\\.local\\.text[0-9]+>"
+  PASS_REGULAR_EXPRESSION "template forward_pick<typename T> \\[2 instantiations\\].*forward_pick_TProbe_ref \\{T=struct Probe&\\} key=forward_pick<T=struct\\.record\\.ctx0\\.text[0-9]+&>.*forward_pick_TProbe \\{T=struct Probe\\} key=forward_pick<T=struct\\.record\\.ctx0\\.text[0-9]+>.*template read_ptr<typename T> \\[1 instantiation\\].*read_ptr_TProbe \\{T=struct Probe\\} key=read_ptr<T=struct\\.record\\.ctx0\\.text[0-9]+>"
 )
 
 add_test(

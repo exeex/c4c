@@ -8,32 +8,32 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries added a structured-derived
-owner bridge for deferred member typedef/template-owner resolution in
-`src/frontend/hir/impl/templates/member_typedef.cpp` and
-`src/frontend/hir/impl/templates/type_resolution.cpp`. For pending
-`typename wrapper<T>::alias` style owners, the resolver now materializes
-template arguments from the existing template owner carriers, selects the
-template struct pattern, derives the instantiated owner name from the primary
-template plus resolved arguments, and attempts member-typedef lookup through
-that structured-derived owner before falling back to rendered `TypeSpec::tag`.
+Step 4 - Probe Field Removal And Split Boundaries fixed the full-suite
+regression from removing the builtin layout no-metadata fallback without
+restoring semantic dependence on `TypeSpec::tag` in
+`LayoutQueries::find_struct_layout`.
+`src/frontend/hir/impl/expr/builtin.cpp::LayoutQueries::find_struct_layout`
+now derives structured owner keys from `TypeSpec::record_def` by translating
+the parser node name/namespace through the HIR module text table. Complete
+structured owner misses remain authoritative; the residual no-owner
+compatibility path uses only named text payloads (`tag_text_id` or
+`record_def` text), not `ts.tag`.
 
-This is a structured-derived instantiated-owner spelling bridge into the
-existing string-keyed member typedef registry, not the final structured
-owner-key migration. Direct `owner_ts.tag` / `ts->tag` lookups remain explicit
-no-metadata compatibility for routes that still lack a complete structured
-owner carrier. Existing member-owner signature coverage remains green,
-including `cpp_hir_template_member_owner_signature_local`,
-`cpp_hir_template_member_owner_field_and_local`, and
-`cpp_hir_template_member_owner_decl_and_cast`.
+Parser producers now carry the missing structured metadata into the affected
+queries: completed non-template record bindings retain `record_def`,
+`tag_text_id`, and namespace metadata, `struct S` references recover an
+existing completed record definition when available, and template parameter
+TypeSpecs carry `template_param_text_id` / index. `resolve_builtin_query_type`
+uses that template-param TextId first and only uses the rendered binding key as
+a compatibility spelling when the parser-owned TextId cannot be decoded by the
+HIR module text table and the same TypeSpec also carries matching template-param
+TextId metadata.
 
 ## Suggested Next
 
-Continue Step 4 with one bounded frontend/HIR compile-failure cluster
-migration. Suggested next packet: retry the bounded
-`src/frontend/hir/hir_functions.cpp::substitute_signature_template_type`
-signature/template-binding slice now that deferred member-typedef owners have a
-structured-derived bridge before rendered tag fallback.
+Continue Step 4 by rerunning the controlled `TypeSpec::tag` deletion probe
+after the builtin layout/query producer cleanup. Record the new first
+compile-failure clusters and confirm whether `builtin.cpp` remains cleared.
 
 ## Watchouts
 
@@ -69,6 +69,15 @@ structured-derived bridge before rendered tag fallback.
   `LayoutQueries::find_struct_layout`; complete structured owner misses no
   longer fall back to rendered `struct_defs`, and the no-metadata rendered
   `ts.tag` fallback has been intentionally removed.
+- The builtin layout full-suite regression is fixed by producer-side
+  `record_def` / TextId metadata plus HIR-side translation from parser record
+  nodes into module-owned owner keys. `LayoutQueries::find_struct_layout` still
+  does not read `TypeSpec::tag`.
+- `resolve_builtin_query_type` still has a bounded rendered binding-name
+  compatibility bridge for parser-owned template-param TextIds that cannot be
+  decoded from the HIR module text table. This is guarded by
+  `tag_text_id == template_param_text_id`; stale rendered tag-only miss tests
+  still reject fallback.
 - The HIR builtin query type route is cleared for
   `resolve_builtin_query_type`; `template_param_text_id` lookup is authoritative
   when present, and tag-only/no-metadata substitution is intentionally not
@@ -105,8 +114,20 @@ structured-derived bridge before rendered tag fallback.
 
 ## Proof
 
-Step 4 deferred member typedef owner bridge proof passed with:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+Step 4 builtin layout regression proof was run with:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(positive_sema_ok_expr_access_misc_runtime_c|positive_sema_ok_pragma_pack_c|cpp_positive_sema_alignas_applies_alignment_runtime_cpp|cpp_positive_sema_alignas_decl_storage_runtime_cpp|cpp_positive_sema_scoped_enum_underlying_layout_runtime_cpp|cpp_positive_sema_template_sizeof_cpp|cpp_hir_builtin_layout_query_sizeof_type|cpp_hir_builtin_layout_query_alignof_type|cpp_hir_builtin_layout_query_alignof_expr|llvm_gcc_c_torture_src_20071018_1_c|llvm_gcc_c_torture_src_pr34456_c|llvm_gcc_c_torture_src_stkalign_c|frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-Result: build passed and 62/62 selected CTest tests passed. Proof log:
-`test_after.log`. `git diff --check` passed.
+Result: build passed and selected CTest passed 74/74. The formerly failing
+layout/runtime regressions now pass, including
+`cpp_hir_builtin_layout_query_sizeof_type`,
+`cpp_hir_builtin_layout_query_alignof_type`,
+`cpp_hir_builtin_layout_query_alignof_expr`,
+`positive_sema_ok_expr_access_misc_runtime_c`,
+`positive_sema_ok_pragma_pack_c`,
+`cpp_positive_sema_alignas_applies_alignment_runtime_cpp`,
+`cpp_positive_sema_alignas_decl_storage_runtime_cpp`,
+`cpp_positive_sema_scoped_enum_underlying_layout_runtime_cpp`,
+`cpp_positive_sema_template_sizeof_cpp`,
+`llvm_gcc_c_torture_src_20071018_1_c`,
+`llvm_gcc_c_torture_src_pr34456_c`, and
+`llvm_gcc_c_torture_src_stkalign_c`. Proof log: `test_after.log`.

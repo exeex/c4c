@@ -1861,6 +1861,49 @@ void test_builtin_record_layout_structured_owner_miss_rejects_stale_tag() {
               "HIR builtin alignof should reject stale rendered tag after structured owner miss");
 }
 
+void test_builtin_record_layout_no_owner_uses_tag_text_id_compatibility() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef compat_def;
+  compat_def.tag = "CompatBuiltinLayout";
+  compat_def.tag_text_id = module.link_name_texts->intern("CompatBuiltinLayout");
+  compat_def.size_bytes = 24;
+  compat_def.align_bytes = 8;
+  module.struct_defs[compat_def.tag] = compat_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  query.tag = "StaleRenderedBuiltinCompat";
+  query.tag_text_id = compat_def.tag_text_id;
+  query.namespace_context_id = -1;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  c4c::Node sizeof_node{};
+  sizeof_node.kind = c4c::NK_SIZEOF_TYPE;
+  sizeof_node.type = query;
+  const c4c::hir::ExprId sizeof_id =
+      lowerer.lower_builtin_sizeof_type(nullptr, &sizeof_node);
+  const c4c::hir::Expr* sizeof_expr = module.find_expr(sizeof_id);
+  const auto* sizeof_lit =
+      sizeof_expr ? std::get_if<c4c::hir::IntLiteral>(&sizeof_expr->payload) : nullptr;
+  expect_true(sizeof_lit && sizeof_lit->value == 24,
+              "HIR builtin sizeof no-owner compatibility should use tag_text_id, not rendered tag");
+
+  c4c::Node alignof_node{};
+  alignof_node.kind = c4c::NK_ALIGNOF_TYPE;
+  alignof_node.type = query;
+  const c4c::hir::ExprId alignof_id =
+      lowerer.lower_builtin_alignof_type(nullptr, &alignof_node);
+  const c4c::hir::Expr* alignof_expr = module.find_expr(alignof_id);
+  const auto* alignof_lit =
+      alignof_expr ? std::get_if<c4c::hir::IntLiteral>(&alignof_expr->payload) : nullptr;
+  expect_true(alignof_lit && alignof_lit->value == 8,
+              "HIR builtin alignof no-owner compatibility should use tag_text_id, not rendered tag");
+}
+
 void test_builtin_query_type_uses_template_param_text_id_binding() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -2332,6 +2375,7 @@ int main() {
   test_layout_type_lookup_structured_owner_miss_rejects_stale_tag();
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_builtin_record_layout_structured_owner_miss_rejects_stale_tag();
+  test_builtin_record_layout_no_owner_uses_tag_text_id_compatibility();
   test_builtin_query_type_uses_template_param_text_id_binding();
   test_builtin_query_type_structured_miss_rejects_stale_tag();
   test_builtin_query_type_no_metadata_keeps_compatibility_shape();

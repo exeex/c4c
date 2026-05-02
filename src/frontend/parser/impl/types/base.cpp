@@ -1916,6 +1916,34 @@ TypeSpec Parser::parse_base_type() {
                             ts.base = TB_TYPEDEF;
                             ts.tag = arena_.strdup(std::string(name).c_str());
                             ts.tag_text_id = name_text_id;
+                            for (int frame_i =
+                                     static_cast<int>(template_state_
+                                                          .template_scope_stack
+                                                          .size()) -
+                                     1;
+                                 frame_i >= 0 &&
+                                 ts.template_param_text_id == kInvalidText;
+                                 --frame_i) {
+                                const auto& frame =
+                                    template_state_.template_scope_stack
+                                        [static_cast<std::size_t>(frame_i)];
+                                for (int param_i = 0;
+                                     param_i <
+                                     static_cast<int>(frame.params.size());
+                                     ++param_i) {
+                                    const auto& param =
+                                        frame.params[static_cast<std::size_t>(
+                                            param_i)];
+                                    if (param.is_nttp ||
+                                        param.name_text_id != name_text_id) {
+                                        continue;
+                                    }
+                                    ts.template_param_index = param_i;
+                                    ts.template_param_text_id =
+                                        param.name_text_id;
+                                    break;
+                                }
+                            }
                             consume();
                             done = true;
                             break;

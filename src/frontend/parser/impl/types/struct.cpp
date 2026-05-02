@@ -2230,6 +2230,16 @@ Node* parse_record_tag_setup(
                 parser.current_namespace_context_id(),
                 resolved_tag_text_id);
             resolved_tag = parser.arena_.strdup(qtag.c_str());
+            if (!(template_origin_name && template_origin_name[0]) &&
+                specialization_args.empty()) {
+                auto existing =
+                    parser.definition_state_.struct_tag_def_map.find(qtag);
+                if (existing != parser.definition_state_.struct_tag_def_map.end() &&
+                    existing->second && existing->second->n_fields >= 0) {
+                    if (tag) *tag = resolved_tag;
+                    return existing->second;
+                }
+            }
         }
 
         if (tag)
@@ -2454,11 +2464,40 @@ void register_record_definition(Parser& parser,
     parser.register_tag_type_binding(canonical_tag_text_id,
                                      is_union ? TB_UNION : TB_STRUCT,
                                      sd->name, canonical_tag_text_id);
+    const bool can_bind_concrete_record_def =
+        parser.template_state_.template_scope_stack.empty() &&
+        sd->n_template_params <= 0 &&
+        !(sd->template_origin_name && sd->template_origin_name[0]) &&
+        sd->n_template_args <= 0;
+    auto register_record_type_binding = [&](TextId binding_text_id,
+                                            TextId type_text_id) {
+        if (!can_bind_concrete_record_def || binding_text_id == kInvalidText) return;
+        TypeSpec record_ts{};
+        record_ts.array_size = -1;
+        record_ts.inner_rank = -1;
+        record_ts.base = is_union ? TB_UNION : TB_STRUCT;
+        record_ts.tag = sd->name;
+        record_ts.tag_text_id =
+            type_text_id != kInvalidText ? type_text_id : binding_text_id;
+        record_ts.record_def = sd;
+        record_ts.namespace_context_id = sd->namespace_context_id;
+        record_ts.qualifier_segments = sd->qualifier_segments;
+        record_ts.qualifier_text_ids = sd->qualifier_text_ids;
+        record_ts.n_qualifier_segments = sd->n_qualifier_segments;
+        record_ts.is_global_qualified = sd->is_global_qualified;
+        parser.register_typedef_binding(binding_text_id, record_ts, false);
+    };
+    register_record_type_binding(canonical_tag_text_id, canonical_tag_text_id);
     if (source_tag && source_tag[0] && std::strcmp(source_tag, sd->name) != 0) {
         parser.register_tag_type_binding(
             parser.parser_text_id_for_token(kInvalidText, source_tag),
             is_union ? TB_UNION : TB_STRUCT, sd->name,
             canonical_tag_text_id);
+        register_record_type_binding(
+            parser.parser_text_id_for_token(kInvalidText, source_tag),
+            sd->unqualified_text_id != kInvalidText
+                ? sd->unqualified_text_id
+                : canonical_tag_text_id);
     }
 }
 

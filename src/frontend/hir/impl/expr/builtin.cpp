@@ -58,30 +58,24 @@ class LayoutQueries {
   }
 
  private:
-  static std::optional<HirRecordOwnerKey> record_owner_key_from_node(
-      const Node* record_def) {
-    if (!record_def || record_def->kind != NK_STRUCT_DEF ||
-        record_def->unqualified_text_id == kInvalidText) {
+  std::optional<HirRecordOwnerKey> record_owner_key_from_node(
+      const Node* record_def) const {
+    if (!record_def || record_def->kind != NK_STRUCT_DEF) {
       return std::nullopt;
     }
 
-    NamespaceQualifier ns_qual;
-    ns_qual.context_id = record_def->namespace_context_id;
-    ns_qual.is_global_qualified = record_def->is_global_qualified;
-    if (record_def->qualifier_text_ids && record_def->n_qualifier_segments > 0) {
-      ns_qual.segment_text_ids.assign(
-          record_def->qualifier_text_ids,
-          record_def->qualifier_text_ids + record_def->n_qualifier_segments);
-    }
+    TextTable* texts = module_.link_name_texts.get();
+    const TextId record_text_id = make_unqualified_text_id(record_def, texts);
+    if (record_text_id == kInvalidText) return std::nullopt;
 
     HirRecordOwnerKey key =
-        make_hir_record_owner_key(ns_qual, record_def->unqualified_text_id);
+        make_hir_record_owner_key(make_ns_qual(record_def, texts), record_text_id);
     if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
     return key;
   }
 
-  static std::optional<HirRecordOwnerKey> record_owner_key_from_typespec(
-      const TypeSpec& ts) {
+  std::optional<HirRecordOwnerKey> record_owner_key_from_typespec(
+      const TypeSpec& ts) const {
     if (auto key = record_owner_key_from_node(ts.record_def); key.has_value()) {
       return key;
     }
@@ -111,7 +105,8 @@ class LayoutQueries {
       }
       return nullptr;
     }
-    return nullptr;
+    const auto it = module_.struct_defs.find(layout_compat_name_from_text(ts));
+    return it == module_.struct_defs.end() ? nullptr : &it->second;
   }
 
   static TypeSpec array_element_type(const TypeSpec& ts) {
@@ -122,6 +117,29 @@ class LayoutQueries {
     }
     elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
     return elem;
+  }
+
+  std::string layout_compat_name_from_text(const TypeSpec& ts) const {
+    if (module_.link_name_texts) {
+      if (ts.tag_text_id != kInvalidText) {
+        std::string text(module_.link_name_texts->lookup(ts.tag_text_id));
+        if (!text.empty()) return text;
+      }
+      if (ts.record_def && ts.record_def->unqualified_text_id != kInvalidText) {
+        std::string text(
+            module_.link_name_texts->lookup(ts.record_def->unqualified_text_id));
+        if (!text.empty()) return text;
+      }
+    }
+    if (ts.record_def) {
+      if (ts.record_def->name && ts.record_def->name[0]) {
+        return std::string(ts.record_def->name);
+      }
+      if (ts.record_def->unqualified_name && ts.record_def->unqualified_name[0]) {
+        return std::string(ts.record_def->unqualified_name);
+      }
+    }
+    return {};
   }
 
   const hir::Module& module_;
@@ -172,10 +190,26 @@ TypeSpec Lowerer::resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) 
 
   const std::string binding_key(
       module_->link_name_texts->lookup(target.template_param_text_id));
+  if (!binding_key.empty()) {
+    auto it = ctx->tpl_bindings.find(binding_key);
+    if (it != ctx->tpl_bindings.end()) {
+      return apply_builtin_query_template_binding(target, it->second);
+    }
+  }
+  if (target.tag && target.tag[0] &&
+      target.tag_text_id == target.template_param_text_id &&
+      (binding_key.empty() || binding_key != target.tag)) {
+    // Parser-owned TextIds are not always attached to the HIR module text
+    // table yet. This is a compatibility spelling for an already-identified
+    // template parameter, not tag-only type identity.
+    auto rendered_it = ctx->tpl_bindings.find(target.tag);
+    if (rendered_it != ctx->tpl_bindings.end()) {
+      return apply_builtin_query_template_binding(target, rendered_it->second);
+    }
+    return target;
+  }
   if (binding_key.empty()) return target;
-  auto it = ctx->tpl_bindings.find(binding_key);
-  if (it == ctx->tpl_bindings.end()) return target;
-  return apply_builtin_query_template_binding(target, it->second);
+  return target;
 }
 
 ExprId Lowerer::lower_builtin_sizeof_type(FunctionCtx* ctx, const Node* n) {
