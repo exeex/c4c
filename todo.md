@@ -8,24 +8,25 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 audited the preliminary direct template-instantiation NTTP value-arg
-`$expr:` re-lex branch. The high-value structured routes already bypass it:
+Step 4 re-examined the preliminary direct template-instantiation NTTP value-arg
+`$expr:` re-lex branch fed by `capture_template_arg_expr(...)`. Parseable value
+arguments already have structured parser-owned carriers before this branch:
 `try_parse_template_non_type_expr(...)` fills `ParsedTemplateArg::expr`,
 forwarded single-name NTTP args fill `ParsedTemplateArg::nttp_text_id`, and
-`TemplateArgRef`/`TypeSpec::array_size_expr` carriers are consumed before the
-compatibility branch. The only remaining producer is
-`capture_template_arg_expr(...)`, which intentionally records debug text only
-after expression parsing fails. No code was changed because no parser-owned
-structured carrier was found to be dropped on this route; the precise blocker is
-to add a structured producer for currently unparsed captured template-argument
-expressions before deleting the compatibility re-lex.
+array/template-ref carriers are consumed before `$expr:` text is considered.
+No code was changed: after `try_parse_template_non_type_expr(...)` fails, the
+current `TemplateArgParseResult` contract has no structured token-span,
+deferred-expression, `Node*`, or `TextId` payload for the captured argument, so
+`capture_template_arg_expr(...)` can only store `$expr:` debug text in
+`nttp_name`.
 
 ## Suggested Next
 
 Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
-the supervisor. If the supervisor keeps this route active, the next coherent
-packet is to identify a concrete `capture_template_arg_expr(...)` input that
-should be parseable as a structured `Node*` and repair
+the supervisor. If the supervisor keeps this `$expr:` route active, the next
+coherent packet is a carrier-design packet: add a parser-owned structured
+deferred template-argument expression payload, or identify a concrete
+`capture_template_arg_expr(...)` input that should parse as a `Node*` and repair
 `try_parse_template_non_type_expr(...)` or the expression parser for that input.
 
 ## Watchouts
@@ -85,13 +86,19 @@ should be parseable as a structured `Node*` and repair
   should repair the capture producer if a high-value case still reaches it.
 - Current `$expr:` blocker: the remaining preliminary direct-instantiation
   re-lex branch is fed by `capture_template_arg_expr(...)` in
-  `src/frontend/parser/impl/types/declarator.cpp`, which has only token text
-  after `try_parse_template_non_type_expr(...)` fails. The missing producer
-  contract is a structured `Node*` or `TextId` carrier for that captured
-  expression; do not delete the branch until a concrete captured expression is
-  made structured, and do not make the re-lex branch semantic authority when
-  `ParsedTemplateArg::expr`, `TypeSpec::array_size_expr`,
-  `ParsedTemplateArg::nttp_text_id`, or `TemplateArgRef::nttp_text_id` exists.
+  `src/frontend/parser/impl/types/declarator.cpp`. That helper runs only after
+  `try_parse_template_non_type_expr(...)` fails and the current
+  `TemplateArgParseResult` fields cannot carry the captured token range as
+  structured metadata. The missing producer contract is a parser-owned
+  structured deferred-expression/token-span carrier, or a repaired expression
+  parse that yields `ParsedTemplateArg::expr` for a concrete captured input.
+  Do not delete the branch until one of those carriers exists, and do not make
+  the re-lex branch semantic authority when `ParsedTemplateArg::expr`,
+  `TypeSpec::array_size_expr`, `ParsedTemplateArg::nttp_text_id`, or
+  `TemplateArgRef::nttp_text_id` exists.
+- `c4c-clang-tool-ccdb` was attempted for the parser implementation files, but
+  the current `build/compile_commands.json` does not list those split files
+  directly. The route was small enough for targeted text inspection.
 - The alias-template comma-split/rendered arg-ref fallback has been removed.
   The only exercised fully no-carrier `TB_VOID` debug-only type-ref case is now
   the focused parser lookup-authority fixture, which intentionally remains
@@ -122,7 +129,7 @@ should be parseable as a structured `Node*` and repair
 Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build was up to date (`ninja: no work to do`).
+Result: no code changes; build was up to date (`ninja: no work to do`).
 CTest passed `886/886` matched tests, including
 `frontend_parser_lookup_authority_tests`,
 `eastl_cpp_external_utility_frontend_basic_cpp`, and the
