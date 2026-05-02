@@ -8,22 +8,29 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared the
-`src/frontend/hir/impl/stmt/decl.cpp` deletion-probe blocker. Local-declaration
-struct-owner resolution, aggregate direct-assignment comparison, initializer-list
-field/member owner lookup, and inherited-base aggregate lvalue construction now
-route through structured owner metadata, `tag_text_id`, and deletion-safe
-final-spelling compatibility helpers instead of direct `TypeSpec::tag` reads or
-writes. `decl.cpp` no longer has deletion-probe-blocking direct
-`TypeSpec::tag` reads or writes outside SFINAE compatibility bridges.
+Step 4 - Probe Field Removal And Split Boundaries moved
+`src/frontend/hir/impl/stmt/decl.cpp` past direct deletion-probe blocking
+`TypeSpec::tag` reads/writes, but the reviewer found the route is not fully
+cleared semantically. Aggregate direct-assignment paths can still fall through
+to rendered compatibility spelling after both structured owner resolutions miss:
+array element aggregate comparison around `decl.cpp:780-801` and
+initializer-list aggregate comparison around `decl.cpp:936-959`.
+
+Review absorbed from `review/step4_post_decl_checkpoint_review.md`: the
+structured-owner-miss fallback is route drift from the source idea because once
+record-def/template metadata is classified as structured identity, a complete
+structured miss must not recover semantic success through rendered spelling
+equality from `tag_text_id` or legacy `TypeSpec::tag`.
 
 ## Suggested Next
 
-Continue Step 4 by taking the next deletion-probe blocker in
-`src/frontend/hir/impl/stmt/range_for.cpp`, keeping it scoped to range-for
-statement owner/member lookup and leaving the larger `stmt.cpp` and
-`templates/deduction.cpp` residual clusters for separate packets unless a shared
-statement-owner helper is required.
+Continue Step 4 with a narrow `src/frontend/hir/impl/stmt/decl.cpp`
+repair/test packet before returning to `src/frontend/hir/impl/stmt/range_for.cpp`.
+The packet should block rendered-spelling compatibility fallback when both sides
+have complete structured metadata but owner resolution fails, and add focused
+coverage for stale rendered spelling in the direct aggregate comparison paths.
+If that cannot stay local to `decl.cpp`, stop and request an explicit split
+before resuming the `range_for.cpp` deletion-probe blocker.
 
 ## Watchouts
 
@@ -38,10 +45,11 @@ statement-owner helper is required.
 - Do not weaken tests, mark supported cases unsupported, or add named-case
   shortcuts.
 - Treat any `TypeSpec::tag` deletion build as temporary until Step 5.
-- `decl.cpp` now keeps legacy spelling access behind local deletion-safe
-  compatibility helpers. Do not use those helpers as a semantic owner shortcut
-  when `record_def`, template origin/args, or complete `tag_text_id` metadata is
-  available.
+- `decl.cpp` is not semantically cleared yet: deletion-safe compatibility
+  helpers must not become semantic owner shortcuts after complete structured
+  metadata exists and structured owner lookup fails.
+- The next executor packet should constrain the local compatibility route
+  instead of moving to `range_for.cpp` first.
 - The inherited-base aggregate cast TypeSpec now preserves final spelling with a
   deletion-safe write helper and copies `tag_text_id`/namespace metadata from
   the resolved base layout when available.
