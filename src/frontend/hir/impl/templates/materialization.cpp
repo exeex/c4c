@@ -43,6 +43,10 @@ void assign_decoded_record_identity(TypeSpec& ts,
 
 std::string typespec_mangling_name_payload(const TypeSpec& ts,
                                            const char* fallback) {
+  if (const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+      legacy_tag && legacy_tag[0]) {
+    return legacy_tag;
+  }
   if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
     if (ts.record_def->name && ts.record_def->name[0]) {
       return ts.record_def->name;
@@ -67,10 +71,6 @@ std::string typespec_mangling_name_payload(const TypeSpec& ts,
     }
     out += "_text" + std::to_string(ts.tag_text_id);
     return out;
-  }
-  if (const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
-      legacy_tag && legacy_tag[0]) {
-    return legacy_tag;
   }
   return fallback ? fallback : "";
 }

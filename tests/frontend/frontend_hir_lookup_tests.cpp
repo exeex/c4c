@@ -1136,13 +1136,18 @@ void test_compile_time_function_specialization_primitive_args_still_match() {
 
 void test_template_deduction_forwarding_consistency_uses_record_def_identity() {
   c4c::hir::Lowerer lowerer;
+  c4c::TextTable texts;
 
   const char* template_params[] = {"T"};
+  c4c::TextId template_param_text_ids[] = {texts.intern("T")};
   c4c::TypeSpec param_ts{};
   param_ts.array_size = -1;
   param_ts.inner_rank = -1;
   param_ts.base = c4c::TB_TYPEDEF;
   param_ts.tag = "T";
+  param_ts.tag_text_id = template_param_text_ids[0];
+  param_ts.template_param_text_id = template_param_text_ids[0];
+  param_ts.template_param_index = 0;
   param_ts.is_rvalue_ref = true;
 
   c4c::Node param_a{};
@@ -1154,19 +1159,26 @@ void test_template_deduction_forwarding_consistency_uses_record_def_identity() {
   fn_def.kind = c4c::NK_FUNCTION;
   fn_def.name = "deduce_forward";
   fn_def.template_param_names = template_params;
+  fn_def.template_param_name_text_ids = template_param_text_ids;
   fn_def.n_template_params = 1;
   fn_def.params = params;
   fn_def.n_params = 2;
+  fn_def.unqualified_text_id = texts.intern("deduce_forward");
+  param_ts.template_param_owner_text_id = fn_def.unqualified_text_id;
+  param_a.type = param_ts;
+  param_b.type = param_ts;
 
   c4c::Node shared_record{};
   shared_record.kind = c4c::NK_STRUCT_DEF;
   shared_record.name = "StructuredForwardArg";
+  shared_record.unqualified_text_id = texts.intern("StructuredForwardArg");
 
   c4c::TypeSpec arg_a_ts{};
   arg_a_ts.array_size = -1;
   arg_a_ts.inner_rank = -1;
   arg_a_ts.base = c4c::TB_STRUCT;
   arg_a_ts.tag = "StaleRenderedForwardA";
+  arg_a_ts.tag_text_id = shared_record.unqualified_text_id;
   arg_a_ts.record_def = &shared_record;
   c4c::TypeSpec arg_b_ts = arg_a_ts;
   arg_b_ts.tag = "StaleRenderedForwardB";
@@ -1193,13 +1205,18 @@ void test_template_deduction_forwarding_consistency_uses_record_def_identity() {
 
 void test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag() {
   c4c::hir::Lowerer lowerer;
+  c4c::TextTable texts;
 
   const char* template_params[] = {"T"};
+  c4c::TextId template_param_text_ids[] = {texts.intern("T")};
   c4c::TypeSpec param_ts{};
   param_ts.array_size = -1;
   param_ts.inner_rank = -1;
   param_ts.base = c4c::TB_TYPEDEF;
   param_ts.tag = "T";
+  param_ts.tag_text_id = template_param_text_ids[0];
+  param_ts.template_param_text_id = template_param_text_ids[0];
+  param_ts.template_param_index = 0;
 
   c4c::Node param_a{};
   param_a.kind = c4c::NK_VAR;
@@ -1210,22 +1227,30 @@ void test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag
   fn_def.kind = c4c::NK_FUNCTION;
   fn_def.name = "deduce_reject";
   fn_def.template_param_names = template_params;
+  fn_def.template_param_name_text_ids = template_param_text_ids;
   fn_def.n_template_params = 1;
   fn_def.params = params;
   fn_def.n_params = 2;
+  fn_def.unqualified_text_id = texts.intern("deduce_reject");
+  param_ts.template_param_owner_text_id = fn_def.unqualified_text_id;
+  param_a.type = param_ts;
+  param_b.type = param_ts;
 
   c4c::Node record_a{};
   record_a.kind = c4c::NK_STRUCT_DEF;
   record_a.name = "RecordA";
+  record_a.unqualified_text_id = texts.intern("RecordA");
   c4c::Node record_b{};
   record_b.kind = c4c::NK_STRUCT_DEF;
   record_b.name = "RecordB";
+  record_b.unqualified_text_id = texts.intern("RecordB");
 
   c4c::TypeSpec arg_a_ts{};
   arg_a_ts.array_size = -1;
   arg_a_ts.inner_rank = -1;
   arg_a_ts.base = c4c::TB_STRUCT;
   arg_a_ts.tag = "SharedRenderedDeductionArg";
+  arg_a_ts.tag_text_id = record_a.unqualified_text_id;
   arg_a_ts.record_def = &record_a;
   c4c::TypeSpec arg_b_ts = arg_a_ts;
   arg_b_ts.record_def = &record_b;

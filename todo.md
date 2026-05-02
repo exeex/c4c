@@ -8,16 +8,15 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries migrated the
-`src/frontend/hir/impl/templates/materialization.cpp`
-`Lowerer::build_template_mangled_name` `append_type_suffix`
-struct/union/enum/typedef final-spelling payload family away from direct
-`TypeSpec::tag` reads.
+Step 4 - Probe Field Removal And Split Boundaries repaired the post-mangling
+full-baseline regressions without reopening rendered-spelling semantic lookup.
 
-The local mangling helper now prefers structured `record_def` names and
-TextId/namespace metadata for deletion-safe suffix payloads before falling back
-through the existing legacy display-spelling shim. This keeps mangling/final
-spelling string-shaped without making rendered text semantic lookup authority.
+`typespec_mangling_name_payload` remains deletion-safe, but now preserves the
+existing final spelling when `TypeSpec::tag` is still present and uses
+structured `record_def` / TextId payloads only as the field-removal fallback.
+The repeated forwarding-deduction HIR fixture now carries
+template-param index/TextId/owner metadata, matching the structured contract
+used by the migrated deduction path.
 
 ## Suggested Next
 
@@ -85,10 +84,10 @@ unless the supervisor routes them together.
 
 Executor proof:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0 after restoring the temporary deletion-probe edit. The
-build passed, and CTest passed 72 of 72 delegated tests.
+Result: command exited 0. The build passed, the two full-baseline failures from
+`test_baseline.new.log` passed, and CTest passed 74 of 74 delegated tests.
 
 Deletion probe:
 
