@@ -8,28 +8,47 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared the remaining
-`TypeSpec::tag` compile blocker in
-`src/frontend/hir/impl/expr/builtin.cpp::LayoutQueries::find_struct_layout`.
-The builtin-local layout query now resolves record layouts only from structured
-owner metadata derived from `record_def` or `tag_text_id` plus
-namespace/qualifier data. If no complete structured owner carrier exists, or if
-the structured owner misses, the helper returns `nullptr` and builtin
-`sizeof`/`alignof` use their existing default layout size/alignment. The prior
-rendered `ts.tag` / `Module::struct_defs` no-metadata fallback is intentionally
-removed for the future no-tag contract.
+Step 4 - Probe Field Removal And Split Boundaries reran the controlled
+`TypeSpec::tag` deletion probe after clearing the `builtin.cpp` layout
+fallback. The temporary edit removed `const char* tag` from
+`src/frontend/parser/ast.hpp`, ran `cmake --build --preset default` with
+pipefail, captured the current first frontend/HIR compile-failure clusters, and
+then restored `ast.hpp` to the pre-probe buildable state.
 
-Existing focused coverage in `frontend_hir_lookup_tests` continues to prove
-structured builtin layout hits over stale rendered tags and structured misses
-reject stale rendered layouts.
+Fifth deletion-probe result: the build still stops in frontend/HIR compilation
+before reaching LIR/BIR/backend. Cleared since the fourth probe:
+`src/frontend/hir/impl/expr/builtin.cpp::LayoutQueries::find_struct_layout` no
+longer appears as a direct `TypeSpec::tag` failure cluster, so `builtin.cpp`
+is absent from the current first failure set. Current first remaining clusters
+are:
+
+- `src/frontend/hir/hir_functions.cpp`: mixed HIR semantic/template-binding and
+  compatibility surfaces, including zero-sized struct return normalization,
+  `substitute_signature_template_type`, callable return/parameter preparation,
+  member typedef lookup, and pack binding name parsing.
+- `src/frontend/hir/hir_lowering_core.cpp`: mixed semantic/display surfaces,
+  including `generic_type_compatible`, local layout-size/layout-align helpers,
+  and base-layout scratch TypeSpec construction.
+- `src/frontend/hir/hir_build.cpp`: overload collection parity still compares
+  record/union argument tags as rendered strings.
+- `src/frontend/hir/hir_types.cpp`: broad HIR semantic/display cluster,
+  including typedef-to-struct compatibility, struct method owner recovery,
+  method lookup parity, layout fallback, inherited field/base construction,
+  member symbol lookup, base tag storage/final spelling, generic type
+  inference, template binding fallback, and member-call return recovery.
+- `src/frontend/hir/impl/expr/call.cpp`: HIR call-lowering cluster for template
+  struct calls, aggregate initializer parity, pack expansion, member calls,
+  ordinary calls, synthetic `this` TypeSpec construction, and consteval call
+  argument template binding fallback.
 
 ## Suggested Next
 
-Continue Step 4 by rerunning the `TypeSpec::tag` deletion probe after the
-builtin layout fallback removal, or choose the next first frontend/HIR
-compile-failure cluster from the prior probe, likely a bounded
-`hir_functions.cpp` template-binding/signature route or the
-`hir_lowering_core.cpp::generic_type_compatible` rendered nominal comparison.
+Continue Step 4 with one bounded frontend/HIR compile-failure cluster
+migration. Suggested next packet: clear the `hir_functions.cpp`
+`substitute_signature_template_type` / callable signature template-binding
+surface by using existing structured type-parameter metadata before any
+rendered binding-name compatibility, or explicitly demote the no-metadata
+pieces needed for the future no-tag contract.
 
 ## Watchouts
 
@@ -69,13 +88,12 @@ compile-failure cluster from the prior probe, likely a bounded
   `resolve_builtin_query_type`; `template_param_text_id` lookup is authoritative
   when present, and tag-only/no-metadata substitution is intentionally not
   preserved for the future no-tag field removal.
-- The fourth deletion probe still stopped in frontend/HIR compilation before
-  this slice; no LIR/BIR/backend downstream metadata gap has been reached yet.
-- Remaining first-probe clusters after this slice should exclude
-  `builtin.cpp`; rerun the deletion probe to confirm before selecting the next
-  cluster. Expected remaining clusters include HIR call-lowering helpers and
-  mixed HIR semantic/display consumers in `hir_functions.cpp`,
-  `hir_lowering_core.cpp`, `hir_build.cpp`, and `hir_types.cpp`.
+- The fifth deletion probe still stops in frontend/HIR compilation; no
+  LIR/BIR/backend downstream metadata gap has been reached yet.
+- `builtin.cpp` is cleared from the current first deletion-probe failure set.
+  Remaining first-probe clusters are HIR call-lowering helpers and mixed HIR
+  semantic/display consumers in `hir_functions.cpp`, `hir_lowering_core.cpp`,
+  `hir_build.cpp`, and `hir_types.cpp`.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend
   failures after frontend/HIR compile blockers are cleared.
 - Classify each failure as parser/HIR-owned, compatibility/display/final
@@ -91,8 +109,11 @@ compile-failure cluster from the prior probe, likely a bounded
 
 ## Proof
 
-Step 4 builtin layout fallback proof passed with:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+Step 4 fifth deletion probe ran with:
+temporary removal of `TypeSpec::tag` from
+`src/frontend/parser/ast.hpp`, then `cmake --build --preset default`.
 
-Result: build passed and 62/62 selected CTest tests passed. Proof log:
-`test_after.log`. `git diff --check` passed.
+Probe result: build failed as expected in frontend/HIR compile with the first
+clusters classified above. The temporary `ast.hpp` deletion was restored, and
+the restored tree passed `cmake --build --preset default`. `git diff --check`
+passed after restoration.
