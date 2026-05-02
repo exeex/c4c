@@ -530,6 +530,49 @@ inline bool node_has_template_param_text_id(const Node* node, TextId text_id) {
     return false;
 }
 
+inline bool node_expr_mentions_template_param(const Node* template_owner,
+                                              const Node* expr) {
+    if (!template_owner || !expr) return false;
+    if (expr->kind == NK_VAR) {
+        if (expr->unqualified_text_id != kInvalidText) {
+            return node_has_template_param_text_id(
+                template_owner, expr->unqualified_text_id);
+        }
+        if (node_has_template_param_name(template_owner, expr->name)) {
+            return true;
+        }
+    }
+    if (expr->left &&
+        node_expr_mentions_template_param(template_owner, expr->left)) {
+        return true;
+    }
+    if (expr->right &&
+        node_expr_mentions_template_param(template_owner, expr->right)) {
+        return true;
+    }
+    if (expr->cond &&
+        node_expr_mentions_template_param(template_owner, expr->cond)) {
+        return true;
+    }
+    if (expr->then_ &&
+        node_expr_mentions_template_param(template_owner, expr->then_)) {
+        return true;
+    }
+    if (expr->else_ &&
+        node_expr_mentions_template_param(template_owner, expr->else_)) {
+        return true;
+    }
+    if (expr->children) {
+        for (int i = 0; i < expr->n_children; ++i) {
+            if (node_expr_mentions_template_param(template_owner,
+                                                  expr->children[i])) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 inline bool node_template_value_arg_mentions_template_param(
     const Node* node,
     int arg_index) {
@@ -542,6 +585,10 @@ inline bool node_template_value_arg_mentions_template_param(
             : kInvalidText;
     if (text_id != kInvalidText) {
         return node_has_template_param_text_id(node, text_id);
+    }
+    if (node->template_arg_exprs && node->template_arg_exprs[arg_index]) {
+        return node_expr_mentions_template_param(
+            node, node->template_arg_exprs[arg_index]);
     }
     return node->template_arg_nttp_names &&
            node_has_template_param_name(node,
