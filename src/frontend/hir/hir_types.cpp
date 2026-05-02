@@ -122,6 +122,26 @@ const HirStructField* find_struct_instance_field_including_bases(
   return nullptr;
 }
 
+template <typename T>
+auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+template <typename T>
+void set_typespec_final_spelling_tag_if_present(T&, const char*, long) {}
+
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, std::string_view{}) {
+  return ts.tag ? std::string_view(ts.tag) : std::string_view{};
+}
+
+template <typename T>
+std::string_view typespec_legacy_tag_if_present(const T&, long) {
+  return {};
+}
+
 }  // namespace
 
 bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
@@ -160,12 +180,19 @@ ConstEvalEnv Lowerer::make_lowerer_consteval_env(
 
 void Lowerer::resolve_typedef_to_struct(TypeSpec& ts) const {
   if (ts.base != TB_TYPEDEF || !module_) return;
-  auto apply_struct_def = [&](const HirStructDef& def) {
+  auto apply_struct_def = [&](const HirStructDef& def,
+                              const std::optional<HirRecordOwnerKey>& owner_key) {
     ts.base = def.is_union ? TB_UNION : TB_STRUCT;
-    ts.tag = def.tag.c_str();
+    set_typespec_final_spelling_tag_if_present(ts, def.tag.c_str(), 0);
     ts.tag_text_id = def.tag_text_id;
     ts.namespace_context_id = def.ns_qual.context_id;
     ts.is_global_qualified = def.ns_qual.is_global_qualified;
+    if (owner_key) {
+      const auto node_it = struct_def_nodes_by_owner_.find(*owner_key);
+      if (node_it != struct_def_nodes_by_owner_.end()) {
+        ts.record_def = const_cast<Node*>(node_it->second);
+      }
+    }
   };
 
   if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
@@ -173,7 +200,7 @@ void Lowerer::resolve_typedef_to_struct(TypeSpec& ts) const {
             make_struct_def_node_owner_key(ts.record_def)) {
       if (const HirStructDef* structured =
               module_->find_struct_def_by_owner_structured(*owner_key)) {
-        apply_struct_def(*structured);
+        apply_struct_def(*structured, owner_key);
       }
       return;
     }
@@ -193,16 +220,29 @@ void Lowerer::resolve_typedef_to_struct(TypeSpec& ts) const {
     if (hir_record_owner_key_has_complete_metadata(owner_key)) {
       if (const HirStructDef* structured =
               module_->find_struct_def_by_owner_structured(owner_key)) {
-        apply_struct_def(*structured);
+        apply_struct_def(*structured, owner_key);
       }
       return;
     }
   }
 
-  if (!ts.tag || !ts.tag[0]) return;
-  auto sit = module_->struct_defs.find(ts.tag);
+  // Compatibility bridge for legacy typedef TypeSpecs that still lack a
+  // complete structured owner key but do carry parser TextId spelling.
+  auto sit = module_->struct_defs.end();
+  if (ts.tag_text_id != kInvalidText && module_->link_name_texts) {
+    const std::string_view rendered_tag =
+        module_->link_name_texts->lookup(ts.tag_text_id);
+    if (!rendered_tag.empty()) {
+      sit = module_->struct_defs.find(std::string(rendered_tag));
+    }
+  }
+  if (sit == module_->struct_defs.end()) {
+    const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+    if (legacy_tag.empty()) return;
+    sit = module_->struct_defs.find(std::string(legacy_tag));
+  }
   if (sit != module_->struct_defs.end()) {
-    apply_struct_def(sit->second);
+    apply_struct_def(sit->second, std::nullopt);
   }
 }
 
