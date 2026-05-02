@@ -970,7 +970,74 @@ TypeSpec Parser::parse_base_type() {
                     }
                     return false;
                 };
+                auto structured_template_record_for_origin_key =
+                    [&](const TypeSpec& ts) -> const Node* {
+                    if (ts.record_def) return ts.record_def;
+                    if (ts.tpl_struct_origin_key.base_text_id == kInvalidText ||
+                        !ts.tpl_struct_args.data ||
+                        ts.tpl_struct_args.size <= 0) {
+                        return nullptr;
+                    }
+                    const Node* primary =
+                        find_template_struct_primary(ts.tpl_struct_origin_key);
+                    if (!primary) return nullptr;
+
+                    std::vector<ParsedTemplateArg> args;
+                    args.reserve(ts.tpl_struct_args.size);
+                    for (int ai = 0; ai < ts.tpl_struct_args.size; ++ai) {
+                        const TemplateArgRef& src = ts.tpl_struct_args.data[ai];
+                        ParsedTemplateArg arg{};
+                        if (src.kind == TemplateArgKind::Value) {
+                            if (zero_value_arg_ref_uses_debug_fallback(src)) {
+                                return nullptr;
+                            }
+                            arg.is_value = true;
+                            arg.value = src.value;
+                            arg.expr = src.type.array_size_expr;
+                            if (arg.expr) return nullptr;
+                            arg.nttp_text_id = src.nttp_text_id;
+                        } else {
+                            if (unstructured_type_arg_ref_uses_debug_fallback(src)) {
+                                return nullptr;
+                            }
+                            if (src.type.tpl_struct_origin ||
+                                (src.type.tpl_struct_args.data &&
+                                 src.type.tpl_struct_args.size > 0)) {
+                                return nullptr;
+                            }
+                            arg.is_value = false;
+                            arg.type = src.type;
+                        }
+                        args.push_back(arg);
+                    }
+
+                    const char* origin =
+                        primary->name && primary->name[0]
+                            ? primary->name
+                            : primary->template_origin_name &&
+                                      primary->template_origin_name[0]
+                                  ? primary->template_origin_name
+                                  : primary->unqualified_name &&
+                                            primary->unqualified_name[0]
+                                        ? primary->unqualified_name
+                                        : ts.tpl_struct_origin;
+                    if (!origin || !origin[0]) return nullptr;
+
+                    TypeSpec resolved = ts;
+                    std::string mangled;
+                    if (!ensure_template_struct_instantiated_from_args(
+                            origin, primary, args, cur().line, &mangled,
+                            "member_typedef_origin_key_lookup", &resolved)) {
+                        return nullptr;
+                    }
+                    if (resolved.record_def) return resolved.record_def;
+                    return resolve_record_type_spec(resolved, nullptr);
+                };
                 auto structured_record_for_type = [&](const TypeSpec& ts) -> const Node* {
+                    if (const Node* keyed_record =
+                            structured_template_record_for_origin_key(ts)) {
+                        return keyed_record;
+                    }
                     QualifiedNameRef qn;
                     if (type_spec_qualified_name_ref(ts, &qn) &&
                         (ts.n_qualifier_segments > 0 || ts.is_global_qualified)) {
@@ -2176,58 +2243,6 @@ TypeSpec Parser::parse_base_type() {
                             } else {
                             // Substitute alias params in the aliased type.
                                 ts = ati->aliased_type;
-                                auto split_template_arg_refs =
-                                    [&](const std::string& refs)
-                                    -> std::vector<std::string> {
-                                        std::vector<std::string> parts;
-                                        if (refs.empty()) return parts;
-                                        size_t start = 0;
-                                        int angle_depth = 0;
-                                        int paren_depth = 0;
-                                        int bracket_depth = 0;
-                                        int brace_depth = 0;
-                                        for (size_t i = 0; i < refs.size(); ++i) {
-                                            const char ch = refs[i];
-                                            switch (ch) {
-                                                case '<': ++angle_depth; break;
-                                                case '>':
-                                                    if (angle_depth > 0) --angle_depth;
-                                                    break;
-                                                case '(':
-                                                    ++paren_depth;
-                                                    break;
-                                                case ')':
-                                                    if (paren_depth > 0) --paren_depth;
-                                                    break;
-                                                case '[':
-                                                    ++bracket_depth;
-                                                    break;
-                                                case ']':
-                                                    if (bracket_depth > 0) --bracket_depth;
-                                                    break;
-                                                case '{':
-                                                    ++brace_depth;
-                                                    break;
-                                                case '}':
-                                                    if (brace_depth > 0) --brace_depth;
-                                                    break;
-                                                case ',':
-                                                    if (angle_depth == 0 &&
-                                                        paren_depth == 0 &&
-                                                        bracket_depth == 0 &&
-                                                        brace_depth == 0) {
-                                                        parts.push_back(
-                                                            refs.substr(start, i - start));
-                                                        start = i + 1;
-                                                    }
-                                                    break;
-                                                default:
-                                                    break;
-                                            }
-                                        }
-                                        parts.push_back(refs.substr(start));
-                                        return parts;
-                                    };
                                     auto alias_param_index_for_text_id =
                                         [&](TextId param_text_id) -> size_t {
                                             if (param_text_id == kInvalidText) {
@@ -3053,13 +3068,16 @@ TypeSpec Parser::parse_base_type() {
                                     }
                                     // Update tag (mangled name) to reflect substituted args.
                                     if (alias_parse_ok && ts.tpl_struct_origin) {
-                                        const std::string new_refs =
-                                            template_arg_refs_text(ts);
                                         std::string new_tag = ts.tpl_struct_origin;
-                                        for (const auto& p2 :
-                                             split_template_arg_refs(new_refs)) {
-                                        new_tag += "_";
-                                        new_tag += p2;
+                                        for (int ai = 0;
+                                             ai < ts.tpl_struct_args.size; ++ai) {
+                                            TypeSpec single_arg_spec{};
+                                            single_arg_spec.tpl_struct_args.data =
+                                                &ts.tpl_struct_args.data[ai];
+                                            single_arg_spec.tpl_struct_args.size = 1;
+                                            new_tag += "_";
+                                            new_tag +=
+                                                template_arg_refs_text(single_arg_spec);
                                         }
                                         ts.tag = arena_.strdup(new_tag.c_str());
                                     }

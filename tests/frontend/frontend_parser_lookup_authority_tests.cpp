@@ -2413,6 +2413,70 @@ void test_alias_template_origin_key_only_blocks_debug_arg_substitution() {
               "substitute debug-only type args as semantic metadata");
 }
 
+void test_alias_member_typedef_origin_key_only_materializes_record_def() {
+  const char* source =
+      "template <typename T>\n"
+      "struct Carrier {};\n"
+      "template <typename T>\n"
+      "struct Owner {\n"
+      "  using type = Carrier<T>;\n"
+      "};\n"
+      "template <typename T>\n"
+      "using Alias = typename Owner<T>::type;\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId owner_text = lexer.text_table().intern("Owner");
+  c4c::Node* owner_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), owner_text);
+  expect_true(owner_primary && owner_primary->n_member_typedefs == 1 &&
+                  owner_primary->member_typedef_types,
+              "Owner primary should carry its member typedef");
+  c4c::TypeSpec& member_type = owner_primary->member_typedef_types[0];
+  expect_true(member_type.record_def == nullptr &&
+                  member_type.tpl_struct_origin_key.base_text_id !=
+                      c4c::kInvalidText,
+              "test fixture should start from an origin-key-only member type");
+  member_type.tag = arena.strdup("RenderedCarrierDrift");
+  member_type.tpl_struct_origin = arena.strdup("RenderedCarrierDrift");
+  if (member_type.tpl_struct_args.data && member_type.tpl_struct_args.size > 0) {
+    member_type.tpl_struct_args.data[0].debug_text =
+        arena.strdup("RenderedArgDrift");
+  }
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  expect_true(resolved.record_def != nullptr,
+              "alias member-typedef origin-key-only handoff should materialize "
+              "record_def without rendered owner/template spelling");
+  expect_true(resolved.record_def->template_origin_name &&
+                  std::string(resolved.record_def->template_origin_name) ==
+                      "Carrier",
+              "materialized member typedef should use the structured origin key "
+              "instead of stale rendered origin text");
+  expect_true(resolved.record_def->n_template_args == 1 &&
+                  resolved.record_def->template_arg_types &&
+                  !resolved.record_def->template_arg_is_value[0] &&
+                  resolved.record_def->template_arg_types[0].base == c4c::TB_INT,
+              "materialized member typedef should use structured alias args "
+              "instead of stale debug text");
+}
+
 void test_alias_template_no_carrier_debug_arg_stays_debug_only() {
   c4c::Arena arena;
   c4c::Lexer lexer("Alias<int>",
@@ -3158,6 +3222,7 @@ int main() {
   test_alias_template_record_def_blocks_debug_arg_substitution();
   test_alias_template_origin_key_blocks_debug_arg_substitution();
   test_alias_template_origin_key_only_blocks_debug_arg_substitution();
+  test_alias_member_typedef_origin_key_only_materializes_record_def();
   test_alias_template_no_carrier_debug_arg_stays_debug_only();
   test_dependent_member_typedef_base_carries_structured_record_def();
   test_default_only_template_base_uses_cached_default_metadata();

@@ -8,15 +8,21 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 cleaned up the default-only base-instantiation branch after review by
-removing a duplicate consecutive `restore_deferred_member_lookup()` call while
-preserving the existing metadata restoration point before attaching the
-instantiated `record_def`.
+Step 4 repaired the origin-key-only alias/member-typedef handoff by teaching
+member-typedef lookup to materialize a template owner from
+`tpl_struct_origin_key` plus structured `tpl_struct_args` before falling back to
+record/tag lookup. The alias-template tag rebuild no longer comma-splits a
+rendered arg string; it rebuilds each display suffix directly from structured
+`TemplateArgRef` entries. Added lookup-authority coverage that corrupts
+rendered owner/template/debug text while preserving the origin key and verifies
+`Alias<int>` still materializes the `Carrier<int>` `record_def`.
 
 ## Suggested Next
 
-Continue Step 4 with the next parser-to-Sema metadata handoff gap or review
-cleanup selected by the supervisor.
+Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
+the supervisor, prioritizing any remaining route where an available
+`QualifiedNameKey`, `TextId`, `TemplateArgRef`, or `record_def` carrier is still
+shadowed by rendered compatibility text.
 
 ## Watchouts
 
@@ -76,6 +82,10 @@ cleanup selected by the supervisor.
   structured args only, rejects debug-only refs, nested template-origin args,
   and unevaluated NTTP expression carriers, and preserves deferred member
   metadata while attaching `record_def`.
+- Member-typedef lookup now has the same conservative origin-key materializer
+  for `tpl_struct_origin_key` plus simple structured `tpl_struct_args`; it
+  rejects debug-only type refs, nested template-origin args, and unevaluated
+  NTTP expression carriers instead of reopening rendered owner/template text.
 - Simple type-only pending template args now use `TemplateArgRef` structure.
   Nested template-origin args still stay on the legacy display path to avoid
   recursive canonical type keys.
