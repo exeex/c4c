@@ -491,28 +491,13 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   auto apply_bindings = [&](TypeSpec resolved_member,
                             const TypeBindings& type_bindings,
                             const NttpBindings& nttp_bindings,
+                            const Node* binding_owner,
                             bool* substituted_type = nullptr) -> TypeSpec {
     if (substituted_type) *substituted_type = false;
-    if (resolved_member.base == TB_TYPEDEF && resolved_member.tag) {
-      const int outer_ptr_level = resolved_member.ptr_level;
-      const bool outer_lref = resolved_member.is_lvalue_ref;
-      const bool outer_rref = resolved_member.is_rvalue_ref;
-      const bool outer_const = resolved_member.is_const;
-      const bool outer_volatile = resolved_member.is_volatile;
-      auto it = type_bindings.find(resolved_member.tag);
-      if (it != type_bindings.end()) {
-        resolved_member = it->second;
-        resolved_member.ptr_level += outer_ptr_level;
-        resolved_member.is_lvalue_ref =
-            resolved_member.is_lvalue_ref || outer_lref;
-        resolved_member.is_rvalue_ref =
-            !resolved_member.is_lvalue_ref &&
-            (resolved_member.is_rvalue_ref || outer_rref);
-        resolved_member.is_const = resolved_member.is_const || outer_const;
-        resolved_member.is_volatile =
-            resolved_member.is_volatile || outer_volatile;
-        if (substituted_type) *substituted_type = true;
-      }
+    if (const TypeSpec* bound = find_template_typedef_binding(
+            resolved_member, type_bindings, binding_owner)) {
+      apply_template_typedef_binding(resolved_member, *bound);
+      if (substituted_type) *substituted_type = true;
     }
     if (resolved_member.array_size_expr &&
         resolved_member.array_size_expr->kind == NK_VAR &&
@@ -576,6 +561,7 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
             owner->member_typedef_types[i],
             selected.type_bindings,
             selected.nttp_bindings,
+            owner,
             &substituted_type);
         if (!substituted_type &&
             std::string(alias_name) == "type" &&
