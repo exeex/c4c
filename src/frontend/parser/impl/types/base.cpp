@@ -4415,6 +4415,50 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         return candidate;
                                     };
+                                    auto absorb_instantiated_base_result =
+                                        [&](const TypeSpec& produced,
+                                            const std::string& base_mangled)
+                                            -> Node* {
+                                        Node* base_def = produced.record_def;
+                                        if (!base_def) {
+                                            base_def = resolve_record_type_spec(
+                                                produced, nullptr);
+                                        }
+                                        if (!base_def) return nullptr;
+                                        const char* saved_member_name =
+                                            inst->base_types[bi]
+                                                .deferred_member_type_name;
+                                        const TextId saved_member_text_id =
+                                            inst->base_types[bi]
+                                                .deferred_member_type_text_id;
+                                        inst->base_types[bi] = produced;
+                                        if (!inst->base_types[bi].tag) {
+                                            inst->base_types[bi] = TypeSpec{};
+                                            inst->base_types[bi].array_size = -1;
+                                            inst->base_types[bi].inner_rank = -1;
+                                            inst->base_types[bi].base = TB_STRUCT;
+                                            inst->base_types[bi].tag =
+                                                arena_.strdup(
+                                                    (produced.tag && produced.tag[0])
+                                                        ? produced.tag
+                                                        : base_mangled.c_str());
+                                        }
+                                        if (saved_member_name &&
+                                            saved_member_name[0]) {
+                                            inst->base_types[bi]
+                                                .deferred_member_type_name =
+                                                saved_member_name;
+                                        }
+                                        if (saved_member_text_id !=
+                                            kInvalidText) {
+                                            inst->base_types[bi]
+                                                .deferred_member_type_text_id =
+                                                saved_member_text_id;
+                                        }
+                                        inst->base_types[bi].record_def =
+                                            base_def;
+                                        return base_def;
+                                    };
                                     if (inst->base_types[bi].tpl_struct_args.data &&
                                         inst->base_types[bi].tpl_struct_args.size > 0 &&
                                         base_primary) {
@@ -4654,15 +4698,16 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                             if (can_use_typed_args) {
                                                 std::string base_mangled;
+                                                TypeSpec produced_base{};
                                                 if (ensure_template_struct_instantiated_from_args(
                                                         origin, base_primary, base_args,
                                                         tpl_def->line, &base_mangled,
                                                         "template_base_instantiation",
-                                                        &inst->base_types[bi])) {
+                                                        &produced_base)) {
                                                     Node* base_def =
-                                                        resolve_record_type_spec(
-                                                            inst->base_types[bi],
-                                                            nullptr);
+                                                        absorb_instantiated_base_result(
+                                                            produced_base,
+                                                            base_mangled);
                                                     if (!base_def &&
                                                         base_has_structured_carrier) {
                                                         base_def =
@@ -4687,14 +4732,6 @@ TypeSpec Parser::parse_base_type() {
                                                         }
                                                     }
                                                     if (base_def) {
-                                                        if (!inst->base_types[bi].tag) {
-                                                            inst->base_types[bi] = TypeSpec{};
-                                                            inst->base_types[bi].array_size = -1;
-                                                            inst->base_types[bi].inner_rank = -1;
-                                                            inst->base_types[bi].base = TB_STRUCT;
-                                                            inst->base_types[bi].tag =
-                                                                arena_.strdup(base_mangled.c_str());
-                                                        }
                                                         inst->base_types[bi].record_def = base_def;
                                                     }
                                                     if (resolve_deferred_member_base()) {
@@ -4788,15 +4825,16 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         if (can_use_default_only_args) {
                                             std::string base_mangled;
+                                            TypeSpec produced_base{};
                                             if (ensure_template_struct_instantiated_from_args(
                                                     origin, base_primary, base_args,
                                                     tpl_def->line, &base_mangled,
                                                     "template_base_instantiation",
-                                                    &inst->base_types[bi])) {
+                                                    &produced_base)) {
                                                 Node* base_def =
-                                                    resolve_record_type_spec(
-                                                        inst->base_types[bi],
-                                                        nullptr);
+                                                    absorb_instantiated_base_result(
+                                                        produced_base,
+                                                        base_mangled);
                                                 if (!base_def &&
                                                     base_has_structured_carrier) {
                                                     base_def =
@@ -4824,19 +4862,6 @@ TypeSpec Parser::parse_base_type() {
                                                 }
                                                 if (base_def) {
                                                     restore_deferred_member_lookup();
-                                                    if (!inst->base_types[bi].tag) {
-                                                        inst->base_types[bi] =
-                                                            TypeSpec{};
-                                                        inst->base_types[bi]
-                                                            .array_size = -1;
-                                                        inst->base_types[bi]
-                                                            .inner_rank = -1;
-                                                        inst->base_types[bi].base =
-                                                            TB_STRUCT;
-                                                        inst->base_types[bi].tag =
-                                                            arena_.strdup(
-                                                                base_mangled.c_str());
-                                                    }
                                                     restore_deferred_member_lookup();
                                                     inst->base_types[bi].record_def =
                                                         base_def;

@@ -8,19 +8,19 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 tightened the base-instantiation handoff after
-`ensure_template_struct_instantiated_from_args(...)` succeeds or fails without
-attaching `TypeSpec::record_def`. Structured base carriers now materialize the
-record only after validating the instantiated node's template origin and
-concrete template arguments; rendered `struct_tag_def_map` lookup remains only
-for the no-carrier compatibility path.
+Step 4 moved the successful base-instantiation handoff closer to
+`ensure_template_struct_instantiated_from_args(...)`. The base route now asks
+the producer for a fresh resolved `TypeSpec`, consumes the producer-returned
+`record_def`/concrete tag when available, and keeps the validated structured
+map materialization only as fallback before any no-carrier rendered-map
+compatibility path.
 
 ## Suggested Next
 
 Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
-the supervisor. A likely follow-up is moving the validated record
-materialization into the template-instantiation producer so callers do not need
-to repair a missing `record_def` after instantiation.
+the supervisor. A likely follow-up is moving the same producer-return pattern
+into adjacent non-base template instantiation callers that still pass an
+already-populated `TypeSpec` and then repair `record_def` locally.
 
 ## Watchouts
 
@@ -60,6 +60,12 @@ to repair a missing `record_def` after instantiation.
   recovery behind absence of structured carriers. If structured carriers exist,
   the handoff validates the instantiated node's origin and concrete args before
   attaching `record_def`; do not weaken that check into rendered-name authority.
+- The base-instantiation caller now passes a fresh output `TypeSpec` to
+  `ensure_template_struct_instantiated_from_args(...)`. Do not change that back
+  to passing `inst->base_types[bi]` directly: when the existing carrier already
+  has a tag, the producer cannot populate its normal returned `record_def`
+  fallback. Consume the returned `TypeSpec` wholesale and preserve only
+  deferred-member lookup metadata.
 - Direct template-instantiation explicit value args now have a structured
   parsed-expression/TemplateArgRef-expression/TextId first path. The remaining
   `$expr:` re-lex branch in that preliminary binding pass is compatibility-only
@@ -92,7 +98,7 @@ to repair a missing `record_def` after instantiation.
 Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build succeeded. CTest passed `886/886` matched tests, including
-`frontend_parser_lookup_authority_tests`,
+Result: build succeeded with no work to do. CTest passed `886/886` matched
+tests, including `frontend_parser_lookup_authority_tests`,
 `eastl_cpp_external_utility_frontend_basic_cpp`, and the
 `cpp_positive_sema_.*` subset. Final proof log path: `test_after.log`.
