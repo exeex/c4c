@@ -51,6 +51,7 @@ struct TemplateSeedWorkItem {
   std::string template_name;
   TypeBindings bindings;
   NttpBindings nttp_bindings;
+  NttpTextBindings nttp_bindings_by_text;
   std::string mangled_name;
   SpecializationKey spec_key;
   TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall;
@@ -61,6 +62,7 @@ struct TemplateSeedWorkItem {
 struct TemplateInstance {
   TypeBindings bindings;
   NttpBindings nttp_bindings;  // non-type template param → constant value
+  NttpTextBindings nttp_bindings_by_text;  // non-type template param TextId → value
   std::string mangled_name;
   SpecializationKey spec_key;  // stable identity for dedup/caching
   const Node* primary_def = nullptr;  // structured identity (when available)
@@ -673,6 +675,7 @@ class InstantiationRegistry {
   std::string record_seed(
       const std::string& fn_name, TypeBindings bindings,
       NttpBindings nttp_bindings,
+      NttpTextBindings nttp_bindings_by_text,
       const std::vector<std::string>& param_order,
       TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall,
       const Node* primary_def = nullptr) {
@@ -707,7 +710,8 @@ class InstantiationRegistry {
       }
     }
     seed_work_[fn_name].push_back(
-        TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled,
+        TemplateSeedWorkItem{fn_name, bindings, nttp_bindings,
+                             std::move(nttp_bindings_by_text), mangled,
                              sk, origin, primary_def});
     return mangled;
   }
@@ -729,7 +733,8 @@ class InstantiationRegistry {
             continue;
         }
         instances_[fn_name].push_back(
-            {seed.bindings, seed.nttp_bindings, seed.mangled_name,
+            {seed.bindings, seed.nttp_bindings, seed.nttp_bindings_by_text,
+             seed.mangled_name,
              seed.spec_key, seed.primary_def});
         ++realized;
       }
@@ -1160,10 +1165,12 @@ struct CompileTimeState {
       const std::string& source_template,
       const TypeBindings& bindings,
       const NttpBindings& nttp_bindings,
+      const NttpTextBindings& nttp_bindings_by_text,
       const std::string& mangled_name,
       const std::vector<std::string>& template_params) {
     const Node* primary_def = find_template_def(source_template);
     registry.record_seed(source_template, bindings, nttp_bindings,
+                         nttp_bindings_by_text,
                          template_params,
                          TemplateSeedOrigin::EnclosingTemplateExpansion,
                          primary_def);
@@ -1172,6 +1179,7 @@ struct CompileTimeState {
     hi.mangled_name = mangled_name;
     hi.bindings = bindings;
     hi.nttp_bindings = nttp_bindings;
+    hi.nttp_bindings_by_text = nttp_bindings_by_text;
     hi.spec_key = nttp_bindings.empty()
         ? make_specialization_key(source_template, template_params, bindings)
         : make_specialization_key(source_template, template_params, bindings,
@@ -1194,6 +1202,7 @@ struct CompileTimeState {
       hi.mangled_name = inst.mangled_name;
       hi.bindings = inst.bindings;
       hi.nttp_bindings = inst.nttp_bindings;
+      hi.nttp_bindings_by_text = inst.nttp_bindings_by_text;
       hi.spec_key = inst.nttp_bindings.empty()
           ? make_specialization_key(fn_name, template_params, inst.bindings)
           : make_specialization_key(fn_name, template_params, inst.bindings,
@@ -1462,6 +1471,7 @@ using DeferredInstantiateFn = std::function<bool(
     const std::string& template_name,
     const TypeBindings& bindings,
     const NttpBindings& nttp_bindings,
+    const NttpTextBindings& nttp_bindings_by_text,
     const std::string& mangled_name)>;
 
 using DeferredInstantiateTypeFn = std::function<DeferredTemplateTypeResult(

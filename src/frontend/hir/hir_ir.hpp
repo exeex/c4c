@@ -465,6 +465,7 @@ struct TemplateCallInfo {
   TextId source_template_text_id = kInvalidText;  // stable template name in module.link_name_texts
   std::vector<TypeSpec> template_args; // resolved concrete template arguments
   NttpBindings nttp_args;             // resolved NTTP values (param name → value)
+  NttpTextBindings nttp_args_by_text; // resolved NTTP values (param TextId → value)
 };
 
 struct CallExpr {
@@ -1201,6 +1202,7 @@ struct HirTemplateInstantiation {
   LinkNameId mangled_link_name_id = kInvalidLinkName;
   TypeBindings bindings;       // template param → concrete type
   NttpBindings nttp_bindings;  // non-type template param → constant value
+  NttpTextBindings nttp_bindings_by_text;  // non-type template param TextId → value
   SpecializationKey spec_key;  // stable identity for dedup/caching
 };
 

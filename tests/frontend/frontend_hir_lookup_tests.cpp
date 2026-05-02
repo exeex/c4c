@@ -1,4 +1,5 @@
 #include "hir/hir_ir.hpp"
+#include "hir/compile_time_engine.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema.hpp"
@@ -37,6 +38,29 @@ namespace {
 
 void expect_true(bool cond, const std::string& msg) {
   if (!cond) fail(msg);
+}
+
+const c4c::Node* find_function_node_by_name(const c4c::Node* n,
+                                            const char* name) {
+  if (!n || !name) return nullptr;
+  if (n->kind == c4c::NK_FUNCTION && n->name &&
+      std::strcmp(n->name, name) == 0) {
+    return n;
+  }
+  if (const c4c::Node* found = find_function_node_by_name(n->left, name)) return found;
+  if (const c4c::Node* found = find_function_node_by_name(n->right, name)) return found;
+  if (const c4c::Node* found = find_function_node_by_name(n->cond, name)) return found;
+  if (const c4c::Node* found = find_function_node_by_name(n->then_, name)) return found;
+  if (const c4c::Node* found = find_function_node_by_name(n->else_, name)) return found;
+  if (const c4c::Node* found = find_function_node_by_name(n->body, name)) return found;
+  if (const c4c::Node* found = find_function_node_by_name(n->init, name)) return found;
+  if (const c4c::Node* found = find_function_node_by_name(n->update, name)) return found;
+  for (int i = 0; i < n->n_children; ++i) {
+    if (const c4c::Node* found = find_function_node_by_name(n->children[i], name)) {
+      return found;
+    }
+  }
+  return nullptr;
 }
 
 bool has_hit(const c4c::hir::Module& module,
@@ -821,6 +845,101 @@ int use_consteval_nttp() { return plus_one<41>(); }
               "TextId NTTP binding mirror should preserve the constant value");
 }
 
+void test_template_call_nttp_handoff_carries_text_id_bindings() {
+  constexpr std::string_view source = R"cpp(
+template<int V>
+consteval int lift() { return V + 3; }
+
+template<int V>
+int inner() { return lift<V>(); }
+
+template<int V>
+int outer() { return inner<V>(); }
+
+int use_template_call_nttp() { return outer<39>(); }
+)cpp";
+
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_hir_lookup_tests.cpp");
+  c4c::Node* root = parser.parse();
+  auto sema_result = c4c::sema::analyze_program(
+      root, c4c::sema_profile_from(c4c::SourceProfile::CppSubset));
+  expect_true(sema_result.validation.ok,
+              "template-call NTTP handoff fixture should validate");
+
+  c4c::Node* inner_def =
+      const_cast<c4c::Node*>(find_function_node_by_name(root, "inner"));
+  expect_true(inner_def && inner_def->template_param_names &&
+                  inner_def->template_param_name_text_ids &&
+                  inner_def->template_param_name_text_ids[0] != c4c::kInvalidText,
+              "fixture inner template should carry NTTP TextId metadata");
+  inner_def->template_param_names[0] = arena.strdup("__stale_inner_rendered_nttp");
+
+  auto initial = c4c::hir::build_initial_hir(
+      root, &sema_result.canonical.resolved_types);
+  const c4c::TextId inner_param_text_id =
+      inner_def->template_param_name_text_ids[0];
+
+  const c4c::hir::TemplateCallInfo* inner_call_info = nullptr;
+  for (const auto& fn : initial.module->functions) {
+    if (fn.template_origin != "outer") continue;
+    for (const auto& block : fn.blocks) {
+      for (const auto& stmt : block.stmts) {
+        const auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+        if (!ret || !ret->expr) continue;
+        const auto* call = std::get_if<c4c::hir::CallExpr>(
+            &initial.module->expr_pool[ret->expr->value].payload);
+        if (call && call->template_info &&
+            call->template_info->source_template == "inner") {
+          inner_call_info = &*call->template_info;
+          break;
+        }
+      }
+      if (inner_call_info) break;
+    }
+    if (inner_call_info) break;
+  }
+  expect_true(inner_call_info != nullptr,
+              "initial HIR should retain template-call metadata for outer<39> -> inner<V>");
+  expect_true(inner_call_info->nttp_args.size() == 1 &&
+                  inner_call_info->nttp_args.at("__stale_inner_rendered_nttp") == 39,
+              "template-call metadata should retain rendered NTTP compatibility bindings");
+  const auto call_text_it =
+      inner_call_info->nttp_args_by_text.find(inner_param_text_id);
+  expect_true(call_text_it != inner_call_info->nttp_args_by_text.end(),
+              "template-call metadata should carry TextId NTTP binding mirror");
+  expect_true(call_text_it->second == 39,
+              "template-call TextId NTTP binding mirror should preserve the value");
+
+  c4c::hir::run_compile_time_engine(
+      *initial.module, initial.ct_state, initial.deferred_instantiate,
+      initial.deferred_instantiate_type);
+  for (const auto& expr : initial.module->expr_pool) {
+    expect_true(!std::holds_alternative<c4c::hir::PendingConstevalExpr>(expr.payload),
+                "TextId NTTP env data should let deferred inner consteval calls reduce");
+  }
+  const auto tdef_it = initial.module->template_defs.find("inner");
+  expect_true(tdef_it != initial.module->template_defs.end() &&
+                  !tdef_it->second.instances.empty(),
+              "compile-time engine should record the deferred inner instantiation");
+  bool found_text_instance = false;
+  for (const auto& inst : tdef_it->second.instances) {
+    const auto inst_text_it = inst.nttp_bindings_by_text.find(inner_param_text_id);
+    if (inst_text_it != inst.nttp_bindings_by_text.end() &&
+        inst_text_it->second == 39) {
+      found_text_instance = true;
+      break;
+    }
+  }
+  expect_true(found_text_instance,
+              "deferred template-call instantiation should preserve TextId NTTP env data");
+}
+
 }  // namespace
 
 int main() {
@@ -832,6 +951,7 @@ int main() {
   test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps();
   test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names();
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
+  test_template_call_nttp_handoff_carries_text_id_bindings();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

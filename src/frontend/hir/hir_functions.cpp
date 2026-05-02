@@ -130,7 +130,8 @@ void Lowerer::finish_lowered_callable(Function* fn, BlockId entry) {
 void Lowerer::lower_function(const Node* fn_node,
                              const std::string* name_override,
                              const TypeBindings* tpl_override,
-                             const NttpBindings* nttp_override) {
+                             const NttpBindings* nttp_override,
+                             const NttpTextBindings* nttp_text_override) {
   Function fn{};
   fn.id = next_fn_id();
   fn.name = name_override ? *name_override
@@ -238,6 +239,9 @@ void Lowerer::lower_function(const Node* fn_node,
   }
   if (nttp_override) {
     ctx.nttp_bindings = *nttp_override;
+  }
+  if (nttp_text_override) {
+    ctx.nttp_bindings_by_text = *nttp_text_override;
   }
   append_callable_params(
       fn, ctx, fn_node, tpl_override, nttp_override, "function-param:", false,

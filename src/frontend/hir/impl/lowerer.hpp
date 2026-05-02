@@ -247,6 +247,7 @@ class Lowerer {
   bool instantiate_deferred_template(const std::string& tpl_name,
                                      const TypeBindings& bindings,
                                      const NttpBindings& nttp_bindings,
+                                     const NttpTextBindings& nttp_bindings_by_text,
                                      const std::string& mangled);
 
   DeferredTemplateTypeResult instantiate_deferred_template_type(
@@ -285,6 +286,7 @@ class Lowerer {
     std::unordered_map<std::string, long long> local_const_bindings;
     TypeBindings tpl_bindings;  // template param → concrete type for enclosing template fn
     NttpBindings nttp_bindings; // non-type template param → constant value
+    NttpTextBindings nttp_bindings_by_text; // non-type template param TextId → value
     std::unordered_map<std::string, std::vector<PackParamElem>> pack_params;
     std::string method_struct_tag; // non-empty when lowering a struct method body
     // Destructor tracking: records locals that need destructor calls at scope exit.
@@ -657,7 +659,8 @@ class Lowerer {
   void lower_function(const Node* fn_node,
                       const std::string* name_override = nullptr,
                       const TypeBindings* tpl_override = nullptr,
-                      const NttpBindings* nttp_override = nullptr);
+                      const NttpBindings* nttp_override = nullptr,
+                      const NttpTextBindings* nttp_text_override = nullptr);
 
   // Lower a struct method as a standalone function with an implicit `this` pointer.
   void lower_struct_method(const std::string& mangled_name,
@@ -907,7 +910,12 @@ class Lowerer {
                                    const TypeBindings* enclosing_bindings);
 
   NttpBindings build_call_nttp_bindings(const Node* call_var, const Node* fn_def,
-                                        const NttpBindings* enclosing_nttp = nullptr);
+                                        const NttpBindings* enclosing_nttp = nullptr,
+                                        const NttpTextBindings* enclosing_nttp_by_text = nullptr);
+
+  NttpTextBindings build_call_nttp_text_bindings(const Node* call_var,
+                                                 const Node* fn_def,
+                                                 const NttpBindings& nttp_bindings);
 
   // Check if a call node has any forwarded NTTP names (not yet resolved to values).
   static bool has_forwarded_nttp(const Node* call_var);
@@ -996,6 +1004,7 @@ class Lowerer {
       const std::string& fn_name,
       TypeBindings bindings,
       NttpBindings nttp_bindings = {},
+      NttpTextBindings nttp_bindings_by_text = {},
       TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall);
 
   // Resolve the mangled name for a call to a template function.
@@ -1146,6 +1155,7 @@ class Lowerer {
     std::string mangled_name;
     TypeBindings bindings;
     NttpBindings nttp_bindings;
+    NttpTextBindings nttp_bindings_by_text;
   };
   std::unordered_map<const Node*, DeducedTemplateCall> deduced_template_calls_;
   std::unordered_set<const Node*> rejected_template_calls_;

@@ -252,9 +252,11 @@ struct TemplateInstantiationStep {
             bindings[tdef.template_params[i]] = tci.template_args[i];
           }
           NttpBindings nttp_bindings = tci.nttp_args;
+          NttpTextBindings nttp_bindings_by_text = tci.nttp_args_by_text;
           size_t fn_count_before = module.functions.size();
           size_t ce_before = module.consteval_calls.size();
-          if (instantiate_fn(tci.source_template, bindings, nttp_bindings, target_name)) {
+          if (instantiate_fn(tci.source_template, bindings, nttp_bindings,
+                             nttp_bindings_by_text, target_name)) {
             instantiated_fns.insert(target_name);
             ++resolved;
             ++newly_instantiated;
@@ -277,6 +279,7 @@ struct TemplateInstantiationStep {
             if (ct_state) {
               auto hi = ct_state->record_deferred_instance(
                   tci.source_template, bindings, nttp_bindings,
+                  nttp_bindings_by_text,
                   target_name, tdef.template_params);
               tdef_it->second.instances.push_back(std::move(hi));
             }

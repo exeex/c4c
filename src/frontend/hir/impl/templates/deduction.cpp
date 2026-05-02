@@ -5,10 +5,12 @@ namespace {
 
 bool eval_template_arg_expr_with_nttp_bindings(const Node* expr,
                                                const NttpBindings* enclosing_nttp,
+                                               const NttpTextBindings* enclosing_nttp_by_text,
                                                long long* out) {
   if (!expr || !out) return false;
   ConstEvalEnv env{};
   env.nttp_bindings = enclosing_nttp;
+  env.nttp_bindings_by_text = enclosing_nttp_by_text;
   auto value = evaluate_constant_expr(expr, env);
   if (!value.ok()) return false;
   *out = value.as_int();
@@ -68,7 +70,8 @@ TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_d
 }
 
 NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node* fn_def,
-                                               const NttpBindings* enclosing_nttp) {
+                                               const NttpBindings* enclosing_nttp,
+                                               const NttpTextBindings* enclosing_nttp_by_text) {
   NttpBindings bindings;
   if (!call_var || !fn_def || fn_def->n_template_params <= 0) return bindings;
   const int total_args = call_var->n_template_args > 0 ? call_var->n_template_args : 0;
@@ -94,12 +97,24 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
         if (call_var->template_arg_exprs && call_var->template_arg_exprs[arg_index]) {
           if (eval_template_arg_expr_with_nttp_bindings(
                   call_var->template_arg_exprs[arg_index], enclosing_nttp,
+                  enclosing_nttp_by_text,
                   &expr_value)) {
             bindings[key] = expr_value;
             continue;
           }
         }
         if (call_var->template_arg_nttp_names && call_var->template_arg_nttp_names[arg_index]) {
+          const TextId forwarded_text_id =
+              call_var->template_arg_nttp_text_ids
+                  ? call_var->template_arg_nttp_text_ids[arg_index]
+                  : kInvalidText;
+          if (forwarded_text_id != kInvalidText && enclosing_nttp_by_text) {
+            auto text_it = enclosing_nttp_by_text->find(forwarded_text_id);
+            if (text_it != enclosing_nttp_by_text->end()) {
+              bindings[key] = text_it->second;
+              continue;
+            }
+          }
           if (enclosing_nttp) {
             auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);
             if (it != enclosing_nttp->end()) bindings[key] = it->second;
@@ -116,6 +131,7 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
       if (call_var->template_arg_exprs && call_var->template_arg_exprs[arg_index]) {
         if (eval_template_arg_expr_with_nttp_bindings(
                 call_var->template_arg_exprs[arg_index], enclosing_nttp,
+                enclosing_nttp_by_text,
                 &expr_value)) {
           bindings[fn_def->template_param_names[i]] = expr_value;
           ++arg_index;
@@ -123,6 +139,18 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
         }
       }
       if (call_var->template_arg_nttp_names && call_var->template_arg_nttp_names[arg_index]) {
+        const TextId forwarded_text_id =
+            call_var->template_arg_nttp_text_ids
+                ? call_var->template_arg_nttp_text_ids[arg_index]
+                : kInvalidText;
+        if (forwarded_text_id != kInvalidText && enclosing_nttp_by_text) {
+          auto text_it = enclosing_nttp_by_text->find(forwarded_text_id);
+          if (text_it != enclosing_nttp_by_text->end()) {
+            bindings[fn_def->template_param_names[i]] = text_it->second;
+            ++arg_index;
+            continue;
+          }
+        }
         if (enclosing_nttp) {
           auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);
           if (it != enclosing_nttp->end()) {
@@ -150,6 +178,28 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
     }
   }
   return bindings;
+}
+
+NttpTextBindings Lowerer::build_call_nttp_text_bindings(
+    const Node* call_var, const Node* fn_def, const NttpBindings& nttp_bindings) {
+  NttpTextBindings bindings_by_text;
+  if (!call_var || !fn_def || !fn_def->template_param_name_text_ids ||
+      fn_def->n_template_params <= 0) {
+    return bindings_by_text;
+  }
+  for (int i = 0; i < fn_def->n_template_params; ++i) {
+    if (!fn_def->template_param_names[i]) continue;
+    const bool is_nttp =
+        fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i];
+    const bool is_pack =
+        fn_def->template_param_is_pack && fn_def->template_param_is_pack[i];
+    if (!is_nttp || is_pack) continue;
+    const TextId text_id = fn_def->template_param_name_text_ids[i];
+    if (text_id == kInvalidText) continue;
+    auto it = nttp_bindings.find(fn_def->template_param_names[i]);
+    if (it != nttp_bindings.end()) bindings_by_text[text_id] = it->second;
+  }
+  return bindings_by_text;
 }
 
 bool Lowerer::has_forwarded_nttp(const Node* call_var) {

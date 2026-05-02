@@ -429,6 +429,10 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
                                   ? &ctx->tpl_bindings : nullptr;
     const NttpBindings* enc_nttp = (ctx && !ctx->nttp_bindings.empty())
                                        ? &ctx->nttp_bindings : nullptr;
+    const NttpTextBindings* enc_nttp_by_text =
+        (ctx && !ctx->nttp_bindings_by_text.empty())
+            ? &ctx->nttp_bindings_by_text
+            : nullptr;
     const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
     TypeBindings bindings;
     NttpBindings nttp_bindings;
@@ -439,7 +443,8 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
       nttp_bindings = ded_it->second.nttp_bindings;
     } else {
       bindings = merge_explicit_and_deduced_type_bindings(n, n->left, tpl_fn, enc);
-      nttp_bindings = build_call_nttp_bindings(n->left, tpl_fn, enc_nttp);
+      nttp_bindings = build_call_nttp_bindings(
+          n->left, tpl_fn, enc_nttp, enc_nttp_by_text);
       resolved_callee_name =
           mangle_template_name(n->left->name, bindings, nttp_bindings);
       if (tpl_fn) {
@@ -468,6 +473,8 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
         auto bit = bindings.find(pname);
         if (bit != bindings.end()) tci.template_args.push_back(bit->second);
       }
+      tci.nttp_args_by_text =
+          build_call_nttp_text_bindings(n->left, tpl_fn, nttp_bindings);
       tci.nttp_args = std::move(nttp_bindings);
     }
     c.template_info = std::move(tci);
@@ -489,6 +496,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
           tci.template_args.push_back(bit->second);
       }
       tci.nttp_args = ded_it->second.nttp_bindings;
+      tci.nttp_args_by_text = ded_it->second.nttp_bindings_by_text;
     }
     c.template_info = std::move(tci);
   } else {
@@ -592,6 +600,12 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
   LowererConstEvalStructuredMaps structured_maps;
   ConstEvalEnv arg_env = make_lowerer_consteval_env(
       structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
+  if (ctx && !ctx->nttp_bindings_by_text.empty()) {
+    arg_env.nttp_bindings_by_text = &ctx->nttp_bindings_by_text;
+  }
+  if (ctx && !ctx->nttp_bindings.empty()) {
+    arg_env.nttp_bindings = &ctx->nttp_bindings;
+  }
   TypeBindings tpl_bindings;
   NttpBindings ce_nttp_bindings;
   NttpTextBindings ce_nttp_bindings_by_text;
@@ -614,7 +628,21 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
             }
           }
           if (n->left->template_arg_nttp_names && n->left->template_arg_nttp_names[i] &&
-              ctx && !ctx->nttp_bindings.empty()) {
+              ctx) {
+            const TextId forwarded_text_id =
+                n->left->template_arg_nttp_text_ids
+                    ? n->left->template_arg_nttp_text_ids[i]
+                    : kInvalidText;
+            if (forwarded_text_id != kInvalidText &&
+                !ctx->nttp_bindings_by_text.empty()) {
+              auto text_it = ctx->nttp_bindings_by_text.find(forwarded_text_id);
+              if (text_it != ctx->nttp_bindings_by_text.end()) {
+                ce_nttp_bindings[fn_def->template_param_names[i]] = text_it->second;
+                record_nttp_text_binding(
+                    fn_def, i, text_it->second, &ce_nttp_bindings_by_text);
+                continue;
+              }
+            }
             auto it = ctx->nttp_bindings.find(n->left->template_arg_nttp_names[i]);
             if (it != ctx->nttp_bindings.end()) {
               ce_nttp_bindings[fn_def->template_param_names[i]] = it->second;
