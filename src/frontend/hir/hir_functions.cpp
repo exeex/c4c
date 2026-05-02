@@ -22,15 +22,6 @@ namespace c4c::hir {
 
 namespace {
 
-const char* compatibility_type_tag(const TypeSpec& ts) {
-  return ts.tag;
-}
-
-bool compatibility_type_tag_nonempty(const TypeSpec& ts) {
-  const char* tag = compatibility_type_tag(ts);
-  return tag && tag[0];
-}
-
 std::string text_id_spelling(TextId text_id, const TextTable* texts) {
   if (text_id == kInvalidText || !texts) return {};
   return std::string(texts->lookup(text_id));
@@ -41,9 +32,24 @@ std::string template_param_binding_key_from_text(const TypeSpec& ts,
   return text_id_spelling(ts.template_param_text_id, texts);
 }
 
-std::string compatibility_binding_key_from_tag(const TypeSpec& ts) {
-  const char* tag = compatibility_type_tag(ts);
-  return tag ? std::string(tag) : std::string{};
+std::string legacy_template_binding_name_without_usable_text_spelling(
+    const TypeSpec& ts,
+    const TextTable* texts) {
+  if (!text_id_spelling(ts.template_param_text_id, texts).empty()) return {};
+  // No-usable-text-metadata compatibility bridge for legacy template binding
+  // maps that still key parameter packs by rendered parameter spelling.
+  return ts.tag ? std::string(ts.tag) : std::string{};
+}
+
+std::string legacy_type_name_without_complete_text_metadata(const TypeSpec& ts) {
+  if (ts.tag_text_id != kInvalidText) return {};
+  return ts.tag ? std::string(ts.tag) : std::string{};
+}
+
+bool has_member_typedef_owner_metadata_or_legacy_name(const TypeSpec& ts) {
+  return ts.record_def || (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) ||
+         ts.tag_text_id != kInvalidText ||
+         (ts.tag && ts.tag[0]);
 }
 
 void apply_signature_template_concrete(TypeSpec& target,
@@ -89,11 +95,13 @@ bool apply_signature_template_binding_by_text_spelling(
   return true;
 }
 
-bool apply_compatibility_template_binding_by_tag(
+bool apply_legacy_template_binding_without_usable_text_spelling(
     TypeSpec& ts,
-    const TypeBindings* tpl_bindings) {
+    const TypeBindings* tpl_bindings,
+    const TextTable* texts) {
   if (!tpl_bindings) return false;
-  const std::string key = compatibility_binding_key_from_tag(ts);
+  const std::string key =
+      legacy_template_binding_name_without_usable_text_spelling(ts, texts);
   if (key.empty()) return false;
   auto it = tpl_bindings->find(key);
   if (it == tpl_bindings->end()) return false;
@@ -125,7 +133,9 @@ std::string member_typedef_compatibility_name(const TypeSpec& ts,
                                               const TextTable* texts) {
   std::string name = qualified_type_spelling_from_text_ids(ts, texts);
   if (!name.empty()) return name;
-  return compatibility_binding_key_from_tag(ts);
+  // No-complete-text-metadata compatibility bridge for legacy TypeSpec
+  // producers. Structured TextId-qualified spelling remains authoritative.
+  return legacy_type_name_without_complete_text_metadata(ts);
 }
 
 std::optional<HirRecordOwnerKey> record_owner_key_from_type_metadata(
@@ -168,7 +178,9 @@ const HirStructDef* find_struct_def_for_callable_type(Module* module,
       return nullptr;
     }
   }
-  const std::string tag = compatibility_binding_key_from_tag(ts);
+  // No-complete-owner-metadata compatibility bridge for legacy TypeSpec
+  // producers used by the staged callable zero-sized return normalization.
+  const std::string tag = legacy_type_name_without_complete_text_metadata(ts);
   if (tag.empty()) return nullptr;
   auto sit = module->struct_defs.find(tag);
   return sit == module->struct_defs.end() ? nullptr : &sit->second;
@@ -462,7 +474,8 @@ TypeSpec Lowerer::substitute_signature_template_type(
     return ts;
   }
 
-  if (apply_compatibility_template_binding_by_tag(ts, tpl_bindings)) {
+  if (apply_legacy_template_binding_without_usable_text_spelling(
+          ts, tpl_bindings, module_ ? module_->link_name_texts.get() : nullptr)) {
     return ts;
   }
 
@@ -515,10 +528,7 @@ TypeSpec Lowerer::prepare_callable_return_type(
   while (resolve_struct_member_typedef_if_ready(&ret_ts)) {
   }
   if (ret_ts.deferred_member_type_name &&
-      (ret_ts.record_def ||
-       (ret_ts.tpl_struct_origin && ret_ts.tpl_struct_origin[0]) ||
-       ret_ts.tag_text_id != kInvalidText ||
-       compatibility_type_tag_nonempty(ret_ts))) {
+      has_member_typedef_owner_metadata_or_legacy_name(ret_ts)) {
     seed_pending_template_type(
         ret_ts,
         tpl_bindings ? *tpl_bindings : TypeBindings{},
@@ -591,10 +601,7 @@ void Lowerer::append_explicit_callable_param(
   while (resolve_struct_member_typedef_if_ready(&param_ts)) {
   }
   if (param_ts.deferred_member_type_name &&
-      (param_ts.record_def ||
-       (param_ts.tpl_struct_origin && param_ts.tpl_struct_origin[0]) ||
-       param_ts.tag_text_id != kInvalidText ||
-       compatibility_type_tag_nonempty(param_ts))) {
+      has_member_typedef_owner_metadata_or_legacy_name(param_ts)) {
     seed_pending_template_type(
         param_ts,
         tpl_bindings ? *tpl_bindings : TypeBindings{},
@@ -674,7 +681,8 @@ void Lowerer::append_callable_params(
           p->type, module_ ? module_->link_name_texts.get() : nullptr);
     }
     if (pack_binding_base.empty()) {
-      pack_binding_base = compatibility_binding_key_from_tag(p->type);
+      pack_binding_base = legacy_template_binding_name_without_usable_text_spelling(
+          p->type, module_ ? module_->link_name_texts.get() : nullptr);
     }
     if (expand_parameter_packs && p->is_parameter_pack && tpl_bindings &&
         p->type.base == TB_TYPEDEF && !pack_binding_base.empty()) {

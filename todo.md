@@ -9,27 +9,26 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared/classified the
-`src/frontend/hir/hir_build.cpp` ref-overload grouping no-owner-key fallback:
+`src/frontend/hir/hir_functions.cpp` callable compatibility deletion blocker:
 
-- `collect_ref_overloaded_free_functions` still treats complete
-  `HirRecordOwnerKey` metadata as authoritative and preserves the one-sided or
-  mismatched complete-owner rejection.
-- The no-complete-owner fallback now prefers existing `TypeSpec::tag_text_id`
-  metadata, rejects one-sided or mismatched TextIds, and no longer consults
-  rendered tag spelling when TextId metadata exists.
-- The remaining rendered `TypeSpec::tag` comparison is isolated in
-  `ref_overload_record_types_match_without_complete_owner_key` and explicitly
-  classified as a no-complete-metadata compatibility bridge for legacy
-  TypeSpec producers.
-- Added focused HIR coverage proving stale rendered tags do not override
-  matching or mismatching `tag_text_id` metadata in the no-owner-key
-  ref-overload path.
+- Removed the generic `compatibility_type_tag()` helper that directly returned
+  rendered `TypeSpec::tag`.
+- Split the retained rendered-name reads into explicit legacy bridges:
+  template binding only when no usable TextId spelling is available, member
+  typedef owner spelling only when qualified TextId spelling is unavailable,
+  and callable zero-sized-return struct lookup only when complete structured
+  owner metadata is absent or incomplete.
+- Kept structured `HirRecordOwnerKey` lookup authoritative for callable
+  zero-sized-return normalization; a complete structured miss still blocks the
+  rendered fallback.
+- No focused test was added because `hir_functions.cpp` is staged in the build
+  and existing `cpp_hir_template_function_pack_signature_binding` coverage
+  exercises the affected legacy parameter-pack bridge.
 
 ## Suggested Next
 
 Continue Step 4 with one bounded frontend/HIR packet for the next fresh
-deletion-probe cluster, likely `src/frontend/hir/hir_functions.cpp` callable
-compatibility scaffolding or `src/frontend/hir/hir_types.cpp` lookup/payload
+deletion-probe cluster, likely `src/frontend/hir/hir_types.cpp` lookup/payload
 surfaces, per the supervisor's subset choice.
 
 ## Watchouts
@@ -59,10 +58,9 @@ surfaces, per the supervisor's subset choice.
 - The base layout path still uses `HirStructDef::base_tags` as final spelling
   and as no-complete-metadata compatibility input; it no longer writes
   `TypeSpec::tag`.
-- `hir_functions.cpp` is currently an unintegrated draft file in the build; its
-  `compatibility_type_tag()` helper may be compatibility scaffolding, but it
-  still blocks physical deletion and needs either structured replacement or
-  explicit classification.
+- `hir_functions.cpp` callable scaffolding no longer has the
+  `compatibility_type_tag()` direct rendered-tag helper; retained rendered
+  reads are classified as no-complete/no-usable-metadata compatibility bridges.
 - `hir_types.cpp` still contains both semantic-looking lookup reads and
   compatibility/final-spelling payload writes. Split those before editing so
   ABI/link-visible names, diagnostics, dumps, and base-tag storage are not
