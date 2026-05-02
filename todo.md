@@ -21,11 +21,17 @@ linkage blocks now propagate `linkage_spec` to their parsed children, so
 `extern "C"` overload declarations remain C-linkage conflicts instead of
 being accepted through the C++ source-language carrier.
 
+The source-language/linkage slice was reviewed in
+`review/step4_source_language_overload_review.md` and accepted as on-track
+Step 4 progress. The full-suite baseline candidate was also accepted: the
+canonical baseline now records `2987/2987` passing tests at commit
+`fc35474ce`.
+
 ## Suggested Next
 
-Supervisor can review and commit this coherent Step 4 overload metadata slice.
-The remaining Step 4 work should continue with another parser-to-Sema
-handoff gap only after this source-language/linkage carrier change is accepted.
+Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
+the supervisor. Keep the packet narrow and name the exact rendered-string or
+missing-carrier route before delegating implementation.
 
 ## Watchouts
 
