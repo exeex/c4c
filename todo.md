@@ -9,27 +9,28 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared/classified the
-`src/frontend/hir/hir_lowering_core.cpp` residual deletion-probe cluster:
+`src/frontend/hir/hir_build.cpp` ref-overload grouping no-owner-key fallback:
 
-- `generic_type_compatible` now treats complete structured record owner keys as
-  authoritative, rejects a one-sided complete-key mismatch, and retains
-  rendered `TypeSpec::tag` comparison only as an explicit no-complete-metadata
-  compatibility bridge.
-- `LayoutQueries::find_struct_def_for_layout_type` keeps its rendered
-  `TypeSpec::tag` lookup explicitly classified as a legacy TypeSpec producer
-  bridge after complete owner-key metadata is absent.
-- base-layout sizing/alignment no longer synthesizes `base_ts.tag`; it resolves
-  base records directly through `base_tag_text_ids` plus the containing
-  namespace owner key, with rendered `base_tags` lookup retained only for base
-  metadata that lacks a complete structured owner key.
+- `collect_ref_overloaded_free_functions` still treats complete
+  `HirRecordOwnerKey` metadata as authoritative and preserves the one-sided or
+  mismatched complete-owner rejection.
+- The no-complete-owner fallback now prefers existing `TypeSpec::tag_text_id`
+  metadata, rejects one-sided or mismatched TextIds, and no longer consults
+  rendered tag spelling when TextId metadata exists.
+- The remaining rendered `TypeSpec::tag` comparison is isolated in
+  `ref_overload_record_types_match_without_complete_owner_key` and explicitly
+  classified as a no-complete-metadata compatibility bridge for legacy
+  TypeSpec producers.
+- Added focused HIR coverage proving stale rendered tags do not override
+  matching or mismatching `tag_text_id` metadata in the no-owner-key
+  ref-overload path.
 
 ## Suggested Next
 
 Continue Step 4 with one bounded frontend/HIR packet for the next fresh
-deletion-probe cluster outside `hir_lowering_core.cpp`, likely
-`src/frontend/hir/hir_functions.cpp` callable compatibility scaffolding or
-`src/frontend/hir/hir_build.cpp` ref-overload no-owner-key fallback, per the
-supervisor's subset choice.
+deletion-probe cluster, likely `src/frontend/hir/hir_functions.cpp` callable
+compatibility scaffolding or `src/frontend/hir/hir_types.cpp` lookup/payload
+surfaces, per the supervisor's subset choice.
 
 ## Watchouts
 
@@ -38,9 +39,9 @@ supervisor's subset choice.
   spelling as payloads.
 - The callable zero-sized-return path should keep rendered `TypeSpec::tag`
   compatibility only when no complete structured owner metadata exists.
-- The ref-overload grouping path now has the same no-complete-metadata rendered
-  fallback boundary; do not reintroduce tag comparison after complete owner-key
-  mismatch.
+- The ref-overload grouping path now uses `tag_text_id` before rendered fallback
+  when complete owner metadata is absent; its retained rendered tag comparison
+  is only the named no-complete-metadata legacy bridge.
 - The member-symbol lookup path now treats complete owner/member metadata as
   authoritative; stale rendered owner symbols are not a fallback after a
   complete miss, but `HirStructDef` fields remain a structured hit source when
@@ -58,16 +59,10 @@ supervisor's subset choice.
 - The base layout path still uses `HirStructDef::base_tags` as final spelling
   and as no-complete-metadata compatibility input; it no longer writes
   `TypeSpec::tag`.
-- The latest deletion probe still sees residual compile blockers in other
-  previously touched clusters. Treat them as fresh inventory, not as proof that
-  the older migrations should be reverted.
 - `hir_functions.cpp` is currently an unintegrated draft file in the build; its
   `compatibility_type_tag()` helper may be compatibility scaffolding, but it
   still blocks physical deletion and needs either structured replacement or
   explicit classification.
-- `hir_build.cpp:559` is a no-owner-key rendered fallback in the ref-overload
-  grouping path. Do not remove the complete-owner mismatch guard while clearing
-  the compile blocker.
 - `hir_types.cpp` still contains both semantic-looking lookup reads and
   compatibility/final-spelling payload writes. Split those before editing so
   ABI/link-visible names, diagnostics, dumps, and base-tag storage are not

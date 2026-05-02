@@ -535,6 +535,67 @@ void test_hir_ref_overload_grouping_rejects_partial_metadata_rendered_fallback()
               "partial structured metadata must not fall back to matching rendered tags");
 }
 
+void test_hir_ref_overload_grouping_prefers_tag_text_id_over_stale_tag_without_owner_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId owner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "TextOnlyRefOwner");
+  c4c::TypeSpec lvalue_ts =
+      make_hir_ref_overload_record_type(arena, nullptr, "StaleTextLeftOwner", true, false);
+  lvalue_ts.tag_text_id = owner_text;
+  c4c::TypeSpec rvalue_ts =
+      make_hir_ref_overload_record_type(arena, nullptr, "StaleTextRightOwner", false, true);
+  rvalue_ts.tag_text_id = owner_text;
+  c4c::Node* lvalue_fn =
+      make_hir_ref_overload_function(parser, arena, "text_ref_overload", lvalue_ts);
+  c4c::Node* rvalue_fn =
+      make_hir_ref_overload_function(parser, arena, "text_ref_overload", rvalue_ts);
+
+  lowerer.collect_ref_overloaded_free_functions({lvalue_fn, rvalue_fn});
+
+  const auto ov_it = lowerer.ref_overload_set_.find("text_ref_overload");
+  expect_true(ov_it != lowerer.ref_overload_set_.end(),
+              "ref-overload grouping should use tag_text_id before stale rendered tags");
+  expect_eq_int(static_cast<int>(ov_it->second.size()), 2,
+                "tag_text_id ref-overload grouping should keep both overload entries");
+}
+
+void test_hir_ref_overload_grouping_rejects_tag_text_id_mismatch_without_owner_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec lvalue_ts =
+      make_hir_ref_overload_record_type(arena, nullptr, "SharedStaleTextOwner", true, false);
+  lvalue_ts.tag_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "FirstTextOnlyOwner");
+  c4c::TypeSpec rvalue_ts =
+      make_hir_ref_overload_record_type(arena, nullptr, "SharedStaleTextOwner", false, true);
+  rvalue_ts.tag_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "SecondTextOnlyOwner");
+  c4c::Node* lvalue_fn =
+      make_hir_ref_overload_function(parser, arena, "reject_text_ref_overload", lvalue_ts);
+  c4c::Node* rvalue_fn =
+      make_hir_ref_overload_function(parser, arena, "reject_text_ref_overload", rvalue_ts);
+
+  lowerer.collect_ref_overloaded_free_functions({lvalue_fn, rvalue_fn});
+
+  expect_true(lowerer.ref_overload_set_.count("reject_text_ref_overload") == 0,
+              "tag_text_id mismatch must not fall back to matching rendered tags");
+}
+
 void test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 namespace ns {
@@ -5647,6 +5708,8 @@ int main() {
   test_hir_ref_overload_grouping_prefers_record_def_over_stale_tag();
   test_hir_ref_overload_grouping_rejects_stale_tag_after_record_def_mismatch();
   test_hir_ref_overload_grouping_rejects_partial_metadata_rendered_fallback();
+  test_hir_ref_overload_grouping_prefers_tag_text_id_over_stale_tag_without_owner_key();
+  test_hir_ref_overload_grouping_rejects_tag_text_id_mismatch_without_owner_key();
   test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs();
   test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes();
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();

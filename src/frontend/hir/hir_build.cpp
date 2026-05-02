@@ -146,6 +146,18 @@ std::optional<HirRecordOwnerKey> make_ref_overload_record_owner_key(
   return std::nullopt;
 }
 
+bool ref_overload_record_types_match_without_complete_owner_key(
+    const TypeSpec& a,
+    const TypeSpec& b) {
+  if (a.tag_text_id != kInvalidText || b.tag_text_id != kInvalidText) {
+    return a.tag_text_id != kInvalidText && b.tag_text_id != kInvalidText &&
+           a.tag_text_id == b.tag_text_id;
+  }
+  // No-complete-metadata compatibility bridge for legacy TypeSpec producers.
+  if (a.tag && b.tag) return std::string(a.tag) == std::string(b.tag);
+  return true;
+}
+
 }  // namespace
 
 std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {
@@ -556,7 +568,7 @@ void Lowerer::collect_ref_overloaded_free_functions(
             base_match = false;
             break;
           }
-        } else if (a.tag && b.tag && std::string(a.tag) != std::string(b.tag)) {
+        } else if (!ref_overload_record_types_match_without_complete_owner_key(a, b)) {
           base_match = false;
           break;
         }
