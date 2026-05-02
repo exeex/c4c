@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace c4c::hir {
@@ -63,6 +65,78 @@ void attach_direct_call_callee_link_name_id(Module& mod, Expr& expr) {
   ref->link_name_id = find_direct_call_carrier_link_name_id(mod, *ref);
 }
 
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, std::string_view{}) {
+  return ts.tag ? std::string_view(ts.tag) : std::string_view{};
+}
+
+std::string_view typespec_legacy_tag_if_present(const TypeSpec&, long) {
+  return {};
+}
+
+template <typename T>
+auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_typespec_final_spelling_tag_if_present(TypeSpec&, const char*, long) {}
+
+bool typespec_has_nominal_lookup_carrier(const TypeSpec& ts) {
+  return ts.record_def || ts.tag_text_id != kInvalidText ||
+         (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) ||
+         !typespec_legacy_tag_if_present(ts, 0).empty();
+}
+
+bool same_call_storage_type(const TypeSpec& a, const TypeSpec& b) {
+  if (!generic_type_compatible(a, b)) return false;
+  if (a.base != TB_STRUCT && a.base != TB_UNION && a.base != TB_ENUM) return true;
+  if (a.record_def || b.record_def || a.tag_text_id != kInvalidText ||
+      b.tag_text_id != kInvalidText) {
+    return true;
+  }
+  const std::string_view a_tag = typespec_legacy_tag_if_present(a, 0);
+  const std::string_view b_tag = typespec_legacy_tag_if_present(b, 0);
+  if (a_tag.empty() && b_tag.empty()) return true;
+  return a_tag == b_tag;
+}
+
+const TypeSpec* find_template_type_binding_for_call(
+    const TypeBindings* tpl_bindings,
+    const std::unordered_map<TextId, TypeSpec>* tpl_bindings_by_text,
+    const Module* module,
+    const TypeSpec& ts) {
+  if (!tpl_bindings || tpl_bindings->empty()) return nullptr;
+  if (ts.template_param_text_id != kInvalidText) {
+    if (tpl_bindings_by_text) {
+      auto text_it = tpl_bindings_by_text->find(ts.template_param_text_id);
+      if (text_it != tpl_bindings_by_text->end()) return &text_it->second;
+    }
+    if (module && module->link_name_texts) {
+      const std::string key(
+          module->link_name_texts->lookup(ts.template_param_text_id));
+      auto it = tpl_bindings->find(key);
+      if (it != tpl_bindings->end()) return &it->second;
+    }
+  }
+  if (ts.tag_text_id != kInvalidText && module && module->link_name_texts) {
+    const std::string key(module->link_name_texts->lookup(ts.tag_text_id));
+    auto it = tpl_bindings->find(key);
+    if (it != tpl_bindings->end()) return &it->second;
+  }
+  const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  if (legacy_tag.empty()) return nullptr;
+  auto it = tpl_bindings->find(std::string(legacy_tag));
+  return it == tpl_bindings->end() ? nullptr : &it->second;
+}
+
+bool typespec_has_template_binding_carrier(const TypeSpec& ts) {
+  return ts.template_param_text_id != kInvalidText ||
+         ts.tag_text_id != kInvalidText ||
+         !typespec_legacy_tag_if_present(ts, 0).empty();
+}
+
 }  // namespace
 
 std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
@@ -76,7 +150,8 @@ std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
   ExprId tmp_expr = lower_expr(ctx, n->left);
   if (n->n_children == 0) return tmp_expr;
   const TypeSpec& tmp_ts = module_->expr_pool[tmp_expr.value].type.spec;
-  if (tmp_ts.base != TB_STRUCT || tmp_ts.ptr_level != 0 || !tmp_ts.tag) {
+  if (tmp_ts.base != TB_STRUCT || tmp_ts.ptr_level != 0 ||
+      !typespec_has_nominal_lookup_carrier(tmp_ts)) {
     return tmp_expr;
   }
   const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
@@ -106,8 +181,7 @@ std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
     tmp.name = tmp_name;
     tmp.type = qtype_from(tmp_ts, ValueCategory::RValue);
     const TypeSpec init_ts = module_->expr_pool[tmp_expr.value].type.spec;
-    if (init_ts.base == tmp_ts.base && init_ts.ptr_level == tmp_ts.ptr_level &&
-        init_ts.tag == tmp_ts.tag) {
+    if (same_call_storage_type(init_ts, tmp_ts)) {
       tmp.init = tmp_expr;
     }
     append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
@@ -225,7 +299,7 @@ bool Lowerer::try_expand_pack_call_arg(FunctionCtx* ctx,
   }
   if (pattern->left->n_template_args != 1 || !pattern->left->template_arg_types ||
       pattern->left->template_arg_types[0].base != TB_TYPEDEF ||
-      !pattern->left->template_arg_types[0].tag) {
+      !typespec_has_template_binding_carrier(pattern->left->template_arg_types[0])) {
     return false;
   }
 
@@ -346,8 +420,7 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
       tmp.name = tmp_name;
       tmp.type = qtype_from(base_ts, ValueCategory::RValue);
       const TypeSpec init_ts = module_->expr_pool[base_id.value].type.spec;
-      if (init_ts.base == base_ts.base && init_ts.ptr_level == base_ts.ptr_level &&
-          init_ts.tag == base_ts.tag) {
+      if (same_call_storage_type(init_ts, base_ts)) {
         tmp.init = base_id;
       }
       const LocalId tmp_lid = tmp.id;
@@ -402,7 +475,8 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
 
   if (n->left) {
     TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
-    if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
+    if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 &&
+        typespec_has_nominal_lookup_carrier(callee_ts)) {
       std::vector<const Node*> arg_nodes;
       for (int i = 0; i < n->n_children; ++i)
         arg_nodes.push_back(n->children[i]);
@@ -546,9 +620,20 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
               TypeSpec this_ts{};
               this_ts.base = TB_STRUCT;
               auto sit = module_->struct_defs.find(ctx->method_struct_tag);
-              this_ts.tag = sit != module_->struct_defs.end()
-                                ? sit->second.tag.c_str()
-                                : ctx->method_struct_tag.c_str();
+              const char* this_tag = sit != module_->struct_defs.end()
+                                         ? sit->second.tag.c_str()
+                                         : ctx->method_struct_tag.c_str();
+              set_typespec_final_spelling_tag_if_present(this_ts, this_tag, 0);
+              this_ts.tag_text_id =
+                  sit != module_->struct_defs.end()
+                      ? sit->second.tag_text_id
+                      : make_text_id(ctx->method_struct_tag,
+                                     module_ ? module_->link_name_texts.get()
+                                             : nullptr);
+              auto owner_sdit = struct_def_nodes_.find(ctx->method_struct_tag);
+              if (owner_sdit != struct_def_nodes_.end()) {
+                this_ts.record_def = const_cast<Node*>(owner_sdit->second);
+              }
               this_ts.ptr_level = 1;
               c.args.push_back(append_expr(n->left, this_ref, this_ts, ValueCategory::LValue));
             }
@@ -658,9 +743,15 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
         continue;
       }
       TypeSpec arg_ts = n->left->template_arg_types[i];
-      if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && ctx && !ctx->tpl_bindings.empty()) {
-        auto resolved = ctx->tpl_bindings.find(arg_ts.tag);
-        if (resolved != ctx->tpl_bindings.end()) arg_ts = resolved->second;
+      if (arg_ts.base == TB_TYPEDEF) {
+        if (const TypeSpec* resolved =
+                find_template_type_binding_for_call(
+                    ctx ? &ctx->tpl_bindings : nullptr,
+                    ctx ? &ctx->tpl_bindings_by_text : nullptr,
+                    module_,
+                    arg_ts)) {
+          arg_ts = *resolved;
+        }
       }
       tpl_bindings[fn_def->template_param_names[i]] = arg_ts;
     }
