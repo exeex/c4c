@@ -9,30 +9,29 @@ Current Step Title: Migrate Parser-Owned Semantic Producers
 ## Just Finished
 
 Step 2 - Migrate Parser-Owned Semantic Producers migrated
-`src/frontend/parser/impl/core.cpp` typedef-chain resolution.
+`src/frontend/parser/impl/core.cpp::Parser::are_types_compatible`.
 
-`Parser::resolve_typedef_type_chain` and
-`Parser::resolve_struct_like_typedef_type` now resolve typedef references by
-`TypeSpec::tag_text_id` first. The metadata-backed route checks qualified
-TextId paths, namespace-context structured typedef keys, and visible typedef
-bindings before considering rendered spelling. Rendered `TypeSpec::tag`
-fallback remains explicit no-metadata compatibility only when the incoming
-`TypeSpec` has no `tag_text_id` carrier.
+Parser nominal type compatibility now uses structured identity before rendered
+`TypeSpec::tag`: shared `record_def` identity when both sides carry record
+definitions, then namespace context plus `tag_text_id`, global qualification,
+and qualifier TextIds when complete metadata is available. Rendered tag
+comparison remains explicit no-metadata compatibility only when neither side
+has structured nominal identity.
 
 Added focused stale-rendered-spelling coverage in
-`frontend_parser_lookup_authority_tests`: a typedef query with
-`tag = "StaleRenderedAlias"` and `tag_text_id = StructuredAlias` resolves to
-the structured alias target, while the same query without `tag_text_id` still
-uses the rendered compatibility fallback.
+`frontend_parser_lookup_authority_tests`: `are_types_compatible` accepts shared
+`record_def` or matching enum `tag_text_id`/namespace metadata despite stale
+rendered tags, rejects mismatched structured record/TextId identity even when
+rendered tags match, rejects one-sided structured metadata fallback, and keeps
+rendered-only compatibility working.
 
 ## Suggested Next
 
 Continue Step 2 by auditing another parser-owned semantic `TypeSpec::tag`
-consumer with existing metadata, likely `Parser::are_types_compatible` for
-record/enum identity or `resolves_to_record_ctor_type` for record constructor
-classification. Prefer `record_def` and `tag_text_id`/structured visible-name
-metadata before rendered tag fallback, with stale-rendered-spelling coverage
-and the same focused proof subset.
+consumer with existing metadata, likely `Parser::resolves_to_record_ctor_type`
+or parser struct/enum completeness helpers. Prefer `record_def` and
+`tag_text_id`/structured visible-name metadata before rendered tag fallback,
+with stale-rendered-spelling coverage and the same focused proof subset.
 
 ## Watchouts
 
@@ -50,7 +49,7 @@ and the same focused proof subset.
 
 ## Proof
 
-Step 2 delegated proof passed for the parser `core.cpp` typedef-chain packet
+Step 2 delegated proof passed for the parser `are_types_compatible` packet
 and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_hir_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 

@@ -813,6 +813,48 @@ bool typespec_has_complete_qualifier_text_ids(const TypeSpec& ts) {
     return true;
 }
 
+bool typespec_has_complete_type_name_text_identity(const TypeSpec& ts) {
+    if (ts.namespace_context_id < 0 || ts.tag_text_id == kInvalidText) {
+        return false;
+    }
+    if (ts.n_qualifier_segments < 0) return false;
+    if (ts.n_qualifier_segments == 0) return true;
+    return typespec_has_complete_qualifier_text_ids(ts);
+}
+
+bool same_typespec_type_name_text_identity(const TypeSpec& lhs,
+                                           const TypeSpec& rhs) {
+    if (lhs.namespace_context_id != rhs.namespace_context_id ||
+        lhs.tag_text_id != rhs.tag_text_id ||
+        lhs.is_global_qualified != rhs.is_global_qualified ||
+        lhs.n_qualifier_segments != rhs.n_qualifier_segments) {
+        return false;
+    }
+    for (int i = 0; i < lhs.n_qualifier_segments; ++i) {
+        if (lhs.qualifier_text_ids[i] != rhs.qualifier_text_ids[i]) return false;
+    }
+    return true;
+}
+
+bool same_nominal_typespec_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
+    if (lhs.record_def && rhs.record_def) {
+        return lhs.record_def == rhs.record_def;
+    }
+
+    const bool lhs_has_text_identity =
+        typespec_has_complete_type_name_text_identity(lhs);
+    const bool rhs_has_text_identity =
+        typespec_has_complete_type_name_text_identity(rhs);
+    if (lhs_has_text_identity || rhs_has_text_identity) {
+        return lhs_has_text_identity && rhs_has_text_identity &&
+               same_typespec_type_name_text_identity(lhs, rhs);
+    }
+
+    if (lhs.record_def || rhs.record_def) return false;
+
+    return lhs.tag && rhs.tag && std::strcmp(lhs.tag, rhs.tag) == 0;
+}
+
 const TypeSpec* find_typedef_type_by_typespec_metadata(const Parser& parser,
                                                        const TypeSpec& ts) {
     if (ts.tag_text_id == kInvalidText) return nullptr;
@@ -931,7 +973,7 @@ bool Parser::are_types_compatible(const TypeSpec& lhs,
         if (lhs_dim != rhs_dim && lhs_dim != -2 && rhs_dim != -2) return false;
     }
     if (a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM) {
-        if (!a.tag || !b.tag || std::strcmp(a.tag, b.tag) != 0) return false;
+        if (!same_nominal_typespec_identity(a, b)) return false;
     }
     return true;
 }

@@ -5136,6 +5136,80 @@ void test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag() {
               "fallback when no tag_text_id carrier exists");
 }
 
+void test_parser_type_compatibility_uses_structured_nominal_identity() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId owner_text = texts.intern("Owner");
+  const c4c::TextId enum_text = texts.intern("StructuredEnum");
+  const c4c::TextId other_enum_text = texts.intern("OtherStructuredEnum");
+
+  auto make_nominal = [&](c4c::TypeBase base, const char* rendered_tag) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    ts.tag = arena.strdup(rendered_tag);
+    return ts;
+  };
+
+  c4c::Node record{};
+  record.kind = c4c::NK_STRUCT_DEF;
+  c4c::Node other_record{};
+  other_record.kind = c4c::NK_STRUCT_DEF;
+
+  c4c::TypeSpec lhs = make_nominal(c4c::TB_STRUCT, "StaleLeftRecord");
+  lhs.record_def = &record;
+  c4c::TypeSpec rhs = make_nominal(c4c::TB_STRUCT, "StaleRightRecord");
+  rhs.record_def = &record;
+  expect_true(parser.are_types_compatible(lhs, rhs),
+              "parser type compatibility should use shared record_def "
+              "identity before stale rendered record tags");
+
+  rhs.tag = lhs.tag;
+  rhs.record_def = &other_record;
+  expect_true(!parser.are_types_compatible(lhs, rhs),
+              "parser type compatibility should reject different record_def "
+              "identity even when rendered record tags match");
+
+  c4c::TextId lhs_qualifiers[] = {owner_text};
+  c4c::TextId rhs_qualifiers[] = {owner_text};
+  lhs = make_nominal(c4c::TB_ENUM, "StaleLeftEnum");
+  lhs.namespace_context_id = 5;
+  lhs.tag_text_id = enum_text;
+  lhs.n_qualifier_segments = 1;
+  lhs.qualifier_text_ids = lhs_qualifiers;
+  rhs = make_nominal(c4c::TB_ENUM, "StaleRightEnum");
+  rhs.namespace_context_id = 5;
+  rhs.tag_text_id = enum_text;
+  rhs.n_qualifier_segments = 1;
+  rhs.qualifier_text_ids = rhs_qualifiers;
+  expect_true(parser.are_types_compatible(lhs, rhs),
+              "parser type compatibility should use tag TextId and "
+              "namespace metadata before stale rendered enum tags");
+
+  rhs.tag = lhs.tag;
+  rhs.tag_text_id = other_enum_text;
+  expect_true(!parser.are_types_compatible(lhs, rhs),
+              "parser type compatibility should reject different tag TextIds "
+              "even when rendered enum tags match");
+
+  rhs.tag_text_id = c4c::kInvalidText;
+  rhs.namespace_context_id = -1;
+  expect_true(!parser.are_types_compatible(lhs, rhs),
+              "parser type compatibility should not fall back to rendered "
+              "tags when only one side has structured nominal metadata");
+
+  lhs = make_nominal(c4c::TB_ENUM, "RenderedOnlyEnum");
+  rhs = make_nominal(c4c::TB_ENUM, "RenderedOnlyEnum");
+  expect_true(parser.are_types_compatible(lhs, rhs),
+              "parser type compatibility should retain rendered tag fallback "
+              "when no nominal metadata exists");
+}
+
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5484,6 +5558,7 @@ int main() {
   test_typespec_template_origin_equality_uses_structured_key();
   test_typespec_equality_uses_structured_type_identity_before_rendered_tag();
   test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag();
+  test_parser_type_compatibility_uses_structured_nominal_identity();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();
