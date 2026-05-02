@@ -1266,6 +1266,46 @@ void test_canonical_type_str_no_metadata_uses_explicit_unknown_name() {
               "canonical type strings without structured name metadata should use explicit unknown spelling");
 }
 
+void test_type_suffix_for_mangling_uses_record_def_not_stale_tag() {
+  c4c::TextTable texts;
+
+  c4c::Node record{};
+  record.kind = c4c::NK_STRUCT_DEF;
+  record.name = "StructuredMangleRecord";
+  record.unqualified_name = "StructuredMangleRecord";
+  record.unqualified_text_id = texts.intern("StructuredMangleRecord");
+  record.namespace_context_id = 31;
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tag = "StaleMangleTag";
+  ts.tag_text_id = record.unqualified_text_id;
+  ts.record_def = &record;
+  ts.ptr_level = 1;
+
+  const std::string suffix = c4c::hir::type_suffix_for_mangling(ts);
+
+  expect_true(suffix.find("StaleMangleTag") == std::string::npos,
+              "type mangling suffix should not depend on stale rendered TypeSpec tag spelling");
+  expect_true(suffix == "p1TStructuredMangleRecord",
+              "type mangling suffix should preserve structured record spelling when available");
+}
+
+void test_type_suffix_for_mangling_no_metadata_is_explicit_unknown() {
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tag = "LegacyOnlyMangleTag";
+
+  const std::string suffix = c4c::hir::type_suffix_for_mangling(ts);
+
+  expect_true(suffix == "unknown",
+              "type mangling suffix without structured name metadata should use explicit unknown spelling");
+}
+
 void test_pending_consteval_nttp_handoff_carries_text_id_bindings() {
   constexpr std::string_view source = R"cpp(
 template<int N>
@@ -2049,6 +2089,8 @@ int main() {
   test_pending_type_ref_no_metadata_keeps_shape_payload();
   test_canonical_type_str_uses_structured_record_key_not_tag();
   test_canonical_type_str_no_metadata_uses_explicit_unknown_name();
+  test_type_suffix_for_mangling_uses_record_def_not_stale_tag();
+  test_type_suffix_for_mangling_no_metadata_is_explicit_unknown();
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();

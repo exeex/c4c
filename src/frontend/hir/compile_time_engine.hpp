@@ -355,6 +355,55 @@ struct DeferredTemplateTypeResult {
 
 // ── Template mangling utilities ─────────────────────────────────────────────
 
+inline std::string nominal_type_suffix_for_mangling(const TypeSpec& ts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    if (ts.record_def->name && ts.record_def->name[0]) {
+      return std::string("T") + ts.record_def->name;
+    }
+    if (ts.record_def->unqualified_name && ts.record_def->unqualified_name[0]) {
+      return std::string("T") + ts.record_def->unqualified_name;
+    }
+    if (ts.record_def->unqualified_text_id != kInvalidText) {
+      return "Trecord_ctx" +
+             std::to_string(ts.record_def->namespace_context_id) + "_text" +
+             std::to_string(ts.record_def->unqualified_text_id);
+    }
+  }
+  if (ts.tag_text_id != kInvalidText) {
+    std::string out = "Ttag_ctx" + std::to_string(ts.namespace_context_id);
+    out += ts.is_global_qualified ? "_global" : "_local";
+    if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+      out += "_q";
+      for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        if (i > 0) out += "_";
+        out += std::to_string(ts.qualifier_text_ids[i]);
+      }
+    }
+    out += "_text" + std::to_string(ts.tag_text_id);
+    return out;
+  }
+  if (ts.template_param_text_id != kInvalidText) {
+    return "Tparam_owner_ctx" +
+           std::to_string(ts.template_param_owner_namespace_context_id) +
+           "_owner" + std::to_string(ts.template_param_owner_text_id) +
+           "_index" + std::to_string(ts.template_param_index) + "_text" +
+           std::to_string(ts.template_param_text_id);
+  }
+  if (ts.deferred_member_type_text_id != kInvalidText) {
+    return "Tdeferred_text" +
+           std::to_string(ts.deferred_member_type_text_id);
+  }
+  if (ts.tpl_struct_origin_key.base_text_id != kInvalidText) {
+    return "Ttpl_origin_ctx" +
+           std::to_string(ts.tpl_struct_origin_key.context_id) +
+           (ts.tpl_struct_origin_key.is_global_qualified ? "_global" : "_local") +
+           "_qpath" +
+           std::to_string(ts.tpl_struct_origin_key.qualifier_path_id) + "_text" +
+           std::to_string(ts.tpl_struct_origin_key.base_text_id);
+  }
+  return "unknown";
+}
+
 /// Produce a deterministic type suffix for name mangling.
 inline std::string type_suffix_for_mangling(const TypeSpec& ts) {
   std::string out;
@@ -380,8 +429,7 @@ inline std::string type_suffix_for_mangling(const TypeSpec& ts) {
     case TB_UINT128: out += "u128"; break;
     case TB_VOID: out += "v"; break;
     default:
-      if (ts.tag) out += std::string("T") + ts.tag;
-      else out += "unknown";
+      out += nominal_type_suffix_for_mangling(ts);
       break;
   }
   if (ts.is_lvalue_ref) out += "_ref";
