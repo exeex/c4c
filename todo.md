@@ -8,38 +8,40 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 narrowed the Sema consteval forwarded-NTTP handoff in
-`src/frontend/sema/consteval.cpp`. `bind_consteval_call_env` now treats a
-present forwarded `template_arg_nttp_text_ids` slot as authoritative even when
-the outer consteval environment has no TextId/key map available, so it no longer
-reopens legacy rendered `template_arg_nttp_names` lookup in that carrier-present
-case.
+Step 4 narrowed parser AST template-dependency helpers in
+`src/frontend/parser/ast.hpp`. `typespec_mentions_template_param` and
+`template_arg_list_mentions_template_param` now treat `TypeSpec::tag_text_id`,
+`TypeSpec::template_param_text_id`,
+`TypeSpec::deferred_member_type_text_id`, and
+`TemplateArgRef::nttp_text_id` as authoritative before rendered `tag`,
+`deferred_member_type_name`, or `debug_text` fallback. Rendered fallback remains
+available only when the relevant dependency helper sees no structured carrier.
 
-Focused authority coverage in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now extends
-`test_consteval_forwarded_nttp_uses_text_id_not_rendered_name` with a no-map
-outer environment whose legacy rendered name would otherwise bind. The test
-verifies the TextId carrier blocks that rendered-name recovery.
+Focused coverage in
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now proves stale
+rendered dependency text cannot recover when non-matching structured carriers
+exist for top-level type args, deferred member type names, and nested NTTP
+template args, while no-carrier compatibility still works.
 
 ## Suggested Next
 
 Continue Step 4 review after the next review trigger. The remaining rendered
-template-argument routes to scrutinize are no-carrier fallbacks only; verify any
-next route has no parsed expression, token, TextId, record-def, or origin-key
-carrier before preserving rendered-string compatibility.
+dependency routes to scrutinize should be no-carrier fallbacks only; verify any
+next route has no parsed expression, token, TextId, record-def, origin-key, or
+other structured carrier before preserving rendered-string compatibility.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- `Node::template_arg_nttp_names` remains a compatibility path in
-  `bind_consteval_call_env` only when there is no parsed expression carrier and
-  no forwarded TextId carrier for the template argument.
-- `$expr:` text is still produced for compatibility/display and remains a
-  no-carrier fallback only where no parsed expression, token, TextId, or other
-  structured carrier exists at that consumer.
-- The no-carrier template-argument compatibility routes remain separate Step 4
-  watch items. Do not count this packet alone as source-idea closure.
+- `typespec_has_template_param_dependency_carrier` is intentionally scoped to
+  dependency carriers used by these AST helpers; it does not claim broader type
+  identity authority for HIR/backend consumers.
+- Rendered `tag`, `deferred_member_type_name`, and `debug_text` fallback still
+  exists for no-carrier compatibility. Do not reclassify those fallback paths as
+  semantic authority in later packets.
+- The no-carrier compatibility routes remain separate Step 4 watch items. Do
+  not count this packet alone as source-idea closure.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.
 
 ## Proof

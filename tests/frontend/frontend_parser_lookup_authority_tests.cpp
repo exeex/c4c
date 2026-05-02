@@ -4352,6 +4352,144 @@ void test_dependent_template_specialization_uses_nttp_text_id() {
               "compatibility");
 }
 
+void test_dependent_template_specialization_uses_typespec_carriers_before_text() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId param_text = texts.intern("T");
+  const c4c::TextId nttp_text = texts.intern("N");
+  const c4c::TextId stale_text = texts.intern("RenderedDrift");
+
+  c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  specialization->kind = c4c::NK_STRUCT_DEF;
+  specialization->name = arena.strdup("Box");
+  specialization->template_origin_name = arena.strdup("Box");
+  specialization->n_template_params = 2;
+  specialization->template_param_names = arena.alloc_array<const char*>(2);
+  specialization->template_param_names[0] = arena.strdup("T");
+  specialization->template_param_names[1] = arena.strdup("N");
+  specialization->template_param_name_text_ids =
+      arena.alloc_array<c4c::TextId>(2);
+  specialization->template_param_name_text_ids[0] = param_text;
+  specialization->template_param_name_text_ids[1] = nttp_text;
+  specialization->n_template_args = 1;
+  specialization->template_arg_is_value = arena.alloc_array<bool>(1);
+  specialization->template_arg_is_value[0] = false;
+  specialization->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+
+  auto make_type = [&]() {
+    c4c::TypeSpec ts{};
+    ts.base = c4c::TB_TYPEDEF;
+    ts.tag = arena.strdup("T");
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    return ts;
+  };
+
+  specialization->template_arg_types[0] = make_type();
+  specialization->template_arg_types[0].tag_text_id = stale_text;
+  expect_true(!c4c::is_dependent_template_struct_specialization(specialization),
+              "stale rendered tag text must not recover dependency when a "
+              "non-matching TypeSpec::tag_text_id carrier is present");
+
+  specialization->template_arg_types[0] = make_type();
+  specialization->template_arg_types[0].tag_text_id = param_text;
+  expect_true(c4c::is_dependent_template_struct_specialization(specialization),
+              "TypeSpec::tag_text_id should be authoritative for dependency");
+
+  specialization->template_arg_types[0] = make_type();
+  specialization->template_arg_types[0].tag_text_id = c4c::kInvalidText;
+  expect_true(c4c::is_dependent_template_struct_specialization(specialization),
+              "no-carrier type args should keep rendered tag compatibility");
+
+  specialization->template_arg_types[0] = make_type();
+  specialization->template_arg_types[0].tag_text_id = c4c::kInvalidText;
+  specialization->template_arg_types[0].template_param_text_id = stale_text;
+  expect_true(!c4c::is_dependent_template_struct_specialization(specialization),
+              "stale rendered tag text must not recover dependency when a "
+              "non-matching TypeSpec::template_param_text_id carrier is present");
+
+  specialization->template_arg_types[0] = make_type();
+  specialization->template_arg_types[0].tag = nullptr;
+  specialization->template_arg_types[0].deferred_member_type_name =
+      arena.strdup("T");
+  specialization->template_arg_types[0].deferred_member_type_text_id =
+      stale_text;
+  expect_true(!c4c::is_dependent_template_struct_specialization(specialization),
+              "stale deferred member text must not recover dependency when a "
+              "non-matching deferred_member_type_text_id carrier is present");
+
+  specialization->template_arg_types[0].deferred_member_type_text_id =
+      c4c::kInvalidText;
+  expect_true(c4c::is_dependent_template_struct_specialization(specialization),
+              "no-carrier deferred member text should keep rendered fallback "
+              "compatibility");
+}
+
+void test_dependent_template_specialization_uses_nested_arg_carriers_before_debug_text() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId nttp_text = texts.intern("N");
+  const c4c::TextId stale_text = texts.intern("RenderedDrift");
+
+  c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  specialization->kind = c4c::NK_STRUCT_DEF;
+  specialization->name = arena.strdup("Box");
+  specialization->template_origin_name = arena.strdup("Box");
+  specialization->n_template_params = 1;
+  specialization->template_param_names = arena.alloc_array<const char*>(1);
+  specialization->template_param_names[0] = arena.strdup("N");
+  specialization->template_param_name_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  specialization->template_param_name_text_ids[0] = nttp_text;
+  specialization->n_template_args = 1;
+  specialization->template_arg_is_value = arena.alloc_array<bool>(1);
+  specialization->template_arg_is_value[0] = false;
+  specialization->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+
+  auto make_nested_type = [&]() {
+    c4c::TypeSpec ts{};
+    ts.base = c4c::TB_TYPEDEF;
+    ts.tag = arena.strdup("Carrier");
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.tpl_struct_args.size = 1;
+    ts.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+    ts.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+    ts.tpl_struct_args.data[0].value = 0;
+    ts.tpl_struct_args.data[0].debug_text = arena.strdup("N");
+    return ts;
+  };
+
+  specialization->template_arg_types[0] = make_nested_type();
+  specialization->template_arg_types[0].tpl_struct_args.data[0].nttp_text_id =
+      stale_text;
+  expect_true(!c4c::is_dependent_template_struct_specialization(specialization),
+              "stale nested debug_text must not recover dependency when a "
+              "non-matching TemplateArgRef::nttp_text_id carrier is present");
+
+  specialization->template_arg_types[0] = make_nested_type();
+  specialization->template_arg_types[0].tpl_struct_args.data[0].nttp_text_id =
+      nttp_text;
+  expect_true(c4c::is_dependent_template_struct_specialization(specialization),
+              "nested TemplateArgRef::nttp_text_id should be authoritative for "
+              "dependency");
+
+  specialization->template_arg_types[0] = make_nested_type();
+  specialization->template_arg_types[0].tpl_struct_args.data[0].nttp_text_id =
+      c4c::kInvalidText;
+  expect_true(c4c::is_dependent_template_struct_specialization(specialization),
+              "no-carrier nested template args should keep debug_text fallback "
+              "compatibility");
+}
+
 void test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4776,6 +4914,8 @@ int main() {
   test_nested_pending_template_arg_rendering_suppresses_expr_debug_text();
   test_node_template_arg_reconstruction_preserves_expr_carrier();
   test_dependent_template_specialization_uses_nttp_text_id();
+  test_dependent_template_specialization_uses_typespec_carriers_before_text();
+  test_dependent_template_specialization_uses_nested_arg_carriers_before_debug_text();
   test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss();
   test_typespec_template_origin_equality_uses_structured_key();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();

@@ -575,14 +575,57 @@ inline bool text_mentions_template_param(const Node* node, const char* text) {
 
 inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* node);
 
+inline bool typespec_has_template_param_dependency_carrier(const TypeSpec& ts);
+
+inline bool template_arg_ref_has_template_param_dependency_carrier(
+    const TemplateArgRef& arg) {
+    if (arg.kind == TemplateArgKind::Value) {
+        return arg.nttp_text_id != kInvalidText;
+    }
+    if (arg.kind == TemplateArgKind::Type) {
+        return typespec_has_template_param_dependency_carrier(arg.type);
+    }
+    return false;
+}
+
+inline bool template_arg_list_has_template_param_dependency_carrier(
+    const TemplateArgRefList& args) {
+    if (args.size <= 0 || !args.data) return false;
+    for (int i = 0; i < args.size; ++i) {
+        if (template_arg_ref_has_template_param_dependency_carrier(args.data[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline bool typespec_has_template_param_dependency_carrier(const TypeSpec& ts) {
+    return ts.tag_text_id != kInvalidText ||
+           ts.template_param_text_id != kInvalidText ||
+           ts.deferred_member_type_text_id != kInvalidText ||
+           template_arg_list_has_template_param_dependency_carrier(
+               ts.tpl_struct_args);
+}
+
 inline bool template_arg_list_mentions_template_param(const TypeSpec& ts,
                                                       const Node* node) {
     if (!node || ts.tpl_struct_args.size <= 0 || !ts.tpl_struct_args.data) return false;
     for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
         const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
-        if (arg.kind == TemplateArgKind::Type &&
-            typespec_mentions_template_param(arg.type, node)) {
-            return true;
+        if (arg.kind == TemplateArgKind::Type) {
+            if (typespec_mentions_template_param(arg.type, node)) {
+                return true;
+            }
+            if (typespec_has_template_param_dependency_carrier(arg.type)) {
+                continue;
+            }
+        } else if (arg.kind == TemplateArgKind::Value) {
+            if (arg.nttp_text_id != kInvalidText) {
+                if (node_has_template_param_text_id(node, arg.nttp_text_id)) {
+                    return true;
+                }
+                continue;
+            }
         }
         if (text_mentions_template_param(node, arg.debug_text)) {
             return true;
@@ -642,8 +685,7 @@ inline std::string template_arg_debug_text_at(const TypeSpec& ts, int index) {
 }
 
 inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* node) {
-    if (node_has_template_param_name(node, ts.tag) ||
-        node_has_template_param_text_id(node, ts.tag_text_id) ||
+    if (node_has_template_param_text_id(node, ts.tag_text_id) ||
         node_has_template_param_text_id(node, ts.template_param_text_id) ||
         template_arg_list_mentions_template_param(ts, node)) {
         return true;
@@ -651,6 +693,12 @@ inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* nod
     if (ts.deferred_member_type_text_id != kInvalidText) {
         return node_has_template_param_text_id(
             node, ts.deferred_member_type_text_id);
+    }
+    if (typespec_has_template_param_dependency_carrier(ts)) {
+        return false;
+    }
+    if (node_has_template_param_name(node, ts.tag)) {
+        return true;
     }
     return text_mentions_template_param(node, ts.deferred_member_type_name);
 }
