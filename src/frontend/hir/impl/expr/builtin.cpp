@@ -111,9 +111,7 @@ class LayoutQueries {
       }
       return nullptr;
     }
-    if (!ts.tag || !ts.tag[0]) return nullptr;
-    const auto it = module_.struct_defs.find(ts.tag);
-    return it == module_.struct_defs.end() ? nullptr : &it->second;
+    return nullptr;
   }
 
   static TypeSpec array_element_type(const TypeSpec& ts) {
