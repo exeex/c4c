@@ -327,9 +327,14 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
     return ts;
   };
 
-  std::function<bool(const Node*, const TypeBindings&, const NttpBindings&, TypeSpec*)>
+  std::function<bool(const Node*,
+                     const std::string&,
+                     const TypeBindings&,
+                     const NttpBindings&,
+                     TypeSpec*)>
       search_node =
-          [&](const Node* sdef, const TypeBindings& type_bindings,
+          [&](const Node* sdef, const std::string& rendered_owner_tag,
+              const TypeBindings& type_bindings,
               const NttpBindings& nttp_bindings, TypeSpec* resolved) -> bool {
             if (!sdef || !resolved) return false;
             for (int i = 0; i < sdef->n_member_typedefs; ++i) {
@@ -354,13 +359,19 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
               return true;
             }
 
-            auto mod_it = module_->struct_defs.find(sdef->name ? sdef->name : "");
-            if (mod_it != module_->struct_defs.end()) {
-              for (const auto& base_tag : mod_it->second.base_tags) {
-                auto ast_it = struct_def_nodes_.find(base_tag);
-                if (ast_it == struct_def_nodes_.end()) continue;
-                if (search_node(ast_it->second, type_bindings, nttp_bindings, resolved))
-                  return true;
+            if (module_) {
+              auto mod_it = module_->struct_defs.find(rendered_owner_tag);
+              if (mod_it == module_->struct_defs.end()) {
+                mod_it = module_->struct_defs.find(sdef->name ? sdef->name : "");
+              }
+              if (mod_it != module_->struct_defs.end()) {
+                for (const auto& base_tag : mod_it->second.base_tags) {
+                  auto ast_it = struct_def_nodes_.find(base_tag);
+                  if (ast_it == struct_def_nodes_.end()) continue;
+                  if (search_node(ast_it->second, base_tag, type_bindings,
+                                  nttp_bindings, resolved))
+                    return true;
+                }
               }
             }
             return false;
@@ -418,16 +429,17 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
       *out = *trait_result;
       return true;
     }
-    return search_node(selected.selected_pattern, selected.type_bindings,
+    return search_node(selected.selected_pattern, tag, selected.type_bindings,
                        selected.nttp_bindings, out);
   };
 
   if (search_selected_pattern(sdef)) return true;
-  if (search_node(sdef, type_bindings, nttp_bindings, out)) return true;
+  if (search_node(sdef, tag, type_bindings, nttp_bindings, out)) return true;
   if (sdef->template_origin_name) {
     auto origin_it = struct_def_nodes_.find(sdef->template_origin_name);
     if (origin_it != struct_def_nodes_.end() &&
-        search_node(origin_it->second, type_bindings, nttp_bindings, out)) {
+        search_node(origin_it->second, sdef->template_origin_name,
+                    type_bindings, nttp_bindings, out)) {
       return true;
     }
   }
@@ -450,9 +462,27 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
     return key;
   };
-  auto owner_tag_from_metadata = [&]() -> std::optional<std::string> {
-    if (!ts) return std::nullopt;
-    if (std::optional<HirRecordOwnerKey> owner_key = owner_key_from_type(*ts)) {
+  auto type_has_structured_owner_metadata = [](const TypeSpec& owner) {
+    return (owner.record_def && owner.record_def->kind == NK_STRUCT_DEF) ||
+           owner.tag_text_id != kInvalidText ||
+           owner.tpl_struct_origin_key.base_text_id != kInvalidText ||
+           (owner.tpl_struct_origin && owner.tpl_struct_origin[0] &&
+            owner.tpl_struct_args.data && owner.tpl_struct_args.size > 0);
+  };
+  auto owner_tag_from_type_metadata =
+      [&](const TypeSpec& owner) -> std::optional<std::string> {
+    if (owner.record_def && owner.record_def->kind == NK_STRUCT_DEF) {
+      if (const std::optional<HirRecordOwnerKey> owner_key =
+              make_struct_def_node_owner_key(owner.record_def)) {
+        if (module_) {
+          if (const SymbolName* tag =
+                  module_->find_struct_def_tag_by_owner(*owner_key)) {
+            return *tag;
+          }
+        }
+      }
+    }
+    if (std::optional<HirRecordOwnerKey> owner_key = owner_key_from_type(owner)) {
       if (module_) {
         if (const SymbolName* tag =
                 module_->find_struct_def_tag_by_owner(*owner_key)) {
@@ -461,16 +491,32 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
       }
       for (const auto& [rendered_tag, candidate] : struct_def_nodes_) {
         if (!candidate || candidate->kind != NK_STRUCT_DEF) continue;
-        if (candidate->unqualified_text_id != ts->tag_text_id) continue;
-        if (ts->namespace_context_id >= 0 &&
-            candidate->namespace_context_id != ts->namespace_context_id) {
+        if (candidate->unqualified_text_id != owner.tag_text_id) continue;
+        if (owner.namespace_context_id >= 0 &&
+            candidate->namespace_context_id != owner.namespace_context_id) {
           continue;
         }
         return rendered_tag;
       }
-      return std::nullopt;
     }
-    if (ts->tag_text_id != kInvalidText) return std::nullopt;
+    if (module_ && owner.tag_text_id != kInvalidText) {
+      for (const auto& [rendered_tag, def] : module_->struct_defs) {
+        if (def.tag_text_id != owner.tag_text_id) continue;
+        if (owner.namespace_context_id >= 0 &&
+            def.ns_qual.context_id != owner.namespace_context_id) {
+          continue;
+        }
+        return rendered_tag;
+      }
+    }
+    return std::nullopt;
+  };
+  auto owner_tag_from_metadata = [&]() -> std::optional<std::string> {
+    if (!ts) return std::nullopt;
+    if (std::optional<std::string> tag = owner_tag_from_type_metadata(*ts)) {
+      return tag;
+    }
+    if (type_has_structured_owner_metadata(*ts)) return std::nullopt;
     const char* legacy_tag = typespec_legacy_tag_if_present(*ts, 0);
     if (legacy_tag && legacy_tag[0]) return std::string(legacy_tag);
     return std::nullopt;
@@ -602,6 +648,12 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     realize_template_struct_if_needed(owner_ts, empty_tb, empty_nb, primary_tpl);
     const Node* structured_owner =
         selected.selected_pattern ? selected.selected_pattern : primary_tpl;
+    PreparedTemplateStructInstance prepared_instance =
+        prepare_template_struct_instance(
+            primary_tpl,
+            ts->tpl_struct_origin ? ts->tpl_struct_origin
+                                  : (primary_tpl->name ? primary_tpl->name : ""),
+            resolved);
     const std::string structured_owner_tag = build_template_mangled_name(
         primary_tpl, structured_owner,
         ts->tpl_struct_origin ? ts->tpl_struct_origin
@@ -615,12 +667,46 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
         return true;
       }
     }
-    if (owner_ts.tag && owner_ts.tag[0]) {
+    bool has_realized_owner_metadata = false;
+    if (module_) {
+      const auto realized_it = module_->struct_defs.find(structured_owner_tag);
+      if (realized_it != module_->struct_defs.end()) {
+        if (const std::optional<HirRecordOwnerKey> owner_key =
+                make_template_struct_instance_owner_key(
+                    realized_it->second, primary_tpl,
+                    prepared_instance.instance_key)) {
+          has_realized_owner_metadata = true;
+          if (const SymbolName* owner_tag =
+                  module_->find_struct_def_tag_by_owner(*owner_key)) {
+            TypeSpec resolved_member{};
+            if (resolve_struct_member_typedef_type(
+                    *owner_tag, deferred_member_name, &resolved_member)) {
+              *ts = resolved_member;
+              return true;
+            }
+          }
+        }
+      }
+    }
+    if (std::optional<std::string> owner_tag =
+            owner_tag_from_type_metadata(owner_ts)) {
       TypeSpec resolved_member{};
       if (resolve_struct_member_typedef_type(
-              owner_ts.tag, deferred_member_name, &resolved_member)) {
+              *owner_tag, deferred_member_name, &resolved_member)) {
         *ts = resolved_member;
         return true;
+      }
+    }
+    if (!has_realized_owner_metadata &&
+        !type_has_structured_owner_metadata(owner_ts)) {
+      const char* legacy_tag = typespec_legacy_tag_if_present(owner_ts, 0);
+      if (legacy_tag && legacy_tag[0]) {
+        TypeSpec resolved_member{};
+        if (resolve_struct_member_typedef_type(
+                legacy_tag, deferred_member_name, &resolved_member)) {
+          *ts = resolved_member;
+          return true;
+        }
       }
     }
     return false;
