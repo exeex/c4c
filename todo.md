@@ -8,27 +8,33 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared the
-`TypeSpec::tag` deletion-probe blocker in
-`src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type`.
-`FunctionCtx` now carries a parallel `tpl_bindings_by_text` map keyed by
-parser template-parameter `TextId`, populated for function, method, and global
-template lowering from the owning AST template parameter metadata.
+Step 4 - Probe Field Removal And Split Boundaries reran the controlled
+`TypeSpec::tag` deletion probe after the `resolve_builtin_query_type` cleanup.
+The probe temporarily removed `TypeSpec::tag` from
+`src/frontend/parser/ast.hpp`, ran `cmake --build --preset default`, then
+restored `ast.hpp` exactly and rebuilt the tree.
 
-`resolve_builtin_query_type` now checks `template_param_text_id` against that
-TextId-keyed map before the existing module text-table lookup and no longer
-reads `target.tag`. The stale rendered tag-only/no-metadata test still rejects
-fallback, and a new focused test covers the important compatibility case where
-the parser-owned template-param `TextId` is not decodable through
-`module_->link_name_texts` but the structured TextId binding carrier is
-available.
+The seventh probe confirms the previous
+`src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type` blocker is
+cleared: it did not appear in the first useful failure clusters. The current
+first clusters are all still frontend/HIR-owned `TypeSpec::tag` consumers:
+`src/frontend/hir/impl/expr/expr.cpp::is_ast_lvalue`,
+`src/frontend/hir/hir_functions.cpp` callable/signature helpers,
+`src/frontend/hir/impl/expr/call.cpp` template-struct/member/consteval call
+helpers, `src/frontend/hir/impl/expr/object.cpp` constructor/aggregate/new
+owner helpers, `src/frontend/hir/impl/expr/operator.cpp` operator/member
+helpers, and `src/frontend/hir/hir_lowering_core.cpp::generic_type_compatible`
+plus nearby layout/base-tag helpers.
 
 ## Suggested Next
 
-Continue Step 4 by rerunning the controlled `TypeSpec::tag` deletion probe.
-Expected next first cluster should move past `builtin.cpp` and land in the
-remaining HIR signature/callable/layout clusters such as `hir_functions.cpp`,
-`hir_lowering_core.cpp`, `hir_build.cpp`, or `hir_types.cpp`.
+Continue Step 4 with one bounded HIR callable/signature packet, starting with
+`src/frontend/hir/hir_functions.cpp::substitute_signature_template_type` and
+the immediate callable return/parameter preparation helpers. Prefer
+`template_param_text_id` / `FunctionCtx::tpl_bindings_by_text`, `record_def`,
+`tag_text_id`, and existing member-owner metadata before rendered names; keep
+any remaining string-keyed `TypeBindings` access explicitly classified as
+compatibility/final spelling.
 
 ## Watchouts
 
@@ -78,18 +84,23 @@ remaining HIR signature/callable/layout clusters such as `hir_functions.cpp`,
 - The HIR builtin query type route is cleared for
   `resolve_builtin_query_type`; `template_param_text_id` lookup is authoritative
   when present, and tag-only/no-metadata substitution is intentionally not
-  preserved for the future no-tag field removal.
-- The sixth deletion probe still stops in frontend/HIR compilation; no
+  preserved for the future no-tag field removal. The seventh deletion probe did
+  not report this helper in the first failure clusters.
+- The seventh deletion probe still stops in frontend/HIR compilation; no
   LIR/BIR/backend downstream metadata gap has been reached yet.
 - Clusters cleared since the fifth probe: direct
   `LayoutQueries::find_struct_layout` fallback behavior and the full-suite
   layout/runtime regression. Since the sixth probe,
   `builtin.cpp::resolve_builtin_query_type` was also cleared. Remaining
-  expected first-probe clusters are HIR callable/signature helpers in
-  `hir_functions.cpp`, `hir_lowering_core.cpp` generic compatibility/layout
-  helpers, `hir_build.cpp` ref-overload collection, `hir_types.cpp`
-  typedef/layout/member/object inference helpers, and then call-lowering
-  helpers in `impl/expr/call.cpp`.
+  first-probe clusters are HIR lvalue/type-parameter binding compatibility in
+  `impl/expr/expr.cpp`, callable/signature helpers in `hir_functions.cpp`,
+  template-struct/member/consteval call helpers in `impl/expr/call.cpp`,
+  constructor/aggregate/new-owner helpers in `impl/expr/object.cpp`,
+  operator/member helpers in `impl/expr/operator.cpp`, and generic
+  compatibility/layout/base-tag helpers in `hir_lowering_core.cpp`. Later
+  clusters are still expected in `hir_build.cpp` ref-overload collection and
+  `hir_types.cpp` typedef/layout/member/object inference helpers after the
+  first parallel build failures are cleared.
 - Deferred member typedef owner resolution now has a structured-derived
   instantiated-owner spelling bridge in `member_typedef.cpp` and
   `type_resolution.cpp`; rendered `tag` fallback remains explicit
@@ -116,11 +127,21 @@ remaining HIR signature/callable/layout clusters such as `hir_functions.cpp`,
 
 ## Proof
 
-Step 4 builtin query TextId binding proof was run with:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(positive_sema_ok_expr_access_misc_runtime_c|positive_sema_ok_pragma_pack_c|cpp_positive_sema_alignas_applies_alignment_runtime_cpp|cpp_positive_sema_alignas_decl_storage_runtime_cpp|cpp_positive_sema_scoped_enum_underlying_layout_runtime_cpp|cpp_positive_sema_template_sizeof_cpp|cpp_hir_builtin_layout_query_sizeof_type|cpp_hir_builtin_layout_query_alignof_type|cpp_hir_builtin_layout_query_alignof_expr|llvm_gcc_c_torture_src_20071018_1_c|llvm_gcc_c_torture_src_pr34456_c|llvm_gcc_c_torture_src_stkalign_c|frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+Step 4 seventh deletion probe proof:
 
-Result: build passed and selected CTest passed 74/74. Focused coverage in
-`frontend_hir_lookup_tests` proves the TextId-keyed binding route works even
-when module text lookup cannot decode the parser TextId, while the stale
-rendered tag-only/no-metadata route still rejects fallback. Proof log:
-`test_after.log`.
+1. Temporarily removed `TypeSpec::tag` from
+   `src/frontend/parser/ast.hpp`.
+2. Ran `cmake --build --preset default`; result failed as expected during
+   frontend/HIR compilation. First useful failure clusters:
+   `impl/expr/expr.cpp::is_ast_lvalue`,
+   `hir_functions.cpp` callable/signature substitution and return/parameter
+   preparation, `impl/expr/call.cpp` template-struct/member/consteval calls,
+   `impl/expr/object.cpp` constructor/aggregate/new/delete owner helpers,
+   `impl/expr/operator.cpp` operator/member helpers, and
+   `hir_lowering_core.cpp::generic_type_compatible` / layout-adjacent helpers.
+3. Restored `src/frontend/parser/ast.hpp` exactly to the pre-probe state.
+4. Ran `cmake --build --preset default`; result passed.
+5. Ran `git diff --check`; result passed.
+
+No extra root-level scratch logs were left behind. Durable diff from this
+packet is `todo.md` only.
