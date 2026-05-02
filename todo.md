@@ -8,38 +8,35 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 narrowed parser AST template-dependency helpers in
-`src/frontend/parser/ast.hpp`. `typespec_mentions_template_param` and
-`template_arg_list_mentions_template_param` now treat `TypeSpec::tag_text_id`,
-`TypeSpec::template_param_text_id`,
-`TypeSpec::deferred_member_type_text_id`, and
-`TemplateArgRef::nttp_text_id` as authoritative before rendered `tag`,
-`deferred_member_type_name`, or `debug_text` fallback. Rendered fallback remains
-available only when the relevant dependency helper sees no structured carrier.
+Step 4 narrowed alias-template nested type-argument substitution in
+`src/frontend/parser/impl/types/base.cpp`. `substitute_template_arg_ref_structured`
+now treats `TypeSpec::tag_text_id` and `TypeSpec::template_param_text_id` as
+structured template-parameter carriers even when rendered `TypeSpec::tag`
+spelling is absent, so TextId-only nested type args no longer fall through to
+stale `TemplateArgRef::debug_text`.
 
 Focused coverage in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now proves stale
-rendered dependency text cannot recover when non-matching structured carriers
-exist for top-level type args, deferred member type names, and nested NTTP
-template args, while no-carrier compatibility still works.
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now proves
+`Alias<int>` substitutes a nested `Carrier<T>` argument from a TextId-only
+carrier and rejects stale rendered debug text.
 
 ## Suggested Next
 
-Continue Step 4 review after the next review trigger. The remaining rendered
-dependency routes to scrutinize should be no-carrier fallbacks only; verify any
-next route has no parsed expression, token, TextId, record-def, origin-key, or
-other structured carrier before preserving rendered-string compatibility.
+Continue Step 4 review after the next review trigger. A likely next narrow
+inspection route is the sibling alias/member-typedef carrier substitution
+helpers that still derive a parameter key from rendered spelling only when no
+TextId carrier is present; verify each is true no-carrier compatibility before
+preserving it.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- `typespec_has_template_param_dependency_carrier` is intentionally scoped to
-  dependency carriers used by these AST helpers; it does not claim broader type
-  identity authority for HIR/backend consumers.
+- The patched helper intentionally preserves rendered `tag` lookup only when
+  both `tag_text_id` and `template_param_text_id` are absent.
 - Rendered `tag`, `deferred_member_type_name`, and `debug_text` fallback still
-  exists for no-carrier compatibility. Do not reclassify those fallback paths as
-  semantic authority in later packets.
+  exists for no-carrier compatibility. Do not reclassify those fallback paths
+  as semantic authority in later packets.
 - The no-carrier compatibility routes remain separate Step 4 watch items. Do
   not count this packet alone as source-idea closure.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.

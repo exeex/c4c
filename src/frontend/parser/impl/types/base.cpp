@@ -2466,11 +2466,18 @@ TypeSpec Parser::parse_base_type() {
                                         }
 
                                         TypeSpec& ref_type = ref->type;
-                                        if (ref_type.base == TB_TYPEDEF &&
-                                            ref_type.tag && ref_type.tag[0]) {
+                                        if (ref_type.base == TB_TYPEDEF) {
                                             TextId type_text_id =
                                                 ref_type.tag_text_id;
                                             if (type_text_id == kInvalidText) {
+                                                type_text_id =
+                                                    ref_type.template_param_text_id;
+                                            }
+                                            if (type_text_id == kInvalidText) {
+                                                if (!ref_type.tag ||
+                                                    !ref_type.tag[0]) {
+                                                    return true;
+                                                }
                                                 type_text_id =
                                                     alias_param_ref_text_id(ref_type.tag);
                                             }
