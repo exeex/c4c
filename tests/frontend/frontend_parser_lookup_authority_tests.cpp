@@ -3279,6 +3279,142 @@ void test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name() 
                   detail);
 }
 
+void test_alias_member_typedef_type_substitution_uses_text_id_without_tag() {
+  const char* source =
+      "template <typename T>\n"
+      "struct Owner {\n"
+      "  using type = T;\n"
+      "};\n"
+      "template <typename T, typename U>\n"
+      "struct Wrapper {};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId wrapper_text = lexer.text_table().intern("Wrapper");
+  const c4c::TextId owner_text = lexer.text_table().intern("Owner");
+  const c4c::TextId type_text = lexer.text_table().intern("type");
+  const c4c::TextId t_text = lexer.text_table().intern("T");
+  const c4c::TextId concrete_wrapper_text =
+      lexer.text_table().intern("ConcreteWrapper");
+  c4c::Node* wrapper_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), wrapper_text);
+  c4c::Node* owner_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), owner_text);
+  expect_true(wrapper_primary != nullptr && owner_primary != nullptr,
+              "template primaries should be registered for member typedef "
+              "type TextId substitution test");
+
+  c4c::Node* owner_int_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner_int_record->name = arena.strdup("Owner_int_type");
+  owner_int_record->unqualified_name = arena.strdup("Owner_int_type");
+  owner_int_record->unqualified_text_id =
+      lexer.text_table().intern("Owner_int_type");
+  owner_int_record->namespace_context_id = parser.current_namespace_context_id();
+  c4c::TypeSpec owner_int_type{};
+  owner_int_type.array_size = -1;
+  owner_int_type.inner_rank = -1;
+  owner_int_type.base = c4c::TB_STRUCT;
+  owner_int_type.tag = arena.strdup("Owner_int_type");
+  owner_int_type.record_def = owner_int_record;
+
+  c4c::ParserTemplateState::TemplateInstantiationKey owner_int_key;
+  owner_int_key.template_key = parser.alias_template_key_in_context(
+      owner_primary->namespace_context_id, owner_text);
+  c4c::ParserTemplateState::TemplateInstantiationKey::Argument owner_int_arg;
+  owner_int_arg.is_value = false;
+  owner_int_arg.canonical_key = "int";
+  owner_int_key.arguments.push_back(owner_int_arg);
+  parser.register_template_instantiation_member_typedef_binding(
+      owner_int_key, type_text, owner_int_type);
+
+  c4c::Node* wrapper_inst = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  wrapper_inst->name = arena.strdup("Wrapper_int_double");
+  wrapper_inst->unqualified_name = arena.strdup("Wrapper_int_double");
+  wrapper_inst->unqualified_text_id =
+      lexer.text_table().intern("Wrapper_int_double");
+  wrapper_inst->namespace_context_id = parser.current_namespace_context_id();
+  wrapper_inst->template_origin_name = arena.strdup("Wrapper");
+  wrapper_inst->n_template_params = 2;
+  wrapper_inst->template_param_names = wrapper_primary->template_param_names;
+  wrapper_inst->template_param_name_text_ids =
+      wrapper_primary->template_param_name_text_ids;
+  wrapper_inst->template_param_is_nttp = wrapper_primary->template_param_is_nttp;
+  wrapper_inst->n_template_args = 2;
+  wrapper_inst->template_arg_is_value = arena.alloc_array<bool>(2);
+  wrapper_inst->template_arg_values = arena.alloc_array<long long>(2);
+  wrapper_inst->template_arg_nttp_names = arena.alloc_array<const char*>(2);
+  wrapper_inst->template_arg_nttp_text_ids = arena.alloc_array<c4c::TextId>(2);
+  wrapper_inst->template_arg_exprs = arena.alloc_array<c4c::Node*>(2);
+  wrapper_inst->template_arg_types = arena.alloc_array<c4c::TypeSpec>(2);
+  wrapper_inst->template_arg_is_value[0] = false;
+  wrapper_inst->template_arg_values[0] = 0;
+  wrapper_inst->template_arg_nttp_names[0] = nullptr;
+  wrapper_inst->template_arg_nttp_text_ids[0] = c4c::kInvalidText;
+  wrapper_inst->template_arg_exprs[0] = nullptr;
+  wrapper_inst->template_arg_types[0] = make_ts(c4c::TB_INT);
+  wrapper_inst->template_arg_is_value[1] = false;
+  wrapper_inst->template_arg_values[1] = 0;
+  wrapper_inst->template_arg_nttp_names[1] = nullptr;
+  wrapper_inst->template_arg_nttp_text_ids[1] = c4c::kInvalidText;
+  wrapper_inst->template_arg_exprs[1] = nullptr;
+  wrapper_inst->template_arg_types[1] = make_ts(c4c::TB_DOUBLE);
+  wrapper_inst->n_member_typedefs = 1;
+  wrapper_inst->member_typedef_names = arena.alloc_array<const char*>(1);
+  wrapper_inst->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  wrapper_inst->member_typedef_names[0] = arena.strdup("type");
+  wrapper_inst->member_typedef_types[0] = {};
+
+  c4c::TypeSpec concrete_wrapper{};
+  concrete_wrapper.array_size = -1;
+  concrete_wrapper.inner_rank = -1;
+  concrete_wrapper.base = c4c::TB_STRUCT;
+  concrete_wrapper.tag = arena.strdup("ConcreteWrapper");
+  concrete_wrapper.tag_text_id = concrete_wrapper_text;
+  concrete_wrapper.record_def = wrapper_inst;
+  parser.register_structured_typedef_binding_in_context(
+      parser.current_namespace_context_id(), concrete_wrapper_text,
+      concrete_wrapper);
+  parser.register_typedef_binding(concrete_wrapper_text, concrete_wrapper, true);
+
+  const c4c::QualifiedNameKey member_key =
+      parser.record_member_typedef_key_in_context(
+          wrapper_primary->namespace_context_id, wrapper_text, type_text);
+  c4c::ParserAliasTemplateMemberTypedefInfo info{};
+  info.valid = true;
+  info.owner_key =
+      parser.alias_template_key_in_context(owner_primary->namespace_context_id,
+                                           owner_text);
+  c4c::Parser::TemplateArgParseResult carrier_arg{};
+  carrier_arg.is_value = false;
+  carrier_arg.type.base = c4c::TB_TYPEDEF;
+  carrier_arg.type.tag_text_id = t_text;
+  carrier_arg.type.tag = nullptr;
+  info.owner_args.push_back(carrier_arg);
+  info.member_text_id = type_text;
+  parser.register_record_member_typedef_info(member_key, info);
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier,
+                                 "ConcreteWrapper"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  expect_true(resolved.record_def == owner_int_record,
+              "record member typedef type substitution should use carried "
+              "TextId even when rendered tag spelling is absent");
+}
+
 void test_alias_template_member_typedef_arg_uses_text_id_over_stale_name() {
   const char* source =
       "template <int V>\n"
@@ -3385,6 +3521,108 @@ void test_alias_template_member_typedef_arg_uses_text_id_over_stale_name() {
               "alias-template member typedef owner arg substitution should "
               "use carried TextId, not stale rendered nttp_name" +
                   detail);
+}
+
+void test_alias_template_member_typedef_type_arg_uses_text_id_without_tag() {
+  const char* source =
+      "template <typename T>\n"
+      "struct Owner {\n"
+      "  using type = T;\n"
+      "};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const c4c::TextId owner_text = lexer.text_table().intern("Owner");
+  const c4c::TextId type_text = lexer.text_table().intern("type");
+  const c4c::TextId t_text = lexer.text_table().intern("T");
+  const c4c::TextId u_text = lexer.text_table().intern("U");
+  c4c::Node* owner_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), owner_text);
+  expect_true(owner_primary != nullptr,
+              "Owner primary should be registered for alias member typedef "
+              "type TextId substitution test");
+
+  c4c::Node* owner_int_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner_int_record->name = arena.strdup("Alias_owner_int_type");
+  owner_int_record->unqualified_name = arena.strdup("Alias_owner_int_type");
+  owner_int_record->unqualified_text_id =
+      lexer.text_table().intern("Alias_owner_int_type");
+  owner_int_record->namespace_context_id = parser.current_namespace_context_id();
+  c4c::TypeSpec owner_int_type{};
+  owner_int_type.array_size = -1;
+  owner_int_type.inner_rank = -1;
+  owner_int_type.base = c4c::TB_STRUCT;
+  owner_int_type.tag = arena.strdup("Alias_owner_int_type");
+  owner_int_type.record_def = owner_int_record;
+
+  c4c::ParserTemplateState::TemplateInstantiationKey owner_int_key;
+  owner_int_key.template_key = parser.alias_template_key_in_context(
+      owner_primary->namespace_context_id, owner_text);
+  c4c::ParserTemplateState::TemplateInstantiationKey::Argument owner_int_arg;
+  owner_int_arg.is_value = false;
+  owner_int_arg.canonical_key = "int";
+  owner_int_key.arguments.push_back(owner_int_arg);
+  parser.register_template_instantiation_member_typedef_binding(
+      owner_int_key, type_text, owner_int_type);
+
+  c4c::TypeSpec alias_typedef{};
+  alias_typedef.array_size = -1;
+  alias_typedef.inner_rank = -1;
+  alias_typedef.base = c4c::TB_TYPEDEF;
+  alias_typedef.tag = arena.strdup("Alias");
+  alias_typedef.tag_text_id = alias_text;
+  parser.register_typedef_binding(alias_text, alias_typedef, true);
+
+  c4c::ParserAliasTemplateInfo info{};
+  info.param_names.push_back(arena.strdup("T"));
+  info.param_name_text_ids.push_back(t_text);
+  info.param_is_nttp.push_back(false);
+  info.param_is_pack.push_back(false);
+  info.param_has_default.push_back(false);
+  info.param_names.push_back(arena.strdup("U"));
+  info.param_name_text_ids.push_back(u_text);
+  info.param_is_nttp.push_back(false);
+  info.param_is_pack.push_back(false);
+  info.param_has_default.push_back(false);
+  info.member_typedef.valid = true;
+  info.member_typedef.owner_key = parser.alias_template_key_in_context(
+      owner_primary->namespace_context_id, owner_text);
+  c4c::Parser::TemplateArgParseResult carrier_arg{};
+  carrier_arg.is_value = false;
+  carrier_arg.type.base = c4c::TB_TYPEDEF;
+  carrier_arg.type.tag_text_id = t_text;
+  carrier_arg.type.tag = nullptr;
+  info.member_typedef.owner_args.push_back(carrier_arg);
+  info.member_typedef.member_text_id = type_text;
+  parser.register_alias_template_info_for_testing(
+      parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                           alias_text),
+      info);
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Comma, ","),
+      parser.make_injected_token(seed, c4c::TokenKind::KwDouble, "double"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  expect_true(resolved.record_def == owner_int_record,
+              "alias-template member typedef owner type arg substitution "
+              "should use carried TextId even when rendered tag spelling is "
+              "absent");
 }
 
 void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
@@ -4971,7 +5209,9 @@ int main() {
   test_alias_template_origin_key_only_blocks_debug_arg_substitution();
   test_alias_member_typedef_origin_key_only_materializes_record_def();
   test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name();
+  test_alias_member_typedef_type_substitution_uses_text_id_without_tag();
   test_alias_template_member_typedef_arg_uses_text_id_over_stale_name();
+  test_alias_template_member_typedef_type_arg_uses_text_id_without_tag();
   test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text();
   test_alias_template_no_carrier_debug_arg_stays_debug_only();
   test_alias_template_direct_type_substitution_uses_tag_text_id();

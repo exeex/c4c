@@ -1336,15 +1336,21 @@ TypeSpec Parser::parse_base_type() {
                             return true;
                         }
                         const TypeSpec& carrier_type = carrier_arg.type;
-                        if (!(carrier_type.base == TB_TYPEDEF &&
-                              carrier_type.tag &&
-                              carrier_type.tag[0])) {
+                        if (carrier_type.base != TB_TYPEDEF) {
                             return true;
                         }
                         TextId type_text_id = carrier_type.tag_text_id;
                         if (type_text_id == kInvalidText) {
+                            type_text_id = carrier_type.template_param_text_id;
+                        }
+                        if (type_text_id == kInvalidText &&
+                            carrier_type.tag &&
+                            carrier_type.tag[0]) {
                             type_text_id = parser_text_id_for_token(
                                 kInvalidText, carrier_type.tag);
+                        }
+                        if (type_text_id == kInvalidText) {
+                            return true;
                         }
                         const int pi = param_index(type_text_id);
                         if (pi < 0 ||
@@ -2391,17 +2397,25 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                             const TypeSpec& carrier_type =
                                                 carrier_arg.type;
-                                            if (carrier_type.base != TB_TYPEDEF ||
-                                                !carrier_type.tag ||
-                                                !carrier_type.tag[0]) {
+                                            if (carrier_type.base != TB_TYPEDEF) {
                                                 return true;
                                             }
                                             TextId type_text_id =
                                                 carrier_type.tag_text_id;
                                             if (type_text_id == kInvalidText) {
                                                 type_text_id =
+                                                    carrier_type
+                                                        .template_param_text_id;
+                                            }
+                                            if (type_text_id == kInvalidText &&
+                                                carrier_type.tag &&
+                                                carrier_type.tag[0]) {
+                                                type_text_id =
                                                     alias_param_ref_text_id(
                                                         carrier_type.tag);
+                                            }
+                                            if (type_text_id == kInvalidText) {
+                                                return true;
                                             }
                                             const size_t pi =
                                                 alias_param_index_for_text_id(
@@ -2929,9 +2943,7 @@ TypeSpec Parser::parse_base_type() {
                                                     const TypeSpec& carrier_type =
                                                         carrier_arg.type;
                                                     if (carrier_type.base !=
-                                                            TB_TYPEDEF ||
-                                                        !carrier_type.tag ||
-                                                        !carrier_type.tag[0]) {
+                                                        TB_TYPEDEF) {
                                                         return true;
                                                     }
                                                     TextId type_text_id =
@@ -2939,8 +2951,20 @@ TypeSpec Parser::parse_base_type() {
                                                     if (type_text_id ==
                                                         kInvalidText) {
                                                         type_text_id =
+                                                            carrier_type
+                                                                .template_param_text_id;
+                                                    }
+                                                    if (type_text_id ==
+                                                            kInvalidText &&
+                                                        carrier_type.tag &&
+                                                        carrier_type.tag[0]) {
+                                                        type_text_id =
                                                             owner_alias_param_ref_text_id(
                                                                 carrier_type.tag);
+                                                    }
+                                                    if (type_text_id ==
+                                                        kInvalidText) {
+                                                        return true;
                                                     }
                                                     const size_t pi =
                                                         owner_alias_param_index_for_text_id(

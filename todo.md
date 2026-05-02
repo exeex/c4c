@@ -8,31 +8,31 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 narrowed alias-template nested type-argument substitution in
-`src/frontend/parser/impl/types/base.cpp`. `substitute_template_arg_ref_structured`
-now treats `TypeSpec::tag_text_id` and `TypeSpec::template_param_text_id` as
-structured template-parameter carriers even when rendered `TypeSpec::tag`
-spelling is absent, so TextId-only nested type args no longer fall through to
-stale `TemplateArgRef::debug_text`.
+Step 4 narrowed sibling alias/member-typedef carrier substitution in
+`src/frontend/parser/impl/types/base.cpp`. The record member-typedef,
+alias-template, and nested owner-alias carrier helpers now treat
+`TypeSpec::tag_text_id` and `TypeSpec::template_param_text_id` as structured
+template-parameter keys before falling back to rendered `TypeSpec::tag`
+spelling.
 
 Focused coverage in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now proves
-`Alias<int>` substitutes a nested `Carrier<T>` argument from a TextId-only
-carrier and rejects stale rendered debug text.
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now proves both
+`ConcreteWrapper::type` and `Alias<int, double>` member-typedef owner-arg
+substitution work from TextId-only type carriers with absent rendered `tag`
+spelling.
 
 ## Suggested Next
 
 Continue Step 4 review after the next review trigger. A likely next narrow
-inspection route is the sibling alias/member-typedef carrier substitution
-helpers that still derive a parameter key from rendered spelling only when no
-TextId carrier is present; verify each is true no-carrier compatibility before
-preserving it.
+inspection route is the remaining rendered `tag`, `deferred_member_type_name`,
+and `debug_text` fallbacks in `base.cpp`; verify each is true no-carrier
+compatibility before preserving it.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- The patched helper intentionally preserves rendered `tag` lookup only when
+- The patched helpers intentionally preserve rendered `tag` lookup only when
   both `tag_text_id` and `template_param_text_id` are absent.
 - Rendered `tag`, `deferred_member_type_name`, and `debug_text` fallback still
   exists for no-carrier compatibility. Do not reclassify those fallback paths
