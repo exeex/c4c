@@ -8,33 +8,33 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries reran the controlled
-`TypeSpec::tag` deletion probe after the `resolve_builtin_query_type` cleanup.
-The probe temporarily removed `TypeSpec::tag` from
-`src/frontend/parser/ast.hpp`, ran `cmake --build --preset default`, then
-restored `ast.hpp` exactly and rebuilt the tree.
+Step 4 - Probe Field Removal And Split Boundaries migrated the bounded
+`src/frontend/hir/hir_functions.cpp` callable/signature family starting at
+`substitute_signature_template_type`.
 
-The seventh probe confirms the previous
-`src/frontend/hir/impl/expr/builtin.cpp::resolve_builtin_query_type` blocker is
-cleared: it did not appear in the first useful failure clusters. The current
-first clusters are all still frontend/HIR-owned `TypeSpec::tag` consumers:
-`src/frontend/hir/impl/expr/expr.cpp::is_ast_lvalue`,
-`src/frontend/hir/hir_functions.cpp` callable/signature helpers,
-`src/frontend/hir/impl/expr/call.cpp` template-struct/member/consteval call
-helpers, `src/frontend/hir/impl/expr/object.cpp` constructor/aggregate/new
-owner helpers, `src/frontend/hir/impl/expr/operator.cpp` operator/member
-helpers, and `src/frontend/hir/hir_lowering_core.cpp::generic_type_compatible`
-plus nearby layout/base-tag helpers.
+The migrated family now treats `template_param_text_id` as authoritative for
+signature template substitution when present. Callable parameter lowering first
+uses `FunctionCtx::tpl_bindings_by_text`; the remaining string-keyed
+`TypeBindings` lookup is only the final-spelling storage bridge reached from a
+TextId-derived key, or the explicit compatibility path for no-TextId
+TypeSpecs. Parameter-pack expansion likewise derives the pack base from
+`template_param_text_id` when available before using the compatibility tag
+bridge.
+
+Callable return/parameter member-typedef preparation now resolves through
+`record_def` / template-origin metadata before rendered owner names. The
+zero-sized return normalization in the same callable family uses complete HIR
+record-owner metadata before the rendered `struct_defs` bridge. Direct
+`TypeSpec::tag` reads in this file are centralized in
+`compatibility_type_tag`, which remains a compatibility/final-spelling bridge
+for routes without structured metadata.
 
 ## Suggested Next
 
-Continue Step 4 with one bounded HIR callable/signature packet, starting with
-`src/frontend/hir/hir_functions.cpp::substitute_signature_template_type` and
-the immediate callable return/parameter preparation helpers. Prefer
-`template_param_text_id` / `FunctionCtx::tpl_bindings_by_text`, `record_def`,
-`tag_text_id`, and existing member-owner metadata before rendered names; keep
-any remaining string-keyed `TypeBindings` access explicitly classified as
-compatibility/final spelling.
+Continue Step 4 with the next bounded frontend/HIR deletion-probe cluster:
+`src/frontend/hir/impl/expr/expr.cpp::is_ast_lvalue`, keeping structured
+template-param and record metadata authoritative where present and leaving any
+remaining rendered spelling reads explicitly classified as compatibility.
 
 ## Watchouts
 
@@ -110,8 +110,16 @@ compatibility/final spelling.
   for struct/union/enum/typedef template arguments; add stale-rendered proof or
   migrate that helper before removing remaining deferred-member fallbacks.
 - `hir_functions.cpp::substitute_signature_template_type` should now be
-  retried as a separate bounded packet, with the member-owner signature tests
-  kept in the focused proof set.
+  considered migrated for the bounded callable/signature packet; remaining
+  `TypeBindings` string-keyed access in this family is final-spelling storage
+  after TextId lookup or no-metadata compatibility.
+- `hir_functions.cpp` still has one centralized `compatibility_type_tag`
+  bridge, and the controlled deletion probe still reports that helper as the
+  remaining `hir_functions.cpp` compile blocker. Do not expand direct
+  `TypeSpec::tag` reads back into semantic callsites.
+- Supervisor reran the callable/signature proof with the checkout's actual HIR
+  test names after the delegated regex matched no tests; the accepted proof is
+  the build plus `frontend_hir_lookup_tests` and `cpp_hir_*`.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend
   failures after frontend/HIR compile blockers are cleared.
 - Classify each failure as parser/HIR-owned, compatibility/display/final
@@ -127,21 +135,29 @@ compatibility/final spelling.
 
 ## Proof
 
-Step 4 seventh deletion probe proof:
+Accepted supervisor proof:
+
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
+
+Result: command exited 0 and `test_after.log` was preserved. The build passed;
+CTest ran 73 HIR tests and all passed.
+
+Regression guard fallback regenerated matching logs for the same command after
+stashing this slice:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed with before 73/73 and after 73/73.
+
+Controlled deletion probe:
 
 1. Temporarily removed `TypeSpec::tag` from
    `src/frontend/parser/ast.hpp`.
 2. Ran `cmake --build --preset default`; result failed as expected during
-   frontend/HIR compilation. First useful failure clusters:
-   `impl/expr/expr.cpp::is_ast_lvalue`,
-   `hir_functions.cpp` callable/signature substitution and return/parameter
-   preparation, `impl/expr/call.cpp` template-struct/member/consteval calls,
-   `impl/expr/object.cpp` constructor/aggregate/new/delete owner helpers,
-   `impl/expr/operator.cpp` operator/member helpers, and
-   `hir_lowering_core.cpp::generic_type_compatible` / layout-adjacent helpers.
+   frontend/HIR compilation. The callable/signature callsites migrated by this
+   packet no longer appear as separate failures, but
+   `src/frontend/hir/hir_functions.cpp::compatibility_type_tag` remains the
+   centralized compatibility bridge that still reads `TypeSpec::tag`.
 3. Restored `src/frontend/parser/ast.hpp` exactly to the pre-probe state.
 4. Ran `cmake --build --preset default`; result passed.
 5. Ran `git diff --check`; result passed.
-
-No extra root-level scratch logs were left behind. Durable diff from this
-packet is `todo.md` only.
