@@ -449,8 +449,10 @@ const Node* Lowerer::find_template_struct_primary(
     const Node* declaration,
     const std::string& rendered_name) const {
   const Node* primary = nullptr;
-  if (auto key = make_struct_def_node_owner_key(declaration)) {
-    auto owner_it = template_struct_defs_by_owner_.find(*key);
+  const std::optional<HirRecordOwnerKey> owner_key =
+      make_struct_def_node_owner_key(declaration);
+  if (owner_key) {
+    auto owner_it = template_struct_defs_by_owner_.find(*owner_key);
     if (owner_it != template_struct_defs_by_owner_.end()) {
       primary = owner_it->second;
     }
@@ -458,7 +460,7 @@ const Node* Lowerer::find_template_struct_primary(
   if (!primary) {
     primary = ct_state_->find_template_struct_def(declaration);
   }
-  if (!primary && !rendered_name.empty()) {
+  if (!primary && !owner_key && !rendered_name.empty()) {
     primary = find_template_struct_primary(rendered_name);
   } else {
     record_template_struct_primary_lookup_parity(primary);
@@ -598,6 +600,7 @@ const Node* Lowerer::canonical_template_struct_primary(
             find_template_struct_primary(ts.record_def, rendered_origin)) {
       return primary;
     }
+    if (make_struct_def_node_owner_key(ts.record_def)) return nullptr;
   }
   if (rendered_origin.empty()) return nullptr;
   if (const Node* primary = find_template_struct_primary(ts.tpl_struct_origin)) {

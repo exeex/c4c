@@ -1902,9 +1902,8 @@ void test_hir_template_struct_primary_lookup_prefers_record_def_over_stale_origi
   unregistered_primary.unqualified_name = "UnregisteredPrimary";
   unregistered_primary.n_template_params = 1;
   ts.record_def = &unregistered_primary;
-  expect_true(lowerer.canonical_template_struct_primary(ts) ==
-                  &stale_primary,
-              "template struct primary lookup should preserve rendered fallback when record_def has no structured entry");
+  expect_true(lowerer.canonical_template_struct_primary(ts) == nullptr,
+              "template struct primary lookup should reject stale rendered fallback when record_def has structured owner metadata but no entry");
 }
 
 void test_hir_template_struct_specialization_lookup_prefers_owner_key_over_stale_primary_name() {

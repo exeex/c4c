@@ -8,30 +8,29 @@ Current Step Title: Migrate HIR Type And Record Consumers
 
 ## Just Finished
 
-Step 3 - Migrate HIR Type And Record Consumers migrated repeated template type
-argument deduction consistency in
-`src/frontend/hir/impl/templates/deduction.cpp::Lowerer::try_deduce_template_type_args`.
-The forwarding-reference and non-pointer type-parameter repeated deduction
-checks now compare structured nominal TypeSpec identity before rendered
-`TypeSpec::tag`: shared `record_def` wins first, complete namespace plus
-`tag_text_id` plus qualifier TextIds can match next, and one-sided or
-mismatched structured nominal metadata rejects the repeated deduction without
-falling through to rendered spelling. Rendered tag comparison remains the
-explicit no-structured-metadata compatibility path.
+Step 3 - Migrate HIR Type And Record Consumers migrated canonical template
+struct primary selection in
+`src/frontend/hir/impl/templates/templates.cpp::Lowerer::canonical_template_struct_primary`
+and the declaration overload of `find_template_struct_primary`. When a
+TypeSpec carries `record_def` with a complete `HirRecordOwnerKey`, primary
+lookup now uses the structured owner maps/compile-time registry and rejects a
+structured miss instead of falling through to stale rendered
+`tpl_struct_origin`. Rendered primary-name fallback remains explicit
+compatibility only when the declaration lacks a structured owner key.
 
-Focused coverage in `frontend_hir_lookup_tests` adds direct deduction fixtures
-proving forwarding-reference repeated deduction accepts stale rendered TypeSpec
-tags when both inferences share `record_def`, and proving ordinary repeated
-type-parameter deduction rejects mismatched `record_def` identity even when the
-rendered tags match.
+Focused coverage in `frontend_hir_lookup_tests` proves `record_def` owner
+identity wins over stale rendered template origin, and proves a structured
+`record_def` miss does not fall back to a registered stale rendered origin. The
+older `frontend_hir_tests` expectation for this route was aligned with the new
+no-stale-fallback boundary.
 
 ## Suggested Next
 
 Continue Step 3 with another bounded HIR `TypeSpec::tag` consumer where
 structured owner metadata is already present. A good next packet is a narrow
-template/type route that still indexes by rendered `tag`, such as
-`src/frontend/hir/impl/templates/templates.cpp` base/specialization lookup or a
-caller in `src/frontend/hir/impl/templates/value_args.cpp` that can pass
+template/type route that still indexes by rendered `tag`, such as inherited
+static member evaluation in `src/frontend/hir/impl/templates/templates.cpp` or
+a `src/frontend/hir/impl/templates/value_args.cpp` caller that can pass
 `record_def`, `tag_text_id`, owner keys, or template metadata instead of only
 rendered owner spelling.
 
@@ -54,6 +53,11 @@ rendered owner spelling.
   template parameter names by packet contract. Pointer-depth deduction still
   compares only the pre-existing shape fields and does not use nominal tag
   identity in this packet.
+- Canonical template struct primary lookup now blocks stale rendered origin
+  fallback when `record_def` has a complete owner key but no structured entry.
+  Rendered primary-name fallback remains for declarations without owner-key
+  metadata. Template struct specialization lookup by primary owner remains a
+  separate rendered-fallback surface for a later packet if needed.
 - The default preset used for this packet does not register
   `frontend_hir_tests`; focused coverage for this route was therefore added to
   `frontend_hir_lookup_tests`, which the delegated regex compiles and runs.

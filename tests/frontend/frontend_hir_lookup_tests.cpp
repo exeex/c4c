@@ -818,6 +818,70 @@ void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered
               "consteval definition lookup should preserve rendered fallback when declaration key is absent");
 }
 
+void test_template_struct_primary_lookup_uses_record_def_before_stale_origin() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node stale_primary{};
+  stale_primary.kind = c4c::NK_STRUCT_DEF;
+  stale_primary.name = "StalePrimaryForCanonical";
+  stale_primary.unqualified_name = "StalePrimaryForCanonical";
+  stale_primary.n_template_params = 1;
+
+  c4c::Node structured_primary{};
+  structured_primary.kind = c4c::NK_STRUCT_DEF;
+  structured_primary.name = "StructuredPrimaryForCanonical";
+  structured_primary.unqualified_name = "StructuredPrimaryForCanonical";
+  structured_primary.n_template_params = 1;
+
+  lowerer.register_template_struct_primary("StalePrimaryForCanonical",
+                                           &stale_primary);
+  lowerer.register_template_struct_primary("StructuredPrimaryForCanonical",
+                                           &structured_primary);
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tpl_struct_origin = "StalePrimaryForCanonical";
+  ts.record_def = &structured_primary;
+
+  expect_true(lowerer.canonical_template_struct_primary(ts) ==
+                  &structured_primary,
+              "template struct primary lookup should use record_def owner identity before stale rendered origin");
+}
+
+void test_template_struct_primary_record_def_miss_rejects_stale_origin() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node stale_primary{};
+  stale_primary.kind = c4c::NK_STRUCT_DEF;
+  stale_primary.name = "StalePrimaryAfterRecordMiss";
+  stale_primary.unqualified_name = "StalePrimaryAfterRecordMiss";
+  stale_primary.n_template_params = 1;
+  lowerer.register_template_struct_primary("StalePrimaryAfterRecordMiss",
+                                           &stale_primary);
+
+  c4c::Node missing_primary{};
+  missing_primary.kind = c4c::NK_STRUCT_DEF;
+  missing_primary.name = "MissingStructuredPrimary";
+  missing_primary.unqualified_name = "MissingStructuredPrimary";
+  missing_primary.n_template_params = 1;
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tpl_struct_origin = "StalePrimaryAfterRecordMiss";
+  ts.record_def = &missing_primary;
+
+  expect_true(lowerer.canonical_template_struct_primary(ts) == nullptr,
+              "template struct primary lookup must not use stale rendered origin after structured record_def miss");
+}
+
 void test_compile_time_function_specialization_type_arg_uses_record_def_identity() {
   c4c::hir::InstantiationRegistry registry;
 
@@ -1706,6 +1770,8 @@ int main() {
   test_range_for_method_callee_lookup_uses_authoritative_decl_identity();
   test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps();
   test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names();
+  test_template_struct_primary_lookup_uses_record_def_before_stale_origin();
+  test_template_struct_primary_record_def_miss_rejects_stale_origin();
   test_compile_time_function_specialization_type_arg_uses_record_def_identity();
   test_compile_time_function_specialization_type_arg_record_def_mismatch_rejects_tag();
   test_template_deduction_forwarding_consistency_uses_record_def_identity();
