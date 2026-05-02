@@ -836,6 +836,33 @@ bool same_typespec_type_name_text_identity(const TypeSpec& lhs,
     return true;
 }
 
+template <typename T>
+auto typespec_legacy_nominal_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, static_cast<const char*>(nullptr)) {
+    return ts.tag;
+}
+
+const char* typespec_legacy_nominal_tag_if_present(const TypeSpec&, long) {
+    return nullptr;
+}
+
+bool typespec_has_nominal_identity_carrier(const TypeSpec& ts) {
+    return ts.record_def || ts.tag_text_id != kInvalidText ||
+           ts.template_param_text_id != kInvalidText ||
+           ts.deferred_member_type_text_id != kInvalidText;
+}
+
+bool same_legacy_tag_only_nominal_typespec_identity(const TypeSpec& lhs,
+                                                    const TypeSpec& rhs) {
+    if (typespec_has_nominal_identity_carrier(lhs) ||
+        typespec_has_nominal_identity_carrier(rhs)) {
+        return false;
+    }
+    const char* lhs_tag = typespec_legacy_nominal_tag_if_present(lhs, 0);
+    const char* rhs_tag = typespec_legacy_nominal_tag_if_present(rhs, 0);
+    return lhs_tag && rhs_tag && std::strcmp(lhs_tag, rhs_tag) == 0;
+}
+
 bool same_nominal_typespec_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
     if (lhs.record_def && rhs.record_def) {
         return lhs.record_def == rhs.record_def;
@@ -852,7 +879,7 @@ bool same_nominal_typespec_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
 
     if (lhs.record_def || rhs.record_def) return false;
 
-    return lhs.tag && rhs.tag && std::strcmp(lhs.tag, rhs.tag) == 0;
+    return same_legacy_tag_only_nominal_typespec_identity(lhs, rhs);
 }
 
 const TypeSpec* find_typedef_type_by_typespec_metadata(const Parser& parser,

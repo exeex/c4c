@@ -8,27 +8,27 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries migrated the nested
-deferred-member typedef resolution inside
-`src/frontend/hir/impl/templates/type_resolution.cpp`
-`resolve_struct_member_typedef_type` away from direct `TypeSpec::tag` reads
-around the former deletion-probe lines 349-352. Nested deferred member aliases
-now route through `resolve_struct_member_typedef_if_ready`, which tries the
-structured `record_def` owner and template-origin carriers before any later
-legacy rendered-tag fallback. Added focused coverage in the new
-`cpp_hir_nested_member_typedef_record_def_structured_metadata` CTest proving a
-nested deferred member typedef resolves through `record_def` even when the
-rendered tag spelling is stale.
+Step 4 - Probe Field Removal And Split Boundaries migrated
+`same_nominal_typespec_identity` in
+`src/frontend/parser/impl/core.cpp` away from its direct `TypeSpec::tag`
+fallback. Nominal type compatibility now uses `record_def` and complete
+TextId-backed type-name identity first, and the remaining rendered-tag path is
+an explicit tag-only compatibility helper that is disabled whenever either side
+has structured identity carrier metadata. Added focused coverage in the new
+`cpp_hir_parser_core_nominal_typespec_structured_metadata` CTest proving
+matching `tag_text_id` metadata wins over stale rendered tags and mismatched
+`tag_text_id` metadata rejects matching rendered tags.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected deletion-probe blocker. The
-current probe's first emitted blocker is the
-`resolve_struct_member_typedef_if_ready` entry guard in
-`src/frontend/hir/impl/templates/type_resolution.cpp` around current line 438,
-with same-function residuals later in the function. Keep parser/core, parser
-declarations, parser type helpers, and `value_args.cpp` residuals split unless
-the supervisor routes them together.
+current probe's first emitted blocker is now the later
+`resolve_typedef_type_chain` legacy rendered-tag path in
+`src/frontend/parser/impl/core.cpp` around current line 967, with same-file
+residuals around current lines 979, 998, 1007, 1055-1063, 1149, 1165, and
+1854-1864. Keep parser/core chain/constructor helpers, parser declarations,
+parser type helpers, `type_resolution.cpp`, and `value_args.cpp` residuals
+split unless the supervisor routes them together.
 
 ## Watchouts
 
@@ -64,10 +64,12 @@ the supervisor routes them together.
   `src/frontend/hir/impl/templates/templates.cpp`, and the targeted
   `realize_template_struct` direct reads/writes, and the targeted first
   `resolve_struct_member_typedef_type` local `apply_bindings` direct reads in
-  `src/frontend/hir/impl/templates/type_resolution.cpp`. First emitted residual
-  errors now begin in later `type_resolution.cpp`, with same-build residuals
-  also reported in parser/core, parser declarations, parser type helpers, and
-  `value_args.cpp`.
+  `src/frontend/hir/impl/templates/type_resolution.cpp`, and the targeted
+  `same_nominal_typespec_identity` fallback in
+  `src/frontend/parser/impl/core.cpp`. First emitted residual errors now begin
+  in later parser/core typedef-chain handling, with same-build residuals also
+  reported in parser declarations, parser type helpers, later
+  `type_resolution.cpp`, and `value_args.cpp`.
 - `hir_match_type_pattern` and `hir_specialization_match_score` are now
   semantically cleared for type template-parameter matching/scoring. The HIR
   binding map still uses the canonical parameter-name string as the binding
@@ -95,6 +97,13 @@ the supervisor routes them together.
   `resolve_struct_member_typedef_if_ready`. Focused regression coverage is
   `cpp_hir_nested_member_typedef_record_def_structured_metadata`, split out as
   its own CTest so the regression guard sees the new pass count.
+- `same_nominal_typespec_identity` is now semantically cleared for
+  record/text-metadata nominal compatibility. The remaining rendered-tag path
+  is compatibility-only, guarded by a no-structured-carrier check, and uses a
+  field-detection helper so the Step 4 deletion probe classifies later
+  residuals first. Focused regression coverage is
+  `cpp_hir_parser_core_nominal_typespec_structured_metadata`, split out as its
+  own CTest so the regression guard sees the new pass count.
 - The explicit tag-only fallback in `hir_type_template_param_index` is gated
   behind a no-structured-carrier check and a field-detection helper so the
   Step 4 deletion probe still classifies later residuals first.
@@ -136,8 +145,10 @@ the supervisor routes them together.
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_realize_struct.log`.
 - Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_type_resolution_apply_bindings.log`.
-- This packet added
+- Recent packets added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_type_resolution_nested_member.log`.
+- This packet added
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_parser_core_nominal.log`.
 
 ## Proof
 
@@ -145,25 +156,24 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 81 of 81 delegated
+Result: command exited 0. The build passed, and CTest passed 82 of 82 delegated
 tests, including new
-`cpp_hir_nested_member_typedef_record_def_structured_metadata` coverage for the
-migrated `resolve_struct_member_typedef_type` nested deferred-member owner path.
+`cpp_hir_parser_core_nominal_typespec_structured_metadata` coverage for the
+migrated parser/core nominal identity path.
 `test_after.log` is the canonical proof log.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_type_resolution_nested_member.log 2>&1`,
+/tmp/c4c_typespec_tag_deletion_probe_step4_parser_core_nominal.log 2>&1`,
 and restored the temporary edit. The probe moved past the targeted
-`resolve_struct_member_typedef_type` nested deferred-member direct
-`TypeSpec::tag` reads at the former lines 349-352. The first emitted residual
-blocker is now
-`src/frontend/parser/impl/core.cpp:855`; same-build residuals include
-`src/frontend/hir/impl/templates/type_resolution.cpp:438`, with same-function
-residuals around current lines 438, 456-462, 548, 579-582, and 592-595, plus
-parser declarations, parser type helpers, and `value_args.cpp`.
+`same_nominal_typespec_identity` direct `TypeSpec::tag` fallback around former
+line 855. The first emitted residual blocker is now
+`src/frontend/parser/impl/core.cpp:967`; same-build residuals include later
+parser/core direct reads around current lines 979, 998, 1007, 1055-1063, 1149,
+1165, and 1854-1864, plus parser declarations, parser type helpers,
+`type_resolution.cpp`, and `value_args.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.
