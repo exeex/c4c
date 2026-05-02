@@ -146,6 +146,7 @@ struct ParserTemplateArgParseResult {
   TypeSpec type{};
   long long value = 0;
   const char* nttp_name = nullptr;
+  TextId nttp_text_id = kInvalidText;
   Node* expr = nullptr;
 };
 

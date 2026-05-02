@@ -121,6 +121,7 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
                 out_arg->type = ts;
                 out_arg->value = 0;
                 out_arg->nttp_name = nullptr;
+                out_arg->nttp_text_id = kInvalidText;
                 out_arg->expr = nullptr;
                 fast_guard.commit();
                 return true;
@@ -158,6 +159,7 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->type = ts;
         out_arg->value = 0;
         out_arg->nttp_name = nullptr;
+        out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
         guard.commit();
         return true;
@@ -177,6 +179,7 @@ bool Parser::capture_template_arg_expr(int expr_start, TemplateArgParseResult* o
     out_arg->value = 0;
     out_arg->expr = nullptr;
     out_arg->nttp_name = arena_.strdup((std::string("$expr:") + expr_text).c_str());
+    out_arg->nttp_text_id = kInvalidText;
     pos_ = expr_end;
     return true;
 }
@@ -200,6 +203,7 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
                 out_arg->expr = expr;
                 out_arg->nttp_name =
                     arena_.strdup((std::string("$expr:") + expr_text).c_str());
+                out_arg->nttp_text_id = kInvalidText;
                 guard.commit();
                 return true;
             }
@@ -221,6 +225,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->is_value = true;
         out_arg->value = 1 * sign;
         out_arg->nttp_name = nullptr;
+        out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
         consume();
         return true;
@@ -229,6 +234,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->is_value = true;
         out_arg->value = 0;
         out_arg->nttp_name = nullptr;
+        out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
         consume();
         return true;
@@ -238,6 +244,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->is_value = true;
         out_arg->value = lit ? lit->ival * sign : 0;
         out_arg->nttp_name = nullptr;
+        out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
         return true;
     }
@@ -246,12 +253,14 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->value =
             parse_int_lexeme(std::string(token_spelling(cur())).c_str()) * sign;
         out_arg->nttp_name = nullptr;
+        out_arg->nttp_text_id = kInvalidText;
         out_arg->expr = nullptr;
         consume();
         return true;
     }
     if (check(TokenKind::Identifier)) {
         TentativeParseGuard id_guard(*this);
+        const TextId name_text_id = cur().text_id;
         const char* name =
             arena_.strdup(std::string(token_spelling(cur())).c_str());
         consume();
@@ -259,6 +268,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
             out_arg->is_value = true;
             out_arg->value = 0;
             out_arg->nttp_name = name;
+            out_arg->nttp_text_id = name_text_id;
             out_arg->expr = nullptr;
             id_guard.commit();
             return true;

@@ -3623,12 +3623,14 @@ top_level_base_ready:
             fn->template_arg_is_value = parser.arena_.alloc_array<bool>(n);
             fn->template_arg_values = parser.arena_.alloc_array<long long>(n);
             fn->template_arg_nttp_names = parser.arena_.alloc_array<const char*>(n);
+            fn->template_arg_nttp_text_ids = parser.arena_.alloc_array<TextId>(n);
             fn->template_arg_exprs = parser.arena_.alloc_array<Node*>(n);
             for (int i = 0; i < n; ++i) {
                 fn->template_arg_types[i] = spec_arg_types[i];
                 fn->template_arg_is_value[i] = spec_arg_is_value[i];
                 fn->template_arg_values[i] = spec_arg_values[i];
                 fn->template_arg_nttp_names[i] = nullptr;
+                fn->template_arg_nttp_text_ids[i] = kInvalidText;
                 fn->template_arg_exprs[i] = nullptr;
             }
         };

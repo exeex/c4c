@@ -244,6 +244,32 @@ void record_nttp_binding_mirrors(
   }
 }
 
+ConstEvalValueLookupResult lookup_forwarded_nttp_arg_by_text(
+    const ConstEvalEnv& env,
+    TextId text_id) {
+  if (text_id == kInvalidText) return {};
+  bool saw_metadata = false;
+  if (env.nttp_bindings_by_text && !env.nttp_bindings_by_text->empty()) {
+    auto it = env.nttp_bindings_by_text->find(text_id);
+    if (it != env.nttp_bindings_by_text->end()) {
+      return {ConstEvalValueLookupStatus::Found, it->second};
+    }
+    saw_metadata = true;
+  }
+  if (env.nttp_bindings_by_key && !env.nttp_bindings_by_key->empty()) {
+    ConstEvalStructuredNameKey key;
+    key.base_text_id = text_id;
+    auto it = env.nttp_bindings_by_key->find(key);
+    if (it != env.nttp_bindings_by_key->end()) {
+      return {ConstEvalValueLookupStatus::Found, it->second};
+    }
+    saw_metadata = true;
+  }
+  return saw_metadata
+             ? ConstEvalValueLookupResult{ConstEvalValueLookupStatus::Miss, 0}
+             : ConstEvalValueLookupResult{};
+}
+
 const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (!env.struct_defs || !ts.tag || (ts.base != TB_STRUCT && ts.base != TB_UNION)) {
     return nullptr;
@@ -546,6 +572,22 @@ ConstEvalEnv bind_consteval_call_env(
               out_nttp_bindings_by_text, out_nttp_bindings_by_key);
           continue;
         }
+      }
+      const TextId forwarded_text_id =
+          callee_expr->template_arg_nttp_text_ids
+              ? callee_expr->template_arg_nttp_text_ids[i]
+              : kInvalidText;
+      const ConstEvalValueLookupResult text_result =
+          lookup_forwarded_nttp_arg_by_text(outer_env, forwarded_text_id);
+      if (text_result.status == ConstEvalValueLookupStatus::Found) {
+        (*out_nttp_bindings)[param_name] = text_result.value;
+        record_nttp_binding_mirrors(
+            text_result.value, nttp_binding_key_for_param(func_def, i),
+            out_nttp_bindings_by_text, out_nttp_bindings_by_key);
+        continue;
+      }
+      if (text_result.status == ConstEvalValueLookupStatus::Miss) {
+        continue;
       }
       if (callee_expr->template_arg_nttp_names && callee_expr->template_arg_nttp_names[i] &&
           outer_env.nttp_bindings) {

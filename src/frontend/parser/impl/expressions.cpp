@@ -1304,6 +1304,8 @@ Node* parse_primary(Parser& parser) {
                         parser.arena_.alloc_array<long long>(ident->n_template_args);
                     ident->template_arg_nttp_names =
                         parser.arena_.alloc_array<const char*>(ident->n_template_args);
+                    ident->template_arg_nttp_text_ids =
+                        parser.arena_.alloc_array<TextId>(ident->n_template_args);
                     ident->template_arg_exprs =
                         parser.arena_.alloc_array<Node*>(ident->n_template_args);
                     for (int i = 0; i < ident->n_template_args; ++i) {
@@ -1312,6 +1314,8 @@ Node* parse_primary(Parser& parser) {
                         ident->template_arg_values[i] = parsed_args[i].value;
                         ident->template_arg_nttp_names[i] =
                             parsed_args[i].nttp_name;
+                        ident->template_arg_nttp_text_ids[i] =
+                            parsed_args[i].nttp_text_id;
                         ident->template_arg_exprs[i] = parsed_args[i].expr;
                     }
                     ident->is_concept_id =
@@ -1577,12 +1581,14 @@ Node* parse_primary(Parser& parser) {
                     ident->template_arg_is_value = parser.arena_.alloc_array<bool>(ident->n_template_args);
                     ident->template_arg_values = parser.arena_.alloc_array<long long>(ident->n_template_args);
                     ident->template_arg_nttp_names = parser.arena_.alloc_array<const char*>(ident->n_template_args);
+                    ident->template_arg_nttp_text_ids = parser.arena_.alloc_array<TextId>(ident->n_template_args);
                     ident->template_arg_exprs = parser.arena_.alloc_array<Node*>(ident->n_template_args);
                     for (int i = 0; i < ident->n_template_args; ++i) {
                         ident->template_arg_types[i] = parsed_args[i].type;
                         ident->template_arg_is_value[i] = parsed_args[i].is_value;
                         ident->template_arg_values[i] = parsed_args[i].value;
                         ident->template_arg_nttp_names[i] = parsed_args[i].nttp_name;
+                        ident->template_arg_nttp_text_ids[i] = parsed_args[i].nttp_text_id;
                         ident->template_arg_exprs[i] = parsed_args[i].expr;
                     }
                     ident->is_concept_id =

@@ -2339,6 +2339,8 @@ Node* build_record_definition_node(
             parser.arena_.alloc_array<long long>(sd->n_template_args);
         sd->template_arg_nttp_names =
             parser.arena_.alloc_array<const char*>(sd->n_template_args);
+        sd->template_arg_nttp_text_ids =
+            parser.arena_.alloc_array<TextId>(sd->n_template_args);
         sd->template_arg_exprs =
             parser.arena_.alloc_array<Node*>(sd->n_template_args);
         for (int i = 0; i < sd->n_template_args; ++i) {
@@ -2346,6 +2348,8 @@ Node* build_record_definition_node(
             sd->template_arg_types[i] = specialization_args[i].type;
             sd->template_arg_values[i] = specialization_args[i].value;
             sd->template_arg_nttp_names[i] = specialization_args[i].nttp_name;
+            sd->template_arg_nttp_text_ids[i] =
+                specialization_args[i].nttp_text_id;
             sd->template_arg_exprs[i] = specialization_args[i].expr;
         }
     }

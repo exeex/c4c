@@ -989,6 +989,10 @@ TypeSpec Parser::parse_base_type() {
                                     owner->template_arg_nttp_names
                                         ? owner->template_arg_nttp_names[i]
                                         : nullptr;
+                                arg.nttp_text_id =
+                                    owner->template_arg_nttp_text_ids
+                                        ? owner->template_arg_nttp_text_ids[i]
+                                        : kInvalidText;
                             } else if (owner->template_arg_types) {
                                 arg.type = owner->template_arg_types[i];
                             }
@@ -1285,6 +1289,10 @@ TypeSpec Parser::parse_base_type() {
                                     owner->template_arg_nttp_names
                                         ? owner->template_arg_nttp_names[i]
                                         : nullptr;
+                                arg.nttp_text_id =
+                                    owner->template_arg_nttp_text_ids
+                                        ? owner->template_arg_nttp_text_ids[i]
+                                        : kInvalidText;
                             } else if (owner->template_arg_types) {
                                 arg.type = owner->template_arg_types[i];
                             }
@@ -3661,6 +3669,7 @@ TypeSpec Parser::parse_base_type() {
                             inst->template_arg_is_value = arena_.alloc_array<bool>(n);
                             inst->template_arg_values = arena_.alloc_array<long long>(n);
                             inst->template_arg_nttp_names = arena_.alloc_array<const char*>(n);
+                            inst->template_arg_nttp_text_ids = arena_.alloc_array<TextId>(n);
                             inst->template_arg_exprs = arena_.alloc_array<Node*>(n);
                             int tti = 0, nni = 0;
                             for (int pi = 0; pi < n; ++pi) {
@@ -3669,6 +3678,7 @@ TypeSpec Parser::parse_base_type() {
                                     inst->template_arg_values[pi] =
                                         nni < (int)nttp_bindings.size() ? nttp_bindings[nni++].second : 0;
                                     inst->template_arg_nttp_names[pi] = nullptr;
+                                    inst->template_arg_nttp_text_ids[pi] = kInvalidText;
                                     inst->template_arg_exprs[pi] = nullptr;
                                     inst->template_arg_types[pi] = {};
                                 } else {
@@ -3677,6 +3687,7 @@ TypeSpec Parser::parse_base_type() {
                                         tti < (int)type_bindings.size() ? type_bindings[tti++].second : TypeSpec{};
                                     inst->template_arg_values[pi] = 0;
                                     inst->template_arg_nttp_names[pi] = nullptr;
+                                    inst->template_arg_nttp_text_ids[pi] = kInvalidText;
                                     inst->template_arg_exprs[pi] = nullptr;
                                 }
                             }

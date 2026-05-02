@@ -2,11 +2,13 @@
 #include "impl/parser_impl.hpp"
 #include "impl/types/types_helpers.hpp"
 #include "parser.hpp"
+#include "sema/consteval.hpp"
 #include "sema/validate.hpp"
 
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -1054,6 +1056,85 @@ void test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling() {
               "metadata instead of recovering from stale rendered spelling");
 }
 
+void test_consteval_forwarded_nttp_uses_text_id_not_rendered_name() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId inner_text = texts.intern("InnerN");
+  const c4c::TextId outer_text = texts.intern("OuterN");
+
+  c4c::Node* func_def = parser.make_node(c4c::NK_FUNCTION, 1);
+  func_def->name = arena.strdup("templated");
+  func_def->unqualified_name = arena.strdup("templated");
+  func_def->unqualified_text_id = texts.intern("templated");
+  func_def->namespace_context_id = parser.current_namespace_context_id();
+  func_def->n_template_params = 1;
+  func_def->template_param_names = arena.alloc_array<const char*>(1);
+  func_def->template_param_names[0] = arena.strdup("InnerN");
+  func_def->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  func_def->template_param_name_text_ids[0] = inner_text;
+  func_def->template_param_is_nttp = arena.alloc_array<bool>(1);
+  func_def->template_param_is_nttp[0] = true;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 2);
+  callee->name = arena.strdup("templated");
+  callee->unqualified_name = arena.strdup("templated");
+  callee->unqualified_text_id = func_def->unqualified_text_id;
+  callee->namespace_context_id = parser.current_namespace_context_id();
+  callee->has_template_args = true;
+  callee->n_template_args = 1;
+  callee->template_arg_is_value = arena.alloc_array<bool>(1);
+  callee->template_arg_is_value[0] = true;
+  callee->template_arg_values = arena.alloc_array<long long>(1);
+  callee->template_arg_values[0] = 0;
+  callee->template_arg_nttp_names = arena.alloc_array<const char*>(1);
+  callee->template_arg_nttp_names[0] = arena.strdup("RenderedOuter");
+  callee->template_arg_nttp_text_ids = arena.alloc_array<c4c::TextId>(1);
+  callee->template_arg_nttp_text_ids[0] = outer_text;
+
+  std::unordered_map<std::string, long long> legacy_outer;
+  legacy_outer["RenderedOuter"] = 11;
+  c4c::hir::ConstTextMap text_outer;
+  text_outer[outer_text] = 5;
+  c4c::hir::ConstEvalEnv outer_env;
+  outer_env.nttp_bindings = nullptr;
+  outer_env.nttp_bindings_by_text = &text_outer;
+
+  c4c::hir::TypeBindings type_bindings;
+  std::unordered_map<std::string, long long> nttp_bindings;
+  c4c::hir::ConstTextMap nttp_bindings_by_text;
+  c4c::hir::ConstStructuredMap nttp_bindings_by_key;
+  (void)c4c::hir::bind_consteval_call_env(
+      callee, func_def, outer_env, &type_bindings, &nttp_bindings, nullptr,
+      nullptr, nullptr, nullptr, &nttp_bindings_by_text,
+      &nttp_bindings_by_key);
+
+  expect_true(nttp_bindings["InnerN"] == 5,
+              "forwarded consteval NTTP binding should use parser TextId "
+              "metadata instead of rendered argument spelling");
+  expect_true(nttp_bindings_by_text[inner_text] == 5,
+              "forwarded consteval NTTP binding should preserve structured "
+              "TextId output metadata");
+
+  outer_env.nttp_bindings = &legacy_outer;
+  c4c::hir::ConstTextMap mismatched_text_outer;
+  mismatched_text_outer[texts.intern("OtherOuter")] = 17;
+  outer_env.nttp_bindings_by_text = &mismatched_text_outer;
+  nttp_bindings.clear();
+  nttp_bindings_by_text.clear();
+  nttp_bindings_by_key.clear();
+  (void)c4c::hir::bind_consteval_call_env(
+      callee, func_def, outer_env, &type_bindings, &nttp_bindings, nullptr,
+      nullptr, nullptr, nullptr, &nttp_bindings_by_text,
+      &nttp_bindings_by_key);
+  expect_true(nttp_bindings.empty(),
+              "forwarded consteval NTTP binding should not reopen rendered "
+              "name lookup after authoritative TextId metadata misses");
+}
+
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1342,6 +1423,7 @@ int main() {
   test_sema_ref_overload_lookup_rejects_same_member_wrong_owner_reentry();
   test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
   test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
+  test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();

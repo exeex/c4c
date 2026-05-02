@@ -8,18 +8,22 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired one parser-to-Sema consteval metadata handoff gap. Parser AST
-function references already carried qualifier `TextId` metadata, but Sema
-consteval registration and lookup collapsed consteval function identity to
-namespace plus base `TextId`. The slice now records and resolves consteval
-function keys through the qualified function key and carries qualifier
-`TextId`s through the consteval structured key path.
+Step 4 repaired and tightened one parser-to-Sema forwarded NTTP metadata
+handoff gap. Parser template argument nodes now carry a parallel
+`template_arg_nttp_text_ids` carrier for simple forwarded NTTP arguments, and
+Sema consteval call-env binding consults that `TextId` metadata before the
+legacy rendered NTTP name map. The follow-up removed the structured lookup's
+accidental dependency on `outer_env.nttp_bindings`, so `nttp_bindings_by_text`
+alone can satisfy forwarded NTTP binding. Focused lookup-authority coverage
+now proves both stale rendered spelling rejection and success with no legacy
+rendered NTTP map.
 
 ## Suggested Next
 
-Continue Step 4 by tracing the next parser-to-Sema handoff family, preferably
-known functions or NTTP-default references, and either repair one concrete
-metadata drop or record the exact missing carrier.
+Continue Step 4 by tracing another parser-to-Sema handoff family, preferably
+ordinary known-function call references or NTTP default expression references,
+and either repair one concrete metadata drop or record the exact missing
+carrier.
 
 ## Watchouts
 
@@ -27,9 +31,10 @@ metadata drop or record the exact missing carrier.
 - Step 4 should preserve structured metadata that already exists. Do not add
   fallback spelling, rendered qualified-text parsing, helper-only renames, or
   string/string_view semantic lookup routes.
-- The repaired consteval path covers qualified owner identity for same-base
-  consteval functions. It does not claim cleanup of ordinary known-call
-  spelling classification or HIR consteval/string compatibility routes.
+- The new forwarded NTTP carrier covers parser/Sema AST call-env binding for
+  simple forwarded NTTP names, including environments where only structured
+  text metadata is present. It does not claim cleanup of expression-string
+  `$expr:` template arguments or HIR `NttpBindings` string compatibility.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
 - `review/step33_final_route_review.md` and prior review artifacts are

@@ -398,6 +398,7 @@ struct Node {
     bool*        template_arg_is_value;   // parallel: true if arg is a constant value
     long long*   template_arg_values;     // parallel: NTTP arg values (valid when is_value)
     const char** template_arg_nttp_names; // parallel: forwarded NTTP name (null if literal)
+    TextId*      template_arg_nttp_text_ids; // parallel: parser-owned identity for forwarded NTTP names
     Node**       template_arg_exprs;      // parallel: parsed NTTP expression node when available
     int          n_template_args;
     bool         has_template_args;       // true if <...> was parsed (distinguishes f() from f<>())
