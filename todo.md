@@ -8,28 +8,44 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries migrated one HIR semantic
-layout fallback consumer in
-`src/frontend/hir/hir_types.cpp::Lowerer::find_struct_def_for_layout_type`.
-Complete structured owner metadata from `record_def` or `tag_text_id` plus
-namespace/qualifier data is now authoritative: a structured owner hit returns
-the metadata-backed layout, and a structured owner miss returns `nullptr`
-instead of falling through to rendered `TypeSpec::tag` / `Module::struct_defs`.
-Rendered tag lookup remains only for no-metadata compatibility.
+Step 4 - Probe Field Removal And Split Boundaries reran the
+`TypeSpec::tag` deletion probe after the recent parser/HIR cleanup slices. The
+temporary deletion in `src/frontend/parser/ast.hpp` was reverted before this
+todo update, and the restored tree builds.
 
-Focused coverage in `frontend_hir_lookup_tests` proves the layout TypeSpec
-route prefers structured owner metadata over a stale rendered tag and rejects
-the stale rendered tag after a structured owner miss.
+Second-probe first failure clusters:
+
+- `src/frontend/hir/compile_time_engine.hpp::type_suffix_for_mangling` still
+  reads `ts.tag`; classify as HIR ABI/final-spelling/mangling payload, not
+  semantic lookup. This is the best next bounded display/final-spelling packet.
+- `src/frontend/hir/compile_time_engine.hpp::InstantiationRegistry::select_function_specialization`
+  still has no-metadata specialization fallback comparisons on `spec_ts.tag` /
+  `bind_ts.tag`; classify as HIR semantic compatibility fallback that needs a
+  structured-first/no-metadata boundary.
+- `src/frontend/hir/impl/expr/builtin.cpp` still has layout lookup and template
+  binding fallback reads (`LayoutQueries::find_struct_layout`,
+  `resolve_builtin_query_type`); classify as mixed HIR semantic/no-metadata
+  compatibility.
+- `src/frontend/hir/hir_functions.cpp`, `hir_lowering_core.cpp`,
+  `hir_build.cpp`, and `hir_types.cpp` still contain first-pass failures for
+  return/param substitution, generic type compatibility, layout computation,
+  overload parity, typedef/member/base recovery, and lower-struct final
+  base-tag payloads. Classify as mixed HIR semantic consumers plus
+  display/final-spelling compatibility boundaries.
+
+Old clusters now cleared from the first-probe front line: parser
+`encode_template_arg_debug_ref` / `typespec_mentions_template_param`,
+`encode_pending_type_ref`, `canonical_type_str`, and the structured-miss path
+inside `find_struct_def_for_layout_type`.
 
 ## Suggested Next
 
 Continue Step 4 by choosing another compile-failure cluster and either
 migrating it or explicitly demoting it to display/final-spelling/no-metadata
-compatibility. A good next packet is to isolate the remaining HIR
-ABI/final-spelling helper `type_suffix_for_mangling` behind named compatibility
-rendering, or to migrate another narrow HIR semantic consumer in `hir_types.cpp`
-that still queries rendered `struct_defs` / `TypeSpec::tag` when existing
-`record_def`/TextId owner metadata is available.
+compatibility. Suggested next packet: isolate
+`compile_time_engine.hpp::type_suffix_for_mangling` behind a named
+ABI/final-spelling compatibility helper that uses structured ids where
+available and records the no-tag future tradeoff for tag-only inputs.
 
 ## Watchouts
 
@@ -56,10 +72,13 @@ that still queries rendered `struct_defs` / `TypeSpec::tag` when existing
 - The HIR layout TypeSpec lookup route is cleared for
   `find_struct_def_for_layout_type`; complete structured owner misses no longer
   fall back to rendered `struct_defs`.
+- The second deletion probe still stops in frontend/HIR compilation; no
+  LIR/BIR/backend downstream metadata gap has been reached yet.
 - Remaining first-probe clusters include HIR display/final-spelling helpers,
   especially ABI-sensitive `type_suffix_for_mangling`, HIR no-metadata
-  specialization fallback comparisons, and mixed HIR semantic consumers in
-  `hir_build.cpp`/`hir_types.cpp`.
+  specialization fallback comparisons, HIR builtin/layout helpers, and mixed
+  HIR semantic consumers in `hir_functions.cpp`, `hir_lowering_core.cpp`,
+  `hir_build.cpp`, and `hir_types.cpp`.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend
   failures after frontend/HIR compile blockers are cleared.
 - Classify each failure as parser/HIR-owned, compatibility/display/final
@@ -75,8 +94,10 @@ that still queries rendered `struct_defs` / `TypeSpec::tag` when existing
 
 ## Proof
 
-Step 4 HIR semantic fallback proof passed with:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
+Step 4 second deletion probe ran:
+`cmake --build --preset default` after temporarily disabling
+`TypeSpec::tag` in `src/frontend/parser/ast.hpp`.
 
-Result: build passed and 62/62 selected tests passed. Proof log:
-`test_after.log`. `git diff --check` passed.
+Result: build failed as expected in frontend/HIR compile. The temporary
+`ast.hpp` deletion edit was reverted, then `cmake --build --preset default`
+passed on the restored tree. `git diff --check` passed.
