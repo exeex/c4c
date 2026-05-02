@@ -438,21 +438,28 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
                       c4c::TB_LONG,
               "structured value storage should agree with the ID-first registration");
 
-  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "idFirstNs::idFirstFn"))),
-              "ID-first known-function registration should use the TextId spelling");
-  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "idFirstNs::wrong_fn_fallback"))),
+  expect_true(parser.has_known_fn_name(
+                  parser.known_fn_name_key_in_context(ns_context, fn_id)),
+              "ID-first known-function registration should use namespace context and TextId metadata");
+  expect_true(!parser.has_known_fn_name(parser.known_fn_name_key_in_context(
+                  ns_context,
+                  parser_test_text_id(parser, "wrong_fn_fallback"))),
               "ID-first known-function registration should not prefer fallback spelling");
-  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "idFirstNs::idFirstQualifiedFn"))),
-              "ID-first qualified known-function registration should use the namespace context and TextId spelling");
-  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "wrongNs::wrong_qualified_fn_fallback"))),
+  expect_true(parser.has_known_fn_name(parser.known_fn_name_key_in_context(
+                  ns_context, qualified_fn_id)),
+              "ID-first qualified known-function registration should use namespace context and TextId metadata");
+  expect_true(!parser.has_known_fn_name(parser.known_fn_name_key_in_context(
+                  ns_context,
+                  parser_test_text_id(parser, "wrong_qualified_fn_fallback"))),
               "ID-first qualified known-function registration should not promote rendered fallback spelling");
   parser.register_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "stringBridgeNs::stringBridgeFn")));
   expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "stringBridgeNs::stringBridgeFn"))),
               "public string known-function lookup should preserve rendered bridge compatibility");
   parser.register_known_fn_name_in_context(
       0, parser_test_text_id(parser, "legacyKnownBridgeNs::legacyKnownBridgeFn"));
-  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "legacyKnownBridgeNs::legacyKnownBridgeFn"))),
-              "context known-function registration should not recreate rendered qualified-name fallback routes");
+  expect_true(parser.has_known_fn_name(parser_test_qualified_name_key(
+                  parser, {"legacyKnownBridgeNs"}, "legacyKnownBridgeFn")),
+              "context known-function registration should keep a compatibility-only rendered qualified bridge when no segment carrier exists");
 }
 
 void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
@@ -547,7 +554,7 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
                   parser.find_typedef_type(parser_test_text_id(parser, "ns::Type"))->base == c4c::TB_INT,
               "qualified typedef type lookup should recover the stored TypeSpec");
   const c4c::QualifiedNameKey value_key =
-      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::value"));
+      parser_test_qualified_name_key(parser, {"ns"}, "value");
   expect_true(parser.has_structured_var_type(value_key),
               "qualified value bindings should populate structured storage");
   expect_true(parser.find_structured_var_type(value_key) != nullptr &&
@@ -574,7 +581,7 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
   const auto snapshot = parser.save_state();
   const c4c::QualifiedNameKey scratch_key =
-      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::scratch"));
+      parser_test_qualified_name_key(parser, {"ns"}, "scratch");
 
   c4c::TypeSpec temp_ts{};
   temp_ts.array_size = -1;
@@ -606,7 +613,7 @@ void test_parser_structured_value_registration_avoids_string_bridge_and_legacy_m
   value_ts.base = c4c::TB_LONG;
 
   const c4c::QualifiedNameKey value_key =
-      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::registered"));
+      parser_test_qualified_name_key(parser, {"ns"}, "registered");
   parser.register_structured_var_type_binding(value_key, value_ts);
   const c4c::QualifiedNameKey unqualified_value_key =
       parser.intern_semantic_name_key(parser_test_text_id(parser, "registered"));
@@ -637,7 +644,7 @@ void test_parser_structured_value_registration_avoids_string_bridge_and_legacy_m
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
   const auto snapshot = parser.save_state();
   const c4c::QualifiedNameKey temp_key =
-      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::temporary_registered"));
+      parser_test_qualified_name_key(parser, {"ns"}, "temporary_registered");
   parser.register_structured_var_type_binding(temp_key, value_ts);
   parser.restore_state(snapshot);
 
@@ -654,7 +661,8 @@ void test_parser_last_using_alias_name_prefers_text_id_storage() {
   c4c::FileTable files;
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
-  parser.set_last_using_alias_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Alias")));
+  parser.set_last_using_alias_name(
+      parser_test_qualified_name_key(parser, {"ns"}, "Alias"));
   expect_true(parser.has_last_using_alias_name_text_id_for_testing(),
               "using-alias bookkeeping should retain a valid TextId");
   expect_eq(parser.last_using_alias_name_text(), "Alias",
@@ -1891,7 +1899,7 @@ void test_parser_using_value_import_prefers_structured_type_over_corrupt_rendere
   bridge_ts.base = c4c::TB_DOUBLE;
 
   parser.register_structured_var_type_binding(
-      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Target")), target_ts);
+      parser_test_qualified_name_key(parser, {"ns"}, "Target"), target_ts);
   parser.register_var_type_binding(parser_test_text_id(parser, "corrupted"), bridge_ts);
 
   (void)parse_top_level(parser);
@@ -1974,9 +1982,16 @@ void test_parser_out_of_class_operator_registers_structured_global_key() {
                   fn->qualifier_text_ids[0] == parser_test_text_id(parser, "Owner") &&
                   fn->unqualified_text_id == parser_test_text_id(parser, "operator_bool"),
               "out-of-class operator nodes should carry structured owner and operator TextIds");
-  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "::Owner::operator_bool"))),
+  c4c::Parser::QualifiedNameRef operator_qn;
+  operator_qn.is_global_qualified = true;
+  operator_qn.qualifier_segments.push_back("Owner");
+  operator_qn.qualifier_text_ids.push_back(parser_test_text_id(parser, "Owner"));
+  operator_qn.base_name = "operator_bool";
+  operator_qn.base_text_id = parser_test_text_id(parser, "operator_bool");
+  expect_true(parser.has_known_fn_name(parser.qualified_name_key(operator_qn)),
               "out-of-class operator registration should keep the structured global-qualified key");
-  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "Owner::operator_bool"))),
+  operator_qn.is_global_qualified = false;
+  expect_true(!parser.has_known_fn_name(parser.qualified_name_key(operator_qn)),
               "out-of-class operator registration should not fall back to stale non-global rendered spelling when structure is available");
 }
 
@@ -1998,9 +2013,16 @@ void test_parser_out_of_class_constructor_registers_structured_global_key() {
                   fn->qualifier_text_ids[0] == parser_test_text_id(parser, "Owner") &&
                   fn->unqualified_text_id == parser_test_text_id(parser, "Owner"),
               "out-of-class constructor nodes should carry structured owner and constructor TextIds");
-  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "::Owner::Owner"))),
+  c4c::Parser::QualifiedNameRef ctor_qn;
+  ctor_qn.is_global_qualified = true;
+  ctor_qn.qualifier_segments.push_back("Owner");
+  ctor_qn.qualifier_text_ids.push_back(parser_test_text_id(parser, "Owner"));
+  ctor_qn.base_name = "Owner";
+  ctor_qn.base_text_id = parser_test_text_id(parser, "Owner");
+  expect_true(parser.has_known_fn_name(parser.qualified_name_key(ctor_qn)),
               "out-of-class constructor registration should keep the structured global-qualified key");
-  expect_true(!parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "Owner::Owner"))),
+  ctor_qn.is_global_qualified = false;
+  expect_true(!parser.has_known_fn_name(parser.qualified_name_key(ctor_qn)),
               "out-of-class constructor registration should not fall back to stale non-global rendered spelling when structure is available");
 }
 
@@ -3030,7 +3052,7 @@ void test_parser_using_value_alias_prefers_structured_target_type() {
 
   const c4c::TextId alias_text = texts.intern("Alias");
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Target"));
+      parser_test_qualified_name_key(parser, {"ns"}, "Target");
   parser.register_structured_var_type_binding(target_key, target_ts);
   parser.register_var_type_binding(parser_test_text_id(parser, "Bridge"), bridge_ts);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key);
@@ -3060,7 +3082,7 @@ void test_parser_using_value_alias_respects_local_shadowing() {
 
   const c4c::TextId alias_text = texts.intern("Alias");
   const c4c::QualifiedNameKey target_key =
-      parser.intern_semantic_name_key(parser_test_text_id(parser, "ns::Target"));
+      parser_test_qualified_name_key(parser, {"ns"}, "Target");
   parser.register_structured_var_type_binding(target_key, target_ts);
   parser.register_using_value_alias_for_testing(0, alias_text, target_key);
 
@@ -6581,7 +6603,7 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   const c4c::TextId alias_text = resolved_texts.intern("Alias");
   resolved_parser.register_typedef_binding(parser_test_text_id(resolved_parser, "ns::Alias"), alias_ts, true);
   const c4c::QualifiedNameKey resolved_alias_key =
-      resolved_parser.intern_semantic_name_key(parser_test_text_id(resolved_parser, "ns::Alias"));
+      parser_test_qualified_name_key(resolved_parser, {"ns"}, "Alias");
   resolved_parser.register_known_fn_name(resolved_alias_key);
   resolved_parser.register_using_value_alias_for_testing(
       0, alias_text, resolved_alias_key);

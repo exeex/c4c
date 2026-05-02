@@ -314,23 +314,28 @@ bool is_unqualified_lookup_name(std::string_view name) {
     return !name.empty() && name.find("::") == std::string_view::npos;
 }
 
-QualifiedNameKey find_known_fn_name_key_from_spelling(
-    const Parser& parser, int context_id, TextId name_text_id,
-    std::string_view name);
+QualifiedNameKey find_compatibility_key_from_rendered_qualified_spelling(
+    const Parser& parser, TextId name_text_id, std::string_view name);
+QualifiedNameKey intern_compatibility_key_from_rendered_qualified_spelling(
+    Parser& parser, TextId name_text_id, std::string_view name);
 
 QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
                                           TextId name_text_id,
                                           bool create_missing_path) {
     QualifiedNameKey key;
     const std::string_view name = parser.parser_text(name_text_id, {});
-    if (context_id <= 0 || name.find("::") != std::string_view::npos) {
-        return find_known_fn_name_key_from_spelling(parser, context_id,
-                                                    name_text_id, name);
+    if (name.find("::") != std::string_view::npos) {
+        return create_missing_path
+                   ? intern_compatibility_key_from_rendered_qualified_spelling(
+                         const_cast<Parser&>(parser), name_text_id, name)
+                   : find_compatibility_key_from_rendered_qualified_spelling(
+                         parser, name_text_id, name);
     }
 
     key.context_id = 0;
     key.base_text_id = name_text_id;
     if (key.base_text_id == kInvalidText) return key;
+    if (context_id <= 0) return key;
 
     std::vector<int> ancestry;
     for (int walk = context_id; walk > 0;
@@ -378,11 +383,9 @@ QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
     return key;
 }
 
-QualifiedNameKey find_known_fn_name_key_from_spelling(
-    const Parser& parser, int context_id, TextId name_text_id,
-    std::string_view name) {
+QualifiedNameKey find_compatibility_key_from_rendered_qualified_spelling(
+    const Parser& parser, TextId name_text_id, std::string_view name) {
     QualifiedNameKey key;
-    (void)context_id;
     key.context_id = 0;
     if (name.empty()) return key;
 
@@ -417,35 +420,36 @@ QualifiedNameKey find_known_fn_name_key_from_spelling(
 
     if (!qualifier_text_ids.empty()) {
         key.qualifier_path_id =
-            parser.shared_lookup_state_.parser_name_paths.find(qualifier_text_ids);
+            parser.shared_lookup_state_.parser_name_paths.find(
+                qualifier_text_ids);
     }
     return key;
 }
 
-QualifiedNameKey intern_known_fn_name_key_from_spelling(
-    Parser& parser, int context_id, TextId name_text_id, std::string_view name) {
-    QualifiedNameKey key = find_known_fn_name_key_from_spelling(
-        parser, context_id, name_text_id, name);
-    if (key.qualifier_path_id == kInvalidNamePath) {
-        std::vector<TextId> qualifier_text_ids;
-        size_t start = name.rfind("::", 0) == 0 ? 2 : 0;
-        size_t segment_start = start;
-        while (segment_start < name.size()) {
-            const size_t sep = name.find("::", segment_start);
-            if (sep == std::string_view::npos) break;
-            const std::string_view segment =
-                name.substr(segment_start, sep - segment_start);
-            if (!segment.empty()) {
-                qualifier_text_ids.push_back(
-                    parser.parser_text_id_for_token(kInvalidText, segment));
-            }
-            segment_start = sep + 2;
+QualifiedNameKey intern_compatibility_key_from_rendered_qualified_spelling(
+    Parser& parser, TextId name_text_id, std::string_view name) {
+    QualifiedNameKey key =
+        find_compatibility_key_from_rendered_qualified_spelling(
+            parser, name_text_id, name);
+    if (key.qualifier_path_id != kInvalidNamePath) return key;
+
+    std::vector<TextId> qualifier_text_ids;
+    size_t segment_start = name.rfind("::", 0) == 0 ? 2 : 0;
+    while (segment_start < name.size()) {
+        const size_t sep = name.find("::", segment_start);
+        if (sep == std::string_view::npos) break;
+        const std::string_view segment =
+            name.substr(segment_start, sep - segment_start);
+        if (!segment.empty()) {
+            qualifier_text_ids.push_back(
+                parser.parser_text_id_for_token(kInvalidText, segment));
         }
-        if (!qualifier_text_ids.empty()) {
-            key.qualifier_path_id =
-                parser.shared_lookup_state_.parser_name_paths.intern(
-                    qualifier_text_ids);
-        }
+        segment_start = sep + 2;
+    }
+    if (!qualifier_text_ids.empty()) {
+        key.qualifier_path_id =
+            parser.shared_lookup_state_.parser_name_paths.intern(
+                qualifier_text_ids);
     }
     return key;
 }
@@ -644,7 +648,9 @@ bool Parser::has_typedef_name(TextId name_text_id) const {
 bool Parser::has_typedef_type(TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
     if (name.find("::") != std::string_view::npos) {
-        const QualifiedNameKey key = known_fn_name_key(0, name_text_id);
+        const QualifiedNameKey key =
+            find_compatibility_key_from_rendered_qualified_spelling(
+                *this, name_text_id, name);
         if (find_typedef_type(key)) return true;
     }
     if (!uses_symbol_identity(name)) {
@@ -659,7 +665,9 @@ const TypeSpec* Parser::find_typedef_type(TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
     if (name.empty()) return nullptr;
     if (name.find("::") != std::string_view::npos) {
-        const QualifiedNameKey key = known_fn_name_key(0, name_text_id);
+        const QualifiedNameKey key =
+            find_compatibility_key_from_rendered_qualified_spelling(
+                *this, name_text_id, name);
         if (const TypeSpec* structured = find_typedef_type(key)) {
             return structured;
         }
@@ -1132,8 +1140,11 @@ void Parser::register_var_type_binding(TextId name_text_id,
         bind_local_value(local_name_id, type);
         return;
     }
-    const QualifiedNameKey key = intern_known_fn_name_key_from_spelling(
-        *this, 0, local_name_id, resolved_name);
+    const QualifiedNameKey key =
+        resolved_name.find("::") == std::string_view::npos
+            ? qualified_key_in_context(*this, 0, local_name_id, true)
+            : intern_compatibility_key_from_rendered_qualified_spelling(
+                  *this, local_name_id, resolved_name);
     if (key.base_text_id != kInvalidText) {
         binding_state_.value_bindings[key] = type;
     }
@@ -1157,13 +1168,11 @@ void Parser::register_structured_var_type_binding_in_context(
 
 QualifiedNameKey Parser::known_fn_name_key(int context_id,
                                            TextId name_text_id) const {
-    return find_known_fn_name_key_from_spelling(*this, context_id, name_text_id,
-                                                parser_text(name_text_id, {}));
+    return qualified_key_in_context(*this, context_id, name_text_id, false);
 }
 
 QualifiedNameKey Parser::intern_semantic_name_key(TextId name_text_id) {
-    return intern_known_fn_name_key_from_spelling(
-        *this, 0, name_text_id, parser_text(name_text_id, {}));
+    return qualified_key_in_context(*this, 0, name_text_id, true);
 }
 
 QualifiedNameKey Parser::known_fn_name_key_in_context(
@@ -1367,6 +1376,15 @@ bool Parser::register_known_fn_name_in_context(int context_id,
         *this, context_id, name_text_id, true);
     if (structured_key.base_text_id != kInvalidText) {
         register_known_fn_name(structured_key);
+        if (!text_name.empty() &&
+            text_name.find("::") != std::string_view::npos) {
+            const QualifiedNameKey compatibility_key =
+                intern_compatibility_key_from_rendered_qualified_spelling(
+                    *this, name_text_id, text_name);
+            if (compatibility_key.base_text_id != kInvalidText) {
+                register_known_fn_name(compatibility_key);
+            }
+        }
         return true;
     }
     return false;
