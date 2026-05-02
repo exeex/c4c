@@ -3,80 +3,90 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate HIR Type And Record Consumers
+Current Step ID: 4
+Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 3 - Migrate HIR Type And Record Consumers migrated inherited static
-member evaluation in
-`src/frontend/hir/impl/templates/templates.cpp::eval_struct_static_member_value_hir`.
-For base-class traversal, a base `TypeSpec` carrying `record_def` now recurses
-through that structured AST owner before rendered `base_ts.tag`, and a
-structured base miss no longer falls through to a stale rendered base tag.
-Rendered `base_ts.tag`/`struct_defs` lookup remains explicit compatibility for
-base TypeSpecs without `record_def`.
+Plan-owner review accepted Step 3 - Migrate HIR Type And Record Consumers as
+complete enough to advance after five HIR consumer migration slices through
+HEAD `d381b65e8`:
 
-Focused coverage in `frontend_hir_lookup_tests` proves inherited static member
-evaluation returns the value from the structured `record_def` base despite a
-stale rendered base tag, and proves a structured base miss does not fall back
-to a stale rendered base that defines the member.
+- Deferred member typedef resolution now stops after a structured `record_def`
+  owner path fails instead of falling through to stale rendered owner spelling.
+- Function specialization TypeSpec argument matching uses `record_def` or
+  complete namespace/`tag_text_id`/qualifier TextId identity before rendered
+  tag compatibility.
+- Repeated template type deduction consistency applies structured TypeSpec
+  nominal matching before rendered tag comparison.
+- Canonical template struct primary lookup resolves through declaration owner
+  keys and `record_def` owner identity, and blocks rendered origin fallback
+  when structured owner metadata is present but has no entry.
+- Inherited static member evaluation recurses through base `record_def` before
+  consulting rendered `base_ts.tag`, and blocks stale rendered base fallback
+  after a structured base miss.
+
+Step 3 focused tests cover positive structured wins and negative
+structured-miss/no-fallback boundaries for record-def primary lookup, inherited
+static member lookup, function specialization TypeSpec matching, repeated
+deduction consistency, and deferred member typedef record-def miss rejection.
+
+Residual HIR `TypeSpec::tag` classifications accepted for the Step 4 probe:
+
+- Deferred member typedef resolution still uses rendered
+  `resolve_struct_member_typedef_type(tag, ...)` for no-metadata compatibility
+  and concrete realized template-origin traversal after origin materialization.
+- Function specialization TypeSpec argument matching still uses rendered `tag`
+  comparison only when both sides lack structured nominal metadata.
+- `TypeBindings` map keys remain rendered template parameter names; migrating
+  that boundary needs a separate structured template parameter binding packet
+  if the deletion probe shows it is still required.
+- Canonical template struct primary lookup keeps rendered primary-name fallback
+  for declarations without owner-key metadata, and template struct
+  specialization lookup by primary owner remains a rendered-fallback surface.
+- Inherited static member evaluation still has no HIR owner-key map, so
+  `tag_text_id` and `HirRecordOwnerKey` lookup are residual surfaces for a
+  later helper/API packet if the removal probe exposes them.
 
 ## Suggested Next
 
-Continue Step 3 with another bounded HIR `TypeSpec::tag` consumer where
-structured owner metadata is already present. A good next packet is a narrow
-template/type route that still indexes by rendered `tag`, such as a
-`src/frontend/hir/impl/templates/value_args.cpp` caller that can pass
-`record_def`, `tag_text_id`, owner keys, or template metadata instead of only
-rendered owner spelling, or a remaining HIR `hir_types.cpp` semantic equality
-or typedef-to-struct route with existing structured carriers.
+Start Step 4 - Probe Field Removal And Split Boundaries. Temporarily delete or
+disable `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, run
+`cmake --build --preset default`, and record the first compile-failure clusters
+by ownership and semantic category. Revert only the temporary probe edit before
+ending the packet. Keep parser/HIR-owned failures in this runbook; create
+separate `ideas/open/` follow-ups only for downstream LIR/BIR/backend metadata
+gaps that outlive this frontend/HIR runbook.
 
 ## Watchouts
 
 - Do not replace `TypeSpec::tag` with another rendered-string semantic field.
 - Preserve diagnostics, dumps, mangling, ABI/link-visible text, and final
   spelling as payloads.
-- The deferred member typedef resolver still intentionally uses rendered
-  `resolve_struct_member_typedef_type(tag, ...)` for no-metadata compatibility
-  and for concrete realized template-origin base traversal after origin
-  materialization.
-- Function specialization TypeSpec argument matching still intentionally uses
-  rendered `tag` comparison when both sides lack structured nominal metadata.
-  Template parameter name lookup remains keyed by rendered parameter names in
-  `TypeBindings`; migrating that boundary needs a separate structured template
-  parameter binding packet.
-- Repeated template argument deduction consistency now compares structured
-  TypeSpec nominal identity, but the `TypeBindings` map keys remain rendered
-  template parameter names by packet contract. Pointer-depth deduction still
-  compares only the pre-existing shape fields and does not use nominal tag
-  identity in this packet.
-- Canonical template struct primary lookup now blocks stale rendered origin
-  fallback when `record_def` has a complete owner key but no structured entry.
-  Rendered primary-name fallback remains for declarations without owner-key
-  metadata. Template struct specialization lookup by primary owner remains a
-  separate rendered-fallback surface for a later packet if needed.
-- Inherited static member evaluation now uses `base_ts.record_def` before
-  rendered `base_ts.tag` and blocks stale rendered fallback after a structured
-  base miss. The function still has no HIR owner-key map, so `tag_text_id` and
-  `HirRecordOwnerKey` lookup are residual surfaces for a later helper or API
-  packet if needed.
-- The default preset used for this packet does not register
-  `frontend_hir_tests`; focused coverage for this route was therefore added to
-  `frontend_hir_lookup_tests`, which the delegated regex compiles and runs.
+- Step 4 is a probe, not the final field removal. Do not commit a broken
+  deletion build.
+- Restore the worktree to a buildable state after recording probe failures.
+- Classify each failure as parser/HIR-owned, compatibility/display/final
+  spelling, or downstream metadata gap instead of fixing broad clusters inside
+  the probe packet.
+- Do not create new follow-up ideas for parser/HIR work that still belongs in
+  this runbook.
 - Do not weaken tests, mark supported cases unsupported, or add named-case
   shortcuts.
 - Keep downstream LIR/BIR/backend carrier gaps as separate follow-up ideas
   instead of broadening this runbook.
-- Do not attempt `TypeSpec::tag` field deletion in Step 3; removal belongs to
-  the later deletion/probe and removal steps.
-- Treat a `TypeSpec::tag` deletion build as a temporary probe only until the
-  runbook reaches the removal step.
+- Treat any `TypeSpec::tag` deletion build as temporary until Step 5.
 
 ## Proof
 
-Step 3 delegated proof passed with:
+Step 3 delegated packets recorded focused proof with:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
-Result: build passed and 60/60 selected tests passed. Proof log:
-`test_after.log`. `git diff --check` passed.
+Accepted normalized proof is currently in `test_before.log`; it shows 60/60
+selected tests passed. `test_after.log` is absent because the accepted proof
+was rolled forward before this lifecycle review.
+
+Code review in `review/step3_typespec_tag_hir_route_review.md` reported no
+blocking findings, no overfit, route on track, and no reset or split needed.
+
+`git diff --check -- todo.md` passed after the plan-owner transition.
