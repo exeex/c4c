@@ -830,7 +830,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     }
                 }
                 for (int bi = 0; bi < cur->n_bases; ++bi) {
-                    const TypeSpec& base_ts = cur->base_types[bi];
+                    TypeSpec base_ts =
+                        resolve_typedef_type_chain(cur->base_types[bi]);
                     const Node* base_def = resolve_record_type_spec(
                         base_ts, &definition_state_.struct_tag_def_map);
                     if (base_def && lookup_static_member_recursive(base_def))

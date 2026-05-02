@@ -1975,6 +1975,157 @@ void test_alias_template_nttp_base_carrier_ignores_stale_debug_text() {
               "test setup should intern the stale rendered spelling");
 }
 
+void test_dependent_member_typedef_base_carries_structured_record_def() {
+  const char* definitions =
+      "template <typename T, T v>\n"
+      "struct integral_constant {\n"
+      "  static constexpr T value = v;\n"
+      "  using type = integral_constant<T, v>;\n"
+      "};\n"
+      "using true_type = integral_constant<bool, true>;\n"
+      "using false_type = integral_constant<bool, false>;\n"
+      "template <typename T>\n"
+      "struct arithmetic {\n"
+      "  static constexpr bool value = true;\n"
+      "};\n"
+      "template <>\n"
+      "struct arithmetic<void> {\n"
+      "  static constexpr bool value = false;\n"
+      "};\n"
+      "template <typename T, bool = arithmetic<T>::value>\n"
+      "struct is_signed_helper : integral_constant<bool, (T(-1) < T(0))> {};\n"
+      "template <typename T>\n"
+      "struct is_signed_helper<T, false> : false_type {};\n"
+      "template <typename T>\n"
+      "struct is_signed : is_signed_helper<T>::type {};\n";
+  {
+    c4c::Arena arena;
+    c4c::Lexer lexer(std::string(definitions),
+                     c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset,
+                       "frontend_parser_lookup_authority_tests.cpp");
+    (void)parser.parse();
+
+    const c4c::TextId is_signed_text = lexer.text_table().intern("is_signed");
+    c4c::Node* primary = parser.find_template_struct_primary(
+        parser.current_namespace_context_id(), is_signed_text);
+    expect_true(primary && primary->n_bases == 1 && primary->base_types,
+                "is_signed primary should expose its dependent base carrier");
+    if (primary->base_types[0].tpl_struct_args.data &&
+        primary->base_types[0].tpl_struct_args.size > 0) {
+      for (int ai = 0; ai < primary->base_types[0].tpl_struct_args.size; ++ai) {
+        primary->base_types[0].tpl_struct_args.data[ai].debug_text =
+            arena.strdup("$expr:StaleProducerDebugText");
+      }
+    }
+
+    auto make_type_arg = [](c4c::TypeBase base) {
+      c4c::Parser::TemplateArgParseResult arg{};
+      arg.is_value = false;
+      arg.type.array_size = -1;
+      arg.type.inner_rank = -1;
+      arg.type.base = base;
+      return arg;
+    };
+    for (c4c::TypeBase base : {c4c::TB_INT, c4c::TB_UINT, c4c::TB_VOID}) {
+      std::vector<c4c::Parser::TemplateArgParseResult> args;
+      args.push_back(make_type_arg(base));
+      std::string mangled;
+      c4c::TypeSpec resolved{};
+      expect_true(parser.ensure_template_struct_instantiated_from_args(
+                      "is_signed", primary, args, primary->line, &mangled,
+                      "dependent_member_typedef_debug_drift_test", &resolved),
+                  "debug-drifted dependent member-typedef primary should still "
+                  "instantiate from structured metadata");
+      std::string detail;
+      if (resolved.record_def && resolved.record_def->n_bases == 1 &&
+          resolved.record_def->base_types) {
+        const c4c::TypeSpec& base_ts = resolved.record_def->base_types[0];
+        detail += " tag=";
+        detail += base_ts.tag ? base_ts.tag : "<null>";
+        detail += " origin=";
+        detail += base_ts.tpl_struct_origin ? base_ts.tpl_struct_origin : "<null>";
+        detail += " deferred=";
+        detail += base_ts.deferred_member_type_name
+                      ? base_ts.deferred_member_type_name
+                      : "<null>";
+        detail += " args=";
+        detail += std::to_string(base_ts.tpl_struct_args.size);
+      }
+      expect_true(resolved.record_def && resolved.record_def->n_bases == 1 &&
+                      resolved.record_def->base_types &&
+                      resolved.record_def->base_types[0].record_def,
+                  "debug-drifted dependent member-typedef instantiation should "
+                  "attach concrete base record_def before Sema" +
+                      detail);
+    }
+  }
+
+  std::string source = std::string(definitions) +
+      "int read_signed() {\n"
+      "  return is_signed<int>::value ? 0 : 1;\n"
+      "}\n"
+      "int read_unsigned() {\n"
+      "  return is_signed<unsigned int>::value ? 2 : 0;\n"
+      "}\n"
+      "int read_void() {\n"
+      "  return is_signed<void>::value ? 4 : 0;\n"
+      "}\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(source,
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  int is_signed_instances = 0;
+  std::vector<c4c::Node*> pending;
+  if (root) pending.push_back(root);
+  while (!pending.empty()) {
+    c4c::Node* record = pending.back();
+    pending.pop_back();
+    if (record && record->children) {
+      for (int i = 0; i < record->n_children; ++i) {
+        if (record->children[i]) pending.push_back(record->children[i]);
+      }
+    }
+    if (!record || record->kind != c4c::NK_STRUCT_DEF ||
+        !record->template_origin_name || record->n_template_args <= 0 ||
+        std::string(record->template_origin_name) != "is_signed") {
+      continue;
+    }
+    ++is_signed_instances;
+    expect_true(record->n_bases == 1 && record->base_types != nullptr,
+                "instantiated is_signed<T> should preserve its inherited base");
+    expect_true(record->base_types[0].record_def != nullptr,
+                std::string("dependent member-typedef base should carry "
+                            "record_def for ") +
+                    (record->name ? record->name : "<unnamed>"));
+    expect_true(record->base_types[0].deferred_member_type_text_id ==
+                    c4c::kInvalidText,
+                "dependent member-typedef base should be resolved before Sema");
+    record->base_types[0].tag = arena.strdup("RenderedMemberBaseDrift");
+    if (record->base_types[0].tpl_struct_args.data &&
+        record->base_types[0].tpl_struct_args.size > 0) {
+      record->base_types[0].tpl_struct_args.data[0].debug_text =
+          arena.strdup("$expr:RenderedFallbackDrift");
+    }
+  }
+
+  expect_true(is_signed_instances >= 3,
+              "is_signed<int>, is_signed<unsigned int>, and is_signed<void> "
+              "should instantiate");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema inherited static-member lookup should consume dependent "
+              "member-typedef base record_def metadata despite rendered base "
+              "spelling drift" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2279,6 +2430,7 @@ int main() {
   test_parser_deferred_nttp_default_uses_structured_binding_metadata();
   test_alias_template_deferred_nttp_bases_carry_structured_record_def();
   test_alias_template_nttp_base_carrier_ignores_stale_debug_text();
+  test_dependent_member_typedef_base_carries_structured_record_def();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
   test_sema_enum_lookup_rejects_rendered_after_metadata_miss();

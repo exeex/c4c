@@ -8,38 +8,35 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 tightened Sema static-member lookup for generated/template-specialized
-references. Template-specialized references with structured owner/member
-metadata now treat existing structured static-member/base metadata as
-authoritative: after such metadata is present, Sema no longer retries through
-the rendered owner/member spelling on a structured miss. The lookup-authority
-test now covers a templated static-member reference whose rendered owner names
-a stale record while the structured owner key names a different templated
-record with static-member metadata.
+Step 4 repaired the dependent member-typedef base carrier for
+`is_signed<T> : is_signed_helper<T>::type`. Parser template type parameters now
+carry structured typedef-like `TypeSpec` identity in simple type positions,
+the dependent base-instantiation path substitutes structured type args from
+template metadata/concrete args, evaluates NTTP default placeholders from the
+template declaration's cached/default expression carrier instead of using
+`TemplateArgRef::debug_text` as the semantic sentinel, restores the pending
+`::type` member suffix after base instantiation, and resolves the resulting
+member typedef to a concrete base `record_def`.
 
-The remaining compatibility route is narrowed to template-specialized
-references whose parser handoff still lacks structured static-member/base
-metadata. The exact missing carrier observed during this packet is
-`is_signed<T> : is_signed_helper<T>::type`: instantiated `is_signed_T_*` bases
-still reach Sema as unresolved `is_signed_helper` template carriers with
-debug `$expr:arithmetic<T>::value` argument text and no `record_def` base key
-for inherited `value`. That carrier needs parser-side structured NTTP default
-expression/base-record metadata before the final rendered owner acceptance can
-be deleted safely.
+The lookup-authority regression now covers `is_signed<int>`,
+`is_signed<unsigned int>`, and `is_signed<void>` instances, mutates pending
+primary-template base debug text before manual instantiation to prove producer
+independence, mutates rendered base/debug text after the structured
+`record_def` check, and validates that Sema inherited static-member lookup
+consumes the structured base key.
 
 ## Suggested Next
 
-Continue Step 4 by repairing the dependent member-typedef base carrier for
-`is_signed<T> : is_signed_helper<T>::type`, specifically the structured NTTP
-default expression `arithmetic<T>::value` and resulting `record_def` base key
-for instantiated `is_signed_T_*` records.
+Continue Step 4 by using the now-structured dependent member-typedef base
+coverage to remove or further narrow any remaining rendered static-member owner
+acceptance for template-specialized references whose parser/Sema metadata is
+present.
 
 ## Watchouts
 
 - The source idea remains active; Step 3.3 closure is not source-idea closure.
-- This packet did not touch parser carrier files or the alias NTTP base carrier.
-  It only tightened Sema static-member lookup around template-specialized
-  references when structured static-member/base metadata is already present.
+- This packet touched parser carrier files for the dependent member-typedef
+  base route, but did not reopen alias NTTP base carrier behavior.
 - Ordinary global-scope C++ overload declarations are still a separate blocker
   because the current AST handoff does not let Sema distinguish them from C
   global redeclarations without weakening C behavior. Preserve C and
@@ -72,12 +69,26 @@ for instantiated `is_signed_T_*` records.
   references are strict once Sema has structured static-member/base metadata;
   the remaining rendered acceptance is limited to template-specialized
   references with no such metadata.
-- The remaining static-member blocker is not the alias-template deferred NTTP
-  base carrier covered by `signed_probe`/`is_enum`. It is the dependent
-  member-typedef base path where `is_signed<T>` inherits through
-  `is_signed_helper<T>::type`, and the instantiated base still carries
-  debug `$expr:arithmetic<T>::value` text instead of a structured NTTP/default
-  and concrete base `record_def`.
+- The dependent member-typedef base path where `is_signed<T>` inherits through
+  `is_signed_helper<T>::type` now carries a concrete base `record_def` for the
+  direct `arithmetic<T>::value` reduced route; do not reintroduce rendered
+  `$expr:` carrier parsing here.
+- This packet repairs the direct `arithmetic<T>::value` default-expression
+  carrier used by the reduced `is_signed_helper<T>::type` path. The successful
+  defaulted-NTTP base lane is driven by template parameter/default metadata and
+  `TemplateArgRef` structural fields, not by a `$expr:` debug-text prefix. If
+  the cached default token lookup misses, the declaration's stored
+  `template_param_default_exprs` re-lex path remains retained compatibility,
+  not completed structured cleanup. A broader trait-default evaluator where
+  the trait providing `value` itself inherits that static member through
+  another typedef base should remain a separate packet if it becomes the next
+  frontier.
+- `resolve_deferred_member_base()` still finds the member template primary from
+  `resolved_member.tpl_struct_origin` via `qualified_name_from_text(...)` and
+  TextId-based lookup because `TypeSpec` does not yet carry a structured
+  template-origin key for that member-typedef route. Treat this as retained
+  parser metadata debt/compatibility, not completed removal of rendered or
+  text-keyed lookup from the path.
 - The new base carrier intentionally preserves structured value-argument
   payloads only where pending template args contain NTTP values; type-only
   pending template structs keep the prior debug carrier to avoid widening into
