@@ -8,25 +8,41 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired the alias-template deferred NTTP base carrier so
-`TemplateArgRef` value arguments carry parser-owned `nttp_text_id` identity.
-Alias substitution now maps structured value carriers through that field, not
-through `TemplateArgRef::debug_text`, while preserving the parsed expression
-node and instantiated inherited-base `record_def` attachment. The focused
-lookup-authority test now seeds a stale value-carrier debug spelling before
-alias substitution and proves the structured `TextId` still selects the actual
-NTTP argument and retains the base `record_def`.
+Step 4 repaired Sema ordinary namespace C++ overload declarations so
+`eastl::AssertionFailure(const char*)` and
+`eastl::AssertionFailure(void*, const char*)` are admitted as one structured
+overload set instead of a C-style conflicting redeclaration. The declaration
+path now gates overload admission from function metadata, keeps `extern "C"`
+declarations out of C++ overload sets, and still rejects same-parameter
+different-return declarations as conflicts. The focused lookup-authority tests
+cover the accepted ordinary namespace overload, the return-only conflict, and
+the C-linkage rejection.
+The accepted-declaration test also covers `ZeroArg()` plus `ZeroArg(int)` so
+the C++ path does not reuse C K&R unspecified-parameter compatibility when
+forming overload sets.
+Global-scope ordinary C++ overload declarations remain intentionally outside
+this packet: Sema receives no source-profile flag, and parsed C and C++ global
+ordinary declarations have the same Sema-visible unqualified/global metadata.
+Admitting unqualified global overloads in this gate would also weaken C
+conflicting-redeclaration checks, so that needs a separate parser-to-Sema
+language-mode or linkage metadata handoff before it can be repaired safely.
 
 ## Suggested Next
 
-Continue Step 4 with a supervisor-chosen review or next narrow cleanup of the
-remaining template-specialization static-member compatibility route. Do not
-expand this completed carrier repair into expectation rewrites or new rendered
-lookup paths.
+Continue Step 4 with the supervisor-selected next focused metadata handoff
+cleanup, likely the remaining template-specialization static-member
+compatibility route if that is still the active priority.
 
 ## Watchouts
 
 - The source idea remains active; Step 3.3 closure is not source-idea closure.
+- This packet did not touch parser carrier files or the alias NTTP base carrier.
+  It only repaired Sema declaration admission for structured ordinary namespace
+  overload sets.
+- Ordinary global-scope C++ overload declarations are still a separate blocker
+  because the current AST handoff does not let Sema distinguish them from C
+  global redeclarations without weakening C behavior. Preserve C and
+  `extern "C"` rejection until a structured language/linkage carrier exists.
 - Step 4 should preserve structured metadata that already exists. Do not add
   fallback spelling, rendered qualified-text parsing, helper-only renames, or
   string/string_view semantic lookup routes.
@@ -75,8 +91,9 @@ lookup paths.
 ## Proof
 
 Ran the delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_)' | tee test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build succeeded and the filtered CTest subset passed
-`885/885` tests with the structural NTTP carrier repair. Final proof log path:
-`test_after.log`.
+Result: build succeeded. CTest passed `886/886` matched tests, including
+`frontend_parser_lookup_authority_tests`,
+`eastl_cpp_external_utility_frontend_basic_cpp`, and the corrected
+`cpp_positive_sema_.*` subset. Final proof log path: `test_after.log`.

@@ -1396,6 +1396,62 @@ void test_sema_cpp_overload_lookup_rejects_legacy_rendered_after_structured_miss
               "non-diagnostic");
 }
 
+void test_sema_namespace_ordinary_cpp_overload_decls_use_structured_set() {
+  c4c::Arena arena;
+  c4c::Lexer lexer(
+      R"cpp(
+        namespace eastl {
+          void AssertionFailure(const char*);
+          void AssertionFailure(void*, const char*);
+          void ZeroArg();
+          void ZeroArg(int);
+        }
+      )cpp",
+      c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema should accept ordinary namespace C++ overload "
+              "declarations through the structured overload set");
+}
+
+void test_sema_cpp_overload_decls_reject_same_params_different_return() {
+  c4c::Arena arena;
+  c4c::Lexer lexer(
+      R"cpp(
+        namespace eastl {
+          int SameParams(int);
+          void SameParams(int);
+        }
+      )cpp",
+      c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(!result.ok,
+              "Sema should keep same-parameter different-return declarations "
+              "as conflicting types, not a C++ overload set");
+}
+
+void test_sema_cpp_overload_decls_reject_c_language_linkage() {
+  c4c::Arena arena;
+  c4c::Lexer lexer(
+      R"cpp(
+        extern "C" {
+          void c_linkage(int);
+          void c_linkage(short);
+        }
+      )cpp",
+      c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(!result.ok,
+              "Sema should not turn extern C declarations into a C++ "
+              "overload set");
+}
+
 void test_sema_func_local_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2109,6 +2165,9 @@ int main() {
   test_sema_function_lookup_rejects_legacy_rendered_after_structured_miss();
   test_sema_ref_overload_lookup_rejects_legacy_rendered_after_structured_miss();
   test_sema_cpp_overload_lookup_rejects_legacy_rendered_after_structured_miss();
+  test_sema_namespace_ordinary_cpp_overload_decls_use_structured_set();
+  test_sema_cpp_overload_decls_reject_same_params_different_return();
+  test_sema_cpp_overload_decls_reject_c_language_linkage();
   test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
   test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();

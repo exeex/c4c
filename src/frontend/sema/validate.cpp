@@ -435,6 +435,17 @@ bool function_sig_compatible(const FunctionSig& a, const FunctionSig& b) {
   return true;
 }
 
+bool function_param_sig_same_for_cpp_overload(const FunctionSig& a,
+                                              const FunctionSig& b) {
+  if (a.variadic != b.variadic) return false;
+  if (a.has_param_pack != b.has_param_pack) return false;
+  if (a.params.size() != b.params.size()) return false;
+  for (size_t i = 0; i < a.params.size(); ++i) {
+    if (!same_types_for_function_compat(a.params[i], b.params[i], true)) return false;
+  }
+  return true;
+}
+
 // Check if two function signatures are ref-overloads: same param count/base types
 // but differ in lvalue-ref vs rvalue-ref qualifier on at least one parameter.
 bool is_ref_overload(const FunctionSig& a, const FunctionSig& b) {
@@ -460,17 +471,40 @@ bool is_ref_overload(const FunctionSig& a, const FunctionSig& b) {
   return has_ref_diff;
 }
 
-bool supports_cpp_overload_set(const char* name) {
-  if (!name || !name[0]) return false;
+const char* sema_overload_base_name(const Node* n) {
+  if (!n) return nullptr;
+  if (n->unqualified_name && n->unqualified_name[0]) return n->unqualified_name;
+  const char* name = n->name;
+  if (!name || !name[0]) return nullptr;
   if (std::strncmp(name, "::", 2) == 0) name += 2;
+  const char* sep = std::strstr(name, "::");
+  while (sep) {
+    name = sep + 2;
+    sep = std::strstr(name, "::");
+  }
+  return name;
+}
+
+bool has_c_language_linkage(const Node* n) {
+  return n && n->linkage_spec && std::strcmp(n->linkage_spec, "C") == 0;
+}
+
+bool supports_cpp_overload_set(const Node* n) {
+  const char* name = sema_overload_base_name(n);
+  if (!name || !name[0]) return false;
   // C++ permits overloading ordinary operator functions, not just allocation
   // forms. Treat our parser's normalized operator_* spellings as overloadable
   // so sema doesn't reject later declarations as C-style redeclarations.
   if (std::strncmp(name, "operator_", 9) == 0) return true;
-  return std::strcmp(name, "operator_new") == 0 ||
-         std::strcmp(name, "operator_new_array") == 0 ||
-         std::strcmp(name, "operator_delete") == 0 ||
-         std::strcmp(name, "operator_delete_array") == 0;
+  if (std::strcmp(name, "operator_new") == 0 ||
+      std::strcmp(name, "operator_new_array") == 0 ||
+      std::strcmp(name, "operator_delete") == 0 ||
+      std::strcmp(name, "operator_delete_array") == 0) {
+    return true;
+  }
+  if (has_c_language_linkage(n)) return false;
+  return n->namespace_context_id > 0 || n->n_qualifier_segments > 0 ||
+         n->is_global_qualified;
 }
 
 bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
@@ -736,20 +770,22 @@ class Validator {
         node->file, node->line, node->column > 0 ? node->column : 1, std::move(msg)});
   }
 
-  void record_cpp_overload(const std::string& name, FunctionSig sig) {
+  bool record_cpp_overload(const std::string& name, FunctionSig sig) {
     auto& ovset = cpp_overload_sigs_[name];
     if (ovset.empty()) {
       auto it = funcs_.find(name);
       if (it != funcs_.end()) ovset.push_back(it->second);
     }
     for (FunctionSig& existing : ovset) {
-      if (!function_sig_compatible(existing, sig)) continue;
+      if (!function_param_sig_same_for_cpp_overload(existing, sig)) continue;
+      if (!function_sig_compatible(existing, sig)) return false;
       if (existing.unspecified_params && !sig.unspecified_params) {
         existing = std::move(sig);
       }
-      return;
+      return true;
     }
     ovset.push_back(std::move(sig));
+    return true;
   }
 
   void bind_global(const Node* n) {
@@ -1803,40 +1839,43 @@ class Validator {
       }
       auto cpp_ov = cpp_overload_sigs_.find(n->name);
       if (cpp_ov != cpp_overload_sigs_.end()) {
-        bool matched = false;
-        for (FunctionSig& existing : cpp_ov->second) {
-          if (!function_sig_compatible(existing, sig)) continue;
-          matched = true;
-          if (existing.unspecified_params && !sig.unspecified_params) {
-            existing = std::move(sig);
-          }
-          break;
-        }
-        if (!matched && !n->is_explicit_specialization) {
-          if (supports_cpp_overload_set(n->name)) {
-            cpp_ov->second.push_back(std::move(sig));
-          } else {
+        if (!n->is_explicit_specialization) {
+          if (!supports_cpp_overload_set(n) ||
+              !record_cpp_overload(n->name, std::move(sig))) {
             emit(n, std::string("conflicting types for function '") + n->name + "'");
           }
         }
       } else {
         auto it = funcs_.find(n->name);
         if (it != funcs_.end()) {
-        if (!function_sig_compatible(it->second, sig) && !n->is_explicit_specialization) {
-          // Check if this is a ref-overload (T& vs T&&) before emitting error.
-          if (is_ref_overload(it->second, sig)) {
-            auto& ovset = ref_overload_sigs_[n->name];
-            if (ovset.empty()) ovset.push_back(it->second);
-            ovset.push_back(std::move(sig));
-          } else if (supports_cpp_overload_set(n->name)) {
-            record_cpp_overload(n->name, std::move(sig));
-          } else {
-            emit(n, std::string("conflicting types for function '") + n->name + "'");
+          if (!n->is_explicit_specialization && supports_cpp_overload_set(n)) {
+            if (function_param_sig_same_for_cpp_overload(it->second, sig)) {
+              if (!function_sig_compatible(it->second, sig)) {
+                emit(n, std::string("conflicting types for function '") + n->name + "'");
+              } else if (it->second.unspecified_params && !sig.unspecified_params) {
+                it->second = std::move(sig);
+              }
+            } else if (is_ref_overload(it->second, sig)) {
+              auto& ovset = ref_overload_sigs_[n->name];
+              if (ovset.empty()) ovset.push_back(it->second);
+              ovset.push_back(std::move(sig));
+            } else if (!record_cpp_overload(n->name, std::move(sig))) {
+              emit(n, std::string("conflicting types for function '") + n->name + "'");
+            }
+          } else if (!function_sig_compatible(it->second, sig) &&
+                     !n->is_explicit_specialization) {
+            // Check if this is a ref-overload (T& vs T&&) before emitting error.
+            if (is_ref_overload(it->second, sig)) {
+              auto& ovset = ref_overload_sigs_[n->name];
+              if (ovset.empty()) ovset.push_back(it->second);
+              ovset.push_back(std::move(sig));
+            } else {
+              emit(n, std::string("conflicting types for function '") + n->name + "'");
+            }
+          } else if (it->second.unspecified_params && !sig.unspecified_params) {
+            // Upgrade K&R unspecified-params declaration to the full prototype.
+            it->second = std::move(sig);
           }
-        } else if (it->second.unspecified_params && !sig.unspecified_params) {
-          // Upgrade K&R unspecified-params declaration to the full prototype.
-          it->second = std::move(sig);
-        }
         } else {
           funcs_[n->name] = std::move(sig);
         }
