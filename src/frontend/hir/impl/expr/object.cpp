@@ -955,7 +955,7 @@ ExprId Lowerer::lower_delete_expr(FunctionCtx* ctx, const Node* n) {
   TypeSpec operand_ts = infer_generic_ctrl_type(ctx, n->left);
   std::string op_fn;
   bool is_class_specific = false;
-  if (operand_ts.base == TB_STRUCT && operand_ts.tag && operand_ts.ptr_level > 0) {
+  if (operand_ts.base == TB_STRUCT && operand_ts.ptr_level > 0) {
     const char* method_name =
         is_array ? "operator_delete_array" : "operator_delete";
     const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;

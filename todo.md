@@ -8,22 +8,21 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries fixed the full-suite
-inherited-base regression exposed after `bd59d1237` while preserving the
-`lower_new_expr` allocation-owner and constructor lookup migration. The root
-cause was base-layout metadata accepting a parser-owned `TypeSpec::tag_text_id`
-through the HIR link-name text table, which could render `Base` as an unrelated
-member spelling such as `value`; base tags now validate rendered compatibility
-against known layouts and recover from structured base layout or `record_def`
-metadata before falling back to rendered spelling.
+Step 4 - Probe Field Removal And Split Boundaries cleared the
+`lower_delete_expr` deletion-probe blocker in
+`src/frontend/hir/impl/expr/object.cpp` while preserving the prior
+`lower_new_expr` cleanup. Class-specific delete lookup now gates on a struct
+pointer and lets `resolve_struct_method_lookup_owner_tag` resolve the owner
+through structured metadata or its existing bounded compatibility path instead
+of requiring a direct rendered `TypeSpec::tag` read.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next first deletion-probe blocker in
-`src/frontend/hir/impl/expr/object.cpp`. The current probe first reports direct
-`TypeSpec::tag` reads in `lower_delete_expr` around `object.cpp:958`, followed
-by `inspect/printer.cpp`, `expr/operator.cpp`, and `expr/scalar_control.cpp`
-surfaces.
+`src/frontend/hir/impl/inspect/printer.cpp`. The current probe has moved past
+`lower_delete_expr`; residual direct `TypeSpec::tag` reads remain in
+`inspect/printer.cpp`, followed by `expr/operator.cpp` and
+`expr/scalar_control.cpp` surfaces.
 
 ## Watchouts
 
@@ -131,10 +130,13 @@ surfaces.
   `describe_initializer_list_struct`, the adjacent initializer-list member
   assignment owner fallback, and the later initializer/aggregate
   type-comparison cluster, plus the `lower_new_expr` allocation-owner and
-  constructor lookup reads. The first residual blocker is now
-  `src/frontend/hir/impl/expr/object.cpp:958` in `lower_delete_expr`; later
-  residuals remain in
-  `src/frontend/hir/impl/inspect/printer.cpp`,
+  constructor lookup reads.
+- The `lower_delete_expr` class-specific delete lookup no longer directly reads
+  `TypeSpec::tag`; keep it routed through
+  `resolve_struct_method_lookup_owner_tag` so structured owner metadata remains
+  authoritative and the global delete fallback remains unchanged.
+- The current deletion probe first reports direct `TypeSpec::tag` reads in
+  `src/frontend/hir/impl/inspect/printer.cpp`, followed by
   `src/frontend/hir/impl/expr/operator.cpp`, and
   `src/frontend/hir/impl/expr/scalar_control.cpp`.
 - Direct struct constructor lowering now treats rendered struct tags as
@@ -159,7 +161,8 @@ surfaces.
   `/tmp/c4c_typespec_tag_deletion_probe_step4_object.log`, and
   `/tmp/c4c_typespec_tag_deletion_probe_step4_object_next.log`.
   This packet also left
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_object_new_expr.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_object_new_expr.log` and
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_delete_expr.log`.
 
 ## Proof
 
@@ -176,13 +179,12 @@ Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_regression_fix.log 2>&1`, and restored
-the temporary edit. The probe still does not report `lower_new_expr`
-allocation-owner or constructor lookup as a blocker. The first residual error
-is direct `TypeSpec::tag` use in `lower_delete_expr` at
-`src/frontend/hir/impl/expr/object.cpp:958`, with later residual errors in
-`src/frontend/hir/impl/inspect/printer.cpp`,
-`src/frontend/hir/impl/expr/operator.cpp`, and
+/tmp/c4c_typespec_tag_deletion_probe_step4_delete_expr.log 2>&1`, and restored
+the temporary edit. The probe moved past both `lower_new_expr` and
+`lower_delete_expr` in `src/frontend/hir/impl/expr/object.cpp`. The first
+residual errors are direct `TypeSpec::tag` reads in
+`src/frontend/hir/impl/inspect/printer.cpp`, followed by
+`src/frontend/hir/impl/expr/operator.cpp` and
 `src/frontend/hir/impl/expr/scalar_control.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
