@@ -5,6 +5,14 @@ namespace c4c::hir {
 
 namespace {
 
+template <typename T>
+auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_typespec_final_spelling_tag_if_present(TypeSpec&, const char*, long) {}
+
 DeclRef make_link_name_decl_ref(Module& module, std::string name) {
   DeclRef ref{};
   ref.name = std::move(name);
@@ -15,14 +23,80 @@ DeclRef make_link_name_decl_ref(Module& module, std::string name) {
 
 }  // namespace
 
+void Lowerer::populate_struct_owner_typespec(TypeSpec& ts,
+                                             const std::string& struct_tag,
+                                             int ptr_level) const {
+  ts.base = TB_STRUCT;
+  ts.ptr_level = ptr_level;
+  if (module_) {
+    const auto sit = module_->struct_defs.find(struct_tag);
+    if (sit != module_->struct_defs.end()) {
+      set_typespec_final_spelling_tag_if_present(ts, sit->second.tag.c_str(), 0);
+      ts.tag_text_id = sit->second.tag_text_id;
+      ts.namespace_context_id = sit->second.ns_qual.context_id;
+      ts.is_global_qualified = sit->second.ns_qual.is_global_qualified;
+      if (!sit->second.ns_qual.segment_text_ids.empty()) {
+        ts.qualifier_text_ids =
+            const_cast<TextId*>(sit->second.ns_qual.segment_text_ids.data());
+        ts.n_qualifier_segments =
+            static_cast<int>(sit->second.ns_qual.segment_text_ids.size());
+      }
+      auto owner_sdit = struct_def_nodes_.find(struct_tag);
+      if (owner_sdit != struct_def_nodes_.end()) {
+        ts.record_def = const_cast<Node*>(owner_sdit->second);
+      }
+      return;
+    }
+  }
+  set_typespec_final_spelling_tag_if_present(ts, struct_tag.c_str(), 0);
+  auto owner_sdit = struct_def_nodes_.find(struct_tag);
+  if (owner_sdit != struct_def_nodes_.end()) {
+    ts.record_def = const_cast<Node*>(owner_sdit->second);
+  }
+}
+
+std::optional<std::string> Lowerer::resolve_struct_type_tag_from_metadata(
+    const TypeSpec& ts) const {
+  if (!module_ || (ts.base != TB_STRUCT && ts.base != TB_UNION) ||
+      ts.ptr_level != 0) {
+    return std::nullopt;
+  }
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    const auto owner_key = make_struct_def_node_owner_key(ts.record_def);
+    if (!owner_key || !hir_record_owner_key_has_complete_metadata(*owner_key)) {
+      return std::nullopt;
+    }
+    if (const SymbolName* tag = module_->find_struct_def_tag_by_owner(*owner_key)) {
+      return *tag;
+    }
+    return std::nullopt;
+  }
+  if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = ts.namespace_context_id;
+    ns_qual.is_global_qualified = ts.is_global_qualified;
+    if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          ts.qualifier_text_ids,
+          ts.qualifier_text_ids + ts.n_qualifier_segments);
+    }
+    const HirRecordOwnerKey owner_key =
+        make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+    if (!hir_record_owner_key_has_complete_metadata(owner_key)) return std::nullopt;
+    if (const SymbolName* tag = module_->find_struct_def_tag_by_owner(owner_key)) {
+      return *tag;
+    }
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 bool Lowerer::struct_has_member_dtors(const std::string& tag) {
   auto sit = module_->struct_defs.find(tag);
   if (sit == module_->struct_defs.end()) return false;
   for (auto it = sit->second.fields.rbegin(); it != sit->second.fields.rend(); ++it) {
-    if (it->elem_type.base == TB_STRUCT && it->elem_type.ptr_level == 0 &&
-        it->elem_type.tag) {
-      std::string ftag = it->elem_type.tag;
-      if (struct_destructors_.count(ftag) || struct_has_member_dtors(ftag)) return true;
+    if (auto ftag = resolve_struct_type_tag_from_metadata(it->elem_type)) {
+      if (struct_destructors_.count(*ftag) || struct_has_member_dtors(*ftag)) return true;
     }
   }
   return false;
@@ -46,13 +120,7 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
       auto pit = ctx.params.find("this");
       if (pit != ctx.params.end()) this_ref.param_index = pit->second;
       TypeSpec this_ts{};
-      this_ts.base = TB_STRUCT;
-      this_ts.tag = sit->second.tag.c_str();
-      this_ts.ptr_level = 1;
-      auto owner_sdit = struct_def_nodes_.find(struct_tag);
-      if (owner_sdit != struct_def_nodes_.end()) {
-        this_ts.record_def = const_cast<Node*>(owner_sdit->second);
-      }
+      populate_struct_owner_typespec(this_ts, struct_tag, 1);
       ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
 
       std::string other_name =
@@ -125,10 +193,7 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
     auto pit2 = ctx.params.find("this");
     if (pit2 != ctx.params.end()) this_ref2.param_index = pit2->second;
     TypeSpec this_ts2{};
-    this_ts2.base = TB_STRUCT;
-    this_ts2.tag =
-        sit != module_->struct_defs.end() ? sit->second.tag.c_str() : struct_tag.c_str();
-    this_ts2.ptr_level = 1;
+    populate_struct_owner_typespec(this_ts2, struct_tag, 1);
     ExprId this_ret =
         append_expr(method_node, this_ref2, this_ts2, ValueCategory::LValue);
     ReturnStmt rs{};
@@ -147,23 +212,14 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
   auto sit = module_->struct_defs.find(struct_tag);
   if (sit == module_->struct_defs.end()) return;
   TypeSpec owner_ts{};
-  owner_ts.base = TB_STRUCT;
-  owner_ts.tag = sit->second.tag.c_str();
-  owner_ts.ptr_level = 1;
-  auto owner_sdit = struct_def_nodes_.find(struct_tag);
-  if (owner_sdit != struct_def_nodes_.end()) {
-    owner_ts.record_def = const_cast<Node*>(owner_sdit->second);
-  }
+  populate_struct_owner_typespec(owner_ts, struct_tag, 1);
   const auto& fields = sit->second.fields;
   for (auto it = fields.rbegin(); it != fields.rend(); ++it) {
     const auto& field = *it;
-    if (field.elem_type.base != TB_STRUCT || field.elem_type.ptr_level != 0 ||
-        !field.elem_type.tag) {
-      continue;
-    }
-    std::string ftag = field.elem_type.tag;
-    bool has_explicit_dtor = struct_destructors_.count(ftag) > 0;
-    bool has_member_dtors = struct_has_member_dtors(ftag);
+    std::optional<std::string> ftag = resolve_struct_type_tag_from_metadata(field.elem_type);
+    if (!ftag) continue;
+    bool has_explicit_dtor = struct_destructors_.count(*ftag) > 0;
+    bool has_member_dtors = struct_has_member_dtors(*ftag);
     if (!has_explicit_dtor && !has_member_dtors) continue;
 
     MemberExpr me{};
@@ -192,7 +248,7 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
     ExprId member_ptr_id = append_expr(span_node, addr, ptr_ts);
 
     if (has_explicit_dtor) {
-      auto dit = struct_destructors_.find(ftag);
+      auto dit = struct_destructors_.find(*ftag);
       CallExpr c{};
       DeclRef callee_ref{};
       callee_ref.name = dit->second.mangled_name;
@@ -210,7 +266,7 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
       es.expr = call_id;
       append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
     } else {
-      emit_member_dtor_calls(ctx, ftag, member_ptr_id, span_node);
+      emit_member_dtor_calls(ctx, *ftag, member_ptr_id, span_node);
     }
   }
 }
@@ -534,11 +590,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
     this_param.name_text_id = make_text_id(
         this_param.name, module_ ? module_->link_name_texts.get() : nullptr);
     TypeSpec this_ts{};
-    this_ts.base = TB_STRUCT;
-    auto sit = module_->struct_defs.find(struct_tag);
-    this_ts.tag = sit != module_->struct_defs.end() ? sit->second.tag.c_str()
-                                                    : struct_tag.c_str();
-    this_ts.ptr_level = 1;
+    populate_struct_owner_typespec(this_ts, struct_tag, 1);
     this_param.type = qtype_from(this_ts, ValueCategory::LValue);
     this_param.span = make_span(method_node);
     ctx.params[this_param.name] = static_cast<uint32_t>(fn.params.size());
@@ -566,12 +618,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       auto pit = ctx.params.find("this");
       if (pit != ctx.params.end()) this_ref.param_index = pit->second;
       TypeSpec this_ts{};
-      this_ts.base = TB_STRUCT;
-      auto sit2 = module_->struct_defs.find(struct_tag);
-      this_ts.tag = sit2 != module_->struct_defs.end()
-                        ? sit2->second.tag.c_str()
-                        : struct_tag.c_str();
-      this_ts.ptr_level = 1;
+      populate_struct_owner_typespec(this_ts, struct_tag, 1);
       ExprId this_ptr = append_expr(
           method_node, this_ref, this_ts, ValueCategory::LValue);
       emit_member_dtor_calls(ctx, struct_tag, this_ptr, method_node);
@@ -710,9 +757,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
         auto pit = ctx.params.find("this");
         if (pit != ctx.params.end()) this_ref.param_index = pit->second;
         TypeSpec this_ts{};
-        this_ts.base = TB_STRUCT;
-        this_ts.tag = struct_tag.c_str();
-        this_ts.ptr_level = 1;
+        populate_struct_owner_typespec(this_ts, struct_tag, 1);
         ExprId this_id = append_expr(
             method_node, this_ref, this_ts, ValueCategory::LValue);
 
@@ -752,14 +797,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       auto pit = ctx.params.find("this");
       if (pit != ctx.params.end()) this_ref.param_index = pit->second;
       TypeSpec this_ts{};
-      this_ts.base = TB_STRUCT;
-      this_ts.tag = sit != module_->struct_defs.end() ? sit->second.tag.c_str()
-                                                      : struct_tag.c_str();
-      this_ts.ptr_level = 1;
-      auto owner_sdit = struct_def_nodes_.find(struct_tag);
-      if (owner_sdit != struct_def_nodes_.end()) {
-        this_ts.record_def = const_cast<Node*>(owner_sdit->second);
-      }
+      populate_struct_owner_typespec(this_ts, struct_tag, 1);
       ExprId this_id = append_expr(
           method_node, this_ref, this_ts, ValueCategory::LValue);
       TypeSpec field_ts{};
@@ -825,9 +863,6 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
                   std::string("ctor-init-field-constructor-owner:") + mem_name)) {
             field_ctor_tag = *owner_tag;
           }
-        }
-        if (field_ctor_tag.empty() && field_ts.tag) {
-          field_ctor_tag = field_ts.tag;
         }
       }
       if (!field_ctor_tag.empty()) {
@@ -968,12 +1003,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
     auto pit = ctx.params.find("this");
     if (pit != ctx.params.end()) this_ref.param_index = pit->second;
     TypeSpec this_ts{};
-    this_ts.base = TB_STRUCT;
-    auto sit2 = module_->struct_defs.find(struct_tag);
-    this_ts.tag = sit2 != module_->struct_defs.end()
-                      ? sit2->second.tag.c_str()
-                      : struct_tag.c_str();
-    this_ts.ptr_level = 1;
+    populate_struct_owner_typespec(this_ts, struct_tag, 1);
     ExprId this_ptr = append_expr(
         method_node, this_ref, this_ts, ValueCategory::LValue);
     emit_member_dtor_calls(ctx, struct_tag, this_ptr, method_node);

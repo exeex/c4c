@@ -793,6 +793,12 @@ class Lowerer {
   bool can_fast_path_scalar_array_init(const Node* init_list) const;
 
   bool struct_has_member_dtors(const std::string& tag);
+  void populate_struct_owner_typespec(
+      TypeSpec& ts,
+      const std::string& struct_tag,
+      int ptr_level) const;
+  std::optional<std::string> resolve_struct_type_tag_from_metadata(
+      const TypeSpec& ts) const;
 
   void emit_defaulted_method_body(FunctionCtx& ctx, Function& fn,
                                   const std::string& struct_tag,
