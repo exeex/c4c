@@ -9,25 +9,26 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 ## Just Finished
 
 Step 4 removed the template default-expression re-lex retry from the structured
-base-instantiation typed-argument handoff. When
-`eval_deferred_nttp_default(...)` misses for a defaulted NTTP in the structured
-`base_primary` path, the parser now declines the structured route instead of
-falling back to `base_primary->template_param_default_exprs[...]`,
-`lex_template_expr_text(...)`, and `eval_deferred_nttp_expr_tokens(...)`.
+direct template-primary instantiation path in `parse_base_type()`. Both the
+preliminary specialization-selection fill and the later concrete-argument fill
+now use `eval_deferred_nttp_default(...)` cached token metadata for defaulted
+NTTP expressions; if that structured carrier is missing, the instantiation is
+left incomplete/deferred instead of re-lexing
+`primary_tpl->template_param_default_exprs[...]` or manufacturing `$expr:`
+source text.
 
-The later rendered-arg reconstruction branch is now explicitly documented as a
-no-carrier compatibility fallback and remains reachable only after a
-`tpl_struct_args` structured carrier is absent or declined. Focused drift
-coverage poisons the rendered default-expression text on `is_signed_helper`
-while the structured cached default tokens still drive dependent member-typedef
-base instantiation and `record_def` attachment.
+Focused drift coverage now poisons the rendered default-expression text on
+`is_signed_helper`, drives the direct `parse_base_type()` path for
+`is_signed_helper<int>`, and requires the materialized defaulted NTTP value to
+come from structured cached tokens. The same coverage still proves dependent
+member-typedef base instantiation attaches `record_def` before Sema despite
+rendered metadata drift.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing the remaining parser/Sema `$expr:` and
-default-expression compatibility routes. The direct template primary
-instantiation path still has source-string default-expression fallbacks outside
-this base-handoff packet and should be handled as a separate bounded slice.
+Continue Step 4 by reviewing the remaining parser/Sema `$expr:` compatibility
+routes that are not default-expression re-lex fallbacks in the direct
+template-primary or structured base-handoff paths.
 
 ## Watchouts
 
@@ -58,6 +59,10 @@ this base-handoff packet and should be handled as a separate bounded slice.
   `template_param_default_exprs` after `eval_deferred_nttp_default(...)` misses.
   If a future case needs that route, add or repair the cached token/default
   metadata producer instead of restoring source-string evaluation.
+- The direct template-primary instantiation path now has the same policy:
+  defaulted NTTP expressions require cached default-token metadata, and a miss
+  leaves the instantiation incomplete/deferred rather than reopening rendered
+  `template_param_default_exprs` text.
 - The rendered base-arg reconstruction path still contains a no-carrier
   compatibility default-expression re-lex fallback. It is explicitly behind the
   absence of `tpl_struct_args`; do not use it as structured progress.

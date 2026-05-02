@@ -2258,6 +2258,27 @@ void test_dependent_member_typedef_base_carries_structured_record_def() {
                 "NTTP default expression for drift coverage");
     helper_primary->template_param_default_exprs[1] = arena.strdup("0");
 
+    c4c::Token seed{};
+    parser.replace_token_stream_for_testing({
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier,
+                                   "is_signed_helper"),
+        parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+        parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+        parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+        parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+    });
+    c4c::TypeSpec direct_resolved = parser.parse_base_type();
+    expect_true(direct_resolved.record_def &&
+                    direct_resolved.record_def->n_template_args >= 2 &&
+                    direct_resolved.record_def->template_arg_is_value &&
+                    direct_resolved.record_def->template_arg_values,
+                "direct template primary instantiation should materialize "
+                "defaulted NTTP args through structured metadata");
+    expect_true(direct_resolved.record_def->template_arg_is_value[1] &&
+                    direct_resolved.record_def->template_arg_values[1] == 1,
+                "direct template primary instantiation should use cached "
+                "default tokens before stale rendered default-expression text");
+
     auto make_type_arg = [](c4c::TypeBase base) {
       c4c::Parser::TemplateArgParseResult arg{};
       arg.is_value = false;

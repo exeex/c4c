@@ -3256,34 +3256,11 @@ TypeSpec Parser::parse_base_type() {
                                         &prelim_nb_meta)) {
                                     da.value = ev;
                                     actual_args.push_back(da);
-                                } else if (primary_tpl->template_param_default_exprs &&
-                                           primary_tpl->template_param_default_exprs[sz]) {
-                                    std::vector<Token> expr_toks = lex_template_expr_text(
-                                        primary_tpl->template_param_default_exprs[sz],
-                                        core_input_state_.source_profile);
-                                    if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
-                                                                       prelim_tb, prelim_nb, &ev,
-                                                                       &prelim_nb_meta)) {
-                                        da.value = ev;
-                                        actual_args.push_back(da);
-                                    } else {
-                                        std::string tagged = "$expr:";
-                                        tagged += primary_tpl->template_param_default_exprs[sz];
-                                        da.nttp_name = arena_.strdup(tagged.c_str());
-                                        da.value = 0;
-                                        actual_args.push_back(da);
-                                    }
                                 } else {
-                                    if (primary_tpl->template_param_default_exprs &&
-                                        primary_tpl->template_param_default_exprs[sz]) {
-                                        std::string tagged = "$expr:";
-                                        tagged += primary_tpl->template_param_default_exprs[sz];
-                                        da.nttp_name = arena_.strdup(tagged.c_str());
-                                        da.value = 0;
-                                        actual_args.push_back(da);
-                                    } else {
-                                        break;
-                                    }
+                                    // Missing structured default tokens leave
+                                    // this instantiation deferred; do not
+                                    // re-lex the compatibility display text.
+                                    break;
                                 }
                             } else if (da.is_value) {
                                 da.value = primary_tpl->template_param_default_values[sz];
@@ -3338,32 +3315,11 @@ TypeSpec Parser::parse_base_type() {
                                         type_bindings, nttp_bindings,
                                         &eval_val, &nttp_binding_meta)) {
                                     arg.value = eval_val;
-                                } else if (primary_tpl->template_param_default_exprs &&
-                                           primary_tpl->template_param_default_exprs[i]) {
-                                    std::vector<Token> expr_toks = lex_template_expr_text(
-                                        primary_tpl->template_param_default_exprs[i],
-                                        core_input_state_.source_profile);
-                                    if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
-                                                                       type_bindings, nttp_bindings,
-                                                                       &eval_val,
-                                                                       &nttp_binding_meta)) {
-                                        arg.value = eval_val;
-                                    } else {
-                                        std::string tagged = "$expr:";
-                                        tagged += primary_tpl->template_param_default_exprs[i];
-                                        arg.nttp_name = arena_.strdup(tagged.c_str());
-                                        arg.value = 0;
-                                    }
                                 } else {
-                                    if (primary_tpl->template_param_default_exprs &&
-                                        primary_tpl->template_param_default_exprs[i]) {
-                                        std::string tagged = "$expr:";
-                                        tagged += primary_tpl->template_param_default_exprs[i];
-                                        arg.nttp_name = arena_.strdup(tagged.c_str());
-                                        arg.value = 0;
-                                    } else {
-                                        break;  // cannot evaluate
-                                    }
+                                    // Missing structured default tokens leave
+                                    // this instantiation deferred; do not
+                                    // re-lex the compatibility display text.
+                                    break;
                                 }
                             } else {
                                 arg.value = primary_tpl->template_param_default_values[i];
