@@ -9,21 +9,25 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries migrated
-`src/frontend/hir/impl/templates/struct_instantiation.cpp`
-`Lowerer::append_instantiated_template_struct_bases` away from direct
-`TypeSpec::tag` reads. Instantiated template base registration now derives the
-base tag payload from structured record owner metadata, resolved base layouts,
-`record_def`, or `tag_text_id` carriers, and uses that payload only for member
-typedef compatibility resolution and final HIR base-tag storage.
+`src/frontend/hir/impl/templates/templates.cpp`
+`encode_template_type_arg_ref_hir` away from direct `TypeSpec::tag` reads around
+the former lines 128-157. Template type-argument encoding now obtains nominal
+payloads through `template_type_arg_nominal_payload_hir`, which prefers
+structured `record_def` or `tag_text_id` metadata and uses the legacy tag
+spelling only through an explicit SFINAE no-metadata compatibility fallback.
+Added focused CTest coverage in
+`tests/frontend/cpp_hir_template_type_arg_encoding_test.cpp` proving template
+type-argument encoding chooses `record_def` and `tag_text_id` carriers over
+stale rendered `TypeSpec::tag` payloads.
 
 ## Suggested Next
 
 Continue Step 4 with the next deletion-probe blocker in
 `src/frontend/hir/impl/templates/templates.cpp`, starting with
-`encode_template_type_arg_ref_hir` direct `TypeSpec::tag` reads around current
-lines 128-157. Keep the parallel `type_resolution.cpp`, parser/core, parser
-type-helper, and value-arg residuals split unless the supervisor routes them
-together.
+`eval_struct_static_member_value_hir` direct `TypeSpec::tag` reads around the
+current deletion-probe errors at lines 269-270. Keep the parallel
+`type_resolution.cpp`, parser/core, parser type-helper, and value-arg residuals
+split unless the supervisor routes them together.
 
 ## Watchouts
 
@@ -49,14 +53,15 @@ together.
 - The current deletion probe moves past `decl.cpp`, `range_for.cpp`,
   `stmt.cpp`, `src/frontend/hir/impl/templates/deduction.cpp`,
   `src/frontend/hir/impl/templates/global.cpp`,
-  `src/frontend/hir/impl/templates/member_typedef.cpp`, and the targeted
-  `apply_template_typedef_bindings` reads/writes in
-  `src/frontend/hir/impl/templates/struct_instantiation.cpp`.
-  `append_instantiated_template_struct_bases` is now semantically cleared for
-  base tag/member typedef payloads. The deletion probe builds
-  `struct_instantiation.cpp.o` successfully; first residual errors now start in
-  `src/frontend/hir/impl/templates/templates.cpp`, with same-build residuals
-  also reported in `src/frontend/hir/impl/templates/type_resolution.cpp`,
+  `src/frontend/hir/impl/templates/member_typedef.cpp`,
+  the targeted `apply_template_typedef_bindings` reads/writes and
+  `append_instantiated_template_struct_bases` in
+  `src/frontend/hir/impl/templates/struct_instantiation.cpp`, and the targeted
+  `encode_template_type_arg_ref_hir` direct reads in
+  `src/frontend/hir/impl/templates/templates.cpp`. First residual errors now
+  remain in `src/frontend/hir/impl/templates/templates.cpp` at
+  `eval_struct_static_member_value_hir`, with same-build residuals also
+  reported in `src/frontend/hir/impl/templates/type_resolution.cpp`,
   parser/core, and parser type helpers.
 - Non-canonical deletion probe artifacts for recent packets include
   `/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log`,
@@ -84,6 +89,8 @@ together.
   `/tmp/c4c_typespec_tag_deletion_probe_step4_struct_instantiation.log`.
 - This packet added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_struct_instantiation_bases.log`.
+- This packet added
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_encode.log`.
 
 ## Proof
 
@@ -92,20 +99,23 @@ Executor proof:
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
 Result: command exited 0. The build passed, and CTest passed 74 of 74 delegated
-tests.
+tests before the focused regression test was added. After adding
+`cpp_hir_template_type_arg_encoding_structured_metadata`, the same delegated
+proof command exits 0 with CTest passing 75 of 75 delegated tests.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_struct_instantiation_bases.log 2>&1`,
-and restored the temporary edit. The probe moved past the targeted
-`append_instantiated_template_struct_bases` direct `TypeSpec::tag` reads; the
-build reached `src/frontend/hir/impl/templates/struct_instantiation.cpp.o`
-without errors. The first residual blocker is now
-`src/frontend/hir/impl/templates/templates.cpp:128` and following direct
-`TypeSpec::tag` use in `encode_template_type_arg_ref_hir`, with same-build
+/tmp/c4c_typespec_tag_deletion_probe_step4_templates_encode.log 2>&1`, and
+restored the temporary edit. The probe moved past the targeted
+`encode_template_type_arg_ref_hir` direct `TypeSpec::tag` reads. The first
+residual blocker remains in
+`src/frontend/hir/impl/templates/templates.cpp:269` and following direct
+`TypeSpec::tag` use in `eval_struct_static_member_value_hir`, with same-build
 residuals also reported in
+`src/frontend/hir/impl/templates/templates.cpp` pattern/specialization and
+template-realization helpers,
 `src/frontend/hir/impl/templates/type_resolution.cpp`, parser/core, and parser
 type helpers.
 

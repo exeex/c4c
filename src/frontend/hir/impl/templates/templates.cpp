@@ -45,6 +45,50 @@ std::string encode_template_arg_debug_compat_hir(const TypeSpec& ts) {
   return out;
 }
 
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, static_cast<const char*>(nullptr)) {
+  return ts.tag;
+}
+
+const char* typespec_legacy_tag_if_present(const TypeSpec&, long) {
+  return nullptr;
+}
+
+std::string template_type_arg_nominal_payload_hir(const TypeSpec& ts,
+                                                  const char* fallback) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    if (ts.record_def->name && ts.record_def->name[0]) {
+      return ts.record_def->name;
+    }
+    if (ts.record_def->unqualified_name && ts.record_def->unqualified_name[0]) {
+      return ts.record_def->unqualified_name;
+    }
+    if (ts.record_def->unqualified_text_id != kInvalidText) {
+      return "record_ctx" + std::to_string(ts.record_def->namespace_context_id) +
+             "_text" + std::to_string(ts.record_def->unqualified_text_id);
+    }
+  }
+  if (ts.tag_text_id != kInvalidText) {
+    std::string out = "tag_ctx" + std::to_string(ts.namespace_context_id);
+    out += ts.is_global_qualified ? "_global" : "_local";
+    if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+      out += "_q";
+      for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        if (i > 0) out += "_";
+        out += std::to_string(ts.qualifier_text_ids[i]);
+      }
+    }
+    out += "_text" + std::to_string(ts.tag_text_id);
+    return out;
+  }
+  if (const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+      legacy_tag && legacy_tag[0]) {
+    return legacy_tag;
+  }
+  return fallback ? fallback : "";
+}
+
 bool matches_trait_family(const std::string& name, const char* suffix);
 
 std::optional<TypeSpec> try_resolve_unary_type_transform_trait(
@@ -124,10 +168,12 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
     return ref;
   }
 
+  const std::string nominal_payload =
+      template_type_arg_nominal_payload_hir(ts, "");
   const bool plain_tag_ref =
-      ts.tag && ts.tag[0] && !ts.is_const && !ts.is_volatile &&
+      !nominal_payload.empty() && !ts.is_const && !ts.is_volatile &&
       ts.ptr_level == 0 && !ts.is_lvalue_ref && !ts.is_rvalue_ref;
-  if (plain_tag_ref) return ts.tag;
+  if (plain_tag_ref) return nominal_payload;
 
   std::string ref;
   if (ts.is_const) ref += "const_";
@@ -151,10 +197,21 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
     case TB_BOOL: ref += "bool"; break;
     case TB_INT128: ref += "i128"; break;
     case TB_UINT128: ref += "u128"; break;
-    case TB_STRUCT: ref += "struct_"; ref += ts.tag ? ts.tag : "anon"; break;
-    case TB_UNION: ref += "union_"; ref += ts.tag ? ts.tag : "anon"; break;
-    case TB_ENUM: ref += "enum_"; ref += ts.tag ? ts.tag : "anon"; break;
-    case TB_TYPEDEF: ref += ts.tag ? ts.tag : "typedef"; break;
+    case TB_STRUCT:
+      ref += "struct_";
+      ref += template_type_arg_nominal_payload_hir(ts, "anon");
+      break;
+    case TB_UNION:
+      ref += "union_";
+      ref += template_type_arg_nominal_payload_hir(ts, "anon");
+      break;
+    case TB_ENUM:
+      ref += "enum_";
+      ref += template_type_arg_nominal_payload_hir(ts, "anon");
+      break;
+    case TB_TYPEDEF:
+      ref += template_type_arg_nominal_payload_hir(ts, "typedef");
+      break;
     default: return "?";
   }
   for (int p = 0; p < ts.ptr_level; ++p) ref += "_ptr";
