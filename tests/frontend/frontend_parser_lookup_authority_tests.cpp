@@ -4291,6 +4291,53 @@ void test_node_template_arg_reconstruction_preserves_expr_carrier() {
               "present");
 }
 
+void test_dependent_template_specialization_uses_nttp_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId param_text = texts.intern("N");
+  const c4c::TextId stale_text = texts.intern("RenderedDrift");
+
+  c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  specialization->kind = c4c::NK_STRUCT_DEF;
+  specialization->name = arena.strdup("Box");
+  specialization->template_origin_name = arena.strdup("Box");
+  specialization->n_template_params = 1;
+  specialization->template_param_names = arena.alloc_array<const char*>(1);
+  specialization->template_param_names[0] = arena.strdup("N");
+  specialization->template_param_name_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  specialization->template_param_name_text_ids[0] = param_text;
+  specialization->n_template_args = 1;
+  specialization->template_arg_is_value = arena.alloc_array<bool>(1);
+  specialization->template_arg_is_value[0] = true;
+  specialization->template_arg_nttp_names =
+      arena.alloc_array<const char*>(1);
+  specialization->template_arg_nttp_names[0] =
+      arena.strdup("RenderedDrift");
+  specialization->template_arg_nttp_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  specialization->template_arg_nttp_text_ids[0] = param_text;
+
+  expect_true(c4c::is_dependent_template_struct_specialization(specialization),
+              "dependent template specialization should use the structured "
+              "NTTP TextId carrier even when rendered text is stale");
+
+  specialization->template_arg_nttp_text_ids[0] = stale_text;
+  specialization->template_arg_nttp_names[0] = arena.strdup("N");
+  expect_true(!c4c::is_dependent_template_struct_specialization(specialization),
+              "stale rendered NTTP text must not recover dependency when a "
+              "non-matching TextId carrier is present");
+
+  specialization->template_arg_nttp_text_ids[0] = c4c::kInvalidText;
+  expect_true(c4c::is_dependent_template_struct_specialization(specialization),
+              "no-carrier template value args should keep rendered-name "
+              "compatibility");
+}
+
 void test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4714,6 +4761,7 @@ int main() {
   test_nested_template_static_member_value_arg_carries_expr_node();
   test_nested_pending_template_arg_rendering_suppresses_expr_debug_text();
   test_node_template_arg_reconstruction_preserves_expr_carrier();
+  test_dependent_template_specialization_uses_nttp_text_id();
   test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss();
   test_typespec_template_origin_equality_uses_structured_key();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();

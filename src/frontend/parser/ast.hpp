@@ -530,6 +530,24 @@ inline bool node_has_template_param_text_id(const Node* node, TextId text_id) {
     return false;
 }
 
+inline bool node_template_value_arg_mentions_template_param(
+    const Node* node,
+    int arg_index) {
+    if (!node || arg_index < 0 || arg_index >= node->n_template_args) {
+        return false;
+    }
+    const TextId text_id =
+        node->template_arg_nttp_text_ids
+            ? node->template_arg_nttp_text_ids[arg_index]
+            : kInvalidText;
+    if (text_id != kInvalidText) {
+        return node_has_template_param_text_id(node, text_id);
+    }
+    return node->template_arg_nttp_names &&
+           node_has_template_param_name(node,
+                                        node->template_arg_nttp_names[arg_index]);
+}
+
 inline bool text_mentions_template_param(const Node* node, const char* text) {
     if (!node || !text || !text[0]) return false;
     const char* cur = text;
@@ -651,8 +669,7 @@ inline bool is_dependent_template_struct_specialization(const Node* node) {
         const bool is_value_arg =
             node->template_arg_is_value && node->template_arg_is_value[i];
         if (is_value_arg) {
-            if (node->template_arg_nttp_names &&
-                node_has_template_param_name(node, node->template_arg_nttp_names[i])) {
+            if (node_template_value_arg_mentions_template_param(node, i)) {
                 return true;
             }
             continue;

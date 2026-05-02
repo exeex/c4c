@@ -8,40 +8,41 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 narrowed the remaining alias-template type-parameter consumers in
-`src/frontend/parser/impl/types/base.cpp`. The dependent owner-arg detector and
-the direct alias typedef substitution fallback now select alias parameter slots
-from `TypeSpec::tag_text_id` before consulting rendered `tag` spelling; rendered
-lookup remains only as the no-carrier compatibility path.
+Step 4 narrowed the dependent template-specialization value-argument consumer
+in `src/frontend/parser/ast.hpp`. `is_dependent_template_struct_specialization`
+now treats `Node::template_arg_nttp_text_ids` as authoritative when present and
+only consults rendered `template_arg_nttp_names` as the no-carrier compatibility
+path.
 
 Focused authority coverage in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now drives
-`Alias<int>` through an aliased `TB_TYPEDEF` whose structured TextId names `T`
-while stale rendered `tag` says `RenderedDrift`; resolution still substitutes
-the actual `int` argument.
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp` now drives a
+template value arg whose structured TextId names `N` while stale rendered text
+says `RenderedDrift`, verifies the specialization is still dependent, verifies a
+non-matching TextId blocks rendered-name recovery, and preserves rendered-name
+compatibility when no TextId carrier exists.
 
 ## Suggested Next
 
 Continue Step 4 by reviewing the remaining no-carrier template-argument
 compatibility routes, especially `make_template_instantiation_argument_key` and
 any `$expr:` display-text consumers, for places where parsed expression or
-TextId carriers should become authoritative before rendered strings.
+TextId carriers should become authoritative before rendered strings. The
+specific `is_dependent_template_struct_specialization` value-arg route is now
+narrowed to TextId-first/no-carrier-name fallback.
 
 ## Watchouts
 
 - This packet intentionally did not edit HIR, LIR, BIR, backend, `plan.md`, or
   `ideas/open`.
-- The rendered-name branches in the edited substitution lambdas remain only as
-  no-carrier compatibility paths for older payloads that lack `nttp_text_id` or
-  `tag_text_id`.
-- Remaining `alias_param_ref_text_id` and `owner_alias_param_ref_text_id` calls
-  in `base.cpp` are now either value-name fallbacks after `nttp_text_id` misses
-  or type-name fallbacks after `TypeSpec::tag_text_id` misses.
+- `Node::template_arg_nttp_names` remains a compatibility path in the edited
+  dependency check only when the parallel `template_arg_nttp_text_ids` slot is
+  absent or invalid.
 - `$expr:` text is still produced for compatibility/display and remains a
   no-carrier fallback only where no parsed expression, token, TextId, or other
   structured carrier exists at that consumer.
-- This packet did not alter `make_template_instantiation_argument_key`; its
-  no-carrier `$expr:` compatibility route remains a separate watch item.
+- This packet inspected `make_template_instantiation_argument_key`; its value
+  route already prefers parsed expression and captured-token carriers before the
+  `$expr:` no-carrier fallback, so it was left unchanged.
 - The no-carrier template-argument compatibility routes remain separate Step 4
   watch items. Do not count this packet alone as source-idea closure.
 - Existing untracked `review/step4_*.md` artifacts were left untouched.
