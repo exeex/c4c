@@ -106,13 +106,8 @@ active runbook and source idea are ready for close review.
 
 ## Proof
 
-Step 5 focused pre-proof passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`.
+Supervisor-run Step 6 full-suite validation passed and wrote `test_after.log`:
+`ctest --test-dir build -j --output-on-failure | tee test_after.log`.
 
-Step 5 delegated proof passed and wrote `test_after.log`:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_.*|frontend_parser_lookup_authority_tests|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
-
-No new validation was run for this lifecycle-only Step 5 review and Step 6
-pointer update.
-
-No validation was run for this lifecycle-only Step 6 boundary audit.
+Supervisor-run regression guard against `test_baseline.log` passed with
+before=2987, after=2987, and no new failures.
