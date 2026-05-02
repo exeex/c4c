@@ -8,34 +8,19 @@ Current Step Title: Final Frontend Coverage And Regression Check
 
 ## Just Finished
 
-Step 6 fixed the final `frontend_parser_tests` validation failure:
-`enum constant lookup should reject stale qualified rendered names after a
-structured enum miss`.
+Step 6 completed final frontend coverage and regression validation for the
+active idea 139 slice.
 
-The failure reproduced under the delegated Step 6 proof command. Sema
-`lookup_symbol` already suppressed rendered compatibility re-entry for
-qualified-name segment metadata, but a leading `::` without owner segments was
-not counted as qualified structured metadata. That let
-`structured_enum_const_keys_by_name_` rescue a stale rendered enum spelling
-after the structured enum lookup missed.
-
-`src/frontend/sema/validate.cpp` now treats `reference->is_global_qualified`
-as qualified structured metadata for the rendered-key guard. The fix preserves
-structured-key authority and does not weaken the stale-qualified enum
-expectation.
-
-Review `review/step6_post_global_qualifier_fix_review.md` judged the Step 6
-global/enum lookup route on track, with no new testcase-shaped shortcut,
-unsupported expectation downgrade, or helper-only wrapper route found. The
-review also found this file's current-step metadata stale and noted that final
-acceptance still needs a fresh Step 6 validation proof because the reported
-`test_after.log` is not present.
+Supervisor-provided proof recorded the focused Step 6 command passing
+`887/887`, full `ctest --test-dir build -j --output-on-failure | tee
+test_after.log` passing `2987/2987`, and regression guard comparison from
+`test_baseline.log` to `test_after.log` passing with `2987/2987` before and
+after.
 
 ## Suggested Next
 
-Supervisor should rerun the Step 6 validation command and produce the final
-canonical proof log before deciding whether the active runbook can close or
-needs a remaining metadata-blocker split.
+Supervisor should ask plan-owner to decide closure of idea 139 or whether any
+remaining parked blocker needs to be split into separate lifecycle state.
 
 ## Watchouts
 
@@ -59,9 +44,11 @@ needs a remaining metadata-blocker split.
 
 ## Proof
 
-Step 6 delegated proof to regenerate:
+Focused Step 6 proof passed `887/887`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Current proof state: pending. The previous passing Step 6 proof was rolled into
-`test_before.log`, and `test_after.log` is absent, so final Step 6 acceptance
-requires fresh validation output.
+Full validation proof passed `2987/2987`:
+`ctest --test-dir build -j --output-on-failure | tee test_after.log`.
+
+Regression guard comparing `test_baseline.log` to `test_after.log` passed with
+`2987/2987` before and after. Canonical proof log path: `test_after.log`.
