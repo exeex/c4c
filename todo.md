@@ -9,21 +9,20 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the
-`src/frontend/hir/impl/expr/scalar_control.cpp` deletion-probe blocker. The
-`lower_var_expr` template-constructor temp lookup now uses
-`find_struct_def_for_layout_type` instead of reading realized `TypeSpec::tag`;
-scoped static-member owner setup and implicit-`this` owner setup now keep
-rendered owner names as deletion-safe final-spelling payload while structured
-lookup flows through `record_def`, layout metadata, `tag_text_id`, and
-`resolve_member_lookup_owner_tag`. `scalar_control.cpp` no longer has
-deletion-probe-blocking direct `TypeSpec::tag` reads or writes.
+`src/frontend/hir/impl/expr/operator.cpp` deletion-probe blocker. Operator-call
+owner checks, zero-arg `operator()` static `value` lookup, temporary object
+storage initialization, chained `operator->`, and `operator_bool` conversion now
+route through structured owner metadata, `TextId` member keys, and
+deletion-safe final-spelling compatibility instead of direct `TypeSpec::tag`
+reads. `operator.cpp` no longer has deletion-probe-blocking direct
+`TypeSpec::tag` reads or writes.
 
 ## Suggested Next
 
 Continue Step 4 by taking the next deletion-probe blocker in
-`src/frontend/hir/impl/expr/operator.cpp`, keeping that operator/member-call
-cluster split from any broader HIR or backend carrier work. The refreshed
-deletion probe now reports `operator.cpp` first.
+`src/frontend/hir/impl/stmt/decl.cpp`, keeping the statement/local-declaration
+cluster split from adjacent `range_for.cpp`, `stmt.cpp`, and template-deduction
+surfaces unless the same statement-owner helper must be shared.
 
 ## Watchouts
 
@@ -137,8 +136,10 @@ deletion probe now reports `operator.cpp` first.
   `resolve_struct_method_lookup_owner_tag` so structured owner metadata remains
   authoritative and the global delete fallback remains unchanged.
 - The current deletion probe first reports direct `TypeSpec::tag` reads in
-  `src/frontend/hir/impl/expr/scalar_control.cpp`, followed by
-  `src/frontend/hir/impl/expr/operator.cpp`.
+  `src/frontend/hir/impl/stmt/decl.cpp`, followed in the same failed build by
+  `src/frontend/hir/impl/stmt/range_for.cpp`,
+  `src/frontend/hir/impl/stmt/stmt.cpp`, and
+  `src/frontend/hir/impl/templates/deduction.cpp`.
 - `inspect/printer.cpp` is display/final-spelling only. Its retained
   `typespec_legacy_tag_if_present` helper is a deletion-safe compatibility
   bridge, not a semantic owner lookup; keep semantic ownership on `record_def`
@@ -170,13 +171,24 @@ deletion probe now reports `operator.cpp` first.
 - The rejected `ft.tag` layout repair route was replaced with a structured
   AST-node-to-HIR-owner carrier. Do not reintroduce rendered field type tag
   lookup for layout ownership.
+- `operator.cpp` now keeps legacy rendered-name comparison only behind a
+  deletion-safe `typespec_legacy_tag_if_present` compatibility bridge. Keep
+  `record_def`, `tag_text_id`, template origin/args, and resolved owner tags as
+  the semantic authority for operator/member-call/bool-conversion lookup.
+- Zero-arg `operator()` static `value` lookup now uses a `TextId` member lookup
+  key when available and falls back through the resolved owner tag, not
+  `obj_ts.tag`.
+- The operator-call temporary object initializer now uses
+  `generic_type_compatible` plus nominal carriers before no-metadata legacy
+  spelling comparison; do not restore direct rendered tag equality.
 - Non-canonical deletion probe artifacts for recent packets:
   `/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log`,
   `/tmp/c4c_typespec_tag_deletion_probe_step4_object.log`, and
   `/tmp/c4c_typespec_tag_deletion_probe_step4_object_next.log`.
   This packet also left
   `/tmp/c4c_typespec_tag_deletion_probe_step4_object_new_expr.log` and
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_delete_expr.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_delete_expr.log`. This packet
+  also left `/tmp/c4c_typespec_tag_deletion_probe_step4_operator.log`.
 
 ## Proof
 
@@ -192,11 +204,13 @@ Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_scalar_control.log 2>&1`, and
-restored the temporary edit. The probe moved past
-`src/frontend/hir/impl/expr/scalar_control.cpp`. The first residual errors are
-direct `TypeSpec::tag` reads in `src/frontend/hir/impl/expr/operator.cpp`
-(`try_lower_operator_call`, `lower_member_expr`, and `maybe_bool_convert`).
+/tmp/c4c_typespec_tag_deletion_probe_step4_operator.log 2>&1`, and restored
+the temporary edit. The probe moved past
+`src/frontend/hir/impl/expr/operator.cpp`. The first residual errors are direct
+`TypeSpec::tag` reads in `src/frontend/hir/impl/stmt/decl.cpp`, with adjacent
+same-build residuals in `src/frontend/hir/impl/stmt/range_for.cpp`,
+`src/frontend/hir/impl/stmt/stmt.cpp`, and
+`src/frontend/hir/impl/templates/deduction.cpp`.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.

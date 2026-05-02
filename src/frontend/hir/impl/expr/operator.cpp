@@ -4,9 +4,47 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace c4c::hir {
+
+namespace {
+
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, std::string_view{}) {
+  return ts.tag ? std::string_view(ts.tag) : std::string_view{};
+}
+
+std::string_view typespec_legacy_tag_if_present(const TypeSpec&, long) {
+  return {};
+}
+
+bool typespec_has_operator_nominal_carrier(const TypeSpec& ts) {
+  return ts.record_def || ts.tag_text_id != kInvalidText ||
+         (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) ||
+         (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0);
+}
+
+bool same_operator_object_storage_type(const TypeSpec& init_ts,
+                                       const TypeSpec& obj_ts) {
+  if (!generic_type_compatible(init_ts, obj_ts)) return false;
+  if (init_ts.base != TB_STRUCT && init_ts.base != TB_UNION &&
+      init_ts.base != TB_ENUM) {
+    return true;
+  }
+  if (typespec_has_operator_nominal_carrier(init_ts) ||
+      typespec_has_operator_nominal_carrier(obj_ts)) {
+    return true;
+  }
+  const std::string_view init_tag = typespec_legacy_tag_if_present(init_ts, 0);
+  const std::string_view obj_tag = typespec_legacy_tag_if_present(obj_ts, 0);
+  if (init_tag.empty() && obj_tag.empty()) return true;
+  return init_tag == obj_tag;
+}
+
+}  // namespace
 
 std::optional<ExprId> Lowerer::try_lower_rvalue_ref_storage_addr(
     FunctionCtx* ctx,
@@ -113,7 +151,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
                                         const std::vector<const Node*>& arg_nodes,
                                         const std::vector<ExprId>& extra_args) {
   TypeSpec obj_ts = infer_generic_ctrl_type(ctx, obj_node);
-  if (obj_ts.ptr_level != 0 || obj_ts.base != TB_STRUCT || !obj_ts.tag) {
+  if (obj_ts.ptr_level != 0 || obj_ts.base != TB_STRUCT) {
     return ExprId::invalid();
   }
   const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
@@ -126,9 +164,22 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   if (owner_tag.empty()) return ExprId::invalid();
 
   if (std::strcmp(op_method_name, "operator_call") == 0 && arg_nodes.empty()) {
-    if (auto value = find_struct_static_member_const_value(obj_ts.tag, "value")) {
+    const std::string value_member = "value";
+    const TextId value_text_id = make_text_id(
+        value_member, module_ ? module_->link_name_texts.get() : nullptr);
+    const auto value_key =
+        make_struct_member_lookup_key(obj_ts, value_text_id);
+    const auto value =
+        value_key ? find_struct_static_member_const_value(
+                        *value_key, &owner_tag, &value_member)
+                  : find_struct_static_member_const_value(owner_tag, value_member);
+    if (value) {
       TypeSpec value_ts{};
-      if (const Node* decl = find_struct_static_member_decl(obj_ts.tag, "value")) {
+      const Node* decl =
+          value_key ? find_struct_static_member_decl(
+                          *value_key, &owner_tag, &value_member)
+                    : find_struct_static_member_decl(owner_tag, value_member);
+      if (decl) {
         value_ts = decl->type;
       } else {
         value_ts.base = TB_BOOL;
@@ -214,8 +265,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
     tmp.name = tmp_name;
     tmp.type = qtype_from(obj_ts, ValueCategory::RValue);
     const TypeSpec init_ts = module_->expr_pool[obj_id.value].type.spec;
-    if (init_ts.base == obj_ts.base && init_ts.ptr_level == obj_ts.ptr_level &&
-        init_ts.tag == obj_ts.tag) {
+    if (same_operator_object_storage_type(init_ts, obj_ts)) {
       tmp.init = obj_id;
     }
     const LocalId tmp_lid = tmp.id;
@@ -331,7 +381,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         if (!res_expr) break;
         TypeSpec rts = res_expr->type.spec;
         if (rts.ptr_level > 0) break;
-        if (rts.base != TB_STRUCT || !rts.tag) break;
+        if (rts.base != TB_STRUCT) break;
         const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
         const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
         const std::string* current_struct_tag =
@@ -467,7 +517,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
 ExprId Lowerer::maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n) {
   if (!expr.valid() || !n) return expr;
   TypeSpec ts = infer_generic_ctrl_type(ctx, n);
-  if (ts.ptr_level != 0 || ts.base != TB_STRUCT || !ts.tag) return expr;
+  if (ts.ptr_level != 0 || ts.base != TB_STRUCT) return expr;
   const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
   const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
   const std::string* current_struct_tag =
