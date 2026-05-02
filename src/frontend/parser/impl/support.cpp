@@ -980,6 +980,56 @@ TypeSpec resolve_typedef_chain(TypeSpec ts,
     return ts;
 }
 
+static bool typespec_has_complete_qualifier_text_ids(const TypeSpec& ts) {
+    if (ts.n_qualifier_segments <= 0) return false;
+    if (!ts.qualifier_text_ids) return false;
+    for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        if (ts.qualifier_text_ids[i] == kInvalidText) return false;
+    }
+    return true;
+}
+
+static bool typespec_has_complete_type_name_text_identity(const TypeSpec& ts) {
+    if (ts.namespace_context_id < 0 || ts.tag_text_id == kInvalidText) {
+        return false;
+    }
+    if (ts.n_qualifier_segments < 0) return false;
+    if (ts.n_qualifier_segments == 0) return true;
+    return typespec_has_complete_qualifier_text_ids(ts);
+}
+
+static bool same_typespec_type_name_text_identity(const TypeSpec& a,
+                                                  const TypeSpec& b) {
+    if (a.namespace_context_id != b.namespace_context_id ||
+        a.tag_text_id != b.tag_text_id ||
+        a.is_global_qualified != b.is_global_qualified ||
+        a.n_qualifier_segments != b.n_qualifier_segments) {
+        return false;
+    }
+    for (int i = 0; i < a.n_qualifier_segments; ++i) {
+        if (a.qualifier_text_ids[i] != b.qualifier_text_ids[i]) return false;
+    }
+    return true;
+}
+
+static bool same_nominal_typespec_identity(const TypeSpec& a,
+                                           const TypeSpec& b) {
+    if (a.record_def && b.record_def) return a.record_def == b.record_def;
+
+    const bool a_has_text_identity =
+        typespec_has_complete_type_name_text_identity(a);
+    const bool b_has_text_identity =
+        typespec_has_complete_type_name_text_identity(b);
+    if (a_has_text_identity || b_has_text_identity) {
+        return a_has_text_identity && b_has_text_identity &&
+               same_typespec_type_name_text_identity(a, b);
+    }
+
+    if (a.record_def || b.record_def) return false;
+
+    return a.tag && b.tag && strcmp(a.tag, b.tag) == 0;
+}
+
 // Returns true if type a and type b are compatible per GCC __builtin_types_compatible_p rules.
 bool types_compatible_p(TypeSpec a, TypeSpec b,
                                 const std::unordered_map<std::string, TypeSpec>& tmap) {
@@ -1004,7 +1054,7 @@ bool types_compatible_p(TypeSpec a, TypeSpec b,
     }
     // Struct/union/enum: same tag required
     if (a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM) {
-        if (!a.tag || !b.tag || strcmp(a.tag, b.tag) != 0) return false;
+        if (!same_nominal_typespec_identity(a, b)) return false;
     }
     return true;
 }

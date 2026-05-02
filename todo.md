@@ -9,29 +9,49 @@ Current Step Title: Migrate Parser-Owned Semantic Producers
 ## Just Finished
 
 Step 2 - Migrate Parser-Owned Semantic Producers migrated
-`src/frontend/parser/impl/core.cpp::Parser::resolves_to_record_ctor_type`.
+`src/frontend/parser/impl/support.cpp::types_compatible_p`.
 
-Record-constructor classification now checks structured metadata before
-rendered `TypeSpec::tag`: direct `record_def`, structured typedef resolution
-from `tag_text_id`, template struct primary lookup by TextId/context, and
-record definitions matched by parser-owned record TextId metadata. Rendered tag
-fallback remains explicit compatibility only when the incoming `TypeSpec` has
-no `tag_text_id` carrier.
+The support-level type compatibility route now mirrors the structured nominal
+identity policy used by `Parser::are_types_compatible`: shared `record_def`
+identity first, then namespace context plus `tag_text_id`, global
+qualification, and qualifier TextIds when complete metadata is available.
+Rendered tag comparison remains explicit no-metadata compatibility only when
+neither side carries structured nominal identity.
 
 Added focused stale-rendered-spelling coverage in
-`frontend_parser_lookup_authority_tests`: record-constructor classification
-uses structured typedef/record metadata before a stale rendered tag, rejects
-rendered fallback after a structured TextId miss, preserves no-metadata
-rendered fallback, and accepts direct `record_def` metadata even with different
-rendered spelling.
+`frontend_parser_lookup_authority_tests`: `types_compatible_p` accepts shared
+`record_def` or matching enum `tag_text_id`/namespace metadata despite stale
+rendered tags, rejects mismatched structured record/TextId identity even when
+rendered tags match, rejects one-sided structured metadata fallback, and keeps
+rendered-only compatibility working.
+
+Residual parser `TypeSpec::tag` audit classification:
+
+- `support.cpp::resolve_typedef_chain` remains rendered-key compatibility
+  because its only input binding map is `std::unordered_map<std::string,
+  TypeSpec>`; migrating it needs a structured typedef binding map at that API
+  boundary.
+- `support.cpp` layout helpers (`struct_sizeof`, `field_align`,
+  `compute_offsetof`, `eval_const_int`) already flow through
+  `resolve_record_type_spec`, which prefers `record_def`; rendered
+  `struct_tag_def_map` is layout compatibility storage for tag-only callers.
+- `declarations.cpp` duplicated `is_incomplete_object_type` lambdas already
+  call `resolve_record_type_spec`, so `record_def` wins for complete record
+  metadata. The remaining `ts.tag` self-reference check is a display/current
+  record spelling compatibility route; proving stale rendered drift there would
+  require a broader parser fixture or extracting a helper, so leave it for a
+  later producer-metadata/helper packet.
+- Parser generated names, anonymous record tags, enum diagnostic text,
+  mangled template instantiation tags, and template argument debug rendering
+  remain display/final-spelling/debug payloads, not Step 2 semantic lookup
+  targets.
 
 ## Suggested Next
 
-Continue Step 2 by auditing parser struct/enum completeness helpers or another
-parser-owned semantic `TypeSpec::tag` consumer with existing `record_def` or
-`tag_text_id` metadata. Prefer structured record/visible-name metadata before
-rendered tag fallback, with stale-rendered-spelling coverage and the same
-focused proof subset.
+Continue Step 2 with a parser producer-metadata packet if the supervisor wants
+to extract the duplicated incomplete-object helper or add a structured typedef
+map to `support.cpp::resolve_typedef_chain`; otherwise consider Step 2 ready
+for plan-owner review before moving to HIR consumer migration.
 
 ## Watchouts
 
@@ -49,8 +69,8 @@ focused proof subset.
 
 ## Proof
 
-Step 2 delegated proof passed for the parser
-`resolves_to_record_ctor_type` packet and wrote `test_after.log`:
+Step 2 delegated proof passed for the parser support `types_compatible_p`
+packet and wrote `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_hir_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
 `git diff --check` passed.
