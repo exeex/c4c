@@ -8,32 +8,27 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 removed the rendered `tpl_struct_origin` reconstruction from the
-deferred member-typedef base handoff. `TypeSpec` now carries a structured
-`tpl_struct_origin_key`, parser template-instantiation producers fill it when
-they already have the primary `QualifiedNameKey`, and
-`resolve_deferred_member_base()` consumes that key instead of parsing
-`resolved_member.tpl_struct_origin` through `qualified_name_from_text(...)`.
+Step 4 structurally bypassed the rendered `$expr:` template-argument fallback
+for the normal base-instantiation handoff when a base has both a resolved
+template primary and structured `TemplateArgRef` metadata. After the structured
+`TemplateArgRef` to `ParsedTemplateArg` path succeeds or declines, the handoff
+now restores deferred-member lookup state and continues instead of rendering
+`tpl_struct_args`, splitting comma text, substituting names inside `$expr:`
+debug spelling, re-lexing that spelling, or rebuilding arguments through
+`std::stoll`/`decode_type_ref_text`.
 
-The same base-instantiation handoff now finds the pending base primary from
-`tpl_struct_origin_key` as well, while retaining the origin spelling only for
-instantiation naming/display. Focused lookup-authority coverage now corrupts
-the rendered dependent-base `tpl_struct_origin` before instantiation and still
-requires the structured key path to attach the concrete inherited `record_def`
-before Sema.
-
-The follow-up tightening updated Sema `TypeSpec` equivalence so template-origin
-identity compares `tpl_struct_origin_key` whenever either side carries a valid
-key, falling back to `tpl_struct_origin` spelling only when both keys are
-absent. Focused coverage now proves equal structured keys ignore stale rendered
-origin spelling, different structured keys reject, one-sided keys reject, and
-the rendered fallback remains limited to the no-key compatibility case.
+Focused lookup-authority coverage now corrupts the producer-side dependent-base
+template-argument `debug_text` to a syntactically valid but wrong `$expr:0`
+before instantiation. The test still requires concrete inherited `record_def`
+attachment before Sema, proving stale rendered expression/debug text cannot
+drive the structured producer.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing the remaining parser/Sema compatibility notes for
-`$expr:` carriers and choose the next removable rendered/text authority route
-that can be proven without HIR edits.
+Continue Step 4 by reviewing the remaining rendered template-argument
+compatibility fallbacks that only run when structured metadata is absent, and
+either remove the next parser/Sema-owned route or record the exact missing
+carrier that prevents removal.
 
 ## Watchouts
 
@@ -60,6 +55,10 @@ that can be proven without HIR edits.
 - Retained `$expr:` carriers and template default-expression re-lex paths are
   compatibility fallbacks, not completed structured cleanup. Successful Step 4
   routes should continue to use parser/Sema structural metadata where present.
+- The comma-split/rendered `$expr:` fallback still exists for no-carrier
+  compatibility cases. It is now bypassed for resolved-base-primary plus
+  structured-argument handoff, so do not restore it as a recovery path for
+  stale `TemplateArgRef::debug_text`.
 - Do not reintroduce rendered qualified-text parsing, `$expr:` debug-text
   semantic authority, string/string_view semantic lookup parameters, fallback
   spelling, expectation downgrades, or named-test shortcuts.

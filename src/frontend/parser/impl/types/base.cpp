@@ -4347,6 +4347,15 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                         }
                                     }
+                                    if (base_primary &&
+                                        inst->base_types[bi]
+                                            .tpl_struct_args.data &&
+                                        inst->base_types[bi]
+                                                .tpl_struct_args.size >
+                                            0) {
+                                        restore_deferred_member_lookup();
+                                        continue;
+                                    }
                                     std::string arg_refs_str =
                                         template_arg_refs_text(inst->base_types[bi]);
                                     // Substitute template param names in arg_refs

@@ -2159,7 +2159,7 @@ void test_dependent_member_typedef_base_carries_structured_record_def() {
         primary->base_types[0].tpl_struct_args.size > 0) {
       for (int ai = 0; ai < primary->base_types[0].tpl_struct_args.size; ++ai) {
         primary->base_types[0].tpl_struct_args.data[ai].debug_text =
-            arena.strdup("$expr:StaleProducerDebugText");
+            arena.strdup("$expr:0");
       }
     }
 
