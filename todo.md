@@ -10,23 +10,27 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 Step 4 - Probe Field Removal And Split Boundaries migrated
 `src/frontend/hir/impl/templates/templates.cpp`
-`eval_struct_static_member_value_hir` away from direct `TypeSpec::tag` reads in
-the base static-member lookup path around the former lines 269-270. Base lookup
-now goes through `resolve_static_member_base_def_hir`, which prefers
-`record_def`, then matches `tag_text_id`/namespace identity against available
-struct definition nodes, and keeps rendered tag lookup only behind the existing
-explicit SFINAE no-metadata compatibility fallback.
-Added focused CTest coverage in
-`tests/frontend/cpp_hir_static_member_base_metadata_test.cpp` proving inherited
-static-member lookup chooses `record_def` and `tag_text_id` base metadata over a
-stale rendered `TypeSpec::tag` that points at a conflicting base value.
+`hir_match_type_pattern` and `hir_specialization_match_score` away from direct
+`TypeSpec::tag` reads around the former lines 388-413. Type-pattern matching now
+identifies type template parameters through parser-owned carriers
+(`template_param_text_id`, `tag_text_id`, and validated template-param index
+metadata) and then stores bindings under the owning parameter name, with a
+narrow SFINAE-style rendered-tag compatibility fallback only when no structured
+carrier is present. Partial specialization scoring uses the same structured
+parameter-name lookup instead of classifying template parameters by rendered
+`TypeSpec::tag`. Added focused CTest coverage in
+`tests/frontend/cpp_hir_template_pattern_match_metadata_test.cpp` proving
+structured parameter metadata beats stale rendered `TypeSpec::tag` text,
+mismatched structured metadata does not recover through stale tag fallback, and
+tag-only no-metadata compatibility remains available.
 
 ## Suggested Next
 
 Continue Step 4 with the next deletion-probe blocker in
-`src/frontend/hir/impl/templates/templates.cpp`, starting with type-pattern and
-specialization matching direct `TypeSpec::tag` reads around the current
-deletion-probe errors at lines 388-413. Keep the parallel parser/core and
+`src/frontend/hir/impl/templates/templates.cpp`, starting with
+`canonical_template_struct_primary` direct `TypeSpec::tag` reads around current
+deletion-probe errors at line 787, then `realize_template_struct` if the
+supervisor keeps those together. Keep `type_resolution.cpp`, parser/core, and
 parser type-helper residuals split unless the supervisor routes them together.
 
 ## Watchouts
@@ -58,21 +62,21 @@ parser type-helper residuals split unless the supervisor routes them together.
   `append_instantiated_template_struct_bases` in
   `src/frontend/hir/impl/templates/struct_instantiation.cpp`, and the targeted
   `encode_template_type_arg_ref_hir` direct reads, and the targeted
-  `eval_struct_static_member_value_hir` direct reads in
+  `eval_struct_static_member_value_hir` direct reads and the targeted
+  `hir_match_type_pattern`/`hir_specialization_match_score` direct reads in
   `src/frontend/hir/impl/templates/templates.cpp`. First residual errors now
   remain in `src/frontend/hir/impl/templates/templates.cpp` at
-  `hir_match_type_pattern`, with same-build residuals also reported in
-  `hir_specialization_match_score`, `canonical_template_struct_primary`,
-  `realize_template_struct`, parser/core, and parser type helpers.
-- `eval_struct_static_member_value_hir` is now semantically cleared for direct
-  base static-member lookup. It can resolve structured base carriers without
-  rendered `TypeSpec::tag`, but callers still pass the same rendered
-  `struct_defs` map while broader owner-index migration remains out of this
-  packet.
-- `cpp_hir_static_member_base_structured_metadata` is a same-feature
-  structured-vs-rendered disagreement test: the stale rendered tag remains
-  registered and would produce a different inherited static value if legacy
-  lookup won.
+  `canonical_template_struct_primary`, with same-build residuals also reported
+  in `realize_template_struct`, `type_resolution.cpp`, parser/core, and parser
+  type helpers.
+- `hir_match_type_pattern` and `hir_specialization_match_score` are now
+  semantically cleared for type template-parameter matching/scoring. The HIR
+  binding map still uses the canonical parameter-name string as the binding
+  key after resolving the parameter by structured metadata; broader binding-map
+  key migration is outside this packet.
+- The explicit tag-only fallback in `hir_type_template_param_index` is gated
+  behind a no-structured-carrier check and a field-detection helper so the
+  Step 4 deletion probe still classifies later residuals first.
 - Non-canonical deletion probe artifacts for recent packets include
   `/tmp/c4c_typespec_tag_deletion_probe_step4_call_expr.log`,
   `/tmp/c4c_typespec_tag_deletion_probe_step4_object.log`,
@@ -103,6 +107,8 @@ parser type-helper residuals split unless the supervisor routes them together.
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_encode.log`.
 - This packet added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_static_member.log`.
+- This packet added
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_templates_pattern_match.log`.
 
 ## Proof
 
@@ -110,29 +116,24 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 74 of 74 delegated
-tests before the focused regression test was added. After adding
-`cpp_hir_template_type_arg_encoding_structured_metadata`, the same delegated
-proof command exits 0 with CTest passing 75 of 75 delegated tests. This packet
-reran the same delegated proof command after the static-member base lookup
-migration, and it exits 0 with CTest passing 75 of 75 delegated tests. The
-revision added `cpp_hir_static_member_base_structured_metadata` and reran the
-same delegated proof command into `test_after.log`; it exits 0 with CTest
-passing 76 of 76 delegated tests.
+Result: command exited 0 after the pattern/specialization matching migration
+revision. The build passed, and CTest passed 77 of 77 delegated tests,
+including new
+`cpp_hir_template_pattern_match_structured_metadata`. `test_after.log` is the
+canonical proof log.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_templates_static_member.log 2>&1`,
+/tmp/c4c_typespec_tag_deletion_probe_step4_templates_pattern_match.log 2>&1`,
 and restored the temporary edit. The probe moved past the targeted
-`eval_struct_static_member_value_hir` direct `TypeSpec::tag` reads. The first
-residual blocker is now
-`src/frontend/hir/impl/templates/templates.cpp:388` and following direct
-`TypeSpec::tag` use in `hir_match_type_pattern`, with same-build residuals also
-reported in `hir_specialization_match_score`,
-`canonical_template_struct_primary`, `realize_template_struct`, parser/core,
-and parser type helpers.
+`hir_match_type_pattern` and `hir_specialization_match_score` direct
+`TypeSpec::tag` reads. The first residual blocker is now
+`src/frontend/hir/impl/templates/templates.cpp:787` in
+`canonical_template_struct_primary`, with same-build residuals also reported in
+`realize_template_struct`, `type_resolution.cpp`, parser/core, and parser type
+helpers.
 
 Result: command exited 1 as expected for the controlled deletion probe, and the
 normal build proof above is green after reverting the temporary edit.

@@ -4,12 +4,30 @@
 #include <climits>
 #include <cstring>
 #include <functional>
+#include <type_traits>
+#include <utility>
 
 namespace c4c::hir {
 
 std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
 
 namespace {
+
+template <typename T, typename = void>
+struct HirHasLegacyTypespecTag : std::false_type {};
+
+template <typename T>
+struct HirHasLegacyTypespecTag<T, std::void_t<decltype(std::declval<const T&>().tag)>>
+    : std::true_type {};
+
+template <typename T>
+const char* hir_legacy_typespec_tag_compat(const T& ts) {
+  if constexpr (HirHasLegacyTypespecTag<T>::value) {
+    return ts.tag;
+  } else {
+    return nullptr;
+  }
+}
 
 std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
   if (arg.kind == TemplateArgKind::Value && arg.value == 0 &&
@@ -345,15 +363,74 @@ bool Lowerer::template_struct_has_pack_params(const Node* primary_tpl) {
 
 namespace {
 
-bool hir_is_type_template_param(const Node* tpl_def, const char* name) {
-  if (!tpl_def || !name) return false;
-  for (int i = 0; i < tpl_def->n_template_params; ++i) {
-    if (!tpl_def->template_param_is_nttp[i] &&
-        tpl_def->template_param_names[i] &&
-        std::strcmp(tpl_def->template_param_names[i], name) == 0)
-      return true;
+int hir_type_template_param_index(const Node* tpl_def, const TypeSpec& ts) {
+  if (!tpl_def || !tpl_def->template_param_names) return -1;
+
+  const bool has_structured_param_carrier =
+      ts.template_param_text_id != kInvalidText ||
+      ts.tag_text_id != kInvalidText ||
+      ts.template_param_index >= 0 ||
+      ts.template_param_owner_text_id != kInvalidText ||
+      ts.template_param_owner_namespace_context_id >= 0;
+
+  auto is_type_param_index = [&](int index) {
+    return index >= 0 && index < tpl_def->n_template_params &&
+           (!tpl_def->template_param_is_nttp ||
+            !tpl_def->template_param_is_nttp[index]) &&
+           tpl_def->template_param_names[index];
+  };
+
+  auto matches_text_id = [&](TextId text_id) {
+    if (text_id == kInvalidText || !tpl_def->template_param_name_text_ids) {
+      return -1;
+    }
+    for (int i = 0; i < tpl_def->n_template_params; ++i) {
+      if (is_type_param_index(i) &&
+          tpl_def->template_param_name_text_ids[i] == text_id) {
+        return i;
+      }
+    }
+    return -1;
+  };
+
+  if (int index = matches_text_id(ts.template_param_text_id); index >= 0) {
+    return index;
   }
-  return false;
+  if (int index = matches_text_id(ts.tag_text_id); index >= 0) return index;
+
+  if (ts.template_param_index >= 0) {
+    if (!is_type_param_index(ts.template_param_index)) return -1;
+    if (ts.template_param_owner_text_id != kInvalidText &&
+        tpl_def->unqualified_text_id != kInvalidText &&
+        ts.template_param_owner_text_id != tpl_def->unqualified_text_id) {
+      return -1;
+    }
+    if (ts.template_param_owner_namespace_context_id >= 0 &&
+        tpl_def->namespace_context_id >= 0 &&
+        ts.template_param_owner_namespace_context_id !=
+            tpl_def->namespace_context_id) {
+      return -1;
+    }
+    return ts.template_param_index;
+  }
+
+  if (has_structured_param_carrier) return -1;
+
+  const char* legacy_tag = hir_legacy_typespec_tag_compat(ts);
+  if (!legacy_tag || !legacy_tag[0]) return -1;
+  for (int i = 0; i < tpl_def->n_template_params; ++i) {
+    if (is_type_param_index(i) &&
+        std::strcmp(tpl_def->template_param_names[i], legacy_tag) == 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+const char* hir_type_template_param_name(const Node* tpl_def,
+                                         const TypeSpec& ts) {
+  const int index = hir_type_template_param_index(tpl_def, ts);
+  return index >= 0 ? tpl_def->template_param_names[index] : nullptr;
 }
 
 TypeSpec hir_strip_pattern_qualifiers(TypeSpec ts, const TypeSpec& pattern) {
@@ -385,12 +462,13 @@ bool hir_match_type_pattern(
   if (pattern.is_rvalue_ref && !actual.is_rvalue_ref) return false;
   if (pattern.array_rank > actual.array_rank) return false;
 
-  if (pattern.base == TB_TYPEDEF && pattern.tag &&
-      hir_is_type_template_param(tpl_def, pattern.tag)) {
+  if (pattern.base == TB_TYPEDEF) {
+    const char* param_name = hir_type_template_param_name(tpl_def, pattern);
+    if (!param_name) return types_compatible_p(pattern, actual, kEmptyTypedefs);
     TypeSpec bound = hir_strip_pattern_qualifiers(actual, pattern);
-    auto it = type_bindings->find(pattern.tag);
+    auto it = type_bindings->find(param_name);
     if (it == type_bindings->end()) {
-      (*type_bindings)[pattern.tag] = bound;
+      (*type_bindings)[param_name] = bound;
       return true;
     }
     return types_compatible_p(it->second, bound, kEmptyTypedefs);
@@ -410,7 +488,7 @@ int hir_specialization_match_score(const Node* spec) {
     }
     const TypeSpec& ts = spec->template_arg_types[i];
     if (ts.base != TB_TYPEDEF || !spec->template_param_names) score += 8;
-    else if (!hir_is_type_template_param(spec, ts.tag)) score += 4;
+    else if (!hir_type_template_param_name(spec, ts)) score += 4;
     if (ts.is_const || ts.is_volatile || ts.ptr_level > 0 ||
         ts.is_lvalue_ref || ts.is_rvalue_ref || ts.array_rank > 0)
       score += 4;
