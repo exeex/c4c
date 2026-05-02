@@ -2364,13 +2364,18 @@ TypeSpec Parser::parse_base_type() {
                                             if (!out_arg) return false;
                                             *out_arg = carrier_arg;
                                             if (carrier_arg.is_value) {
-                                                if (!carrier_arg.nttp_name ||
-                                                    !carrier_arg.nttp_name[0]) {
-                                                    return true;
+                                                TextId nttp_text_id =
+                                                    carrier_arg.nttp_text_id;
+                                                if (nttp_text_id ==
+                                                    kInvalidText) {
+                                                    if (!carrier_arg.nttp_name ||
+                                                        !carrier_arg.nttp_name[0]) {
+                                                        return true;
+                                                    }
+                                                    nttp_text_id =
+                                                        alias_param_ref_text_id(
+                                                            carrier_arg.nttp_name);
                                                 }
-                                                const TextId nttp_text_id =
-                                                    alias_param_ref_text_id(
-                                                        carrier_arg.nttp_name);
                                                 const size_t pi =
                                                     alias_param_index_for_text_id(
                                                         nttp_text_id);
@@ -2391,9 +2396,13 @@ TypeSpec Parser::parse_base_type() {
                                                 !carrier_type.tag[0]) {
                                                 return true;
                                             }
-                                            const TextId type_text_id =
-                                                alias_param_ref_text_id(
-                                                    carrier_type.tag);
+                                            TextId type_text_id =
+                                                carrier_type.tag_text_id;
+                                            if (type_text_id == kInvalidText) {
+                                                type_text_id =
+                                                    alias_param_ref_text_id(
+                                                        carrier_type.tag);
+                                            }
                                             const size_t pi =
                                                 alias_param_index_for_text_id(
                                                     type_text_id);
@@ -2459,8 +2468,12 @@ TypeSpec Parser::parse_base_type() {
                                         TypeSpec& ref_type = ref->type;
                                         if (ref_type.base == TB_TYPEDEF &&
                                             ref_type.tag && ref_type.tag[0]) {
-                                            const TextId type_text_id =
-                                                alias_param_ref_text_id(ref_type.tag);
+                                            TextId type_text_id =
+                                                ref_type.tag_text_id;
+                                            if (type_text_id == kInvalidText) {
+                                                type_text_id =
+                                                    alias_param_ref_text_id(ref_type.tag);
+                                            }
                                             const size_t pi =
                                                 alias_param_index_for_text_id(
                                                     type_text_id);
@@ -2865,16 +2878,22 @@ TypeSpec Parser::parse_base_type() {
                                                     if (!out_arg) return false;
                                                     *out_arg = carrier_arg;
                                                     if (carrier_arg.is_value) {
-                                                        if (!carrier_arg
-                                                                 .nttp_name ||
-                                                            !carrier_arg
-                                                                 .nttp_name[0]) {
-                                                            return true;
+                                                        TextId nttp_text_id =
+                                                            carrier_arg
+                                                                .nttp_text_id;
+                                                        if (nttp_text_id ==
+                                                            kInvalidText) {
+                                                            if (!carrier_arg
+                                                                     .nttp_name ||
+                                                                !carrier_arg
+                                                                     .nttp_name[0]) {
+                                                                return true;
+                                                            }
+                                                            nttp_text_id =
+                                                                owner_alias_param_ref_text_id(
+                                                                    carrier_arg
+                                                                        .nttp_name);
                                                         }
-                                                        const TextId nttp_text_id =
-                                                            owner_alias_param_ref_text_id(
-                                                                carrier_arg
-                                                                    .nttp_name);
                                                         const size_t pi =
                                                             owner_alias_param_index_for_text_id(
                                                                 nttp_text_id);
@@ -2900,9 +2919,14 @@ TypeSpec Parser::parse_base_type() {
                                                         !carrier_type.tag[0]) {
                                                         return true;
                                                     }
-                                                    const TextId type_text_id =
-                                                        owner_alias_param_ref_text_id(
-                                                            carrier_type.tag);
+                                                    TextId type_text_id =
+                                                        carrier_type.tag_text_id;
+                                                    if (type_text_id ==
+                                                        kInvalidText) {
+                                                        type_text_id =
+                                                            owner_alias_param_ref_text_id(
+                                                                carrier_type.tag);
+                                                    }
                                                     const size_t pi =
                                                         owner_alias_param_index_for_text_id(
                                                             type_text_id);

@@ -3265,6 +3265,114 @@ void test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name() 
                   detail);
 }
 
+void test_alias_template_member_typedef_arg_uses_text_id_over_stale_name() {
+  const char* source =
+      "template <int V>\n"
+      "struct Owner {\n"
+      "  using type = int;\n"
+      "};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const c4c::TextId owner_text = lexer.text_table().intern("Owner");
+  const c4c::TextId type_text = lexer.text_table().intern("type");
+  const c4c::TextId n_text = lexer.text_table().intern("N");
+  const c4c::TextId m_text = lexer.text_table().intern("M");
+  c4c::Node* owner_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), owner_text);
+  expect_true(owner_primary != nullptr,
+              "Owner primary should be registered for alias member typedef "
+              "TextId substitution test");
+
+  c4c::TypeSpec owner_3_type{};
+  owner_3_type.array_size = -1;
+  owner_3_type.inner_rank = -1;
+  owner_3_type.base = c4c::TB_STRUCT;
+  owner_3_type.tag = arena.strdup("Owner_3_type");
+  c4c::Node* owner_3_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner_3_record->name = arena.strdup("Owner_3_type");
+  owner_3_record->unqualified_name = arena.strdup("Owner_3_type");
+  owner_3_record->unqualified_text_id =
+      lexer.text_table().intern("Owner_3_type");
+  owner_3_record->namespace_context_id = parser.current_namespace_context_id();
+  owner_3_type.record_def = owner_3_record;
+
+  c4c::ParserTemplateState::TemplateInstantiationKey owner_3_key;
+  owner_3_key.template_key = parser.alias_template_key_in_context(
+      owner_primary->namespace_context_id, owner_text);
+  c4c::ParserTemplateState::TemplateInstantiationKey::Argument owner_3_arg;
+  owner_3_arg.is_value = true;
+  owner_3_arg.canonical_key = "3";
+  owner_3_key.arguments.push_back(owner_3_arg);
+  parser.register_template_instantiation_member_typedef_binding(
+      owner_3_key, type_text, owner_3_type);
+
+  c4c::TypeSpec alias_typedef{};
+  alias_typedef.array_size = -1;
+  alias_typedef.inner_rank = -1;
+  alias_typedef.base = c4c::TB_TYPEDEF;
+  alias_typedef.tag = arena.strdup("Alias");
+  alias_typedef.tag_text_id = alias_text;
+  parser.register_typedef_binding(alias_text, alias_typedef, true);
+
+  c4c::ParserAliasTemplateInfo info{};
+  info.param_names.push_back(arena.strdup("N"));
+  info.param_name_text_ids.push_back(n_text);
+  info.param_is_nttp.push_back(true);
+  info.param_is_pack.push_back(false);
+  info.param_has_default.push_back(false);
+  info.param_names.push_back(arena.strdup("M"));
+  info.param_name_text_ids.push_back(m_text);
+  info.param_is_nttp.push_back(true);
+  info.param_is_pack.push_back(false);
+  info.param_has_default.push_back(false);
+  info.member_typedef.valid = true;
+  info.member_typedef.owner_key = parser.alias_template_key_in_context(
+      owner_primary->namespace_context_id, owner_text);
+  c4c::Parser::TemplateArgParseResult carrier_arg{};
+  carrier_arg.is_value = true;
+  carrier_arg.nttp_text_id = n_text;
+  carrier_arg.nttp_name = arena.strdup("M");
+  info.member_typedef.owner_args.push_back(carrier_arg);
+  info.member_typedef.member_text_id = type_text;
+  parser.register_alias_template_info_for_testing(
+      parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                           alias_text),
+      info);
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "3"),
+      parser.make_injected_token(seed, c4c::TokenKind::Comma, ","),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "9"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  std::string detail = " tag=";
+  detail += resolved.tag ? resolved.tag : "<null>";
+  detail += " record=";
+  detail += resolved.record_def ? (resolved.record_def->name
+                                      ? resolved.record_def->name
+                                      : "<unnamed>")
+                                : "<null>";
+  expect_true(resolved.record_def == owner_3_record,
+              "alias-template member typedef owner arg substitution should "
+              "use carried TextId, not stale rendered nttp_name" +
+                  detail);
+}
+
 void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
   const char* source =
       "template <typename T>\n"
@@ -4546,6 +4654,7 @@ int main() {
   test_alias_template_origin_key_only_blocks_debug_arg_substitution();
   test_alias_member_typedef_origin_key_only_materializes_record_def();
   test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name();
+  test_alias_template_member_typedef_arg_uses_text_id_over_stale_name();
   test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text();
   test_alias_template_no_carrier_debug_arg_stays_debug_only();
   test_dependent_member_typedef_base_carries_structured_record_def();
