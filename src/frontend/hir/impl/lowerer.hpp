@@ -311,6 +311,10 @@ class Lowerer {
 
   static bool is_any_ref_ts(const TypeSpec& ts);
 
+  std::optional<long long> lookup_nttp_binding(const FunctionCtx* ctx,
+                                               const Node* name_node,
+                                               const char* rendered_name) const;
+
   static TypeSpec reference_storage_ts(TypeSpec ts);
 
   static TypeSpec reference_value_ts(TypeSpec ts);
@@ -667,7 +671,8 @@ class Lowerer {
                            const std::string& struct_tag,
                            const Node* method_node,
                            const TypeBindings* tpl_bindings = nullptr,
-                           const NttpBindings* nttp_bindings = nullptr);
+                           const NttpBindings* nttp_bindings = nullptr,
+                           const NttpTextBindings* nttp_text_bindings = nullptr);
 
   // Hoist a compound literal to an anonymous global variable.
   // Returns the ExprId of an AddrOf(DeclRef{clit_name}) expression.
@@ -676,7 +681,8 @@ class Lowerer {
   void lower_global(const Node* gv,
                     const std::string* name_override = nullptr,
                     const TypeBindings* tpl_override = nullptr,
-                    const NttpBindings* nttp_override = nullptr);
+                    const NttpBindings* nttp_override = nullptr,
+                    const NttpTextBindings* nttp_text_override = nullptr);
 
   void lower_local_decl_stmt(FunctionCtx& ctx, const Node* n);
 
@@ -1136,6 +1142,7 @@ class Lowerer {
     const Node* method_node;
     TypeBindings tpl_bindings;
     NttpBindings nttp_bindings;
+    NttpTextBindings nttp_bindings_by_text;
   };
 
   struct LowererConstEvalStructuredMaps {

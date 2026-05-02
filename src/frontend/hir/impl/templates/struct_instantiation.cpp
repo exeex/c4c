@@ -86,8 +86,13 @@ void Lowerer::register_instantiated_template_struct_methods(
       register_struct_method_owner_lookup(
           *owner_key, method, method->is_const_method, mkey, mmangled, method->type);
     }
+    NttpTextBindings method_nttp_bindings_by_text =
+        build_call_nttp_text_bindings(nullptr, tpl_def, method_nttp_bindings);
     lower_struct_method(mmangled, mangled, method,
-                        &method_tpl_bindings, &method_nttp_bindings);
+                        &method_tpl_bindings, &method_nttp_bindings,
+                        method_nttp_bindings_by_text.empty()
+                            ? nullptr
+                            : &method_nttp_bindings_by_text);
   }
 }
 

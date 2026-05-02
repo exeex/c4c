@@ -183,7 +183,8 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
 NttpTextBindings Lowerer::build_call_nttp_text_bindings(
     const Node* call_var, const Node* fn_def, const NttpBindings& nttp_bindings) {
   NttpTextBindings bindings_by_text;
-  if (!call_var || !fn_def || !fn_def->template_param_name_text_ids ||
+  (void)call_var;
+  if (!fn_def || !fn_def->template_param_name_text_ids ||
       fn_def->n_template_params <= 0) {
     return bindings_by_text;
   }

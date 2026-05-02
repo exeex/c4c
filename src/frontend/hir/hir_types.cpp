@@ -837,12 +837,16 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
         (ctx && !ctx->tpl_bindings.empty()) ? &ctx->tpl_bindings : nullptr;
     const NttpBindings* enc_nttp =
         (ctx && !ctx->nttp_bindings.empty()) ? &ctx->nttp_bindings : nullptr;
+    const NttpTextBindings* enc_nttp_by_text =
+        (ctx && !ctx->nttp_bindings_by_text.empty())
+            ? &ctx->nttp_bindings_by_text
+            : nullptr;
     const Node* tpl_fn = ct_state_->find_template_def(call->left->name);
     if (tpl_fn) {
       TypeBindings bindings =
           merge_explicit_and_deduced_type_bindings(call, call->left, tpl_fn, enc);
       NttpBindings nttp_bindings =
-          build_call_nttp_bindings(call->left, tpl_fn, enc_nttp);
+          build_call_nttp_bindings(call->left, tpl_fn, enc_nttp, enc_nttp_by_text);
       std::string resolved_name =
           mangle_template_name(call->left->name, bindings, nttp_bindings);
       const auto param_order =
@@ -867,6 +871,21 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
   }
 
   return infer_call_result_type_from_callee(ctx, call->left);
+}
+
+std::optional<long long> Lowerer::lookup_nttp_binding(
+    const FunctionCtx* ctx, const Node* name_node, const char* rendered_name) const {
+  if (!ctx) return std::nullopt;
+  const TextId text_id = name_node ? name_node->unqualified_text_id : kInvalidText;
+  if (text_id != kInvalidText && !ctx->nttp_bindings_by_text.empty()) {
+    auto text_it = ctx->nttp_bindings_by_text.find(text_id);
+    if (text_it != ctx->nttp_bindings_by_text.end()) return text_it->second;
+  }
+  if (rendered_name && rendered_name[0]) {
+    auto it = ctx->nttp_bindings.find(rendered_name);
+    if (it != ctx->nttp_bindings.end()) return it->second;
+  }
+  return std::nullopt;
 }
 
 std::optional<TypeSpec> Lowerer::storage_type_for_declref(
@@ -2057,12 +2076,18 @@ void Lowerer::lower_struct_def(const Node* sd) {
   // template bindings so method bodies can resolve pending template types.
   TypeBindings method_tpl_bindings;
   NttpBindings method_nttp_bindings;
+  NttpTextBindings method_nttp_bindings_by_text;
   if (sd->n_template_args > 0 && sd->template_param_names) {
     for (int i = 0; i < sd->n_template_args; ++i) {
       const char* pname = sd->template_param_names[i];
       if (!pname) continue;
       if (sd->template_param_is_nttp && sd->template_param_is_nttp[i]) {
         method_nttp_bindings[pname] = sd->template_arg_values[i];
+        if (sd->template_param_name_text_ids &&
+            sd->template_param_name_text_ids[i] != kInvalidText) {
+          method_nttp_bindings_by_text[sd->template_param_name_text_ids[i]] =
+              sd->template_arg_values[i];
+        }
       } else if (sd->template_arg_types) {
         method_tpl_bindings[pname] = sd->template_arg_types[i];
       }
@@ -2092,14 +2117,16 @@ void Lowerer::lower_struct_def(const Node* sd) {
         }
       }
       pending_methods_.push_back({mangled, std::string(tag), method,
-                                  method_tpl_bindings, method_nttp_bindings});
+                                  method_tpl_bindings, method_nttp_bindings,
+                                  method_nttp_bindings_by_text});
       continue;
     }
     if (method->is_destructor) {
       std::string mangled = std::string(tag) + "__dtor";
       struct_destructors_[tag] = {mangled, method};
       pending_methods_.push_back({mangled, std::string(tag), method,
-                                  method_tpl_bindings, method_nttp_bindings});
+                                  method_tpl_bindings, method_nttp_bindings,
+                                  method_nttp_bindings_by_text});
       continue;
     }
     std::string mangled = std::string(tag) + "__" + method->name + const_suffix;
@@ -2147,20 +2174,23 @@ void Lowerer::lower_struct_def(const Node* sd) {
           struct_owner_key, method, method->is_const_method, key, mangled, method->type);
     }
     pending_methods_.push_back({mangled, std::string(tag), method,
-                                method_tpl_bindings, method_nttp_bindings});
+                                method_tpl_bindings, method_nttp_bindings,
+                                method_nttp_bindings_by_text});
   }
 }
 
 void Lowerer::lower_global(const Node* gv,
                            const std::string* name_override,
                            const TypeBindings* tpl_override,
-                           const NttpBindings* nttp_override) {
+                           const NttpBindings* nttp_override,
+                           const NttpTextBindings* nttp_text_override) {
   GlobalInit computed_init{};
   bool has_init = false;
   const bool has_tpl_overrides =
       tpl_override != nullptr || nttp_override != nullptr;
   FunctionCtx init_ctx{};
   if (nttp_override) init_ctx.nttp_bindings = *nttp_override;
+  if (nttp_text_override) init_ctx.nttp_bindings_by_text = *nttp_text_override;
   if (tpl_override) {
     init_ctx.tpl_bindings = *tpl_override;
     for (auto& [name, bound_ts] : init_ctx.tpl_bindings) {
@@ -2299,8 +2329,7 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
     case NK_VAR: {
       const std::string name = n->name ? n->name : "";
       if (ctx && !name.empty()) {
-        auto nttp_it = ctx->nttp_bindings.find(name);
-        if (nttp_it != ctx->nttp_bindings.end()) {
+        if (lookup_nttp_binding(ctx, n, name.c_str())) {
           TypeSpec ts{};
           ts.base = TB_INT;
           ts.array_size = -1;

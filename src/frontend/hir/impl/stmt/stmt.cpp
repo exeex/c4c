@@ -501,7 +501,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
                                   const std::string& struct_tag,
                                   const Node* method_node,
                                   const TypeBindings* tpl_bindings,
-                                  const NttpBindings* nttp_bindings) {
+                                  const NttpBindings* nttp_bindings,
+                                  const NttpTextBindings* nttp_text_bindings) {
   if (method_node->is_deleted) return;
   Function fn{};
   fn.id = next_fn_id();
@@ -523,6 +524,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   ctx.fn = &fn;
   if (tpl_bindings) ctx.tpl_bindings = *tpl_bindings;
   if (nttp_bindings) ctx.nttp_bindings = *nttp_bindings;
+  if (nttp_text_bindings) ctx.nttp_bindings_by_text = *nttp_text_bindings;
   ctx.method_struct_tag = struct_tag;
 
   {

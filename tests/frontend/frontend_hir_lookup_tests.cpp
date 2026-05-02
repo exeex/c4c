@@ -63,6 +63,29 @@ const c4c::Node* find_function_node_by_name(const c4c::Node* n,
   return nullptr;
 }
 
+const c4c::Node* find_global_node_by_name(const c4c::Node* n,
+                                          const char* name) {
+  if (!n || !name) return nullptr;
+  if (n->kind == c4c::NK_GLOBAL_VAR && n->name &&
+      std::strcmp(n->name, name) == 0) {
+    return n;
+  }
+  if (const c4c::Node* found = find_global_node_by_name(n->left, name)) return found;
+  if (const c4c::Node* found = find_global_node_by_name(n->right, name)) return found;
+  if (const c4c::Node* found = find_global_node_by_name(n->cond, name)) return found;
+  if (const c4c::Node* found = find_global_node_by_name(n->then_, name)) return found;
+  if (const c4c::Node* found = find_global_node_by_name(n->else_, name)) return found;
+  if (const c4c::Node* found = find_global_node_by_name(n->body, name)) return found;
+  if (const c4c::Node* found = find_global_node_by_name(n->init, name)) return found;
+  if (const c4c::Node* found = find_global_node_by_name(n->update, name)) return found;
+  for (int i = 0; i < n->n_children; ++i) {
+    if (const c4c::Node* found = find_global_node_by_name(n->children[i], name)) {
+      return found;
+    }
+  }
+  return nullptr;
+}
+
 bool has_hit(const c4c::hir::Module& module,
              c4c::hir::ModuleDeclKind kind,
              c4c::hir::ModuleDeclLookupAuthority authority,
@@ -940,6 +963,60 @@ int use_template_call_nttp() { return outer<39>(); }
               "deferred template-call instantiation should preserve TextId NTTP env data");
 }
 
+void test_template_global_nttp_init_uses_text_id_function_ctx_binding() {
+  constexpr std::string_view source = R"cpp(
+template<int V>
+consteval int lift() { return V + 3; }
+
+template<int V>
+int value = lift<V>();
+
+int use_template_global_nttp() { return value<39>; }
+)cpp";
+
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_hir_lookup_tests.cpp");
+  c4c::Node* root = parser.parse();
+  auto sema_result = c4c::sema::analyze_program(
+      root, c4c::sema_profile_from(c4c::SourceProfile::CppSubset));
+  expect_true(sema_result.validation.ok,
+              "template-global NTTP FunctionCtx fixture should validate");
+
+  c4c::Node* value_def =
+      const_cast<c4c::Node*>(find_global_node_by_name(root, "value"));
+  expect_true(value_def && value_def->template_param_names &&
+                  value_def->template_param_name_text_ids &&
+                  value_def->template_param_name_text_ids[0] != c4c::kInvalidText,
+              "fixture template global should carry NTTP TextId metadata");
+  value_def->template_param_names[0] = arena.strdup("__stale_global_rendered_nttp");
+
+  auto initial = c4c::hir::build_initial_hir(
+      root, &sema_result.canonical.resolved_types);
+  c4c::hir::run_compile_time_engine(
+      *initial.module, initial.ct_state, initial.deferred_instantiate,
+      initial.deferred_instantiate_type);
+
+  bool found_reduced_template_global = false;
+  for (const auto& global : initial.module->globals) {
+    if (global.name.find("value_") != 0) continue;
+    const auto* init = std::get_if<c4c::hir::InitScalar>(&global.init);
+    if (!init) continue;
+    const auto* literal = std::get_if<c4c::hir::IntLiteral>(
+        &initial.module->expr_pool[init->expr.value].payload);
+    if (literal && literal->value == 42) {
+      found_reduced_template_global = true;
+      break;
+    }
+  }
+  expect_true(found_reduced_template_global,
+              "template-global initializer should reduce through TextId NTTP FunctionCtx binding despite stale rendered name");
+}
+
 }  // namespace
 
 int main() {
@@ -952,6 +1029,7 @@ int main() {
   test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names();
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
   test_template_call_nttp_handoff_carries_text_id_bindings();
+  test_template_global_nttp_init_uses_text_id_function_ctx_binding();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

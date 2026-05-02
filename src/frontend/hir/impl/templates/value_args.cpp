@@ -404,7 +404,12 @@ bool Lowerer::resolve_ast_template_value_arg(
     LowererConstEvalStructuredMaps structured_maps;
     ConstEvalEnv env = make_lowerer_consteval_env(
         structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
-    if (ctx) env.nttp_bindings = &ctx->nttp_bindings;
+    if (ctx) {
+      env.nttp_bindings = &ctx->nttp_bindings;
+      if (!ctx->nttp_bindings_by_text.empty()) {
+        env.nttp_bindings_by_text = &ctx->nttp_bindings_by_text;
+      }
+    }
     auto expr_value = evaluate_constant_expr(ref->template_arg_exprs[index], env);
     if (expr_value.ok()) {
       *out_value = expr_value.as_int();
@@ -416,9 +421,19 @@ bool Lowerer::resolve_ast_template_value_arg(
     }
   }
   if (ctx && nttp_name && nttp_name[0]) {
-    auto it = ctx->nttp_bindings.find(nttp_name);
-    if (it != ctx->nttp_bindings.end()) {
-      *out_value = it->second;
+    const TextId forwarded_text_id =
+        ref->template_arg_nttp_text_ids ? ref->template_arg_nttp_text_ids[index]
+                                        : kInvalidText;
+    if (forwarded_text_id != kInvalidText &&
+        !ctx->nttp_bindings_by_text.empty()) {
+      auto text_it = ctx->nttp_bindings_by_text.find(forwarded_text_id);
+      if (text_it != ctx->nttp_bindings_by_text.end()) {
+        *out_value = text_it->second;
+        return true;
+      }
+    }
+    if (auto nttp_value = lookup_nttp_binding(ctx, nullptr, nttp_name)) {
+      *out_value = *nttp_value;
       return true;
     }
     if (owner_tpl && owner_tpl->n_template_params > 0 &&
@@ -450,7 +465,12 @@ bool Lowerer::try_eval_template_value_arg_expr(
   LowererConstEvalStructuredMaps structured_maps;
   ConstEvalEnv env = make_lowerer_consteval_env(
       structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
-  if (ctx) env.nttp_bindings = &ctx->nttp_bindings;
+  if (ctx) {
+    env.nttp_bindings = &ctx->nttp_bindings;
+    if (!ctx->nttp_bindings_by_text.empty()) {
+      env.nttp_bindings_by_text = &ctx->nttp_bindings_by_text;
+    }
+  }
   if (auto value = evaluate_constant_expr(expr, env); value.ok()) {
     *out_value = value.as_int();
     return true;
@@ -533,12 +553,9 @@ bool Lowerer::try_eval_template_value_arg_expr(
     }
     case NK_VAR: {
       if (!expr->name || !expr->name[0]) return false;
-      if (ctx) {
-        auto it = ctx->nttp_bindings.find(expr->name);
-        if (it != ctx->nttp_bindings.end()) {
-          *out_value = it->second;
-          return true;
-        }
+      if (auto nttp_value = lookup_nttp_binding(ctx, expr, expr->name)) {
+        *out_value = *nttp_value;
+        return true;
       }
       const std::string qname = expr->name;
       const std::string member = unqualified_name(qname);

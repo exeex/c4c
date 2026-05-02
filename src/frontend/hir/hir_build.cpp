@@ -667,7 +667,10 @@ void Lowerer::lower_pending_struct_methods() {
   for (const auto& pm : pending_methods_) {
     lower_struct_method(pm.mangled, pm.struct_tag, pm.method_node,
                         pm.tpl_bindings.empty() ? nullptr : &pm.tpl_bindings,
-                        pm.nttp_bindings.empty() ? nullptr : &pm.nttp_bindings);
+                        pm.nttp_bindings.empty() ? nullptr : &pm.nttp_bindings,
+                        pm.nttp_bindings_by_text.empty()
+                            ? nullptr
+                            : &pm.nttp_bindings_by_text);
   }
 }
 

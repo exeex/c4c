@@ -223,13 +223,12 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       return append_expr(n, IntLiteral{it->second, false}, ts);
     }
     if (ctx) {
-      auto nttp_it = ctx->nttp_bindings.find(n->name);
-      if (nttp_it != ctx->nttp_bindings.end()) {
+      if (auto nttp_value = lookup_nttp_binding(ctx, n, n->name)) {
         TypeSpec ts{};
         ts.base = TB_INT;
         ts.array_size = -1;
         ts.inner_rank = -1;
-        return append_expr(n, IntLiteral{nttp_it->second, false}, ts);
+        return append_expr(n, IntLiteral{*nttp_value, false}, ts);
       }
     }
   }

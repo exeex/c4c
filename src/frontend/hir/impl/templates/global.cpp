@@ -133,7 +133,10 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
   const TypeBindings* tpl_ptr = selected.type_bindings.empty() ? nullptr : &selected.type_bindings;
   const NttpBindings* nttp_ptr =
       selected.nttp_bindings.empty() ? nullptr : &selected.nttp_bindings;
-  lower_global(chosen, &mangled, tpl_ptr, nttp_ptr);
+  NttpTextBindings nttp_by_text =
+      build_call_nttp_text_bindings(nullptr, primary, selected.nttp_bindings);
+  lower_global(chosen, &mangled, tpl_ptr, nttp_ptr,
+               nttp_by_text.empty() ? nullptr : &nttp_by_text);
   const GlobalId global_id = module_->lookup_global_id(mangled);
   if (!global_id.valid()) return std::nullopt;
   instantiated_template_globals_[instance_key] = global_id;
