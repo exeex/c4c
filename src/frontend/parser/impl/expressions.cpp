@@ -1622,14 +1622,32 @@ Node* parse_primary(Parser& parser) {
                             // Try to instantiate via parse_base_type to get mangled tag
                             int after_member_pos = parser.pos_;
                             parser.pos_ = ident_start;
+                            bool template_owner_requires_structured_metadata = false;
                             try {
                                 TypeSpec ts = parser.parse_base_type();
                                 owner_namespace_context_id = ts.namespace_context_id;
+                                template_owner_requires_structured_metadata =
+                                    template_owner_requires_structured_metadata ||
+                                    ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+                                    (ts.tpl_struct_args.data &&
+                                     ts.tpl_struct_args.size > 0);
                                 if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
-                                    // Deferred template struct: use the original
-                                    // template name so HIR can find the primary
-                                    // and resolve with concrete bindings later.
+                                    // Deferred template struct: keep the
+                                    // original template name for display/HIR,
+                                    // but carry structured owner identity when
+                                    // the parser has already materialized it.
                                     struct_tag = ts.tpl_struct_origin;
+                                    if (ts.record_def &&
+                                        ts.record_def->unqualified_text_id != kInvalidText) {
+                                        owner_text_id =
+                                            ts.record_def->unqualified_text_id;
+                                        if (ts.record_def->namespace_context_id >= 0) {
+                                            owner_namespace_context_id =
+                                                ts.record_def->namespace_context_id;
+                                        }
+                                    } else if (ts.tag_text_id != kInvalidText) {
+                                        owner_text_id = ts.tag_text_id;
+                                    }
                                 } else if (ts.record_def &&
                                            ts.record_def->unqualified_text_id != kInvalidText) {
                                     struct_tag = ts.record_def->name && ts.record_def->name[0]
@@ -1661,7 +1679,7 @@ Node* parse_primary(Parser& parser) {
                             if (owner_text_id != kInvalidText) {
                                 member_qn.qualifier_segments.push_back(owner_name);
                                 member_qn.qualifier_text_ids.push_back(owner_text_id);
-                            } else {
+                            } else if (!template_owner_requires_structured_metadata) {
                                 size_t segment_start = 0;
                                 while (segment_start <= owner_name.size()) {
                                     const size_t segment_end =

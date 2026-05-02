@@ -935,6 +935,43 @@ void test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag
                        : std::string(": ") + result.diagnostics.front().message));
 }
 
+void test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift() {
+  const char* source =
+      "template <typename T>\n"
+      "struct Trait {\n"
+      "  static T value;\n"
+      "};\n"
+      "int read() { return Trait<int>::value; }\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  c4c::Node* reader = find_function(root, "read");
+  c4c::Node* ref = find_return_var(reader);
+  expect_true(ref != nullptr,
+              "parsed template static member reference should exist");
+  expect_true(ref->n_template_args == 1,
+              "template static member reference should carry template args");
+  expect_true(ref->n_qualifier_segments == 1 && ref->qualifier_text_ids &&
+                  ref->qualifier_text_ids[0] != c4c::kInvalidText,
+              "template static member reference should carry structured owner TextId");
+  expect_true(ref->unqualified_text_id != c4c::kInvalidText,
+              "template static member reference should carry member TextId");
+
+  ref->name = arena.strdup("RenderedTraitDrift::rendered_value");
+  ref->unqualified_name = arena.strdup("rendered_value");
+  ref->qualifier_segments[0] = arena.strdup("RenderedTraitDrift");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema template static-member lookup should use parser owner/member "
+              "metadata instead of rendered owner/tag spelling" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_sema_instance_field_lookup_rejects_stale_member_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3198,6 +3235,7 @@ int main() {
   test_sema_template_static_member_lookup_rejects_rendered_after_metadata_miss();
   test_sema_static_member_lookup_rejects_rendered_after_metadata_miss();
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
+  test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift();
   test_sema_instance_field_lookup_rejects_stale_member_spelling();
   test_parsed_record_fields_carry_member_text_ids_into_sema();
   test_parsed_nested_record_fields_carry_member_text_ids();

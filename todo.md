@@ -8,21 +8,22 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired the origin-key-only alias/member-typedef handoff by teaching
-member-typedef lookup to materialize a template owner from
-`tpl_struct_origin_key` plus structured `tpl_struct_args` before falling back to
-record/tag lookup. The alias-template tag rebuild no longer comma-splits a
-rendered arg string; it rebuilds each display suffix directly from structured
-`TemplateArgRef` entries. Added lookup-authority coverage that corrupts
-rendered owner/template/debug text while preserving the origin key and verifies
-`Alias<int>` still materializes the `Carrier<int>` `record_def`.
+Step 4 tightened the parser expression handoff for
+`Template<Args>::member`: when `parse_base_type()` exposes structured template
+owner metadata, the generated member reference now carries the materialized
+owner `TextId` from `record_def` or `tag_text_id` and does not synthesize
+qualifier TextIds by splitting rendered owner text after a structured miss.
+The route still preserves `tpl_struct_origin` as display/HIR spelling. Added
+lookup-authority coverage that corrupts rendered owner/member spelling for
+`Trait<int>::value` while preserving parser-carried owner/member TextIds and
+verifies Sema resolves through the structured metadata.
 
 ## Suggested Next
 
 Continue Step 4 with the next parser-to-Sema metadata handoff gap selected by
 the supervisor, prioritizing any remaining route where an available
-`QualifiedNameKey`, `TextId`, `TemplateArgRef`, or `record_def` carrier is still
-shadowed by rendered compatibility text.
+`QualifiedNameKey`, `TextId`, `TemplateArgRef`, `record_def`, or `tag_text_id`
+carrier is still shadowed by rendered compatibility text.
 
 ## Watchouts
 
@@ -36,6 +37,11 @@ shadowed by rendered compatibility text.
   `unqualified_text_id`, and the correct owner namespace context when the
   parser has the owner identity. Do not restore rendered owner lookup to cover
   missing carriers.
+- Template static-member expression handoff now keeps `tpl_struct_origin` only
+  as display/HIR spelling. If the parsed owner has `tpl_struct_origin_key` or
+  structured arg carriers but no materialized owner `TextId`, the parser leaves
+  the qualifier metadata absent instead of manufacturing it from rendered text.
+  Repair the missing structured carrier rather than reintroducing splitting.
 - `tpl_struct_origin` remains a compatibility/display spelling and is still
   passed to template-instantiation helpers for emitted names. Do not use it to
   rediscover template primaries or decide Sema `TypeSpec` equivalence when
@@ -104,7 +110,8 @@ shadowed by rendered compatibility text.
 Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp)$' | tee test_after.log`.
 
-Result: build succeeded, rebuilding `base.cpp` and dependent frontend targets.
+Result: build succeeded, rebuilding `expressions.cpp` and dependent frontend
+targets.
 CTest passed `886/886` matched tests, including
 `frontend_parser_lookup_authority_tests`,
 `eastl_cpp_external_utility_frontend_basic_cpp`, and the
