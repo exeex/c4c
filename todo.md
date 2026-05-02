@@ -8,18 +8,20 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 removed the `infer_expr` var-ref compatibility retry that re-entered
-`lookup_symbol(n->unqualified_name, n)` after a miss on rendered `Node::name`.
-Local var-ref Sema lookup now relies on the parser-produced structured local
-name key already carried by `unqualified_text_id`. A focused parsed authority
-test now mutates only the rendered local reference spelling and proves Sema
-validates through the declaration/reference TextId handoff.
+Step 4 made Sema function and overload lookup treat parser/Sema function
+metadata as authoritative. `lookup_function_by_name`,
+`lookup_ref_overloads_by_name`, and `lookup_cpp_overloads_by_name` now return
+only structured-key results when a reference carries a valid function key or
+using-value-alias target key; rendered `Node::name` fallback is reserved for
+keyless references. Focused authority coverage now mutates rendered callee
+spelling to legacy function/overload entries while preserving structured
+metadata and proves the lookup boundary rejects that drift.
 
 ## Suggested Next
 
-Continue Step 4 with the next parser/Sema handoff gap that still has
-producer-side `TextId`, namespace, owner, or declaration metadata available but
-also keeps rendered compatibility lookup in the semantic path.
+Continue Step 4 by auditing the remaining Sema lookup helpers for the same
+pattern: a reference carries producer-side `TextId`, namespace, owner, or
+declaration metadata but a miss can still reopen rendered compatibility lookup.
 
 ## Watchouts
 
@@ -39,6 +41,10 @@ also keeps rendered compatibility lookup in the semantic path.
   namespaced free-function slice covers namespace-resolved qualified
   declarators, but does not claim cleanup of class-member declarator ownership
   or HIR/module declaration lookup compatibility.
+- Function and overload lookup is now stricter for references with valid
+  function metadata. If a supported call path starts failing here, fix the
+  parser/Sema declaration or reference metadata producer instead of
+  reintroducing rendered-name fallback in these helpers.
 - If a handoff requires a cross-module carrier outside parser/Sema ownership,
   record a separate metadata idea instead of expanding idea 139.
 - `review/step33_final_route_review.md` and prior review artifacts are

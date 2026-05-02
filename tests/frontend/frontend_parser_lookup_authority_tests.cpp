@@ -1102,6 +1102,215 @@ void test_sema_ref_overload_lookup_rejects_same_member_wrong_owner_reentry() {
               "rendered overload set and leave the stale call non-diagnostic");
 }
 
+void test_sema_function_lookup_rejects_legacy_rendered_after_structured_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  c4c::Node* legacy_function = parser.make_node(c4c::NK_FUNCTION, 1);
+  legacy_function->name = arena.strdup("legacy_rendered_function");
+  legacy_function->type = make_ts(c4c::TB_INT);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("legacy_rendered_function");
+  ref->unqualified_name = arena.strdup("missing_function");
+  ref->unqualified_text_id = texts.intern("missing_function");
+  ref->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::Node* expr = parser.make_node(c4c::NK_EXPR_STMT, 2);
+  expr->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = expr;
+
+  c4c::Node* caller = parser.make_node(c4c::NK_FUNCTION, 2);
+  caller->name = arena.strdup("rejects_legacy_function_fallback");
+  caller->unqualified_name = arena.strdup("rejects_legacy_function_fallback");
+  caller->unqualified_text_id =
+      texts.intern("rejects_legacy_function_fallback");
+  caller->namespace_context_id = parser.current_namespace_context_id();
+  caller->type = make_ts(c4c::TB_VOID);
+  caller->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = legacy_function;
+  program->children[1] = caller;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema function lookup should not recover through a legacy "
+              "rendered function spelling after structured key miss");
+}
+
+void test_sema_ref_overload_lookup_rejects_legacy_rendered_after_structured_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId param_text = texts.intern("value");
+  const int namespace_context = parser.current_namespace_context_id();
+
+  auto make_overload = [&](bool rvalue_ref) {
+    c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+    fn->name = arena.strdup("legacy_rendered_ref_overload");
+    fn->type = make_ts(c4c::TB_INT);
+    fn->n_params = 1;
+    fn->params = arena.alloc_array<c4c::Node*>(1);
+    c4c::Node* param = parser.make_node(c4c::NK_DECL, 1);
+    param->name = arena.strdup("value");
+    param->unqualified_name = arena.strdup("value");
+    param->unqualified_text_id = param_text;
+    param->namespace_context_id = namespace_context;
+    param->type = make_ts(c4c::TB_INT);
+    param->type.is_lvalue_ref = !rvalue_ref;
+    param->type.is_rvalue_ref = rvalue_ref;
+    fn->params[0] = param;
+    return fn;
+  };
+
+  c4c::Node* lvalue_overload = make_overload(false);
+  c4c::Node* rvalue_overload = make_overload(true);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("legacy_rendered_ref_overload");
+  ref->unqualified_name = arena.strdup("missing_ref_overload");
+  ref->unqualified_text_id = texts.intern("missing_ref_overload");
+  ref->namespace_context_id = namespace_context;
+
+  c4c::Node* call = parser.make_node(c4c::NK_CALL, 2);
+  call->left = ref;
+
+  c4c::Node* expr = parser.make_node(c4c::NK_EXPR_STMT, 2);
+  expr->left = call;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = expr;
+
+  c4c::Node* caller = parser.make_node(c4c::NK_FUNCTION, 2);
+  caller->name = arena.strdup("rejects_legacy_ref_overload_fallback");
+  caller->unqualified_name = arena.strdup("rejects_legacy_ref_overload_fallback");
+  caller->unqualified_text_id =
+      texts.intern("rejects_legacy_ref_overload_fallback");
+  caller->namespace_context_id = namespace_context;
+  caller->type = make_ts(c4c::TB_VOID);
+  caller->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
+  program->children[0] = lvalue_overload;
+  program->children[1] = rvalue_overload;
+  program->children[2] = caller;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(result.ok,
+              "Sema ref-overload lookup should reject the legacy rendered "
+              "overload set after structured key miss and leave the stale call "
+              "non-diagnostic");
+}
+
+void test_sema_cpp_overload_lookup_rejects_legacy_rendered_after_structured_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const int namespace_context = parser.current_namespace_context_id();
+
+  auto make_overload = [&](c4c::TypeBase param_base) {
+    c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+    fn->name = arena.strdup("operator_plus");
+    fn->type = make_ts(c4c::TB_INT);
+    fn->n_params = 1;
+    fn->params = arena.alloc_array<c4c::Node*>(1);
+    c4c::Node* param = parser.make_node(c4c::NK_DECL, 1);
+    param->name = arena.strdup("value");
+    param->unqualified_name = arena.strdup("value");
+    param->unqualified_text_id = texts.intern("value");
+    param->namespace_context_id = namespace_context;
+    param->type = make_ts(param_base);
+    fn->params[0] = param;
+    return fn;
+  };
+
+  c4c::Node* int_overload = make_overload(c4c::TB_INT);
+  c4c::Node* short_overload = make_overload(c4c::TB_SHORT);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("operator_plus");
+  ref->unqualified_name = arena.strdup("missing_cpp_overload");
+  ref->unqualified_text_id = texts.intern("missing_cpp_overload");
+  ref->namespace_context_id = namespace_context;
+
+  c4c::Node* call = parser.make_node(c4c::NK_CALL, 2);
+  call->left = ref;
+
+  c4c::Node* expr = parser.make_node(c4c::NK_EXPR_STMT, 2);
+  expr->left = call;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = expr;
+
+  c4c::Node* caller = parser.make_node(c4c::NK_FUNCTION, 2);
+  caller->name = arena.strdup("rejects_legacy_cpp_overload_fallback");
+  caller->unqualified_name = arena.strdup("rejects_legacy_cpp_overload_fallback");
+  caller->unqualified_text_id =
+      texts.intern("rejects_legacy_cpp_overload_fallback");
+  caller->namespace_context_id = namespace_context;
+  caller->type = make_ts(c4c::TB_VOID);
+  caller->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
+  program->children[0] = int_overload;
+  program->children[1] = short_overload;
+  program->children[2] = caller;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(result.ok,
+              "Sema C++ overload lookup should reject the legacy rendered "
+              "overload set after structured key miss and leave the stale call "
+              "non-diagnostic");
+}
+
 void test_sema_func_local_lookup_rejects_rendered_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1669,6 +1878,9 @@ int main() {
   test_sema_global_lookup_rejects_unqualified_rendered_same_member_reentry();
   test_sema_function_lookup_rejects_same_member_wrong_owner_reentry();
   test_sema_ref_overload_lookup_rejects_same_member_wrong_owner_reentry();
+  test_sema_function_lookup_rejects_legacy_rendered_after_structured_miss();
+  test_sema_ref_overload_lookup_rejects_legacy_rendered_after_structured_miss();
+  test_sema_cpp_overload_lookup_rejects_legacy_rendered_after_structured_miss();
   test_sema_func_local_lookup_rejects_rendered_after_metadata_miss();
   test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();

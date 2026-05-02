@@ -875,13 +875,12 @@ class Validator {
                                              const Node* reference = nullptr) const {
     if (reference) {
       if (auto target_key = sema_using_value_alias_target_key(reference);
-          target_key.has_value()) {
+          target_key.has_value() && target_key->valid()) {
         return lookup_function_by_key(*target_key);
       }
-      if (auto key = sema_function_lookup_key(reference); key.has_value()) {
-        const FunctionSig* structured = lookup_function_by_key(*key);
-        if (structured) return structured;
-        if (structured_function_names_.count(name) > 0) return nullptr;
+      if (auto key = sema_function_lookup_key(reference);
+          key.has_value() && key->valid()) {
+        return lookup_function_by_key(*key);
       }
     }
     auto it = funcs_.find(name);
@@ -892,14 +891,12 @@ class Validator {
       const std::string& name, const Node* reference = nullptr) const {
     if (reference) {
       if (auto target_key = sema_using_value_alias_target_key(reference);
-          target_key.has_value()) {
+          target_key.has_value() && target_key->valid()) {
         return lookup_ref_overloads_by_key(*target_key);
       }
-      if (auto key = sema_function_lookup_key(reference); key.has_value()) {
-        const std::vector<FunctionSig>* structured =
-            lookup_ref_overloads_by_key(*key);
-        if (structured) return structured;
-        if (structured_ref_overload_names_.count(name) > 0) return nullptr;
+      if (auto key = sema_function_lookup_key(reference);
+          key.has_value() && key->valid()) {
+        return lookup_ref_overloads_by_key(*key);
       }
     }
     auto it = ref_overload_sigs_.find(name);
@@ -910,14 +907,12 @@ class Validator {
       const std::string& name, const Node* reference = nullptr) const {
     if (reference) {
       if (auto target_key = sema_using_value_alias_target_key(reference);
-          target_key.has_value()) {
+          target_key.has_value() && target_key->valid()) {
         return lookup_cpp_overloads_by_key(*target_key);
       }
-      if (auto key = sema_function_lookup_key(reference); key.has_value()) {
-        const std::vector<FunctionSig>* structured =
-            lookup_cpp_overloads_by_key(*key);
-        if (structured) return structured;
-        if (structured_cpp_overload_names_.count(name) > 0) return nullptr;
+      if (auto key = sema_function_lookup_key(reference);
+          key.has_value() && key->valid()) {
+        return lookup_cpp_overloads_by_key(*key);
       }
     }
     auto it = cpp_overload_sigs_.find(name);
