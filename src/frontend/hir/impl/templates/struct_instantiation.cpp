@@ -132,6 +132,53 @@ void Lowerer::append_instantiated_template_struct_bases(
     const TypeBindings& method_tpl_bindings,
     const std::unordered_map<TextId, TypeSpec>& method_tpl_bindings_by_text,
     const NttpBindings& method_nttp_bindings) {
+  auto base_tag_from_metadata =
+      [&](const TypeSpec& base_ts) -> std::optional<std::string> {
+    if (!module_) return std::nullopt;
+    if (base_ts.record_def && base_ts.record_def->kind == NK_STRUCT_DEF) {
+      if (const std::optional<HirRecordOwnerKey> owner_key =
+              make_struct_def_node_owner_key(base_ts.record_def)) {
+        if (const SymbolName* owner_tag =
+                module_->find_struct_def_tag_by_owner(*owner_key)) {
+          return *owner_tag;
+        }
+      }
+    }
+    if (const HirStructDef* base_layout =
+            find_struct_def_for_layout_type(base_ts)) {
+      if (!base_layout->tag.empty()) return base_layout->tag;
+    }
+    if (base_ts.record_def && base_ts.record_def->kind == NK_STRUCT_DEF &&
+        base_ts.record_def->name && base_ts.record_def->name[0]) {
+      return std::string(base_ts.record_def->name);
+    }
+    if (base_ts.tag_text_id != kInvalidText && module_->link_name_texts) {
+      const std::string_view text =
+          module_->link_name_texts->lookup(base_ts.tag_text_id);
+      if (!text.empty()) return std::string(text);
+    }
+    return std::nullopt;
+  };
+
+  auto base_tag_text_id_from_metadata =
+      [&](const TypeSpec& base_ts,
+          const std::optional<std::string>& base_tag) -> TextId {
+    if (!module_ || !base_tag || base_tag->empty()) return kInvalidText;
+    if (base_ts.tag_text_id != kInvalidText && module_->link_name_texts) {
+      const std::string_view rendered_text =
+          module_->link_name_texts->lookup(base_ts.tag_text_id);
+      if (rendered_text == *base_tag) return base_ts.tag_text_id;
+    }
+    if (const HirStructDef* base_layout =
+            find_struct_def_for_layout_type(base_ts)) {
+      if (base_layout->tag == *base_tag &&
+          base_layout->tag_text_id != kInvalidText) {
+        return base_layout->tag_text_id;
+      }
+    }
+    return make_text_id(*base_tag, module_->link_name_texts.get());
+  };
+
   for (int bi = 0; bi < tpl_def->n_bases; ++bi) {
     TypeSpec base_ts = tpl_def->base_types[bi];
     apply_template_typedef_bindings(
@@ -145,17 +192,21 @@ void Lowerer::append_instantiated_template_struct_bases(
     }
     while (resolve_struct_member_typedef_if_ready(&base_ts)) {
     }
-    if (base_ts.deferred_member_type_name && base_ts.tag && base_ts.tag[0]) {
+    std::optional<std::string> base_tag = base_tag_from_metadata(base_ts);
+    if (base_ts.deferred_member_type_name && base_tag && !base_tag->empty()) {
       TypeSpec resolved_member{};
       if (resolve_struct_member_typedef_type(
-              base_ts.tag, base_ts.deferred_member_type_name, &resolved_member)) {
+              *base_tag, base_ts.deferred_member_type_name, &resolved_member)) {
         base_ts = resolved_member;
+        while (resolve_struct_member_typedef_if_ready(&base_ts)) {
+        }
+        base_tag = base_tag_from_metadata(base_ts);
       }
     }
-    if (base_ts.tag && base_ts.tag[0]) {
-      def.base_tags.push_back(base_ts.tag);
+    if (base_tag && !base_tag->empty()) {
+      def.base_tags.push_back(*base_tag);
       def.base_tag_text_ids.push_back(
-          make_text_id(base_ts.tag, module_ ? module_->link_name_texts.get() : nullptr));
+          base_tag_text_id_from_metadata(base_ts, base_tag));
     }
   }
 }
