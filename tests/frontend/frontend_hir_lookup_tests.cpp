@@ -1551,6 +1551,89 @@ void test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag() {
               "consteval alignof should prefer structured HIR owner layout over stale rendered tag");
 }
 
+void test_layout_type_lookup_prefers_structured_owner_over_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  c4c::Arena arena;
+
+  c4c::Node* record_node = arena.alloc_array<c4c::Node>(1);
+  record_node->kind = c4c::NK_STRUCT_DEF;
+  record_node->name = arena.strdup("RealLayoutOwner");
+  record_node->unqualified_name = arena.strdup("RealLayoutOwner");
+  record_node->unqualified_text_id =
+      module.link_name_texts->intern("RealLayoutOwner");
+  record_node->namespace_context_id = 22;
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealLayoutOwner";
+  real_def.tag_text_id = record_node->unqualified_text_id;
+  real_def.ns_qual.context_id = record_node->namespace_context_id;
+  real_def.size_bytes = 32;
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(real_def);
+  module.index_struct_def_owner(owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleLayoutOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleLayoutOwner");
+  stale_def.ns_qual.context_id = record_node->namespace_context_id;
+  stale_def.size_bytes = 4;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  query.tag = "StaleLayoutOwner";
+  query.tag_text_id = record_node->unqualified_text_id;
+  query.namespace_context_id = record_node->namespace_context_id;
+  query.record_def = record_node;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  const c4c::hir::HirStructDef* layout =
+      lowerer.find_struct_def_for_layout_type(query);
+  expect_true(layout && layout->tag == "RealLayoutOwner" &&
+                  layout->size_bytes == 32,
+              "layout TypeSpec lookup should prefer structured owner metadata over stale rendered tag");
+}
+
+void test_layout_type_lookup_structured_owner_miss_rejects_stale_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  c4c::Arena arena;
+
+  c4c::Node* record_node = arena.alloc_array<c4c::Node>(1);
+  record_node->kind = c4c::NK_STRUCT_DEF;
+  record_node->name = arena.strdup("MissingLayoutOwner");
+  record_node->unqualified_name = arena.strdup("MissingLayoutOwner");
+  record_node->unqualified_text_id =
+      module.link_name_texts->intern("MissingLayoutOwner");
+  record_node->namespace_context_id = 23;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleLayoutOwnerMiss";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleLayoutOwnerMiss");
+  stale_def.ns_qual.context_id = record_node->namespace_context_id;
+  stale_def.size_bytes = 4;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  query.tag = "StaleLayoutOwnerMiss";
+  query.tag_text_id = record_node->unqualified_text_id;
+  query.namespace_context_id = record_node->namespace_context_id;
+  query.record_def = record_node;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  const c4c::hir::HirStructDef* layout =
+      lowerer.find_struct_def_for_layout_type(query);
+  expect_true(!layout,
+              "layout TypeSpec lookup should reject stale rendered tag after structured owner miss");
+}
+
 void test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -1971,6 +2054,8 @@ int main() {
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();
   test_static_member_nttp_const_eval_prefers_text_id_binding();
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
+  test_layout_type_lookup_prefers_structured_owner_over_stale_tag();
+  test_layout_type_lookup_structured_owner_miss_rejects_stale_tag();
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();

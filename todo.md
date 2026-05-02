@@ -8,20 +8,18 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries fixed the full-baseline
-regression in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` after the parser
-helper contract changed. The
-`is_dependent_template_struct_specialization` coverage now asserts that
-tag-only/no-carrier type arguments do not recover dependency from rendered
-`TypeSpec::tag` spelling. This aligns the test with the cleared
-`typespec_mentions_template_param` deletion-probe cluster, where structured
-carriers (`tag_text_id`, `template_param_text_id`,
-`deferred_member_type_text_id`, and nested carriers) are authoritative.
+Step 4 - Probe Field Removal And Split Boundaries migrated one HIR semantic
+layout fallback consumer in
+`src/frontend/hir/hir_types.cpp::Lowerer::find_struct_def_for_layout_type`.
+Complete structured owner metadata from `record_def` or `tag_text_id` plus
+namespace/qualifier data is now authoritative: a structured owner hit returns
+the metadata-backed layout, and a structured owner miss returns `nullptr`
+instead of falling through to rendered `TypeSpec::tag` / `Module::struct_defs`.
+Rendered tag lookup remains only for no-metadata compatibility.
 
-The nearby deferred-member-name no-carrier compatibility assertion remains in
-place as an explicit non-`tag` rendered fallback. No implementation change was
-needed; the regression was a stale test expectation.
+Focused coverage in `frontend_hir_lookup_tests` proves the layout TypeSpec
+route prefers structured owner metadata over a stale rendered tag and rejects
+the stale rendered tag after a structured owner miss.
 
 ## Suggested Next
 
@@ -29,9 +27,9 @@ Continue Step 4 by choosing another compile-failure cluster and either
 migrating it or explicitly demoting it to display/final-spelling/no-metadata
 compatibility. A good next packet is to isolate the remaining HIR
 ABI/final-spelling helper `type_suffix_for_mangling` behind named compatibility
-rendering, or to migrate a narrow HIR semantic consumer in `hir_types.cpp` such
-as `resolve_typedef_to_struct` or `find_struct_def_for_layout_type` fallback
-when existing `record_def`/TextId owner metadata is available.
+rendering, or to migrate another narrow HIR semantic consumer in `hir_types.cpp`
+that still queries rendered `struct_defs` / `TypeSpec::tag` when existing
+`record_def`/TextId owner metadata is available.
 
 ## Watchouts
 
@@ -55,6 +53,9 @@ when existing `record_def`/TextId owner metadata is available.
 - The HIR canonical specialization-key display cluster is cleared for
   `canonical_type_str`; plain rendered tag spelling is intentionally not
   preserved there when the future no-tag field removal lands.
+- The HIR layout TypeSpec lookup route is cleared for
+  `find_struct_def_for_layout_type`; complete structured owner misses no longer
+  fall back to rendered `struct_defs`.
 - Remaining first-probe clusters include HIR display/final-spelling helpers,
   especially ABI-sensitive `type_suffix_for_mangling`, HIR no-metadata
   specialization fallback comparisons, and mixed HIR semantic consumers in
@@ -74,7 +75,7 @@ when existing `record_def`/TextId owner metadata is available.
 
 ## Proof
 
-Step 4 baseline-regression proof passed with:
+Step 4 HIR semantic fallback proof passed with:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_.*template.*|cpp_positive_sema_.*deferred_nttp.*|cpp_positive_sema_.*consteval.*)$' | tee test_after.log`.
 
 Result: build passed and 62/62 selected tests passed. Proof log:

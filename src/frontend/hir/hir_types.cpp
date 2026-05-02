@@ -934,6 +934,13 @@ const HirStructDef* Lowerer::find_struct_def_for_layout_type(const TypeSpec& ts)
   if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
     if (const std::optional<HirRecordOwnerKey> owner_key =
             make_struct_def_node_owner_key(ts.record_def)) {
+      if (hir_record_owner_key_has_complete_metadata(*owner_key)) {
+        if (const HirStructDef* structured =
+                module_->find_struct_def_by_owner_structured(*owner_key)) {
+          return structured;
+        }
+        return nullptr;
+      }
       if (const HirStructDef* structured =
               module_->find_struct_def_by_owner_structured(*owner_key)) {
         return structured;
@@ -956,6 +963,7 @@ const HirStructDef* Lowerer::find_struct_def_for_layout_type(const TypeSpec& ts)
               module_->find_struct_def_by_owner_structured(owner_key)) {
         return structured;
       }
+      return nullptr;
     }
   }
   if (!ts.tag || !ts.tag[0]) return nullptr;
