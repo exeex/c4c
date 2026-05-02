@@ -8,32 +8,35 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries cleared one HIR
-display/debug deletion-probe cluster in
-`src/frontend/hir/compile_time_engine.hpp::encode_pending_type_ref`. Pending
-type refs now encode structured debug payload ids (`tag_text_id`,
-`template_param_text_id`, `deferred_member_type_text_id`, and
-`record_def_text_id`) plus existing structural/final payloads (`base`, `ptr`,
-`arr`, `origin`, template args, and deferred member name) instead of reading
-rendered `TypeSpec::tag`.
+Step 4 - Probe Field Removal And Split Boundaries cleared the HIR
+specialization-key display deletion-probe cluster in
+`src/frontend/hir/hir_ir.hpp::canonical_type_str`. Record/enum/union key text
+now uses `record_def` namespace/unqualified TextId, `tag_text_id` plus
+namespace/qualifier metadata, template-parameter TextIds, deferred-member
+TextIds, or template-origin keys before emitting the explicit unknown marker.
+It no longer reads rendered `TypeSpec::tag`.
 
-Compatibility tradeoff: tag-only/no-metadata pending type refs no longer carry
-the rendered tag spelling through this display/debug helper. That is the
-intended no-tag future boundary for this packet; structural shape, origin,
-template args, member-name compatibility, and TextId/record-def ids remain.
+Compatibility tradeoff: tag-only/no-metadata canonical type strings now render
+as `struct.?`/`union.?`/`enum.?` for this key helper instead of preserving the
+legacy rendered tag spelling. Human-facing HIR dump binding text still keeps
+the final display spelling (`{T=struct Probe}`); the specialization key text is
+now metadata-derived (`struct.tag.ctx...text...`) for no-tag future
+compatibility.
 
 Focused coverage in `frontend_hir_lookup_tests` proves stale rendered tag
-spelling is absent when structured metadata is present and no-metadata pending
-type refs still retain explicit structural shape payload.
+spelling is absent when structured record metadata is present and no-metadata
+canonical type strings use explicit unknown spelling. The
+`cpp_hir_template_function_deduction_binding` dump expectation was updated to
+assert the structured specialization-key spelling while preserving the
+human-facing binding display.
 
 ## Suggested Next
 
 Continue Step 4 by choosing another compile-failure cluster and either
 migrating it or explicitly demoting it to display/final-spelling/no-metadata
 compatibility. A good next packet is to isolate the remaining HIR
-display/final-spelling helpers (`canonical_type_str` or
-`type_suffix_for_mangling`) behind named compatibility rendering, or to migrate
-a narrow HIR semantic consumer in `hir_types.cpp` such as
+ABI/final-spelling helper `type_suffix_for_mangling` behind named compatibility
+rendering, or to migrate a narrow HIR semantic consumer in `hir_types.cpp` such as
 `resolve_typedef_to_struct` or `find_struct_def_for_layout_type` fallback when
 existing `record_def`/TextId owner metadata is available.
 
@@ -55,10 +58,13 @@ existing `record_def`/TextId owner metadata is available.
 - The HIR pending-type-ref display/debug cluster is cleared for
   `encode_pending_type_ref`; plain rendered tag spelling is intentionally not
   preserved there when the future no-tag field removal lands.
+- The HIR canonical specialization-key display cluster is cleared for
+  `canonical_type_str`; plain rendered tag spelling is intentionally not
+  preserved there when the future no-tag field removal lands.
 - Remaining first-probe clusters include HIR display/final-spelling helpers,
-  especially `canonical_type_str` and `type_suffix_for_mangling`, HIR
-  no-metadata specialization fallback comparisons, and mixed HIR semantic
-  consumers in `hir_build.cpp`/`hir_types.cpp`.
+  especially ABI-sensitive `type_suffix_for_mangling`, HIR no-metadata
+  specialization fallback comparisons, and mixed HIR semantic consumers in
+  `hir_build.cpp`/`hir_types.cpp`.
 - Do not create downstream follow-up ideas until a probe reaches LIR/BIR/backend
   failures after frontend/HIR compile blockers are cleared.
 - Classify each failure as parser/HIR-owned, compatibility/display/final

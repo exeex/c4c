@@ -1223,6 +1223,49 @@ void test_pending_type_ref_no_metadata_keeps_shape_payload() {
               "pending type refs without name metadata should retain structural shape payload");
 }
 
+void test_canonical_type_str_uses_structured_record_key_not_tag() {
+  c4c::TextTable texts;
+
+  c4c::Node record{};
+  record.kind = c4c::NK_STRUCT_DEF;
+  record.name = "CanonicalRecord";
+  record.namespace_context_id = 42;
+  record.unqualified_text_id = texts.intern("CanonicalRecord");
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tag = "StaleCanonicalRenderedTag";
+  ts.tag_text_id = texts.intern("CanonicalRecord");
+  ts.record_def = &record;
+  ts.ptr_level = 1;
+
+  const std::string encoded = c4c::hir::canonical_type_str(ts);
+
+  expect_true(encoded.find("StaleCanonicalRenderedTag") == std::string::npos,
+              "canonical type strings should not depend on stale rendered TypeSpec tag spelling");
+  expect_true(encoded.find("struct.record.ctx42.text" +
+                           std::to_string(record.unqualified_text_id)) !=
+                  std::string::npos,
+              "canonical type strings should expose structured record identity");
+  expect_true(encoded.find("*") != std::string::npos,
+              "canonical type strings should retain declarator shape");
+}
+
+void test_canonical_type_str_no_metadata_uses_explicit_unknown_name() {
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tag = "LegacyOnlyCanonicalTag";
+
+  const std::string encoded = c4c::hir::canonical_type_str(ts);
+
+  expect_true(encoded == "struct.?",
+              "canonical type strings without structured name metadata should use explicit unknown spelling");
+}
+
 void test_pending_consteval_nttp_handoff_carries_text_id_bindings() {
   constexpr std::string_view source = R"cpp(
 template<int N>
@@ -1921,6 +1964,8 @@ int main() {
   test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag();
   test_pending_type_ref_uses_structured_debug_payload_not_tag();
   test_pending_type_ref_no_metadata_keeps_shape_payload();
+  test_canonical_type_str_uses_structured_record_key_not_tag();
+  test_canonical_type_str_no_metadata_uses_explicit_unknown_name();
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();

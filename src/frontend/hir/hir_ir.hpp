@@ -1100,6 +1100,46 @@ struct HirStructMemberLookupKeyHash {
 /// Type bindings for template parameter substitution.
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
 
+inline std::string canonical_nominal_type_component(const TypeSpec& ts) {
+  if (ts.record_def && ts.record_def->unqualified_text_id != kInvalidText) {
+    return "record.ctx" + std::to_string(ts.record_def->namespace_context_id) +
+           ".text" + std::to_string(ts.record_def->unqualified_text_id);
+  }
+  if (ts.tag_text_id != kInvalidText) {
+    std::string out = "tag.ctx" + std::to_string(ts.namespace_context_id);
+    out += ts.is_global_qualified ? ".global" : ".local";
+    if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+      out += ".q";
+      for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        if (i > 0) out += "_";
+        out += std::to_string(ts.qualifier_text_ids[i]);
+      }
+    }
+    out += ".text" + std::to_string(ts.tag_text_id);
+    return out;
+  }
+  if (ts.template_param_text_id != kInvalidText) {
+    return "template_param.owner_ctx" +
+           std::to_string(ts.template_param_owner_namespace_context_id) +
+           ".owner" + std::to_string(ts.template_param_owner_text_id) +
+           ".index" + std::to_string(ts.template_param_index) + ".text" +
+           std::to_string(ts.template_param_text_id);
+  }
+  if (ts.deferred_member_type_text_id != kInvalidText) {
+    return "deferred_member.text" +
+           std::to_string(ts.deferred_member_type_text_id);
+  }
+  if (ts.tpl_struct_origin_key.base_text_id != kInvalidText) {
+    return "tpl_origin.ctx" +
+           std::to_string(ts.tpl_struct_origin_key.context_id) +
+           (ts.tpl_struct_origin_key.is_global_qualified ? ".global" : ".local") +
+           ".qpath" +
+           std::to_string(ts.tpl_struct_origin_key.qualifier_path_id) + ".text" +
+           std::to_string(ts.tpl_struct_origin_key.base_text_id);
+  }
+  return "?";
+}
+
 /// Canonical type string for specialization keys (deterministic, no whitespace).
 inline std::string canonical_type_str(const TypeSpec& ts) {
   std::string s;
@@ -1124,9 +1164,9 @@ inline std::string canonical_type_str(const TypeSpec& ts) {
     case TB_LONGDOUBLE:    s += "ldouble"; break;
     case TB_INT128:        s += "i128"; break;
     case TB_UINT128:       s += "u128"; break;
-    case TB_STRUCT:        s += ts.tag ? std::string("struct.") + ts.tag : "struct.?"; break;
-    case TB_UNION:         s += ts.tag ? std::string("union.") + ts.tag : "union.?"; break;
-    case TB_ENUM:          s += ts.tag ? std::string("enum.") + ts.tag : "enum.?"; break;
+    case TB_STRUCT:        s += "struct." + canonical_nominal_type_component(ts); break;
+    case TB_UNION:         s += "union." + canonical_nominal_type_component(ts); break;
+    case TB_ENUM:          s += "enum." + canonical_nominal_type_component(ts); break;
     case TB_FUNC_PTR:      s += "fnptr"; break;
     default:               s += "unknown"; break;
   }
