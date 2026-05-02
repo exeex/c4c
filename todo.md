@@ -8,25 +8,29 @@ Current Step Title: Repair Parser-to-Sema Metadata Handoff Gaps
 
 ## Just Finished
 
-Step 4 repaired the downstream HIR constant-evaluation gap exposed by the
-static-member metadata carrier: template value arguments such as
-`Count<3>::value + 1` now evaluate through structured AST/value-argument
-carriers instead of falling back to zero or rendered owner lookup.
+Step 4 probed the requested namespace-qualified and nested-owner
+static-member value-argument paths. Namespace-qualified explicit NTTP value
+arguments already evaluate through the current structured carrier route, but
+the requested nested-owner case with an enclosing type binding and NTTP default
+is blocked before the delegated parser/HIR consumer files can repair it.
 
-HIR template value-argument materialization now evaluates
-`TemplateArgRef::type.array_size_expr` with the current type and NTTP binding
-environment. The lowerer-owned fallback handles ordinary integer operators,
-template static-member constants, instantiated template static members such as
-`Count_N_3::value`, and missing default NTTPs before selecting the static-member
-owner pattern. Parser/Sema owner metadata remains authoritative; no expectation
-downgrades or named-test shortcuts were added.
+Concrete probe: `Wrap<int>` with field
+`Buffer<Outer<T>::Count::value + 1>` is already cloned by parser-side template
+struct instantiation as `Buffer_V_0`; at that point the field `TypeSpec` no
+longer carries a usable `TemplateArgRef::type.array_size_expr` for HIR
+materialization. The missing producer/consumer carrier is in the parser
+template-instantiation field-cloning/substitution path that owns concrete
+field `TypeSpec` creation, not in the delegated `expressions.cpp` or
+`value_args.cpp` handoff consumer. No rendered owner parsing, `$expr:`
+broadening, expectation downgrade, or named-test shortcut was left behind.
 
 ## Suggested Next
 
-Continue Step 4 with a narrow probe for namespace-qualified template
-static-member value arguments and nested-owner value arguments that combine
-type bindings with NTTP defaults. Keep the probe on structured
-`TemplateArgRef`/`NK_VAR` carriers; do not reintroduce rendered owner parsing.
+Continue Step 4 with a parser template-instantiation packet that owns
+`src/frontend/parser/impl/types/base.cpp`: when cloning/substituting template
+struct fields, preserve or re-materialize structured `TemplateArgRef` value
+argument carriers for nested-owner expressions such as
+`Outer<T>::Nested::value`, including enclosing type bindings and NTTP defaults.
 
 ## Watchouts
 
@@ -85,10 +89,14 @@ type bindings with NTTP defaults. Keep the probe on structured
   the default-NTTP side of this path: static-member value expressions must carry
   enclosing type bindings when evaluating defaults such as
   `is_void<T>::value || is_void<T>::value`.
+- The current blocker is specifically the parser-side concrete field clone for
+  nested-owner value arguments with type bindings/defaults: HIR receives
+  `Wrap_T_int::data` as `Buffer_V_0`, so `value_args.cpp` never sees a
+  structured `TemplateArgRef::type.array_size_expr` carrier for that field.
 
 ## Proof
 
-Ran the delegated proof command:
+Ran the delegated proof command after the blocked probe:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_positive_sema_.*|eastl_cpp_external_utility_frontend_basic_cpp|cpp_hir_template_struct_arg_materialization|cpp_hir_template_value_arg_static_member_trait)$' | tee test_after.log`.
 
 Result: build completed successfully; CTest passed `888/888` matched tests.
