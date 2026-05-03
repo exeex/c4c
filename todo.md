@@ -3,22 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
+Current Step ID: 3
+Current Step Title: Re-run The TypeSpec Tag Deletion Probe
 
 ## Just Finished
 
-Step 2 migrated
-`test_parser_template_base_deferred_member_typedef_uses_member_text_id` off its
-local direct `TypeSpec::tag` fixture setup. The `Owner::Alias` base carrier now
-uses `tag_text_id`, `record_def`, `member_typedef_text_ids`, and
-`deferred_member_type_text_id`; the `Box` alias now uses `tag_text_id` plus
-`record_def`, with template parameter TextId metadata on the primary template.
+Step 3 temporarily removed `TypeSpec::tag` from
+`src/frontend/parser/ast.hpp` and re-ran the compile-boundary probe after the
+template-base parser fixture migration. The field was restored after the probe.
+
+The first remaining compile boundary is in
+`tests/frontend/frontend_parser_tests.cpp`: line 3529 still reads
+`alias_ts->tag` in
+`test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback`.
+The same compile wave then reports more direct frontend parser fixture/assertion
+accesses, starting at lines 4178, 4253, 4316, 4341, 4452, 4808, 5330, 5649,
+5723, 5799, 5894, 5979, and later template-instantiation/record-definition
+checks around lines 6136-6325.
 
 ## Suggested Next
 
-Re-run the temporary `TypeSpec::tag` deletion probe to identify the next
-compile boundary after this fixture migration.
+Migrate the next frontend parser test residuals off direct `TypeSpec::tag`
+access, beginning with the line 3529
+`test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback`
+boundary, then re-run the temporary deletion probe.
 
 ## Watchouts
 
@@ -28,21 +36,26 @@ compile boundary after this fixture migration.
 - The focused frontend parser test still has the known pre-existing
   `namespace owner resolution should use the method owner TextId before rendered
   owner spelling` failure.
-- A later direct `box_alias.tag` setup remains in
-  `tests/frontend/frontend_parser_tests.cpp` outside this packet's local
-  fixture boundary.
+- The next compile boundary ownership is
+  `tests/frontend/frontend_parser_tests.cpp`; this packet inspected but did not
+  edit that file because it was listed as Do Not Touch except inspection.
+- `src/frontend/parser/ast.hpp` is restored to its pre-probe state; the field is
+  not deletion-ready yet.
 
 ## Proof
 
 Proof output is recorded in `test_after.log`.
 
 ```sh
-cmake --build --preset default > test_after.log 2>&1; ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
+cmake --build --preset default > test_after.log 2>&1
 ```
 
-Result: command exited nonzero. The build completed and linked
-`frontend_parser_tests`; the focused test failed only with the known
-pre-existing assertion:
-`FAIL: namespace owner resolution should use the method owner TextId before
-rendered owner spelling`. The failure set stayed the same as the delegated
-baseline context.
+Result: command exited nonzero during `frontend_parser_tests.cpp` compilation
+with `TypeSpec::tag` temporarily removed. `test_after.log` records the probe
+output, beginning with:
+`/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp:3529:23: error:
+'const struct c4c::TypeSpec' has no member named 'tag'`.
+
+After restoring `src/frontend/parser/ast.hpp`, a normal
+`cmake --build --preset default` completed successfully without overwriting
+`test_after.log`.
