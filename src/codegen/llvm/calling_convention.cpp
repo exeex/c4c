@@ -2,6 +2,7 @@
 #include "../shared/llvm_helpers.hpp"
 
 #include <algorithm>
+#include <optional>
 
 namespace c4c::codegen::llvm_backend {
 namespace {
@@ -67,11 +68,55 @@ int primitive_size_bytes(c4c::TypeBase base) {
   }
 }
 
+std::optional<hir::HirRecordOwnerKey> abi_aggregate_owner_key_from_type(
+    const TypeSpec& ts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    const c4c::TextId declaration_text_id = ts.record_def->unqualified_text_id;
+    if (declaration_text_id != c4c::kInvalidText) {
+      hir::NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts.record_def->namespace_context_id;
+      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
+      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
+        ns_qual.segment_text_ids.assign(
+            ts.record_def->qualifier_text_ids,
+            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
+      }
+      const hir::HirRecordOwnerKey owner_key =
+          hir::make_hir_record_owner_key(ns_qual, declaration_text_id);
+      if (hir::hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+    }
+  }
+
+  if (ts.tag_text_id == c4c::kInvalidText) return std::nullopt;
+  hir::NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
+                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  const hir::HirRecordOwnerKey owner_key =
+      hir::make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+  if (hir::hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+  return std::nullopt;
+}
+
 const HirStructDef* lookup_struct(const Module& mod, const TypeSpec& ts) {
+  if (ts.base != c4c::TypeBase::TB_STRUCT && ts.base != c4c::TypeBase::TB_UNION) {
+    return nullptr;
+  }
+  if (const std::optional<hir::HirRecordOwnerKey> owner_key =
+          abi_aggregate_owner_key_from_type(ts)) {
+    if (const HirStructDef* structured_decl =
+            mod.find_struct_def_by_owner_structured(*owner_key)) {
+      return structured_decl;
+    }
+  }
+
   if (!ts.tag || !ts.tag[0]) return nullptr;
-  auto it = mod.struct_defs.find(ts.tag);
-  if (it == mod.struct_defs.end()) return nullptr;
-  return &it->second;
+  const auto legacy_compat_it = mod.struct_defs.find(ts.tag);
+  if (legacy_compat_it == mod.struct_defs.end()) return nullptr;
+  return &legacy_compat_it->second;
 }
 
 Amd64ArgClass merge_class(Amd64ArgClass a, Amd64ArgClass b) {
@@ -185,8 +230,7 @@ void classify_type(const Module& mod, const TypeSpec& ts, size_t offset,
     mark_class(classes, offset, size, Amd64ArgClass::Integer);
     return;
   }
-  if ((ts.base == TypeBase::TB_STRUCT || ts.base == TypeBase::TB_UNION) &&
-      ts.tag && ts.tag[0]) {
+  if (ts.base == TypeBase::TB_STRUCT || ts.base == TypeBase::TB_UNION) {
     if (const HirStructDef* sd = lookup_struct(mod, ts)) {
       classify_struct_fields(mod, *sd, offset, classes);
     } else {
@@ -248,8 +292,7 @@ int amd64_type_size_bytes(const TypeSpec& ts, const Module& mod) {
     if (count <= 0) return 0;
     return elem_size * count;
   }
-  if ((ts.base == TypeBase::TB_STRUCT || ts.base == TypeBase::TB_UNION) &&
-      ts.tag && ts.tag[0]) {
+  if (ts.base == TypeBase::TB_STRUCT || ts.base == TypeBase::TB_UNION) {
     if (const HirStructDef* sd = lookup_struct(mod, ts)) return sd->size_bytes;
     return 0;
   }

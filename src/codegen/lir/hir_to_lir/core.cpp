@@ -594,6 +594,69 @@ static TypeSpec field_decl_ts(const HirStructField& f) {
   return ts;
 }
 
+std::optional<HirRecordOwnerKey> abi_aggregate_owner_key_from_type(const TypeSpec& ts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    const TextId declaration_text_id = ts.record_def->unqualified_text_id;
+    if (declaration_text_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts.record_def->namespace_context_id;
+      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
+      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
+        ns_qual.segment_text_ids.assign(
+            ts.record_def->qualifier_text_ids,
+            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
+      }
+      const HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(ns_qual, declaration_text_id);
+      if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+    }
+  }
+
+  if (ts.tag_text_id == kInvalidText) return std::nullopt;
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
+                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+  return std::nullopt;
+}
+
+const HirStructDef* lookup_abi_struct_layout(const Module& mod, const TypeSpec& ts) {
+  if (ts.base != TB_STRUCT && ts.base != TB_UNION) return nullptr;
+  if (const std::optional<HirRecordOwnerKey> owner_key =
+          abi_aggregate_owner_key_from_type(ts)) {
+    if (const HirStructDef* structured_decl =
+            mod.find_struct_def_by_owner_structured(*owner_key)) {
+      return structured_decl;
+    }
+  }
+
+  if (!ts.tag || !ts.tag[0]) return nullptr;
+  const auto legacy_compat_it = mod.struct_defs.find(ts.tag);
+  return legacy_compat_it == mod.struct_defs.end() ? nullptr : &legacy_compat_it->second;
+}
+
+StructNameId abi_aggregate_structured_name_id(const Module& mod,
+                                              const LirModule* lir_module,
+                                              const TypeSpec& ts) {
+  if (!lir_module || (ts.base != TB_STRUCT && ts.base != TB_UNION) ||
+      ts.ptr_level != 0 || ts.array_rank != 0) {
+    return kInvalidStructName;
+  }
+  const std::optional<HirRecordOwnerKey> owner_key =
+      abi_aggregate_owner_key_from_type(ts);
+  if (!owner_key) return kInvalidStructName;
+  const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+  if (!structured_tag || structured_tag->empty()) return kInvalidStructName;
+  const StructNameId name_id =
+      lir_module->struct_names.find(llvm_struct_type_str(*structured_tag));
+  return lir_module->find_struct_decl(name_id) ? name_id : kInvalidStructName;
+}
+
 static bool collect_aarch64_hfa_elements(const Module& mod, const TypeSpec& ts,
                                          TypeBase* elem_base, int* elem_count) {
   if (ts.ptr_level != 0) return false;
@@ -617,12 +680,11 @@ static bool collect_aarch64_hfa_elements(const Module& mod, const TypeSpec& ts,
     ++*elem_count;
     return *elem_count <= 4;
   }
-  if (ts.base != TB_STRUCT || !ts.tag || !ts.tag[0]) return false;
-  const auto it = mod.struct_defs.find(ts.tag);
-  if (it == mod.struct_defs.end()) return false;
-  const auto& sd = it->second;
-  if (sd.is_union || sd.fields.empty()) return false;
-  for (const auto& field : sd.fields) {
+  if (ts.base != TB_STRUCT) return false;
+  const HirStructDef* sd = lookup_abi_struct_layout(mod, ts);
+  if (!sd) return false;
+  if (sd->is_union || sd->fields.empty()) return false;
+  for (const auto& field : sd->fields) {
     if (field.bit_width >= 0 || field.is_flexible_array) return false;
     if (!collect_aarch64_hfa_elements(mod, field_decl_ts(field), elem_base, elem_count)) {
       return false;
@@ -633,12 +695,11 @@ static bool collect_aarch64_hfa_elements(const Module& mod, const TypeSpec& ts,
 
 std::optional<Aarch64HomogeneousFpAggregateInfo> classify_aarch64_hfa(
     const Module& mod, const TypeSpec& ts) {
-  if (ts.base != TB_STRUCT || ts.ptr_level != 0 || ts.array_rank != 0 || !ts.tag ||
-      !ts.tag[0]) {
+  if (ts.base != TB_STRUCT || ts.ptr_level != 0 || ts.array_rank != 0) {
     return std::nullopt;
   }
-  const auto it = mod.struct_defs.find(ts.tag);
-  if (it == mod.struct_defs.end()) return std::nullopt;
+  const HirStructDef* sd = lookup_abi_struct_layout(mod, ts);
+  if (!sd) return std::nullopt;
 
   TypeBase elem_base = TB_VOID;
   int elem_count = 0;
@@ -652,7 +713,7 @@ std::optional<Aarch64HomogeneousFpAggregateInfo> classify_aarch64_hfa(
   info.elem_ty = llvm_ty(elem_ts);
   info.elem_count = elem_count;
   info.elem_size = (elem_base == TB_FLOAT) ? 4 : 8;
-  info.aggregate_size = std::max(1, it->second.size_bytes);
+  info.aggregate_size = std::max(1, sd->size_bytes);
   info.aggregate_align = std::max(1, object_align_bytes(mod, ts));
   return info;
 }
@@ -680,9 +741,12 @@ int object_align_bytes(const Module& mod, const LirModule* lir_module,
     align = static_cast<int>(ts.vector_bytes);
   } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
     align = 8;
-  } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
+  } else if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
+    const StructNameId structured_name_id =
+        abi_aggregate_structured_name_id(mod, lir_module, ts);
     const StructuredLayoutLookup layout =
-        lookup_structured_layout(mod, lir_module, ts, "stmt-object-align");
+        lookup_structured_layout(mod, lir_module, ts, "stmt-object-align",
+                                 structured_name_id);
     const std::optional<int> structured_align =
         structured_layout_align_bytes(mod, lir_module, layout);
     align = structured_align ? *structured_align

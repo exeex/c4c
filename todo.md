@@ -9,30 +9,31 @@ Current Step Title: Migrate Call, VaArg, Const Init, And ABI Consumers
 ## Just Finished
 
 Step 4 - Migrate Call, VaArg, Const Init, And ABI Consumers:
-migrated the central const-init aggregate layout/definition bridge in
-`const_init_emitter.cpp` so `lookup_const_init_struct_def` first recovers a
-`StructNameId` carrier from HIR structured owner metadata (`record_def` /
-`tag_text_id`) and passes it to `lookup_structured_layout` at the
-`const-init-aggregate` site. Carrierless aggregate types are now labeled through
-the explicit `const-init-aggregate-legacy-compat` observation path, and final
-constant/GEP LLVM spelling remains on the existing `TypeSpec` formatting path.
+migrated the remaining ABI aggregate classification/layout helpers in
+`calling_convention.cpp` and the narrow LIR-side ABI helpers in `core.cpp` so
+AMD64 size/classification, AArch64 HFA classification, and statement object
+alignment first recover aggregate definitions through HIR structured owner
+metadata (`record_def` / `tag_text_id`). Existing `TypeSpec::tag` map lookups
+are retained only as explicit legacy compatibility fallbacks, and final LLVM ABI
+spelling remains unchanged.
 
 ## Suggested Next
 
-Next coherent packet: migrate the remaining Step 4 ABI classification consumers
-off semantic `TypeSpec::tag` authority when structured metadata is available,
-without changing rendered LLVM ABI spelling.
+Next coherent packet: run the Step 5 temporary `TypeSpec::tag` deletion probe,
+record the first remaining codegen/LIR residual boundary, and revert the probe
+edit before handing back.
 
 ## Watchouts
 
-- Const-init field walking still consumes the legacy `HirStructDef`; this
-  packet only routes that lookup through structured layout metadata. If a
-  structured layout has no legacy `HirStructDef` equivalent, const-init still
-  returns no definition rather than fabricating one.
-- The owner-key recovery helper is local to this bounded packet. A later wider
-  Step 4 packet may choose to centralize it if ABI consumers need the same
-  carrier recovery.
-- ABI classification files remain untouched for their own Step 4 packet.
+- This packet deliberately keeps the HIR `struct_defs` bridge as the source of
+  ABI layout facts after resolving the canonical owner key; it does not remove
+  legacy field/tag storage.
+- The new owner-key helpers are local copies matching accepted call, va_arg,
+  lvalue, and const-init packets. Centralizing them would be a separate cleanup,
+  not part of the deletion-probe boundary.
+- `lookup_structured_layout` still records rendered type names for observation
+  text and legacy parity, but `stmt-object-align` now supplies the structured
+  `StructNameId` when one is available.
 
 ## Proof
 
