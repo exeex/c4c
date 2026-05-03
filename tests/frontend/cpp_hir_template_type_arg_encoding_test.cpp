@@ -31,12 +31,20 @@ c4c::Node make_record(std::string_view name) {
   return record;
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 void test_template_type_arg_encoding_prefers_record_def_over_stale_tag() {
   c4c::Node record = make_record("StructuredArg");
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_STRUCT;
-  ts.tag = "StaleRenderedArg";
+  set_legacy_tag_if_present(ts, "StaleRenderedArg", 0);
   ts.record_def = &record;
 
   expect_eq(c4c::hir::encode_template_type_arg_ref_hir(ts), "StructuredArg",
@@ -53,7 +61,7 @@ void test_template_type_arg_encoding_prefers_text_id_over_stale_tag() {
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = "StaleRenderedTypedef";
+  set_legacy_tag_if_present(ts, "StaleRenderedTypedef", 0);
   ts.tag_text_id = 23;
   ts.namespace_context_id = 5;
   ts.is_global_qualified = true;
