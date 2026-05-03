@@ -711,12 +711,17 @@ TypeSpec Parser::parse_base_type() {
                 !arg.debug_text[0]) {
                 return false;
             }
-            return !arg.type.tag && !arg.type.record_def &&
+            const char* legacy_tag =
+                typespec_legacy_display_tag_if_present(arg.type, 0);
+            return (!legacy_tag || !legacy_tag[0]) && !arg.type.record_def &&
+                   arg.type.tag_text_id == kInvalidText &&
+                   arg.type.template_param_text_id == kInvalidText &&
                    !arg.type.tpl_struct_origin &&
                    arg.type.tpl_struct_origin_key.base_text_id == kInvalidText &&
                    !(arg.type.tpl_struct_args.data &&
                      arg.type.tpl_struct_args.size > 0) &&
                    !arg.type.deferred_member_type_name &&
+                   arg.type.deferred_member_type_text_id == kInvalidText &&
                    arg.type.base == TB_VOID;
         };
     auto structured_nttp_expr_carrier =
@@ -734,6 +739,87 @@ TypeSpec Parser::parse_base_type() {
         [](const TemplateArgRef& arg) -> bool {
             return arg.type.array_size_expr ||
                    arg.nttp_text_id != kInvalidText;
+        };
+    auto append_template_type_arg_name =
+        [](std::string& out, const TypeSpec& type, std::string_view name) {
+            if (type.is_const) out += "const_";
+            if (type.is_volatile) out += "volatile_";
+            switch (type.base) {
+                case TB_STRUCT:
+                    out += "struct_";
+                    out += name;
+                    break;
+                case TB_UNION:
+                    out += "union_";
+                    out += name;
+                    break;
+                case TB_ENUM:
+                    out += "enum_";
+                    out += name;
+                    break;
+                case TB_TYPEDEF:
+                    out += name;
+                    break;
+                default:
+                    return false;
+            }
+            for (int p = 0; p < type.ptr_level; ++p) out += "_ptr";
+            if (type.is_lvalue_ref) out += "_ref";
+            if (type.is_rvalue_ref) out += "_rref";
+            return true;
+        };
+    auto structured_template_type_arg_ref_text =
+        [&](const TypeSpec& type) -> std::string {
+            std::string ref;
+            if (type.record_def) {
+                if (type.record_def->unqualified_text_id != kInvalidText) {
+                    if (append_template_type_arg_name(
+                            ref, type,
+                            parser_text(type.record_def->unqualified_text_id,
+                                        {}))) {
+                        return ref;
+                    }
+                    ref.clear();
+                }
+                if (type.record_def->unqualified_name &&
+                    type.record_def->unqualified_name[0] &&
+                    append_template_type_arg_name(
+                        ref, type, type.record_def->unqualified_name)) {
+                    return ref;
+                }
+                ref.clear();
+                if (type.record_def->name && type.record_def->name[0] &&
+                    append_template_type_arg_name(ref, type,
+                                                  type.record_def->name)) {
+                    return ref;
+                }
+                ref.clear();
+            }
+            const TextId name_text_id =
+                type.tag_text_id != kInvalidText
+                    ? type.tag_text_id
+                    : type.template_param_text_id;
+            if (name_text_id != kInvalidText &&
+                append_template_type_arg_name(
+                    ref, type, parser_text(name_text_id, {}))) {
+                return ref;
+            }
+            return {};
+        };
+    auto render_non_origin_template_type_arg_ref =
+        [&](const TypeSpec& type) -> std::string {
+            if (std::string structured =
+                    structured_template_type_arg_ref_text(type);
+                !structured.empty()) {
+                return structured;
+            }
+            std::string mangled;
+            append_type_mangled_suffix(mangled, type);
+            if (!mangled.empty()) return mangled;
+            const char* legacy_tag =
+                typespec_legacy_display_tag_if_present(type, 0);
+            if (legacy_tag && legacy_tag[0]) return legacy_tag;
+            return {};
         };
     auto render_template_arg_ref = [&](const ParsedTemplateArg& arg)
         -> std::string {
@@ -801,14 +887,13 @@ TypeSpec Parser::parse_base_type() {
                             ref += std::to_string(nested.value);
                         }
                     } else if (nested.kind == TemplateArgKind::Type) {
-                        std::string nested_mangled;
-                        append_type_mangled_suffix(nested_mangled, nested.type);
                         if (unstructured_type_arg_ref_uses_debug_fallback(nested)) {
                             ref += nested.debug_text;
-                        } else if (nested_mangled.empty() && nested.type.tag) {
-                            ref += nested.type.tag;
-                        } else if (!nested_mangled.empty()) {
-                            ref += nested_mangled;
+                        } else if (std::string nested_ref =
+                                       render_non_origin_template_type_arg_ref(
+                                           nested.type);
+                                   !nested_ref.empty()) {
+                            ref += nested_ref;
                         } else if (nested.debug_text && nested.debug_text[0]) {
                             ref += nested.debug_text;
                         }
@@ -824,10 +909,7 @@ TypeSpec Parser::parse_base_type() {
             }
             return ref;
         }
-        std::string mangled;
-        append_type_mangled_suffix(mangled, arg.type);
-        if (mangled.empty() && arg.type.tag) return arg.type.tag;
-        return mangled;
+        return render_non_origin_template_type_arg_ref(arg.type);
     };
     auto rematerialize_captured_template_arg_expr =
         [&](const ParsedTemplateArg& arg) -> Node* {
@@ -923,8 +1005,6 @@ TypeSpec Parser::parse_base_type() {
                     refs += std::to_string(arg.value);
                 }
             } else if (arg.kind == TemplateArgKind::Type) {
-                std::string mangled;
-                append_type_mangled_suffix(mangled, arg.type);
                 if (arg.type.tpl_struct_origin ||
                     arg.type.tpl_struct_origin_key.base_text_id !=
                         kInvalidText) {
@@ -934,8 +1014,10 @@ TypeSpec Parser::parse_base_type() {
                     refs += render_template_arg_ref(parsed);
                 } else if (unstructured_type_arg_ref_uses_debug_fallback(arg))
                     refs += arg.debug_text;
-                else if (mangled.empty() && arg.type.tag) refs += arg.type.tag;
-                else if (!mangled.empty()) refs += mangled;
+                else if (std::string arg_ref =
+                             render_non_origin_template_type_arg_ref(arg.type);
+                         !arg_ref.empty())
+                    refs += arg_ref;
                 else if (arg.debug_text && arg.debug_text[0]) refs += arg.debug_text;
             } else if (arg.debug_text && arg.debug_text[0]) {
                 refs += arg.debug_text;
@@ -3414,11 +3496,9 @@ TypeSpec Parser::parse_base_type() {
                                     arg_refs += "$";
                                     arg_refs += arg.type.deferred_member_type_name;
                                 }
-                            } else if (arg.type.tag) {
-                                arg_refs += arg.type.tag;
                             } else {
-                                std::string type_name;
-                                append_type_mangled_suffix(type_name, arg.type);
+                                const std::string type_name =
+                                    render_template_arg_ref(arg);
                                 arg_refs += type_name.empty() ? "?" : type_name;
                             }
                         }
