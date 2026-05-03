@@ -4481,8 +4481,11 @@ TypeSpec Parser::parse_base_type() {
                                             arg_refs += "$";
                                             arg_refs += ats.deferred_member_type_name;
                                         }
-                                    } else if (ats.tag) {
-                                        arg_refs += ats.tag;
+                                    } else if (std::string rendered_arg =
+                                                   render_non_origin_template_type_arg_ref(
+                                                       ats);
+                                               !rendered_arg.empty()) {
+                                        arg_refs += rendered_arg;
                                     } else {
                                         // Builtin type (bool, int, etc.) — encode as mangled name.
                                         std::string type_name;
@@ -4502,7 +4505,8 @@ TypeSpec Parser::parse_base_type() {
                             set_template_arg_refs_from_parsed_args(&ts, concrete_args);
                         else
                             set_template_arg_debug_refs_text(&ts, arg_refs);
-                        ts.tag = arena_.strdup(mangled.c_str());
+                        set_parse_base_type_legacy_tag_if_present(
+                            ts, arena_.strdup(mangled.c_str()), 0);
                         ts.tag_text_id = mangled_text_id;
                         ts.namespace_context_id = mangled_namespace_context;
                         return ts;
@@ -4525,22 +4529,119 @@ TypeSpec Parser::parse_base_type() {
                         inst->pack_align = tpl_def->pack_align;
                         inst->struct_align = tpl_def->struct_align;
                         inst->n_bases = tpl_def->n_bases;
+                        struct BaseTypeBindingMetadata {
+                            std::string name;
+                            TextId name_text_id = kInvalidText;
+                            TypeSpec type{};
+                        };
+                        std::vector<BaseTypeBindingMetadata> type_binding_meta;
+                        type_binding_meta.reserve(type_bindings.size());
+                        int type_binding_index = 0;
+                        if (primary_tpl && primary_tpl->template_param_names) {
+                            for (int pi = 0;
+                                 pi < primary_tpl->n_template_params &&
+                                 type_binding_index <
+                                     static_cast<int>(type_bindings.size());
+                                 ++pi) {
+                                if (primary_tpl->template_param_is_nttp &&
+                                    primary_tpl->template_param_is_nttp[pi]) {
+                                    continue;
+                                }
+                                BaseTypeBindingMetadata meta{};
+                                meta.name = primary_tpl->template_param_names[pi]
+                                                ? primary_tpl
+                                                      ->template_param_names[pi]
+                                                : type_bindings
+                                                      [type_binding_index]
+                                                          .first;
+                                if (primary_tpl->template_param_name_text_ids) {
+                                    meta.name_text_id =
+                                        primary_tpl
+                                            ->template_param_name_text_ids[pi];
+                                }
+                                if (meta.name_text_id == kInvalidText &&
+                                    !meta.name.empty()) {
+                                    meta.name_text_id =
+                                        parser_text_id_for_token(kInvalidText,
+                                                                 meta.name);
+                                }
+                                meta.type =
+                                    type_bindings[type_binding_index++].second;
+                                type_binding_meta.push_back(meta);
+                            }
+                        }
+                        while (type_binding_index <
+                               static_cast<int>(type_bindings.size())) {
+                            BaseTypeBindingMetadata meta{};
+                            meta.name = type_bindings[type_binding_index].first;
+                            if (!meta.name.empty()) {
+                                meta.name_text_id =
+                                    parser_text_id_for_token(kInvalidText,
+                                                             meta.name);
+                            }
+                            meta.type =
+                                type_bindings[type_binding_index++].second;
+                            type_binding_meta.push_back(meta);
+                        }
+                        auto template_param_text_id_for_type =
+                            [](const TypeSpec& type) -> TextId {
+                            return type.template_param_text_id != kInvalidText
+                                       ? type.template_param_text_id
+                                       : type.tag_text_id;
+                        };
+                        auto bind_direct_base_type_param =
+                            [&](TypeSpec* target) -> bool {
+                            if (!target || target->base != TB_TYPEDEF) {
+                                return false;
+                            }
+                            TypeSpec bound_type{};
+                            bool found_bound_type = false;
+                            const TextId type_text_id =
+                                template_param_text_id_for_type(*target);
+                            bool has_structured_binding = false;
+                            if (type_text_id != kInvalidText) {
+                                for (const auto& binding : type_binding_meta) {
+                                    if (binding.name_text_id == kInvalidText) {
+                                        continue;
+                                    }
+                                    has_structured_binding = true;
+                                    if (binding.name_text_id == type_text_id) {
+                                        bound_type = binding.type;
+                                        found_bound_type = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!found_bound_type && !has_structured_binding) {
+                                if (const char* legacy_tag =
+                                        parse_base_type_legacy_tag_if_no_metadata(
+                                            *target)) {
+                                    for (const auto& binding :
+                                         type_binding_meta) {
+                                        if (binding.name == legacy_tag) {
+                                            bound_type = binding.type;
+                                            found_bound_type = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if (!found_bound_type) return false;
+                            const int outer_ptr_level = target->ptr_level;
+                            const bool outer_const = target->is_const;
+                            const bool outer_volatile = target->is_volatile;
+                            *target = bound_type;
+                            target->ptr_level += outer_ptr_level;
+                            target->is_const |= outer_const;
+                            target->is_volatile |= outer_volatile;
+                            return true;
+                        };
                         if (inst->n_bases > 0) {
                             inst->base_types = arena_.alloc_array<TypeSpec>(inst->n_bases);
                             for (int bi = 0; bi < inst->n_bases; ++bi) {
                                 inst->base_types[bi] = tpl_def->base_types[bi];
-                                for (const auto& [pname, pts] : type_bindings) {
-                                    if (inst->base_types[bi].base == TB_TYPEDEF &&
-                                        inst->base_types[bi].tag &&
-                                        std::string(inst->base_types[bi].tag) == pname) {
-                                        inst->base_types[bi].base = pts.base;
-                                        inst->base_types[bi].tag = pts.tag;
-                                        inst->base_types[bi].record_def = pts.record_def;
-                                        inst->base_types[bi].ptr_level += pts.ptr_level;
-                                        inst->base_types[bi].is_const |= pts.is_const;
-                                        inst->base_types[bi].is_volatile |= pts.is_volatile;
-                                    }
-                                }
+                                bind_direct_base_type_param(
+                                    &inst->base_types[bi]);
                                 // Resolve pending template base types: e.g. is_const<T> → is_const<const int>
                                 if (inst->base_types[bi].tpl_struct_origin) {
                                     std::string origin =
@@ -4558,12 +4659,40 @@ TypeSpec Parser::parse_base_type() {
                                     };
                                     auto type_mentions_bound_param =
                                         [&](const TypeSpec& candidate) -> bool {
-                                            if (candidate.tag && candidate.tag[0] &&
-                                                (candidate.base == TB_TYPEDEF ||
-                                                 (!candidate.record_def &&
-                                                  !candidate.tpl_struct_origin))) {
-                                                for (const auto& [pname2, _] : type_bindings) {
-                                                    if (std::string(candidate.tag) == pname2) {
+                                            if (!(candidate.base == TB_TYPEDEF ||
+                                                  (!candidate.record_def &&
+                                                   !candidate
+                                                        .tpl_struct_origin))) {
+                                                return false;
+                                            }
+                                            const TextId candidate_text_id =
+                                                template_param_text_id_for_type(
+                                                    candidate);
+                                            bool has_structured_binding = false;
+                                            if (candidate_text_id !=
+                                                kInvalidText) {
+                                                for (const auto& binding :
+                                                     type_binding_meta) {
+                                                    if (binding.name_text_id ==
+                                                        kInvalidText) {
+                                                        continue;
+                                                    }
+                                                    has_structured_binding = true;
+                                                    if (binding.name_text_id ==
+                                                        candidate_text_id) {
+                                                        return true;
+                                                    }
+                                                }
+                                                if (has_structured_binding) {
+                                                    return false;
+                                                }
+                                            }
+                                            if (const char* legacy_tag =
+                                                    parse_base_type_legacy_tag_if_no_metadata(
+                                                        candidate)) {
+                                                for (const auto& [pname2, _] :
+                                                     type_bindings) {
+                                                    if (pname2 == legacy_tag) {
                                                         return true;
                                                     }
                                                 }
@@ -4571,12 +4700,36 @@ TypeSpec Parser::parse_base_type() {
                                             return false;
                                     };
                                     auto bound_type_for_type = [&](TypeSpec type) {
-                                        if (type.base == TB_TYPEDEF &&
-                                            type.tag && type.tag[0]) {
-                                            for (const auto& [pname2, pts] :
-                                                 type_bindings) {
-                                                if (std::string(type.tag) == pname2) {
-                                                    return pts;
+                                        if (type.base == TB_TYPEDEF) {
+                                            const TextId type_text_id =
+                                                template_param_text_id_for_type(
+                                                    type);
+                                            bool has_structured_binding = false;
+                                            if (type_text_id != kInvalidText) {
+                                                for (const auto& binding :
+                                                     type_binding_meta) {
+                                                    if (binding.name_text_id ==
+                                                        kInvalidText) {
+                                                        continue;
+                                                    }
+                                                    has_structured_binding = true;
+                                                    if (binding.name_text_id ==
+                                                        type_text_id) {
+                                                        return binding.type;
+                                                    }
+                                                }
+                                                if (has_structured_binding) {
+                                                    return type;
+                                                }
+                                            }
+                                            if (const char* legacy_tag =
+                                                    parse_base_type_legacy_tag_if_no_metadata(
+                                                        type)) {
+                                                for (const auto& [pname2, pts] :
+                                                     type_bindings) {
+                                                    if (pname2 == legacy_tag) {
+                                                        return pts;
+                                                    }
                                                 }
                                             }
                                         }
@@ -4587,10 +4740,10 @@ TypeSpec Parser::parse_base_type() {
                                             TypeSpec* out) -> bool {
                                         if (!param_name || !param_name[0] || !out)
                                             return false;
-                                        for (const auto& [pname2, pts] :
-                                             type_bindings) {
-                                            if (pname2 == param_name) {
-                                                *out = pts;
+                                        for (const auto& binding :
+                                             type_binding_meta) {
+                                            if (binding.name == param_name) {
+                                                *out = binding.type;
                                                 return true;
                                             }
                                         }
@@ -4624,15 +4777,44 @@ TypeSpec Parser::parse_base_type() {
                                     };
                                     auto substitute_bound_type_arg =
                                         [&](TypeSpec type) -> TypeSpec {
-                                        if (!(type.tag && type.tag[0] &&
-                                              (type.base == TB_TYPEDEF ||
-                                               (!type.record_def &&
-                                                !type.tpl_struct_origin)))) {
+                                        if (!(type.base == TB_TYPEDEF ||
+                                              (!type.record_def &&
+                                               !type.tpl_struct_origin))) {
                                             return type;
                                         }
                                         TypeSpec bound_type{};
-                                        if (bound_type_for_param_name(
-                                                type.tag, &bound_type)) {
+                                        bool found_bound_type = false;
+                                        const TextId type_text_id =
+                                            template_param_text_id_for_type(type);
+                                        bool has_structured_binding = false;
+                                        if (type_text_id != kInvalidText) {
+                                            for (const auto& binding :
+                                                 type_binding_meta) {
+                                                if (binding.name_text_id ==
+                                                    kInvalidText) {
+                                                    continue;
+                                                }
+                                                has_structured_binding = true;
+                                                if (binding.name_text_id ==
+                                                    type_text_id) {
+                                                    bound_type = binding.type;
+                                                    found_bound_type = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if (!found_bound_type &&
+                                            !has_structured_binding) {
+                                            if (const char* legacy_tag =
+                                                    parse_base_type_legacy_tag_if_no_metadata(
+                                                        type)) {
+                                                found_bound_type =
+                                                    bound_type_for_param_name(
+                                                        legacy_tag,
+                                                        &bound_type);
+                                            }
+                                        }
+                                        if (found_bound_type) {
                                             const int outer_ptr_level =
                                                 type.ptr_level;
                                             const bool outer_lref =
@@ -4712,15 +4894,30 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         TypeSpec candidate{};
                                         candidate.base = TB_TYPEDEF;
-                                        candidate.tag = node->left->name;
+                                        set_parse_base_type_legacy_tag_if_present(
+                                            candidate, node->left->name, 0);
                                         candidate.tag_text_id =
                                             node->left->unqualified_text_id;
                                         candidate.array_size = -1;
                                         candidate.inner_rank = -1;
                                         *out_type = bound_type_for_type(candidate);
-                                        return out_type->base != TB_TYPEDEF ||
-                                               out_type->record_def ||
-                                               out_type->tag != candidate.tag;
+                                        if (out_type->base != TB_TYPEDEF ||
+                                            out_type->record_def) {
+                                            return true;
+                                        }
+                                        const TextId out_text_id =
+                                            template_param_text_id_for_type(
+                                                *out_type);
+                                        if (candidate.tag_text_id !=
+                                                kInvalidText ||
+                                            out_text_id != kInvalidText) {
+                                            return out_text_id !=
+                                                   candidate.tag_text_id;
+                                        }
+                                        return parse_base_type_legacy_tag_if_no_metadata(
+                                                   *out_type) !=
+                                               parse_base_type_legacy_tag_if_no_metadata(
+                                                   candidate);
                                     };
                                     std::function<bool(const Node*)>
                                         expr_has_unsigned_type =
@@ -4769,7 +4966,10 @@ TypeSpec Parser::parse_base_type() {
                                             const TypeSpec sized =
                                                 bound_type_for_type(node->type);
                                             if (sized.base == TB_TYPEDEF &&
-                                                sized.tag) {
+                                                (parse_base_type_has_structured_identity_metadata(
+                                                     sized) ||
+                                                 parse_base_type_legacy_tag_if_no_metadata(
+                                                     sized))) {
                                                 return false;
                                             }
                                             *out = sizeof_type_spec(sized);
@@ -4966,9 +5166,7 @@ TypeSpec Parser::parse_base_type() {
                                         const std::string deferred_member_name =
                                             deferred_member_lookup_name(
                                                 inst->base_types[bi]);
-                                        if (deferred_member_name.empty() ||
-                                            !inst->base_types[bi].tag ||
-                                            !inst->base_types[bi].tag[0]) {
+                                        if (deferred_member_name.empty()) {
                                             return false;
                                         }
                                         TypeSpec resolved_member{};
@@ -5176,16 +5374,17 @@ TypeSpec Parser::parse_base_type() {
                                             inst->base_types[bi]
                                                 .deferred_member_type_text_id;
                                         inst->base_types[bi] = produced;
-                                        if (!inst->base_types[bi].tag) {
+                                        if (!typespec_legacy_display_tag_if_present(
+                                                inst->base_types[bi], 0)) {
                                             inst->base_types[bi] = TypeSpec{};
                                             inst->base_types[bi].array_size = -1;
                                             inst->base_types[bi].inner_rank = -1;
                                             inst->base_types[bi].base = TB_STRUCT;
-                                            inst->base_types[bi].tag =
+                                            set_parse_base_type_legacy_tag_if_present(
+                                                inst->base_types[bi],
                                                 arena_.strdup(
-                                                    (produced.tag && produced.tag[0])
-                                                        ? produced.tag
-                                                        : base_mangled.c_str());
+                                                    base_mangled.c_str()),
+                                                0);
                                         }
                                         if (saved_member_name &&
                                             saved_member_name[0]) {
