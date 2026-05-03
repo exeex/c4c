@@ -132,6 +132,43 @@ LanguageLinkage linkage_for_node(const Node* node, SourceProfile profile) {
   return default_linkage_for(profile);
 }
 
+template <typename T>
+auto typespec_legacy_display_tag_if_present(const T& ts, int) -> decltype(ts.tag) {
+  return ts.tag;
+}
+
+const char* typespec_legacy_display_tag_if_present(const TypeSpec&, long) {
+  return nullptr;
+}
+
+template <typename T>
+auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_typespec_final_spelling_tag_if_present(TypeSpec&, const char*, long) {}
+
+const char* record_definition_display_name(const Node* record_def) {
+  if (!record_def) return nullptr;
+  if (record_def->unqualified_name && record_def->unqualified_name[0]) {
+    return record_def->unqualified_name;
+  }
+  if (record_def->name && record_def->name[0]) return record_def->name;
+  return nullptr;
+}
+
+std::string canonical_leaf_display_spelling(const TypeSpec& ts) {
+  if (const char* record_name = record_definition_display_name(ts.record_def)) {
+    return record_name;
+  }
+  if (const char* compatibility_tag =
+          typespec_legacy_display_tag_if_present(ts, 0)) {
+    return compatibility_tag;
+  }
+  return {};
+}
+
 bool is_unspecified_param_list(const Node* fn_like_node) {
   if (!fn_like_node) return false;
   return fn_like_node->n_params == 0 && !fn_like_node->variadic;
@@ -143,8 +180,9 @@ bool is_unspecified_fn_ptr_param_list(const Node* decl_like_node) {
 }
 
 CanonicalType canonicalize_base_type(const TypeSpec& ts) {
-  return make_leaf_type(ts.base, ts.tag ? ts.tag : "", ts.is_const, ts.is_volatile,
-                        ts.is_vector, ts.vector_lanes, ts.vector_bytes);
+  return make_leaf_type(ts.base, canonical_leaf_display_spelling(ts), ts.is_const,
+                        ts.is_volatile, ts.is_vector, ts.vector_lanes,
+                        ts.vector_bytes);
 }
 
 CanonicalType apply_array_layers(CanonicalType type, const TypeSpec& ts) {
@@ -611,7 +649,6 @@ static TypeBase typebase_from_kind(CanonicalTypeKind kind) {
 
 TypeSpec typespec_from_canonical(const CanonicalType& ct) {
   TypeSpec ts{};
-  ts.tag = nullptr;
   ts.ptr_level = 0;
   ts.align_bytes = 0;
   ts.array_size = -1;
@@ -713,7 +750,7 @@ TypeSpec typespec_from_canonical(const CanonicalType& ct) {
   if (!ct.user_spelling.empty() &&
       (ct.kind == CanonicalTypeKind::Struct || ct.kind == CanonicalTypeKind::Union ||
        ct.kind == CanonicalTypeKind::Enum || ct.kind == CanonicalTypeKind::TypedefName)) {
-    ts.tag = ct.user_spelling.c_str();
+    set_typespec_final_spelling_tag_if_present(ts, ct.user_spelling.c_str(), 0);
   }
 
   return ts;
