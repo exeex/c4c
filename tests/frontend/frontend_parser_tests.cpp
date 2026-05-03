@@ -6217,9 +6217,18 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "PayloadAlias");
 
   const c4c::TextId box_text = box_token.text_id;
+  const c4c::TextId payload_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Payload");
+  const c4c::TextId param_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "T");
   c4c::TypeSpec param_ts{};
   param_ts.base = c4c::TB_TYPEDEF;
-  param_ts.tag = arena.strdup("T");
+  param_ts.tag_text_id = param_text;
+  param_ts.template_param_text_id = param_text;
+  param_ts.template_param_owner_namespace_context_id =
+      parser.current_namespace_context_id();
+  param_ts.template_param_owner_text_id = box_text;
+  param_ts.template_param_index = 0;
   param_ts.array_size = -1;
   param_ts.inner_rank = -1;
 
@@ -6232,6 +6241,8 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
   primary->n_template_args = 0;
   primary->template_param_names = arena.alloc_array<const char*>(1);
   primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  primary->template_param_name_text_ids[0] = param_text;
   primary->template_param_is_nttp = arena.alloc_array<bool>(1);
   primary->template_param_is_nttp[0] = false;
   primary->template_param_is_pack = arena.alloc_array<bool>(1);
@@ -6267,18 +6278,21 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
   parser.template_state_.template_struct_defs_by_key[box_key] = primary;
   c4c::TypeSpec box_alias{};
   box_alias.base = c4c::TB_STRUCT;
-  box_alias.tag = arena.strdup("Box");
+  box_alias.tag_text_id = box_text;
+  box_alias.record_def = primary;
   box_alias.array_size = -1;
   box_alias.inner_rank = -1;
   parser.register_typedef_binding(box_text, box_alias, true);
 
   c4c::Node* payload = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   payload->name = arena.strdup("Payload");
+  payload->unqualified_name = arena.strdup("Payload");
+  payload->unqualified_text_id = payload_text;
   payload->n_fields = 0;
   parser.register_struct_definition_for_testing("Payload", payload);
   c4c::TypeSpec payload_alias{};
   payload_alias.base = c4c::TB_STRUCT;
-  payload_alias.tag = arena.strdup("Payload");
+  payload_alias.tag_text_id = payload_text;
   payload_alias.array_size = -1;
   payload_alias.inner_rank = -1;
   payload_alias.record_def = payload;
@@ -6286,6 +6300,8 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
                                   true);
   c4c::Node* stale_payload = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   stale_payload->name = arena.strdup("Payload");
+  stale_payload->unqualified_name = arena.strdup("Payload");
+  stale_payload->unqualified_text_id = payload_text;
   stale_payload->n_fields = 0;
   parser.register_struct_definition_for_testing("Payload", stale_payload);
 
@@ -6298,15 +6314,17 @@ void test_parser_template_substitution_preserves_record_definition_payloads() {
   });
 
   const c4c::TypeSpec box_ts = parser.parse_base_type();
-  expect_true(box_ts.base == c4c::TB_STRUCT && box_ts.tag != nullptr,
+  expect_true(box_ts.base == c4c::TB_STRUCT &&
+                  box_ts.tag_text_id != c4c::kInvalidText,
               "direct template instantiation should produce a concrete struct type");
   expect_true(box_ts.record_def != nullptr,
               "direct template instantiation should return the instantiated record");
   const c4c::Node* box = box_ts.record_def;
   expect_true(box->n_bases == 1 && box->base_types,
               "template instantiation should clone base payloads");
-  expect_true(box->base_types[0].tag != nullptr &&
-                  std::string_view(box->base_types[0].tag) == "Payload",
+  expect_true(box->base_types[0].tag_text_id != c4c::kInvalidText &&
+                  std::string_view(parser.parser_text(
+                      box->base_types[0].tag_text_id)) == "Payload",
               "template base substitution should preserve rendered tag spelling");
   expect_true(box->base_types[0].record_def == payload,
               "template base substitution should preserve record_def");
