@@ -8,14 +8,13 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries migrated the HIR
-`value_args.cpp` deletion-probe residuals in the member lookup
-owner/template-argument binding family around current owner resolution,
-template type-arg binding, deferred member owner lookup, and `is_reference`
-trait owner recovery. The migrated paths now use `record_def`, `tag_text_id`,
-owner-key metadata, `template_param_text_id`, and text-id binding maps before
-explicit field-detected rendered-spelling compatibility fallback. Added
-focused coverage in `cpp_hir_value_args_residual_structured_metadata`.
+Step 4 - Probe Field Removal And Split Boundaries fixed the EASTL regression
+introduced by the value-args metadata migration. `value_args.cpp` now
+recognizes injected-class-name member-owner lookups inside realized template
+struct methods, including reference storage types, so `pair<T1, T2>::swap`
+stamps `p.first`/`p.second` with the realized owner
+`eastl::pair_T1_T1_T2_T2` instead of leaving LIR to resolve against the primary
+`eastl::pair`.
 
 ## Suggested Next
 
@@ -114,6 +113,11 @@ fallback sites around 1480, 1573, 1786-1790, and 2011.
 - HIR `value_args.cpp` deferred member owner lookup and `is_reference` trait
   owner recovery now use structured owner metadata before field-detected
   no-metadata rendered compatibility fallback.
+- HIR `value_args.cpp` injected-class-name member-owner lookup now treats the
+  current realized template struct as authoritative when an unqualified current
+  family reference appears inside that template's method body. This is needed
+  for EASTL `pair& p` style parameters whose AST type metadata still carries
+  primary-family spelling.
 - Deletion probe residuals from this packet no longer include the targeted
   direct reads around former
   `src/frontend/hir/impl/templates/value_args.cpp:386`, `401-404`,
@@ -125,32 +129,18 @@ fallback sites around 1480, 1573, 1786-1790, and 2011.
 
 Executor proof:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(eastl_cpp_external_utility_frontend_basic_cpp|frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 95 of 95
-delegated tests, increasing the focused subset with new
-`cpp_hir_value_args_residual_structured_metadata` coverage for the migrated
-HIR value-args metadata. `test_after.log` is the canonical proof log.
+Result: command exited 0. The build passed, and CTest passed 96 of 96
+delegated tests, including
+`eastl_cpp_external_utility_frontend_basic_cpp`. `test_after.log` is the
+canonical proof log.
 
 Regression guard:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
 
-Result: command exited 0. Guard passed with `passed=94 failed=0 total=94`
-before and `passed=95 failed=0 total=95` after.
-
-Deletion probe:
-
-Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
-`bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_value_args_residual.log 2>&1`,
-and restored the temporary edit. The probe moved past the targeted
-`value_args.cpp` direct reads around former lines `386`, `401-404`,
-`414-437`, `466-493`, `763-789`, and `870-871`.
-
-Result: command exited 1 as expected for the controlled deletion probe. The
-first emitted errors are now in
-`src/frontend/parser/impl/expressions.cpp` around current local mangling lines
-`33-36`, followed by constructor/member display fallback reads around `1480`,
-`1573`, `1786-1790`, and `2011`. The normal delegated proof above was rerun
-green after restoring the temporary edit.
+Result: command exited 0. Guard passed with `passed=95 failed=1 total=96`
+before and `passed=96 failed=0 total=96` after. The resolved failing test is
+`eastl_cpp_external_utility_frontend_basic_cpp`, and there are no new failing
+tests.

@@ -184,6 +184,38 @@ std::string family_root(const std::string& tag) {
   return (tpl_sep == std::string::npos) ? tag : tag.substr(0, tpl_sep);
 }
 
+bool typespec_has_structured_owner_metadata(const TypeSpec& ts);
+
+bool same_unqualified_or_qualified_name(const std::string& lhs,
+                                        const std::string& rhs) {
+  return lhs == rhs || unqualified_name(lhs) == unqualified_name(rhs);
+}
+
+std::optional<std::string> structured_injected_class_family_from_type(
+    const TypeSpec& ts,
+    const Module* module) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    if (ts.record_def->name && ts.record_def->name[0]) {
+      return family_root(ts.record_def->name);
+    }
+    if (ts.record_def->unqualified_text_id != kInvalidText && module &&
+        module->link_name_texts) {
+      const std::string_view text =
+          module->link_name_texts->lookup(ts.record_def->unqualified_text_id);
+      if (!text.empty()) return family_root(std::string(text));
+    }
+  }
+  if (ts.tag_text_id != kInvalidText && module && module->link_name_texts) {
+    const std::string_view text = module->link_name_texts->lookup(ts.tag_text_id);
+    if (!text.empty()) return family_root(std::string(text));
+  }
+  if (!typespec_has_structured_owner_metadata(ts)) {
+    const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+    if (legacy_tag && legacy_tag[0]) return family_root(legacy_tag);
+  }
+  return std::nullopt;
+}
+
 std::optional<HirRecordOwnerKey> template_origin_owner_key_from_type(
     const TypeSpec& ts) {
   const QualifiedNameKey& origin_key = ts.tpl_struct_origin_key;
@@ -292,6 +324,37 @@ bool Lowerer::recover_template_struct_identity_from_tag(
     const std::string* current_struct_tag) const {
   if (!ts || (ts->tpl_struct_origin && ts->tpl_struct_origin[0])) {
     return false;
+  }
+  const bool has_explicit_template_args =
+      ts->tpl_struct_args.data && ts->tpl_struct_args.size > 0;
+  if (!has_explicit_template_args && current_struct_tag &&
+      !current_struct_tag->empty() && module_) {
+    const std::string current_family = family_root(*current_struct_tag);
+    if (auto source_family =
+            structured_injected_class_family_from_type(*ts, module_);
+        source_family &&
+        same_unqualified_or_qualified_name(*source_family, current_family)) {
+      auto current_def = module_->struct_defs.find(*current_struct_tag);
+      if (current_def != module_->struct_defs.end()) {
+        assign_typespec_legacy_tag_if_present(
+            *ts, current_def->second.tag.c_str(), 0);
+        ts->tag_text_id = current_def->second.tag_text_id;
+        ts->namespace_context_id = current_def->second.ns_qual.context_id;
+        ts->is_global_qualified =
+            current_def->second.ns_qual.is_global_qualified;
+        if (!current_def->second.ns_qual.segment_text_ids.empty()) {
+          ts->qualifier_text_ids = const_cast<TextId*>(
+              current_def->second.ns_qual.segment_text_ids.data());
+          ts->n_qualifier_segments = static_cast<int>(
+              current_def->second.ns_qual.segment_text_ids.size());
+        }
+        auto node_it = struct_def_nodes_.find(*current_struct_tag);
+        if (node_it != struct_def_nodes_.end()) {
+          ts->record_def = const_cast<Node*>(node_it->second);
+        }
+        return false;
+      }
+    }
   }
   const Node* owner = nullptr;
   bool has_structured_owner_metadata = false;
@@ -403,9 +466,47 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
     const Node* span_node,
     const std::string& context_name) {
   if (is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
+  if (!is_arrow && (base_ts.is_lvalue_ref || base_ts.is_rvalue_ref)) {
+    base_ts.is_lvalue_ref = false;
+    base_ts.is_rvalue_ref = false;
+    if (base_ts.ptr_level > 0) base_ts.ptr_level--;
+  }
   while (resolve_struct_member_typedef_if_ready(&base_ts)) {
   }
   resolve_typedef_to_struct(base_ts);
+  const bool has_explicit_template_args =
+      base_ts.tpl_struct_args.data && base_ts.tpl_struct_args.size > 0;
+
+  auto try_current_injected_class_owner_tag =
+      [&]() -> std::optional<std::string> {
+    if (has_explicit_template_args || !current_struct_tag ||
+        current_struct_tag->empty() || !module_ ||
+        !module_->struct_defs.count(*current_struct_tag)) {
+      return std::nullopt;
+    }
+    const std::string current_family = family_root(*current_struct_tag);
+    if (auto source_family =
+            structured_injected_class_family_from_type(base_ts, module_);
+        source_family &&
+        same_unqualified_or_qualified_name(*source_family, current_family)) {
+      return *current_struct_tag;
+    }
+    if (base_ts.tpl_struct_origin && base_ts.tpl_struct_origin[0] &&
+        same_unqualified_or_qualified_name(
+            family_root(base_ts.tpl_struct_origin), current_family)) {
+      return *current_struct_tag;
+    }
+    const char* legacy_tag = typespec_legacy_tag_if_present(base_ts, 0);
+    if (legacy_tag && legacy_tag[0] &&
+        same_unqualified_or_qualified_name(family_root(legacy_tag),
+                                           current_family)) {
+      return *current_struct_tag;
+    }
+    return std::nullopt;
+  };
+
+  if (auto owner_tag = try_current_injected_class_owner_tag()) return owner_tag;
+
   if ((base_ts.base != TB_STRUCT && base_ts.base != TB_UNION) ||
       base_ts.ptr_level != 0 || base_ts.array_rank != 0) {
     return std::nullopt;
