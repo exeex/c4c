@@ -24,6 +24,65 @@ auto set_parse_base_type_legacy_tag_if_present(T& ts, const char* tag, int)
 
 void set_parse_base_type_legacy_tag_if_present(TypeSpec&, const char*, long) {}
 
+static TextId parse_base_type_record_text_id(Parser& parser, const Node* record) {
+    if (!record) return kInvalidText;
+    if (record->unqualified_text_id != kInvalidText)
+        return record->unqualified_text_id;
+    if (record->unqualified_name && record->unqualified_name[0])
+        return parser.parser_text_id_for_token(kInvalidText,
+                                               record->unqualified_name);
+    if (record->name && record->name[0])
+        return parser.parser_text_id_for_token(kInvalidText, record->name);
+    return kInvalidText;
+}
+
+static const char* parse_base_type_final_spelling_compat(Parser& parser,
+                                                         const TypeSpec& ts,
+                                                         const Node* record) {
+    if (ts.tag_text_id != kInvalidText) {
+        const std::string_view text = parser.parser_text(ts.tag_text_id, {});
+        if (!text.empty()) return parser.arena_.strdup(std::string(text).c_str());
+    }
+    if (record) {
+        if (record->name && record->name[0]) return record->name;
+        if (record->unqualified_name && record->unqualified_name[0])
+            return record->unqualified_name;
+    }
+    return typespec_legacy_display_tag_if_present(ts, 0);
+}
+
+static void set_parse_base_type_record_metadata(Parser& parser,
+                                                TypeSpec& ts,
+                                                Node* record,
+                                                TypeBase base) {
+    ts.base = base;
+    ts.record_def = (record && record->n_fields >= 0) ? record : nullptr;
+    ts.tag_text_id = parse_base_type_record_text_id(parser, record);
+    set_parse_base_type_legacy_tag_if_present(
+        ts, parse_base_type_final_spelling_compat(parser, ts, record), 0);
+}
+
+static void set_parse_base_type_enum_metadata(Parser& parser,
+                                              TypeSpec& ts,
+                                              Node* enum_def) {
+    ts.base = TB_ENUM;
+    ts.tag_text_id = parse_base_type_record_text_id(parser, enum_def);
+    set_parse_base_type_legacy_tag_if_present(
+        ts, parse_base_type_final_spelling_compat(parser, ts, enum_def), 0);
+}
+
+static const Node* find_template_struct_primary_for_parse_base_type(
+    Parser& parser,
+    const TypeSpec& ts) {
+    const TextId tag_text_id =
+        ts.tag_text_id != kInvalidText
+            ? ts.tag_text_id
+            : parse_base_type_record_text_id(parser, ts.record_def);
+    if (tag_text_id == kInvalidText) return nullptr;
+    return parser.find_template_struct_primary(
+        parser.current_namespace_context_id(), tag_text_id);
+}
+
 static std::vector<std::string> split_template_arg_ref_text(
     const std::string& refs) {
     std::vector<std::string> parts;
@@ -2236,17 +2295,13 @@ TypeSpec Parser::parse_base_type() {
     // Handle struct/union/enum after switch (needs extra parsing)
     if (has_struct) {
         Node* sd = parse_struct_or_union(*this, false);
-        ts.base = TB_STRUCT;
-        ts.tag  = sd ? sd->name : nullptr;
-        ts.record_def = (sd && sd->n_fields >= 0) ? sd : nullptr;
+        set_parse_base_type_record_metadata(*this, ts, sd, TB_STRUCT);
         // In C++ mode, 'struct Pair<int>' should trigger template struct instantiation
-        // just like 'Pair<int>' does via the typedef path. If the tag matches a known
+        // just like 'Pair<int>' does via the typedef path. If metadata matches a known
         // template struct and '<' follows, fall through to the template instantiation
         // code below instead of returning immediately.
-        if (!(is_cpp_mode() && ts.tag &&
-              find_template_struct_primary(current_namespace_context_id(),
-                                           parser_text_id_for_token(
-                                               kInvalidText, ts.tag)) &&
+        if (!(is_cpp_mode() &&
+              find_template_struct_primary_for_parse_base_type(*this, ts) &&
               check(TokenKind::Less))) {
             return ts;
         }
@@ -2254,9 +2309,7 @@ TypeSpec Parser::parse_base_type() {
     }
     if (has_union) {
         Node* sd = parse_struct_or_union(*this, true);
-        ts.base = TB_UNION;
-        ts.tag  = sd ? sd->name : nullptr;
-        ts.record_def = (sd && sd->n_fields >= 0) ? sd : nullptr;
+        set_parse_base_type_record_metadata(*this, ts, sd, TB_UNION);
         return ts;
     }
     if (has_enum) {
@@ -2267,8 +2320,7 @@ TypeSpec Parser::parse_base_type() {
                 ts = *typedef_type;
             }
         }
-        ts.base = TB_ENUM;
-        ts.tag  = ed ? ed->name : nullptr;
+        set_parse_base_type_enum_metadata(*this, ts, ed);
         return ts;
     }
 
@@ -2279,15 +2331,14 @@ TypeSpec Parser::parse_base_type() {
     }
 
     // Template struct instantiation for 'struct Pair<int>' syntax (has_struct fall-through).
-    // ts.base is already TB_STRUCT and ts.tag is the template name.
-    if (has_struct && is_cpp_mode() && ts.tag &&
-        find_template_struct_primary(current_namespace_context_id(),
-                                     parser_text_id_for_token(kInvalidText,
-                                                              ts.tag)) &&
+    // ts.base is already TB_STRUCT and ts.tag_text_id is the template name.
+    if (has_struct && is_cpp_mode() &&
+        find_template_struct_primary_for_parse_base_type(*this, ts) &&
         check(TokenKind::Less)) {
         // Reuse the typedef-path template instantiation by setting has_typedef and
         // preparing ts as if the typedef had been resolved.
-        typedef_final_spelling = typespec_legacy_display_tag_if_present(ts, 0);
+        typedef_final_spelling =
+            parse_base_type_final_spelling_compat(*this, ts, ts.record_def);
         has_typedef = true;
         has_struct = false;
     }
