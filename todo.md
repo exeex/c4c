@@ -3,35 +3,36 @@
 Status: Active
 Source Idea Path: ideas/open/142_codegen_lir_aggregate_type_identity_metadata.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate Layout And Field Access Consumers
+Current Step ID: 4
+Current Step Title: Migrate Call, VaArg, Const Init, And ABI Consumers
 
 ## Just Finished
 
-Step 3 - Migrate Layout And Field Access Consumers:
-migrated the `lvalue.cpp` indexed aggregate GEP route so
-`StmtEmitter::indexed_gep_elem_ty` / `emit_indexed_gep` accept a narrow
-`StructNameId` carrier and recover that carrier from HIR structured owner
-metadata (`record_def` / `tag_text_id`) when available. The emitted LLVM type
-spelling still comes from the existing `TypeSpec` formatting path, while the
-rendered-tag recovery path is now labeled
-`indexed-gep-aggregate-legacy-compat`.
+Step 4 - Migrate Call, VaArg, Const Init, And ABI Consumers:
+migrated the call/variadic aggregate sizing consumers in `call/args.cpp` and
+`call/vaarg.cpp` so their `lookup_structured_layout` calls recover and pass an
+explicit `StructNameId` carrier from HIR structured owner metadata
+(`record_def` / `tag_text_id`) when available. Final LLVM call and `va_arg`
+type spelling still comes from the existing `TypeSpec` formatting path, while
+the no-carrier layout observation paths are now labeled
+`variadic-aggregate-arg-legacy-compat` and `va_arg-aggregate-legacy-compat`.
 
 ## Suggested Next
 
-Next coherent packet: migrate call/variadic aggregate sizing consumers that
-already route through `lookup_structured_layout`, keeping final call/ABI
-spelling separate from any structured aggregate identity carrier.
+Next coherent packet: migrate the remaining Step 4 aggregate call signature /
+return type-ref consumers in `call/target.cpp`, keeping final emitted spelling
+separate from structured LIR identity.
 
 ## Watchouts
 
-- `indexed_gep_elem_ty` still derives final LLVM text from `llvm_ty` /
-  `llvm_alloca_ty`; the new carrier is only used for structured LIR identity.
-- Pointer arithmetic call sites outside the direct `IndexExpr` path rely on
-  the helper's internal structured-owner recovery unless a future packet passes
-  a more local carrier.
-- The field-chain entry path still starts from a legacy owner tag unless a real
-  structured carrier is nearby.
+- The call/variadic sizing helpers intentionally use structured identity only
+  for layout lookup; packed argument, byval, HFA, and `va_arg` result spelling
+  still follows the existing LLVM text path.
+- The owner-key recovery helper is local to this bounded packet. A later wider
+  Step 4 packet may choose to centralize it if more call/ABI consumers need the
+  same carrier recovery.
+- Const-init and ABI classification files remain untouched for their own Step 4
+  packets.
 
 ## Proof
 

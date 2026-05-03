@@ -7,6 +7,56 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
+std::optional<HirRecordOwnerKey> vaarg_aggregate_owner_key_from_type(const TypeSpec& ts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    const TextId declaration_text_id = ts.record_def->unqualified_text_id;
+    if (declaration_text_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts.record_def->namespace_context_id;
+      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
+      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
+        ns_qual.segment_text_ids.assign(
+            ts.record_def->qualifier_text_ids,
+            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
+      }
+      const HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(ns_qual, declaration_text_id);
+      if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+    }
+  }
+
+  if (ts.tag_text_id == kInvalidText) return std::nullopt;
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
+                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+  return std::nullopt;
+}
+
+StructNameId vaarg_aggregate_structured_name_id(const c4c::hir::Module& mod,
+                                                const lir::LirModule* module,
+                                                const TypeSpec& aggregate_ts) {
+  if (!module || (aggregate_ts.base != TB_STRUCT && aggregate_ts.base != TB_UNION) ||
+      aggregate_ts.ptr_level != 0 || aggregate_ts.array_rank != 0) {
+    return kInvalidStructName;
+  }
+
+  const std::optional<HirRecordOwnerKey> owner_key =
+      vaarg_aggregate_owner_key_from_type(aggregate_ts);
+  if (!owner_key) return kInvalidStructName;
+  const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+  if (!structured_tag || structured_tag->empty()) return kInvalidStructName;
+
+  const StructNameId name_id =
+      module->struct_names.find(llvm_struct_type_str(*structured_tag));
+  return module->find_struct_decl(name_id) ? name_id : kInvalidStructName;
+}
+
 LirTypeRef lir_va_list_tag_type_ref(lir::LirModule* module) {
   constexpr const char* kVaListTagType = "%struct.__va_list_tag_";
   if (!module) return LirTypeRef(kVaListTagType);
@@ -148,7 +198,13 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
   StructuredLayoutLookup aggregate_layout;
   std::optional<int> aggregate_payload_sz;
   if (is_named_aggregate) {
-    aggregate_layout = lookup_structured_layout(mod_, module_, res_ts, "va_arg-aggregate");
+    const StructNameId structured_name_id =
+        vaarg_aggregate_structured_name_id(mod_, module_, res_ts);
+    const char* layout_site = structured_name_id == kInvalidStructName
+                                  ? "va_arg-aggregate-legacy-compat"
+                                  : "va_arg-aggregate";
+    aggregate_layout =
+        lookup_structured_layout(mod_, module_, res_ts, layout_site, structured_name_id);
     aggregate_payload_sz =
         structured_layout_size_bytes(mod_, module_, aggregate_layout);
     if (!aggregate_payload_sz && aggregate_layout.legacy_decl) {
