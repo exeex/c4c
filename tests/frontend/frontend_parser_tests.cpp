@@ -3526,8 +3526,11 @@ void test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback
   const c4c::TypeSpec* alias_ts = parser.find_typedef_type(parser_test_text_id(parser, "Alias"));
   expect_true(alias_ts != nullptr && alias_ts->base == c4c::TB_TYPEDEF,
               "top-level typedef fallback should register the alias in the parser typedef table");
-  expect_eq(alias_ts->tag, "ForwardDecl",
-            "registered top-level typedef aliases should keep the unresolved placeholder base");
+  const c4c::TextId forward_decl_text = parser_test_text_id(parser, "ForwardDecl");
+  expect_true(alias_ts->tag_text_id == forward_decl_text,
+              "registered top-level typedef aliases should keep the unresolved placeholder text id");
+  expect_eq(parser.parser_text(alias_ts->tag_text_id), "ForwardDecl",
+            "registered top-level typedef aliases should keep the unresolved placeholder spelling");
 }
 
 void test_parser_block_local_bindings_do_not_leak_into_later_ctor_init_probes() {
