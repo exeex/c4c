@@ -6961,8 +6961,9 @@ void test_parser_qualified_alias_template_member_typedef_substitution_uses_struc
                   info.member_typedef.member_text_id == member_text,
               "qualified alias-template member typedef test requires the structured carrier");
   info.aliased_type.base = c4c::TB_STRUCT;
-  info.aliased_type.tag = arena.strdup("wrong::RenderedOwner");
-  info.aliased_type.tpl_struct_origin = info.aliased_type.tag;
+  const char* stale_rendered_owner = arena.strdup("wrong::RenderedOwner");
+  set_legacy_tag_if_present(info.aliased_type, stale_rendered_owner, 0);
+  info.aliased_type.tpl_struct_origin = stale_rendered_owner;
   info.aliased_type.deferred_member_type_name = arena.strdup("wrong_member");
 
   const c4c::Token seed = tokens.empty() ? c4c::Token{} : tokens.front();

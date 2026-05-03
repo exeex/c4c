@@ -8,28 +8,27 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 2 migrated
-`test_parser_alias_template_member_typedef_carrier_uses_structured_rhs()` and
-the paired member-typedef substitution setup away from direct `TypeSpec::tag`
-access. The carrier assertion now checks the substitutable owner arg through
-`tag_text_id`, and stale rendered owner spelling is written only through
-`set_legacy_tag_if_present()` while `tpl_struct_origin` keeps its independent
-legacy spelling pointer.
+Step 2 migrated the direct `TypeSpec::tag` fixture cluster in
+`test_parser_qualified_alias_template_member_typedef_substitution_uses_structured_carrier()`.
+The stale rendered owner spelling now flows through
+`set_legacy_tag_if_present()`, while `tpl_struct_origin` keeps an independent
+legacy spelling pointer and the structured member typedef carrier assertions
+remain unchanged.
 
 The deletion probe temporarily removed `TypeSpec::tag` from
 `src/frontend/parser/ast.hpp`, reran the delegated fixture-surface build probe,
 captured the result in `test_after.log`, and restored `ast.hpp` afterward.
-The migrated fixture no longer blocks that probe at the old
-6865/6867/6881/6913/6914 sites.
+The migrated fixture no longer blocks that probe at the old 6963/6964/6965
+cluster.
 The first remaining fixture/test compile boundary moved to
-`tests/frontend/frontend_parser_tests.cpp:6963`.
+`tests/frontend/frontend_parser_tests.cpp:7016`.
 
 ## Suggested Next
 
 Migrate the next direct `TypeSpec::tag` fixture access cluster in
-`test_parser_qualified_alias_template_member_typedef_substitution_uses_structured_carrier()`
-at `tests/frontend/frontend_parser_tests.cpp:6963` and `6964`, preserving the
-structured member typedef carrier assertions while keeping any legacy rendered
+`test_parser_alias_of_alias_member_typedef_substitution_uses_structured_carrier()`
+at `tests/frontend/frontend_parser_tests.cpp:7016` and `7017`, preserving the
+alias-of-alias structured carrier assertions while keeping legacy rendered
 spelling behind the compatibility helper.
 
 ## Watchouts
@@ -39,8 +38,8 @@ spelling behind the compatibility helper.
   just to make the field deletion compile.
 - The delegated `frontend_parser_tests` target build covers this fixture
   surface, but the deletion probe still shows later direct `tag` residuals.
-- The next deletion-probe boundary is another alias-template member typedef
-  carrier substitution fixture; use a local stale rendered owner pointer for
+- The next deletion-probe boundary is the alias-of-alias member typedef carrier
+  substitution fixture; use a local stale rendered owner pointer for
   `tpl_struct_origin` instead of reading `info.aliased_type.tag`.
 - The migrated tag-only fallback fixture intentionally keeps no `record_def`;
   the compatibility map remains the intended authority for the 1/2/1 layout
@@ -77,4 +76,4 @@ Result: the normal `frontend_parser_tests` target build passed after the
 fixture migration. The deletion-probe build failed while `TypeSpec::tag` was
 temporarily removed, then `ast.hpp` was restored and the target build passed
 again. The first remaining compile boundary is
-`tests/frontend/frontend_parser_tests.cpp:6963`.
+`tests/frontend/frontend_parser_tests.cpp:7016`.
