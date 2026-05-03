@@ -5,6 +5,7 @@ Source Idea Path: ideas/open/142_codegen_lir_aggregate_type_identity_metadata.md
 Source Plan Path: plan.md
 Current Step ID: 5
 Current Step Title: Probe TypeSpec Tag Removal Boundary
+你該做code review了
 
 ## Just Finished
 
@@ -42,3 +43,8 @@ lowering in `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`, plus the same-wave
 Proof command:
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_.*|cpp_hir_(sema_canonical_symbol|sema_consteval_type_utils).*structured_metadata|cpp_positive_sema_(c_style_cast_.*field_access|inherited_base_member_access_runtime|inherited_base_aggregate_init_runtime|record_nested_aggregate_member_parse|operator_struct_byval_param|struct_method|template_struct.*)_cpp|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_struct_result_c|llvm_gcc_c_torture_src_(pta_field_[12]|struct_(aliasing_1|cpy_1|ini_[1-4]|ret_2)|zero_struct_[12])_c|eastl_cpp_external_utility_frontend_basic_cpp)$"' > test_after.log 2>&1`
 passed, with 38/38 tests passing. Proof log: `test_after.log`.
+
+Baseline review:
+rejected `test_baseline.new.log` for commit `fa4aaedc7`: the accepted
+baseline is 3000/3000, while the candidate had 129 failures out of 3023.
+The failed candidate log was deleted; keep `test_baseline.log` unchanged.
