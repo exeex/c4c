@@ -6760,10 +6760,11 @@ void test_parser_alias_template_substitution_prefers_param_text_id() {
   alias_placeholder.array_size = -1;
   alias_placeholder.inner_rank = -1;
   alias_placeholder.base = c4c::TB_TYPEDEF;
-  alias_placeholder.tag = arena.strdup("Alias");
 
   const c4c::TextId alias_text = lexer.text_table().intern("Alias");
   const c4c::TextId param_text = lexer.text_table().intern("T");
+  alias_placeholder.tag_text_id = alias_text;
+  set_legacy_tag_if_present(alias_placeholder, arena.strdup("Alias"), 0);
   parser.register_typedef_binding(alias_text, alias_placeholder, true);
 
   c4c::ParserAliasTemplateInfo info;
@@ -6775,7 +6776,8 @@ void test_parser_alias_template_substitution_prefers_param_text_id() {
   info.aliased_type.array_size = -1;
   info.aliased_type.inner_rank = -1;
   info.aliased_type.base = c4c::TB_TYPEDEF;
-  info.aliased_type.tag = arena.strdup("T");
+  info.aliased_type.tag_text_id = param_text;
+  set_legacy_tag_if_present(info.aliased_type, arena.strdup("T"), 0);
   parser.register_alias_template_info_for_testing(
       parser.alias_template_key_in_context(
           parser.current_namespace_context_id(), alias_text),
