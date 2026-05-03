@@ -528,11 +528,18 @@ inline const HirStructDef* find_typespec_aggregate_layout(const Module& mod,
       return def;
     }
   }
+  auto find_by_compatibility_tag = [&](const std::optional<std::string>& tag)
+      -> const HirStructDef* {
+    if (!tag) return nullptr;
+    const auto it = mod.struct_defs.find(*tag);
+    return it == mod.struct_defs.end() ? nullptr : &it->second;
+  };
   const std::optional<std::string> compatibility_tag =
       typespec_aggregate_compatibility_tag(mod, ts);
-  if (!compatibility_tag) return nullptr;
-  const auto it = mod.struct_defs.find(*compatibility_tag);
-  return it == mod.struct_defs.end() ? nullptr : &it->second;
+  if (const HirStructDef* def = find_by_compatibility_tag(compatibility_tag)) {
+    return def;
+  }
+  return find_by_compatibility_tag(typespec_aggregate_final_spelling(ts));
 }
 
 inline std::string llvm_ty(const TypeSpec& ts) {
