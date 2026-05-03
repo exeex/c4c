@@ -10,6 +10,48 @@
 
 namespace c4c {
 
+static std::string expressions_typespec_display_name(const Parser& parser,
+                                                     const TypeSpec& ts,
+                                                     std::string_view fallback) {
+    if (ts.record_def) {
+        if (ts.record_def->unqualified_text_id != kInvalidText) {
+            const std::string_view text =
+                parser.parser_text(ts.record_def->unqualified_text_id, {});
+            if (!text.empty()) return std::string(text);
+        }
+        if (ts.record_def->name && ts.record_def->name[0]) {
+            return std::string(ts.record_def->name);
+        }
+    }
+    if (ts.tag_text_id != kInvalidText) {
+        const std::string_view text = parser.parser_text(ts.tag_text_id, {});
+        if (!text.empty()) return std::string(text);
+    }
+    if (ts.template_param_text_id != kInvalidText) {
+        const std::string_view text =
+            parser.parser_text(ts.template_param_text_id, {});
+        if (!text.empty()) return std::string(text);
+    }
+    if (const char* legacy_tag =
+            typespec_legacy_display_tag_if_present(ts, 0)) {
+        if (legacy_tag[0]) return std::string(legacy_tag);
+    }
+    return std::string(fallback);
+}
+
+static std::string expressions_constructor_display_name(const Parser& parser,
+                                                        const TypeSpec& ts,
+                                                        std::string_view fallback,
+                                                        bool synthesize_record_ctor) {
+    (void)parser;
+    (void)synthesize_record_ctor;
+    if (const char* legacy_tag =
+            typespec_legacy_display_tag_if_present(ts, 0)) {
+        if (legacy_tag[0]) return std::string(legacy_tag);
+    }
+    return std::string(fallback);
+}
+
 static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& ts) {
     switch (ts.base) {
         case TB_INT: out += "int"; break;
@@ -30,10 +72,21 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
         case TB_BOOL: out += "bool"; break;
         case TB_INT128: out += "i128"; break;
         case TB_UINT128: out += "u128"; break;
-        case TB_STRUCT: out += "struct_"; out += (ts.tag ? ts.tag : "anon"); break;
-        case TB_UNION: out += "union_"; out += (ts.tag ? ts.tag : "anon"); break;
-        case TB_ENUM: out += "enum_"; out += (ts.tag ? ts.tag : "anon"); break;
-        case TB_TYPEDEF: out += (ts.tag ? ts.tag : "typedef"); break;
+        case TB_STRUCT:
+            out += "struct_";
+            out += type_spec_mangled_display_name_if_needed(ts, "anon");
+            break;
+        case TB_UNION:
+            out += "union_";
+            out += type_spec_mangled_display_name_if_needed(ts, "anon");
+            break;
+        case TB_ENUM:
+            out += "enum_";
+            out += type_spec_mangled_display_name_if_needed(ts, "anon");
+            break;
+        case TB_TYPEDEF:
+            out += type_spec_mangled_display_name_if_needed(ts, "typedef");
+            break;
         default: out += "T"; break;
     }
     for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
@@ -1476,10 +1529,13 @@ Node* parse_primary(Parser& parser) {
                 const bool multi_arg_typedef_cast =
                     cast_ts.base == TB_TYPEDEF && args.size() != 1;
                 if (record_ctor_like || multi_arg_typedef_cast) {
+                    const std::string ctor_name =
+                        expressions_constructor_display_name(
+                            parser, cast_ts, visible_typedef_name,
+                            record_ctor_like);
                     Node* callee =
-                        parser.make_var(cast_ts.tag ? cast_ts.tag
-                                             : visible_typedef_name.c_str(),
-                                 ln);
+                        parser.make_var(parser.arena_.strdup(ctor_name.c_str()),
+                                        ln);
                     Node* call = parser.make_node(NK_CALL, ln);
                     call->left = callee;
                     call->n_children = static_cast<int>(args.size());
@@ -1570,7 +1626,13 @@ Node* parse_primary(Parser& parser) {
                     const bool multi_arg_typedef_cast =
                         cast_ts.base == TB_TYPEDEF && args.size() != 1;
                     if (record_ctor_like || multi_arg_typedef_cast) {
-                        Node* callee = parser.make_var(cast_ts.tag ? cast_ts.tag : candidate_type_name.c_str(), ln);
+                        const std::string ctor_name =
+                            expressions_constructor_display_name(
+                                parser, cast_ts, candidate_type_name,
+                                record_ctor_like);
+                        Node* callee =
+                            parser.make_var(
+                                parser.arena_.strdup(ctor_name.c_str()), ln);
                         Node* call = parser.make_node(NK_CALL, ln);
                         call->left = callee;
                         call->n_children = static_cast<int>(args.size());
@@ -1783,11 +1845,18 @@ Node* parse_primary(Parser& parser) {
                                                     ->namespace_context_id;
                                         }
                                     } else if (ts.tag_text_id != kInvalidText) {
-                                        if (ts.tag && ts.tag[0])
-                                            owner_name = ts.tag;
+                                        if (const char* legacy_tag =
+                                                typespec_legacy_display_tag_if_present(
+                                                    ts, 0)) {
+                                            if (legacy_tag[0])
+                                                owner_name = legacy_tag;
+                                        }
                                         owner_text_id = ts.tag_text_id;
-                                    } else if (ts.tag && ts.tag[0]) {
-                                        owner_name = ts.tag;
+                                    } else if (const char* legacy_tag =
+                                                   typespec_legacy_display_tag_if_present(
+                                                       ts, 0)) {
+                                        if (legacy_tag[0])
+                                            owner_name = legacy_tag;
                                     }
                                 } catch (...) {
                                     // fallback: use current expression owner
@@ -2008,7 +2077,11 @@ Node* parse_primary(Parser& parser) {
             const bool multi_arg_typedef_cast =
                 cast_ts.base == TB_TYPEDEF && args.size() != 1;
             if (record_ctor_like || multi_arg_typedef_cast) {
-                Node* callee = parser.make_var(cast_ts.tag ? cast_ts.tag : "<ctor>", ln);
+                const std::string ctor_name =
+                    expressions_constructor_display_name(parser, cast_ts, "<ctor>",
+                                                         record_ctor_like);
+                Node* callee =
+                    parser.make_var(parser.arena_.strdup(ctor_name.c_str()), ln);
                 Node* call = parser.make_node(NK_CALL, ln);
                 call->left = callee;
                 call->n_children = static_cast<int>(args.size());

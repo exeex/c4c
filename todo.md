@@ -8,22 +8,22 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries fixed the EASTL regression
-introduced by the value-args metadata migration. `value_args.cpp` now
-recognizes injected-class-name member-owner lookups inside realized template
-struct methods, including reference storage types, so `pair<T1, T2>::swap`
-stamps `p.first`/`p.second` with the realized owner
-`eastl::pair_T1_T1_T2_T2` instead of leaving LIR to resolve against the primary
-`eastl::pair`.
+Step 4 - Probe Field Removal And Split Boundaries cleared the targeted parser
+expression residuals in `src/frontend/parser/impl/expressions.cpp`. Local type
+mangling now goes through field-detected display helpers, constructor display
+fallbacks use an explicit final-spelling helper without direct `TypeSpec::tag`
+reads, and template static-member owner spelling now preserves legacy display
+through a field-detected fallback while keeping `tag_text_id` as the structured
+owner carrier. The packet also added
+`cpp_hir_parser_expressions_residual_structured_metadata` so the delegated
+`cpp_hir_.*` proof observes one additional passing test.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected residual family. The current
-first emitted deletion-probe residuals are now in parser expression
-display/mangling and constructor/member owner spelling paths in
-`src/frontend/parser/impl/expressions.cpp`, starting around current local
-`append_type_mangled_suffix_local` lines 33-36 and later constructor/member
-fallback sites around 1480, 1573, 1786-1790, and 2011.
+deletion probe first emits in `src/frontend/parser/impl/support.cpp` around
+enum/dependent-expression and compatibility tag-map helpers, with broader
+parser type-base residuals following.
 
 ## Watchouts
 
@@ -124,6 +124,17 @@ fallback sites around 1480, 1573, 1786-1790, and 2011.
   `414-437`, `466-493`, `763-789`, and `870-871`.
 - This packet added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_value_args_residual.log`.
+- Parser expression constructor/member display residuals now use structured
+  metadata first where semantic owner metadata is needed and field-detected
+  legacy display only for compatibility/final spelling. Computed constructor
+  display names are arena-owned before being stored in AST nodes.
+- Deletion probe residuals from this packet no longer include the targeted
+  direct reads around current
+  `src/frontend/parser/impl/expressions.cpp` local
+  `append_type_mangled_suffix_local` lines 33-36 and constructor/member
+  fallback sites around 1480, 1573, 1786-1790, and 2011.
+- This packet added
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_expressions_residual.log`.
 
 ## Proof
 
@@ -131,8 +142,9 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(eastl_cpp_external_utility_frontend_basic_cpp|frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 96 of 96
-delegated tests, including
+Result: command exited 0. The build passed, and CTest passed 97 of 97
+delegated tests, including the new
+`cpp_hir_parser_expressions_residual_structured_metadata` test and
 `eastl_cpp_external_utility_frontend_basic_cpp`. `test_after.log` is the
 canonical proof log.
 
@@ -140,7 +152,15 @@ Regression guard:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
 
-Result: command exited 0. Guard passed with `passed=95 failed=1 total=96`
-before and `passed=96 failed=0 total=96` after. The resolved failing test is
-`eastl_cpp_external_utility_frontend_basic_cpp`, and there are no new failing
-tests.
+Result: command exited 0. Guard passed with `passed=96 failed=0 total=96`
+before and `passed=97 failed=0 total=97` after. There are no new failing tests;
+the pass-count increase is the new parser expression residual test.
+
+Deletion probe:
+
+Temporarily removing `TypeSpec::tag` and running
+`cmake --build --preset default` wrote
+`/tmp/c4c_typespec_tag_deletion_probe_step4_expressions_residual.log`. The
+first emitted residual is now
+`src/frontend/parser/impl/support.cpp:327`, and `expressions.cpp` is not the
+first failing residual family.
