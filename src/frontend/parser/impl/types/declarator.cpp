@@ -619,6 +619,20 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
             }
             return false;
         };
+        auto has_deferred_template_owner_member_identity =
+            [&](const TypeSpec& owner_ts) -> bool {
+                if (owner_ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+                    owner_ts.record_def || owner_ts.tag_text_id != kInvalidText ||
+                    owner_ts.deferred_member_type_text_id != kInvalidText) {
+                    return true;
+                }
+                if (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) {
+                    return true;
+                }
+                const char* legacy_tag =
+                    typespec_legacy_display_tag_if_present(owner_ts, 0);
+                return legacy_tag && legacy_tag[0];
+            };
         auto try_make_deferred_template_owner_member =
             [&](TypeSpec* out_owner_ts) -> bool {
                 if (!out_owner_ts || spelled_name.find('<') == std::string::npos)
@@ -656,9 +670,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                 tokens_ = std::move(saved_toks);
                 pos_ = saved_pos;
 
-                if (!((owner_ts.tpl_struct_origin &&
-                       owner_ts.tpl_struct_origin[0]) ||
-                      (owner_ts.tag && owner_ts.tag[0]))) {
+                if (!has_deferred_template_owner_member_identity(owner_ts)) {
                     return false;
                 }
                 owner_ts.deferred_member_type_name =
@@ -784,9 +796,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                     tokens_ = std::move(saved_toks);
                     pos_ = saved_pos;
 
-                    if ((owner_ts.tpl_struct_origin &&
-                         owner_ts.tpl_struct_origin[0]) ||
-                        (owner_ts.tag && owner_ts.tag[0])) {
+                    if (has_deferred_template_owner_member_identity(owner_ts)) {
                         owner_ts.deferred_member_type_name =
                             arena_.strdup(std::string(token_spelling(
                                               core_input_state_.tokens[final_scope_pos + 1]))
