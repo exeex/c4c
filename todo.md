@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
+Current Step ID: 3
+Current Step Title: Re-run The TypeSpec Tag Deletion Probe
 
 ## Just Finished
 
