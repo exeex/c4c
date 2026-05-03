@@ -3,21 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
+Current Step ID: 3
+Current Step Title: Re-run The TypeSpec Tag Deletion Probe
 
 ## Just Finished
 
-Step 2 migrated the direct legacy `TypeSpec::tag` writes in
-`test_parser_record_ctor_probe_prefers_record_definition`. The stale rendered
-alias spelling now goes through `set_legacy_tag_if_present`, the typedef probe
-uses `tag_text_id`, and the tagless record-def probe is built as an explicit
-structured `TypeSpec` without copying and clearing a legacy tag field.
+Step 3 re-ran the temporary `TypeSpec::tag` deletion probe by removing the
+field from `src/frontend/parser/ast.hpp` and building with the supervisor
+selected proof command. The probe still fails to compile; the first remaining
+boundary is `tests/frontend/frontend_parser_tests.cpp:1859`, where
+`test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup`
+writes `alias_ts.tag = arena.strdup("Target")`. The temporary deletion edit was
+restored afterward.
 
 ## Suggested Next
 
-Re-run the temporary `TypeSpec::tag` deletion probe to find the next direct
-fixture access that blocks removing the field.
+Migrate the next owned compile boundary in `tests/frontend/frontend_parser_tests.cpp`:
+replace the direct `alias_ts.tag` write in
+`test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup` with
+TextId-backed or helper-mediated metadata, preserving the test's local visible
+scope lookup contract.
 
 ## Watchouts
 
@@ -26,6 +31,9 @@ fixture access that blocks removing the field.
   just to make the field deletion compile.
 - Temporary deletion probes must be restored unless the packet is the final
   accepted field-removal deletion.
+- The latest deletion probe surfaced many remaining test-only `TypeSpec::tag`
+  accesses after the first boundary; keep the next packet narrow and avoid
+  sweeping unrelated parser/HIR fixture families into one edit.
 - The migrated record-constructor probe still preserves stale rendered spelling
   disagreement through the helper while exercising structured typedef identity
   and tagless `record_def` ownership.
@@ -41,13 +49,12 @@ Proof is recorded in `test_after.log`.
 cmake --build --preset default > test_after.log 2>&1
 ```
 
-Result: passed.
+Result: failed as the expected deletion probe. First error:
+`tests/frontend/frontend_parser_tests.cpp:1859:12: error: 'struct c4c::TypeSpec' has no member named 'tag'`.
 
 ```sh
-ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
+cmake --build --preset default
 ```
 
-Result: failed only at the known pre-existing
-`namespace owner resolution should use the method owner TextId before rendered
-owner spelling` assertion; no new frontend parser test failure was observed for
-this packet.
+Result: passed after restoring the temporary `src/frontend/parser/ast.hpp`
+deletion edit. `test_after.log` intentionally remains the probe-build log.
