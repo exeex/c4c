@@ -16,6 +16,14 @@
 
 namespace c4c {
 
+template <typename T>
+auto set_parse_base_type_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+    ts.tag = tag;
+}
+
+void set_parse_base_type_legacy_tag_if_present(TypeSpec&, const char*, long) {}
+
 static std::vector<std::string> split_template_arg_ref_text(
     const std::string& refs) {
     std::vector<std::string> parts;
@@ -1786,6 +1794,12 @@ TypeSpec Parser::parse_base_type() {
     bool has_typedef  = false;
     bool done         = false;
     bool base_set     = false;  // true when ts.base was set directly (KwBuiltin, KwInt128, etc.)
+    const char* typedef_final_spelling = nullptr;
+    auto set_type_final_spelling = [&](std::string_view spelling) {
+        const std::string stored(spelling);
+        typedef_final_spelling = arena_.strdup(stored.c_str());
+        set_parse_base_type_legacy_tag_if_present(ts, typedef_final_spelling, 0);
+    };
     auto parse_builtin_transform_type = [&](TypeSpec* out) -> bool {
         if (!out || !check(TokenKind::Identifier)) return false;
         if (token_spelling(cur()) != "__underlying_type") return false;
@@ -1941,7 +1955,10 @@ TypeSpec Parser::parse_base_type() {
 
             case TokenKind::KwBuiltin:
                 ts.base = TB_VA_LIST;
-                ts.tag  = arena_.strdup("__va_list");
+                ts.tag_text_id = parser_text_id_for_token(kInvalidText,
+                                                           "__va_list");
+                set_parse_base_type_legacy_tag_if_present(
+                    ts, arena_.strdup("__va_list"), 0);
                 base_set = true;
                 consume(); done = true; break;
 
@@ -2066,7 +2083,6 @@ TypeSpec Parser::parse_base_type() {
                             is_template_scope_type_param(name_text_id)) {
                             has_typedef = true;
                             ts.base = TB_TYPEDEF;
-                            ts.tag = arena_.strdup(std::string(name).c_str());
                             ts.tag_text_id = name_text_id;
                             for (int frame_i =
                                      static_cast<int>(template_state_
@@ -2096,6 +2112,7 @@ TypeSpec Parser::parse_base_type() {
                                     break;
                                 }
                             }
+                            set_type_final_spelling(name);
                             consume();
                             done = true;
                             break;
@@ -2121,8 +2138,17 @@ TypeSpec Parser::parse_base_type() {
                             try_parse_cpp_scoped_base_type(*this,
                                                            already_have_base,
                                                            &ts)) {
-                            if (ts.base == TB_TYPEDEF || ts.tag) {
+                            const char* scoped_legacy_tag =
+                                typespec_legacy_display_tag_if_present(ts, 0);
+                            if (ts.base == TB_TYPEDEF ||
+                                (scoped_legacy_tag && scoped_legacy_tag[0])) {
                                 has_typedef = true;
+                                if (scoped_legacy_tag && scoped_legacy_tag[0]) {
+                                    typedef_final_spelling = scoped_legacy_tag;
+                                } else if (ts.tag_text_id != kInvalidText) {
+                                    set_type_final_spelling(
+                                        parser_text(ts.tag_text_id, {}));
+                                }
                             } else {
                                 base_set = true;
                             }
@@ -2163,10 +2189,10 @@ TypeSpec Parser::parse_base_type() {
                             const std::string resolved =
                                 visible_type ? visible_name_spelling(visible_type)
                                              : std::string(name);
-                            ts.tag = arena_.strdup(resolved.c_str());
                             ts.tag_text_id = visible_type && visible_type.base_text_id != kInvalidText
                                                  ? visible_type.base_text_id
                                                  : name_text_id;
+                            set_type_final_spelling(resolved);
                             consume();
                         }
                         done = true;
@@ -2182,8 +2208,8 @@ TypeSpec Parser::parse_base_type() {
                         // typedef or injected-class-name registration was lost.
                         has_typedef = true;
                         const std::string spelled(name);
-                        ts.tag = arena_.strdup(spelled.c_str());
                         ts.tag_text_id = name_text_id;
+                        set_type_final_spelling(spelled);
                         consume();
                         done = true;
                     } else {
@@ -2261,6 +2287,7 @@ TypeSpec Parser::parse_base_type() {
         check(TokenKind::Less)) {
         // Reuse the typedef-path template instantiation by setting has_typedef and
         // preparing ts as if the typedef had been resolved.
+        typedef_final_spelling = typespec_legacy_display_tag_if_present(ts, 0);
         has_typedef = true;
         has_struct = false;
     }
@@ -2268,7 +2295,7 @@ TypeSpec Parser::parse_base_type() {
     // Resolve combined specifiers
     if (has_typedef) {
         // Try to resolve the typedef to its underlying TypeSpec
-        const char* tname = ts.tag;
+        const char* tname = typedef_final_spelling;
         if (tname) {
             const bool is_unqualified_typedef =
                 std::strstr(tname, "::") == nullptr;
