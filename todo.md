@@ -8,26 +8,28 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 2 migrated the deferred NTTP visible template-alias fixture residual in
-`test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases()`
-away from direct `trait_alias_ts.tag` access. The local `AliasTrait` binding
-now preserves the visible alias lookup contract through the parser-owned
-`Trait` `tag_text_id` and the registered template primary `record_def`.
+Step 2 migrated the template static member base fixture residual in
+`test_parser_template_static_member_lookup_prefers_record_definition()` away
+from direct `specialization->base_types[0].tag` access. The fixture now routes
+the optional stale rendered `SharedBase` spelling through
+`set_legacy_tag_if_present()` while preserving the authoritative
+`base_types[0].record_def = real_base` metadata and the `value == 17`
+record-definition lookup assertion.
 
 The follow-up deletion probe temporarily removed `TypeSpec::tag` from
 `src/frontend/parser/ast.hpp`, reran the delegated fixture-surface build probe,
 captured the result in `test_after.log`, and restored `ast.hpp` afterward.
-The first remaining fixture/test compile boundary moved to
-`tests/frontend/frontend_parser_tests.cpp:4820`, where
-`test_parser_template_static_member_lookup_prefers_record_definition()` still
-writes `specialization->base_types[0].tag`.
+The migrated fixture no longer blocks that probe; the first remaining
+fixture/test compile boundary moved to
+`tests/frontend/frontend_parser_tests.cpp:5343`, where
+`make_sema_cast_expr_function()` still writes `cast->type.tag`.
 
 ## Suggested Next
 
 Migrate the next fixture residual at
-`tests/frontend/frontend_parser_tests.cpp:4820` away from direct
-`specialization->base_types[0].tag` access while preserving the template static
-member lookup contract through structured base-type metadata.
+`tests/frontend/frontend_parser_tests.cpp:5343` away from direct
+`cast->type.tag` access while preserving the sema cast-expression fixture
+contract.
 
 ## Watchouts
 
@@ -55,4 +57,4 @@ Result: the normal `frontend_parser_tests` target build passed after the
 fixture migration. The deletion-probe build failed while `TypeSpec::tag` was
 temporarily removed, then `ast.hpp` was restored. The first remaining compile
 boundary is the direct fixture access at
-`tests/frontend/frontend_parser_tests.cpp:4820`.
+`tests/frontend/frontend_parser_tests.cpp:5343`.

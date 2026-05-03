@@ -4817,7 +4817,8 @@ void test_parser_template_static_member_lookup_prefers_record_definition() {
   specialization->base_types[0].array_size = -1;
   specialization->base_types[0].inner_rank = -1;
   specialization->base_types[0].base = c4c::TB_STRUCT;
-  specialization->base_types[0].tag = arena.strdup("SharedBase");
+  set_legacy_tag_if_present(specialization->base_types[0],
+                            arena.strdup("SharedBase"), 0);
   specialization->base_types[0].record_def = real_base;
   parser.register_template_struct_specialization(
       parser.current_namespace_context_id(), trait_text, specialization);
