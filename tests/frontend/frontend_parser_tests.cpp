@@ -4445,9 +4445,10 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
   c4c::Token seed{};
 
   (void)parse_top_level(parser);
-  expect_true(parser.find_template_struct_primary(
-                  parser.current_namespace_context_id(),
-                  lexer.text_table().intern("Trait")) != nullptr,
+  const c4c::TextId trait_text = lexer.text_table().intern("Trait");
+  c4c::Node* trait_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), trait_text);
+  expect_true(trait_primary != nullptr,
               "template member lookup fixture should register the template primary");
 
   c4c::TypeSpec alias_ts{};
@@ -4459,7 +4460,8 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
   trait_alias_ts.array_size = -1;
   trait_alias_ts.inner_rank = -1;
   trait_alias_ts.base = c4c::TB_STRUCT;
-  trait_alias_ts.tag = arena.strdup("Trait");
+  trait_alias_ts.tag_text_id = trait_text;
+  trait_alias_ts.record_def = trait_primary;
 
   const c4c::TextId alias_text = lexer.text_table().intern("Alias");
   const c4c::TextId trait_alias_text = lexer.text_table().intern("AliasTrait");
