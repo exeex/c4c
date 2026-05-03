@@ -15,6 +15,61 @@ namespace c4c {
 
 namespace {
 
+template <typename T>
+auto set_template_legacy_display_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+    ts.tag = tag;
+}
+
+void set_template_legacy_display_tag_if_present(TypeSpec&, const char*,
+                                                long) {}
+
+TextId template_record_text_id(Parser& parser, const Node* record) {
+    if (!record) return kInvalidText;
+    if (record->unqualified_text_id != kInvalidText)
+        return record->unqualified_text_id;
+    if (record->unqualified_name && record->unqualified_name[0])
+        return parser.parser_text_id_for_token(kInvalidText,
+                                               record->unqualified_name);
+    if (record->name && record->name[0])
+        return parser.parser_text_id_for_token(kInvalidText, record->name);
+    return kInvalidText;
+}
+
+const char* template_final_display_spelling(Parser& parser,
+                                            std::string_view rendered,
+                                            const Node* record) {
+    if (!rendered.empty())
+        return parser.arena_.strdup(std::string(rendered).c_str());
+    if (record) {
+        if (record->name && record->name[0]) return record->name;
+        if (record->unqualified_name && record->unqualified_name[0])
+            return record->unqualified_name;
+    }
+    return nullptr;
+}
+
+void set_template_record_typespec_metadata(Parser& parser,
+                                           TypeSpec& out,
+                                           Node* record,
+                                           std::string_view rendered) {
+    out = {};
+    out.array_size = -1;
+    out.inner_rank = -1;
+    out.base = TB_STRUCT;
+    out.record_def = record;
+    out.tag_text_id =
+        !rendered.empty()
+            ? parser.parser_text_id_for_token(kInvalidText, rendered)
+            : template_record_text_id(parser, record);
+    out.namespace_context_id =
+        record && record->namespace_context_id >= 0
+            ? record->namespace_context_id
+            : parser.current_namespace_context_id();
+    set_template_legacy_display_tag_if_present(
+        out, template_final_display_spelling(parser, rendered, record), 0);
+}
+
 QualifiedNameKey template_instantiation_name_key(
     Parser& parser,
     const Node* primary_tpl,
@@ -223,12 +278,9 @@ bool Parser::ensure_template_struct_instantiated_from_args(
             definition_state_.defined_struct_tags.insert(*out_mangled);
         }
         if (out_resolved) {
-            *out_resolved = {};
-            out_resolved->array_size = -1;
-            out_resolved->inner_rank = -1;
-            out_resolved->base = TB_STRUCT;
-            out_resolved->tag = core_input_state_.arena.strdup(out_mangled->c_str());
-            out_resolved->record_def = const_cast<Node*>(selected);
+            set_template_record_typespec_metadata(
+                *this, *out_resolved, const_cast<Node*>(selected),
+                *out_mangled);
         }
         mark_template_instantiation_dedup_keys(
             *this, structured_instance_key);
@@ -246,14 +298,10 @@ bool Parser::ensure_template_struct_instantiated_from_args(
         *this, structured_instance_key);
 
     auto injected_it = definition_state_.struct_tag_def_map.find(*out_mangled);
-    if (out_resolved && !out_resolved->tag &&
+    if (out_resolved && !out_resolved->record_def &&
         injected_it != definition_state_.struct_tag_def_map.end()) {
-        *out_resolved = {};
-        out_resolved->array_size = -1;
-        out_resolved->inner_rank = -1;
-        out_resolved->base = TB_STRUCT;
-        out_resolved->tag = core_input_state_.arena.strdup(out_mangled->c_str());
-        out_resolved->record_def = injected_it->second;
+        set_template_record_typespec_metadata(
+            *this, *out_resolved, injected_it->second, *out_mangled);
     }
     return definition_state_.struct_tag_def_map.count(*out_mangled) > 0;
 }
@@ -322,11 +370,16 @@ bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
     if (parse_mangled_type_suffix(text, out)) return true;
 
     auto init_tag = [&](TypeBase base, size_t prefix_len) {
+        const std::string tag_text = text.substr(prefix_len);
         *out = {};
         out->array_size = -1;
         out->inner_rank = -1;
         out->base = base;
-        out->tag = core_input_state_.arena.strdup(text.substr(prefix_len).c_str());
+        out->tag_text_id =
+            parser_text_id_for_token(kInvalidText, tag_text);
+        out->namespace_context_id = current_namespace_context_id();
+        set_template_legacy_display_tag_if_present(
+            *out, core_input_state_.arena.strdup(tag_text.c_str()), 0);
         out->array_rank = 0;
     };
     if (text.rfind("struct_", 0) == 0) {
@@ -739,8 +792,27 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         if (!ref_primary) {
             if (const TypeSpec* visible_type =
                     find_visible_typedef_type(ref_tpl_name_text_id)) {
-                if (visible_type->tag && visible_type->tag[0]) {
-                    resolved_ref_tpl_name = visible_type->tag;
+                TextId visible_name_text_id = visible_type->tag_text_id;
+                if (visible_name_text_id == kInvalidText &&
+                    visible_type->record_def) {
+                    visible_name_text_id =
+                        template_record_text_id(*this,
+                                                visible_type->record_def);
+                }
+                if (visible_name_text_id != kInvalidText) {
+                    resolved_ref_tpl_name =
+                        std::string(parser_text(visible_name_text_id, {}));
+                    const int visible_context =
+                        visible_type->namespace_context_id >= 0
+                            ? visible_type->namespace_context_id
+                            : current_namespace_context_id();
+                    ref_primary = find_template_struct_primary(
+                        visible_context, visible_name_text_id);
+                } else if (const char* legacy_tag =
+                               typespec_legacy_display_tag_if_present(
+                                   *visible_type, 0);
+                           legacy_tag && legacy_tag[0]) {
+                    resolved_ref_tpl_name = legacy_tag;
                     ref_primary = find_template_struct_primary(
                         current_namespace_context_id(),
                         parser_text_id_for_token(kInvalidText,
