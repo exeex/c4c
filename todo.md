@@ -9,26 +9,27 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 ## Just Finished
 
 Step 2 migrated the `make_ts` lambda inside
-`test_sema_method_owner_lookup_uses_qualifier_text_id_over_stale_rendered_owner()`
-away from the direct `ts.tag = tag` write. The helper now routes optional
-legacy rendered compatibility setup through `set_legacy_tag_if_present()`,
-while preserving the positive qualifier TextId / structured-owner preference
-contract over stale rendered owner spelling.
+`test_sema_method_validation_prefers_structured_owner_key_for_fields()` away
+from the direct `ts.tag = tag` write. The helper now routes optional legacy
+rendered compatibility setup through `set_legacy_tag_if_present()`, while
+preserving the structured owner-key field lookup contract and the existing
+method-validation assertion.
 
 The follow-up deletion probe temporarily removed `TypeSpec::tag` from
 `src/frontend/parser/ast.hpp`, reran the delegated fixture-surface build probe,
 captured the result in `test_after.log`, and restored `ast.hpp` afterward.
 The migrated fixture no longer blocks that probe; the first remaining
 fixture/test compile boundary moved to
-`tests/frontend/frontend_parser_tests.cpp:5915`, where the next method-owner
-validation `make_ts` lambda still writes `ts.tag = tag`.
+`tests/frontend/frontend_parser_tests.cpp:6000`, where
+`test_sema_method_validation_rejects_stale_rendered_field_spelling()` still
+writes `ts.tag = tag` in its `make_ts` lambda.
 
 ## Suggested Next
 
 Migrate the next fixture residual at
-`tests/frontend/frontend_parser_tests.cpp:5915` away from direct `ts.tag`
-access while preserving the structured-owner preference contract in
-`test_sema_method_validation_prefers_structured_owner_key_for_fields()`.
+`tests/frontend/frontend_parser_tests.cpp:6000` away from direct `ts.tag`
+access while preserving the stale rendered field spelling rejection contract in
+`test_sema_method_validation_rejects_stale_rendered_field_spelling()`.
 
 ## Watchouts
 
@@ -53,4 +54,4 @@ Result: the normal `frontend_parser_tests` target build passed after the
 fixture migration. The deletion-probe build failed while `TypeSpec::tag` was
 temporarily removed, then `ast.hpp` was restored. The first remaining compile
 boundary is the direct fixture access at
-`tests/frontend/frontend_parser_tests.cpp:5915`.
+`tests/frontend/frontend_parser_tests.cpp:6000`.
