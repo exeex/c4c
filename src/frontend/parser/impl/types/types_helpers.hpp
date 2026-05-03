@@ -109,18 +109,33 @@ bool token_can_follow_value_like_template_arg(TokenKind kind) {
     }
 }
 
+template <typename T>
+auto typespec_legacy_display_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, static_cast<const char*>(nullptr)) {
+    return ts.tag;
+}
+
+const char* typespec_legacy_display_tag_if_present(const TypeSpec&, long) {
+    return nullptr;
+}
+
 std::string visible_type_head_name(const Parser& parser,
                                    TextId name_text_id,
                                    std::string_view name) {
     if (const TypeSpec* visible_type =
             parser.find_visible_typedef_type(name_text_id)) {
-        if (visible_type->tag && visible_type->tag[0]) {
-            return visible_type->tag;
+        if (visible_type->tag_text_id != kInvalidText) {
+            return std::string(parser.parser_text(visible_type->tag_text_id,
+                                                  name));
         }
+        const char* legacy_tag =
+            typespec_legacy_display_tag_if_present(*visible_type, 0);
+        if (legacy_tag && legacy_tag[0]) return legacy_tag;
     }
     const Parser::VisibleNameResult resolved =
         parser.resolve_visible_type(name_text_id);
-    return resolved ? parser.visible_name_spelling(resolved) : std::string(name);
+    if (resolved) return parser.visible_name_spelling(resolved);
+    return std::string(name);
 }
 
 std::string visible_type_head_name(const Parser& parser,
@@ -139,10 +154,14 @@ Node* type_spec_structured_record_definition(const Parser& parser,
     if (Node* record = resolve_record_type_spec(resolved, nullptr)) {
         return record;
     }
-    const TextId record_text_id =
-        resolved.tag_text_id != kInvalidText
-            ? resolved.tag_text_id
-            : parser.find_parser_text_id(resolved.tag ? resolved.tag : "");
+    TextId record_text_id = resolved.tag_text_id;
+    if (record_text_id == kInvalidText) {
+        const char* legacy_tag =
+            typespec_legacy_display_tag_if_present(resolved, 0);
+        if (legacy_tag && legacy_tag[0]) {
+            record_text_id = parser.find_parser_text_id(legacy_tag);
+        }
+    }
     if (record_text_id == kInvalidText) return nullptr;
     const int context_id = resolved.namespace_context_id >= 0
                                ? resolved.namespace_context_id
