@@ -2280,7 +2280,8 @@ void test_parser_qualified_functional_cast_owner_requires_structured_authority()
   legacy_owner_ts.array_size = -1;
   legacy_owner_ts.inner_rank = -1;
   legacy_owner_ts.base = c4c::TB_STRUCT;
-  legacy_owner_ts.tag = legacy_arena.strdup("ns::LegacyOwner");
+  set_legacy_tag_if_present(legacy_owner_ts,
+                            legacy_arena.strdup("ns::LegacyOwner"), 0);
   legacy_parser.register_typedef_binding(
       parser_test_text_id(legacy_parser, "ns::LegacyOwner"),
       legacy_owner_ts, true);
@@ -2370,7 +2371,8 @@ void test_parser_qualified_member_typedef_lookup_requires_structured_metadata() 
   legacy_owner_ts.array_size = -1;
   legacy_owner_ts.inner_rank = -1;
   legacy_owner_ts.base = c4c::TB_STRUCT;
-  legacy_owner_ts.tag = legacy_arena.strdup("ns::LegacyOwner");
+  set_legacy_tag_if_present(legacy_owner_ts,
+                            legacy_arena.strdup("ns::LegacyOwner"), 0);
   legacy_parser.register_typedef_binding(
       parser_test_text_id(legacy_parser, "ns::LegacyOwner"),
       legacy_owner_ts, true);

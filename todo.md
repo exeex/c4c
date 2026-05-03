@@ -3,28 +3,25 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Re-run The TypeSpec Tag Deletion Probe
+Current Step ID: 2
+Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 3 temporarily removed `TypeSpec::tag` from
-`src/frontend/parser/ast.hpp` and re-ran the deletion probe. The first
-remaining compile boundary is still in `frontend_parser_tests`: the earliest
-error is
+Step 2 migrated the two sibling legacy rendered-owner fixture writes in
+`frontend_parser_tests` off direct `legacy_owner_ts.tag` access. Both
 `test_parser_qualified_functional_cast_owner_requires_structured_authority`
-at `tests/frontend/frontend_parser_tests.cpp:2283`, where
-`legacy_owner_ts.tag` is written for a legacy rendered owner fixture. The next
-error is the sibling legacy owner fixture at line 2373, followed by member
-typedef/template fixture reads and writes beginning around lines 2600-2751.
-The temporary `ast.hpp` deletion edit was restored after the probe.
+and
+`test_parser_qualified_member_typedef_lookup_requires_structured_metadata`
+now use the existing optional legacy-tag helper, preserving their
+rendered-only authority rejection coverage while allowing the fixtures to
+compile when `TypeSpec::tag` is absent.
 
 ## Suggested Next
 
-Migrate the earliest remaining `frontend_parser_tests` legacy-owner fixture
-boundary off direct `TypeSpec::tag` access, starting with the line 2283
-`legacy_owner_ts.tag` write in
-`test_parser_qualified_functional_cast_owner_requires_structured_authority`.
+Re-run the temporary `TypeSpec::tag` deletion probe to find the next
+remaining direct field-access boundary after the two legacy rendered-owner
+fixture writes.
 
 ## Watchouts
 
@@ -33,12 +30,9 @@ boundary off direct `TypeSpec::tag` access, starting with the line 2283
   just to make the field deletion compile.
 - Temporary deletion probes must be restored unless the packet is the final
   accepted field-removal deletion.
-- The latest deletion probe still reaches `frontend_parser_tests` before
-  production code; keep the next packet narrow and avoid sweeping later member
-  typedef/template fixture families into the same edit.
-- The line 2283 and 2373 boundaries are legacy rendered-owner fixtures that
-  intentionally test rejection of rendered-only authority; preserve that
-  negative coverage when migrating them.
+- The previous deletion probe still reported later member typedef/template
+  fixture reads and writes beginning around lines 2600-2751 after these two
+  sibling writes; keep the next probe narrow before choosing another packet.
 - The migrated record-constructor probe still preserves stale rendered spelling
   disagreement through the helper while exercising structured typedef identity
   and tagless `record_def` ownership.
@@ -48,18 +42,18 @@ boundary off direct `TypeSpec::tag` access, starting with the line 2283
 
 ## Proof
 
-Deletion-probe proof is recorded in `test_after.log`.
+Packet proof is recorded in `test_after.log`.
 
 ```sh
 cmake --build --preset default > test_after.log 2>&1
 ```
 
-Result: failed as expected with `TypeSpec::tag` temporarily removed. First
-boundary:
-`tests/frontend/frontend_parser_tests.cpp:2283:19: error: 'struct c4c::TypeSpec' has no member named 'tag'`.
+Result: passed.
 
 ```sh
-cmake --build --preset default
+ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
 ```
 
-Result after restoring `src/frontend/parser/ast.hpp`: passed.
+Result: failed observationally at the known pre-existing assertion
+`namespace owner resolution should use the method owner TextId before rendered
+owner spelling`; no new blocker was identified for this packet.
