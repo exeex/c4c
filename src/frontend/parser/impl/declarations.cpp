@@ -312,7 +312,117 @@ try_parse_alias_template_member_typedef_info(Parser& parser,
     return info;
 }
 
-static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& ts) {
+template <typename T>
+auto declarations_legacy_typespec_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, static_cast<const char*>(nullptr)) {
+    return ts.tag;
+}
+
+const char* declarations_legacy_typespec_tag_if_present(const TypeSpec&, long) {
+    return nullptr;
+}
+
+template <typename T>
+auto set_declarations_legacy_typespec_tag_if_present(T& ts,
+                                                     const char* tag,
+                                                     int)
+    -> decltype(ts.tag = tag, void()) {
+    ts.tag = tag;
+}
+
+void set_declarations_legacy_typespec_tag_if_present(TypeSpec&, const char*,
+                                                     long) {}
+
+template <typename T>
+auto set_declarations_legacy_typespec_tag_if_present(T& ts,
+                                                     std::string_view tag,
+                                                     Arena& arena,
+                                                     int)
+    -> decltype(ts.tag = static_cast<const char*>(nullptr), void()) {
+    ts.tag = arena.strdup(std::string(tag).c_str());
+}
+
+void set_declarations_legacy_typespec_tag_if_present(TypeSpec&,
+                                                     std::string_view,
+                                                     Arena&, long) {}
+
+static std::string typespec_display_name_local(const Parser& parser,
+                                               const TypeSpec& ts,
+                                               std::string_view fallback) {
+    if (ts.record_def) {
+        if (ts.record_def->unqualified_text_id != kInvalidText) {
+            const std::string_view text =
+                parser.parser_text(ts.record_def->unqualified_text_id, {});
+            if (!text.empty()) return std::string(text);
+        }
+        if (ts.record_def->name && ts.record_def->name[0]) {
+            return std::string(ts.record_def->name);
+        }
+    }
+    if (ts.tag_text_id != kInvalidText) {
+        const std::string_view text = parser.parser_text(ts.tag_text_id, {});
+        if (!text.empty()) return std::string(text);
+    }
+    if (ts.template_param_text_id != kInvalidText) {
+        const std::string_view text =
+            parser.parser_text(ts.template_param_text_id, {});
+        if (!text.empty()) return std::string(text);
+    }
+    if (const char* legacy_tag =
+            declarations_legacy_typespec_tag_if_present(ts, 0)) {
+        if (legacy_tag[0]) return std::string(legacy_tag);
+    }
+    return std::string(fallback);
+}
+
+static TextId typespec_visible_name_text_id_local(const TypeSpec& ts) {
+    if (ts.tag_text_id != kInvalidText) return ts.tag_text_id;
+    if (ts.template_param_text_id != kInvalidText) return ts.template_param_text_id;
+    if (ts.record_def && ts.record_def->unqualified_text_id != kInvalidText) {
+        return ts.record_def->unqualified_text_id;
+    }
+    return kInvalidText;
+}
+
+static bool typespec_matches_current_struct_local(Parser& parser,
+                                                  const TypeSpec& ts) {
+    if (!parser.is_cpp_mode() ||
+        parser.active_context_state_.current_struct_tag.empty()) {
+        return false;
+    }
+    const TextId ts_text_id = typespec_visible_name_text_id_local(ts);
+    const char* legacy_tag =
+        declarations_legacy_typespec_tag_if_present(ts, 0);
+    const TextId fallback_text_id =
+        ts_text_id != kInvalidText || !legacy_tag
+            ? kInvalidText
+            : parser.find_parser_text_id(legacy_tag);
+    const std::string_view lhs = parser.current_struct_tag_text();
+    const std::string_view rhs = legacy_tag ? std::string_view(legacy_tag)
+                                            : std::string_view{};
+    if (lhs.empty() || (ts_text_id == kInvalidText && rhs.empty())) return false;
+    if (!rhs.empty() && lhs == rhs) return true;
+
+    const Parser::VisibleNameResult lhs_type =
+        parser.resolve_visible_type(
+            parser.active_context_state_.current_struct_tag_text_id);
+    const Parser::VisibleNameResult rhs_type =
+        parser.resolve_visible_type(
+            ts_text_id != kInvalidText ? ts_text_id : fallback_text_id);
+    if (!lhs_type || !rhs_type) return false;
+    if (lhs_type.key.base_text_id != kInvalidText &&
+        rhs_type.key.base_text_id != kInvalidText) {
+        return lhs_type.key == rhs_type.key;
+    }
+    return lhs_type.base_text_id != kInvalidText &&
+           rhs_type.base_text_id != kInvalidText &&
+           lhs_type.base_text_id == rhs_type.base_text_id &&
+           lhs_type.context_id == rhs_type.context_id;
+}
+
+static void append_type_mangled_suffix_local(const Parser& parser,
+                                             std::string& out,
+                                             const TypeSpec& ts) {
     switch (ts.base) {
         case TB_INT: out += "int"; break;
         case TB_UINT: out += "uint"; break;
@@ -332,10 +442,21 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
         case TB_BOOL: out += "bool"; break;
         case TB_INT128: out += "i128"; break;
         case TB_UINT128: out += "u128"; break;
-        case TB_STRUCT: out += "struct_"; out += (ts.tag ? ts.tag : "anon"); break;
-        case TB_UNION: out += "union_"; out += (ts.tag ? ts.tag : "anon"); break;
-        case TB_ENUM: out += "enum_"; out += (ts.tag ? ts.tag : "anon"); break;
-        case TB_TYPEDEF: out += (ts.tag ? ts.tag : "typedef"); break;
+        case TB_STRUCT:
+            out += "struct_";
+            out += typespec_display_name_local(parser, ts, "anon");
+            break;
+        case TB_UNION:
+            out += "union_";
+            out += typespec_display_name_local(parser, ts, "anon");
+            break;
+        case TB_ENUM:
+            out += "enum_";
+            out += typespec_display_name_local(parser, ts, "anon");
+            break;
+        case TB_TYPEDEF:
+            out += typespec_display_name_local(parser, ts, "typedef");
+            break;
         default: out += "T"; break;
     }
     for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
@@ -445,9 +566,9 @@ bool is_internal_typedef_name(const char* name) {
     return name && name[0] == '_' && name[1] == '_';
 }
 
-bool is_same_visible_type_name(Parser& parser, TextId lhs_text_id,
-                               std::string_view lhs, TextId rhs_text_id,
-                               std::string_view rhs) {
+static bool is_same_visible_type_name(Parser& parser, TextId lhs_text_id,
+                                      std::string_view lhs, TextId rhs_text_id,
+                                      std::string_view rhs) {
     if (lhs.empty() || rhs.empty()) return false;
     if (lhs == rhs) return true;
     const Parser::VisibleNameResult lhs_type =
@@ -925,14 +1046,7 @@ Node* parse_local_decl(Parser& parser) {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
-        if (ts.tag && parser.is_cpp_mode() &&
-            !parser.active_context_state_.current_struct_tag.empty()) {
-            if (is_same_visible_type_name(
-                    parser, parser.active_context_state_.current_struct_tag_text_id,
-                    parser.current_struct_tag_text(), parser.find_parser_text_id(ts.tag),
-                    ts.tag))
-                return false;
-        }
+        if (typespec_matches_current_struct_local(parser, ts)) return false;
         Node* def = resolve_record_type_spec(
             ts, &parser.definition_state_.struct_tag_def_map);
         if (!def) return true;
@@ -1284,7 +1398,9 @@ Node* parse_local_decl(Parser& parser) {
         if (is_kr_fn_decl) continue;  // K&R fn decl: no local variable
 
         if (is_incomplete_object_type(ts)) {
-            throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
+            throw std::runtime_error(
+                std::string("object has incomplete type: ") +
+                typespec_display_name_local(parser, ts, "<anonymous>"));
         }
 
         Node* init_node = nullptr;
@@ -2525,7 +2641,8 @@ Node* parse_top_level(Parser& parser) {
                 operator_base_name = "operator_bool";
             } else {
                 operator_base_name = "operator_conv_";
-                append_type_mangled_suffix_local(operator_base_name, conv_ts);
+                append_type_mangled_suffix_local(parser, operator_base_name,
+                                                 conv_ts);
             }
             qualified_op_name += operator_base_name;
 
@@ -2832,8 +2949,9 @@ Node* parse_top_level(Parser& parser) {
                     base_ts.array_rank = 0;
                     for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
                     base_ts.base = TB_TYPEDEF;
-                    base_ts.tag = parser.arena_.strdup(spelled.c_str());
                     base_ts.tag_text_id = name_text_id;
+                    set_declarations_legacy_typespec_tag_if_present(
+                        base_ts, spelled, parser.arena_, 0);
                     parser.consume();
                     goto top_level_base_ready;
                 }
@@ -2850,8 +2968,9 @@ Node* parse_top_level(Parser& parser) {
                     base_ts.array_rank = 0;
                     for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
                     base_ts.base = TB_TYPEDEF;
-                    base_ts.tag = parser.arena_.strdup(spelled.c_str());
                     base_ts.tag_text_id = name_text_id;
+                    set_declarations_legacy_typespec_tag_if_present(
+                        base_ts, spelled, parser.arena_, 0);
                     parser.consume();
                     goto top_level_base_ready;
                 }
@@ -2923,14 +3042,7 @@ top_level_base_ready:
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
-        if (ts.tag && parser.is_cpp_mode() &&
-            !parser.active_context_state_.current_struct_tag.empty()) {
-            if (is_same_visible_type_name(
-                    parser, parser.active_context_state_.current_struct_tag_text_id,
-                    parser.current_struct_tag_text(), parser.find_parser_text_id(ts.tag),
-                    ts.tag))
-                return false;
-        }
+        if (typespec_matches_current_struct_local(parser, ts)) return false;
         Node* def = resolve_record_type_spec(
             ts, &parser.definition_state_.struct_tag_def_map);
         if (!def) return true;
@@ -3239,7 +3351,9 @@ top_level_base_ready:
                      &decl_n_ret_fn_ptr_params, &decl_ret_fn_ptr_variadic,
                      &decl_name_text_id, &decl_qn);
     if (is_incomplete_object_type(ts) && !parser.check(TokenKind::LParen)) {
-        throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
+        throw std::runtime_error(
+            std::string("object has incomplete type: ") +
+            typespec_display_name_local(parser, ts, "<anonymous>"));
     }
     }
 

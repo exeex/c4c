@@ -14,6 +14,7 @@ set(frontend_test_targets frontend_lexer_tests frontend_parser_tests
                           cpp_hir_parser_core_struct_like_typedef_metadata_test
                           cpp_hir_parser_core_record_ctor_metadata_test
                           cpp_hir_parser_core_producer_metadata_test
+                          cpp_hir_parser_declarations_residual_metadata_test
                           cpp_hir_parser_type_helper_metadata_test
                           cpp_hir_parser_type_helper_residual_metadata_test
                           cpp_hir_template_pattern_match_metadata_test
@@ -76,6 +77,8 @@ add_test(NAME cpp_hir_parser_core_record_ctor_structured_metadata
          COMMAND cpp_hir_parser_core_record_ctor_metadata_test)
 add_test(NAME cpp_hir_parser_core_producer_structured_metadata
          COMMAND cpp_hir_parser_core_producer_metadata_test)
+add_test(NAME cpp_hir_parser_declarations_residual_structured_metadata
+         COMMAND cpp_hir_parser_declarations_residual_metadata_test)
 add_test(NAME cpp_hir_parser_type_helper_structured_metadata
          COMMAND cpp_hir_parser_type_helper_metadata_test)
 add_test(NAME cpp_hir_parser_type_helper_residual_structured_metadata
@@ -124,6 +127,8 @@ set_tests_properties(cpp_hir_parser_core_struct_like_typedef_structured_metadata
 set_tests_properties(cpp_hir_parser_core_record_ctor_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
 set_tests_properties(cpp_hir_parser_core_producer_structured_metadata
+                     PROPERTIES LABELS "internal;hir;cpp")
+set_tests_properties(cpp_hir_parser_declarations_residual_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
 set_tests_properties(cpp_hir_parser_type_helper_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
