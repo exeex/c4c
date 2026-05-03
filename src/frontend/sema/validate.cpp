@@ -379,6 +379,73 @@ bool is_switch_integer_type(const TypeSpec& ts_raw) {
   return is_integer_like_base(ts.base);
 }
 
+template <typename T>
+auto typespec_legacy_display_tag_if_present(const T& ts, int) -> decltype(ts.tag) {
+  return ts.tag;
+}
+
+const char* typespec_legacy_display_tag_if_present(const TypeSpec&, long) {
+  return nullptr;
+}
+
+template <typename T>
+auto set_typespec_legacy_display_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag, void()) {
+  ts.tag = tag;
+}
+
+void set_typespec_legacy_display_tag_if_present(TypeSpec&, const char*, long) {}
+
+bool typespec_has_rendered_tag_compatibility(const TypeSpec& ts) {
+  const char* tag = typespec_legacy_display_tag_if_present(ts, 0);
+  return tag && tag[0];
+}
+
+bool typespec_has_any_name_metadata(const TypeSpec& ts) {
+  return ts.record_def || ts.namespace_context_id >= 0 ||
+         ts.tag_text_id != kInvalidText || ts.template_param_text_id != kInvalidText ||
+         ts.deferred_member_type_text_id != kInvalidText ||
+         ts.template_param_owner_text_id != kInvalidText ||
+         ts.template_param_owner_namespace_context_id >= 0;
+}
+
+std::optional<SemaStructuredNameKey> structured_type_name_key_from_metadata(
+    const TypeSpec& ts) {
+  if (auto key = sema_symbol_name_key(ts.record_def); key.has_value()) {
+    return key;
+  }
+  if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
+    SemaStructuredNameKey key;
+    key.namespace_context_id = ts.namespace_context_id;
+    key.is_global_qualified = ts.is_global_qualified;
+    key.base_text_id = ts.tag_text_id;
+    if (ts.n_qualifier_segments > 0) {
+      if (!ts.qualifier_text_ids) return std::nullopt;
+      key.qualifier_text_ids.reserve(static_cast<std::size_t>(ts.n_qualifier_segments));
+      for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        if (ts.qualifier_text_ids[i] == kInvalidText) return std::nullopt;
+        key.qualifier_text_ids.push_back(ts.qualifier_text_ids[i]);
+      }
+    }
+    return key;
+  }
+  return std::nullopt;
+}
+
+bool same_type_name_for_validation(const TypeSpec& a, const TypeSpec& b) {
+  if (auto ak = structured_type_name_key_from_metadata(a); ak.has_value()) {
+    auto bk = structured_type_name_key_from_metadata(b);
+    return bk.has_value() && *ak == *bk;
+  }
+  if (structured_type_name_key_from_metadata(b).has_value()) return false;
+  if (typespec_has_any_name_metadata(a) || typespec_has_any_name_metadata(b)) {
+    return false;
+  }
+  const char* a_tag = typespec_legacy_display_tag_if_present(a, 0);
+  const char* b_tag = typespec_legacy_display_tag_if_present(b, 0);
+  return a_tag && b_tag && std::strcmp(a_tag, b_tag) == 0;
+}
+
 TypeSpec canonicalize_param_type(TypeSpec ts) {
   // C function parameter adjustment: array/function parameters adjust to pointers.
   // Preserve ref qualifiers across decay_array (which strips them for its own purposes).
@@ -415,8 +482,7 @@ bool same_types_for_function_compat(TypeSpec a, TypeSpec b, bool for_param = fal
   if (a.array_size != b.array_size) return false;
   if (a.is_fn_ptr != b.is_fn_ptr) return false;
   if (a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM) {
-    if (a.tag == nullptr || b.tag == nullptr) return false;
-    if (std::string(a.tag) != std::string(b.tag)) return false;
+    if (!same_type_name_for_validation(a, b)) return false;
   }
   return true;
 }
@@ -514,13 +580,25 @@ bool supports_cpp_overload_set(const Node* n) {
 bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
   if (a.base != b.base) return false;
   if (a.base != TB_STRUCT && a.base != TB_UNION && a.base != TB_ENUM) return true;
-  if (a.tag == nullptr || b.tag == nullptr) return false;
-  return std::string(a.tag) == std::string(b.tag);
+  return same_type_name_for_validation(a, b);
 }
 
 std::string unqualified_tag_name(const TypeSpec& ts) {
-  if (!ts.tag || !ts.tag[0]) return {};
-  const std::string tag(ts.tag);
+  if (ts.record_def) {
+    if (ts.record_def->unqualified_name && ts.record_def->unqualified_name[0]) {
+      return ts.record_def->unqualified_name;
+    }
+    if (ts.record_def->name && ts.record_def->name[0]) {
+      const std::string tag(ts.record_def->name);
+      const size_t sep = tag.rfind("::");
+      return sep == std::string::npos ? tag : tag.substr(sep + 2);
+    }
+  }
+  if (ts.tag_text_id != kInvalidText) return "#" + std::to_string(ts.tag_text_id);
+  if (typespec_has_any_name_metadata(ts)) return {};
+  const char* rendered_tag = typespec_legacy_display_tag_if_present(ts, 0);
+  if (!rendered_tag || !rendered_tag[0]) return {};
+  const std::string tag(rendered_tag);
   const size_t sep = tag.rfind("::");
   return sep == std::string::npos ? tag : tag.substr(sep + 2);
 }
@@ -723,6 +801,7 @@ class Validator {
   std::unordered_map<std::string, TextId> template_type_param_text_id_by_name_;
   std::string current_method_struct_tag_;
   std::optional<SemaStructuredNameKey> current_method_struct_key_;
+  const Node* current_method_struct_record_ = nullptr;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
   std::vector<std::unordered_set<std::string>> structured_scope_names_;
   std::vector<std::unordered_map<SemaStructuredNameKey, ScopedSym*, SemaStructuredNameKeyHash>>
@@ -1352,10 +1431,11 @@ class Validator {
     if (ts.tpl_struct_origin) return true;  // pending template struct — resolved at HIR level
     if (ts.base != TB_STRUCT && ts.base != TB_UNION) return true;
 
-    const bool has_rendered_tag = ts.tag && ts.tag[0];
+    const char* rendered_tag = typespec_legacy_display_tag_if_present(ts, 0);
+    const bool has_rendered_tag = rendered_tag && rendered_tag[0];
     const bool legacy_complete =
-        has_rendered_tag ? (ts.base == TB_STRUCT ? complete_structs_.count(ts.tag) > 0
-                                                 : complete_unions_.count(ts.tag) > 0)
+        has_rendered_tag ? (ts.base == TB_STRUCT ? complete_structs_.count(rendered_tag) > 0
+                                                 : complete_unions_.count(rendered_tag) > 0)
                          : true;
 
     if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
@@ -1403,7 +1483,10 @@ class Validator {
       key.base_text_id = ts.tag_text_id;
       return key;
     }
-    if (ts.tag && ts.tag[0]) return structured_record_key_for_tag(ts.tag);
+    if (!typespec_has_any_name_metadata(ts)) {
+      const char* rendered_tag = typespec_legacy_display_tag_if_present(ts, 0);
+      if (rendered_tag && rendered_tag[0]) return structured_record_key_for_tag(rendered_tag);
+    }
     return std::nullopt;
   }
 
@@ -1623,9 +1706,15 @@ class Validator {
   }
 
   bool can_defer_owner_qualified_cast_typedef(const TypeSpec& ts) const {
-    if (current_method_struct_tag_.empty() || !ts.tag || !ts.tag[0]) return false;
+    if (!current_method_struct_key_.has_value() || !current_method_struct_key_->valid()) {
+      return false;
+    }
     if (ts.is_global_qualified) return false;
-    return std::strstr(ts.tag, "::") != nullptr;
+    if (ts.n_qualifier_segments > 0 && ts.qualifier_text_ids) return true;
+    if (ts.deferred_member_type_text_id != kInvalidText) return true;
+    if (typespec_has_any_name_metadata(ts)) return false;
+    const char* rendered_tag = typespec_legacy_display_tag_if_present(ts, 0);
+    return rendered_tag && std::strstr(rendered_tag, "::") != nullptr;
   }
 
   void bind_template_nttps(const Node* n, int line) {
@@ -1675,6 +1764,14 @@ class Validator {
     return legacy;
   }
 
+  bool is_known_template_type_param(const TypeSpec& ts) const {
+    TextId text_id = ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
+                                                               : ts.tag_text_id;
+    if (text_id != kInvalidText) return template_type_param_text_ids_.count(text_id) > 0;
+    if (typespec_has_any_name_metadata(ts)) return false;
+    return is_known_template_type_param_name(typespec_legacy_display_tag_if_present(ts, 0));
+  }
+
   bool is_current_template_type_param_name(const char* name) const {
     if (!current_fn_node_ || !name || !name[0]) return false;
     bool legacy = false;
@@ -1698,6 +1795,41 @@ class Validator {
       return structured;
     }
     return legacy;
+  }
+
+  bool is_current_template_type_param(const TypeSpec& ts) const {
+    if (!current_fn_node_) return false;
+    TextId type_text_id = ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
+                                                                    : ts.tag_text_id;
+    if (type_text_id != kInvalidText) {
+      bool legacy = false;
+      bool structured = false;
+      for (int i = 0; i < current_fn_node_->n_template_params; ++i) {
+        if (!sema_template_param_is_type_param(current_fn_node_, i)) continue;
+        const char* param_name = current_fn_node_->template_param_names[i];
+        legacy = legacy || is_known_template_type_param_name(param_name);
+        const TextId text_id = sema_template_param_name_text_id(current_fn_node_, i);
+        if (text_id == type_text_id) {
+          structured = template_type_param_text_ids_.count(text_id) > 0;
+          (void)compare_sema_lookup_presence(legacy, structured);
+          return structured;
+        }
+      }
+      return false;
+    }
+    if (typespec_has_any_name_metadata(ts)) return false;
+    return is_current_template_type_param_name(
+        typespec_legacy_display_tag_if_present(ts, 0));
+  }
+
+  bool typedef_has_placeholder_payload(const TypeSpec& ts) const {
+    if (ts.base != TB_TYPEDEF) return false;
+    if (ts.template_param_text_id != kInvalidText || ts.tag_text_id != kInvalidText ||
+        ts.deferred_member_type_text_id != kInvalidText) {
+      return true;
+    }
+    if (typespec_has_any_name_metadata(ts)) return false;
+    return typespec_has_rendered_tag_compatibility(ts);
   }
 
   void record_template_type_params_recursive(const Node* n) {
@@ -2007,8 +2139,10 @@ class Validator {
     const Node* old_fn_node = current_fn_node_;
     const std::string old_method_struct = current_method_struct_tag_;
     const std::optional<SemaStructuredNameKey> old_method_struct_key = current_method_struct_key_;
+    const Node* old_method_struct_record = current_method_struct_record_;
     current_method_struct_tag_.clear();
     current_method_struct_key_.reset();
+    current_method_struct_record_ = nullptr;
     in_function_ = true;
     current_fn_ret_ = fn->type;
     current_fn_node_ = fn;
@@ -2043,11 +2177,18 @@ class Validator {
     if (const Node* owner_record = enclosing_method_owner_record(fn)) {
       current_method_struct_tag_ = owner_record->name ? owner_record->name : "";
       current_method_struct_key_ = sema_symbol_name_key(owner_record);
+      current_method_struct_record_ = owner_record;
     }
-    if (!current_method_struct_tag_.empty()) {
+    if (current_method_struct_record_) {
       TypeSpec this_ts{};
       this_ts.base = TB_STRUCT;
-      this_ts.tag = current_method_struct_tag_.c_str();
+      set_typespec_legacy_display_tag_if_present(
+          this_ts, current_method_struct_tag_.empty() ? nullptr : current_method_struct_tag_.c_str(), 0);
+      this_ts.record_def = const_cast<Node*>(current_method_struct_record_);
+      if (current_method_struct_key_.has_value() && current_method_struct_key_->valid()) {
+        this_ts.namespace_context_id = current_method_struct_key_->namespace_context_id;
+        this_ts.tag_text_id = current_method_struct_key_->base_text_id;
+      }
       this_ts.ptr_level = 1;
       this_ts.array_size = -1;
       this_ts.inner_rank = -1;
@@ -2080,6 +2221,7 @@ class Validator {
     current_fn_node_ = old_fn_node;
     current_method_struct_tag_ = old_method_struct;
     current_method_struct_key_ = old_method_struct_key;
+    current_method_struct_record_ = old_method_struct_record;
   }
 
 
@@ -2687,7 +2829,7 @@ class Validator {
             for (int i = 0; i < check_n; ++i) {
               ExprInfo arg = infer_expr(n->children[i]);
               const bool dependent_ref_param =
-                  sig.params[i].base == TB_TYPEDEF && sig.params[i].tag &&
+                  sig.params[i].base == TB_TYPEDEF && typedef_has_placeholder_payload(sig.params[i]) &&
                   (sig.params[i].is_lvalue_ref || sig.params[i].is_rvalue_ref);
               if (!dependent_ref_param &&
                   sig.params[i].is_lvalue_ref && arg.valid && !arg.is_lvalue) {
@@ -2732,28 +2874,31 @@ class Validator {
           const bool is_owner_qualified_cast_typedef =
               can_defer_owner_qualified_cast_typedef(n->type);
           // Suppress for template type parameters — they're resolved at instantiation.
-          bool is_tpl_type_param = is_current_template_type_param_name(n->type.tag);
+          bool is_tpl_type_param = is_current_template_type_param(n->type);
           // Dependent member typedefs in cast targets can currently preserve the
           // owner template parameter name even when the surrounding owner type
           // is otherwise concrete. Accept these decorated placeholder names so
           // generated dependent-owner cast matrices can validate through the
           // frontend without masking ordinary unknown bare type names.
           if (!is_tpl_type_param &&
-              n->type.tag &&
-              is_known_template_type_param_name(n->type.tag) &&
+              is_known_template_type_param(n->type) &&
               (n->type.ptr_level > 0 || n->type.is_fn_ptr ||
                n->type.is_lvalue_ref || n->type.is_rvalue_ref)) {
             is_tpl_type_param = true;
           }
+          const char* rendered_type_name =
+              typespec_has_any_name_metadata(n->type)
+                  ? nullptr
+                  : typespec_legacy_display_tag_if_present(n->type, 0);
           if (!is_tpl_type_param &&
-              n->type.tag &&
-              looks_like_template_placeholder_name(n->type.tag) &&
+              rendered_type_name &&
+              looks_like_template_placeholder_name(rendered_type_name) &&
               (n->type.ptr_level > 0 || n->type.is_fn_ptr ||
                n->type.is_lvalue_ref || n->type.is_rvalue_ref)) {
             is_tpl_type_param = true;
           }
           if (!is_tpl_type_param && !is_owner_qualified_cast_typedef) {
-            const std::string tname = n->type.tag ? n->type.tag : "<anonymous>";
+            const std::string tname = rendered_type_name ? rendered_type_name : "<anonymous>";
             emit(n, "cast to unknown type name '" + tname + "'");
           }
         }

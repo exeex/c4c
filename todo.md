@@ -9,24 +9,21 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the targeted
-`src/frontend/sema/consteval.cpp:182`, `src/frontend/sema/consteval.cpp:352`,
-and `src/frontend/sema/type_utils.cpp:500` deletion-probe residuals.
-Consteval type binding and record-layout lookups now use structured metadata
-before explicit no-metadata rendered compatibility, and type-utils rendered-name
-compatibility is deletion-safe and gated behind absence of structured name
-metadata. A focused sema/HIR test now covers consteval record layout
-owner-metadata precedence, metadata-miss rejection of stale rendered tags, and
-type-binding rendered-name compatibility only when no structured metadata is
-present.
+`src/frontend/sema/validate.cpp:418` deletion-probe residual family. Validation
+function type compatibility, pointer/record type compatibility, record
+completeness, structured record key lookup, injected `this`, dependent
+reference parameters, and typedef/cast placeholder checks now prefer
+`record_def`, text/namespace metadata, structured keys, template parameter text
+metadata, and explicit no-metadata rendered compatibility instead of direct
+`TypeSpec::tag` access.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected deletion-probe residual
-family. The current deletion probe no longer emits the
-`src/frontend/sema/consteval.cpp:182`, `src/frontend/sema/consteval.cpp:352`,
-or `src/frontend/sema/type_utils.cpp:500` residuals; both owned sema files
-compiled during the probe. The first emitted residual boundary is now outside
-this packet's ownership at `src/frontend/sema/validate.cpp:418`.
+family. The current deletion probe no longer emits any
+`src/frontend/sema/validate.cpp` residuals; `validate.cpp` rebuilt during the
+probe. The first emitted residual boundary is now outside this packet's
+ownership at `src/shared/llvm_helpers.hpp:444`.
 
 ## Watchouts
 
@@ -43,7 +40,7 @@ this packet's ownership at `src/frontend/sema/validate.cpp:418`.
   positive ctor-init runtime case still needs the instantiated rendered tag as
   a compatibility payload for downstream member-expression lowering.
 - The deletion probe log for this packet is
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_consteval_type_utils.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_validate.log`.
 
 ## Proof
 
@@ -53,6 +50,7 @@ Executor proof:
 
 Result: command exited 0. The build passed, and CTest passed 111 of 111
 delegated tests, including
+`cpp_hir_sema_canonical_symbol_structured_metadata`,
 `cpp_hir_sema_consteval_type_utils_structured_metadata`,
 `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`, and
 `eastl_cpp_external_utility_frontend_basic_cpp`. `test_after.log` is the
@@ -60,22 +58,20 @@ canonical proof log.
 
 Regression guard:
 
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
-Result: command exited 0. Guard passed with `passed=110 failed=0 total=110`
+Result: command exited 0. Guard passed with `passed=111 failed=0 total=111`
 before and `passed=111 failed=0 total=111` after. There are no new failing
-tests; the pass-count increase is the new
-`cpp_hir_sema_consteval_type_utils_structured_metadata` test.
+tests; the pass count is unchanged because this packet migrated existing
+covered validate routes without adding a new testcase.
 
 Deletion probe:
 
 Temporarily removing `TypeSpec::tag` and running
 `cmake --build --preset default` wrote
-`/tmp/c4c_typespec_tag_deletion_probe_step4_consteval_type_utils.log`. The
-targeted `src/frontend/sema/consteval.cpp:182`,
-`src/frontend/sema/consteval.cpp:352`, and
-`src/frontend/sema/type_utils.cpp:500` residuals are cleared; `consteval.cpp`
-and `type_utils.cpp` rebuilt during the probe. The current first emitted
-residual is `src/frontend/sema/validate.cpp:418`, outside this packet's owned
-files. `ast.hpp` was restored after the probe, and the delegated proof was
-rerun successfully afterward.
+`/tmp/c4c_typespec_tag_deletion_probe_step4_validate.log`. The targeted
+`src/frontend/sema/validate.cpp:418` residual family is cleared; no
+`validate.cpp` residuals are emitted, and the current first emitted residual is
+`src/shared/llvm_helpers.hpp:444`, outside this packet's owned files.
+`ast.hpp` was restored after the probe, and the delegated proof was rerun
+successfully afterward.
