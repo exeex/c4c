@@ -1497,7 +1497,7 @@ void test_parser_nested_dependent_typename_prefers_record_definition() {
   nested_field_type.array_size = -1;
   nested_field_type.inner_rank = -1;
   nested_field_type.base = c4c::TB_STRUCT;
-  nested_field_type.tag = arena.strdup("StaleNested");
+  set_legacy_tag_if_present(nested_field_type, arena.strdup("StaleNested"), 0);
   nested_field_type.record_def = real_nested;
 
   c4c::Node* nested_field = parser.make_node(c4c::NK_DECL, 1);
