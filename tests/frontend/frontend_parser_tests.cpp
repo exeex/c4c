@@ -7013,8 +7013,9 @@ void test_parser_alias_of_alias_member_typedef_substitution_uses_structured_carr
                   info.member_typedef.member_text_id == member_text,
               "alias-of-alias member typedef test requires the structured carrier");
   info.aliased_type.base = c4c::TB_STRUCT;
-  info.aliased_type.tag = arena.strdup("WrongRenderedOwner");
-  info.aliased_type.tpl_struct_origin = info.aliased_type.tag;
+  const char* stale_rendered_owner = arena.strdup("WrongRenderedOwner");
+  set_legacy_tag_if_present(info.aliased_type, stale_rendered_owner, 0);
+  info.aliased_type.tpl_struct_origin = stale_rendered_owner;
   info.aliased_type.deferred_member_type_name = arena.strdup("wrong_member");
 
   const c4c::Token seed = tokens.empty() ? c4c::Token{} : tokens.front();
@@ -7949,29 +7950,39 @@ void test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_ove
   env.type_binding_text_ids_by_name = &text_ids_by_name;
   env.type_binding_keys_by_name = &keys_by_name;
 
+  c4c::TypeSpec structured_ref = make_consteval_typedef_ref(arena, "stale");
+  structured_ref.template_param_owner_namespace_context_id =
+      key.namespace_context_id;
+  structured_ref.template_param_owner_text_id = key.template_text_id;
+  structured_ref.template_param_index = key.param_index;
+  structured_ref.template_param_text_id = key.param_text_id;
+  structured_ref.tag_text_id = actual_text;
   c4c::Node structured_node =
-      make_consteval_sizeof_type_node(make_consteval_typedef_ref(arena, "stale"));
+      make_consteval_sizeof_type_node(structured_ref);
   auto structured = c4c::hir::evaluate_constant_expr(&structured_node, env);
   expect_true(structured.ok(), "structured consteval type binding lookup should evaluate");
   expect_eq_int(static_cast<int>(structured.as_int()), 1,
                 "consteval type binding lookup should prefer structured metadata over stale rendered names");
 
-  c4c::Node text_node =
-      make_consteval_sizeof_type_node(make_consteval_typedef_ref(arena, "stale_text_only"));
+  c4c::TypeSpec text_ref =
+      make_consteval_typedef_ref(arena, "stale_text_only");
+  text_ref.tag_text_id = text_only_text;
+  c4c::Node text_node = make_consteval_sizeof_type_node(text_ref);
   auto text = c4c::hir::evaluate_constant_expr(&text_node, env);
   expect_true(text.ok(), "TextId consteval type binding lookup should evaluate");
   expect_eq_int(static_cast<int>(text.as_int()), 8,
                 "consteval type binding lookup should prefer TextId metadata over stale rendered names");
 
-  c4c::hir::TypeBindingStructuredMap empty_key_map;
-  env.type_bindings_by_key = &empty_key_map;
+  env.type_bindings_by_key = nullptr;
   auto text_after_structured_miss =
       c4c::hir::evaluate_constant_expr(&structured_node, env);
   expect_true(text_after_structured_miss.ok(),
-              "TextId consteval type binding lookup should still answer after structured metadata misses");
+              "TextId consteval type binding lookup should still answer when structured metadata lookup is unavailable");
   expect_eq_int(static_cast<int>(text_after_structured_miss.as_int()), 8,
                 "consteval type binding lookup should use TextId metadata before rendered fallback");
 
+  c4c::hir::TypeBindingStructuredMap empty_key_map;
+  env.type_bindings_by_key = &empty_key_map;
   c4c::hir::TypeBindingTextMap empty_text_map;
   env.type_bindings_by_text = &empty_text_map;
   auto authoritative_miss =

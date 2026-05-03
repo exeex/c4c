@@ -2436,8 +2436,7 @@ TypeSpec Parser::parse_base_type() {
                 bool save_const = ts.is_const, save_vol = ts.is_volatile;
                 const bool has_qualified_type_metadata =
                     ts.is_global_qualified || ts.namespace_context_id >= 0 ||
-                    ts.n_qualifier_segments > 0 ||
-                    ts.tag_text_id != kInvalidText;
+                    ts.n_qualifier_segments > 0;
                 const bool typedef_type_has_structured_typedef_identity =
                     typedef_type->base == TB_TYPEDEF &&
                     typedef_type->tag_text_id != kInvalidText;
@@ -2456,6 +2455,10 @@ TypeSpec Parser::parse_base_type() {
                     ts.n_qualifier_segments = save_n_qualifier_segments;
                     ts.qualifier_segments = save_qualifier_segments;
                     ts.qualifier_text_ids = save_qualifier_text_ids;
+                }
+                if (ts.tag_text_id != kInvalidText &&
+                    ts.namespace_context_id < 0) {
+                    ts.namespace_context_id = current_namespace_context_id();
                 }
                 ts.is_const   |= save_const;
                 ts.is_volatile |= save_vol;

@@ -8,39 +8,40 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 2 migrated the direct `TypeSpec::tag` fixture cluster in
-`test_parser_qualified_alias_template_member_typedef_substitution_uses_structured_carrier()`.
-The stale rendered owner spelling now flows through
-`set_legacy_tag_if_present()`, while `tpl_struct_origin` keeps an independent
-legacy spelling pointer and the structured member typedef carrier assertions
-remain unchanged.
+Step 2 repaired the `frontend_parser_tests` runtime failure where visible
+lexical alias type-argument parsing fabricated typedef TextId metadata. The
+shared `parse_base_type()` typedef handoff now preserves only real qualified
+spelling metadata across a resolved typedef payload, so an unqualified visible
+alias to `int` no longer leaves the target typedef TextId on the concrete
+argument type.
 
-The deletion probe temporarily removed `TypeSpec::tag` from
-`src/frontend/parser/ast.hpp`, reran the delegated fixture-surface build probe,
-captured the result in `test_after.log`, and restored `ast.hpp` afterward.
-The migrated fixture no longer blocks that probe at the old 6963/6964/6965
-cluster.
-The first remaining fixture/test compile boundary moved to
-`tests/frontend/frontend_parser_tests.cpp:7016`.
+The same repair keeps resolved typedef payloads with intrinsic TextId identity
+complete by filling the current namespace context when the payload has a
+`tag_text_id` but no context. This preserves the structured carrier/equivalence
+fixtures that compare TextId metadata instead of rendered spelling.
+
+The alias-of-alias member typedef fixture moved its stale rendered owner write
+behind `set_legacy_tag_if_present()`, and the consteval lookup fixture now
+constructs explicit structured/TextId carriers for the metadata paths it
+asserts instead of relying on rendered-name side maps.
 
 ## Suggested Next
 
-Migrate the next direct `TypeSpec::tag` fixture access cluster in
-`test_parser_alias_of_alias_member_typedef_substitution_uses_structured_carrier()`
-at `tests/frontend/frontend_parser_tests.cpp:7016` and `7017`, preserving the
-alias-of-alias structured carrier assertions while keeping legacy rendered
-spelling behind the compatibility helper.
+Run the next Step 2 deletion probe to find the next direct fixture `TypeSpec::tag`
+residual after the migrated alias-of-alias cluster, then migrate that fixture
+without changing its structured metadata assertion.
 
 ## Watchouts
 
 - Do not reactivate parked idea 142 for parser/HIR fixture residuals.
 - Do not weaken tests or remove stale-rendered-spelling disagreement coverage
   just to make the field deletion compile.
-- The delegated `frontend_parser_tests` target build covers this fixture
-  surface, but the deletion probe still shows later direct `tag` residuals.
-- The next deletion-probe boundary is the alias-of-alias member typedef carrier
-  substitution fixture; use a local stale rendered owner pointer for
-  `tpl_struct_origin` instead of reading `info.aliased_type.tag`.
+- The delegated `frontend_parser_tests` target build plus ctest now passes; the
+  runtime failure was in the unqualified typedef metadata handoff, not a
+  template-argument special case.
+- An intrinsic structured consteval lookup miss remains authoritative in the
+  current sema contract; the fixture now uses TextId fallback only when the
+  structured lookup map is unavailable.
 - The migrated tag-only fallback fixture intentionally keeps no `record_def`;
   the compatibility map remains the intended authority for the 1/2/1 layout
   results.
@@ -57,23 +58,10 @@ spelling behind the compatibility helper.
 
 ## Proof
 
-Proof output is recorded in `test_after.log`. The initial normal build proof
-was overwritten by the temporary deletion probe, then the restored passing build
-was appended to the same log.
+Proof output is recorded in `test_after.log`.
 
 ```text
-Initial normal build proof:
-  cmake --build build --target frontend_parser_tests > test_after.log 2>&1
-
-Temporary TypeSpec::tag deletion probe, overwriting the initial log:
-  cmake --build build --target frontend_parser_tests > test_after.log 2>&1
-
-Restored ast.hpp build proof, appended after the deletion probe:
-  cmake --build build --target frontend_parser_tests >> test_after.log 2>&1
+cmake --build build --target frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
 ```
 
-Result: the normal `frontend_parser_tests` target build passed after the
-fixture migration. The deletion-probe build failed while `TypeSpec::tag` was
-temporarily removed, then `ast.hpp` was restored and the target build passed
-again. The first remaining compile boundary is
-`tests/frontend/frontend_parser_tests.cpp:7016`.
+Result: passed.
