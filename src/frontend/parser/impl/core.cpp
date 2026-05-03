@@ -856,6 +856,24 @@ const char* typespec_legacy_typedef_tag_if_present(const TypeSpec&, long) {
     return nullptr;
 }
 
+template <typename T>
+auto set_typespec_legacy_rendered_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+    ts.tag = tag;
+}
+
+void set_typespec_legacy_rendered_tag_if_present(TypeSpec&, const char*, long) {}
+
+template <typename T>
+auto set_typespec_legacy_rendered_tag_if_present(T& ts, std::string_view tag,
+                                                 Arena& arena, int)
+    -> decltype(ts.tag = static_cast<const char*>(nullptr), void()) {
+    ts.tag = arena.strdup(std::string(tag).c_str());
+}
+
+void set_typespec_legacy_rendered_tag_if_present(TypeSpec&, std::string_view,
+                                                 Arena&, long) {}
+
 bool typespec_has_nominal_identity_carrier(const TypeSpec& ts) {
     return ts.record_def || ts.tag_text_id != kInvalidText ||
            ts.template_param_text_id != kInvalidText ||
@@ -1166,8 +1184,9 @@ void Parser::register_synthesized_typedef_binding(TextId name_text_id) {
     synthesized_ts.array_size = -1;
     synthesized_ts.inner_rank = -1;
     synthesized_ts.base = TB_TYPEDEF;
-    synthesized_ts.tag = arena_.strdup(std::string(resolved_name).c_str());
     synthesized_ts.tag_text_id = name_text_id;
+    set_typespec_legacy_rendered_tag_if_present(synthesized_ts, resolved_name,
+                                                arena_, 0);
     register_typedef_binding(name_text_id, synthesized_ts, false);
 }
 
@@ -1182,10 +1201,10 @@ void Parser::register_tag_type_binding(TextId name_text_id,
     tagged_ts.array_size = -1;
     tagged_ts.array_rank = 0;
     tagged_ts.base = base;
-    tagged_ts.tag = tag;
     tagged_ts.tag_text_id =
         tag_text_id != kInvalidText ? tag_text_id
                                     : parser_text_id_for_token(kInvalidText, tag);
+    set_typespec_legacy_rendered_tag_if_present(tagged_ts, tag, 0);
     if (base == TB_ENUM) {
         tagged_ts.inner_rank = -1;
         for (int i = 0; i < 8; ++i) tagged_ts.array_dims[i] = -1;
@@ -1871,7 +1890,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena,
         true_ts.array_rank = 0;
         true_ts.is_ptr_to_array = false;
         true_ts.base = TB_STRUCT;
-        true_ts.tag = arena_.strdup("__true_type");
+        true_ts.tag_text_id = parser_text_id_for_token(kInvalidText, "__true_type");
+        set_typespec_legacy_rendered_tag_if_present(true_ts, "__true_type", 0);
         cache_typedef_type("__true_type", true_ts);
         cache_typedef_type("std::__true_type", true_ts);
         cache_typedef_type("std::__8::__true_type", true_ts);
@@ -1881,7 +1901,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena,
         false_ts.array_rank = 0;
         false_ts.is_ptr_to_array = false;
         false_ts.base = TB_STRUCT;
-        false_ts.tag = arena_.strdup("__false_type");
+        false_ts.tag_text_id = parser_text_id_for_token(kInvalidText, "__false_type");
+        set_typespec_legacy_rendered_tag_if_present(false_ts, "__false_type", 0);
         cache_typedef_type("__false_type", false_ts);
         cache_typedef_type("std::__false_type", false_ts);
         cache_typedef_type("std::__8::__false_type", false_ts);
