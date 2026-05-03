@@ -6605,10 +6605,12 @@ void test_parser_record_layout_const_eval_keeps_final_spelling_fallback() {
 }
 
 void test_parser_incomplete_decl_checks_prefer_record_definition() {
-  auto make_alias_type = [](c4c::Arena& arena,
+  auto make_alias_type = [](c4c::Parser& parser,
+                            c4c::Arena& arena,
                             c4c::Node* real) -> c4c::TypeSpec {
     c4c::TypeSpec alias_ts = parser_test_scalar_type(c4c::TB_STRUCT);
-    alias_ts.tag = arena.strdup("Shared");
+    alias_ts.tag_text_id = parser_test_text_id(parser, "Shared");
+    set_legacy_tag_if_present(alias_ts, arena.strdup("Shared"), 0);
     alias_ts.record_def = real;
     return alias_ts;
   };
@@ -6625,7 +6627,9 @@ void test_parser_incomplete_decl_checks_prefer_record_definition() {
     stale->name = arena.strdup("Stale");
     stale->n_fields = -1;
     parser.definition_state_.struct_tag_def_map["Shared"] = stale;
-    parser.register_typedef_binding(parser_test_text_id(parser, "Alias"), make_alias_type(arena, real), true);
+    parser.register_typedef_binding(parser_test_text_id(parser, "Alias"),
+                                    make_alias_type(parser, arena, real),
+                                    true);
 
     c4c::Node* decl = parse_top_level(parser);
     expect_true(decl != nullptr && decl->kind == c4c::NK_GLOBAL_VAR,
@@ -6649,7 +6653,7 @@ void test_parser_incomplete_decl_checks_prefer_record_definition() {
 
     const c4c::TextId alias_text = lexer.text_table().intern("Alias");
     parser.push_local_binding_scope();
-    parser.bind_local_typedef(alias_text, make_alias_type(arena, real));
+    parser.bind_local_typedef(alias_text, make_alias_type(parser, arena, real));
 
     c4c::Node* decl = c4c::parse_stmt(parser);
     expect_true(decl != nullptr && decl->kind == c4c::NK_DECL,

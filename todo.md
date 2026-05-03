@@ -9,28 +9,25 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 ## Just Finished
 
 Step 2 migrated
-`test_parser_record_layout_const_eval_keeps_final_spelling_fallback()` away
-from a direct `tag_only.tag` write. The fixture now assigns a `Fallback`
-`tag_text_id` to the tag-only `TypeSpec`, mirrors that identity onto the
-synthetic fallback record, and uses optional legacy-tag setup so builds still
-compile with and without the legacy field. The fixture keeps `record_def` null
-and preserves the 1/2/1 alignof/sizeof/offsetof expectations through the
-compatibility map fallback.
+`test_parser_incomplete_decl_checks_prefer_record_definition()` away from the
+direct `alias_ts.tag` write in its `make_alias_type` helper. The helper now
+sets the `Shared` parser `tag_text_id`, keeps optional legacy spelling through
+`set_legacy_tag_if_present()`, and preserves `record_def = real` so both the
+global and local declaration subcases still accept the complete record even
+when `struct_tag_def_map["Shared"]` points at stale incomplete record data.
 
 The deletion probe temporarily removed `TypeSpec::tag` from
 `src/frontend/parser/ast.hpp`, reran the delegated fixture-surface build probe,
 captured the result in `test_after.log`, and restored `ast.hpp` afterward.
-The migrated fixture no longer blocks that probe. The first remaining
+The migrated helper no longer blocks that probe. The first remaining
 fixture/test compile boundary moved to
-`tests/frontend/frontend_parser_tests.cpp:6611`, where the adjacent
-`test_parser_incomplete_decl_checks_prefer_record_definition()` helper still
-writes `alias_ts.tag`.
+`tests/frontend/frontend_parser_tests.cpp:6761`.
 
 ## Suggested Next
 
-Migrate `test_parser_incomplete_decl_checks_prefer_record_definition()` away
-from direct `TypeSpec::tag` writes while preserving its stale rendered tag-map
-checks against `record_def` authority.
+Migrate the next direct `TypeSpec::tag` fixture access at
+`tests/frontend/frontend_parser_tests.cpp:6761`, preserving the existing
+fixture behavior while making it compile under the temporary field deletion.
 
 ## Watchouts
 
@@ -42,8 +39,9 @@ checks against `record_def` authority.
 - The migrated tag-only fallback fixture intentionally keeps no `record_def`;
   the compatibility map remains the intended authority for the 1/2/1 layout
   results.
-- The next boundary is an incomplete-declaration helper where `record_def`
-  should remain authoritative over the rendered tag-map entry.
+- The incomplete-declaration helper now depends on `record_def` as the real
+  authority while keeping `Shared` rendered-map disagreement coverage through
+  the stale `struct_tag_def_map` entry.
 - `src/frontend/parser/ast.hpp` was only changed for the temporary deletion
   probe and has no lasting diff.
 
@@ -60,5 +58,5 @@ cmake --build build --target frontend_parser_tests >> test_after.log 2>&1
 Result: the normal `frontend_parser_tests` target build passed after the
 fixture migration. The deletion-probe build failed while `TypeSpec::tag` was
 temporarily removed, then `ast.hpp` was restored and the target build passed
-again. The first remaining compile boundary is the adjacent incomplete-decl
-helper access at `tests/frontend/frontend_parser_tests.cpp:6611`.
+again. The first remaining compile boundary is
+`tests/frontend/frontend_parser_tests.cpp:6761`.
