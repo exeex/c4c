@@ -6565,12 +6565,15 @@ void test_parser_record_layout_const_eval_keeps_final_spelling_fallback() {
                          parser_test_scalar_type(c4c::TB_CHAR)),
        parser_test_field(parser, arena, "value",
                          parser_test_scalar_type(c4c::TB_CHAR))});
+  const c4c::TextId fallback_text_id = parser_test_text_id(parser, "Fallback");
+  fallback->unqualified_text_id = fallback_text_id;
 
   std::unordered_map<std::string, c4c::Node*> compatibility_tag_map;
   compatibility_tag_map["Fallback"] = fallback;
 
   c4c::TypeSpec tag_only = parser_test_scalar_type(c4c::TB_STRUCT);
-  tag_only.tag = arena.strdup("Fallback");
+  tag_only.tag_text_id = fallback_text_id;
+  set_legacy_tag_if_present(tag_only, arena.strdup("Fallback"), 0);
 
   c4c::Node* align_node = parser.make_node(c4c::NK_ALIGNOF_TYPE, 1);
   align_node->type = tag_only;
