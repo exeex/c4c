@@ -4319,8 +4319,10 @@ void test_parser_template_type_arg_uses_visible_scope_local_alias() {
               "visible lexical aliases should stay classified as type arguments");
   expect_true(arg.type.base == c4c::TB_INT,
               "visible lexical aliases should resolve to the bound scope-local type");
-  expect_true(arg.type.tag == nullptr,
-              "visible lexical alias type-argument parsing should not fabricate a flat typedef tag");
+  expect_true(arg.type.tag_text_id == c4c::kInvalidText,
+              "visible lexical alias type-argument parsing should not fabricate typedef TextId metadata");
+  expect_true(arg.type.n_qualifier_segments == 0 && !arg.type.is_global_qualified,
+              "visible lexical alias type-argument parsing should not fabricate qualified typedef metadata");
   expect_eq_int(parser.token_cursor_for_testing(), 1,
                 "visible lexical alias type-argument parsing should stop before the template close");
 

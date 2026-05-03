@@ -3,30 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Re-run The TypeSpec Tag Deletion Probe
+Current Step ID: 2
+Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 3 temporarily removed `TypeSpec::tag` from
-`src/frontend/parser/ast.hpp`, ran the delegated fixture-surface build probe,
-captured the result in `test_after.log`, and restored `ast.hpp` to the
-pre-probe buildable state.
+Step 2 migrated the first `frontend_parser_tests.cpp` fixture residual at
+`tests/frontend/frontend_parser_tests.cpp:4322` in
+`test_parser_template_type_arg_uses_visible_scope_local_alias()` away from
+direct `arg.type.tag` access. The fixture now preserves the same contract by
+asserting that the visible lexical alias resolves to the scope-local `TB_INT`
+type without fabricating typedef TextId or qualified typedef metadata.
 
-First remaining fixture/test compile boundary:
-`tests/frontend/frontend_parser_tests.cpp.o` fails first at
-`tests/frontend/frontend_parser_tests.cpp:4322` because
-`arg.type.tag` still reads the deleted `TypeSpec::tag` member in
-`test_parser_template_type_arg_uses_visible_scope_local_alias()`.
+The follow-up deletion probe temporarily removed `TypeSpec::tag` from
+`src/frontend/parser/ast.hpp`, reran the delegated fixture-surface build probe,
+captured the result in `test_after.log`, and restored `ast.hpp` afterward.
+The first remaining fixture/test compile boundary moved to
+`tests/frontend/frontend_parser_tests.cpp:4349`, where
+`test_parser_synthesized_typedef_binding_unregisters_by_text_id()` still reads
+`synthesized_type->tag`.
 
 ## Suggested Next
 
-Migrate the first fixture/test residual group in
-`tests/frontend/frontend_parser_tests.cpp` away from direct `TypeSpec::tag`
-reads/writes, starting at the line 4322 boundary and keeping the replacement
-semantic: prefer `tag_text_id` or the existing structured record/type authority
-where available, and only preserve spelling fallback where the test explicitly
-proves fallback behavior.
+Migrate the next fixture residual at
+`tests/frontend/frontend_parser_tests.cpp:4349` away from direct
+`synthesized_type->tag` access while preserving the synthesized typedef
+spelling contract through `tag_text_id` and parser-owned text lookup.
 
 ## Watchouts
 
@@ -38,6 +40,8 @@ proves fallback behavior.
 - The focused frontend parser test previously had the known pre-existing
   `namespace owner resolution should use the method owner TextId before rendered
   owner spelling` failure.
+- `src/frontend/parser/ast.hpp` was only changed for the temporary deletion
+  probe and should have no lasting diff.
 
 ## Proof
 
@@ -45,8 +49,11 @@ Proof output is recorded in `test_after.log`.
 
 ```sh
 cmake --build build --target frontend_parser_tests > test_after.log 2>&1
+cmake --build build --target frontend_parser_tests >> test_after.log 2>&1
 ```
 
-Result: build failed while the `TypeSpec::tag` member was temporarily removed,
-then `ast.hpp` was restored. The first compile boundary is the direct fixture
-read at `tests/frontend/frontend_parser_tests.cpp:4322`.
+Result: the normal `frontend_parser_tests` target build passed after the
+fixture migration. The deletion-probe build failed while `TypeSpec::tag` was
+temporarily removed, then `ast.hpp` was restored. The first remaining compile
+boundary is the direct fixture read at
+`tests/frontend/frontend_parser_tests.cpp:4349`.
