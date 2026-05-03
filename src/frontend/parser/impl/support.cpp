@@ -6,6 +6,25 @@
 
 namespace c4c {
 
+template <typename T>
+auto support_legacy_typespec_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, static_cast<const char*>(nullptr)) {
+    return ts.tag;
+}
+
+const char* support_legacy_typespec_tag_if_present(const TypeSpec&, long) {
+    return nullptr;
+}
+
+static bool typespec_has_unresolved_typedef_identity(const TypeSpec& ts) {
+    if (ts.base != TB_TYPEDEF) return false;
+    if (ts.template_param_text_id != kInvalidText ||
+        ts.tag_text_id != kInvalidText) {
+        return true;
+    }
+    return support_legacy_typespec_tag_if_present(ts, 0) != nullptr;
+}
+
 // ── ParserSnapshot save / restore ────────────────────────────────────────────
 
 Parser::ParserSymbolTables& Parser::parser_symbol_tables() {
@@ -324,7 +343,7 @@ bool eval_enum_expr(Node* n, const ParserEnumConstTable& consts, long long* out)
     }
     if (n->kind == NK_CAST && n->left) return eval_enum_expr(n->left, consts, out);
     if (n->kind == NK_SIZEOF_TYPE) {
-        if (n->type.base == TB_TYPEDEF && n->type.tag) {
+        if (typespec_has_unresolved_typedef_identity(n->type)) {
             return false;  // dependent or unresolved type
         }
         *out = sizeof_type_spec(n->type);
@@ -370,7 +389,7 @@ bool is_dependent_enum_expr(Node* n,
         return true;
     }
     if (n->kind == NK_SIZEOF_TYPE) {
-        return n->type.base == TB_TYPEDEF && n->type.tag;
+        return typespec_has_unresolved_typedef_identity(n->type);
     }
     if (n->kind == NK_SIZEOF_EXPR) {
         return true;
@@ -495,8 +514,20 @@ Node* resolve_record_type_spec(
     if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
         return ts.record_def;
     }
-    if (!compatibility_tag_map || !ts.tag) return nullptr;
-    const auto it = compatibility_tag_map->find(ts.tag);
+    if (!compatibility_tag_map) return nullptr;
+    if (ts.tag_text_id != kInvalidText) {
+        for (const auto& entry : *compatibility_tag_map) {
+            Node* sd = entry.second;
+            if (sd && sd->kind == NK_STRUCT_DEF &&
+                sd->unqualified_text_id == ts.tag_text_id) {
+                return sd;
+            }
+        }
+        return nullptr;
+    }
+    const char* tag = support_legacy_typespec_tag_if_present(ts, 0);
+    if (!tag) return nullptr;
+    const auto it = compatibility_tag_map->find(tag);
     if (it == compatibility_tag_map->end()) return nullptr;
     Node* sd = it->second;
     return sd && sd->kind == NK_STRUCT_DEF ? sd : nullptr;
@@ -969,8 +1000,9 @@ TypeSpec resolve_typedef_chain(TypeSpec ts,
                                       const std::unordered_map<std::string, TypeSpec>& tmap) {
     for (int depth = 0; depth < 16; ++depth) {
         if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) break;
-        if (!ts.tag) break;
-        auto it = tmap.find(ts.tag);
+        const char* tag = support_legacy_typespec_tag_if_present(ts, 0);
+        if (!tag) break;
+        auto it = tmap.find(tag);
         if (it == tmap.end()) break;
         bool c = ts.is_const, v = ts.is_volatile;
         ts = it->second;
@@ -1027,7 +1059,9 @@ static bool same_nominal_typespec_identity(const TypeSpec& a,
 
     if (a.record_def || b.record_def) return false;
 
-    return a.tag && b.tag && strcmp(a.tag, b.tag) == 0;
+    const char* a_tag = support_legacy_typespec_tag_if_present(a, 0);
+    const char* b_tag = support_legacy_typespec_tag_if_present(b, 0);
+    return a_tag && b_tag && strcmp(a_tag, b_tag) == 0;
 }
 
 // Returns true if type a and type b are compatible per GCC __builtin_types_compatible_p rules.
