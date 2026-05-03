@@ -222,6 +222,69 @@ std::optional<HirRecordOwnerKey> record_owner_key_from_type_tag_metadata(
   return key;
 }
 
+bool typespec_has_structured_owner_metadata(const TypeSpec& ts) {
+  return (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) ||
+         ts.tag_text_id != kInvalidText ||
+         ts.namespace_context_id >= 0 ||
+         (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) ||
+         (ts.tpl_struct_origin_key.base_text_id != kInvalidText) ||
+         (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) ||
+         (ts.tpl_struct_origin && ts.tpl_struct_origin[0]);
+}
+
+bool typespec_has_structured_template_param_metadata(const TypeSpec& ts) {
+  return ts.template_param_text_id != kInvalidText ||
+         ts.tag_text_id != kInvalidText ||
+         ts.template_param_index >= 0 ||
+         ts.template_param_owner_text_id != kInvalidText ||
+         ts.template_param_owner_namespace_context_id >= 0;
+}
+
+std::optional<std::string> structured_owner_tag_from_type(
+    const TypeSpec& ts,
+    const Module* module) {
+  if (!module) return std::nullopt;
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    if (ts.record_def->unqualified_text_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts.record_def->namespace_context_id;
+      HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(ns_qual, ts.record_def->unqualified_text_id);
+      if (const SymbolName* owner_tag =
+              module->find_struct_def_tag_by_owner(owner_key)) {
+        if (module->struct_defs.count(*owner_tag)) return std::string(*owner_tag);
+      }
+    }
+    if (ts.record_def->name && ts.record_def->name[0] &&
+        module->struct_defs.count(ts.record_def->name)) {
+      return std::string(ts.record_def->name);
+    }
+  }
+  if (auto owner_key = record_owner_key_from_type_tag_metadata(ts)) {
+    if (const SymbolName* owner_tag =
+            module->find_struct_def_tag_by_owner(*owner_key)) {
+      if (module->struct_defs.count(*owner_tag)) return std::string(*owner_tag);
+    }
+  }
+  if (ts.tag_text_id != kInvalidText && module->link_name_texts) {
+    const std::string_view tag_text = module->link_name_texts->lookup(ts.tag_text_id);
+    if (!tag_text.empty() && module->struct_defs.count(std::string(tag_text))) {
+      return std::string(tag_text);
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> legacy_owner_tag_from_type_if_no_metadata(
+    const TypeSpec& ts,
+    const Module* module) {
+  if (typespec_has_structured_owner_metadata(ts)) return std::nullopt;
+  const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  if (!legacy_tag || !legacy_tag[0]) return std::nullopt;
+  if (module && !module->struct_defs.count(legacy_tag)) return std::nullopt;
+  return std::string(legacy_tag);
+}
+
 }  // namespace
 
 bool Lowerer::recover_template_struct_identity_from_tag(
@@ -356,6 +419,7 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
       !is_generated_anonymous_record_tag(base_ts.record_def->name);
   const bool has_structured_owner_identity =
       record_def_has_structured_owner_identity ||
+      typespec_has_structured_owner_metadata(base_ts) ||
       (base_ts.tpl_struct_origin && base_ts.tpl_struct_origin[0]) ||
       (base_ts.tpl_struct_args.data && base_ts.tpl_struct_args.size > 0);
 
@@ -382,8 +446,10 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
     if (!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) {
       return std::nullopt;
     }
-    const std::string incoming_tag =
-        (base_ts.tag && base_ts.tag[0]) ? std::string(base_ts.tag) : std::string{};
+    const std::optional<std::string> incoming_tag =
+        structured_owner_tag_from_type(base_ts, module_);
+    const char* incoming_legacy_tag =
+        typespec_legacy_tag_if_present(base_ts, 0);
     NttpBindings empty_nttp;
     if (tpl_bindings) {
       seed_and_resolve_pending_template_type_if_needed(
@@ -398,26 +464,38 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
       realize_template_struct_if_needed(
           base_ts, empty_tb, nttp_bindings ? *nttp_bindings : empty_nttp);
     }
-    if (base_ts.tag && base_ts.tag[0] &&
-        (incoming_tag.empty() || incoming_tag != base_ts.tag) &&
-        module_->struct_defs.count(base_ts.tag)) {
-      return std::string(base_ts.tag);
+    if (auto owner_tag = structured_owner_tag_from_type(base_ts, module_)) {
+      if (!incoming_tag || *incoming_tag != *owner_tag) return owner_tag;
+    }
+    const char* realized_legacy_tag =
+        typespec_legacy_tag_if_present(base_ts, 0);
+    if (!typespec_has_structured_owner_metadata(base_ts) &&
+        realized_legacy_tag && realized_legacy_tag[0] &&
+        (!incoming_legacy_tag || std::strcmp(incoming_legacy_tag,
+                                            realized_legacy_tag) != 0) &&
+        module_->struct_defs.count(realized_legacy_tag)) {
+      return std::string(realized_legacy_tag);
     }
     return std::nullopt;
   };
 
   if (auto owner_tag = try_structured_record_owner_tag()) return owner_tag;
+  if (auto owner_tag = structured_owner_tag_from_type(base_ts, module_)) {
+    return owner_tag;
+  }
   if (auto owner_tag = try_structured_template_owner_tag()) return owner_tag;
 
   if (!has_structured_owner_identity &&
       (!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) &&
-      base_ts.tag && base_ts.tag[0] &&
       current_struct_tag && !current_struct_tag->empty()) {
-    const std::string raw_tag = base_ts.tag;
-    const std::string current_family = family_root(*current_struct_tag);
-    const std::string current_family_unqualified = unqualified_name(current_family);
-    if (raw_tag == current_family || raw_tag == current_family_unqualified) {
-      return *current_struct_tag;
+    const char* legacy_tag = typespec_legacy_tag_if_present(base_ts, 0);
+    if (legacy_tag && legacy_tag[0]) {
+      const std::string raw_tag = legacy_tag;
+      const std::string current_family = family_root(*current_struct_tag);
+      const std::string current_family_unqualified = unqualified_name(current_family);
+      if (raw_tag == current_family || raw_tag == current_family_unqualified) {
+        return *current_struct_tag;
+      }
     }
   }
 
@@ -432,10 +510,8 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
     realize_template_struct_if_needed(base_ts, empty_tb, empty_nb);
   }
 
-  if (!has_structured_owner_identity &&
-      base_ts.tag && base_ts.tag[0] && module_->struct_defs.count(base_ts.tag)) {
-    return std::string(base_ts.tag);
-  }
+  if (auto owner_tag =
+          legacy_owner_tag_from_type_if_no_metadata(base_ts, module_)) return owner_tag;
   return std::nullopt;
 }
 
@@ -463,15 +539,30 @@ void Lowerer::assign_template_arg_refs_from_ast_args(
       }
     } else if (ref->template_arg_types) {
       TypeSpec arg_ts = ref->template_arg_types[i];
-      if (ctx && arg_ts.base == TB_TYPEDEF && arg_ts.tag) {
+      if (ctx && arg_ts.base == TB_TYPEDEF) {
         const int outer_ptr_level = arg_ts.ptr_level;
         const bool outer_lref = arg_ts.is_lvalue_ref;
         const bool outer_rref = arg_ts.is_rvalue_ref;
         const bool outer_const = arg_ts.is_const;
         const bool outer_volatile = arg_ts.is_volatile;
-        auto it = ctx->tpl_bindings.find(arg_ts.tag);
-        if (it != ctx->tpl_bindings.end()) {
-          arg_ts = it->second;
+        const TypeSpec* bound = nullptr;
+        const TextId param_text_id =
+            arg_ts.template_param_text_id != kInvalidText
+                ? arg_ts.template_param_text_id
+                : arg_ts.tag_text_id;
+        if (param_text_id != kInvalidText) {
+          auto text_it = ctx->tpl_bindings_by_text.find(param_text_id);
+          if (text_it != ctx->tpl_bindings_by_text.end()) bound = &text_it->second;
+        }
+        if (!bound && !typespec_has_structured_template_param_metadata(arg_ts)) {
+          const char* legacy_tag = typespec_legacy_tag_if_present(arg_ts, 0);
+          if (legacy_tag && legacy_tag[0]) {
+            auto it = ctx->tpl_bindings.find(legacy_tag);
+            if (it != ctx->tpl_bindings.end()) bound = &it->second;
+          }
+        }
+        if (bound) {
+          arg_ts = *bound;
           arg_ts.ptr_level += outer_ptr_level;
           arg_ts.is_lvalue_ref = arg_ts.is_lvalue_ref || outer_lref;
           arg_ts.is_rvalue_ref =
@@ -487,10 +578,16 @@ void Lowerer::assign_template_arg_refs_from_ast_args(
           ctx ? ctx->nttp_bindings : nttp_empty, span_node, kind, context_name);
       while (resolve_struct_member_typedef_if_ready(&arg_ts)) {
       }
-      if (arg_ts.deferred_member_type_name && arg_ts.tag && arg_ts.tag[0]) {
+      if (arg_ts.deferred_member_type_name) {
         TypeSpec resolved_member{};
-        if (resolve_struct_member_typedef_type(
-                arg_ts.tag, arg_ts.deferred_member_type_name, &resolved_member)) {
+        std::optional<std::string> owner_tag =
+            structured_owner_tag_from_type(arg_ts, module_);
+        if (!owner_tag) {
+          owner_tag = legacy_owner_tag_from_type_if_no_metadata(arg_ts, module_);
+        }
+        if (owner_tag &&
+            resolve_struct_member_typedef_type(
+                *owner_tag, arg_ts.deferred_member_type_name, &resolved_member)) {
           arg_ts = resolved_member;
         }
       }
@@ -760,15 +857,30 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
       resolve_ast_template_value_arg(primary, ref, i, ctx, &arg.value);
     } else if (ref->template_arg_types) {
       TypeSpec ts = ref->template_arg_types[i];
-      if (ctx && ts.base == TB_TYPEDEF && ts.tag) {
+      if (ctx && ts.base == TB_TYPEDEF) {
         const int outer_ptr_level = ts.ptr_level;
         const bool outer_lref = ts.is_lvalue_ref;
         const bool outer_rref = ts.is_rvalue_ref;
         const bool outer_const = ts.is_const;
         const bool outer_volatile = ts.is_volatile;
-        auto it = ctx->tpl_bindings.find(ts.tag);
-        if (it != ctx->tpl_bindings.end()) {
-          ts = it->second;
+        const TypeSpec* bound = nullptr;
+        const TextId param_text_id =
+            ts.template_param_text_id != kInvalidText
+                ? ts.template_param_text_id
+                : ts.tag_text_id;
+        if (param_text_id != kInvalidText) {
+          auto text_it = ctx->tpl_bindings_by_text.find(param_text_id);
+          if (text_it != ctx->tpl_bindings_by_text.end()) bound = &text_it->second;
+        }
+        if (!bound && !typespec_has_structured_template_param_metadata(ts)) {
+          const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+          if (legacy_tag && legacy_tag[0]) {
+            auto it = ctx->tpl_bindings.find(legacy_tag);
+            if (it != ctx->tpl_bindings.end()) bound = &it->second;
+          }
+        }
+        if (bound) {
+          ts = *bound;
           ts.ptr_level += outer_ptr_level;
           ts.is_lvalue_ref = ts.is_lvalue_ref || outer_lref;
           ts.is_rvalue_ref = !ts.is_lvalue_ref && (ts.is_rvalue_ref || outer_rref);
@@ -784,9 +896,15 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
           PendingTemplateTypeKind::DeclarationType, "template-static-member");
       while (resolve_struct_member_typedef_if_ready(&ts)) {
       }
-      if (ts.deferred_member_type_name && ts.tag && ts.tag[0]) {
+      if (ts.deferred_member_type_name) {
         TypeSpec resolved_member{};
-        if (resolve_struct_member_typedef_type(ts.tag, ts.deferred_member_type_name,
+        std::optional<std::string> owner_tag =
+            structured_owner_tag_from_type(ts, module_);
+        if (!owner_tag) {
+          owner_tag = legacy_owner_tag_from_type_if_no_metadata(ts, module_);
+        }
+        if (owner_tag &&
+            resolve_struct_member_typedef_type(*owner_tag, ts.deferred_member_type_name,
                                                &resolved_member)) {
           ts = resolved_member;
         }
@@ -867,14 +985,22 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
       if (is_reference_trait_type(actual_args[0].type)) {
         return 1LL;
       }
-      if (actual_args[0].type.tag && actual_args[0].type.tag[0]) {
-        const std::string owner_tag = actual_args[0].type.tag;
+      std::optional<std::string> structured_owner_tag =
+          structured_owner_tag_from_type(actual_args[0].type, module_);
+      std::optional<std::string> legacy_owner_tag;
+      if (!structured_owner_tag) {
+        legacy_owner_tag =
+            legacy_owner_tag_from_type_if_no_metadata(actual_args[0].type, module_);
+      }
+      const std::optional<std::string> owner_tag =
+          structured_owner_tag ? structured_owner_tag : legacy_owner_tag;
+      if (owner_tag) {
         TypeSpec resolved_member{};
         if (resolve_struct_member_typedef_type(
-                owner_tag, "type", &resolved_member)) {
+                *owner_tag, "type", &resolved_member)) {
           return is_reference_trait_type(resolved_member) ? 1LL : 0LL;
         }
-        auto owner_it = struct_def_nodes_.find(owner_tag);
+        auto owner_it = struct_def_nodes_.find(*owner_tag);
         if (owner_it != struct_def_nodes_.end() && owner_it->second) {
           const Node* owner = owner_it->second;
           const char* origin =
@@ -887,8 +1013,9 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
             return 1LL;
           }
         }
-        if (owner_tag.find("::add_lvalue_reference_") != std::string::npos ||
-            owner_tag.find("::add_rvalue_reference_") != std::string::npos) {
+        if (legacy_owner_tag &&
+            (legacy_owner_tag->find("::add_lvalue_reference_") != std::string::npos ||
+             legacy_owner_tag->find("::add_rvalue_reference_") != std::string::npos)) {
           return 1LL;
         }
       }

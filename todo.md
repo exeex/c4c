@@ -8,22 +8,23 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries migrated the parser
-declarations deletion-probe residuals in
-`src/frontend/parser/impl/declarations.cpp` around current local conversion
-operator mangling, current-struct incomplete-type checks, incomplete-type
-diagnostics, and top-level typedef/template-param producer paths. The migrated
-paths now use `record_def`, `tag_text_id`, and `template_param_text_id` before
-explicit field-detected rendered-spelling compatibility helpers. Added focused
-coverage in `cpp_hir_parser_declarations_residual_structured_metadata`.
+Step 4 - Probe Field Removal And Split Boundaries migrated the HIR
+`value_args.cpp` deletion-probe residuals in the member lookup
+owner/template-argument binding family around current owner resolution,
+template type-arg binding, deferred member owner lookup, and `is_reference`
+trait owner recovery. The migrated paths now use `record_def`, `tag_text_id`,
+owner-key metadata, `template_param_text_id`, and text-id binding maps before
+explicit field-detected rendered-spelling compatibility fallback. Added
+focused coverage in `cpp_hir_value_args_residual_structured_metadata`.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected residual family. The current
-first emitted deletion-probe residuals are now downstream of the targeted
-declarations group, starting in
-`src/frontend/hir/impl/templates/value_args.cpp` rendered owner/template
-value-arg uses, with parser expression display/mangling residuals after that.
+first emitted deletion-probe residuals are now in parser expression
+display/mangling and constructor/member owner spelling paths in
+`src/frontend/parser/impl/expressions.cpp`, starting around current local
+`append_type_mangled_suffix_local` lines 33-36 and later constructor/member
+fallback sites around 1480, 1573, 1786-1790, and 2011.
 
 ## Watchouts
 
@@ -103,6 +104,22 @@ value-arg uses, with parser expression display/mangling residuals after that.
   `315-338` is also cleared.
 - This packet added
   `/tmp/c4c_typespec_tag_deletion_probe_step4_declarations_residual.log`.
+- HIR `value_args.cpp` member lookup owner resolution now prefers structured
+  owner metadata from `record_def`, `tag_text_id`, and owner-key indexes before
+  no-metadata rendered compatibility fallback.
+- HIR `value_args.cpp` template type-argument binding now uses
+  `template_param_text_id`/`tag_text_id` with `tpl_bindings_by_text` before
+  no-metadata rendered-name binding fallback, so stale rendered template
+  parameter tags no longer drive semantic binding.
+- HIR `value_args.cpp` deferred member owner lookup and `is_reference` trait
+  owner recovery now use structured owner metadata before field-detected
+  no-metadata rendered compatibility fallback.
+- Deletion probe residuals from this packet no longer include the targeted
+  direct reads around former
+  `src/frontend/hir/impl/templates/value_args.cpp:386`, `401-404`,
+  `414-437`, `466-493`, `763-789`, and `870-871`.
+- This packet added
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_value_args_residual.log`.
 
 ## Proof
 
@@ -110,25 +127,30 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 94 of 94
+Result: command exited 0. The build passed, and CTest passed 95 of 95
 delegated tests, increasing the focused subset with new
-`cpp_hir_parser_declarations_residual_structured_metadata` coverage for the
-migrated declarations metadata. `test_after.log` is the canonical proof log.
+`cpp_hir_value_args_residual_structured_metadata` coverage for the migrated
+HIR value-args metadata. `test_after.log` is the canonical proof log.
+
+Regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+Result: command exited 0. Guard passed with `passed=94 failed=0 total=94`
+before and `passed=95 failed=0 total=95` after.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_declarations_residual.log 2>&1`,
+/tmp/c4c_typespec_tag_deletion_probe_step4_value_args_residual.log 2>&1`,
 and restored the temporary edit. The probe moved past the targeted
-declarations direct reads/assignments around former
-`src/frontend/parser/impl/declarations.cpp:928-933`, `1287`, `2835`, `2853`,
-`2926-2931`, and local mangling around former `315-338`.
+`value_args.cpp` direct reads around former lines `386`, `401-404`,
+`414-437`, `466-493`, `763-789`, and `870-871`.
 
 Result: command exited 1 as expected for the controlled deletion probe. The
 first emitted errors are now in
-`src/frontend/hir/impl/templates/value_args.cpp` around current lines 386,
-401-404, 414-437, 466-493, 763-789, and 870-871, followed by parser
-expression display/mangling residuals in
-`src/frontend/parser/impl/expressions.cpp`. The normal delegated proof above
-was rerun green after restoring the temporary edit.
+`src/frontend/parser/impl/expressions.cpp` around current local mangling lines
+`33-36`, followed by constructor/member display fallback reads around `1480`,
+`1573`, `1786-1790`, and `2011`. The normal delegated proof above was rerun
+green after restoring the temporary edit.
