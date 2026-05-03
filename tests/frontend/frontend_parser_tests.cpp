@@ -5817,7 +5817,7 @@ void test_sema_method_owner_lookup_uses_qualifier_text_id_over_stale_rendered_ow
     ts.inner_rank = -1;
     ts.base = base;
     ts.ptr_level = ptr_level;
-    ts.tag = tag;
+    set_legacy_tag_if_present(ts, tag, 0);
     return ts;
   };
 

@@ -9,26 +9,26 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 ## Just Finished
 
 Step 2 migrated the `make_ts` lambda inside
-`test_sema_namespace_owner_resolution_rejects_rendered_fallback_after_structured_miss()`
+`test_sema_method_owner_lookup_uses_qualifier_text_id_over_stale_rendered_owner()`
 away from the direct `ts.tag = tag` write. The helper now routes optional
 legacy rendered compatibility setup through `set_legacy_tag_if_present()`,
-while preserving the stale structured owner-key miss that rejects rendered
-owner fallback.
+while preserving the positive qualifier TextId / structured-owner preference
+contract over stale rendered owner spelling.
 
 The follow-up deletion probe temporarily removed `TypeSpec::tag` from
 `src/frontend/parser/ast.hpp`, reran the delegated fixture-surface build probe,
 captured the result in `test_after.log`, and restored `ast.hpp` afterward.
 The migrated fixture no longer blocks that probe; the first remaining
 fixture/test compile boundary moved to
-`tests/frontend/frontend_parser_tests.cpp:5820`, where the next sema namespace
-owner `make_ts` lambda still writes `ts.tag = tag`.
+`tests/frontend/frontend_parser_tests.cpp:5915`, where the next method-owner
+validation `make_ts` lambda still writes `ts.tag = tag`.
 
 ## Suggested Next
 
 Migrate the next fixture residual at
-`tests/frontend/frontend_parser_tests.cpp:5820` away from direct `ts.tag`
+`tests/frontend/frontend_parser_tests.cpp:5915` away from direct `ts.tag`
 access while preserving the structured-owner preference contract in
-`test_sema_method_owner_lookup_uses_qualifier_text_id_over_stale_rendered_owner()`.
+`test_sema_method_validation_prefers_structured_owner_key_for_fields()`.
 
 ## Watchouts
 
@@ -53,4 +53,4 @@ Result: the normal `frontend_parser_tests` target build passed after the
 fixture migration. The deletion-probe build failed while `TypeSpec::tag` was
 temporarily removed, then `ast.hpp` was restored. The first remaining compile
 boundary is the direct fixture access at
-`tests/frontend/frontend_parser_tests.cpp:5820`.
+`tests/frontend/frontend_parser_tests.cpp:5915`.
