@@ -1,6 +1,6 @@
 # Codegen LIR Aggregate Type Identity Metadata
 
-Status: Open
+Status: Parked - runbook retired after codegen/LIR handback
 Created: 2026-05-03
 
 Parent Ideas:
@@ -22,6 +22,28 @@ across LIR lowering and LLVM/backend helper code.
 The parent idea explicitly treats downstream LIR/BIR/backend carrier gaps as
 separate follow-up work instead of silently expanding the frontend/HIR migration
 or resurrecting rendered spelling as semantic authority on `TypeSpec`.
+
+## Lifecycle Checkpoints
+
+- 2026-05-03: The Step 5 deletion probe after the verifier migration
+  temporarily removed `TypeSpec::tag` and reached codegen/LIR objects without a
+  codegen hot-region failure. The first remaining failures were frontend/HIR
+  test fixtures:
+  `tests/frontend/frontend_parser_tests.cpp`,
+  `tests/frontend/frontend_parser_lookup_authority_tests.cpp`,
+  `tests/frontend/cpp_hir_template_type_arg_encoding_test.cpp`,
+  `tests/frontend/cpp_hir_static_member_base_metadata_test.cpp`, and
+  `tests/frontend/frontend_hir_lookup_tests.cpp`. The probe edit was restored,
+  and `cmake --build --preset default` passed.
+- The active codegen/LIR runbook is retired rather than expanded into
+  frontend/HIR test cleanup. Route reviews in
+  `review/step5_lir_aggregate_identity_route_review.md` and
+  `review/step5_post_verifier_route_review.md` found the codegen/LIR route
+  aligned and recommended handing the frontend/HIR residuals back to the parent
+  `TypeSpec::tag` field-removal route.
+- Do not reactivate this source idea for parser or HIR test-fixture residuals.
+  Reactivate or split a new child idea only if a fresh parent deletion probe
+  exposes a new codegen/LIR aggregate identity boundary.
 
 ## In Scope
 
