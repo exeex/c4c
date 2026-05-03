@@ -9,21 +9,17 @@ Current Step Title: Probe TypeSpec Tag Removal Boundary
 ## Just Finished
 
 Step 5 - Probe TypeSpec Tag Removal Boundary:
-reran the temporary `TypeSpec::tag` deletion probe after clearing the remaining
-`hir_to_lir.cpp` boundaries. The first remaining compile boundary is now
-`src/codegen/lir/hir_to_lir/lvalue.cpp:658-659`, where member field access
-still falls back from structured identity to `access.base_ts.tag`. Same-wave
-residuals also appear in `src/codegen/lir/hir_to_lir/types.cpp:59`,
-`types.cpp:94-100`, and `types.cpp:171-177`, where field-chain layout helpers
-still assign or recurse through `TypeSpec::tag`.
+migrated the `src/codegen/lir/hir_to_lir/lvalue.cpp` member-field access
+boundary off direct `access.base_ts.tag` fallback. Member access now resolves
+the owner tag from structured `TypeSpec` owner metadata first, then uses the
+existing named aggregate compatibility helper as the legacy route.
 
 ## Suggested Next
 
-Next coherent packet: migrate the narrow `lvalue.cpp` member-access residual so
-`access.tag` is recovered from structured owner metadata or an existing named
-compatibility helper instead of `access.base_ts.tag`. Keep the `types.cpp`
-field-chain residuals as the following packet unless the `lvalue.cpp` fix needs
-a tiny shared helper.
+Next coherent packet: rerun the temporary `TypeSpec::tag` deletion probe and
+migrate the next field-chain boundary in `src/codegen/lir/hir_to_lir/types.cpp`,
+where `lookup_field_chain_layout` and anonymous/base field recursion still
+assign or read `TypeSpec::tag`.
 
 ## Watchouts
 
@@ -32,16 +28,13 @@ a tiny shared helper.
 - `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` no longer contains `.tag` reads;
   remaining `struct_defs.find(...)` calls in that file use declaration-order or
   base-tag strings, not `TypeSpec::tag`.
-- Avoid widening the next packet into `types.cpp`; its field-chain residuals
-  are same-wave but distinct enough to handle after `lvalue.cpp`.
+- `lvalue.cpp` no longer reads `access.base_ts.tag`; the remaining known
+  deletion-probe residuals are in the `types.cpp` field-chain helpers unless a
+  fresh probe exposes an earlier boundary.
 
 ## Proof
 
-Probe command:
-`cmake --build --preset default > test_after.log 2>&1` with `const char* tag`
-temporarily disabled failed at the `lvalue.cpp` boundary above.
-
-After reverting the temporary probe edit, `cmake --build --preset default`
-passed. The accepted focused baseline remains in `test_before.log`; the current
-`test_after.log` is the failed deletion-probe artifact and should be
-overwritten by the next executor proof.
+Proof command:
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_.*|cpp_hir_(sema_canonical_symbol|sema_consteval_type_utils).*structured_metadata|cpp_positive_sema_(c_style_cast_.*field_access|inherited_base_member_access_runtime|inherited_base_aggregate_init_runtime|record_nested_aggregate_member_parse|operator_struct_byval_param|struct_method|template_struct.*)_cpp|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_struct_result_c|llvm_gcc_c_torture_src_(pta_field_[12]|struct_(aliasing_1|cpy_1|ini_[1-4]|ret_2)|zero_struct_[12])_c|eastl_cpp_external_utility_frontend_basic_cpp)$"' > test_after.log 2>&1`
+passed. `test_after.log` now contains the accepted focused proof: 38/38 tests
+passed after a successful default preset build.

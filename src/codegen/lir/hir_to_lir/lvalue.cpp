@@ -63,6 +63,15 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
   return resolved.empty() ? std::string(fallback) : std::string(resolved);
 }
 
+std::optional<std::string> member_access_owner_tag_from_type(const c4c::hir::Module& mod,
+                                                             const TypeSpec& ts) {
+  if (const std::optional<HirRecordOwnerKey> owner_key = typespec_aggregate_owner_key(ts)) {
+    const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+    if (structured_tag && !structured_tag->empty()) return *structured_tag;
+  }
+  return typespec_aggregate_compatibility_tag(mod, ts);
+}
+
 LirTypeRef lir_aggregate_gep_type_ref(const std::string& rendered_text,
                                       lir::LirModule* module, StructNameId name_id,
                                       bool is_union) {
@@ -655,8 +664,9 @@ MemberFieldAccess StmtEmitter::resolve_member_field_access(FnCtx& ctx, const Mem
   access.base_ts = resolve_member_base_type(ctx, m.base, m.is_arrow);
   if (!m.resolved_owner_tag.empty()) {
     access.tag = m.resolved_owner_tag;
-  } else if (access.base_ts.tag && access.base_ts.tag[0]) {
-    access.tag = access.base_ts.tag;
+  } else if (const std::optional<std::string> owner_tag =
+                 member_access_owner_tag_from_type(mod_, access.base_ts)) {
+    access.tag = *owner_tag;
   }
   if (!access.has_tag()) return access;
   if (m.member_symbol_id != kInvalidMemberSymbol) {
