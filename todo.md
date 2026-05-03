@@ -8,21 +8,24 @@ Current Step Title: Probe Field Removal And Split Boundaries
 
 ## Just Finished
 
-Step 4 - Probe Field Removal And Split Boundaries migrated the first parser
+Step 4 - Probe Field Removal And Split Boundaries migrated the next parser
 type-helper deletion-probe residuals in
-`src/frontend/parser/impl/types/types_helpers.hpp` around current visible type
-head and structured record lookup helper lines 117 and 145. These helpers now
-use `tag_text_id`/visible structured metadata before rendered spelling, with
-`TypeSpec::tag` retained only through an explicit field-detected
-compatibility/display helper. Added focused coverage in
-`cpp_hir_parser_type_helper_structured_metadata`.
+`src/frontend/parser/impl/types/types_helpers.hpp` around current reparse,
+specialization scoring, canonical template key, and mangling helper lines 489,
+1190, 1233-1253, and 1965-1968. Reparse now rebuilds tokens from
+`tag_text_id`/qualifier TextIds first, specialization scoring recognizes
+template params through structured TextIds, canonical keys encode structured
+type identity before rendered names, and mangling prefers record metadata
+before explicit field-detected rendered fallback. Added focused coverage in
+`cpp_hir_parser_type_helper_residual_structured_metadata`.
 
 ## Suggested Next
 
-Continue Step 4 with the next supervisor-selected parser type-helper residual
-family. The current first emitted residuals are later
-`src/frontend/parser/impl/types/types_helpers.hpp` reparse/display/key/mangling
-uses around deletion-probe lines 489, 1190, 1233-1253, and 1965-1968.
+Continue Step 4 with the next supervisor-selected residual family. The current
+first emitted deletion-probe residuals are outside `types_helpers.hpp`, starting
+in `src/frontend/parser/impl/declarations.cpp` local mangling/display and
+incomplete-type/final-spelling uses, with downstream HIR template value-arg
+rendered tag consumers after that.
 
 ## Watchouts
 
@@ -79,16 +82,22 @@ uses around deletion-probe lines 489, 1190, 1233-1253, and 1965-1968.
 - `type_spec_structured_record_definition` is now semantically cleared for
   structured record lookup by `tag_text_id`. Its rendered-tag lookup is
   explicit field-detected no-metadata compatibility fallback.
-- Deletion probe residuals from this packet no longer include the targeted
-  direct `TypeSpec::tag` reads around former
+- Prior deletion probe residuals remain clear for the targeted direct
+  `TypeSpec::tag` reads around former
   `src/frontend/parser/impl/types/types_helpers.hpp:117` and `145`.
-  Current same-build deletion-probe residuals first emit in
-  `src/frontend/parser/impl/types/types_helpers.hpp` around probe lines 489,
-  1190, 1233-1253, and 1965-1968. Later residuals include
-  `src/frontend/parser/impl/declarations.cpp` display/final-spelling uses and
-  downstream HIR template value-arg uses that were outside this packet.
+- Deletion probe residuals from this packet no longer include the targeted
+  direct reads around former
+  `src/frontend/parser/impl/types/types_helpers.hpp:489`, `1190`,
+  `1233-1253`, and `1965-1968`.
+- Current same-build deletion-probe residuals first emit in
+  `src/frontend/parser/impl/declarations.cpp` local
+  `append_type_mangled_suffix_local`, current-struct display comparisons,
+  incomplete-type diagnostics, and top-level base-type final-spelling
+  assignments. Downstream residuals include
+  `src/frontend/hir/impl/templates/value_args.cpp` rendered owner/template
+  value-arg uses that were outside this packet.
 - This packet added
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_type_helpers_head_record.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_type_helpers_residual.log`.
 
 ## Proof
 
@@ -96,23 +105,24 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 91 of 91
-delegated tests before this packet and 92 of 92 after this packet, increasing
-the focused subset with new
-`cpp_hir_parser_type_helper_structured_metadata` coverage for the migrated
-type-helper metadata. `test_after.log` is the canonical proof log.
+Result: command exited 0. The build passed, and CTest passed 93 of 93
+delegated tests, increasing the focused subset with new
+`cpp_hir_parser_type_helper_residual_structured_metadata` coverage for the
+migrated type-helper metadata. `test_after.log` is the canonical proof log.
 
 Deletion probe:
 
 Temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp`, ran
 `bash -lc 'cmake --build --preset default' >
-/tmp/c4c_typespec_tag_deletion_probe_step4_type_helpers_head_record.log 2>&1`,
+/tmp/c4c_typespec_tag_deletion_probe_step4_type_helpers_residual.log 2>&1`,
 and restored the temporary edit. The probe moved past the targeted
 type-helper direct reads around former
-`src/frontend/parser/impl/types/types_helpers.hpp:117` and `145`.
+`src/frontend/parser/impl/types/types_helpers.hpp:489`, `1190`,
+`1233-1253`, and `1965-1968`.
 
 Result: command exited 1 as expected for the controlled deletion probe. The
 first emitted errors are now in
-`src/frontend/parser/impl/types/types_helpers.hpp` around probe lines 489,
-1190, 1233-1253, and 1965-1968. The normal delegated proof above was rerun
-green after restoring the temporary edit.
+`src/frontend/parser/impl/declarations.cpp` around current lines 335-338,
+928-933, 1287, 2835, 2853, 2926-2931, and 3242, followed by downstream
+`src/frontend/hir/impl/templates/value_args.cpp` rendered tag uses. The normal
+delegated proof above was rerun green after restoring the temporary edit.

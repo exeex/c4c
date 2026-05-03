@@ -119,6 +119,80 @@ const char* typespec_legacy_display_tag_if_present(const TypeSpec&, long) {
     return nullptr;
 }
 
+bool append_typespec_metadata_name_tokens(Parser& parser,
+                                          std::vector<Token>* out,
+                                          const Token& seed,
+                                          const TypeSpec& ts) {
+    if (!out) return false;
+    const TextId base_text_id = ts.tag_text_id != kInvalidText
+                                    ? ts.tag_text_id
+                                    : ts.template_param_text_id;
+    if (base_text_id == kInvalidText) return false;
+    for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        if (!ts.qualifier_text_ids ||
+            ts.qualifier_text_ids[i] == kInvalidText) {
+            return false;
+        }
+    }
+
+    auto emit_text = [&](TokenKind kind, TextId text_id,
+                         std::string_view fallback) {
+        const std::string spelling(parser.parser_text(text_id, fallback));
+        Token tok = parser.make_injected_token(seed, kind, spelling);
+        out->push_back(tok);
+    };
+    if (ts.is_global_qualified) {
+        Token tok = parser.make_injected_token(seed, TokenKind::ColonColon, "::");
+        out->push_back(tok);
+    }
+    for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        emit_text(TokenKind::Identifier, ts.qualifier_text_ids[i], {});
+        Token cc_tok =
+            parser.make_injected_token(seed, TokenKind::ColonColon, "::");
+        out->push_back(cc_tok);
+    }
+    emit_text(TokenKind::Identifier, base_text_id, {});
+    return true;
+}
+
+std::string type_spec_identity_key_component(const TypeSpec& ts,
+                                             const char* unknown) {
+    if (ts.record_def) {
+        if (ts.record_def->unqualified_text_id != kInvalidText) {
+            return std::string("text#") +
+                   std::to_string(ts.record_def->unqualified_text_id);
+        }
+        if (ts.record_def->unqualified_name && ts.record_def->unqualified_name[0]) {
+            return std::string("record.") + ts.record_def->unqualified_name;
+        }
+        if (ts.record_def->name && ts.record_def->name[0]) {
+            return std::string("record.") + ts.record_def->name;
+        }
+    }
+    if (ts.tag_text_id != kInvalidText) {
+        return std::string("text#") + std::to_string(ts.tag_text_id);
+    }
+    if (ts.template_param_text_id != kInvalidText) {
+        return std::string("template_param#") +
+               std::to_string(ts.template_param_text_id);
+    }
+    const char* legacy_tag = typespec_legacy_display_tag_if_present(ts, 0);
+    if (legacy_tag && legacy_tag[0]) return legacy_tag;
+    return unknown;
+}
+
+const char* type_spec_mangled_display_name_if_needed(const TypeSpec& ts,
+                                                     const char* fallback) {
+    if (ts.record_def) {
+        if (ts.record_def->unqualified_name && ts.record_def->unqualified_name[0])
+            return ts.record_def->unqualified_name;
+        if (ts.record_def->name && ts.record_def->name[0])
+            return ts.record_def->name;
+    }
+    const char* legacy_tag = typespec_legacy_display_tag_if_present(ts, 0);
+    return legacy_tag && legacy_tag[0] ? legacy_tag : fallback;
+}
+
 std::string visible_type_head_name(const Parser& parser,
                                    TextId name_text_id,
                                    std::string_view name) {
@@ -483,8 +557,12 @@ void append_typespec_reparse_tokens(Parser& parser,
     if (ts.is_volatile) emit(TokenKind::KwVolatile, "volatile");
 
     bool emitted_head = false;
-    if (ts.tag && ts.tag[0]) {
-        append_qualified_name_tokens(parser, out, seed, ts.tag);
+    if (append_typespec_metadata_name_tokens(parser, out, seed, ts)) {
+        emitted_head = true;
+    } else if (const char* legacy_tag =
+                   typespec_legacy_display_tag_if_present(ts, 0);
+               legacy_tag && legacy_tag[0]) {
+        append_qualified_name_tokens(parser, out, seed, legacy_tag);
         emitted_head = true;
     } else {
         switch (ts.base) {
@@ -1184,7 +1262,14 @@ int specialization_match_score(const Node* spec) {
         }
         const TypeSpec& ts = spec->template_arg_types[i];
         if (ts.base != TB_TYPEDEF || !spec->template_param_names) score += 8;
-        else if (!is_type_template_param(spec, ts.tag)) score += 4;
+        else if (node_has_template_param_text_id(spec,
+                                                 ts.template_param_text_id) ||
+                 node_has_template_param_text_id(spec, ts.tag_text_id)) {
+        } else if (const char* legacy_tag =
+                       typespec_legacy_display_tag_if_present(ts, 0);
+                   !is_type_template_param(spec, legacy_tag)) {
+            score += 4;
+        }
         if (ts.is_const || ts.is_volatile || ts.ptr_level > 0 ||
             ts.is_lvalue_ref || ts.is_rvalue_ref || ts.array_rank > 0)
             score += 4;
@@ -1227,17 +1312,27 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
         case TB_INT128: out += "i128"; break;
         case TB_UINT128: out += "u128"; break;
         case TB_STRUCT:
-            out += ts.tag ? std::string("struct.") + ts.tag : "struct.?";
+            out += "struct.";
+            out += type_spec_identity_key_component(ts, "?");
             break;
         case TB_UNION:
-            out += ts.tag ? std::string("union.") + ts.tag : "union.?";
+            out += "union.";
+            out += type_spec_identity_key_component(ts, "?");
             break;
         case TB_ENUM:
-            out += ts.tag ? std::string("enum.") + ts.tag : "enum.?";
+            out += "enum.";
+            out += type_spec_identity_key_component(ts, "?");
             break;
         case TB_TYPEDEF:
-            if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
-                out += std::string("pending.") + ts.tpl_struct_origin;
+            if (ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+                (ts.tpl_struct_origin && ts.tpl_struct_origin[0])) {
+                out += "pending.";
+                if (ts.tpl_struct_origin_key.base_text_id != kInvalidText) {
+                    out += "text#";
+                    out += std::to_string(ts.tpl_struct_origin_key.base_text_id);
+                } else {
+                    out += ts.tpl_struct_origin;
+                }
                 out += "<";
                 if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
                     for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
@@ -1247,12 +1342,20 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
                 }
                 out += ">";
             } else {
-                out += ts.tag ? std::string("typedef.") + ts.tag : "typedef.?";
+                out += "typedef.";
+                out += type_spec_identity_key_component(ts, "?");
             }
             break;
         default:
-            if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
-                out += std::string("pending.") + ts.tpl_struct_origin;
+            if (ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+                (ts.tpl_struct_origin && ts.tpl_struct_origin[0])) {
+                out += "pending.";
+                if (ts.tpl_struct_origin_key.base_text_id != kInvalidText) {
+                    out += "text#";
+                    out += std::to_string(ts.tpl_struct_origin_key.base_text_id);
+                } else {
+                    out += ts.tpl_struct_origin;
+                }
                 out += "<";
                 if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
                     for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
@@ -1959,10 +2062,21 @@ static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts) {
         case TB_BOOL: out += "bool"; break;
         case TB_INT128: out += "i128"; break;
         case TB_UINT128: out += "u128"; break;
-        case TB_STRUCT: out += "struct_"; out += (ts.tag ? ts.tag : "anon"); break;
-        case TB_UNION: out += "union_"; out += (ts.tag ? ts.tag : "anon"); break;
-        case TB_ENUM: out += "enum_"; out += (ts.tag ? ts.tag : "anon"); break;
-        case TB_TYPEDEF: out += (ts.tag ? ts.tag : "typedef"); break;
+        case TB_STRUCT:
+            out += "struct_";
+            out += type_spec_mangled_display_name_if_needed(ts, "anon");
+            break;
+        case TB_UNION:
+            out += "union_";
+            out += type_spec_mangled_display_name_if_needed(ts, "anon");
+            break;
+        case TB_ENUM:
+            out += "enum_";
+            out += type_spec_mangled_display_name_if_needed(ts, "anon");
+            break;
+        case TB_TYPEDEF:
+            out += type_spec_mangled_display_name_if_needed(ts, "typedef");
+            break;
         default: out += "T"; break;
     }
     for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
