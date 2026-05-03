@@ -3,24 +3,27 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
+Current Step ID: 3
+Current Step Title: Re-run The TypeSpec Tag Deletion Probe
 
 ## Just Finished
 
-Step 2 migrated the direct legacy `TypeSpec::tag` fixture write in
-`test_parser_nested_dependent_typename_prefers_record_definition` behind
-`set_legacy_tag_if_present(..., 0)`. The stale rendered name
-`StaleNested` is still injected when the legacy field exists, while
-`record_def = real_nested` continues to preserve the record-definition
-authority coverage.
+Step 3 re-ran the temporary `TypeSpec::tag` deletion probe by removing the
+field from `src/frontend/parser/ast.hpp` and running the delegated build. The
+probe still fails at the test-fixture boundary, with the first remaining
+compile error in
+`tests/frontend/frontend_parser_tests.cpp:1611` inside
+`test_parser_record_ctor_probe_prefers_record_definition`:
+`alias_ts.tag = arena.strdup("StaleBox");`.
+
+The temporary `ast.hpp` deletion edit was restored after the probe.
 
 ## Suggested Next
 
-Re-run the deletion probe by temporarily removing `TypeSpec::tag` from
-`src/frontend/parser/ast.hpp`, building, and recording the next compile
-boundary. Restore the probe edit afterward unless the deletion compiles and is
-accepted as the final field removal.
+Migrate the direct legacy `TypeSpec::tag` fixture writes in
+`test_parser_record_ctor_probe_prefers_record_definition` behind a helper or
+structured metadata path, preserving the stale-rendered-spelling coverage
+without weakening the test contract.
 
 ## Watchouts
 
@@ -29,6 +32,8 @@ accepted as the final field removal.
   just to make the field deletion compile.
 - Temporary deletion probes must be restored unless the packet is the final
   accepted field-removal deletion.
+- The next compile boundary is in `tests/frontend/frontend_parser_tests.cpp`,
+  which was read-only for this packet.
 - The known `frontend_parser_tests` namespace-owner assertion is outside these
   fixture migration packets and should not be repaired as part of narrow stale
   tag fixture writes.
@@ -41,14 +46,13 @@ Proof is recorded in `test_after.log`.
 cmake --build --preset default > test_after.log 2>&1
 ```
 
-Result: passed.
-
-The delegated observational parser-test run was appended with:
+Result for the temporary deletion probe: failed as expected. The first
+remaining compile boundary is
+`tests/frontend/frontend_parser_tests.cpp:1611`, direct fixture access to
+`alias_ts.tag` in `test_parser_record_ctor_probe_prefers_record_definition`.
 
 ```sh
-ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
+cmake --build --preset default
 ```
 
-Result: failed only at the known pre-existing assertion,
-`namespace owner resolution should use the method owner TextId before rendered
-owner spelling`.
+Result after restoring `src/frontend/parser/ast.hpp`: passed.
