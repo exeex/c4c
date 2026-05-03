@@ -6410,8 +6410,10 @@ void test_parser_tag_only_record_types_keep_null_record_definition() {
   const c4c::TypeSpec tag_only_ts = parser.parse_base_type();
   expect_true(tag_only_ts.base == c4c::TB_STRUCT,
               "tag-only struct parsing should still produce a struct TypeSpec");
-  expect_true(tag_only_ts.tag != nullptr,
+  expect_true(tag_only_ts.tag_text_id != c4c::kInvalidText,
               "tag-only struct parsing should preserve the tag spelling");
+  expect_eq(parser.parser_text(tag_only_ts.tag_text_id), "Forward",
+            "tag-only struct parsing should preserve the rendered tag spelling");
   expect_true(tag_only_ts.record_def == nullptr,
               "tag-only struct TypeSpec should not synthesize typed record identity");
 }
