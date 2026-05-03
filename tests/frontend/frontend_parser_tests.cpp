@@ -1102,9 +1102,9 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   });
   c4c::TypeSpec unresolved_ts = parser.parse_base_type();
-  expect_true(unresolved_ts.tag != nullptr,
-              "unresolved identifier fallback should produce a placeholder type tag");
-  expect_eq(unresolved_ts.tag, "ForwardDecl",
+  expect_true(unresolved_ts.tag_text_id != c4c::kInvalidText,
+              "unresolved identifier fallback should produce a parser-owned placeholder type tag");
+  expect_eq(parser.parser_text(unresolved_ts.tag_text_id), "ForwardDecl",
             "unresolved identifier fallback should use parser-owned spelling");
 }
 
