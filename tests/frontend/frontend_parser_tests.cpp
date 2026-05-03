@@ -6359,20 +6359,22 @@ void test_parser_direct_record_types_carry_record_definition() {
   const c4c::TypeSpec direct_ts = parser.parse_base_type();
   expect_true(direct_ts.base == c4c::TB_STRUCT,
               "direct struct type parsing should produce a struct TypeSpec");
-  expect_true(direct_ts.tag != nullptr,
+  expect_true(direct_ts.tag_text_id != c4c::kInvalidText,
               "direct struct type parsing should preserve the final tag spelling");
+  const std::string direct_tag(parser.parser_text(direct_ts.tag_text_id));
+  expect_eq(direct_tag, "Direct",
+            "direct struct type parsing should preserve the rendered tag spelling");
   expect_true(direct_ts.record_def != nullptr,
               "direct struct TypeSpec should carry the concrete parser record definition");
   expect_true(direct_ts.record_def->kind == c4c::NK_STRUCT_DEF,
               "direct struct record identity should point at an NK_STRUCT_DEF");
   expect_true(!direct_ts.record_def->is_union,
               "direct struct record identity should preserve record kind");
-  expect_true(direct_ts.record_def->name == direct_ts.tag ||
-                  std::string_view(direct_ts.record_def->name) ==
-                      std::string_view(direct_ts.tag),
+  expect_true(std::string_view(direct_ts.record_def->name) == direct_tag,
               "direct struct record identity should not change TypeSpec tag spelling");
-  expect_true(parser.definition_state_.struct_tag_def_map[direct_ts.tag] ==
-                  direct_ts.record_def,
+  auto direct_tag_it = parser.definition_state_.struct_tag_def_map.find(direct_tag);
+  expect_true(direct_tag_it != parser.definition_state_.struct_tag_def_map.end() &&
+                  direct_tag_it->second == direct_ts.record_def,
               "direct struct record identity should match the compatibility tag map entry");
 
   c4c::Lexer union_lexer("union Payload { int value; } after;\n");
@@ -6384,15 +6386,18 @@ void test_parser_direct_record_types_carry_record_definition() {
   const c4c::TypeSpec union_ts = union_parser.parse_base_type();
   expect_true(union_ts.base == c4c::TB_UNION,
               "direct union type parsing should produce a union TypeSpec");
+  expect_true(union_ts.tag_text_id != c4c::kInvalidText,
+              "direct union type parsing should preserve the final tag spelling");
+  const std::string union_tag(union_parser.parser_text(union_ts.tag_text_id));
+  expect_eq(union_tag, "Payload",
+            "direct union type parsing should preserve the rendered tag spelling");
   expect_true(union_ts.record_def != nullptr,
               "direct union TypeSpec should carry the concrete parser record definition");
   expect_true(union_ts.record_def->kind == c4c::NK_STRUCT_DEF,
               "direct union record identity should point at an NK_STRUCT_DEF");
   expect_true(union_ts.record_def->is_union,
               "direct union record identity should preserve record kind");
-  expect_true(union_ts.tag != nullptr &&
-                  std::string_view(union_ts.record_def->name) ==
-                      std::string_view(union_ts.tag),
+  expect_true(std::string_view(union_ts.record_def->name) == union_tag,
               "direct union record identity should preserve TypeSpec tag spelling");
 }
 
