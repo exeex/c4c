@@ -6185,10 +6185,11 @@ TypeSpec Parser::parse_base_type() {
                             instantiated_record = existing_inst->second;
                         }
                     }
-                    ts.tag = arena_.strdup(mangled.c_str());
                     ts.tag_text_id = mangled_text_id;
                     ts.namespace_context_id = mangled_namespace_context;
                     ts.record_def = instantiated_record;
+                    set_parse_base_type_legacy_tag_if_present(
+                        ts, arena_.strdup(mangled.c_str()), 0);
                 }
                 // C++ template using alias: typedef resolved but the resolved
                 // type is not a primary template struct (e.g. using A = S<T>;
@@ -6241,31 +6242,94 @@ TypeSpec Parser::parse_base_type() {
                         // bool_constant<true>, `type` refers back to bool_constant<true> itself.
                         // The resolved typedef's tag might be the template name, not the instantiation.
                         // If the resolved type is the same template origin, use the instantiation tag.
-                        if (resolved.base == TB_STRUCT && resolved.tag) {
-                            const Node* inst_def =
+                        if (resolved.base == TB_STRUCT) {
+                            Node* inst_def =
                                 resolve_record_type_spec(ts, nullptr);
-                            if (!inst_def && ts.tag) {
+                            if (!inst_def) {
+                                const char* owner_legacy_tag =
+                                    parse_base_type_legacy_tag_if_no_metadata(ts);
                                 // Rendered-tag map lookup is a compatibility
                                 // fallback for instantiated owners without
                                 // TypeSpec::record_def.
-                                auto inst_it =
-                                    definition_state_.struct_tag_def_map.find(ts.tag);
-                                if (inst_it !=
-                                        definition_state_.struct_tag_def_map.end()) {
-                                    inst_def = inst_it->second;
+                                if (owner_legacy_tag && owner_legacy_tag[0]) {
+                                    auto inst_it =
+                                        definition_state_.struct_tag_def_map.find(
+                                            owner_legacy_tag);
+                                    if (inst_it !=
+                                            definition_state_.struct_tag_def_map.end()) {
+                                        inst_def = inst_it->second;
+                                    }
                                 }
                             }
+                            auto resolved_matches_template_origin =
+                                [&](const TypeSpec& resolved_type,
+                                    const Node* owner) -> bool {
+                                    if (!owner || !owner->template_origin_name ||
+                                        !owner->template_origin_name[0]) {
+                                        return false;
+                                    }
+                                    const TextId origin_text_id =
+                                        parser_text_id_for_token(
+                                            kInvalidText,
+                                            owner->template_origin_name);
+                                    if (origin_text_id != kInvalidText) {
+                                        if (resolved_type.tag_text_id ==
+                                                origin_text_id ||
+                                            resolved_type.template_param_text_id ==
+                                                origin_text_id) {
+                                            return true;
+                                        }
+                                        if (const Node* resolved_record =
+                                                resolve_record_type_spec(
+                                                    resolved_type, nullptr)) {
+                                            TextId resolved_text_id =
+                                                parse_base_type_record_text_id(
+                                                    *this, resolved_record);
+                                            if (resolved_text_id == origin_text_id) {
+                                                return true;
+                                            }
+                                            if (resolved_record->template_origin_name &&
+                                                resolved_record
+                                                    ->template_origin_name[0] &&
+                                                parser_text_id_for_token(
+                                                    kInvalidText,
+                                                    resolved_record
+                                                        ->template_origin_name) ==
+                                                    origin_text_id) {
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                    if (const char* resolved_legacy_tag =
+                                            parse_base_type_legacy_tag_if_no_metadata(
+                                                resolved_type)) {
+                                        return std::string(resolved_legacy_tag) ==
+                                               owner->template_origin_name;
+                                    }
+                                    return false;
+                                };
                             if (inst_def &&
-                                inst_def->template_origin_name &&
-                                std::string(resolved.tag) == inst_def->template_origin_name) {
-                                resolved.tag = ts.tag;
+                                resolved_matches_template_origin(resolved,
+                                                                 inst_def)) {
+                                resolved.tag_text_id = ts.tag_text_id;
+                                resolved.namespace_context_id =
+                                    ts.namespace_context_id;
+                                resolved.record_def = inst_def;
+                                set_parse_base_type_legacy_tag_if_present(
+                                    resolved,
+                                    parse_base_type_final_spelling_compat(
+                                        *this, resolved, inst_def),
+                                    0);
                             }
                         }
                         bool save_const = ts.is_const, save_vol = ts.is_volatile;
                         ts = resolved;
                         ts.is_const |= save_const;
                         ts.is_volatile |= save_vol;
-                    } else if (ts.tpl_struct_origin || (ts.tag && ts.tag[0])) {
+                    } else if (
+                        ts.tpl_struct_origin ||
+                        parse_base_type_has_structured_identity_metadata(ts) ||
+                        parse_base_type_legacy_tag_if_no_metadata(ts)) {
                         consume(); // ::
                         consume(); // member
                         ts.deferred_member_type_name = arena_.strdup(member.c_str());

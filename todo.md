@@ -9,24 +9,21 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the targeted
-`src/frontend/parser/impl/types/base.cpp` member typedef, field, method return,
-and method parameter substitution loops around the deletion-probe residual
-family that started at line 5942. The concrete template-record clone path now
-substitutes direct `TB_TYPEDEF` member types by structured template parameter
-metadata (`template_param_text_id`/`tag_text_id`) before using the explicit
-no-metadata rendered-tag compatibility fallback, while preserving outer pointer,
-reference, cv, and array declarator shape. The packet added
-`cpp_hir_parser_type_base_member_substitution_structured_metadata`, which
-forces stale rendered `U` tags onto `Box<T, U>` member typedef, field, method
-return, and method parameter types and proves `Box<int, double>` still
-substitutes all four through structured `T` metadata.
+`src/frontend/parser/impl/types/base.cpp:6188` deletion-probe residual family.
+Concrete template instantiation now publishes instantiated record identity
+through `tag_text_id`/`record_def` before writing the rendered compatibility
+tag through the deletion-safe helper, and `Template<Args>::member` self-typedef
+resolution now compares structured template-origin metadata before falling
+back to rendered tags only when the owner has no structured identity. Deferred
+member eligibility now uses structured identity metadata instead of requiring
+`TypeSpec::tag`.
 
 ## Suggested Next
 
-Continue Step 4 with the next supervisor-selected parser type-base residual
+Continue Step 4 with the next supervisor-selected deletion-probe residual
 family. The current deletion probe first emits outside this packet's ownership
-at `src/frontend/parser/impl/types/base.cpp:6188`, after the targeted member
-typedef/field/method substitution family.
+at `src/frontend/parser/impl/types/declarator.cpp:973`; no new `base.cpp`
+residual appears before the build stops.
 
 ## Watchouts
 
@@ -39,11 +36,11 @@ typedef/field/method substitution family.
   compatibility/display/final spelling, or downstream metadata gap.
 - Do not weaken tests, mark supported cases unsupported, or add named-case
   shortcuts.
-- The first proof attempt exposed an array-shape regression in this packet's
-  substitution helper; the helper now preserves outer array metadata and the
-  delegated subset is green.
+- Keep rendered compatibility writes explicit and deletion-probe-safe; the
+  positive ctor-init runtime case still needs the instantiated rendered tag as
+  a compatibility payload for downstream member-expression lowering.
 - The deletion probe log for this packet is
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_member_substitution.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_base6188.log`.
 
 ## Proof
 
@@ -52,28 +49,27 @@ Executor proof:
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(eastl_cpp_external_utility_frontend_basic_cpp|frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
 Result: command exited 0. The build passed, and CTest passed 109 of 109
-delegated tests, including the new
-`cpp_hir_parser_type_base_member_substitution_structured_metadata` test, the
-existing parser type-base structured metadata tests, and
+delegated tests, including the parser type-base structured metadata tests,
+`cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`, and
 `eastl_cpp_external_utility_frontend_basic_cpp`. `test_after.log` is the
 canonical proof log.
 
 Regression guard:
 
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
-Result: command exited 0. Guard passed with `passed=108 failed=0 total=108`
+Result: command exited 0. Guard passed with `passed=109 failed=0 total=109`
 before and `passed=109 failed=0 total=109` after. There are no new failing
-tests; the pass-count increase over the current baseline is the new parser
-type-base member-substitution structured-metadata test.
+tests; the pass count is unchanged because this packet migrated an existing
+covered type-base route without adding a new testcase.
 
 Deletion probe:
 
 Temporarily removing `TypeSpec::tag` and running
 `cmake --preset default && cmake --build --preset default` in a throwaway copy
 of the working tree wrote
-`/tmp/c4c_typespec_tag_deletion_probe_step4_member_substitution.log`. The
-first emitted `base.cpp` residual is now
-`src/frontend/parser/impl/types/base.cpp:6188`, outside this packet's owned
-member typedef, field, method return, and method parameter substitution family,
-so the targeted `base.cpp:5942` cluster is no longer first.
+`/tmp/c4c_typespec_tag_deletion_probe_step4_base6188.log`. The targeted
+`src/frontend/parser/impl/types/base.cpp:6188` and nearby
+`base.cpp:6244-6268` residuals are cleared; the current first emitted residual
+is `src/frontend/parser/impl/types/declarator.cpp:973`, outside this packet's
+owned files.
