@@ -2700,12 +2700,21 @@ void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "PayloadAlias");
   const c4c::TextId alias_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  const c4c::TextId param_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "T");
+  const c4c::TextId payload_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Payload");
 
   c4c::TypeSpec param_ts{};
   param_ts.array_size = -1;
   param_ts.inner_rank = -1;
   param_ts.base = c4c::TB_TYPEDEF;
-  param_ts.tag = arena.strdup("T");
+  param_ts.tag_text_id = param_text;
+  param_ts.template_param_text_id = param_text;
+  param_ts.template_param_owner_namespace_context_id =
+      parser.current_namespace_context_id();
+  param_ts.template_param_owner_text_id = box_token.text_id;
+  param_ts.template_param_index = 0;
 
   c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   primary->name = arena.strdup("Box");
@@ -2716,6 +2725,8 @@ void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
   primary->n_template_args = 0;
   primary->template_param_names = arena.alloc_array<const char*>(1);
   primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  primary->template_param_name_text_ids[0] = param_text;
   primary->template_param_is_nttp = arena.alloc_array<bool>(1);
   primary->template_param_is_nttp[0] = false;
   primary->template_param_is_pack = arena.alloc_array<bool>(1);
@@ -2723,6 +2734,8 @@ void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
   primary->n_member_typedefs = 1;
   primary->member_typedef_names = arena.alloc_array<const char*>(1);
   primary->member_typedef_names[0] = arena.strdup("Alias");
+  primary->member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
+  primary->member_typedef_text_ids[0] = alias_text;
   primary->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
   primary->member_typedef_types[0] = param_ts;
   parser.register_template_struct_primary(
@@ -2734,17 +2747,20 @@ void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
   box_alias.array_size = -1;
   box_alias.inner_rank = -1;
   box_alias.base = c4c::TB_STRUCT;
-  box_alias.tag = arena.strdup("Box");
+  box_alias.tag_text_id = box_token.text_id;
+  box_alias.record_def = primary;
   parser.register_typedef_binding(box_token.text_id, box_alias, true);
 
   c4c::Node* payload = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   payload->name = arena.strdup("Payload");
+  payload->unqualified_name = arena.strdup("Payload");
+  payload->unqualified_text_id = payload_text;
   parser.register_struct_definition_for_testing("Payload", payload);
   c4c::TypeSpec payload_alias{};
   payload_alias.array_size = -1;
   payload_alias.inner_rank = -1;
   payload_alias.base = c4c::TB_STRUCT;
-  payload_alias.tag = arena.strdup("Payload");
+  payload_alias.tag_text_id = payload_text;
   payload_alias.record_def = payload;
   parser.register_typedef_binding(payload_alias_token.text_id, payload_alias,
                                   true);
