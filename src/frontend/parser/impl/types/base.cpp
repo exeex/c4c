@@ -5825,9 +5825,11 @@ TypeSpec Parser::parse_base_type() {
                                                     inst->base_types[bi].array_size = -1;
                                                     inst->base_types[bi].inner_rank = -1;
                                                     inst->base_types[bi].base = TB_STRUCT;
-                                                    inst->base_types[bi].tag =
+                                                    set_parse_base_type_legacy_tag_if_present(
+                                                        inst->base_types[bi],
                                                         arena_.strdup(
-                                                            base_mangled.c_str());
+                                                            base_mangled.c_str()),
+                                                        0);
                                                     inst->base_types[bi].record_def =
                                                         base_def_it->second;
                                                     restore_deferred_member_lookup();
@@ -5839,9 +5841,13 @@ TypeSpec Parser::parse_base_type() {
                                 const std::string deferred_member_name =
                                     deferred_member_lookup_name(
                                         inst->base_types[bi]);
-                                if (!deferred_member_name.empty() &&
-                                    inst->base_types[bi].tag &&
-                                    inst->base_types[bi].tag[0]) {
+                                const bool can_resolve_deferred_member_base =
+                                    !deferred_member_name.empty() &&
+                                    (parse_base_type_has_structured_identity_metadata(
+                                         inst->base_types[bi]) ||
+                                     parse_base_type_legacy_tag_if_no_metadata(
+                                         inst->base_types[bi]));
+                                if (can_resolve_deferred_member_base) {
                                     TypeSpec resolved_member{};
                                     const TextId deferred_member_text_id =
                                         inst->base_types[bi]
