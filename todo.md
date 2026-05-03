@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
 Current Step ID: 2
@@ -8,18 +8,18 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 2 migrated the previous frontend parser fixture cluster after the
-alias-of-alias handoff. The normal `frontend_parser_tests` build and ctest
-passed after restoration from the temporary deletion probe, and the probe moved
-to the next direct fixture boundary at
-`tests/frontend/frontend_parser_tests.cpp:7132`.
+Step 2 migrated
+`test_type_binding_equivalence_uses_deferred_member_text_id_authority` off
+direct `TypeSpec::tag` access by carrying the owner identity through
+`tag_text_id` plus namespace context while preserving the deferred-member
+TextId authority assertions.
 
 ## Suggested Next
 
 Migrate the next Step 2 deletion-probe boundary in
-`test_type_binding_equivalence_uses_deferred_member_text_id_authority`, starting
-at `tests/frontend/frontend_parser_tests.cpp:7132`, without weakening the
-deferred-member TextId equivalence assertions.
+`test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches`,
+starting at `tests/frontend/frontend_parser_tests.cpp:7165`, without weakening
+the structured template-argument equivalence assertion.
 
 ## Watchouts
 
@@ -32,9 +32,18 @@ deferred-member TextId equivalence assertions.
   no-metadata case.
 - `src/frontend/parser/ast.hpp` should only be changed for temporary deletion
   probes unless this becomes the accepted final deletion packet.
+- The temporary deletion probe passed the migrated deferred-member fixture and
+  first failed at `tests/frontend/frontend_parser_tests.cpp:7165`; follow-on
+  direct accesses appeared at `7276`, `7283`, and later consteval/qualified
+  TypeSpec metadata fixtures.
 
 ## Proof
 
-Pending for this packet. Use the supervisor-selected focused build/test command
-for `frontend_parser_tests`, then run a temporary `TypeSpec::tag` deletion probe
-to record the next boundary.
+Ran
+`cmake --build build --target frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1`,
+then temporarily removed `TypeSpec::tag` from `src/frontend/parser/ast.hpp` and
+ran `cmake --build build --target frontend_parser_tests >> test_after.log 2>&1`
+to record the next boundary. Restored `src/frontend/parser/ast.hpp`, then reran
+`cmake --build build --target frontend_parser_tests >> test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1`.
+The final restored build and `frontend_parser_tests` ctest passed; proof log:
+`test_after.log`.

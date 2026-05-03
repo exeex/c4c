@@ -7129,7 +7129,8 @@ void test_type_binding_equivalence_uses_deferred_member_text_id_authority() {
 
   c4c::TypeSpec lhs{};
   lhs.base = c4c::TB_STRUCT;
-  lhs.tag = arena.strdup("Owner");
+  lhs.tag_text_id = texts.intern("Owner");
+  lhs.namespace_context_id = 0;
   lhs.deferred_member_type_name = arena.strdup("type");
   lhs.deferred_member_type_text_id = texts.intern("type");
 
