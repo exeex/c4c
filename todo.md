@@ -9,21 +9,20 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the targeted
-`src/frontend/parser/impl/types/base.cpp:6188` deletion-probe residual family.
-Concrete template instantiation now publishes instantiated record identity
-through `tag_text_id`/`record_def` before writing the rendered compatibility
-tag through the deletion-safe helper, and `Template<Args>::member` self-typedef
-resolution now compares structured template-origin metadata before falling
-back to rendered tags only when the owner has no structured identity. Deferred
-member eligibility now uses structured identity metadata instead of requiring
+`src/frontend/parser/impl/types/declarator.cpp:973` deletion-probe residual
+cluster. Dependent typename reference fallbacks, qualified typedef fallbacks,
+dependent qualified template-id fallback, template-argument dependency checks,
+and conversion-operator typedef fallback now use `tag_text_id`,
+`template_param_text_id`, qualified-name metadata, `tpl_struct_origin_key`, or
+deletion-safe display compatibility helpers instead of directly requiring
 `TypeSpec::tag`.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected deletion-probe residual
 family. The current deletion probe first emits outside this packet's ownership
-at `src/frontend/parser/impl/types/declarator.cpp:973`; no new `base.cpp`
-residual appears before the build stops.
+at `src/frontend/parser/impl/types/struct.cpp:847`; `declarator.cpp` compiles
+cleanly in the temporary `TypeSpec::tag` deletion build before the build stops.
 
 ## Watchouts
 
@@ -40,7 +39,7 @@ residual appears before the build stops.
   positive ctor-init runtime case still needs the instantiated rendered tag as
   a compatibility payload for downstream member-expression lowering.
 - The deletion probe log for this packet is
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_base6188.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_declarator.log`.
 
 ## Proof
 
@@ -49,7 +48,7 @@ Executor proof:
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(eastl_cpp_external_utility_frontend_basic_cpp|frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
 Result: command exited 0. The build passed, and CTest passed 109 of 109
-delegated tests, including the parser type-base structured metadata tests,
+delegated tests, including the parser structured metadata tests,
 `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`, and
 `eastl_cpp_external_utility_frontend_basic_cpp`. `test_after.log` is the
 canonical proof log.
@@ -61,15 +60,15 @@ Regression guard:
 Result: command exited 0. Guard passed with `passed=109 failed=0 total=109`
 before and `passed=109 failed=0 total=109` after. There are no new failing
 tests; the pass count is unchanged because this packet migrated an existing
-covered type-base route without adding a new testcase.
+covered declarator route without adding a new testcase.
 
 Deletion probe:
 
 Temporarily removing `TypeSpec::tag` and running
 `cmake --preset default && cmake --build --preset default` in a throwaway copy
 of the working tree wrote
-`/tmp/c4c_typespec_tag_deletion_probe_step4_base6188.log`. The targeted
-`src/frontend/parser/impl/types/base.cpp:6188` and nearby
-`base.cpp:6244-6268` residuals are cleared; the current first emitted residual
-is `src/frontend/parser/impl/types/declarator.cpp:973`, outside this packet's
-owned files.
+`/tmp/c4c_typespec_tag_deletion_probe_step4_declarator.log`. The targeted
+`src/frontend/parser/impl/types/declarator.cpp:973`, `1012`, `1066`, `1104`,
+`1109`, `1119`, and `1219` residuals are cleared; the current first emitted
+residual is `src/frontend/parser/impl/types/struct.cpp:847`, outside this
+packet's owned files.

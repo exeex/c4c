@@ -13,6 +13,15 @@
 
 namespace c4c {
 
+template <typename T>
+auto set_declarator_legacy_display_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+    ts.tag = tag;
+}
+
+void set_declarator_legacy_display_tag_if_present(TypeSpec&, const char*,
+                                                  long) {}
+
 bool Parser::is_typedef_name(TextId name_text_id) const {
     if (has_typedef_name(name_text_id)) return true;
     return find_local_visible_typedef_type(name_text_id) != nullptr;
@@ -970,8 +979,10 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                             resolved_type.array_size = -1;
                             resolved_type.inner_rank = -1;
                             resolved_type.base = TB_TYPEDEF;
-                            resolved_type.tag =
-                                arena_.strdup(dep_name.c_str());
+                            resolved_type.tag_text_id = qn.base_text_id;
+                            set_declarator_legacy_display_tag_if_present(
+                                resolved_type, arena_.strdup(dep_name.c_str()),
+                                0);
                             resolved_type.is_lvalue_ref =
                                 resolved_member.is_lvalue_ref;
                             resolved_type.is_rvalue_ref =
@@ -1009,7 +1020,9 @@ bool try_parse_cpp_scoped_base_type(Parser& parser, bool already_have_base,
             *out_ts = resolved_type;
             return true;
         }
-        out_ts->tag = parser.arena_.strdup(resolved.c_str());
+        out_ts->base = TB_TYPEDEF;
+        set_declarator_legacy_display_tag_if_present(
+            *out_ts, parser.arena_.strdup(resolved.c_str()), 0);
         return true;
     }
 
@@ -1063,8 +1076,11 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         if (probe.record_member_typedef_type) {
             *out_ts = *probe.record_member_typedef_type;
         } else {
-            out_ts->tag =
-                parser.arena_.strdup(probe.resolved_typedef_name.c_str());
+            out_ts->base = TB_TYPEDEF;
+            set_declarator_legacy_display_tag_if_present(
+                *out_ts,
+                parser.arena_.strdup(probe.resolved_typedef_name.c_str()),
+                0);
         }
         if (probe.record_def) {
             out_ts->base = probe.record_def->is_union ? TB_UNION : TB_STRUCT;
@@ -1101,12 +1117,15 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
 
         bool has_dependent_type_arg = false;
         for (const Parser::TemplateArgParseResult& arg : parsed_args) {
-            if (arg.is_value || arg.type.base != TB_TYPEDEF || !arg.type.tag)
+            if (arg.is_value || arg.type.base != TB_TYPEDEF)
                 continue;
             TextId arg_text_id = arg.type.template_param_text_id;
             if (arg_text_id == kInvalidText) arg_text_id = arg.type.tag_text_id;
             if (arg_text_id == kInvalidText) {
-                arg_text_id = parser.find_parser_text_id(arg.type.tag);
+                if (const char* legacy_tag =
+                        typespec_legacy_display_tag_if_present(arg.type, 0)) {
+                    arg_text_id = parser.find_parser_text_id(legacy_tag);
+                }
             }
             if (parser.is_template_scope_type_param(arg_text_id)) {
                 has_dependent_type_arg = true;
@@ -1116,8 +1135,9 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         if (!has_dependent_type_arg) return false;
 
         out_ts->base = TB_TYPEDEF;
-        out_ts->tag = parser.arena_.strdup(qualified_name.c_str());
         out_ts->tag_text_id = qn.base_text_id;
+        set_declarator_legacy_display_tag_if_present(
+            *out_ts, parser.arena_.strdup(qualified_name.c_str()), 0);
         out_ts->tpl_struct_origin = parser.arena_.strdup(qualified_name.c_str());
         out_ts->tpl_struct_origin_key = parser.qualified_name_key(qn);
         attach_qualified_typespec_metadata();
@@ -1216,7 +1236,10 @@ bool Parser::parse_operator_declarator_name(std::string* out_name) {
         if (check(TokenKind::Identifier) && !is_type_start() &&
             !can_start_parameter_type()) {
             conv_ts.base = TB_TYPEDEF;
-            conv_ts.tag = arena_.strdup(std::string(token_spelling(cur())));
+            conv_ts.tag_text_id = cur().text_id;
+            set_declarator_legacy_display_tag_if_present(
+                conv_ts,
+                arena_.strdup(std::string(token_spelling(cur())).c_str()), 0);
             conv_ts.array_size = -1;
             conv_ts.inner_rank = -1;
             consume();
