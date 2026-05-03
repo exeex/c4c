@@ -4178,8 +4178,12 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
               "template scope type parameters should stay classified as type arguments");
   expect_true(arg.type.base == c4c::TB_TYPEDEF,
               "template scope type parameters should parse as placeholder typedef types");
-  expect_eq(arg.type.tag, "T",
-            "template type-argument parsing should preserve the parser-owned spelling");
+  expect_true(arg.type.tag_text_id == param_text,
+              "template type-argument parsing should preserve the parser-owned type parameter identity");
+  expect_true(arg.type.template_param_text_id == param_text,
+              "template type-argument parsing should preserve structured template parameter metadata");
+  expect_eq(parser.parser_text(arg.type.tag_text_id), "T",
+            "template type-argument parsing should preserve parser-owned token spelling");
   expect_eq_int(parser.token_cursor_for_testing(), 1,
                 "template type-argument parsing should stop before the template close");
   parser.pop_template_scope();

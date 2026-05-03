@@ -3,24 +3,22 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Re-run The TypeSpec Tag Deletion Probe
+Current Step ID: 2
+Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 3 re-ran the temporary `TypeSpec::tag` deletion probe after the fallback
-typedef assertion migration from `356afb335`. Removing the field still fails at
-compile time; the first remaining boundary is
-`tests/frontend/frontend_parser_tests.cpp:4181` in
-`test_parser_template_type_arg_probes_use_token_spelling`, which reads
-`arg.type.tag`.
+Step 2 migrated
+`test_parser_template_type_arg_probes_use_token_spelling` off direct
+`arg.type.tag` access. The fixture now asserts the parser-owned `TextId`
+identity through `tag_text_id`, verifies structured template parameter metadata
+through `template_param_text_id`, and checks spelling through
+`parser.parser_text(...)`.
 
 ## Suggested Next
 
-Migrate the
-`test_parser_template_type_arg_probes_use_token_spelling` fixture assertion off
-`arg.type.tag`, preserving its token-spelling/identity contract through
-structured parser metadata, then re-run the deletion probe.
+Re-run the `TypeSpec::tag` deletion probe to find the next remaining direct
+legacy spelling boundary after this parser fixture migration.
 
 ## Watchouts
 
@@ -29,10 +27,9 @@ structured parser metadata, then re-run the deletion probe.
   just to make the field deletion compile.
 - The deletion probe restored `src/frontend/parser/ast.hpp`; final field
   deletion is not proven yet.
-- The same probe also exposed later direct `TypeSpec::tag` residuals in
+- The previous deletion probe also exposed later direct `TypeSpec::tag` residuals in
   `frontend_parser_tests`, `frontend_parser_lookup_authority_tests`, and HIR
-  fixture tests, but the first compile boundary is the frontend parser fixture
-  at line 4181.
+  fixture tests.
 - The focused frontend parser test still has the known pre-existing
   `namespace owner resolution should use the method owner TextId before rendered
   owner spelling` failure.
@@ -42,11 +39,10 @@ structured parser metadata, then re-run the deletion probe.
 Proof output is recorded in `test_after.log`.
 
 ```sh
-cmake --build --preset default > test_after.log 2>&1
+cmake --build --preset default > test_after.log 2>&1; ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
 ```
 
-Result: command exited nonzero during the temporary deletion probe. The first
-reported compiler error is `tests/frontend/frontend_parser_tests.cpp:4181:22:
-error: 'struct c4c::TypeSpec' has no member named 'tag'`.
-After restoring `src/frontend/parser/ast.hpp`, `cmake --build --preset default`
-completed successfully; this restore check did not replace `test_after.log`.
+Result: build completed successfully; `frontend_parser_tests` exited nonzero
+with the same single known pre-existing failure as `test_before.log`:
+`namespace owner resolution should use the method owner TextId before rendered
+owner spelling`.
