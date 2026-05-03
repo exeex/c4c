@@ -98,6 +98,14 @@ removal route, including:
   build is blocked by downstream carrier work. Follow-up idea
   `ideas/open/142_codegen_lir_aggregate_type_identity_metadata.md` owns that
   downstream boundary.
+- 2026-05-03: Follow-up idea
+  `ideas/open/142_codegen_lir_aggregate_type_identity_metadata.md` cleared the
+  codegen/LIR aggregate identity deletion-probe boundary and was retired
+  parked, not closed. The next deletion-probe residuals are frontend/HIR test
+  fixtures that still directly reference `TypeSpec::tag`, so this parent idea
+  resumes ownership of field removal and fixture cleanup. Do not reactivate
+  idea 142 for parser/HIR test-fixture residuals unless a fresh parent probe
+  exposes a new codegen/LIR aggregate identity boundary.
 
 ## Out Of Scope
 
