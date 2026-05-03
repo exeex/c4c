@@ -13,6 +13,26 @@
 
 namespace c4c {
 
+template <typename T>
+auto set_struct_legacy_display_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+    ts.tag = tag;
+}
+
+void set_struct_legacy_display_tag_if_present(TypeSpec&, const char*, long) {}
+
+static TextId record_member_type_text_id(Parser& parser, const Node* record) {
+    if (!record) return kInvalidText;
+    if (record->unqualified_text_id != kInvalidText)
+        return record->unqualified_text_id;
+    if (record->unqualified_name && record->unqualified_name[0])
+        return parser.parser_text_id_for_token(kInvalidText,
+                                               record->unqualified_name);
+    if (record->name && record->name[0])
+        return parser.parser_text_id_for_token(kInvalidText, record->name);
+    return kInvalidText;
+}
+
 struct ParserFunctionParamScopeGuard {
     Parser* parser = nullptr;
     bool active = false;
@@ -844,8 +864,9 @@ bool try_parse_record_using_member(
             alias_ts.array_size = -1;
             alias_ts.inner_rank = -1;
             alias_ts.base = TB_TYPEDEF;
-            alias_ts.tag = parser.arena_.strdup(alias_name.c_str());
             alias_ts.tag_text_id = alias_name_text_id;
+            set_struct_legacy_display_tag_if_present(
+                alias_ts, parser.arena_.strdup(alias_name.c_str()), 0);
         } else {
             alias_ts = parser.parse_type_name();
         }
@@ -948,8 +969,10 @@ bool try_parse_nested_record_member(
     anon_fts.array_size = -1;
     anon_fts.array_rank = 0;
     anon_fts.base = inner_union ? TB_UNION : TB_STRUCT;
-    anon_fts.tag = inner ? inner->name : nullptr;
+    anon_fts.tag_text_id = record_member_type_text_id(parser, inner);
     anon_fts.record_def = (inner && inner->n_fields >= 0) ? inner : nullptr;
+    set_struct_legacy_display_tag_if_present(
+        anon_fts, inner ? inner->name : nullptr, 0);
     parser.parse_attributes(&anon_fts);
 
     bool has_declarator = !parser.check(TokenKind::Semi) && !parser.check(TokenKind::RBrace);
@@ -981,8 +1004,10 @@ bool try_parse_nested_record_member(
             fts2.array_size = -1;
             fts2.array_rank = 0;
             fts2.base = inner_union ? TB_UNION : TB_STRUCT;
-            fts2.tag = inner ? inner->name : nullptr;
+            fts2.tag_text_id = record_member_type_text_id(parser, inner);
             fts2.record_def = (inner && inner->n_fields >= 0) ? inner : nullptr;
+            set_struct_legacy_display_tag_if_present(
+                fts2, inner ? inner->name : nullptr, 0);
             const char* fname2 = nullptr;
             TextId fname2_text_id = kInvalidText;
             parser.parse_declarator(fts2, &fname2, nullptr, nullptr, nullptr,
@@ -1034,7 +1059,8 @@ bool try_parse_record_enum_member(
         if (ed && ed->name) {
             // Prefer enum type tag if available
             fts.base = TB_ENUM;
-            fts.tag  = ed->name;
+            fts.tag_text_id = record_member_type_text_id(parser, ed);
+            set_struct_legacy_display_tag_if_present(fts, ed->name, 0);
             if (const TypeSpec* enum_type = parser.find_typedef_type(parser.find_parser_text_id(ed->name)))
                 fts.enum_underlying_base = enum_type->enum_underlying_base;
         }
@@ -1426,7 +1452,12 @@ bool try_parse_record_method_or_field_member(
                 !parser.can_start_parameter_type()) {
                 fts = TypeSpec{};
                 fts.base = TB_TYPEDEF;
-                fts.tag = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+                fts.tag_text_id = parser.cur().text_id;
+                set_struct_legacy_display_tag_if_present(
+                    fts,
+                    parser.arena_.strdup(
+                        std::string(parser.token_spelling(parser.cur())).c_str()),
+                    0);
                 fts.array_size = -1;
                 fts.inner_rank = -1;
                 parser.consume();
@@ -2484,10 +2515,10 @@ void register_record_definition(Parser& parser,
         record_ts.array_size = -1;
         record_ts.inner_rank = -1;
         record_ts.base = is_union ? TB_UNION : TB_STRUCT;
-        record_ts.tag = sd->name;
         record_ts.tag_text_id =
             type_text_id != kInvalidText ? type_text_id : binding_text_id;
         record_ts.record_def = sd;
+        set_struct_legacy_display_tag_if_present(record_ts, sd->name, 0);
         record_ts.namespace_context_id = sd->namespace_context_id;
         record_ts.qualifier_segments = sd->qualifier_segments;
         record_ts.qualifier_text_ids = sd->qualifier_text_ids;

@@ -9,19 +9,18 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the targeted
-`src/frontend/parser/impl/types/declarator.cpp:973` deletion-probe residual
-cluster. Dependent typename reference fallbacks, qualified typedef fallbacks,
-dependent qualified template-id fallback, template-argument dependency checks,
-and conversion-operator typedef fallback now use `tag_text_id`,
-`template_param_text_id`, qualified-name metadata, `tpl_struct_origin_key`, or
-deletion-safe display compatibility helpers instead of directly requiring
-`TypeSpec::tag`.
+`src/frontend/parser/impl/types/struct.cpp:847` deletion-probe residual
+cluster. Record member alias typedef fallbacks, nested record member fields,
+nested enum member fields, record conversion-operator typedef fallback, and
+concrete record typedef bindings now use `tag_text_id`, `record_def`,
+namespace/qualifier metadata, or deletion-safe display compatibility helpers
+instead of directly requiring `TypeSpec::tag`.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected deletion-probe residual
 family. The current deletion probe first emits outside this packet's ownership
-at `src/frontend/parser/impl/types/struct.cpp:847`; `declarator.cpp` compiles
+at `src/frontend/parser/impl/types/template.cpp:230`; `struct.cpp` compiles
 cleanly in the temporary `TypeSpec::tag` deletion build before the build stops.
 
 ## Watchouts
@@ -39,7 +38,7 @@ cleanly in the temporary `TypeSpec::tag` deletion build before the build stops.
   positive ctor-init runtime case still needs the instantiated rendered tag as
   a compatibility payload for downstream member-expression lowering.
 - The deletion probe log for this packet is
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_declarator.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_struct.log`.
 
 ## Proof
 
@@ -59,16 +58,15 @@ Regression guard:
 
 Result: command exited 0. Guard passed with `passed=109 failed=0 total=109`
 before and `passed=109 failed=0 total=109` after. There are no new failing
-tests; the pass count is unchanged because this packet migrated an existing
-covered declarator route without adding a new testcase.
+tests; the pass count is unchanged because this packet migrated existing
+covered struct/record producer routes without adding a new testcase.
 
 Deletion probe:
 
 Temporarily removing `TypeSpec::tag` and running
-`cmake --preset default && cmake --build --preset default` in a throwaway copy
-of the working tree wrote
-`/tmp/c4c_typespec_tag_deletion_probe_step4_declarator.log`. The targeted
-`src/frontend/parser/impl/types/declarator.cpp:973`, `1012`, `1066`, `1104`,
-`1109`, `1119`, and `1219` residuals are cleared; the current first emitted
-residual is `src/frontend/parser/impl/types/struct.cpp:847`, outside this
+`cmake --preset default && cmake --build --preset default` in a throwaway
+worktree wrote `/tmp/c4c_typespec_tag_deletion_probe_step4_struct.log`. The
+targeted `src/frontend/parser/impl/types/struct.cpp:847`, `951`, `984`,
+`1037`, `1429`, and `2487` residuals are cleared; the current first emitted
+residual is `src/frontend/parser/impl/types/template.cpp:230`, outside this
 packet's owned files.
