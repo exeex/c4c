@@ -9,25 +9,24 @@ Current Step Title: Migrate Call, VaArg, Const Init, And ABI Consumers
 ## Just Finished
 
 Step 4 - Migrate Call, VaArg, Const Init, And ABI Consumers:
-migrated the call/variadic aggregate sizing consumers in `call/args.cpp` and
-`call/vaarg.cpp` so their `lookup_structured_layout` calls recover and pass an
-explicit `StructNameId` carrier from HIR structured owner metadata
-(`record_def` / `tag_text_id`) when available. Final LLVM call and `va_arg`
-type spelling still comes from the existing `TypeSpec` formatting path, while
-the no-carrier layout observation paths are now labeled
-`variadic-aggregate-arg-legacy-compat` and `va_arg-aggregate-legacy-compat`.
+migrated the aggregate call return and argument `LirTypeRef` helpers in
+`call/target.cpp` and `call/args.cpp` so they first recover an existing
+`StructNameId` carrier from HIR structured owner metadata (`record_def` /
+`tag_text_id`) and only use rendered-tag interning on the explicit legacy
+compatibility path. Final emitted LLVM call spelling still comes from the
+existing `TypeSpec` formatting path.
 
 ## Suggested Next
 
-Next coherent packet: migrate the remaining Step 4 aggregate call signature /
-return type-ref consumers in `call/target.cpp`, keeping final emitted spelling
-separate from structured LIR identity.
+Next coherent packet: migrate the Step 4 const-init aggregate lookup consumers
+in `const_init_emitter.cpp` off semantic `TypeSpec::tag` authority when
+structured metadata is available, without widening into ABI classification.
 
 ## Watchouts
 
-- The call/variadic sizing helpers intentionally use structured identity only
-  for layout lookup; packed argument, byval, HFA, and `va_arg` result spelling
-  still follows the existing LLVM text path.
+- The call return and argument type-ref helpers now prefer structured
+  `StructNameId` carriers, but verifier constraints still require the
+  `LirTypeRef` text to remain the final emitted call spelling.
 - The owner-key recovery helper is local to this bounded packet. A later wider
   Step 4 packet may choose to centralize it if more call/ABI consumers need the
   same carrier recovery.

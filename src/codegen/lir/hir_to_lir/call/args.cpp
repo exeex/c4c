@@ -61,13 +61,19 @@ StructNameId call_aggregate_structured_name_id(const c4c::hir::Module& mod,
 }
 
 LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_module,
-                             const TypeSpec& type) {
+                             const c4c::hir::Module& mod, const TypeSpec& type) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
-      type.array_rank > 0 || !type.tag || !type.tag[0] || !lir_module) {
+      type.array_rank > 0 || !lir_module) {
     return LirTypeRef();
   }
   if (rendered_text != llvm_ty(type)) return LirTypeRef();
-  const StructNameId name_id = lir_module->struct_names.intern(rendered_text);
+
+  StructNameId name_id = call_aggregate_structured_name_id(mod, lir_module, type);
+  if (name_id == kInvalidStructName && type.tag && type.tag[0]) {
+    // Legacy compatibility for aggregate carriers that still only have a rendered tag.
+    name_id = lir_module->struct_names.intern(rendered_text);
+  }
+  if (name_id == kInvalidStructName) return LirTypeRef();
   return type.base == TB_UNION ? LirTypeRef::union_type(rendered_text, name_id)
                                : LirTypeRef::struct_type(rendered_text, name_id);
 }
@@ -312,7 +318,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
 
   const std::string out_llvm_ty = llvm_ty(out_arg_ts);
   PreparedCallArg out_arg{
-      {{out_llvm_ty, arg, lir_call_type_ref(out_llvm_ty, module_, out_arg_ts)}},
+      {{out_llvm_ty, arg, lir_call_type_ref(out_llvm_ty, module_, mod_, out_arg_ts)}},
       false};
   if (amd64_state && !out_arg.skip) {
     amd64_account_type_if_needed(mod_, out_arg_ts, amd64_state);

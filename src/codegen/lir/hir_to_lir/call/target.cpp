@@ -8,6 +8,56 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
+std::optional<HirRecordOwnerKey> call_target_aggregate_owner_key_from_type(const TypeSpec& ts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    const TextId declaration_text_id = ts.record_def->unqualified_text_id;
+    if (declaration_text_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts.record_def->namespace_context_id;
+      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
+      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
+        ns_qual.segment_text_ids.assign(
+            ts.record_def->qualifier_text_ids,
+            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
+      }
+      const HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(ns_qual, declaration_text_id);
+      if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+    }
+  }
+
+  if (ts.tag_text_id == kInvalidText) return std::nullopt;
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
+                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+  return std::nullopt;
+}
+
+StructNameId call_target_aggregate_structured_name_id(const c4c::hir::Module& mod,
+                                                      const lir::LirModule* module,
+                                                      const TypeSpec& aggregate_ts) {
+  if (!module || (aggregate_ts.base != TB_STRUCT && aggregate_ts.base != TB_UNION) ||
+      aggregate_ts.ptr_level != 0 || aggregate_ts.array_rank != 0) {
+    return kInvalidStructName;
+  }
+
+  const std::optional<HirRecordOwnerKey> owner_key =
+      call_target_aggregate_owner_key_from_type(aggregate_ts);
+  if (!owner_key) return kInvalidStructName;
+  const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+  if (!structured_tag || structured_tag->empty()) return kInvalidStructName;
+
+  const StructNameId name_id =
+      module->struct_names.find(llvm_struct_type_str(*structured_tag));
+  return module->find_struct_decl(name_id) ? name_id : kInvalidStructName;
+}
+
 std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
                               std::string_view fallback) {
   const std::string_view resolved = mod.link_names.spelling(id);
@@ -15,13 +65,19 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
 }
 
 LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_module,
-                             const TypeSpec& type) {
+                             const c4c::hir::Module& mod, const TypeSpec& type) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
-      type.array_rank > 0 || !type.tag || !type.tag[0] || !lir_module) {
+      type.array_rank > 0 || !lir_module) {
     return LirTypeRef(rendered_text);
   }
   if (rendered_text != llvm_ty(type)) return LirTypeRef(rendered_text);
-  const StructNameId name_id = lir_module->struct_names.intern(rendered_text);
+
+  StructNameId name_id = call_target_aggregate_structured_name_id(mod, lir_module, type);
+  if (name_id == kInvalidStructName && type.tag && type.tag[0]) {
+    // Legacy compatibility for aggregate carriers that still only have a rendered tag.
+    name_id = lir_module->struct_names.intern(rendered_text);
+  }
+  if (name_id == kInvalidStructName) return LirTypeRef(rendered_text);
   return type.base == TB_UNION ? LirTypeRef::union_type(rendered_text, name_id)
                                : LirTypeRef::struct_type(rendered_text, name_id);
 }
@@ -124,7 +180,7 @@ std::string StmtEmitter::emit_call_with_result(
       ctx,
       make_lir_call_op_with_return_type_ref(
           tmp,
-          lir_call_type_ref(call_target.ret_ty, module_, call_target.ret_spec),
+          lir_call_type_ref(call_target.ret_ty, module_, mod_, call_target.ret_spec),
           call_target.callee_val,
           call_target.callee_type_suffix,
           args,
