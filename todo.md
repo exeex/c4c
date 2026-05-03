@@ -3,34 +3,21 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Re-run The TypeSpec Tag Deletion Probe
+Current Step ID: 2
+Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 3 reran the temporary `TypeSpec::tag` deletion probe after migrating
-`test_parser_member_typedef_suffix_prefers_record_definition`. The probe
-temporarily disabled the field in `src/frontend/parser/ast.hpp` and ran:
-
-```sh
-cmake --build --preset default > test_after.log 2>&1
-```
-
-The previous member typedef suffix record-definition preference boundary no
-longer appears in the compile errors. The first remaining
-`frontend_parser_tests.cpp` boundary moved to direct `TypeSpec::tag` writes in
-`test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks`.
-
-The probe edit was restored, and a normal `cmake --build --preset default`
-passed.
+Step 2 migrated the two direct legacy `alias_ts.tag` writes in
+`test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks` behind
+`set_legacy_tag_if_present(alias_ts, ..., 0)` while preserving the
+rendered-owner fallback rejection fixture shape.
 
 ## Suggested Next
 
-Execute the next Step 2 fixture-migration packet on
-`test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks` in
-`tests/frontend/frontend_parser_tests.cpp`. Preserve its rendered-owner
-fallback rejection contract by moving the two direct legacy `alias_ts.tag`
-writes behind `set_legacy_tag_if_present`.
+Run the next Step 3 temporary `TypeSpec::tag` deletion probe to identify the
+next direct-tag fixture boundary after
+`test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks`.
 
 ## Watchouts
 
@@ -45,10 +32,14 @@ writes behind `set_legacy_tag_if_present`.
 
 ## Proof
 
-Step 3 deletion probe failed as expected with `TypeSpec::tag` disabled and
-recorded the next frontend/HIR fixture boundary in `test_after.log`. Restored
-proof:
+Build proof passed and observational parser-test proof was recorded in
+`test_after.log`:
 
 ```sh
-cmake --build --preset default
+cmake --build --preset default > test_after.log 2>&1
+ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
 ```
+
+The CTest command returned the known pre-existing failure:
+`namespace owner resolution should use the method owner TextId before rendered
+owner spelling`.

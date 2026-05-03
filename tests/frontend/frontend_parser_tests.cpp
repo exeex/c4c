@@ -1413,7 +1413,7 @@ void test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks() {
     alias_ts.array_size = -1;
     alias_ts.inner_rank = -1;
     alias_ts.base = c4c::TB_STRUCT;
-    alias_ts.tag = arena.strdup("RenderedOnlyBox");
+    set_legacy_tag_if_present(alias_ts, arena.strdup("RenderedOnlyBox"), 0);
     parser.register_typedef_binding(parser_test_text_id(parser, "Alias"),
                                     alias_ts, true);
 
@@ -1445,7 +1445,7 @@ void test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks() {
     alias_ts.array_size = -1;
     alias_ts.inner_rank = -1;
     alias_ts.base = c4c::TB_STRUCT;
-    alias_ts.tag = arena.strdup("OwnerTag");
+    set_legacy_tag_if_present(alias_ts, arena.strdup("OwnerTag"), 0);
     alias_ts.record_def = structured_owner;
     parser.register_typedef_binding(parser_test_text_id(parser, "Alias"),
                                     alias_ts, true);
