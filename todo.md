@@ -9,20 +9,24 @@ Current Step Title: Re-run The TypeSpec Tag Deletion Probe
 ## Just Finished
 
 Step 3 temporarily removed `TypeSpec::tag` from
-`src/frontend/parser/ast.hpp`, ran the delegated `c4cll` build probe, captured
-the result in `test_after.log`, and restored `ast.hpp` to the pre-probe
-buildable state.
+`src/frontend/parser/ast.hpp`, ran the delegated fixture-surface build probe,
+captured the result in `test_after.log`, and restored `ast.hpp` to the
+pre-probe buildable state.
 
-First remaining compile boundary: none in the delegated `c4cll` target. With
-`TypeSpec::tag` removed, `cmake --build build --target c4cll` rebuilt and
-linked successfully.
+First remaining fixture/test compile boundary:
+`tests/frontend/frontend_parser_tests.cpp.o` fails first at
+`tests/frontend/frontend_parser_tests.cpp:4322` because
+`arg.type.tag` still reads the deleted `TypeSpec::tag` member in
+`test_parser_template_type_arg_uses_visible_scope_local_alias()`.
 
 ## Suggested Next
 
-Run the next deletion probe against the smallest supervisor-selected target
-that compiles the fixture/test surface, likely `frontend_parser_tests`, so any
-remaining direct `TypeSpec::tag` residual outside the `c4cll` target becomes
-the next owned boundary.
+Migrate the first fixture/test residual group in
+`tests/frontend/frontend_parser_tests.cpp` away from direct `TypeSpec::tag`
+reads/writes, starting at the line 4322 boundary and keeping the replacement
+semantic: prefer `tag_text_id` or the existing structured record/type authority
+where available, and only preserve spelling fallback where the test explicitly
+proves fallback behavior.
 
 ## Watchouts
 
@@ -40,8 +44,9 @@ the next owned boundary.
 Proof output is recorded in `test_after.log`.
 
 ```sh
-cmake --build build --target c4cll > test_after.log 2>&1
+cmake --build build --target frontend_parser_tests > test_after.log 2>&1
 ```
 
-Result: build completed successfully while the `TypeSpec::tag` member was
-temporarily removed. No compile error boundary was present in this proof scope.
+Result: build failed while the `TypeSpec::tag` member was temporarily removed,
+then `ast.hpp` was restored. The first compile boundary is the direct fixture
+read at `tests/frontend/frontend_parser_tests.cpp:4322`.
