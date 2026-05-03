@@ -9,39 +9,46 @@ Current Step Title: Probe TypeSpec Tag Removal Boundary
 ## Just Finished
 
 Step 5 - Probe TypeSpec Tag Removal Boundary:
-migrated the front-of-file aggregate type-ref helper family in
-`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`. `lir_owned_type_spec` now routes
-legacy tag ownership through the shared compatibility setter, and
-`lir_field_type_ref`, `lir_global_type_ref`, and `lir_signature_type_ref` now
-resolve aggregate `StructNameId` mirrors from structured owner metadata or
-explicit compatibility helpers instead of reading `TypeSpec::tag` directly.
-The nearby base-class type-ref construction was adjusted mechanically to pass
-the already-rendered struct name id into the shared aggregate-ref constructor.
+reran the temporary `TypeSpec::tag` deletion probe after the route review and
+front helper migration. The first remaining compile boundary is now
+`src/codegen/lir/hir_to_lir/hir_to_lir.cpp:223`, where `object_align_bytes`
+still falls back to `ts.tag` for aggregate layout. The same compile unit also
+reports `hir_to_lir.cpp:467-468`, where flexible-array global lowering still
+looks up `mod.struct_defs` through `ts.tag`. Same-wave residuals remain in
+`src/codegen/lir/hir_to_lir/lvalue.cpp:658-659`, where member field access
+falls back from structured identity to `access.base_ts.tag`.
 
 ## Suggested Next
 
-Next coherent packet: rerun a temporary `TypeSpec::tag` deletion probe and use
-the first remaining compile boundary to pick the next narrow migration. The
-expected next boundaries are object alignment and flexible-array global
-lowering in `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`, plus the same-wave
-`lvalue.cpp` member-access residual if the probe reaches it.
+Next coherent packet: migrate the two remaining `hir_to_lir.cpp` deletion-probe
+boundaries in one narrow packet: `object_align_bytes` aggregate alignment and
+flexible-array global lowering. Prefer existing structured layout helpers such
+as `lookup_structured_layout`, `structured_layout_align_bytes`, and
+`find_typespec_aggregate_layout` over direct rendered-tag lookup. Keep
+`lvalue.cpp` member-access residual for the following packet unless this fix
+naturally exposes a shared helper.
 
 ## Watchouts
 
-- `lir_owned_type_spec` still preserves the existing verifier contract by
-  calling `set_typespec_legacy_tag_if_present`; the direct `.tag` write moved
-  behind an explicitly named shared compatibility helper.
-- Aggregate `StructNameId` candidates are accepted only when their rendered LLVM
-  struct name matches the mirrored text, avoiding owner-key drift such as
-  `%struct.left` shadowing `%struct.Pair`.
-- Remaining `hir_to_lir.cpp` direct `.tag` users are outside this helper packet:
-  module object alignment and flexible-array global lowering.
+- The probe edit was temporary: `const char* tag` in
+  `src/frontend/parser/ast.hpp` was restored before the post-probe rebuild.
+- The Step 5 route review at
+  `review/step5_lir_aggregate_identity_route_review.md` judged the route
+  aligned and recommended narrow probe-driven packets; no plan-owner rewrite is
+  needed yet.
+- Do not expand the next packet into broad global lowering or `lvalue.cpp`
+  unless required by a tiny shared helper.
 
 ## Proof
 
-Proof command:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_.*|cpp_hir_(sema_canonical_symbol|sema_consteval_type_utils).*structured_metadata|cpp_positive_sema_(c_style_cast_.*field_access|inherited_base_member_access_runtime|inherited_base_aggregate_init_runtime|record_nested_aggregate_member_parse|operator_struct_byval_param|struct_method|template_struct.*)_cpp|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_struct_result_c|llvm_gcc_c_torture_src_(pta_field_[12]|struct_(aliasing_1|cpy_1|ini_[1-4]|ret_2)|zero_struct_[12])_c|eastl_cpp_external_utility_frontend_basic_cpp)$"' > test_after.log 2>&1`
-passed, with 38/38 tests passing. Proof log: `test_after.log`.
+Probe command:
+`cmake --build --preset default > test_after.log 2>&1` with `const char* tag`
+temporarily disabled failed at the `hir_to_lir.cpp` boundary above.
+
+After reverting the temporary probe edit, `cmake --build --preset default`
+passed. The accepted focused baseline remains in `test_before.log`; the current
+`test_after.log` is the failed deletion-probe artifact and should be
+overwritten by the next executor proof.
 
 Baseline review:
 rejected `test_baseline.new.log` for commit `fa4aaedc7`: the accepted
