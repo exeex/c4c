@@ -69,7 +69,8 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
   if (rendered_text != llvm_ty(type)) return LirTypeRef();
 
   StructNameId name_id = call_aggregate_structured_name_id(mod, lir_module, type);
-  if (name_id == kInvalidStructName && type.tag && type.tag[0]) {
+  if (name_id == kInvalidStructName &&
+      !typespec_legacy_tag_if_present(type, 0).empty()) {
     // Legacy compatibility for aggregate carriers that still only have a rendered tag.
     name_id = lir_module->struct_names.intern(rendered_text);
   }
@@ -180,7 +181,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   const bool is_variadic_aggregate =
       target_fn && target_fn->attrs.variadic && arg_index >= target_fn->params.size() &&
       (arg_ts.base == TB_STRUCT || arg_ts.base == TB_UNION) && arg_ts.ptr_level == 0 &&
-      arg_ts.array_rank == 0 && arg_ts.tag && arg_ts.tag[0];
+      arg_ts.array_rank == 0 && is_named_aggregate_value(arg_ts);
   if (target_fn) {
     const bool has_void_param_list = target_fn->params.size() == 1 &&
                                      target_fn->params[0].type.spec.base == TB_VOID &&

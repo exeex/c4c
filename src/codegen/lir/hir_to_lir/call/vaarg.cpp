@@ -194,7 +194,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
   if (res_ty == "void") return "";
   const bool is_named_aggregate =
       (res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) && res_ts.ptr_level == 0 &&
-      res_ts.array_rank == 0 && res_ts.tag && res_ts.tag[0];
+      res_ts.array_rank == 0 && is_named_aggregate_value(res_ts);
   StructuredLayoutLookup aggregate_layout;
   std::optional<int> aggregate_payload_sz;
   if (is_named_aggregate) {

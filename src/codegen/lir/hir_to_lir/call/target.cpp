@@ -73,7 +73,8 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
   if (rendered_text != llvm_ty(type)) return LirTypeRef(rendered_text);
 
   StructNameId name_id = call_target_aggregate_structured_name_id(mod, lir_module, type);
-  if (name_id == kInvalidStructName && type.tag && type.tag[0]) {
+  if (name_id == kInvalidStructName &&
+      !typespec_legacy_tag_if_present(type, 0).empty()) {
     // Legacy compatibility for aggregate carriers that still only have a rendered tag.
     name_id = lir_module->struct_names.intern(rendered_text);
   }

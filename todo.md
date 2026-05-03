@@ -9,52 +9,38 @@ Current Step Title: Probe TypeSpec Tag Removal Boundary
 ## Just Finished
 
 Step 5 - Probe TypeSpec Tag Removal Boundary:
-temporarily removed the `TypeSpec::tag` field from
-`src/frontend/parser/ast.hpp` and ran `cmake --build --preset default`.
-The probe failed in codegen, then the probe edit was reverted.
-
-First remaining boundary:
-- `src/codegen/shared/llvm_helpers.hpp:444-445`,
-  `562`, `601-602`, and `619-620` still directly read `TypeSpec::tag`.
-  These cover final LLVM aggregate spelling in `llvm_ty`,
-  `llvm_alloca_ty`, and `llvm_field_ty`, plus the shared `sizeof_ts`
-  legacy layout helper.
-
-Additional same-wave residuals visible after that header instantiates:
-- `src/codegen/lir/hir_to_lir/call/args.cpp:72` and
-  `call/target.cpp:76` retain explicitly named rendered-tag compatibility
-  fallback for call `LirTypeRef` construction.
-- `src/codegen/lir/hir_to_lir/call/args.cpp:183` and
-  `call/vaarg.cpp:197` still use `tag` as a named-aggregate presence check
-  before variadic aggregate handling.
+migrated the shared codegen helper boundary exposed by the deletion probe.
+`llvm_ty`, `llvm_alloca_ty`, and `llvm_field_ty` now obtain final LLVM
+aggregate spelling through a dedicated final-spelling helper instead of
+directly reading `TypeSpec::tag`; `sizeof_ts` now prefers structured
+`HirRecordOwnerKey` layout lookup and uses rendered compatibility only through
+an explicit fallback helper. The exposed call and `va_arg` residual checks now
+use structured aggregate presence or explicit legacy-tag compatibility helpers
+instead of direct `tag` reads.
 
 ## Suggested Next
 
-Next coherent packet: migrate the shared codegen helper boundary by separating
-final LLVM aggregate spelling from semantic `TypeSpec::tag` access. Start with
-`llvm_helpers.hpp` final-spelling helpers and `sizeof_ts`, then revisit the
-remaining call/va_arg compatibility presence checks exposed by the probe.
+Next coherent packet: rerun the temporary `TypeSpec::tag` deletion probe and
+classify the new first compile boundary. If the first boundary is still within
+codegen aggregate identity, migrate that one family; if it is outside this
+idea, split it into a follow-up idea instead of widening this runbook.
 
 ## Watchouts
 
-- The deletion build is intentionally not committed; `TypeSpec::tag` is restored
-  in the working tree.
-- `llvm_helpers.hpp:444` remains both a final LLVM spelling boundary and a
-  semantic dependency for callers that have no separate aggregate identity
-  carrier. Do not remove emitted LLVM type text.
-- `sizeof_ts` in `llvm_helpers.hpp` is still a semantic layout helper and needs
-  structured owner metadata or an explicit compatibility contract before field
-  deletion can proceed.
-- The call/va_arg residuals exposed by this probe are compatibility/presence
-  checks, not proof that the previous structured carrier migrations failed.
+- Final LLVM type spelling is intentionally preserved. Helpers without a
+  `Module` still use available `TypeSpec` spelling metadata for output text,
+  while helpers with a `Module` can use `tag_text_id` and structured owner
+  indexes before explicit compatibility fallback.
+- `typespec_legacy_tag_if_present` is an explicit compatibility bridge and is
+  SFINAE-shaped so a future deletion probe can compile past these sites.
+- The next deletion probe may expose broader codegen residuals outside the
+  owned helper/call/va_arg boundary; do not fold unrelated ABI, const-init,
+  lvalue, or type-chain routes into this packet retroactively.
 
 ## Proof
 
-Deletion probe command:
-`cmake --build --preset default > test_after.log 2>&1`
+Proof command:
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_.*|cpp_hir_(sema_canonical_symbol|sema_consteval_type_utils).*structured_metadata|cpp_positive_sema_(c_style_cast_.*field_access|inherited_base_member_access_runtime|inherited_base_aggregate_init_runtime|record_nested_aggregate_member_parse|operator_struct_byval_param|struct_method|template_struct.*)_cpp|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_struct_result_c|llvm_gcc_c_torture_src_(pta_field_[12]|struct_(aliasing_1|cpy_1|ini_[1-4]|ret_2)|zero_struct_[12])_c|eastl_cpp_external_utility_frontend_basic_cpp)$"' > test_after.log 2>&1`
 
-Expected probe failure was captured in `test_after.log`; first compile failure
-is `src/codegen/shared/llvm_helpers.hpp:444` because `TypeSpec::tag` no longer
-exists. The temporary `ast.hpp` edit was reverted after the probe, and
-`cmake --build --preset default` then passed to confirm the workspace returned
-to a buildable state.
+Matching baseline and patched proof were captured in `test_before.log` and
+`test_after.log`. Regression guard passed with 38/38 before and 38/38 after.

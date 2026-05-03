@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "../../frontend/hir/hir_ir.hpp"
 #include "../../target_profile.hpp"
@@ -436,13 +437,104 @@ inline bool is_vector_value(const TypeSpec& ts) {
 inline std::string sanitize_llvm_ident(const std::string& raw);
 inline std::string llvm_struct_type_str(const std::string& tag);
 
+template <typename T>
+auto typespec_legacy_tag_if_present(const T& ts, int)
+    -> decltype(ts.tag, std::string_view{}) {
+  return ts.tag ? std::string_view(ts.tag) : std::string_view{};
+}
+
+template <typename T>
+std::string_view typespec_legacy_tag_if_present(const T&, long) {
+  return {};
+}
+
+inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(const TypeSpec& ts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    const TextId declaration_text_id = ts.record_def->unqualified_text_id;
+    if (declaration_text_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts.record_def->namespace_context_id;
+      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
+      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
+        ns_qual.segment_text_ids.assign(
+            ts.record_def->qualifier_text_ids,
+            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
+      }
+      const HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(ns_qual, declaration_text_id);
+      if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+    }
+  }
+
+  if (ts.tag_text_id == kInvalidText) return std::nullopt;
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
+                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+  return std::nullopt;
+}
+
+inline std::optional<std::string> typespec_aggregate_final_spelling(const TypeSpec& ts) {
+  if (ts.base != TB_STRUCT && ts.base != TB_UNION) return std::nullopt;
+  const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  if (!legacy_tag.empty()) return std::string(legacy_tag);
+  if (ts.record_def) {
+    if (ts.record_def->name && ts.record_def->name[0]) return std::string(ts.record_def->name);
+    if (ts.record_def->unqualified_name && ts.record_def->unqualified_name[0]) {
+      return std::string(ts.record_def->unqualified_name);
+    }
+  }
+  return std::nullopt;
+}
+
+inline std::optional<std::string> typespec_aggregate_compatibility_tag(
+    const Module& mod, const TypeSpec& ts) {
+  if (ts.base != TB_STRUCT && ts.base != TB_UNION) return std::nullopt;
+  if (ts.tag_text_id != kInvalidText && mod.link_name_texts) {
+    const std::string_view rendered_tag = mod.link_name_texts->lookup(ts.tag_text_id);
+    if (!rendered_tag.empty()) return std::string(rendered_tag);
+  }
+  return typespec_aggregate_final_spelling(ts);
+}
+
+inline bool is_named_aggregate_value(const TypeSpec& ts) {
+  if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0 ||
+      ts.array_rank != 0) {
+    return false;
+  }
+  return typespec_aggregate_owner_key(ts).has_value() ||
+         typespec_aggregate_final_spelling(ts).has_value();
+}
+
+inline const HirStructDef* find_typespec_aggregate_layout(const Module& mod,
+                                                          const TypeSpec& ts) {
+  if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0) return nullptr;
+  if (const std::optional<HirRecordOwnerKey> owner_key = typespec_aggregate_owner_key(ts)) {
+    if (const HirStructDef* def = mod.find_struct_def_by_owner_structured(*owner_key)) {
+      return def;
+    }
+  }
+  const std::optional<std::string> compatibility_tag =
+      typespec_aggregate_compatibility_tag(mod, ts);
+  if (!compatibility_tag) return nullptr;
+  const auto it = mod.struct_defs.find(*compatibility_tag);
+  return it == mod.struct_defs.end() ? nullptr : &it->second;
+}
+
 inline std::string llvm_ty(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (ts.array_rank > 0) return "ptr";
   if (is_vector_value(ts)) return llvm_vector_ty(ts);
   if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
-  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
-    return llvm_struct_type_str(ts.tag);
+  if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
+    if (const std::optional<std::string> tag = typespec_aggregate_final_spelling(ts)) {
+      return llvm_struct_type_str(*tag);
+    }
   }
   return llvm_base(llvm_storage_base(ts));
 }
@@ -559,7 +651,9 @@ inline std::string llvm_alloca_ty(const TypeSpec& ts) {
   if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
   if (ts.base == TB_VA_LIST) return llvm_va_list_storage_ty();
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
-    if (ts.tag && ts.tag[0]) return llvm_struct_type_str(ts.tag);
+    if (const std::optional<std::string> tag = typespec_aggregate_final_spelling(ts)) {
+      return llvm_struct_type_str(*tag);
+    }
   }
   if (ts.base == TB_VOID) return "i8";
   return llvm_base(llvm_storage_base(ts));
@@ -597,11 +691,10 @@ inline int sizeof_ts(const Module& mod, const TypeSpec& ts) {
   if (ts.is_vector && ts.vector_bytes > 0) return static_cast<int>(ts.vector_bytes);
   if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
-  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) &&
-      ts.ptr_level == 0 && ts.tag && ts.tag[0]) {
-    const auto it = mod.struct_defs.find(ts.tag);
-    if (it == mod.struct_defs.end()) return 4;
-    return it->second.size_bytes;
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
+    const HirStructDef* def = find_typespec_aggregate_layout(mod, ts);
+    if (!def) return 4;
+    return def->size_bytes;
   }
   return sizeof_base(ts.base);
 }
@@ -616,8 +709,9 @@ inline std::string llvm_field_ty(const HirStructField& f) {
   if (is_complex_base(f.elem_type.base)) return llvm_complex_ty(f.elem_type.base);
   if (f.elem_type.base == TB_VA_LIST) return llvm_va_list_storage_ty();
   if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
-    if (f.elem_type.tag && f.elem_type.tag[0]) {
-      return llvm_struct_type_str(f.elem_type.tag);
+    if (const std::optional<std::string> tag =
+            typespec_aggregate_final_spelling(f.elem_type)) {
+      return llvm_struct_type_str(*tag);
     }
   }
   return llvm_ty(f.elem_type);
