@@ -7045,7 +7045,7 @@ void test_typespec_mentions_template_param_uses_deferred_member_text_id() {
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_STRUCT;
-  ts.tag = arena.strdup("Owner");
+  set_legacy_tag_if_present(ts, arena.strdup("Owner"), 0);
   ts.deferred_member_type_name = arena.strdup("T");
   ts.deferred_member_type_text_id = owner.template_param_name_text_ids[0];
 
@@ -7075,7 +7075,6 @@ void test_typespec_mentions_template_param_uses_template_param_text_id_without_t
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = nullptr;
   ts.template_param_text_id = owner.template_param_name_text_ids[0];
 
   expect_true(c4c::typespec_mentions_template_param(ts, &owner),
@@ -7096,7 +7095,7 @@ void test_typespec_mentions_template_param_rejects_structured_miss_despite_tag()
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = arena.strdup("T");
+  set_legacy_tag_if_present(ts, arena.strdup("T"), 0);
   ts.template_param_text_id = texts.intern("Other");
 
   expect_true(!c4c::typespec_mentions_template_param(ts, &owner),
@@ -7109,7 +7108,7 @@ void test_template_arg_debug_ref_uses_structured_debug_payload_not_tag() {
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = arena.strdup("StaleRenderedParam");
+  set_legacy_tag_if_present(ts, arena.strdup("StaleRenderedParam"), 0);
   ts.tag_text_id = texts.intern("StructuredParam");
   ts.template_param_text_id = texts.intern("T");
   ts.deferred_member_type_text_id = texts.intern("type");

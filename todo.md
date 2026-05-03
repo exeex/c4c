@@ -8,28 +8,21 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 2 repaired the `frontend_parser_tests` runtime failure where visible
-lexical alias type-argument parsing fabricated typedef TextId metadata. The
-shared `parse_base_type()` typedef handoff now preserves only real qualified
-spelling metadata across a resolved typedef payload, so an unqualified visible
-alias to `int` no longer leaves the target typedef TextId on the concrete
-argument type.
-
-The same repair keeps resolved typedef payloads with intrinsic TextId identity
-complete by filling the current namespace context when the payload has a
-`tag_text_id` but no context. This preserves the structured carrier/equivalence
-fixtures that compare TextId metadata instead of rendered spelling.
-
-The alias-of-alias member typedef fixture moved its stale rendered owner write
-behind `set_legacy_tag_if_present()`, and the consteval lookup fixture now
-constructs explicit structured/TextId carriers for the metadata paths it
-asserts instead of relying on rendered-name side maps.
+Step 2 migrated the first remaining direct frontend parser fixture cluster
+after the alias-of-alias handoff. The three
+`typespec_mentions_template_param` fixtures and the adjacent
+`encode_template_arg_debug_ref` fixture no longer write `TypeSpec::tag`
+directly; stale rendered spellings now go through
+`set_legacy_tag_if_present()`, and the no-rendered-spelling fixture relies on
+zero-initialized `TypeSpec` state while keeping its structured
+`template_param_text_id` assertion.
 
 ## Suggested Next
 
-Run the next Step 2 deletion probe to find the next direct fixture `TypeSpec::tag`
-residual after the migrated alias-of-alias cluster, then migrate that fixture
-without changing its structured metadata assertion.
+Migrate the next Step 2 deletion-probe boundary in
+`test_type_binding_equivalence_uses_deferred_member_text_id_authority`, starting
+at `tests/frontend/frontend_parser_tests.cpp:7132`, without weakening the
+deferred-member TextId equivalence assertions.
 
 ## Watchouts
 
@@ -55,6 +48,9 @@ without changing its structured metadata assertion.
   that structured-only behavior intact.
 - `src/frontend/parser/ast.hpp` was only changed for the temporary deletion
   probe and has no lasting diff.
+- The next deletion probe now first reports direct `TypeSpec::tag` access at
+  `tests/frontend/frontend_parser_tests.cpp:7132`; later residuals remain in
+  the same file and were intentionally left for later packets.
 
 ## Proof
 
@@ -62,6 +58,10 @@ Proof output is recorded in `test_after.log`.
 
 ```text
 cmake --build build --target frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
+temporary deletion probe: remove TypeSpec::tag from src/frontend/parser/ast.hpp, then cmake --build build --target frontend_parser_tests >> test_after.log 2>&1
+restore src/frontend/parser/ast.hpp, then cmake --build build --target frontend_parser_tests >> test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
 ```
 
-Result: passed.
+Result: normal build and ctest passed before and after restoration; deletion
+probe failed at the expected next direct fixture boundary,
+`tests/frontend/frontend_parser_tests.cpp:7132`.
