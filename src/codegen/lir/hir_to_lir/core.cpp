@@ -278,11 +278,11 @@ std::optional<int> structured_layout_size_bytes(const Module& mod,
 }
 
 static void record_structured_layout_observation(
-    const Module& mod, const LirModule& lir_module, const TypeSpec& ts, const char* site,
+    const Module& mod, const LirModule& lir_module, const char* site,
     const StructuredLayoutLookup& lookup) {
   LirStructuredLayoutObservation observation;
   observation.site = site ? site : "lookup_structured_layout";
-  observation.type_name = ts.tag ? llvm_struct_type_str(ts.tag) : std::string();
+  observation.type_name = std::string(lir_module.struct_names.spelling(lookup.structured_name_id));
   observation.name_id = lookup.structured_name_id;
   observation.legacy_found = lookup.legacy_decl != nullptr;
   observation.structured_found = lookup.structured_decl != nullptr;
@@ -301,6 +301,48 @@ static void record_structured_layout_observation(
   lir_module.structured_layout_observations.push_back(std::move(observation));
 }
 
+static const HirStructDef* lookup_structured_layout_compatibility_decl(
+    const Module& mod, const TypeSpec& ts) {
+  auto find_compatibility_decl = [&](const std::optional<std::string>& tag)
+      -> const HirStructDef* {
+    if (!tag) return nullptr;
+    const auto legacy_compat_it = mod.struct_defs.find(*tag);
+    return legacy_compat_it == mod.struct_defs.end() ? nullptr : &legacy_compat_it->second;
+  };
+
+  const std::optional<std::string> compatibility_tag =
+      typespec_aggregate_compatibility_tag(mod, ts);
+  if (const HirStructDef* decl = find_compatibility_decl(compatibility_tag)) {
+    return decl;
+  }
+  return find_compatibility_decl(typespec_aggregate_final_spelling(ts));
+}
+
+static StructNameId lookup_structured_name_id_by_owner_or_compatibility(
+    const Module& mod, const LirModule& lir_module, const TypeSpec& ts) {
+  auto find_compatibility_name = [&](const std::optional<std::string>& tag)
+      -> StructNameId {
+    if (!tag) return kInvalidStructName;
+    return lir_module.struct_names.find(llvm_struct_type_str(*tag));
+  };
+
+  if (const std::optional<HirRecordOwnerKey> owner_key =
+          typespec_aggregate_owner_key(ts)) {
+    const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+    if (structured_tag && !structured_tag->empty()) {
+      const StructNameId name_id =
+          lir_module.struct_names.find(llvm_struct_type_str(*structured_tag));
+      if (name_id != kInvalidStructName) return name_id;
+    }
+  }
+
+  const std::optional<std::string> compatibility_tag =
+      typespec_aggregate_compatibility_tag(mod, ts);
+  const StructNameId compatibility_name = find_compatibility_name(compatibility_tag);
+  if (compatibility_name != kInvalidStructName) return compatibility_name;
+  return find_compatibility_name(typespec_aggregate_final_spelling(ts));
+}
+
 StructuredLayoutLookup lookup_structured_layout(const Module& mod,
                                                 const LirModule* lir_module,
                                                 const TypeSpec& ts,
@@ -312,32 +354,33 @@ StructuredLayoutLookup lookup_structured_layout(const Module& mod,
     return result;
   }
 
-  if (ts.tag && ts.tag[0]) {
-    const auto legacy_compat_it = mod.struct_defs.find(ts.tag);
-    if (legacy_compat_it != mod.struct_defs.end()) {
-      result.legacy_decl = &legacy_compat_it->second;
-    }
+  if (const std::optional<HirRecordOwnerKey> owner_key =
+          typespec_aggregate_owner_key(ts)) {
+    result.legacy_decl = mod.find_struct_def_by_owner_structured(*owner_key);
+  }
+  if (!result.legacy_decl) {
+    result.legacy_decl = lookup_structured_layout_compatibility_decl(mod, ts);
   }
 
   if (!lir_module) return result;
   result.structured_name_id = structured_name_id;
-  if (result.structured_name_id == kInvalidStructName && ts.tag && ts.tag[0]) {
-    const std::string legacy_rendered_name = llvm_struct_type_str(ts.tag);
-    result.structured_name_id = lir_module->struct_names.find(legacy_rendered_name);
+  if (result.structured_name_id == kInvalidStructName) {
+    result.structured_name_id =
+        lookup_structured_name_id_by_owner_or_compatibility(mod, *lir_module, ts);
   }
   if (result.structured_name_id == kInvalidStructName) return result;
 
   result.structured_lookup_attempted = true;
   result.structured_decl = lir_module->find_struct_decl(result.structured_name_id);
   if (!result.structured_decl || !result.legacy_decl) {
-    record_structured_layout_observation(mod, *lir_module, ts, site, result);
+    record_structured_layout_observation(mod, *lir_module, site, result);
     return result;
   }
 
   result.structured_parity_checked = true;
   result.structured_parity_matches =
       structured_fields_match_legacy_layout(mod, *result.legacy_decl, *result.structured_decl);
-  record_structured_layout_observation(mod, *lir_module, ts, site, result);
+  record_structured_layout_observation(mod, *lir_module, site, result);
   return result;
 }
 
@@ -635,9 +678,7 @@ const HirStructDef* lookup_abi_struct_layout(const Module& mod, const TypeSpec& 
     }
   }
 
-  if (!ts.tag || !ts.tag[0]) return nullptr;
-  const auto legacy_compat_it = mod.struct_defs.find(ts.tag);
-  return legacy_compat_it == mod.struct_defs.end() ? nullptr : &legacy_compat_it->second;
+  return lookup_structured_layout_compatibility_decl(mod, ts);
 }
 
 StructNameId abi_aggregate_structured_name_id(const Module& mod,
