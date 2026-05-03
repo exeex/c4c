@@ -59,6 +59,14 @@ c4c::QualifiedNameKey parser_test_qualified_name_key(
   return parser.qualified_name_key(qn);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 void test_link_name_table_reuses_text_table_storage() {
   c4c::TextTable texts;
   c4c::LinkNameTable link_names(&texts);
@@ -1220,7 +1228,7 @@ void test_parser_dependent_typename_uses_local_visible_owner_alias() {
   alias_ts.array_size = -1;
   alias_ts.inner_rank = -1;
   alias_ts.base = c4c::TB_STRUCT;
-  alias_ts.tag = arena.strdup("Box");
+  set_legacy_tag_if_present(alias_ts, arena.strdup("Box"), 0);
   alias_ts.record_def = owner;
 
   const c4c::TextId alias_text = texts.intern("Alias");

@@ -3,61 +3,54 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Re-run The TypeSpec Tag Deletion Probe
+Current Step ID: 2
+Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 3 reran the temporary `TypeSpec::tag` deletion probe after migrating the
-first `tests/frontend/frontend_parser_tests.cpp` boundary. The probe
-temporarily disabled the field in `src/frontend/parser/ast.hpp` and ran:
-
-```sh
-cmake --build --preset default > test_after.log 2>&1
-```
-
-The previous `test_parser_parse_base_type_identifier_probes_use_token_spelling`
-boundary no longer appears in the compile errors. The first remaining
-`frontend_parser_tests.cpp` boundary moved to the direct `TypeSpec::tag` write
-in `test_parser_dependent_typename_uses_local_visible_owner_alias` at line
-1223. Later visible residuals remain in the same file and in
-`frontend_parser_lookup_authority_tests.cpp`,
-`cpp_hir_static_member_base_metadata_test.cpp`,
-`frontend_hir_lookup_tests.cpp`,
-`cpp_hir_member_typedef_binding_metadata_test.cpp`, and
-`cpp_hir_nested_member_typedef_record_def_metadata_test.cpp`.
-
-The probe edit was restored, and a normal `cmake --build --preset default`
-passed.
+Step 2 migrated the direct `alias_ts.tag = arena.strdup("Box")` write in
+`test_parser_dependent_typename_uses_local_visible_owner_alias` behind the
+local `set_legacy_tag_if_present` compatibility helper. The fixture still seeds
+the stale legacy owner spelling while `TypeSpec::tag` exists, and it preserves
+the local-visible owner alias contract through `record_def`.
 
 ## Suggested Next
 
-Execute the next Step 2 fixture-migration packet on
-`test_parser_dependent_typename_uses_local_visible_owner_alias` in
-`tests/frontend/frontend_parser_tests.cpp`. Preserve its local-visible owner
-alias contract by moving the direct legacy `alias_ts.tag` write behind an
-explicit helper or structured carrier setup that compiles without
-`TypeSpec::tag`.
+Re-run the temporary `TypeSpec::tag` deletion probe to confirm this boundary
+moved and classify the next frontend/HIR fixture residual.
 
 ## Watchouts
 
 - Do not reactivate parked idea 142 for parser/HIR fixture residuals.
 - Do not weaken tests or remove stale-rendered-spelling disagreement coverage
   just to make the field deletion compile.
+- The delegated `frontend_parser_tests` proof still fails at the known
+  namespace-owner assertion:
+  `FAIL: namespace owner resolution should use the method owner TextId before rendered owner spelling`.
+  The build step completed before that runtime failure.
 - Temporary deletion probes must be restored unless the packet is the final
   accepted field-removal deletion.
-- The `frontend_parser_tests` runtime failure from the previous packet is
-  present both before and after that slice; do not treat it as a regression from
-  fixture migration unless a new test failure appears.
 - The next target should not reintroduce a replacement semantic string field on
   `TypeSpec`; use local compatibility helpers or structured metadata.
 
 ## Proof
 
-Step 3 deletion probe failed as expected with `TypeSpec::tag` disabled and
-recorded the next frontend/HIR fixture boundary in `test_after.log`. Restored
-proof:
+Delegated proof command:
 
 ```sh
-cmake --build --preset default
+bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^frontend_parser_tests$"' > test_after.log 2>&1
 ```
+
+Result: build completed; `frontend_parser_tests` failed with the known
+namespace-owner assertion above. Proof log: `test_after.log`.
+
+Supervisor-side matching guard:
+
+```sh
+bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^frontend_parser_tests$"' > test_before.log 2>&1
+bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^frontend_parser_tests$"' > test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS with the same pre-existing failure before and after
+(`passed=0 failed=1 total=1`, no new failures).
