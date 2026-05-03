@@ -6520,7 +6520,8 @@ void test_parser_record_layout_const_eval_uses_record_definition_authority() {
   compatibility_tag_map["Shared"] = stale;
 
   c4c::TypeSpec typed = parser_test_scalar_type(c4c::TB_STRUCT);
-  typed.tag = arena.strdup("Shared");
+  typed.tag_text_id = parser_test_text_id(parser, "Shared");
+  set_legacy_tag_if_present(typed, arena.strdup("Shared"), 0);
   typed.record_def = real;
 
   c4c::Node* align_node = parser.make_node(c4c::NK_ALIGNOF_TYPE, 1);
