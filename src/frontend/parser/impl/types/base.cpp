@@ -3851,14 +3851,74 @@ TypeSpec Parser::parse_base_type() {
                                 *this, primary_tpl, tpl_name);
                         // Build preliminary type bindings from explicit args
                         std::vector<std::pair<std::string, TypeSpec>> prelim_tb;
+                        struct PrelimTypeBindingMetadata {
+                            std::string name;
+                            TextId name_text_id = kInvalidText;
+                            TypeSpec type{};
+                        };
+                        std::vector<PrelimTypeBindingMetadata> prelim_tb_meta;
                         std::vector<std::pair<std::string, long long>> prelim_nb;
                         std::vector<ParserNttpBindingMetadata> prelim_nb_meta;
+                        auto prelim_type_binding_metadata =
+                            [&](int param_idx, const char* fallback_name,
+                                const TypeSpec& bound_type)
+                            -> PrelimTypeBindingMetadata {
+                            PrelimTypeBindingMetadata binding{};
+                            binding.name =
+                                fallback_name ? fallback_name : std::string{};
+                            binding.type = bound_type;
+                            if (primary_tpl->template_param_names &&
+                                param_idx >= 0 &&
+                                param_idx < primary_tpl->n_template_params &&
+                                primary_tpl->template_param_names[param_idx]) {
+                                binding.name =
+                                    primary_tpl->template_param_names[param_idx];
+                            }
+                            if (primary_tpl->template_param_name_text_ids &&
+                                param_idx >= 0 &&
+                                param_idx < primary_tpl->n_template_params) {
+                                binding.name_text_id =
+                                    primary_tpl
+                                        ->template_param_name_text_ids[param_idx];
+                            }
+                            if (binding.name_text_id == kInvalidText &&
+                                !binding.name.empty()) {
+                                binding.name_text_id =
+                                    parser_text_id_for_token(kInvalidText,
+                                                             binding.name);
+                            }
+                            return binding;
+                        };
                         auto prelim_type_for_type =
                             [&](TypeSpec type) -> TypeSpec {
-                            if (type.base == TB_TYPEDEF && type.tag &&
-                                type.tag[0]) {
-                                for (const auto& [pname, pts] : prelim_tb) {
-                                    if (pname == type.tag) return pts;
+                            if (type.base == TB_TYPEDEF) {
+                                TextId type_text_id =
+                                    type.template_param_text_id != kInvalidText
+                                        ? type.template_param_text_id
+                                        : type.tag_text_id;
+                                bool has_structured_binding = false;
+                                if (type_text_id != kInvalidText) {
+                                    for (const PrelimTypeBindingMetadata&
+                                             binding : prelim_tb_meta) {
+                                        if (binding.name_text_id ==
+                                            kInvalidText) {
+                                            continue;
+                                        }
+                                        has_structured_binding = true;
+                                        if (binding.name_text_id ==
+                                            type_text_id) {
+                                            return binding.type;
+                                        }
+                                    }
+                                    if (has_structured_binding) return type;
+                                }
+                                if (const char* legacy_tag =
+                                        parse_base_type_legacy_tag_if_no_metadata(
+                                            type)) {
+                                    for (const auto& [pname, pts] :
+                                         prelim_tb) {
+                                        if (pname == legacy_tag) return pts;
+                                    }
                                 }
                             }
                             return type;
@@ -3913,15 +3973,35 @@ TypeSpec Parser::parse_base_type() {
                             }
                             TypeSpec candidate{};
                             candidate.base = TB_TYPEDEF;
-                            candidate.tag = node->left->name;
                             candidate.tag_text_id =
                                 node->left->unqualified_text_id;
+                            if (candidate.tag_text_id == kInvalidText &&
+                                node->left->name && node->left->name[0]) {
+                                candidate.tag_text_id =
+                                    parser_text_id_for_token(kInvalidText,
+                                                             node->left->name);
+                            }
+                            set_parse_base_type_legacy_tag_if_present(
+                                candidate, node->left->name, 0);
                             candidate.array_size = -1;
                             candidate.inner_rank = -1;
                             *out_type = prelim_type_for_type(candidate);
-                            return out_type->base != TB_TYPEDEF ||
-                                   out_type->record_def ||
-                                   out_type->tag != candidate.tag;
+                            if (out_type->base != TB_TYPEDEF ||
+                                out_type->record_def) {
+                                return true;
+                            }
+                            const TextId out_text_id =
+                                out_type->template_param_text_id != kInvalidText
+                                    ? out_type->template_param_text_id
+                                    : out_type->tag_text_id;
+                            if (candidate.tag_text_id != kInvalidText ||
+                                out_text_id != kInvalidText) {
+                                return out_text_id != candidate.tag_text_id;
+                            }
+                            return parse_base_type_legacy_tag_if_no_metadata(
+                                       *out_type) !=
+                                   parse_base_type_legacy_tag_if_no_metadata(
+                                       candidate);
                         };
                         std::function<bool(const Node*)>
                             prelim_expr_has_unsigned_type =
@@ -3967,7 +4047,11 @@ TypeSpec Parser::parse_base_type() {
                             if (node->kind == NK_SIZEOF_TYPE) {
                                 const TypeSpec sized =
                                     prelim_type_for_type(node->type);
-                                if (sized.base == TB_TYPEDEF && sized.tag)
+                                if (sized.base == TB_TYPEDEF &&
+                                    (parse_base_type_has_structured_identity_metadata(
+                                         sized) ||
+                                     parse_base_type_legacy_tag_if_no_metadata(
+                                         sized)))
                                     return false;
                                 *out = sizeof_type_spec(sized);
                                 return true;
@@ -4185,8 +4269,12 @@ TypeSpec Parser::parse_base_type() {
                                             actual_args[pi].value));
                                 }
                             } else {
-                                if (!actual_args[pi].is_value)
+                                if (!actual_args[pi].is_value) {
                                     prelim_tb.push_back({pn, actual_args[pi].type});
+                                    prelim_tb_meta.push_back(
+                                        prelim_type_binding_metadata(
+                                            pi, pn, actual_args[pi].type));
+                                }
                             }
                         }
                         // Evaluate deferred defaults for missing args
@@ -4230,6 +4318,11 @@ TypeSpec Parser::parse_base_type() {
                                 prelim_tb.push_back(
                                     {primary_tpl->template_param_names[sz],
                                      da.type});
+                                prelim_tb_meta.push_back(
+                                    prelim_type_binding_metadata(
+                                        sz,
+                                        primary_tpl->template_param_names[sz],
+                                        da.type));
                             }
                             ++sz;
                         }

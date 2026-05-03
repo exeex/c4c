@@ -19,6 +19,7 @@ set(frontend_test_targets frontend_lexer_tests frontend_parser_tests
                           cpp_hir_parser_support_residual_metadata_test
                           cpp_hir_parser_member_typedef_lookup_metadata_test
                           cpp_hir_parser_type_base_residual_metadata_test
+                          cpp_hir_parser_type_base_prelim_eval_metadata_test
                           cpp_hir_parser_type_base_producer_metadata_test
                           cpp_hir_parser_type_base_record_enum_producer_metadata_test
                           cpp_hir_parser_type_base_alias_member_substitution_metadata_test
@@ -97,6 +98,8 @@ add_test(NAME cpp_hir_parser_member_typedef_lookup_structured_metadata
          COMMAND cpp_hir_parser_member_typedef_lookup_metadata_test)
 add_test(NAME cpp_hir_parser_type_base_residual_structured_metadata
          COMMAND cpp_hir_parser_type_base_residual_metadata_test)
+add_test(NAME cpp_hir_parser_type_base_prelim_eval_structured_metadata
+         COMMAND cpp_hir_parser_type_base_prelim_eval_metadata_test)
 add_test(NAME cpp_hir_parser_type_base_producer_structured_metadata
          COMMAND cpp_hir_parser_type_base_producer_metadata_test)
 add_test(NAME cpp_hir_parser_type_base_record_enum_producer_structured_metadata
@@ -167,6 +170,8 @@ set_tests_properties(cpp_hir_parser_support_residual_structured_metadata
 set_tests_properties(cpp_hir_parser_member_typedef_lookup_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
 set_tests_properties(cpp_hir_parser_type_base_residual_structured_metadata
+                     PROPERTIES LABELS "internal;hir;cpp")
+set_tests_properties(cpp_hir_parser_type_base_prelim_eval_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
 set_tests_properties(cpp_hir_parser_type_base_producer_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
