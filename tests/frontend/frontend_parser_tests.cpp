@@ -1852,13 +1852,14 @@ void test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup() {
   target_ts.inner_rank = -1;
   target_ts.base = c4c::TB_INT;
 
+  const c4c::TextId target_text = texts.intern("Target");
+
   c4c::TypeSpec alias_ts{};
   alias_ts.array_size = -1;
   alias_ts.inner_rank = -1;
   alias_ts.base = c4c::TB_TYPEDEF;
-  alias_ts.tag = arena.strdup("Target");
+  alias_ts.tag_text_id = target_text;
 
-  const c4c::TextId target_text = texts.intern("Target");
   parser.push_local_binding_scope();
   parser.bind_local_typedef(target_text, target_ts);
 

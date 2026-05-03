@@ -3,26 +3,21 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Re-run The TypeSpec Tag Deletion Probe
+Current Step ID: 2
+Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 3 re-ran the temporary `TypeSpec::tag` deletion probe by removing the
-field from `src/frontend/parser/ast.hpp` and building with the supervisor
-selected proof command. The probe still fails to compile; the first remaining
-boundary is `tests/frontend/frontend_parser_tests.cpp:1859`, where
-`test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup`
-writes `alias_ts.tag = arena.strdup("Target")`. The temporary deletion edit was
-restored afterward.
+Step 2 migrated the direct `alias_ts.tag` fixture write in
+`test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup` to
+`alias_ts.tag_text_id`, reusing the `Target` `TextId` that is bound in the
+local visible typedef scope. The local visible scope lookup assertion remains
+unchanged.
 
 ## Suggested Next
 
-Migrate the next owned compile boundary in `tests/frontend/frontend_parser_tests.cpp`:
-replace the direct `alias_ts.tag` write in
-`test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup` with
-TextId-backed or helper-mediated metadata, preserving the test's local visible
-scope lookup contract.
+Re-run the temporary `TypeSpec::tag` deletion probe to identify the next direct
+tag fixture write after the migrated local visible scope typedef-chain case.
 
 ## Watchouts
 
@@ -49,12 +44,13 @@ Proof is recorded in `test_after.log`.
 cmake --build --preset default > test_after.log 2>&1
 ```
 
-Result: failed as the expected deletion probe. First error:
-`tests/frontend/frontend_parser_tests.cpp:1859:12: error: 'struct c4c::TypeSpec' has no member named 'tag'`.
+Result: passed.
 
 ```sh
-cmake --build --preset default
+ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
 ```
 
-Result: passed after restoring the temporary `src/frontend/parser/ast.hpp`
-deletion edit. `test_after.log` intentionally remains the probe-build log.
+Result: failed only at the known pre-existing
+`namespace owner resolution should use the method owner TextId before rendered
+owner spelling` assertion; kept as observational parser-test output for this
+packet.
