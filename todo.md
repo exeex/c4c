@@ -9,38 +9,51 @@ Current Step Title: Probe TypeSpec Tag Removal Boundary
 ## Just Finished
 
 Step 5 - Probe TypeSpec Tag Removal Boundary:
-migrated the shared codegen helper boundary exposed by the deletion probe.
-`llvm_ty`, `llvm_alloca_ty`, and `llvm_field_ty` now obtain final LLVM
-aggregate spelling through a dedicated final-spelling helper instead of
-directly reading `TypeSpec::tag`; `sizeof_ts` now prefers structured
-`HirRecordOwnerKey` layout lookup and uses rendered compatibility only through
-an explicit fallback helper. The exposed call and `va_arg` residual checks now
-use structured aggregate presence or explicit legacy-tag compatibility helpers
-instead of direct `tag` reads.
+reran the temporary `TypeSpec::tag` deletion probe after migrating the shared
+helper boundary. The probe again failed as expected, then the temporary
+`ast.hpp` edit was reverted.
+
+New first remaining boundary:
+- `src/codegen/lir/hir_to_lir/const_init_emitter.cpp:791-915` still uses
+  `TypeSpec::tag` while lowering constant global-address member and indexed
+  member expressions into final GEP strings and field-walk offsets.
+- `src/codegen/lir/hir_to_lir/const_init_emitter.cpp:1458` still gates
+  aggregate byte encoding on `cur_ts.tag`.
+
+Additional same-wave residuals visible after that first failure:
+- `src/codegen/lir/hir_to_lir/core.cpp:285`, `315-325`, and `638-639`
+  still read `TypeSpec::tag` in structured layout observation and legacy
+  lookup/HFA helpers.
+- `src/codegen/lir/hir_to_lir/expr/coordinator.cpp:68-69` still uses
+  `TypeSpec::tag` for member function-pointer signature discovery.
 
 ## Suggested Next
 
-Next coherent packet: rerun the temporary `TypeSpec::tag` deletion probe and
-classify the new first compile boundary. If the first boundary is still within
-codegen aggregate identity, migrate that one family; if it is outside this
-idea, split it into a follow-up idea instead of widening this runbook.
+Next coherent packet: migrate the const-init address/GEP field-walk residuals
+in `const_init_emitter.cpp` so final GEP string construction and offset walking
+obtain owner tags through structured metadata or explicit final-spelling helper
+paths instead of direct `TypeSpec::tag` reads. Keep final emitted LLVM GEP text
+unchanged.
 
 ## Watchouts
 
-- Final LLVM type spelling is intentionally preserved. Helpers without a
-  `Module` still use available `TypeSpec` spelling metadata for output text,
-  while helpers with a `Module` can use `tag_text_id` and structured owner
-  indexes before explicit compatibility fallback.
-- `typespec_legacy_tag_if_present` is an explicit compatibility bridge and is
-  SFINAE-shaped so a future deletion probe can compile past these sites.
-- The next deletion probe may expose broader codegen residuals outside the
-  owned helper/call/va_arg boundary; do not fold unrelated ABI, const-init,
-  lvalue, or type-chain routes into this packet retroactively.
+- The deletion build is intentionally not committed; `TypeSpec::tag` is restored
+  in the working tree.
+- The const-init residual is partly final LLVM GEP spelling and partly semantic
+  field walking. Preserve emitted GEP text while moving the field-owner lookup
+  and current aggregate owner tracking to structured metadata or explicit
+  compatibility helpers.
+- `core.cpp` and `expr/coordinator.cpp` are next-wave residuals, not part of the
+  immediate const-init first boundary unless the const-init route proves a
+  shared helper is missing.
 
 ## Proof
 
-Proof command:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_.*|cpp_hir_(sema_canonical_symbol|sema_consteval_type_utils).*structured_metadata|cpp_positive_sema_(c_style_cast_.*field_access|inherited_base_member_access_runtime|inherited_base_aggregate_init_runtime|record_nested_aggregate_member_parse|operator_struct_byval_param|struct_method|template_struct.*)_cpp|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_struct_result_c|llvm_gcc_c_torture_src_(pta_field_[12]|struct_(aliasing_1|cpy_1|ini_[1-4]|ret_2)|zero_struct_[12])_c|eastl_cpp_external_utility_frontend_basic_cpp)$"' > test_after.log 2>&1`
+Deletion probe command:
+`cmake --build --preset default > test_after.log 2>&1`
 
-Matching baseline and patched proof were captured in `test_before.log` and
-`test_after.log`. Regression guard passed with 38/38 before and 38/38 after.
+Expected probe failure was captured in `test_after.log`; first compile failure
+is `src/codegen/lir/hir_to_lir/const_init_emitter.cpp:791` because
+`TypeSpec::tag` no longer exists. The temporary `ast.hpp` edit was reverted
+after the probe, and `cmake --build --preset default` then passed to confirm
+the workspace returned to a buildable state.
