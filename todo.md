@@ -8,28 +8,26 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 2 migrated the template static member base fixture residual in
-`test_parser_template_static_member_lookup_prefers_record_definition()` away
-from direct `specialization->base_types[0].tag` access. The fixture now routes
-the optional stale rendered `SharedBase` spelling through
-`set_legacy_tag_if_present()` while preserving the authoritative
-`base_types[0].record_def = real_base` metadata and the `value == 17`
-record-definition lookup assertion.
+Step 2 migrated the sema cast-expression fixture helper
+`make_sema_cast_expr_function()` away from direct `cast->type.tag` writes.
+The helper now routes the optional stale rendered cast target spelling through
+`set_legacy_tag_if_present()` so the legacy-rendered sema route is preserved
+when the compatibility field exists, while the helper and both stale-name
+callers compile when `TypeSpec::tag` is temporarily removed.
 
 The follow-up deletion probe temporarily removed `TypeSpec::tag` from
 `src/frontend/parser/ast.hpp`, reran the delegated fixture-surface build probe,
 captured the result in `test_after.log`, and restored `ast.hpp` afterward.
 The migrated fixture no longer blocks that probe; the first remaining
 fixture/test compile boundary moved to
-`tests/frontend/frontend_parser_tests.cpp:5343`, where
-`make_sema_cast_expr_function()` still writes `cast->type.tag`.
+`tests/frontend/frontend_parser_tests.cpp:5662`, where a lambda still writes
+`ts.tag = tag`.
 
 ## Suggested Next
 
 Migrate the next fixture residual at
-`tests/frontend/frontend_parser_tests.cpp:5343` away from direct
-`cast->type.tag` access while preserving the sema cast-expression fixture
-contract.
+`tests/frontend/frontend_parser_tests.cpp:5662` away from direct `ts.tag`
+access while preserving the surrounding sema lookup/call fixture contract.
 
 ## Watchouts
 
@@ -38,9 +36,6 @@ contract.
   just to make the field deletion compile.
 - The delegated `frontend_parser_tests` target build covers this fixture
   surface, but the deletion probe still shows later direct `tag` residuals.
-- The focused frontend parser test previously had the known pre-existing
-  `namespace owner resolution should use the method owner TextId before rendered
-  owner spelling` failure.
 - `src/frontend/parser/ast.hpp` was only changed for the temporary deletion
   probe and should have no lasting diff.
 
@@ -57,4 +52,4 @@ Result: the normal `frontend_parser_tests` target build passed after the
 fixture migration. The deletion-probe build failed while `TypeSpec::tag` was
 temporarily removed, then `ast.hpp` was restored. The first remaining compile
 boundary is the direct fixture access at
-`tests/frontend/frontend_parser_tests.cpp:5343`.
+`tests/frontend/frontend_parser_tests.cpp:5662`.

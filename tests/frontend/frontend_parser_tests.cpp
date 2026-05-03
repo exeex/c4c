@@ -5340,7 +5340,7 @@ c4c::Node* make_sema_cast_expr_function(c4c::Parser& parser,
 
   c4c::Node* cast = parser.make_node(c4c::NK_CAST, 1);
   cast->type = make_sema_lookup_ts(c4c::TB_TYPEDEF, 1);
-  cast->type.tag = arena.strdup(cast_tag);
+  set_legacy_tag_if_present(cast->type, arena.strdup(cast_tag), 0);
   cast->left = literal;
 
   c4c::Node* stmt = parser.make_node(c4c::NK_EXPR_STMT, 1);
