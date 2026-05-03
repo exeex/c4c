@@ -87,6 +87,18 @@ removal route, including:
   semantic identity from `TypeSpec::tag`; those gaps should become separate
   open ideas rather than resurrecting a rendered semantic field on `TypeSpec`.
 
+## Lifecycle Checkpoints
+
+- 2026-05-03: Frontend/parser/Sema/HIR-owned deletion-probe residuals were
+  cleared through Step 4. The next first failure is a downstream codegen/LIR
+  carrier boundary at `src/codegen/shared/llvm_helpers.hpp:444`, with related
+  `src/codegen` aggregate type-name, layout, field-chain, call, va_arg, and
+  ABI lookup sites still reading `TypeSpec::tag`. This source idea is parked
+  rather than closed because `TypeSpec::tag` still exists and the field-removal
+  build is blocked by downstream carrier work. Follow-up idea
+  `ideas/open/142_codegen_lir_aggregate_type_identity_metadata.md` owns that
+  downstream boundary.
+
 ## Out Of Scope
 
 - Removing final emitted names, diagnostics, dump text, ABI/link spelling, or
