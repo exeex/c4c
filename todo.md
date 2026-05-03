@@ -9,24 +9,25 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the targeted
-`src/frontend/parser/impl/types/base.cpp` alias-template/template-member
-substitution identity cluster starting at the prior deletion-probe residual near
-line 2673. Carrier args, template arg refs, dependent-scope checks,
-alias-member binding substitution, owner-alias carrier substitution, and direct
-alias parameter replacement now use `tag_text_id`/`template_param_text_id` and
-other structured identity metadata before consulting rendered tag compatibility,
-with rendered tag access isolated behind no-metadata field-detected fallback.
+`src/frontend/parser/impl/types/base.cpp` deferred-member typedef/template-origin
+cluster that started at the prior deletion-probe residual near line 3565.
+Qualified member typedef gates, template primary lookup, deferred-member
+argument resolution, and pack-argument origin/member rendering now consult
+`tag_text_id`, `record_def`, `tpl_struct_origin_key`, and
+`deferred_member_type_text_id` before rendered compatibility fallback. The
+remaining substituted template final spelling writes in this cluster now go
+through the field-detected legacy-tag setter.
 The packet added
-`cpp_hir_parser_type_base_alias_member_substitution_structured_metadata`, which
-proves stale rendered `U` text cannot override structured `T` metadata when
-substituting an alias-template member typedef.
+`cpp_hir_parser_type_base_deferred_member_template_origin_structured_metadata`,
+which proves stale rendered template spelling cannot block structured
+`tag_text_id` template-origin parsing for a deferred member typedef argument.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected parser type-base residual
-family. The current deletion probe first emits at
-`src/frontend/parser/impl/types/base.cpp:3565`, in the later deferred member
-typedef/template-origin residual area.
+family. The current deletion probe first emits outside this packet's ownership
+at `src/frontend/parser/impl/types/declarator.cpp:661`; the first remaining
+`base.cpp` residual is later around line 3850.
 
 ## Watchouts
 
@@ -40,7 +41,7 @@ typedef/template-origin residual area.
 - Do not weaken tests, mark supported cases unsupported, or add named-case
   shortcuts.
 - The deletion probe log for this packet is
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_alias_member_substitution.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_deferred_member_template_origin.log`.
 
 ## Proof
 
@@ -48,10 +49,10 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(eastl_cpp_external_utility_frontend_basic_cpp|frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 103 of 103
+Result: command exited 0. The build passed, and CTest passed 104 of 104
 delegated tests, including the new
-`cpp_hir_parser_type_base_alias_member_substitution_structured_metadata` test,
-the existing parser type-base structured metadata tests, and
+`cpp_hir_parser_type_base_deferred_member_template_origin_structured_metadata`
+test, the existing parser type-base structured metadata tests, and
 `eastl_cpp_external_utility_frontend_basic_cpp`. `test_after.log` is the
 canonical proof log.
 
@@ -59,17 +60,19 @@ Regression guard:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
 
-Result: command exited 0. Guard passed with `passed=102 failed=0 total=102`
-before and `passed=103 failed=0 total=103` after. There are no new failing
+Result: command exited 0. Guard passed with `passed=103 failed=0 total=103`
+before and `passed=104 failed=0 total=104` after. There are no new failing
 tests; the pass-count increase over the current baseline is the new parser
-type-base alias-member substitution test.
+type-base deferred-member template-origin test.
 
 Deletion probe:
 
 Temporarily removing `TypeSpec::tag` and running
 `cmake --preset default && cmake --build --preset default` in a throwaway copy
 of the working tree wrote
-`/tmp/c4c_typespec_tag_deletion_probe_step4_alias_member_substitution.log`. The
-first emitted residual is now `src/frontend/parser/impl/types/base.cpp:3565`,
-so the targeted alias-template/template-member substitution cluster around the
-prior line 2673 residual is no longer first.
+`/tmp/c4c_typespec_tag_deletion_probe_step4_deferred_member_template_origin.log`.
+The first emitted residual is now
+`src/frontend/parser/impl/types/declarator.cpp:661`, outside this packet's
+owned files. The first remaining `base.cpp` residual is later around line 3850,
+so the targeted deferred-member/template-origin cluster around the prior line
+3565 residual is no longer first.
