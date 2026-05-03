@@ -54,3 +54,10 @@ python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
 
 Result: PASS with the same pre-existing failure before and after
 (`passed=0 failed=1 total=1`, no new failures).
+
+Baseline review:
+hook-produced `test_baseline.new.log` at commit `a6cc8201e` was rejected
+against accepted `test_baseline.log` because it regressed from 3000/3000 to
+2892/3023 with 131 new failures. The candidate was deleted with
+`scripts/plan_review_state.py reject-baseline --delete-candidate`; keep the
+accepted full-suite baseline at `ba8120f246`.
