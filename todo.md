@@ -9,33 +9,42 @@ Current Step Title: Probe TypeSpec Tag Removal Boundary
 ## Just Finished
 
 Step 5 - Probe TypeSpec Tag Removal Boundary:
-migrated the narrow member function-pointer signature discovery route in
-`src/codegen/lir/hir_to_lir/expr/coordinator.cpp` off direct `base_ts.tag`
-reads. The route now asks `find_typespec_aggregate_layout()` for the owner
-layout, which prefers structured aggregate owner metadata and keeps the
-rendered-name path behind the helper's explicitly named compatibility fallback.
+reran the temporary `TypeSpec::tag` deletion probe after the coordinator
+migration. The first remaining compile boundary is now
+`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: LIR-owned `TypeSpec` tag interning,
+field/global/signature aggregate type-ref helpers, object alignment,
+flexible-array global lowering, and base-class type-ref construction still
+read or assign `.tag`. Same-wave residuals also appear in
+`src/codegen/lir/hir_to_lir/lvalue.cpp:658-659`, where member field access still
+falls back from structured identity to `access.base_ts.tag`.
 
 ## Suggested Next
 
-Next coherent packet: run the temporary `TypeSpec::tag` deletion probe again
-and migrate the next narrow `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`
-boundary it exposes. Expected same-wave candidates from the prior probe are
-LIR-owned `TypeSpec` tag interning, aggregate type-ref helpers, object
-alignment, flexible-array global lowering, and base-class type-ref
-construction.
+Next coherent packet: migrate the narrow front-of-file `hir_to_lir.cpp`
+aggregate type-ref helper family (`lir_owned_type_spec`,
+`lir_field_type_ref`, `lir_global_type_ref`, and `lir_signature_type_ref`) so
+structured metadata or existing compatibility helpers supply aggregate refs
+without direct `TypeSpec::tag` reads. Keep object alignment, flexible-array
+global lowering, base-class type-ref construction, and the `lvalue.cpp`
+same-wave residual for later packets unless this helper migration naturally
+clears them.
 
 ## Watchouts
 
-- `expr/coordinator.cpp` now has no `.tag` reads; `rg -n "base_ts\\.tag|\\.tag"
-  src/codegen/lir/hir_to_lir/expr/coordinator.cpp` returns no matches.
-- Keep the next packet narrow. The remaining `hir_to_lir.cpp` same-wave
-  failures are numerous enough to migrate one boundary at a time.
-- The accepted focused baseline remains in `test_before.log`; `test_after.log`
-  now contains the successful post-migration proof, not the failed deletion
-  probe artifact.
+- The probe edit was temporary: `const char* tag` in
+  `src/frontend/parser/ast.hpp` was restored before the post-probe rebuild.
+- `hir_to_lir.cpp` line 39 is a carrier ownership/interning route; avoid
+  replacing it with another rendered-string semantic key.
+- The same-wave `lvalue.cpp` residual should not be bundled into the helper
+  packet unless a shared helper is already required and the fix remains small.
 
 ## Proof
 
-Proof command:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_.*|cpp_hir_(sema_canonical_symbol|sema_consteval_type_utils).*structured_metadata|cpp_positive_sema_(c_style_cast_.*field_access|inherited_base_member_access_runtime|inherited_base_aggregate_init_runtime|record_nested_aggregate_member_parse|operator_struct_byval_param|struct_method|template_struct.*)_cpp|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_struct_result_c|llvm_gcc_c_torture_src_(pta_field_[12]|struct_(aliasing_1|cpy_1|ini_[1-4]|ret_2)|zero_struct_[12])_c|eastl_cpp_external_utility_frontend_basic_cpp)$"' > test_after.log 2>&1`
-passed. `test_after.log` reports 38/38 tests passed.
+Probe command:
+`cmake --build --preset default > test_after.log 2>&1` with `const char* tag`
+temporarily disabled failed at the `hir_to_lir.cpp` boundary above.
+
+After reverting the temporary probe edit, `cmake --build --preset default`
+passed. The accepted focused baseline remains in `test_before.log`; the current
+`test_after.log` is the failed deletion-probe artifact and should be
+overwritten by the next executor proof.
