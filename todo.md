@@ -9,39 +9,34 @@ Current Step Title: Probe TypeSpec Tag Removal Boundary
 ## Just Finished
 
 Step 5 - Probe TypeSpec Tag Removal Boundary:
-reran the temporary `TypeSpec::tag` deletion probe after the `lvalue.cpp`
-member-access migration. The first remaining compile boundary is now
-`src/codegen/lir/hir_to_lir/types.cpp`: `lookup_field_chain_layout` still
-assigns `ts.tag`, and anonymous/base field-chain recursion still reads
-`f.elem_type.tag`. Same-wave residuals also appear in
-`src/codegen/llvm/calling_convention.cpp:116-117` ABI legacy fallback and
-`src/codegen/lir/verify.cpp:664` direct aggregate signature verification.
+migrated the `src/codegen/lir/hir_to_lir/types.cpp` field-chain boundary off
+direct `TypeSpec::tag` assignment/reads. `lookup_field_chain_layout` now builds
+its probe type from `HirStructDef` owner metadata and the named legacy-tag
+compatibility helper, and anonymous member recursion now resolves nested record
+spelling through `typespec_aggregate_compatibility_tag` instead of reading
+`f.elem_type.tag`.
 
 ## Suggested Next
 
-Next coherent packet: migrate the `types.cpp` field-chain boundary so
-`lookup_field_chain_layout` and anonymous/base recursion use structured
-`StructNameId`, owner metadata, or an existing named compatibility helper
-instead of assigning or reading `TypeSpec::tag`. Keep ABI and verifier
-same-wave residuals for later packets unless the field-chain fix needs a tiny
-shared helper.
+Next coherent packet: rerun the temporary `TypeSpec::tag` deletion probe and
+migrate the next compile boundary, expected to be the ABI legacy fallback in
+`src/codegen/llvm/calling_convention.cpp` or the direct aggregate signature
+verification residual in `src/codegen/lir/verify.cpp`.
 
 ## Watchouts
 
-- The probe edit was temporary: `const char* tag` in
-  `src/frontend/parser/ast.hpp` was restored before the post-probe rebuild.
-- `src/codegen/lir/hir_to_lir/lvalue.cpp` no longer reads `access.base_ts.tag`;
-  remaining `.tag` in that file is `tag_text_id` metadata or `FieldStep::tag`.
-- Avoid widening the next packet into ABI or verifier cleanup until the
-  field-chain first boundary is cleared.
+- `types.cpp` still writes `FieldStep::tag` for GEP text and observes
+  `tag_text_id`; those are not `TypeSpec::tag` residuals.
+- `field_chain_owner_type_spec` intentionally keeps the rendered tag behind
+  `set_typespec_legacy_tag_if_present` so the current tree preserves legacy
+  compatibility while the deletion probe can compile past this boundary.
+- Keep the next packet scoped to the first deletion-probe compile failure; ABI
+  and verifier residuals should remain separate unless one tiny shared helper
+  naturally covers both.
 
 ## Proof
 
-Probe command:
-`cmake --build --preset default > test_after.log 2>&1` with `const char* tag`
-temporarily disabled failed at the `types.cpp` boundary above.
-
-After reverting the temporary probe edit, `cmake --build --preset default`
-passed. The accepted focused baseline remains in `test_before.log`; the current
-`test_after.log` is the failed deletion-probe artifact and should be
-overwritten by the next executor proof.
+Proof command:
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_.*|cpp_hir_(sema_canonical_symbol|sema_consteval_type_utils).*structured_metadata|cpp_positive_sema_(c_style_cast_.*field_access|inherited_base_member_access_runtime|inherited_base_aggregate_init_runtime|record_nested_aggregate_member_parse|operator_struct_byval_param|struct_method|template_struct.*)_cpp|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_struct_result_c|llvm_gcc_c_torture_src_(pta_field_[12]|struct_(aliasing_1|cpy_1|ini_[1-4]|ret_2)|zero_struct_[12])_c|eastl_cpp_external_utility_frontend_basic_cpp)$"' > test_after.log 2>&1`
+passed. `test_after.log` contains the successful build plus 38 selected tests,
+all passing.

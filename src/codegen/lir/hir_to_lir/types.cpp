@@ -6,6 +6,25 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
+TypeSpec field_chain_owner_type_spec(const std::string& tag, const HirStructDef& sd) {
+  TypeSpec ts{};
+  ts.base = sd.is_union ? TB_UNION : TB_STRUCT;
+  ts.tag_text_id = sd.tag_text_id;
+  ts.namespace_context_id = sd.ns_qual.context_id;
+  ts.is_global_qualified = sd.ns_qual.is_global_qualified;
+  ts.n_qualifier_segments = static_cast<int>(sd.ns_qual.segment_text_ids.size());
+  ts.qualifier_text_ids = ts.n_qualifier_segments > 0
+                              ? const_cast<TextId*>(sd.ns_qual.segment_text_ids.data())
+                              : nullptr;
+  set_typespec_legacy_tag_if_present(ts, tag.c_str(), 0);
+  return ts;
+}
+
+std::optional<std::string> field_chain_nested_tag(const Module& mod, const HirStructField& field) {
+  if (!field.is_anon_member) return std::nullopt;
+  return typespec_aggregate_compatibility_tag(mod, field.elem_type);
+}
+
 StructNameId structured_child_name_id(const StructuredLayoutLookup& layout, int llvm_idx) {
   if (!layout.structured_decl || llvm_idx < 0) return kInvalidStructName;
   const auto field_index = static_cast<std::size_t>(llvm_idx);
@@ -54,9 +73,7 @@ TypeSpec StmtEmitter::resolve_indexed_gep_pointee_type(TypeSpec ts) {
 
 stmt_emitter_detail::StructuredLayoutLookup StmtEmitter::lookup_field_chain_layout(
     const std::string& tag, const HirStructDef& sd, StructNameId structured_name_id) const {
-  TypeSpec ts{};
-  ts.base = sd.is_union ? TB_UNION : TB_STRUCT;
-  ts.tag = tag.c_str();
+  const TypeSpec ts = field_chain_owner_type_spec(tag, sd);
   return lookup_structured_layout(mod_, module_, ts, "field-chain", structured_name_id);
 }
 
@@ -90,15 +107,14 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
   }
 
   for (const auto& f : sd.fields) {
-    if (!f.is_anon_member) continue;
-    if (!f.elem_type.tag || !f.elem_type.tag[0]) continue;
+    const std::optional<std::string> nested_tag = field_chain_nested_tag(mod_, f);
+    if (!nested_tag || nested_tag->empty()) continue;
     std::vector<FieldStep> sub_chain;
     TypeSpec sub_ts{};
     const int llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
     const StructNameId child_structured_name_id =
         sd.is_union ? kInvalidStructName : structured_child_name_id(layout, llvm_idx);
-    if (find_field_chain(f.elem_type.tag, field_name, sub_chain, sub_ts,
-                         child_structured_name_id)) {
+    if (find_field_chain(*nested_tag, field_name, sub_chain, sub_ts, child_structured_name_id)) {
       FieldStep step;
       step.tag = tag;
       step.structured_name_id = step_structured_name_id;
@@ -167,14 +183,14 @@ bool StmtEmitter::find_field_chain_by_member_symbol_id(const std::string& tag,
   }
 
   for (const auto& f : sd.fields) {
-    if (!f.is_anon_member) continue;
-    if (!f.elem_type.tag || !f.elem_type.tag[0]) continue;
+    const std::optional<std::string> nested_tag = field_chain_nested_tag(mod_, f);
+    if (!nested_tag || nested_tag->empty()) continue;
     std::vector<FieldStep> sub_chain;
     TypeSpec sub_ts{};
     const int llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
     const StructNameId child_structured_name_id =
         sd.is_union ? kInvalidStructName : structured_child_name_id(layout, llvm_idx);
-    if (!find_field_chain_by_member_symbol_id(f.elem_type.tag, member_symbol_id, sub_chain,
+    if (!find_field_chain_by_member_symbol_id(*nested_tag, member_symbol_id, sub_chain,
                                               sub_ts, child_structured_name_id)) {
       continue;
     }
