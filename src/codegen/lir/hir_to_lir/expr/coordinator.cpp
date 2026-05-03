@@ -65,13 +65,13 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
   if (const auto* m = std::get_if<MemberExpr>(&callee_e.payload)) {
     TypeSpec base_ts = resolve_expr_type(ctx, m->base);
     if (m->is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
-    if (base_ts.tag && base_ts.tag[0]) {
-      const auto sit = mod_.struct_defs.find(base_ts.tag);
-      if (sit != mod_.struct_defs.end()) {
-        for (const auto& f : sit->second.fields) {
-          if (f.name == m->field && f.fn_ptr_sig) {
-            return &*f.fn_ptr_sig;
-          }
+    // Prefer structured aggregate owner metadata; the helper's rendered-name
+    // path is the explicitly named compatibility fallback for older carriers.
+    if (const HirStructDef* member_fn_ptr_owner_layout =
+            find_typespec_aggregate_layout(mod_, base_ts)) {
+      for (const auto& f : member_fn_ptr_owner_layout->fields) {
+        if (f.name == m->field && f.fn_ptr_sig) {
+          return &*f.fn_ptr_sig;
         }
       }
     }
