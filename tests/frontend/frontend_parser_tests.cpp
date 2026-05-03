@@ -1608,7 +1608,7 @@ void test_parser_record_ctor_probe_prefers_record_definition() {
   alias_ts.array_size = -1;
   alias_ts.inner_rank = -1;
   alias_ts.base = c4c::TB_STRUCT;
-  alias_ts.tag = arena.strdup("StaleBox");
+  set_legacy_tag_if_present(alias_ts, arena.strdup("StaleBox"), 0);
   alias_ts.record_def = real_owner;
   parser.register_typedef_binding(parser_test_text_id(parser, "Alias"), alias_ts, true);
 
@@ -1616,13 +1616,16 @@ void test_parser_record_ctor_probe_prefers_record_definition() {
   probe.array_size = -1;
   probe.inner_rank = -1;
   probe.base = c4c::TB_TYPEDEF;
-  probe.tag = arena.strdup("Alias");
+  probe.tag_text_id = parser_test_text_id(parser, "Alias");
 
   expect_true(parser.resolves_to_record_ctor_type(probe),
               "record constructor probes should use typedef record_def before rendered maps");
 
-  c4c::TypeSpec tagless_probe = alias_ts;
-  tagless_probe.tag = nullptr;
+  c4c::TypeSpec tagless_probe{};
+  tagless_probe.array_size = -1;
+  tagless_probe.inner_rank = -1;
+  tagless_probe.base = c4c::TB_STRUCT;
+  tagless_probe.record_def = real_owner;
   expect_true(parser.resolves_to_record_ctor_type(tagless_probe),
               "record constructor probes should use tagless record_def owners");
 }
