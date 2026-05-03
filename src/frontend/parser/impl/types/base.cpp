@@ -1094,11 +1094,34 @@ TypeSpec Parser::parse_base_type() {
                 auto type_spec_base_text_id =
                     [&](const TypeSpec& ts) -> TextId {
                         if (ts.tag_text_id != kInvalidText) return ts.tag_text_id;
-                        if (!ts.tag || !ts.tag[0]) return kInvalidText;
-                        const std::string_view tag_text(ts.tag);
+                        return ts.template_param_text_id;
+                    };
+                auto has_structured_owner_identity =
+                    [](const TypeSpec& ts) -> bool {
+                        return ts.record_def ||
+                               ts.tag_text_id != kInvalidText ||
+                               ts.template_param_text_id != kInvalidText ||
+                               ts.tpl_struct_origin_key.base_text_id !=
+                                   kInvalidText ||
+                               ts.tpl_struct_args.size > 0 ||
+                               ts.n_qualifier_segments > 0 ||
+                               ts.is_global_qualified;
+                    };
+                auto field_detected_legacy_record_for_type =
+                    [&](const TypeSpec& ts) -> const Node* {
+                        if (has_structured_owner_identity(ts)) return nullptr;
+                        const char* legacy_tag =
+                            typespec_legacy_display_tag_if_present(ts, 0);
+                        if (!legacy_tag || !legacy_tag[0]) return nullptr;
+                        const std::string_view tag_text(legacy_tag);
                         if (tag_text.find("::") != std::string_view::npos)
-                            return kInvalidText;
-                        return find_parser_text_id(tag_text);
+                            return nullptr;
+                        const TextId legacy_text_id = find_parser_text_id(tag_text);
+                        if (legacy_text_id == kInvalidText) return nullptr;
+                        const Node* record = record_definition_in_context_by_text_id(
+                            *this, current_namespace_context_id(),
+                            legacy_text_id);
+                        return record && record->n_fields >= 0 ? record : nullptr;
                     };
                 auto type_spec_qualified_name_ref =
                     [&](const TypeSpec& ts, QualifiedNameRef* out) -> bool {
@@ -1155,7 +1178,8 @@ TypeSpec Parser::parse_base_type() {
                     };
                 auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
                     ts = resolve_typedef_type_chain(ts);
-                    if (ts.base == TB_TYPEDEF && ts.tag) {
+                    if (ts.base == TB_TYPEDEF &&
+                        type_spec_base_text_id(ts) != kInvalidText) {
                         if (const TypeSpec* nested = lookup_typedef_for_type(ts)) {
                             ts = *nested;
                         }
@@ -1262,10 +1286,12 @@ TypeSpec Parser::parse_base_type() {
                         return qualified_type_record_definition_from_structured_authority(
                             *this, qn);
                     }
-                    if (!ts.tag || !ts.tag[0]) return nullptr;
-                    return record_definition_in_context_by_text_id(
-                        *this, current_namespace_context_id(),
-                        type_spec_base_text_id(ts));
+                    if (ts.tag_text_id != kInvalidText) {
+                        return record_definition_in_context_by_text_id(
+                            *this, current_namespace_context_id(),
+                            ts.tag_text_id);
+                    }
+                    return field_detected_legacy_record_for_type(ts);
                 };
                 auto apply_template_bindings =
                     [&](TypeSpec member_ts,
@@ -1274,8 +1300,23 @@ TypeSpec Parser::parse_base_type() {
                         bool* substituted_type = nullptr) {
                         if (substituted_type) *substituted_type = false;
                         for (const auto& [pname, pts] : type_bindings) {
-                            if (member_ts.base == TB_TYPEDEF && member_ts.tag &&
-                                std::string(member_ts.tag) == pname) {
+                            const TextId param_text_id =
+                                parser_text_id_for_token(kInvalidText, pname);
+                            TextId member_text_id =
+                                type_spec_base_text_id(member_ts);
+                            if (member_text_id == kInvalidText &&
+                                !has_structured_owner_identity(member_ts)) {
+                                const char* legacy_tag =
+                                    typespec_legacy_display_tag_if_present(
+                                        member_ts, 0);
+                                if (legacy_tag && legacy_tag[0]) {
+                                    member_text_id = parser_text_id_for_token(
+                                        kInvalidText, legacy_tag);
+                                }
+                            }
+                            if (member_ts.base == TB_TYPEDEF &&
+                                param_text_id != kInvalidText &&
+                                member_text_id == param_text_id) {
                                 const bool outer_lref = member_ts.is_lvalue_ref;
                                 const bool outer_rref = member_ts.is_rvalue_ref;
                                 const bool outer_const = member_ts.is_const;
@@ -1425,11 +1466,13 @@ TypeSpec Parser::parse_base_type() {
                         if (type_text_id == kInvalidText) {
                             type_text_id = carrier_type.template_param_text_id;
                         }
+                        const char* carrier_legacy_tag =
+                            typespec_legacy_display_tag_if_present(
+                                carrier_type, 0);
                         if (type_text_id == kInvalidText &&
-                            carrier_type.tag &&
-                            carrier_type.tag[0]) {
+                            carrier_legacy_tag && carrier_legacy_tag[0]) {
                             type_text_id = parser_text_id_for_token(
-                                kInvalidText, carrier_type.tag);
+                                kInvalidText, carrier_legacy_tag);
                         }
                         if (type_text_id == kInvalidText) {
                             return true;
@@ -1573,9 +1616,21 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 const TypeSpec pattern_arg =
                                     selected->template_arg_types[ai];
+                                TextId pattern_arg_text_id =
+                                    type_spec_base_text_id(pattern_arg);
+                                const char* pattern_arg_legacy_tag =
+                                    typespec_legacy_display_tag_if_present(
+                                        pattern_arg, 0);
+                                if (pattern_arg_text_id == kInvalidText &&
+                                    pattern_arg_legacy_tag &&
+                                    pattern_arg_legacy_tag[0]) {
+                                    pattern_arg_text_id =
+                                        parser_text_id_for_token(
+                                            kInvalidText,
+                                            pattern_arg_legacy_tag);
+                                }
                                 if (!(pattern_arg.base == TB_TYPEDEF &&
-                                      pattern_arg.tag &&
-                                      pattern_arg.tag[0])) {
+                                      pattern_arg_text_id != kInvalidText)) {
                                     continue;
                                 }
                                 bool is_selected_param = false;
@@ -1584,23 +1639,38 @@ TypeSpec Parser::parse_base_type() {
                                         selected->template_param_names
                                             ? selected->template_param_names[pi]
                                             : nullptr;
+                                    const TextId param_text_id =
+                                        parser_text_id_for_token(
+                                            kInvalidText,
+                                            param_name ? param_name : "");
                                     if (param_name &&
-                                        std::string(pattern_arg.tag) == param_name) {
+                                        pattern_arg_text_id ==
+                                            param_text_id) {
                                         is_selected_param = true;
                                         break;
                                     }
                                 }
                                 if (!is_selected_param) continue;
+                                std::string binding_name;
+                                if (pattern_arg_text_id != kInvalidText) {
+                                    binding_name = std::string(
+                                        parser_text(pattern_arg_text_id, {}));
+                                }
+                                if (binding_name.empty() &&
+                                    pattern_arg_legacy_tag) {
+                                    binding_name = pattern_arg_legacy_tag;
+                                }
+                                if (binding_name.empty()) continue;
                                 bool already_bound = false;
                                 for (const auto& [bound_name, _] : type_bindings) {
-                                    if (bound_name == pattern_arg.tag) {
+                                    if (bound_name == binding_name) {
                                         already_bound = true;
                                         break;
                                     }
                                 }
                                 if (!already_bound) {
                                     type_bindings.push_back(
-                                        {pattern_arg.tag, actual_args[ai].type});
+                                        {binding_name, actual_args[ai].type});
                                 }
                             }
                         }

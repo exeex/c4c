@@ -9,20 +9,20 @@ Current Step Title: Probe Field Removal And Split Boundaries
 ## Just Finished
 
 Step 4 - Probe Field Removal And Split Boundaries cleared the targeted
-`src/frontend/parser/impl/types/base.cpp` template-argument debug/ref rendering
-cluster that started at the deletion-probe residual around line 714.
-`render_template_arg_ref`, nested template-arg ref rendering, and pack fallback
-arg-ref text now prefer `record_def`/TextId metadata before rendered spelling.
-Remaining rendered `TypeSpec::tag` use in this cluster is routed through
-field-detected compatibility/display fallback. The packet added
-`cpp_hir_parser_type_base_residual_structured_metadata` so the delegated
+`src/frontend/parser/impl/types/base.cpp` member-typedef owner lookup identity
+cluster that started at the deletion-probe residual around line 1097.
+`lookup_struct_member_typedef_recursive_for_type` now derives local owner
+identity from `tag_text_id`/template-param metadata first and keeps rendered
+tag access isolated to an explicit no-metadata, field-detected record
+compatibility fallback. The packet added
+`cpp_hir_parser_member_typedef_lookup_structured_metadata` so the delegated
 `cpp_hir_.*` proof observes one additional passing test.
 
 ## Suggested Next
 
 Continue Step 4 with the next supervisor-selected parser type-base residual
 family. The current deletion probe first emits in
-`src/frontend/parser/impl/types/base.cpp` around line 1097.
+`src/frontend/parser/impl/types/base.cpp` around line 1944.
 
 ## Watchouts
 
@@ -36,7 +36,7 @@ family. The current deletion probe first emits in
 - Do not weaken tests, mark supported cases unsupported, or add named-case
   shortcuts.
 - The deletion probe log for this packet is
-  `/tmp/c4c_typespec_tag_deletion_probe_step4_type_base_residual.log`.
+  `/tmp/c4c_typespec_tag_deletion_probe_step4_member_lookup.log`.
 
 ## Proof
 
@@ -44,9 +44,9 @@ Executor proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(eastl_cpp_external_utility_frontend_basic_cpp|frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp|frontend_hir_tests|cpp_hir_.*)$"' > test_after.log 2>&1`
 
-Result: command exited 0. The build passed, and CTest passed 99 of 99
+Result: command exited 0. The build passed, and CTest passed 100 of 100
 delegated tests, including the new
-`cpp_hir_parser_type_base_residual_structured_metadata` test and
+`cpp_hir_parser_member_typedef_lookup_structured_metadata` test and
 `eastl_cpp_external_utility_frontend_basic_cpp`. `test_after.log` is the
 canonical proof log.
 
@@ -54,15 +54,15 @@ Regression guard:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
 
-Result: command exited 0. Guard passed with `passed=98 failed=0 total=98`
-before and `passed=99 failed=0 total=99` after. There are no new failing tests;
-the pass-count increase is the new parser type-base residual test.
+Result: command exited 0. Guard passed with `passed=99 failed=0 total=99`
+before and `passed=100 failed=0 total=100` after. There are no new failing
+tests; the pass-count increase is the new parser member-typedef lookup test.
 
 Deletion probe:
 
 Temporarily removing `TypeSpec::tag` and running
 `cmake --build --preset default` wrote
-`/tmp/c4c_typespec_tag_deletion_probe_step4_type_base_residual.log`. The first
-emitted residual is now `src/frontend/parser/impl/types/base.cpp:1097`, so the
-targeted local template-argument debug/ref rendering cluster around line 714 is
-no longer first.
+`/tmp/c4c_typespec_tag_deletion_probe_step4_member_lookup.log`. The first
+emitted residual is now `src/frontend/parser/impl/types/base.cpp:1944`, so the
+targeted local member-typedef owner lookup cluster around line 1097 is no
+longer first.
