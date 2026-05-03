@@ -5653,13 +5653,20 @@ void test_sema_namespace_owner_resolution_prefers_structured_owner_key() {
   c4c::FileTable files;
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
-  auto make_ts = [](c4c::TypeBase base, int ptr_level = 0, const char* tag = nullptr) {
+  auto make_ts = [](c4c::TypeBase base, int ptr_level = 0,
+                    const char* tag = nullptr,
+                    c4c::TextId tag_text_id = c4c::kInvalidText,
+                    c4c::Node* record_def = nullptr,
+                    int namespace_context_id = -1) {
     c4c::TypeSpec ts{};
     ts.array_size = -1;
     ts.inner_rank = -1;
     ts.base = base;
     ts.ptr_level = ptr_level;
-    ts.tag = tag;
+    ts.tag_text_id = tag_text_id;
+    ts.record_def = record_def;
+    ts.namespace_context_id = namespace_context_id;
+    set_legacy_tag_if_present(ts, tag, 0);
     return ts;
   };
 
@@ -5706,7 +5713,8 @@ void test_sema_namespace_owner_resolution_prefers_structured_owner_key() {
   fn->qualifier_segments[0] = arena.strdup("Owner");
   fn->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
   fn->qualifier_text_ids[0] = owner_text;
-  fn->type = make_ts(c4c::TB_STRUCT, 1, "Owner");
+  fn->type = make_ts(c4c::TB_STRUCT, 1, arena.strdup("Owner"), owner_text,
+                     real_owner, real_ns);
   fn->body = body;
 
   c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
