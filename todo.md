@@ -8,27 +8,30 @@ Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 2 migrated the `make_ts` lambda inside
-`test_sema_method_validation_rejects_stale_rendered_field_spelling()` away
-from the direct `ts.tag = tag` write. The helper now routes optional legacy
-rendered compatibility setup through `set_legacy_tag_if_present()`, while
-preserving the stale rendered field spelling rejection contract and the
-existing negative method-validation assertion.
+Step 2 migrated
+`test_parser_template_instantiation_dedup_keys_structure_direct_emission()`
+away from direct `first.tag`/`second.tag`/`third.tag` reads. The fixture now
+uses `tag_text_id` plus `parser.parser_text()` for the instantiated spelling,
+continues to assert `record_def` identity against the rendered struct map
+entry, and still proves direct template emission creates, recreates, and
+reuses one structured de-dup key.
 
 The follow-up deletion probe temporarily removed `TypeSpec::tag` from
 `src/frontend/parser/ast.hpp`, reran the delegated fixture-surface build probe,
 captured the result in `test_after.log`, and restored `ast.hpp` afterward.
 The migrated fixture no longer blocks that probe; the first remaining
 fixture/test compile boundary moved to
-`tests/frontend/frontend_parser_tests.cpp:6157`, where
-`test_parser_template_instantiation_dedup_keys_structure_direct_emission()`
-still reads `first.tag` after parsing a template struct instantiation.
+`tests/frontend/frontend_parser_tests.cpp:6222`, where
+`test_parser_template_substitution_preserves_record_definition_payloads()`
+still writes `param_ts.tag`.
 
 ## Suggested Next
 
-Migrate the next fixture residual at
-`tests/frontend/frontend_parser_tests.cpp:6157` away from direct `TypeSpec::tag`
-access while preserving the direct template-instantiation emission contract.
+Migrate
+`test_parser_template_substitution_preserves_record_definition_payloads()` away
+from direct `TypeSpec::tag` writes/reads while preserving template payload
+substitution coverage for rendered spelling compatibility and `record_def`
+identity.
 
 ## Watchouts
 
@@ -53,4 +56,4 @@ Result: the normal `frontend_parser_tests` target build passed after the
 fixture migration. The deletion-probe build failed while `TypeSpec::tag` was
 temporarily removed, then `ast.hpp` was restored. The first remaining compile
 boundary is the direct fixture access at
-`tests/frontend/frontend_parser_tests.cpp:6157`.
+`tests/frontend/frontend_parser_tests.cpp:6222`.

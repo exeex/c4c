@@ -6154,12 +6154,16 @@ void test_parser_template_instantiation_dedup_keys_structure_direct_emission() {
   };
 
   c4c::TypeSpec first = parse_box_int();
-  expect_true(first.base == c4c::TB_STRUCT && first.tag != nullptr,
+  expect_true(first.base == c4c::TB_STRUCT &&
+                  first.tag_text_id != c4c::kInvalidText,
               "template type parsing should emit a concrete struct type");
+  const std::string first_tag(parser.parser_text(first.tag_text_id));
   expect_true(first.record_def != nullptr,
               "direct template emission should return the created record_def");
-  expect_true(parser.definition_state_.struct_tag_def_map[first.tag] ==
-                  first.record_def,
+  auto first_tag_it =
+      parser.definition_state_.struct_tag_def_map.find(first_tag);
+  expect_true(first_tag_it != parser.definition_state_.struct_tag_def_map.end() &&
+                  first_tag_it->second == first.record_def,
               "direct template emission record_def should match the tag map entry");
   expect_eq_int(
       static_cast<int>(
@@ -6168,16 +6172,17 @@ void test_parser_template_instantiation_dedup_keys_structure_direct_emission() {
       "direct template emission should populate the structured de-dup key");
 
   parser.template_state_.instantiated_template_struct_keys_by_key.clear();
-  parser.definition_state_.struct_tag_def_map.erase(first.tag);
-  parser.definition_state_.defined_struct_tags.erase(first.tag);
+  parser.definition_state_.struct_tag_def_map.erase(first_tag);
+  parser.definition_state_.defined_struct_tags.erase(first_tag);
   c4c::TypeSpec second = parse_box_int();
-  expect_true(second.base == c4c::TB_STRUCT && second.tag != nullptr,
+  expect_true(second.base == c4c::TB_STRUCT &&
+                  second.tag_text_id != c4c::kInvalidText,
               "missing structured direct-emission de-dup should fall through to concrete emission");
   expect_true(second.record_def != nullptr,
               "demoted direct template emission should return the recreated record_def");
-  expect_eq(first.tag, second.tag,
+  expect_eq(parser.parser_text(second.tag_text_id), first_tag,
             "recreated direct-emission de-dup should preserve the instantiated tag spelling");
-  expect_true(parser.definition_state_.struct_tag_def_map.count(first.tag) > 0,
+  expect_true(parser.definition_state_.struct_tag_def_map.count(first_tag) > 0,
               "missing structured direct-emission de-dup should recreate the concrete struct definition");
   expect_eq_int(
       static_cast<int>(
@@ -6186,11 +6191,12 @@ void test_parser_template_instantiation_dedup_keys_structure_direct_emission() {
       "direct template emission should recreate the structured de-dup key");
 
   c4c::TypeSpec third = parse_box_int();
-  expect_true(third.base == c4c::TB_STRUCT && third.tag != nullptr,
+  expect_true(third.base == c4c::TB_STRUCT &&
+                  third.tag_text_id != c4c::kInvalidText,
               "structured direct-emission de-dup should reuse the existing concrete type");
   expect_true(third.record_def == second.record_def,
               "structured direct-emission de-dup should keep the existing record_def");
-  expect_eq(first.tag, third.tag,
+  expect_eq(parser.parser_text(third.tag_text_id), first_tag,
             "structured direct-emission de-dup should preserve the instantiated tag");
   expect_eq_int(
       static_cast<int>(
