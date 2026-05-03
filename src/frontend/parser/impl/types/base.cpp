@@ -71,6 +71,20 @@ static void set_parse_base_type_enum_metadata(Parser& parser,
         ts, parse_base_type_final_spelling_compat(parser, ts, enum_def), 0);
 }
 
+static bool parse_base_type_has_structured_identity_metadata(const TypeSpec& ts) {
+    return ts.tag_text_id != kInvalidText ||
+           ts.template_param_text_id != kInvalidText ||
+           ts.record_def ||
+           ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+           ts.deferred_member_type_text_id != kInvalidText;
+}
+
+static const char* parse_base_type_legacy_tag_if_no_metadata(
+    const TypeSpec& ts) {
+    if (parse_base_type_has_structured_identity_metadata(ts)) return nullptr;
+    return typespec_legacy_display_tag_if_present(ts, 0);
+}
+
 static const Node* find_template_struct_primary_for_parse_base_type(
     Parser& parser,
     const TypeSpec& ts) {
@@ -2670,11 +2684,12 @@ TypeSpec Parser::parse_base_type() {
                                                         .template_param_text_id;
                                             }
                                             if (type_text_id == kInvalidText &&
-                                                carrier_type.tag &&
-                                                carrier_type.tag[0]) {
+                                                parse_base_type_legacy_tag_if_no_metadata(
+                                                    carrier_type)) {
                                                 type_text_id =
                                                     alias_param_ref_text_id(
-                                                        carrier_type.tag);
+                                                        parse_base_type_legacy_tag_if_no_metadata(
+                                                            carrier_type));
                                             }
                                             if (type_text_id == kInvalidText) {
                                                 return true;
@@ -2750,12 +2765,16 @@ TypeSpec Parser::parse_base_type() {
                                                     ref_type.template_param_text_id;
                                             }
                                             if (type_text_id == kInvalidText) {
-                                                if (!ref_type.tag ||
-                                                    !ref_type.tag[0]) {
+                                                const char* legacy_tag =
+                                                    parse_base_type_legacy_tag_if_no_metadata(
+                                                        ref_type);
+                                                if (!legacy_tag ||
+                                                    !legacy_tag[0]) {
                                                     return true;
                                                 }
                                                 type_text_id =
-                                                    alias_param_ref_text_id(ref_type.tag);
+                                                    alias_param_ref_text_id(
+                                                        legacy_tag);
                                             }
                                             const size_t pi =
                                                 alias_param_index_for_text_id(
@@ -2910,11 +2929,12 @@ TypeSpec Parser::parse_base_type() {
                                                         inner.tag_text_id;
                                                     if (type_text_id ==
                                                             kInvalidText &&
-                                                        inner.tag &&
-                                                        inner.tag[0]) {
+                                                        parse_base_type_legacy_tag_if_no_metadata(
+                                                            inner)) {
                                                         type_text_id =
                                                             alias_param_ref_text_id(
-                                                                inner.tag);
+                                                                parse_base_type_legacy_tag_if_no_metadata(
+                                                                    inner));
                                                     }
                                                     if (is_template_scope_type_param(
                                                             type_text_id)) {
@@ -2948,10 +2968,31 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                             for (const auto& [pname, pts] :
                                                  type_bindings) {
+                                                const TextId binding_text_id =
+                                                    find_parser_text_id(pname);
+                                                TextId member_text_id =
+                                                    member_ts.tag_text_id;
+                                                if (member_text_id ==
+                                                    kInvalidText) {
+                                                    member_text_id =
+                                                        member_ts
+                                                            .template_param_text_id;
+                                                }
                                                 if (member_ts.base == TB_TYPEDEF &&
-                                                    member_ts.tag &&
-                                                    std::string(member_ts.tag) ==
-                                                        pname) {
+                                                    ((member_text_id !=
+                                                          kInvalidText &&
+                                                      binding_text_id !=
+                                                          kInvalidText &&
+                                                      member_text_id ==
+                                                          binding_text_id) ||
+                                                     (member_text_id ==
+                                                          kInvalidText &&
+                                                      parse_base_type_legacy_tag_if_no_metadata(
+                                                          member_ts) &&
+                                                      std::string(
+                                                          parse_base_type_legacy_tag_if_no_metadata(
+                                                              member_ts)) ==
+                                                          pname))) {
                                                     const int outer_ptr_level =
                                                         member_ts.ptr_level;
                                                     const bool outer_lref =
@@ -3218,11 +3259,12 @@ TypeSpec Parser::parse_base_type() {
                                                     }
                                                     if (type_text_id ==
                                                             kInvalidText &&
-                                                        carrier_type.tag &&
-                                                        carrier_type.tag[0]) {
+                                                        parse_base_type_legacy_tag_if_no_metadata(
+                                                            carrier_type)) {
                                                         type_text_id =
                                                             owner_alias_param_ref_text_id(
-                                                                carrier_type.tag);
+                                                                parse_base_type_legacy_tag_if_no_metadata(
+                                                                    carrier_type));
                                                     }
                                                     if (type_text_id ==
                                                         kInvalidText) {
@@ -3349,9 +3391,12 @@ TypeSpec Parser::parse_base_type() {
                                                         (void)substituted;
                                                         break;
                                                     }
-                                                    if (!((owner_ts.tag &&
-                                                           owner_ts.tag[0]) ||
-                                                          owner_ts.record_def ||
+                                                    if (!(parse_base_type_has_structured_identity_metadata(
+                                                              owner_ts) ||
+                                                          (parse_base_type_legacy_tag_if_no_metadata(
+                                                               owner_ts) &&
+                                                           parse_base_type_legacy_tag_if_no_metadata(
+                                                               owner_ts)[0]) ||
                                                           owner_ts
                                                               .tpl_struct_origin)) {
                                                         return false;
@@ -3469,9 +3514,12 @@ TypeSpec Parser::parse_base_type() {
                                                 ts.template_param_text_id;
                                         }
                                         if (tag_text_id == kInvalidText &&
-                                            ts.tag && ts.tag[0]) {
+                                            parse_base_type_legacy_tag_if_no_metadata(
+                                                ts)) {
                                             tag_text_id =
-                                                alias_param_ref_text_id(ts.tag);
+                                                alias_param_ref_text_id(
+                                                    parse_base_type_legacy_tag_if_no_metadata(
+                                                        ts));
                                         }
                                         if (ts.base == TB_TYPEDEF &&
                                             tag_text_id != kInvalidText &&
