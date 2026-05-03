@@ -8,6 +8,55 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
+std::optional<HirRecordOwnerKey> indexed_gep_owner_key_from_type(const TypeSpec& ts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    const TextId declaration_text_id = ts.record_def->unqualified_text_id;
+    if (declaration_text_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts.record_def->namespace_context_id;
+      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
+      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
+        ns_qual.segment_text_ids.assign(
+            ts.record_def->qualifier_text_ids,
+            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
+      }
+      const HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(ns_qual, declaration_text_id);
+      if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+    }
+  }
+
+  if (ts.tag_text_id == kInvalidText) return std::nullopt;
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
+                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+  return std::nullopt;
+}
+
+StructNameId indexed_gep_structured_name_id(const c4c::hir::Module& mod,
+                                            const lir::LirModule* module,
+                                            const TypeSpec& elem_ts) {
+  if (!module || (elem_ts.base != TB_STRUCT && elem_ts.base != TB_UNION) ||
+      elem_ts.ptr_level != 0 || elem_ts.array_rank != 0) {
+    return kInvalidStructName;
+  }
+
+  const std::optional<HirRecordOwnerKey> owner_key = indexed_gep_owner_key_from_type(elem_ts);
+  if (!owner_key) return kInvalidStructName;
+  const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+  if (!structured_tag || structured_tag->empty()) return kInvalidStructName;
+
+  const StructNameId name_id =
+      module->struct_names.find(llvm_struct_type_str(*structured_tag));
+  return module->find_struct_decl(name_id) ? name_id : kInvalidStructName;
+}
+
 std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
                               std::string_view fallback) {
   const std::string_view resolved = mod.link_names.spelling(id);
@@ -276,7 +325,8 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       return tmp;
     } else {
       pts = resolve_indexed_gep_pointee_type(pts);
-      return emit_indexed_gep(ctx, base, base_ts, ix64);
+      return emit_indexed_gep(ctx, base, base_ts, ix64,
+                              indexed_gep_structured_name_id(mod_, module_, pts));
     }
   }
   if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
@@ -646,7 +696,8 @@ std::string StmtEmitter::emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, T
   }
 }
 
-LirTypeRef StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts) {
+LirTypeRef StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts,
+                                            StructNameId elem_structured_name_id) {
   const TypeSpec elem_ts = resolve_indexed_gep_pointee_type(base_ts);
   if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0) {
     return LirTypeRef("i8");
@@ -659,8 +710,14 @@ LirTypeRef StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts) {
   }
   if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) && elem_ts.ptr_level == 0 &&
       elem_ts.array_rank == 0) {
+    if (elem_structured_name_id == kInvalidStructName) {
+      elem_structured_name_id = indexed_gep_structured_name_id(mod_, module_, elem_ts);
+    }
+    const char* site = elem_structured_name_id == kInvalidStructName
+                           ? "indexed-gep-aggregate-legacy-compat"
+                           : "indexed-gep-aggregate";
     const StructuredLayoutLookup layout =
-        lookup_structured_layout(mod_, module_, elem_ts, "indexed-gep-aggregate");
+        lookup_structured_layout(mod_, module_, elem_ts, site, elem_structured_name_id);
     if (layout.structured_decl) {
       return lir_aggregate_gep_type_ref(rendered_text, module_, layout.structured_name_id,
                                         elem_ts.base == TB_UNION);
@@ -670,10 +727,12 @@ LirTypeRef StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts) {
 }
 
 std::string StmtEmitter::emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
-                                          const TypeSpec& base_ts, const std::string& idx) {
+                                          const TypeSpec& base_ts, const std::string& idx,
+                                          StructNameId elem_structured_name_id) {
   const std::string tmp = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirGepOp{tmp, indexed_gep_elem_ty(base_ts), base_ptr, false,
-                                 {"i64 " + idx}});
+  emit_lir_op(ctx, lir::LirGepOp{
+                       tmp, indexed_gep_elem_ty(base_ts, elem_structured_name_id), base_ptr,
+                       false, {"i64 " + idx}});
   return tmp;
 }
 
