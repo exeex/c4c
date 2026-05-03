@@ -2823,6 +2823,8 @@ void test_parser_deferred_member_typedef_lookup_uses_member_text_id() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Arg");
   const c4c::Token owner_token =
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Owner");
+  const c4c::TextId param_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "T");
   const c4c::TextId alias_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
 
@@ -2834,6 +2836,8 @@ void test_parser_deferred_member_typedef_lookup_uses_member_text_id() {
   owner->n_member_typedefs = 1;
   owner->member_typedef_names = arena.alloc_array<const char*>(1);
   owner->member_typedef_names[0] = arena.strdup("Alias");
+  owner->member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
+  owner->member_typedef_text_ids[0] = alias_text;
   owner->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
   owner->member_typedef_types[0].array_size = -1;
   owner->member_typedef_types[0].inner_rank = -1;
@@ -2848,6 +2852,8 @@ void test_parser_deferred_member_typedef_lookup_uses_member_text_id() {
   primary->n_template_params = 1;
   primary->template_param_names = arena.alloc_array<const char*>(1);
   primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  primary->template_param_name_text_ids[0] = param_text;
   primary->template_param_is_nttp = arena.alloc_array<bool>(1);
   primary->template_param_is_nttp[0] = false;
   primary->template_param_is_pack = arena.alloc_array<bool>(1);
@@ -2861,14 +2867,15 @@ void test_parser_deferred_member_typedef_lookup_uses_member_text_id() {
   box_alias.array_size = -1;
   box_alias.inner_rank = -1;
   box_alias.base = c4c::TB_STRUCT;
-  box_alias.tag = arena.strdup("Box");
+  box_alias.tag_text_id = box_token.text_id;
+  box_alias.record_def = primary;
   parser.register_typedef_binding(box_token.text_id, box_alias, true);
 
   c4c::TypeSpec arg_ts{};
   arg_ts.array_size = -1;
   arg_ts.inner_rank = -1;
   arg_ts.base = c4c::TB_STRUCT;
-  arg_ts.tag = arena.strdup("Owner");
+  arg_ts.tag_text_id = owner_token.text_id;
   arg_ts.record_def = owner;
   arg_ts.deferred_member_type_text_id = alias_text;
   parser.register_typedef_binding(arg_token.text_id, arg_ts, true);
