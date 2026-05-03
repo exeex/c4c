@@ -448,6 +448,15 @@ std::string_view typespec_legacy_tag_if_present(const T&, long) {
   return {};
 }
 
+template <typename T>
+auto set_typespec_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+template <typename T>
+void set_typespec_legacy_tag_if_present(T&, const char*, long) {}
+
 inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(const TypeSpec& ts) {
   if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
     const TextId declaration_text_id = ts.record_def->unqualified_text_id;

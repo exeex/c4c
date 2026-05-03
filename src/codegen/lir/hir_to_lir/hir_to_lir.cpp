@@ -36,55 +36,112 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
 
 TypeSpec lir_owned_type_spec(TypeSpec type, LirModule* lir_module) {
   if (!lir_module) return type;
-  type.tag = lir_module->intern_type_tag(type.tag);
+  const std::optional<std::string> tag =
+      c4c::codegen::llvm_helpers::typespec_aggregate_final_spelling(type);
+  if (!tag) return type;
+  c4c::codegen::llvm_helpers::set_typespec_legacy_tag_if_present(
+      type, lir_module->intern_type_tag(tag->c_str()), 0);
   return type;
 }
 
 LirTypeRef lir_aggregate_type_ref(const std::string& rendered_text, LirModule* lir_module,
-                                  const char* tag, bool is_union) {
-  if (!lir_module || !tag || !tag[0]) return LirTypeRef(rendered_text);
-  const StructNameId name_id =
-      lir_module->struct_names.intern(c4c::codegen::llvm_helpers::llvm_struct_type_str(tag));
+                                  StructNameId name_id, bool is_union) {
+  if (!lir_module || name_id == kInvalidStructName) return LirTypeRef(rendered_text);
   return is_union ? LirTypeRef::union_type(rendered_text, name_id)
                   : LirTypeRef::struct_type(rendered_text, name_id);
 }
 
+StructNameId lir_aggregate_structured_name_id(const c4c::hir::Module& mod,
+                                              LirModule* lir_module,
+                                              const std::string& rendered_text,
+                                              const TypeSpec& type) {
+  using namespace c4c::codegen::llvm_helpers;
+  if (!lir_module || (type.base != TB_STRUCT && type.base != TB_UNION) ||
+      type.ptr_level > 0 || type.array_rank > 0) {
+    return kInvalidStructName;
+  }
+  auto intern_if_rendered_match = [&](const std::optional<std::string>& tag)
+      -> StructNameId {
+    if (!tag) return kInvalidStructName;
+    const std::string name = llvm_struct_type_str(*tag);
+    return name == rendered_text ? lir_module->struct_names.intern(name) : kInvalidStructName;
+  };
+
+  if (const StructNameId declared_id = lir_module->struct_names.find(rendered_text);
+      declared_id != kInvalidStructName) {
+    return declared_id;
+  }
+
+  if (const StructNameId compatibility_id =
+          intern_if_rendered_match(typespec_aggregate_compatibility_tag(mod, type));
+      compatibility_id != kInvalidStructName) {
+    return compatibility_id;
+  }
+  if (const StructNameId final_spelling_id =
+          intern_if_rendered_match(typespec_aggregate_final_spelling(type));
+      final_spelling_id != kInvalidStructName) {
+    return final_spelling_id;
+  }
+
+  if (const std::optional<HirRecordOwnerKey> owner_key =
+          typespec_aggregate_owner_key(type)) {
+    const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+    if (structured_tag && !structured_tag->empty()) {
+      const std::string name = llvm_struct_type_str(*structured_tag);
+      if (name == rendered_text) return lir_module->struct_names.intern(name);
+    }
+  }
+  return kInvalidStructName;
+}
+
 LirTypeRef lir_field_type_ref(const std::string& rendered_text, LirModule* lir_module,
-                              const TypeSpec& type) {
+                              const c4c::hir::Module& mod, const TypeSpec& type) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
       type.array_rank > 0) {
     return LirTypeRef(rendered_text);
   }
-  return lir_aggregate_type_ref(rendered_text, lir_module, type.tag, type.base == TB_UNION);
+  return lir_aggregate_type_ref(rendered_text, lir_module,
+                                lir_aggregate_structured_name_id(mod, lir_module,
+                                                                 rendered_text, type),
+                                type.base == TB_UNION);
 }
 
-LirTypeRef lir_field_type_ref(const HirStructField& field, LirModule* lir_module) {
+LirTypeRef lir_field_type_ref(const HirStructField& field, LirModule* lir_module,
+                              const c4c::hir::Module& mod) {
   if (field.array_first_dim >= 0) return LirTypeRef(llvm_field_ty(field));
-  return lir_field_type_ref(llvm_field_ty(field), lir_module, field.elem_type);
+  return lir_field_type_ref(llvm_field_ty(field), lir_module, mod, field.elem_type);
 }
 
 std::optional<LirTypeRef> lir_global_type_ref(const std::string& rendered_text,
                                               LirModule* lir_module,
+                                              const c4c::hir::Module& mod,
                                               const TypeSpec& type) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
-      type.array_rank > 0 || !type.tag || !type.tag[0]) {
+      type.array_rank > 0) {
     return std::nullopt;
   }
   const std::string canonical_text = llvm_alloca_ty(type);
   if (canonical_text != rendered_text) return std::nullopt;
-  return lir_aggregate_type_ref(canonical_text, lir_module, type.tag, type.base == TB_UNION);
+  const StructNameId name_id =
+      lir_aggregate_structured_name_id(mod, lir_module, canonical_text, type);
+  if (name_id == kInvalidStructName) return std::nullopt;
+  return lir_aggregate_type_ref(canonical_text, lir_module, name_id, type.base == TB_UNION);
 }
 
 LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
                                   LirModule* lir_module,
+                                  const c4c::hir::Module& mod,
                                   const TypeSpec& type) {
   using namespace c4c::codegen::llvm_helpers;
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
-      type.array_rank > 0 || !type.tag || !type.tag[0]) {
+      type.array_rank > 0) {
     return LirTypeRef(rendered_text);
   }
   if (rendered_text != llvm_ty(type)) return LirTypeRef(rendered_text);
-  return lir_aggregate_type_ref(rendered_text, lir_module, type.tag, type.base == TB_UNION);
+  const StructNameId name_id =
+      lir_aggregate_structured_name_id(mod, lir_module, rendered_text, type);
+  if (name_id == kInvalidStructName) return LirTypeRef(rendered_text);
+  return lir_aggregate_type_ref(rendered_text, lir_module, name_id, type.base == TB_UNION);
 }
 
 std::string rendered_signature_param_type(const c4c::hir::Module& mod,
@@ -110,7 +167,7 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   lir_fn.signature_param_type_refs.clear();
   lir_fn.signature_return_type_ref =
       lir_signature_type_ref(llvm_ret_ty(fn.return_type.spec), lir_module,
-                             fn.return_type.spec);
+                             mod, fn.return_type.spec);
 
   const bool void_param_list =
       fn.params.size() == 1 &&
@@ -126,7 +183,7 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
         {"%p." + sanitize_llvm_ident(param.name), param_ts});
     lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(
         rendered_signature_param_type(mod, lir_module, param.type.spec), lir_module,
-        param.type.spec));
+        mod, param.type.spec));
   }
 }
 
@@ -436,7 +493,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
                                             false, gv.linkage.visibility);
           lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
           lg.llvm_type = literal_ty;
-          lg.llvm_type_ref = lir_global_type_ref(lg.llvm_type, &module, ts);
+          lg.llvm_type_ref = lir_global_type_ref(lg.llvm_type, &module, mod, ts);
           lg.init_text = literal_init;
           lg.initializer_function_link_name_ids =
               collect_global_init_function_link_name_ids(mod, gv.init);
@@ -456,7 +513,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
   lg.is_internal = gv.linkage.is_static;
   lg.is_const = gv.is_const;
   lg.llvm_type = llvm_alloca_ty(ts);
-  lg.llvm_type_ref = lir_global_type_ref(lg.llvm_type, &module, ts);
+  lg.llvm_type_ref = lir_global_type_ref(lg.llvm_type, &module, mod, ts);
   lg.align_bytes = align;
 
   if (gv.linkage.is_extern) {
@@ -571,13 +628,12 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         }
         if (!first) line << ", ";
         first = false;
-        TypeSpec base_ts{};
-        base_ts.base = TB_STRUCT;
-        base_ts.tag = base.tag.c_str();
-        const std::string base_ty = llvm_ty(base_ts);
+        const std::string base_ty = llvm_struct_type_str(base_tag);
         line << base_ty;
+        const StructNameId base_name_id =
+            lir_module ? lir_module->struct_names.intern(base_ty) : kInvalidStructName;
         structured_decl.fields.push_back(
-            {lir_aggregate_type_ref(base_ty, lir_module, base_ts.tag, base.is_union)});
+            {lir_aggregate_type_ref(base_ty, lir_module, base_name_id, base.is_union)});
         cur_offset = base_offset + std::max(0, base.size_bytes);
       }
       int last_idx = -1;
@@ -597,7 +653,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         first = false;
         const std::string field_ty = llvm_field_ty(f);
         line << field_ty;
-        structured_decl.fields.push_back({lir_field_type_ref(f, lir_module)});
+        structured_decl.fields.push_back({lir_field_type_ref(f, lir_module, mod)});
         cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
       }
       if (sd.size_bytes > cur_offset) {
