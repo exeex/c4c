@@ -6862,9 +6862,9 @@ void test_parser_alias_template_member_typedef_carrier_uses_structured_rhs() {
                 "alias-template member typedef carrier should preserve parsed owner args");
   expect_true(!info->member_typedef.owner_args[0].is_value &&
                   info->member_typedef.owner_args[0].type.base == c4c::TB_TYPEDEF &&
-                  info->member_typedef.owner_args[0].type.tag != nullptr &&
-                  parser.find_parser_text_id(
-                      info->member_typedef.owner_args[0].type.tag) == param_text,
+                  info->member_typedef.owner_args[0].type.tag_text_id !=
+                      c4c::kInvalidText &&
+                  info->member_typedef.owner_args[0].type.tag_text_id == param_text,
               "alias-template member typedef carrier should keep substitutable type args structured");
   expect_true(info->aliased_type.deferred_member_type_text_id == member_text,
               "deferred owner-member TypeSpec should preserve the member TextId");
@@ -6878,7 +6878,8 @@ void test_parser_alias_template_member_typedef_carrier_uses_structured_rhs() {
 
   c4c::ParserAliasTemplateInfo& mutable_info =
       parser.template_state_.alias_template_info[alias_key];
-  mutable_info.aliased_type.tag = arena.strdup("CorruptRenderedOwner");
+  set_legacy_tag_if_present(mutable_info.aliased_type,
+                            arena.strdup("CorruptRenderedOwner"), 0);
   mutable_info.aliased_type.deferred_member_type_name =
       arena.strdup("corrupt_member");
   expect_true(mutable_info.aliased_type.deferred_member_type_text_id ==
@@ -6910,8 +6911,9 @@ void test_parser_alias_template_member_typedef_substitution_uses_structured_carr
   expect_true(info.member_typedef.valid,
               "alias-template member typedef substitution test requires the structured carrier");
   info.aliased_type.base = c4c::TB_STRUCT;
-  info.aliased_type.tag = arena.strdup("StaleRenderedOwner");
-  info.aliased_type.tpl_struct_origin = info.aliased_type.tag;
+  const char* stale_rendered_owner = arena.strdup("StaleRenderedOwner");
+  set_legacy_tag_if_present(info.aliased_type, stale_rendered_owner, 0);
+  info.aliased_type.tpl_struct_origin = stale_rendered_owner;
   info.aliased_type.deferred_member_type_name = arena.strdup("stale_member");
 
   const c4c::Token seed = tokens.empty() ? c4c::Token{} : tokens.front();
