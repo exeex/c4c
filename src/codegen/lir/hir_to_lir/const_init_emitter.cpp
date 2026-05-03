@@ -1,5 +1,6 @@
 #include "lowering.hpp"
 #include "ir.hpp"
+#include "canonical_symbol.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -59,6 +60,56 @@ std::string_view init_list_field_designator_text(const InitListItem& item,
   return {};
 }
 
+std::optional<HirRecordOwnerKey> const_init_aggregate_owner_key_from_type(const TypeSpec& ts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    const TextId declaration_text_id = ts.record_def->unqualified_text_id;
+    if (declaration_text_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts.record_def->namespace_context_id;
+      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
+      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
+        ns_qual.segment_text_ids.assign(
+            ts.record_def->qualifier_text_ids,
+            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
+      }
+      const HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(ns_qual, declaration_text_id);
+      if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+    }
+  }
+
+  if (ts.tag_text_id == kInvalidText) return std::nullopt;
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
+                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+  return std::nullopt;
+}
+
+StructNameId const_init_aggregate_structured_name_id(const c4c::hir::Module& mod,
+                                                     const lir::LirModule* module,
+                                                     const TypeSpec& aggregate_ts) {
+  if (!module || (aggregate_ts.base != TB_STRUCT && aggregate_ts.base != TB_UNION) ||
+      aggregate_ts.ptr_level != 0 || aggregate_ts.array_rank != 0) {
+    return kInvalidStructName;
+  }
+
+  const std::optional<HirRecordOwnerKey> owner_key =
+      const_init_aggregate_owner_key_from_type(aggregate_ts);
+  if (!owner_key) return kInvalidStructName;
+  const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+  if (!structured_tag || structured_tag->empty()) return kInvalidStructName;
+
+  const StructNameId name_id =
+      module->struct_names.find(llvm_struct_type_str(*structured_tag));
+  return module->find_struct_decl(name_id) ? name_id : kInvalidStructName;
+}
+
 template <typename Matches>
 const GlobalVar* select_global_object_by(const Module& mod, Matches matches) {
   const GlobalVar* best = nullptr;
@@ -116,11 +167,15 @@ TypeSpec ConstInitEmitter::field_decl_type(const HirStructField& f) const {
 }
 
 const HirStructDef* ConstInitEmitter::lookup_const_init_struct_def(const TypeSpec& ts) const {
-  (void)stmt_emitter_detail::lookup_structured_layout(mod_, &module_, ts,
-                                                      "const-init-aggregate");
-  if (!ts.tag || !ts.tag[0]) return nullptr;
-  const auto it = mod_.struct_defs.find(ts.tag);
-  return it == mod_.struct_defs.end() ? nullptr : &it->second;
+  const StructNameId structured_name_id =
+      const_init_aggregate_structured_name_id(mod_, &module_, ts);
+  const char* site = structured_name_id == kInvalidStructName
+                         ? "const-init-aggregate-legacy-compat"
+                         : "const-init-aggregate";
+  const stmt_emitter_detail::StructuredLayoutLookup layout =
+      stmt_emitter_detail::lookup_structured_layout(mod_, &module_, ts, site,
+                                                    structured_name_id);
+  return layout.legacy_decl;
 }
 
 // ── Global object lookup ──────────────────────────────────────────────────────

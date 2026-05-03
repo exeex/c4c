@@ -9,29 +9,30 @@ Current Step Title: Migrate Call, VaArg, Const Init, And ABI Consumers
 ## Just Finished
 
 Step 4 - Migrate Call, VaArg, Const Init, And ABI Consumers:
-migrated the aggregate call return and argument `LirTypeRef` helpers in
-`call/target.cpp` and `call/args.cpp` so they first recover an existing
+migrated the central const-init aggregate layout/definition bridge in
+`const_init_emitter.cpp` so `lookup_const_init_struct_def` first recovers a
 `StructNameId` carrier from HIR structured owner metadata (`record_def` /
-`tag_text_id`) and only use rendered-tag interning on the explicit legacy
-compatibility path. Final emitted LLVM call spelling still comes from the
-existing `TypeSpec` formatting path.
+`tag_text_id`) and passes it to `lookup_structured_layout` at the
+`const-init-aggregate` site. Carrierless aggregate types are now labeled through
+the explicit `const-init-aggregate-legacy-compat` observation path, and final
+constant/GEP LLVM spelling remains on the existing `TypeSpec` formatting path.
 
 ## Suggested Next
 
-Next coherent packet: migrate the Step 4 const-init aggregate lookup consumers
-in `const_init_emitter.cpp` off semantic `TypeSpec::tag` authority when
-structured metadata is available, without widening into ABI classification.
+Next coherent packet: migrate the remaining Step 4 ABI classification consumers
+off semantic `TypeSpec::tag` authority when structured metadata is available,
+without changing rendered LLVM ABI spelling.
 
 ## Watchouts
 
-- The call return and argument type-ref helpers now prefer structured
-  `StructNameId` carriers, but verifier constraints still require the
-  `LirTypeRef` text to remain the final emitted call spelling.
+- Const-init field walking still consumes the legacy `HirStructDef`; this
+  packet only routes that lookup through structured layout metadata. If a
+  structured layout has no legacy `HirStructDef` equivalent, const-init still
+  returns no definition rather than fabricating one.
 - The owner-key recovery helper is local to this bounded packet. A later wider
-  Step 4 packet may choose to centralize it if more call/ABI consumers need the
-  same carrier recovery.
-- Const-init and ABI classification files remain untouched for their own Step 4
-  packets.
+  Step 4 packet may choose to centralize it if ABI consumers need the same
+  carrier recovery.
+- ABI classification files remain untouched for their own Step 4 packet.
 
 ## Proof
 
