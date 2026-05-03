@@ -1337,7 +1337,7 @@ void test_parser_member_typedef_suffix_prefers_record_definition() {
   alias_ts.array_size = -1;
   alias_ts.inner_rank = -1;
   alias_ts.base = c4c::TB_STRUCT;
-  alias_ts.tag = arena.strdup("StaleBox");
+  set_legacy_tag_if_present(alias_ts, arena.strdup("StaleBox"), 0);
   alias_ts.record_def = real_owner;
   parser.register_typedef_binding(parser_test_text_id(parser, "Alias"), alias_ts, true);
 
