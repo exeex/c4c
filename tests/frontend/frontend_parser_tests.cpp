@@ -2599,9 +2599,7 @@ void test_parser_template_record_member_typedef_writer_registers_dependent_key()
       parser.find_dependent_record_member_typedef_type(member_key);
   expect_true(dependent_member != nullptr &&
                   dependent_member->base == c4c::TB_TYPEDEF &&
-                  dependent_member->tag != nullptr &&
-                  parser.find_parser_text_id(dependent_member->tag) ==
-                      param_text,
+                  dependent_member->tag_text_id == param_text,
               "template record member typedef writer should register a dependent record/member key");
 
   c4c::TypeSpec stale_rendered_ts{};
@@ -2616,9 +2614,7 @@ void test_parser_template_record_member_typedef_writer_registers_dependent_key()
   const c4c::TypeSpec* resolved_member = parser.find_typedef_type(member_key);
   expect_true(resolved_member != nullptr &&
                   resolved_member->base == c4c::TB_TYPEDEF &&
-                  resolved_member->tag != nullptr &&
-                  parser.find_parser_text_id(resolved_member->tag) ==
-                      param_text,
+                  resolved_member->tag_text_id == param_text,
               "dependent record/member carrier should win over stale rendered typedef storage");
 
   c4c::Parser::QualifiedNameRef member_qn;
@@ -2632,9 +2628,7 @@ void test_parser_template_record_member_typedef_writer_registers_dependent_key()
       parser.find_typedef_type(visible_member.key);
   expect_true(visible_member_type != nullptr &&
                   visible_member_type->base == c4c::TB_TYPEDEF &&
-                  visible_member_type->tag != nullptr &&
-                  parser.find_parser_text_id(visible_member_type->tag) ==
-                      param_text,
+                  visible_member_type->tag_text_id == param_text,
               "qualified type lookup should consume the dependent record/member carrier");
 }
 

@@ -3,27 +3,21 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Re-run The TypeSpec Tag Deletion Probe
+Current Step ID: 2
+Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
 
 ## Just Finished
 
-Step 3 re-ran the temporary `TypeSpec::tag` deletion probe by removing the
-field from `src/frontend/parser/ast.hpp` and building with the delegated
-command. The probe still fails in `tests/frontend/frontend_parser_tests.cpp`;
-the first remaining compile boundary is
+Step 2 migrated the rendered `TypeSpec::tag` assertion reads in
 `test_parser_template_record_member_typedef_writer_registers_dependent_key`
-at line 2602, where the fixture directly reads `dependent_member->tag` and
-maps the rendered spelling back through `parser.find_parser_text_id`.
-The temporary `ast.hpp` deletion edit was restored after the probe.
+to structured `tag_text_id == param_text` checks for `dependent_member`,
+`resolved_member`, and `visible_member_type`.
 
 ## Suggested Next
 
-Migrate the Step 3 boundary in
-`test_parser_template_record_member_typedef_writer_registers_dependent_key`
-from direct rendered `TypeSpec::tag` reads to structured `tag_text_id` checks
-for `dependent_member`, `resolved_member`, and `visible_member_type`, then
-re-run the deletion probe to expose the next boundary.
+Re-run the temporary `TypeSpec::tag` deletion probe by removing the field from
+`src/frontend/parser/ast.hpp`, building with the delegated probe command, and
+restoring the temporary deletion afterward to expose the next compile boundary.
 
 ## Watchouts
 
@@ -35,23 +29,28 @@ re-run the deletion probe to expose the next boundary.
 - The first boundary is read-only fixture assertion logic, not production
   parser code; keep the next packet confined to replacing rendered-name checks
   with equivalent structured metadata assertions.
+- The known `frontend_parser_tests` failure
+  `namespace owner resolution should use the method owner TextId before rendered owner spelling`
+  remains pre-existing observational noise for this packet.
 - Later direct `TypeSpec::tag` boundaries in the same test file are still
-  present after line 2714, but they are not the first compile boundary while
-  the line 2602 family remains.
+  present after line 2714 and should be handled according to the next deletion
+  probe boundary, not by speculative widening.
 
 ## Proof
 
-Deletion-probe proof is recorded in `test_after.log`.
+Build proof and observational parser-test output are recorded in
+`test_after.log`.
 
 ```sh
 cmake --build --preset default > test_after.log 2>&1
 ```
 
-Result: failed as expected for the probe. The first diagnostic is
-`tests/frontend/frontend_parser_tests.cpp:2602:37: error: 'const struct c4c::TypeSpec' has no member named 'tag'`.
+Result: passed.
 
 ```sh
-cmake --build --preset default
+ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' >> test_after.log 2>&1
 ```
 
-Result: passed after restoring `src/frontend/parser/ast.hpp`.
+Result: failed only at the packet-noted pre-existing
+`namespace owner resolution should use the method owner TextId before rendered owner spelling`
+case; no new blocker was observed after the build passed.
