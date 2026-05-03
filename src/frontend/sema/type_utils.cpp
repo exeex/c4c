@@ -446,6 +446,15 @@ bool same_optional_cstr(const char* lhs, const char* rhs) {
   return std::strcmp(lhs, rhs) == 0;
 }
 
+template <typename T>
+auto typespec_legacy_display_tag_if_present(const T& ts, int) -> decltype(ts.tag) {
+  return ts.tag;
+}
+
+const char* typespec_legacy_display_tag_if_present(const TypeSpec&, long) {
+  return nullptr;
+}
+
 bool has_record_def_identity(const TypeSpec& ts) {
   return ts.record_def != nullptr;
 }
@@ -482,6 +491,11 @@ bool has_complete_text_name_identity(const TypeSpec& ts) {
   return true;
 }
 
+bool has_any_text_name_metadata(const TypeSpec& ts) {
+  return ts.namespace_context_id >= 0 || ts.tag_text_id != kInvalidText ||
+         ts.qualifier_text_ids != nullptr;
+}
+
 bool same_text_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
   if (lhs.namespace_context_id != rhs.namespace_context_id ||
       lhs.tag_text_id != rhs.tag_text_id ||
@@ -497,7 +511,12 @@ bool same_text_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
 
 bool same_rendered_type_name_compatibility(const TypeSpec& lhs,
                                            const TypeSpec& rhs) {
-  if (!same_optional_cstr(lhs.tag, rhs.tag)) return false;
+  if (has_any_text_name_metadata(lhs) || has_any_text_name_metadata(rhs)) {
+    return false;
+  }
+  const char* lhs_tag = typespec_legacy_display_tag_if_present(lhs, 0);
+  const char* rhs_tag = typespec_legacy_display_tag_if_present(rhs, 0);
+  if (!same_optional_cstr(lhs_tag, rhs_tag)) return false;
   if (lhs.n_qualifier_segments != rhs.n_qualifier_segments) return false;
   for (int i = 0; i < lhs.n_qualifier_segments; ++i) {
     const char* lseg = lhs.qualifier_segments ? lhs.qualifier_segments[i] : nullptr;

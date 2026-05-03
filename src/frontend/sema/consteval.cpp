@@ -66,6 +66,15 @@ int int_bits_local(TypeBase b) {
   }
 }
 
+template <typename T>
+auto typespec_legacy_display_tag_if_present(const T& ts, int) -> decltype(ts.tag) {
+  return ts.tag;
+}
+
+const char* typespec_legacy_display_tag_if_present(const TypeSpec&, long) {
+  return nullptr;
+}
+
 ConstValue apply_integer_cast(long long value, const TypeSpec& ts) {
   if (ts.ptr_level != 0 || ts.array_rank != 0 || !is_any_int_base_local(ts.base)) {
     return ConstValue::make_int(value);
@@ -157,8 +166,11 @@ bool has_type_binding_typespec_text_carrier(const TypeSpec& ts) {
 }
 
 bool has_type_binding_metadata_channel(const ConstEvalEnv& env) {
-  return env.type_bindings_by_text || env.type_bindings_by_key ||
-         env.type_binding_text_ids_by_name || env.type_binding_keys_by_name;
+  return (env.type_bindings_by_text && !env.type_bindings_by_text->empty()) ||
+         (env.type_bindings_by_key && !env.type_bindings_by_key->empty()) ||
+         (env.type_binding_text_ids_by_name &&
+          !env.type_binding_text_ids_by_name->empty()) ||
+         (env.type_binding_keys_by_name && !env.type_binding_keys_by_name->empty());
 }
 
 // Resolve a TypeSpec through type_bindings if it's a TB_TYPEDEF with a known substitution.
@@ -179,23 +191,11 @@ TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (intrinsic_text.status == TypeBindingLookupStatus::Miss) return ts;
   if (has_intrinsic_carrier && has_type_binding_metadata_channel(env)) return ts;
 
-  if (!ts.tag) return ts;
-  const std::string name = ts.tag;
+  if (has_type_binding_metadata_channel(env)) return ts;
 
-  bool has_authoritative_metadata = false;
-
-  const TypeBindingLookupResult structured = lookup_type_binding_by_key(env, name);
-  if (structured.status == TypeBindingLookupStatus::Found) return *structured.type;
-  has_authoritative_metadata =
-      has_authoritative_metadata || structured.status == TypeBindingLookupStatus::Miss;
-
-  const TypeBindingLookupResult text = lookup_type_binding_by_text(env, name);
-  if (text.status == TypeBindingLookupStatus::Found) return *text.type;
-  has_authoritative_metadata =
-      has_authoritative_metadata || text.status == TypeBindingLookupStatus::Miss;
-  if (has_authoritative_metadata) return ts;
-
-  if (!env.type_bindings) return ts;
+  const char* compatibility_tag = typespec_legacy_display_tag_if_present(ts, 0);
+  if (!compatibility_tag || !compatibility_tag[0] || !env.type_bindings) return ts;
+  const std::string name = compatibility_tag;
   auto it = env.type_bindings->find(name);
   return it != env.type_bindings->end() ? it->second : ts;
 }
@@ -334,6 +334,11 @@ std::optional<HirRecordOwnerKey> record_owner_key_from_typespec(
   return key;
 }
 
+bool has_record_layout_metadata(const TypeSpec& ts, const ConstEvalEnv& env) {
+  return (ts.record_def != nullptr || record_owner_key_from_typespec(ts).has_value()) &&
+         env.struct_def_owner_index;
+}
+
 const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (ts.base != TB_STRUCT && ts.base != TB_UNION) {
     return nullptr;
@@ -349,8 +354,10 @@ const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv&
       }
     }
   }
-  if (!env.struct_defs || !ts.tag) return nullptr;
-  auto it = env.struct_defs->find(ts.tag);
+  if (has_record_layout_metadata(ts, env)) return nullptr;
+  const char* compatibility_tag = typespec_legacy_display_tag_if_present(ts, 0);
+  if (!env.struct_defs || !compatibility_tag || !compatibility_tag[0]) return nullptr;
+  auto it = env.struct_defs->find(compatibility_tag);
   if (it == env.struct_defs->end()) return nullptr;
   return &it->second;
 }
