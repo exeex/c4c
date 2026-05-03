@@ -5902,6 +5902,82 @@ TypeSpec Parser::parse_base_type() {
                                 }
                             }
                         }
+                        auto substitute_direct_member_template_param =
+                            [&](TypeSpec type) -> TypeSpec {
+                            if (type.base != TB_TYPEDEF) return type;
+                            TypeSpec bound_type{};
+                            bool found_bound_type = false;
+                            const TextId type_text_id =
+                                type.template_param_text_id != kInvalidText
+                                    ? type.template_param_text_id
+                                    : type.tag_text_id;
+                            bool has_structured_binding = false;
+                            if (type_text_id != kInvalidText) {
+                                for (const auto& binding : type_binding_meta) {
+                                    if (binding.name_text_id == kInvalidText) {
+                                        continue;
+                                    }
+                                    has_structured_binding = true;
+                                    if (binding.name_text_id == type_text_id) {
+                                        bound_type = binding.type;
+                                        found_bound_type = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!found_bound_type && !has_structured_binding) {
+                                if (const char* legacy_tag =
+                                        parse_base_type_legacy_tag_if_no_metadata(
+                                            type)) {
+                                    for (const auto& binding :
+                                         type_binding_meta) {
+                                        if (binding.name == legacy_tag) {
+                                            bound_type = binding.type;
+                                            found_bound_type = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if (!found_bound_type) return type;
+                            const int outer_ptr_level = type.ptr_level;
+                            const bool outer_lref = type.is_lvalue_ref;
+                            const bool outer_rref = type.is_rvalue_ref;
+                            const bool outer_const = type.is_const;
+                            const bool outer_volatile = type.is_volatile;
+                            const long long outer_array_size = type.array_size;
+                            const int outer_array_rank = type.array_rank;
+                            long long outer_array_dims[8];
+                            for (int i = 0; i < 8; ++i) {
+                                outer_array_dims[i] = type.array_dims[i];
+                            }
+                            const bool outer_is_ptr_to_array =
+                                type.is_ptr_to_array;
+                            const int outer_inner_rank = type.inner_rank;
+                            Node* const outer_array_size_expr =
+                                type.array_size_expr;
+                            type = bound_type;
+                            type.ptr_level += outer_ptr_level;
+                            type.is_lvalue_ref =
+                                type.is_lvalue_ref || outer_lref;
+                            type.is_rvalue_ref =
+                                !type.is_lvalue_ref &&
+                                (type.is_rvalue_ref || outer_rref);
+                            type.is_const |= outer_const;
+                            type.is_volatile |= outer_volatile;
+                            if (outer_array_rank > 0) {
+                                type.array_size = outer_array_size;
+                                type.array_rank = outer_array_rank;
+                                for (int i = 0; i < 8; ++i) {
+                                    type.array_dims[i] = outer_array_dims[i];
+                                }
+                                type.is_ptr_to_array = outer_is_ptr_to_array;
+                                type.inner_rank = outer_inner_rank;
+                                type.array_size_expr = outer_array_size_expr;
+                            }
+                            return type;
+                        };
+
                         // Clone member typedefs with type substitution and register
                         // them under the concrete instantiation scope so later
                         // `Template<Args>::member` lookup does not need to fall
@@ -5927,7 +6003,10 @@ TypeSpec Parser::parse_base_type() {
                                                   : "");
                                 TypeSpec member_ts = tpl_def->member_typedef_types[ti];
                                 if (tpl_def->template_arg_types &&
-                                    tpl_def->template_arg_is_value) {
+                                    tpl_def->template_arg_is_value &&
+                                    member_ts.template_param_text_id ==
+                                        kInvalidText &&
+                                    member_ts.tag_text_id == kInvalidText) {
                                     for (int ai = 0;
                                          ai < tpl_def->n_template_args &&
                                          ai < static_cast<int>(actual_args.size());
@@ -5938,36 +6017,27 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         const TypeSpec pattern_arg =
                                             tpl_def->template_arg_types[ai];
+                                        const char* member_legacy_tag =
+                                            parse_base_type_legacy_tag_if_no_metadata(
+                                                member_ts);
+                                        const char* pattern_legacy_tag =
+                                            parse_base_type_legacy_tag_if_no_metadata(
+                                                pattern_arg);
                                         if (!(member_ts.base == TB_TYPEDEF &&
-                                              member_ts.tag &&
+                                              member_legacy_tag &&
                                               pattern_arg.base == TB_TYPEDEF &&
-                                              pattern_arg.tag &&
-                                              std::string(member_ts.tag) ==
-                                                  pattern_arg.tag)) {
+                                              pattern_legacy_tag &&
+                                              std::string(member_legacy_tag) ==
+                                                  pattern_legacy_tag)) {
                                             continue;
                                         }
                                         member_ts = actual_args[ai].type;
                                         break;
                                     }
                                 }
-                                for (const auto& [pname, pts] : type_bindings) {
-                                    if (member_ts.base == TB_TYPEDEF && member_ts.tag &&
-                                        std::string(member_ts.tag) == pname) {
-                                        const bool outer_lref = member_ts.is_lvalue_ref;
-                                        const bool outer_rref = member_ts.is_rvalue_ref;
-                                        member_ts.base = pts.base;
-                                        member_ts.tag = pts.tag;
-                                        member_ts.record_def = pts.record_def;
-                                        member_ts.ptr_level += pts.ptr_level;
-                                        member_ts.is_lvalue_ref =
-                                            pts.is_lvalue_ref || outer_lref;
-                                        member_ts.is_rvalue_ref =
-                                            !member_ts.is_lvalue_ref &&
-                                            (pts.is_rvalue_ref || outer_rref);
-                                        member_ts.is_const |= pts.is_const;
-                                        member_ts.is_volatile |= pts.is_volatile;
-                                    }
-                                }
+                                member_ts =
+                                    substitute_direct_member_template_param(
+                                        member_ts);
                                 if (member_ts.array_size_expr &&
                                     member_ts.array_size_expr->kind == NK_VAR &&
                                     member_ts.array_size_expr->name) {
@@ -6023,17 +6093,9 @@ TypeSpec Parser::parse_base_type() {
                             new_f->is_constexpr = orig_f->is_constexpr;
                             new_f->init = orig_f->init;
                             // Substitute template type parameters in field type
-                            for (const auto& [pname, pts] : type_bindings) {
-                                if (new_f->type.base == TB_TYPEDEF && new_f->type.tag &&
-                                    std::string(new_f->type.tag) == pname) {
-                                    new_f->type.base = pts.base;
-                                    new_f->type.tag = pts.tag;
-                                    new_f->type.record_def = pts.record_def;
-                                    new_f->type.ptr_level += pts.ptr_level;
-                                    new_f->type.is_const |= pts.is_const;
-                                    new_f->type.is_volatile |= pts.is_volatile;
-                                }
-                            }
+                            new_f->type =
+                                substitute_direct_member_template_param(
+                                    new_f->type);
                             // Substitute NTTP values in array dimensions
                             if (new_f->type.array_size_expr) {
                                 Node* ase = new_f->type.array_size_expr;
@@ -6083,15 +6145,9 @@ TypeSpec Parser::parse_base_type() {
                                 new_m->is_defaulted = orig_m->is_defaulted;
                                 // Substitute template type params in return type
                                 new_m->type = orig_m->type;
-                                for (const auto& [pname, pts] : type_bindings) {
-                                    if (new_m->type.base == TB_TYPEDEF && new_m->type.tag &&
-                                        std::string(new_m->type.tag) == pname) {
-                                        new_m->type.base = pts.base;
-                                        new_m->type.tag = pts.tag;
-                                        new_m->type.record_def = pts.record_def;
-                                        new_m->type.ptr_level += pts.ptr_level;
-                                    }
-                                }
+                                new_m->type =
+                                    substitute_direct_member_template_param(
+                                        new_m->type);
                                 // Clone params with type substitution
                                 new_m->n_params = orig_m->n_params;
                                 if (new_m->n_params > 0) {
@@ -6101,15 +6157,9 @@ TypeSpec Parser::parse_base_type() {
                                         Node* new_p = make_node(NK_DECL, orig_p->line);
                                         new_p->name = orig_p->name;
                                         new_p->type = orig_p->type;
-                                        for (const auto& [pname, pts] : type_bindings) {
-                                            if (new_p->type.base == TB_TYPEDEF && new_p->type.tag &&
-                                                std::string(new_p->type.tag) == pname) {
-                                                new_p->type.base = pts.base;
-                                                new_p->type.tag = pts.tag;
-                                                new_p->type.record_def = pts.record_def;
-                                                new_p->type.ptr_level += pts.ptr_level;
-                                            }
-                                        }
+                                        new_p->type =
+                                            substitute_direct_member_template_param(
+                                                new_p->type);
                                         new_m->params[pi] = new_p;
                                     }
                                 }

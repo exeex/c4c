@@ -26,6 +26,7 @@ set(frontend_test_targets frontend_lexer_tests frontend_parser_tests
                           cpp_hir_parser_type_base_deferred_member_template_origin_metadata_test
                           cpp_hir_parser_type_base_pending_base_substitution_metadata_test
                           cpp_hir_parser_type_base_instantiated_deferred_member_metadata_test
+                          cpp_hir_parser_type_base_member_substitution_metadata_test
                           cpp_hir_parser_declarator_deferred_owner_metadata_test
                           cpp_hir_parser_type_helper_metadata_test
                           cpp_hir_parser_type_helper_residual_metadata_test
@@ -114,6 +115,8 @@ add_test(NAME cpp_hir_parser_type_base_pending_base_substitution_structured_meta
          COMMAND cpp_hir_parser_type_base_pending_base_substitution_metadata_test)
 add_test(NAME cpp_hir_parser_type_base_instantiated_deferred_member_structured_metadata
          COMMAND cpp_hir_parser_type_base_instantiated_deferred_member_metadata_test)
+add_test(NAME cpp_hir_parser_type_base_member_substitution_structured_metadata
+         COMMAND cpp_hir_parser_type_base_member_substitution_metadata_test)
 add_test(NAME cpp_hir_parser_declarator_deferred_owner_structured_metadata
          COMMAND cpp_hir_parser_declarator_deferred_owner_metadata_test)
 add_test(NAME cpp_hir_parser_type_helper_structured_metadata
@@ -190,6 +193,8 @@ set_tests_properties(cpp_hir_parser_type_base_deferred_member_template_origin_st
 set_tests_properties(cpp_hir_parser_type_base_pending_base_substitution_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
 set_tests_properties(cpp_hir_parser_type_base_instantiated_deferred_member_structured_metadata
+                     PROPERTIES LABELS "internal;hir;cpp")
+set_tests_properties(cpp_hir_parser_type_base_member_substitution_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
 set_tests_properties(cpp_hir_parser_declarator_deferred_owner_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
