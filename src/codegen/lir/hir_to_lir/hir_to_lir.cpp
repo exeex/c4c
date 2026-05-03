@@ -220,7 +220,7 @@ int object_align_bytes(const c4c::hir::Module& mod, const LirModule* lir_module,
     align = static_cast<int>(ts.vector_bytes);
   } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
     align = 8;
-  } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
+  } else if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
     const stmt_emitter_detail::StructuredLayoutLookup layout =
         stmt_emitter_detail::lookup_structured_layout(mod, lir_module, ts,
                                                       "module-object-align");
@@ -464,10 +464,9 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
   // Check for flexible array member struct — needs a custom literal type/init.
   if (!gv.linkage.is_extern &&
       ts.ptr_level == 0 && ts.array_rank == 0 &&
-      ts.tag && ts.tag[0] && ts.base == TB_STRUCT) {
-    const auto it = mod.struct_defs.find(ts.tag);
-    if (it != mod.struct_defs.end()) {
-      const auto& sd = it->second;
+      ts.base == TB_STRUCT) {
+    if (const HirStructDef* sd_ptr = find_typespec_aggregate_layout(mod, ts)) {
+      const auto& sd = *sd_ptr;
       if (!sd.is_union && !sd.fields.empty() && sd.fields.back().is_flexible_array) {
         std::vector<TypeSpec> field_types;
         const auto field_vals = const_init.emit_const_struct_fields(ts, sd, gv.init, &field_types);
