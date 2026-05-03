@@ -292,7 +292,9 @@ struct StructuredLayoutLookup {
 StructuredLayoutLookup lookup_structured_layout(const Module& mod,
                                                 const LirModule* lir_module,
                                                 const TypeSpec& ts,
-                                                const char* site = "lookup_structured_layout");
+                                                const char* site = "lookup_structured_layout",
+                                                StructNameId structured_name_id =
+                                                    kInvalidStructName);
 std::optional<int> structured_layout_align_bytes(const Module& mod,
                                                  const LirModule* lir_module,
                                                  const StructuredLayoutLookup& layout);
@@ -410,15 +412,19 @@ class StmtEmitter {
   // On success, appends steps to chain (outermost first).
   // Returns true and sets out_field_ts.
   bool find_field_chain(const std::string& tag, const std::string& field_name,
-                        std::vector<FieldStep>& chain, TypeSpec& out_field_ts);
+                        std::vector<FieldStep>& chain, TypeSpec& out_field_ts,
+                        StructNameId structured_name_id = kInvalidStructName);
   stmt_emitter_detail::StructuredLayoutLookup lookup_field_chain_layout(
-      const std::string& tag, const HirStructDef& sd) const;
+      const std::string& tag, const HirStructDef& sd,
+      StructNameId structured_name_id = kInvalidStructName) const;
   bool resolve_field_access(const std::string& tag, const std::string& field_name,
                             std::vector<FieldStep>& chain, TypeSpec& out_field_ts,
                             BitfieldAccess* out_bf = nullptr);
   bool find_field_chain_by_member_symbol_id(const std::string& tag, MemberSymbolId member_symbol_id,
                                             std::vector<FieldStep>& chain,
-                                            TypeSpec& out_field_ts);
+                                            TypeSpec& out_field_ts,
+                                            StructNameId structured_name_id =
+                                                kInvalidStructName);
   bool resolve_field_access_by_member_symbol_id(const std::string& tag,
                                                 MemberSymbolId member_symbol_id,
                                                 std::vector<FieldStep>& chain,

@@ -304,19 +304,27 @@ static void record_structured_layout_observation(
 StructuredLayoutLookup lookup_structured_layout(const Module& mod,
                                                 const LirModule* lir_module,
                                                 const TypeSpec& ts,
-                                                const char* site) {
+                                                const char* site,
+                                                StructNameId structured_name_id) {
   StructuredLayoutLookup result;
   if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0 ||
-      ts.array_rank != 0 || !ts.tag || !ts.tag[0]) {
+      ts.array_rank != 0) {
     return result;
   }
 
-  const auto legacy_it = mod.struct_defs.find(ts.tag);
-  if (legacy_it != mod.struct_defs.end()) result.legacy_decl = &legacy_it->second;
+  if (ts.tag && ts.tag[0]) {
+    const auto legacy_compat_it = mod.struct_defs.find(ts.tag);
+    if (legacy_compat_it != mod.struct_defs.end()) {
+      result.legacy_decl = &legacy_compat_it->second;
+    }
+  }
 
   if (!lir_module) return result;
-  const std::string rendered_name = llvm_struct_type_str(ts.tag);
-  result.structured_name_id = lir_module->struct_names.find(rendered_name);
+  result.structured_name_id = structured_name_id;
+  if (result.structured_name_id == kInvalidStructName && ts.tag && ts.tag[0]) {
+    const std::string legacy_rendered_name = llvm_struct_type_str(ts.tag);
+    result.structured_name_id = lir_module->struct_names.find(legacy_rendered_name);
+  }
   if (result.structured_name_id == kInvalidStructName) return result;
 
   result.structured_lookup_attempted = true;

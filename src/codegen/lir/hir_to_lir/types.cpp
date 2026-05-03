@@ -4,6 +4,18 @@ namespace c4c::codegen::lir {
 
 using namespace stmt_emitter_detail;
 
+namespace {
+
+StructNameId structured_child_name_id(const StructuredLayoutLookup& layout, int llvm_idx) {
+  if (!layout.structured_decl || llvm_idx < 0) return kInvalidStructName;
+  const auto field_index = static_cast<std::size_t>(llvm_idx);
+  if (field_index >= layout.structured_decl->fields.size()) return kInvalidStructName;
+  const LirTypeRef& type = layout.structured_decl->fields[field_index].type;
+  return type.has_struct_name_id() ? type.struct_name_id() : kInvalidStructName;
+}
+
+}  // namespace
+
 // Draft-only staging file for Step 3 of the stmt_emitter split refactor.
 // This file captures the type-centric lookup and promotion helpers.
 
@@ -41,27 +53,28 @@ TypeSpec StmtEmitter::resolve_indexed_gep_pointee_type(TypeSpec ts) {
 }
 
 stmt_emitter_detail::StructuredLayoutLookup StmtEmitter::lookup_field_chain_layout(
-    const std::string& tag, const HirStructDef& sd) const {
+    const std::string& tag, const HirStructDef& sd, StructNameId structured_name_id) const {
   TypeSpec ts{};
   ts.base = sd.is_union ? TB_UNION : TB_STRUCT;
   ts.tag = tag.c_str();
-  return lookup_structured_layout(mod_, module_, ts, "field-chain");
+  return lookup_structured_layout(mod_, module_, ts, "field-chain", structured_name_id);
 }
 
 bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& field_name,
-                                   std::vector<FieldStep>& chain, TypeSpec& out_field_ts) {
-  const auto it = mod_.struct_defs.find(tag);
-  if (it == mod_.struct_defs.end()) return false;
-  const HirStructDef& sd = it->second;
-  const StructuredLayoutLookup layout = lookup_field_chain_layout(tag, sd);
-  const StructNameId structured_name_id =
+                                   std::vector<FieldStep>& chain, TypeSpec& out_field_ts,
+                                   StructNameId structured_name_id) {
+  const auto legacy_compat_it = mod_.struct_defs.find(tag);
+  if (legacy_compat_it == mod_.struct_defs.end()) return false;
+  const HirStructDef& sd = legacy_compat_it->second;
+  const StructuredLayoutLookup layout = lookup_field_chain_layout(tag, sd, structured_name_id);
+  const StructNameId step_structured_name_id =
       layout.structured_decl ? layout.structured_name_id : kInvalidStructName;
 
   for (const auto& f : sd.fields) {
     if (f.name == field_name) {
       FieldStep step;
       step.tag = tag;
-      step.structured_name_id = structured_name_id;
+      step.structured_name_id = step_structured_name_id;
       step.llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
       step.is_union = sd.is_union;
       if (f.bit_width >= 0) {
@@ -81,11 +94,15 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
     if (!f.elem_type.tag || !f.elem_type.tag[0]) continue;
     std::vector<FieldStep> sub_chain;
     TypeSpec sub_ts{};
-    if (find_field_chain(f.elem_type.tag, field_name, sub_chain, sub_ts)) {
+    const int llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
+    const StructNameId child_structured_name_id =
+        sd.is_union ? kInvalidStructName : structured_child_name_id(layout, llvm_idx);
+    if (find_field_chain(f.elem_type.tag, field_name, sub_chain, sub_ts,
+                         child_structured_name_id)) {
       FieldStep step;
       step.tag = tag;
-      step.structured_name_id = structured_name_id;
-      step.llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
+      step.structured_name_id = step_structured_name_id;
+      step.llvm_idx = llvm_idx;
       step.is_union = sd.is_union;
       chain.push_back(std::move(step));
       for (const auto& s : sub_chain) chain.push_back(s);
@@ -99,11 +116,16 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
     if (base_tag.empty()) continue;
     std::vector<FieldStep> sub_chain;
     TypeSpec sub_ts{};
-    if (!find_field_chain(base_tag, field_name, sub_chain, sub_ts)) continue;
+    const int llvm_idx = llvm_struct_base_slot(mod_, sd, base_index);
+    const StructNameId child_structured_name_id =
+        sd.is_union ? kInvalidStructName : structured_child_name_id(layout, llvm_idx);
+    if (!find_field_chain(base_tag, field_name, sub_chain, sub_ts, child_structured_name_id)) {
+      continue;
+    }
     FieldStep step;
     step.tag = tag;
-    step.structured_name_id = structured_name_id;
-    step.llvm_idx = llvm_struct_base_slot(mod_, sd, base_index);
+    step.structured_name_id = step_structured_name_id;
+    step.llvm_idx = llvm_idx;
     step.is_union = sd.is_union;
     chain.push_back(std::move(step));
     for (const auto& s : sub_chain) chain.push_back(s);
@@ -116,20 +138,21 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
 bool StmtEmitter::find_field_chain_by_member_symbol_id(const std::string& tag,
                                                        MemberSymbolId member_symbol_id,
                                                        std::vector<FieldStep>& chain,
-                                                       TypeSpec& out_field_ts) {
+                                                       TypeSpec& out_field_ts,
+                                                       StructNameId structured_name_id) {
   if (member_symbol_id == kInvalidMemberSymbol) return false;
-  const auto it = mod_.struct_defs.find(tag);
-  if (it == mod_.struct_defs.end()) return false;
-  const HirStructDef& sd = it->second;
-  const StructuredLayoutLookup layout = lookup_field_chain_layout(tag, sd);
-  const StructNameId structured_name_id =
+  const auto legacy_compat_it = mod_.struct_defs.find(tag);
+  if (legacy_compat_it == mod_.struct_defs.end()) return false;
+  const HirStructDef& sd = legacy_compat_it->second;
+  const StructuredLayoutLookup layout = lookup_field_chain_layout(tag, sd, structured_name_id);
+  const StructNameId step_structured_name_id =
       layout.structured_decl ? layout.structured_name_id : kInvalidStructName;
 
   for (const auto& f : sd.fields) {
     if (f.member_symbol_id != member_symbol_id) continue;
     FieldStep step;
     step.tag = tag;
-    step.structured_name_id = structured_name_id;
+    step.structured_name_id = step_structured_name_id;
     step.llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
     step.is_union = sd.is_union;
     if (f.bit_width >= 0) {
@@ -148,14 +171,17 @@ bool StmtEmitter::find_field_chain_by_member_symbol_id(const std::string& tag,
     if (!f.elem_type.tag || !f.elem_type.tag[0]) continue;
     std::vector<FieldStep> sub_chain;
     TypeSpec sub_ts{};
+    const int llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
+    const StructNameId child_structured_name_id =
+        sd.is_union ? kInvalidStructName : structured_child_name_id(layout, llvm_idx);
     if (!find_field_chain_by_member_symbol_id(f.elem_type.tag, member_symbol_id, sub_chain,
-                                              sub_ts)) {
+                                              sub_ts, child_structured_name_id)) {
       continue;
     }
     FieldStep step;
     step.tag = tag;
-    step.structured_name_id = structured_name_id;
-    step.llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
+    step.structured_name_id = step_structured_name_id;
+    step.llvm_idx = llvm_idx;
     step.is_union = sd.is_union;
     chain.push_back(std::move(step));
     for (const auto& s : sub_chain) chain.push_back(s);
@@ -168,13 +194,17 @@ bool StmtEmitter::find_field_chain_by_member_symbol_id(const std::string& tag,
     if (base_tag.empty()) continue;
     std::vector<FieldStep> sub_chain;
     TypeSpec sub_ts{};
-    if (!find_field_chain_by_member_symbol_id(base_tag, member_symbol_id, sub_chain, sub_ts)) {
+    const int llvm_idx = llvm_struct_base_slot(mod_, sd, base_index);
+    const StructNameId child_structured_name_id =
+        sd.is_union ? kInvalidStructName : structured_child_name_id(layout, llvm_idx);
+    if (!find_field_chain_by_member_symbol_id(base_tag, member_symbol_id, sub_chain, sub_ts,
+                                              child_structured_name_id)) {
       continue;
     }
     FieldStep step;
     step.tag = tag;
-    step.structured_name_id = structured_name_id;
-    step.llvm_idx = llvm_struct_base_slot(mod_, sd, base_index);
+    step.structured_name_id = step_structured_name_id;
+    step.llvm_idx = llvm_idx;
     step.is_union = sd.is_union;
     chain.push_back(std::move(step));
     for (const auto& s : sub_chain) chain.push_back(s);
