@@ -4257,7 +4257,6 @@ void test_parser_template_specialization_binding_prefers_param_text_id() {
   specialization->template_arg_types[0].array_size = -1;
   specialization->template_arg_types[0].inner_rank = -1;
   specialization->template_arg_types[0].base = c4c::TB_TYPEDEF;
-  specialization->template_arg_types[0].tag = arena.strdup("T");
   specialization->template_arg_types[0].tag_text_id = param_text;
   specialization->template_arg_is_value = arena.alloc_array<bool>(1);
   specialization->template_arg_is_value[0] = false;
