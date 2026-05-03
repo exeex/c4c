@@ -596,10 +596,10 @@ std::optional<std::string> ConstInitEmitter::try_emit_global_address_expr(ExprId
           } else if constexpr (std::is_same_v<T, MemberExpr>) {
             if (payload.is_arrow) return std::nullopt;
             auto base = lower_expr(payload.base);
-            if (!base || !base->current_type.tag || !base->current_type.tag[0]) return std::nullopt;
-            const auto sit = mod_.struct_defs.find(base->current_type.tag);
-            if (sit == mod_.struct_defs.end()) return std::nullopt;
-            const HirStructDef& sd = sit->second;
+            if (!base) return std::nullopt;
+            const HirStructDef* sd_ptr = lookup_const_init_struct_def(base->current_type);
+            if (!sd_ptr) return std::nullopt;
+            const HirStructDef& sd = *sd_ptr;
             const auto fit =
                 std::find_if(sd.fields.begin(), sd.fields.end(), [&](const HirStructField& field) {
                   return field.name == payload.field;
@@ -771,9 +771,10 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
           }
         }
         if (const auto* mem_e = std::get_if<MemberExpr>(&op_e.payload)) {
-          auto find_struct_def = [&](const std::string& tag) -> const HirStructDef* {
-            auto sit = mod_.struct_defs.find(tag);
-            return (sit != mod_.struct_defs.end()) ? &sit->second : nullptr;
+          auto aggregate_final_type_text = [](const TypeSpec& ts) -> std::optional<std::string> {
+            const std::optional<std::string> spelling = typespec_aggregate_final_spelling(ts);
+            if (!spelling) return std::nullopt;
+            return llvm_struct_type_str(*spelling);
           };
           if (!mem_e->is_arrow) {
             {
@@ -788,12 +789,13 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
               if (field_path.size() >= 2) {
                 if (const auto* dr = std::get_if<DeclRef>(&walk->payload)) {
                   const GlobalVar* gv = select_global_object(*dr);
-                  if (gv && gv->type.spec.tag && gv->type.spec.tag[0]) {
+                  if (gv && is_named_aggregate_value(gv->type.spec)) {
                     long long total_offset = 0;
-                    std::string cur_tag(gv->type.spec.tag);
+                    TypeSpec cur_ts = gv->type.spec;
                     bool ok = true;
-                    for (const auto& fname : field_path) {
-                      const auto* sd = find_struct_def(cur_tag);
+                    for (size_t field_idx = 0; field_idx < field_path.size(); ++field_idx) {
+                      const std::string& fname = field_path[field_idx];
+                      const auto* sd = lookup_const_init_struct_def(cur_ts);
                       if (!sd) {
                         ok = false;
                         break;
@@ -804,9 +806,10 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                           total_offset += f.offset_bytes;
                           TypeSpec ft = f.elem_type;
                           ft.inner_rank = -1;
-                          if (ft.tag && ft.tag[0] && ft.ptr_level == 0 &&
-                              (ft.base == TB_STRUCT || ft.base == TB_UNION)) {
-                            cur_tag = ft.tag;
+                          if (field_idx + 1 < field_path.size() && is_named_aggregate_value(ft)) {
+                            cur_ts = ft;
+                          } else if (field_idx + 1 < field_path.size()) {
+                            ok = false;
                           }
                           found = true;
                           break;
@@ -831,13 +834,15 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
             const Expr& base_e = get_expr(mem_e->base);
             if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
               if (const GlobalVar* gv = select_global_object(*dr)) {
-                if (gv && gv->type.spec.tag && gv->type.spec.tag[0]) {
-                  const std::string tag(gv->type.spec.tag);
-                  if (const auto* sd = find_struct_def(tag)) {
+                const std::optional<std::string> type_text =
+                    aggregate_final_type_text(gv->type.spec);
+                if (type_text) {
+                  const auto* sd = lookup_const_init_struct_def(gv->type.spec);
+                  if (sd) {
                     const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                     const std::string global_name =
                         emitted_link_name(mod_, gv->link_name_id, gv->name);
-                    return "getelementptr inbounds (" + llvm_struct_type_str(tag) +
+                    return "getelementptr inbounds (" + *type_text +
                            ", ptr " + llvm_global_sym(global_name) +
                            ", i32 0, i32 " + std::to_string(fi) + ")";
                   }
@@ -864,19 +869,16 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                         elem_ts.array_size = elem_ts.array_dims[0];
                       }
                     }
-                    if (elem_ts.tag && elem_ts.tag[0]) {
-                      const std::string tag(elem_ts.tag);
-                      if (const auto* sd = find_struct_def(tag)) {
-                        const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
-                        const std::string aty = llvm_alloca_ty(gv->type.spec);
-                        const std::string global_name =
-                            emitted_link_name(mod_, gv->link_name_id, gv->name);
-                        std::string gep =
-                            "getelementptr inbounds (" + aty + ", ptr @" + global_name + ", i64 0";
-                        for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
-                        gep += ", i32 " + std::to_string(fi) + ")";
-                        return gep;
-                      }
+                    if (const auto* sd = lookup_const_init_struct_def(elem_ts)) {
+                      const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
+                      const std::string aty = llvm_alloca_ty(gv->type.spec);
+                      const std::string global_name =
+                          emitted_link_name(mod_, gv->link_name_id, gv->name);
+                      std::string gep =
+                          "getelementptr inbounds (" + aty + ", ptr @" + global_name + ", i64 0";
+                      for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
+                      gep += ", i32 " + std::to_string(fi) + ")";
+                      return gep;
                     }
                   }
                 }
@@ -886,9 +888,8 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
             const Expr& base_e = get_expr(mem_e->base);
             if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
               if (const GlobalVar* gv = select_global_object(*dr)) {
-                if (gv && gv->type.spec.array_rank > 0 && gv->type.spec.tag && gv->type.spec.tag[0]) {
-                  const std::string tag(gv->type.spec.tag);
-                  if (const auto* sd = find_struct_def(tag)) {
+                if (gv && gv->type.spec.array_rank > 0) {
+                  if (const auto* sd = lookup_const_init_struct_def(gv->type.spec)) {
                     const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                     const std::string aty = llvm_alloca_ty(gv->type.spec);
                     const std::string global_name =
@@ -911,9 +912,8 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                 }
                 if (dr2 && rhs_val) {
                   if (const GlobalVar* gv = select_global_object(*dr2)) {
-                    if (gv && gv->type.spec.array_rank > 0 && gv->type.spec.tag && gv->type.spec.tag[0]) {
-                      const std::string tag(gv->type.spec.tag);
-                      if (const auto* sd = find_struct_def(tag)) {
+                    if (gv && gv->type.spec.array_rank > 0) {
+                      if (const auto* sd = lookup_const_init_struct_def(gv->type.spec)) {
                         const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                         const std::string aty = llvm_alloca_ty(gv->type.spec);
                         const std::string global_name =
@@ -1455,7 +1455,7 @@ std::string ConstInitEmitter::emit_const_union(const TypeSpec& ts, const HirStru
       return true;
     }
 
-    if ((cur_ts.base == TB_STRUCT || cur_ts.base == TB_UNION) && cur_ts.tag && cur_ts.tag[0]) {
+    if (is_named_aggregate_value(cur_ts)) {
       const HirStructDef* cur_sd_ptr = lookup_const_init_struct_def(cur_ts);
       if (!cur_sd_ptr) return false;
       const HirStructDef& cur_sd = *cur_sd_ptr;
