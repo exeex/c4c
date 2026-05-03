@@ -661,7 +661,8 @@ std::string_view function_signature_line(const LirFunction& fn) {
 StructNameId expected_direct_aggregate_signature_id(const LirModule& mod,
                                                     const TypeSpec& type) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
-      type.array_rank > 0 || !type.tag || !type.tag[0]) {
+      type.array_rank > 0 ||
+      !c4c::codegen::llvm_helpers::is_named_aggregate_value(type)) {
     return kInvalidStructName;
   }
   const std::string rendered = c4c::codegen::llvm_helpers::llvm_ty(type);
