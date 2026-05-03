@@ -5,7 +5,6 @@ Source Idea Path: ideas/open/142_codegen_lir_aggregate_type_identity_metadata.md
 Source Plan Path: plan.md
 Current Step ID: 5
 Current Step Title: Probe TypeSpec Tag Removal Boundary
-你該做code review了
 
 ## Just Finished
 
