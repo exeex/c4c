@@ -5741,7 +5741,7 @@ void test_sema_namespace_owner_resolution_rejects_rendered_fallback_after_struct
     ts.inner_rank = -1;
     ts.base = base;
     ts.ptr_level = ptr_level;
-    ts.tag = tag;
+    set_legacy_tag_if_present(ts, tag, 0);
     return ts;
   };
 
