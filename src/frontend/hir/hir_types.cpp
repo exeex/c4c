@@ -204,6 +204,7 @@ ConstEvalEnv Lowerer::make_lowerer_consteval_env(
   if (module_) {
     env.struct_defs = &module_->struct_defs;
     env.struct_def_owner_index = &module_->struct_def_owner_index;
+    env.link_name_texts = module_->link_name_texts.get();
   }
   return env;
 }

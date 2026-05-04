@@ -173,9 +173,13 @@ struct ConstEvalEnv {
   // not immediately computable in the sema-only path. `struct_defs` remains a
   // rendered-tag compatibility map; `struct_def_owner_index` is the structured
   // HIR record-owner handoff when TypeSpec metadata can identify the record.
+  // `link_name_texts` is the HIR module's TextTable used to canonicalize
+  // TypeSpec tag identity when `tag_text_id` came from a different intern
+  // table (e.g. parser/lexer) than the owner index uses.
   const std::unordered_map<std::string, HirStructDef>* struct_defs = nullptr;
   const std::unordered_map<HirRecordOwnerKey, std::string, HirRecordOwnerKeyHash>*
       struct_def_owner_index = nullptr;
+  const TextTable* link_name_texts = nullptr;
 
   std::optional<long long> lookup(const std::string& name) const {
     // 1. Scoped enum constants (innermost first).

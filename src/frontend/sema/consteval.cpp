@@ -343,47 +343,48 @@ const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv&
   if (ts.base != TB_STRUCT && ts.base != TB_UNION) return nullptr;
   if (!env.struct_defs) return nullptr;
 
-  if (env.struct_def_owner_index) {
-    if (auto owner_key = record_owner_key_from_typespec(ts); owner_key.has_value()) {
-      const auto owner_it = env.struct_def_owner_index->find(*owner_key);
-      if (owner_it != env.struct_def_owner_index->end()) {
-        const auto layout_it = env.struct_defs->find(owner_it->second);
-        if (layout_it != env.struct_defs->end()) return &layout_it->second;
-      }
-    }
+  const auto try_owner_lookup =
+      [&](const HirRecordOwnerKey& key) -> const HirStructDef* {
+    if (!env.struct_def_owner_index) return nullptr;
+    const auto owner_it = env.struct_def_owner_index->find(key);
+    if (owner_it == env.struct_def_owner_index->end()) return nullptr;
+    const auto layout_it = env.struct_defs->find(owner_it->second);
+    if (layout_it == env.struct_defs->end()) return nullptr;
+    return &layout_it->second;
+  };
+
+  // Path 1: trust ts as-is (works when tag_text_id is in link_name_texts).
+  if (auto direct = record_owner_key_from_typespec(ts); direct.has_value()) {
+    if (const HirStructDef* def = try_owner_lookup(*direct)) return def;
   }
 
+  // Path 2: canonicalize via link_name_texts->find(rendered_tag). Recovers
+  // from intern-table mismatches (e.g. ts.tag_text_id from parser token
+  // table while owner_index is keyed in HIR link_name_texts).
   const char* compatibility_tag = typespec_legacy_display_tag_if_present(ts, 0);
-  if (!compatibility_tag || !compatibility_tag[0]) return nullptr;
-
-  // When owner_index is the structured authority, recover from TextId
-  // intern-table mismatches by accepting an owner entry whose rendered tag
-  // and namespace match this TypeSpec. A bare rendered-tag match without an
-  // owner_index entry would let stale spelling silently substitute identity,
-  // so refuse it.
-  if (env.struct_def_owner_index) {
-    for (const auto& [k, v] : *env.struct_def_owner_index) {
-      if (std::string_view(v) != compatibility_tag) continue;
-      if (k.namespace_context_id != ts.namespace_context_id) continue;
-      if (k.is_global_qualified != ts.is_global_qualified) continue;
-      if (k.qualifier_segment_text_ids.size() !=
-          static_cast<size_t>(ts.n_qualifier_segments)) continue;
-      bool seg_match = true;
-      for (size_t i = 0; i < k.qualifier_segment_text_ids.size(); ++i) {
-        if (!ts.qualifier_text_ids ||
-            k.qualifier_segment_text_ids[i] != ts.qualifier_text_ids[i]) {
-          seg_match = false;
-          break;
-        }
+  if (env.link_name_texts && compatibility_tag && compatibility_tag[0]) {
+    const TextId canonical_id = env.link_name_texts->find(compatibility_tag);
+    if (canonical_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts.namespace_context_id;
+      ns_qual.is_global_qualified = ts.is_global_qualified;
+      if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+        ns_qual.segment_text_ids.assign(
+            ts.qualifier_text_ids,
+            ts.qualifier_text_ids + ts.n_qualifier_segments);
       }
-      if (!seg_match) continue;
-      const auto layout_it = env.struct_defs->find(v);
-      if (layout_it != env.struct_defs->end()) return &layout_it->second;
+      if (const HirStructDef* def =
+              try_owner_lookup(make_hir_record_owner_key(ns_qual, canonical_id))) {
+        return def;
+      }
     }
-    return nullptr;
   }
 
-  // No owner_index supplied: fall back to rendered-tag compatibility.
+  // Path 3: bare rendered-tag fallback. Only safe when no owner_index is
+  // available — otherwise stale spelling could silently override structured
+  // identity (idea 141 guard).
+  if (env.struct_def_owner_index) return nullptr;
+  if (!compatibility_tag || !compatibility_tag[0]) return nullptr;
   auto it = env.struct_defs->find(compatibility_tag);
   if (it == env.struct_defs->end()) return nullptr;
   return &it->second;
