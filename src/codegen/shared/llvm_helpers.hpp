@@ -504,11 +504,19 @@ inline std::optional<std::string> typespec_aggregate_final_spelling(const TypeSp
 inline std::optional<std::string> typespec_aggregate_compatibility_tag(
     const Module& mod, const TypeSpec& ts) {
   if (ts.base != TB_STRUCT && ts.base != TB_UNION) return std::nullopt;
+  // Prefer the rendered C-string carried on the TypeSpec: it is cross-table
+  // safe (same string regardless of which TextTable interned tag_text_id).
+  // `link_name_texts->lookup(ts.tag_text_id)` is only correct when the
+  // TextId came from link_name_texts; if it came from the parser/lexer
+  // table, the lookup returns whatever string happens to share that ID.
+  if (auto spelling = typespec_aggregate_final_spelling(ts); spelling.has_value()) {
+    return spelling;
+  }
   if (ts.tag_text_id != kInvalidText && mod.link_name_texts) {
     const std::string_view rendered_tag = mod.link_name_texts->lookup(ts.tag_text_id);
     if (!rendered_tag.empty()) return std::string(rendered_tag);
   }
-  return typespec_aggregate_final_spelling(ts);
+  return std::nullopt;
 }
 
 inline bool is_named_aggregate_value(const TypeSpec& ts) {
