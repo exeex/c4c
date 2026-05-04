@@ -340,13 +340,11 @@ bool has_record_layout_metadata(const TypeSpec& ts, const ConstEvalEnv& env) {
 }
 
 const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv& env) {
-  if (ts.base != TB_STRUCT && ts.base != TB_UNION) {
-    return nullptr;
-  }
-  if (env.struct_defs && env.struct_def_owner_index) {
-    const std::optional<HirRecordOwnerKey> owner_key =
-        record_owner_key_from_typespec(ts);
-    if (owner_key.has_value()) {
+  if (ts.base != TB_STRUCT && ts.base != TB_UNION) return nullptr;
+  if (!env.struct_defs) return nullptr;
+
+  if (env.struct_def_owner_index) {
+    if (auto owner_key = record_owner_key_from_typespec(ts); owner_key.has_value()) {
       const auto owner_it = env.struct_def_owner_index->find(*owner_key);
       if (owner_it != env.struct_def_owner_index->end()) {
         const auto layout_it = env.struct_defs->find(owner_it->second);
@@ -354,9 +352,38 @@ const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv&
       }
     }
   }
-  if (has_record_layout_metadata(ts, env)) return nullptr;
+
   const char* compatibility_tag = typespec_legacy_display_tag_if_present(ts, 0);
-  if (!env.struct_defs || !compatibility_tag || !compatibility_tag[0]) return nullptr;
+  if (!compatibility_tag || !compatibility_tag[0]) return nullptr;
+
+  // When owner_index is the structured authority, recover from TextId
+  // intern-table mismatches by accepting an owner entry whose rendered tag
+  // and namespace match this TypeSpec. A bare rendered-tag match without an
+  // owner_index entry would let stale spelling silently substitute identity,
+  // so refuse it.
+  if (env.struct_def_owner_index) {
+    for (const auto& [k, v] : *env.struct_def_owner_index) {
+      if (std::string_view(v) != compatibility_tag) continue;
+      if (k.namespace_context_id != ts.namespace_context_id) continue;
+      if (k.is_global_qualified != ts.is_global_qualified) continue;
+      if (k.qualifier_segment_text_ids.size() !=
+          static_cast<size_t>(ts.n_qualifier_segments)) continue;
+      bool seg_match = true;
+      for (size_t i = 0; i < k.qualifier_segment_text_ids.size(); ++i) {
+        if (!ts.qualifier_text_ids ||
+            k.qualifier_segment_text_ids[i] != ts.qualifier_text_ids[i]) {
+          seg_match = false;
+          break;
+        }
+      }
+      if (!seg_match) continue;
+      const auto layout_it = env.struct_defs->find(v);
+      if (layout_it != env.struct_defs->end()) return &layout_it->second;
+    }
+    return nullptr;
+  }
+
+  // No owner_index supplied: fall back to rendered-tag compatibility.
   auto it = env.struct_defs->find(compatibility_tag);
   if (it == env.struct_defs->end()) return nullptr;
   return &it->second;
