@@ -84,7 +84,7 @@ StructNameId lir_aggregate_structured_name_id(const c4c::hir::Module& mod,
   }
 
   if (const std::optional<HirRecordOwnerKey> owner_key =
-          typespec_aggregate_owner_key(type)) {
+          typespec_aggregate_owner_key(type, mod)) {
     const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
     if (structured_tag && !structured_tag->empty()) {
       const std::string name = llvm_struct_type_str(*structured_tag);

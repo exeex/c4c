@@ -8,37 +8,6 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
-std::optional<HirRecordOwnerKey> indexed_gep_owner_key_from_type(const TypeSpec& ts) {
-  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
-    const TextId declaration_text_id = ts.record_def->unqualified_text_id;
-    if (declaration_text_id != kInvalidText) {
-      NamespaceQualifier ns_qual;
-      ns_qual.context_id = ts.record_def->namespace_context_id;
-      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
-      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
-        ns_qual.segment_text_ids.assign(
-            ts.record_def->qualifier_text_ids,
-            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
-      }
-      const HirRecordOwnerKey owner_key =
-          make_hir_record_owner_key(ns_qual, declaration_text_id);
-      if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
-    }
-  }
-
-  if (ts.tag_text_id == kInvalidText) return std::nullopt;
-  NamespaceQualifier ns_qual;
-  ns_qual.context_id = ts.namespace_context_id;
-  ns_qual.is_global_qualified = ts.is_global_qualified;
-  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
-    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
-                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
-  }
-  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
-  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
-  return std::nullopt;
-}
-
 StructNameId indexed_gep_structured_name_id(const c4c::hir::Module& mod,
                                             const lir::LirModule* module,
                                             const TypeSpec& elem_ts) {
@@ -47,7 +16,8 @@ StructNameId indexed_gep_structured_name_id(const c4c::hir::Module& mod,
     return kInvalidStructName;
   }
 
-  const std::optional<HirRecordOwnerKey> owner_key = indexed_gep_owner_key_from_type(elem_ts);
+  const std::optional<HirRecordOwnerKey> owner_key =
+      typespec_aggregate_owner_key(elem_ts, mod);
   if (!owner_key) return kInvalidStructName;
   const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
   if (!structured_tag || structured_tag->empty()) return kInvalidStructName;
@@ -65,7 +35,8 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
 
 std::optional<std::string> member_access_owner_tag_from_type(const c4c::hir::Module& mod,
                                                              const TypeSpec& ts) {
-  if (const std::optional<HirRecordOwnerKey> owner_key = typespec_aggregate_owner_key(ts)) {
+  if (const std::optional<HirRecordOwnerKey> owner_key =
+          typespec_aggregate_owner_key(ts, mod)) {
     const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
     if (structured_tag && !structured_tag->empty()) return *structured_tag;
   }

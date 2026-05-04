@@ -327,7 +327,7 @@ static StructNameId lookup_structured_name_id_by_owner_or_compatibility(
   };
 
   if (const std::optional<HirRecordOwnerKey> owner_key =
-          typespec_aggregate_owner_key(ts)) {
+          typespec_aggregate_owner_key(ts, mod)) {
     const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
     if (structured_tag && !structured_tag->empty()) {
       const StructNameId name_id =
@@ -355,7 +355,7 @@ StructuredLayoutLookup lookup_structured_layout(const Module& mod,
   }
 
   if (const std::optional<HirRecordOwnerKey> owner_key =
-          typespec_aggregate_owner_key(ts)) {
+          typespec_aggregate_owner_key(ts, mod)) {
     result.legacy_decl = mod.find_struct_def_by_owner_structured(*owner_key);
   }
   if (!result.legacy_decl) {

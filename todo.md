@@ -3,8 +3,10 @@
 Status: Complete
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate Fixture Helpers Off Direct Tag Access
+Current Step ID: 6
+Current Step Title: Triage Broad Validation Regression After Field Removal
+你該做code review了
+你該做test baseline review了
 
 ## Just Finished
 

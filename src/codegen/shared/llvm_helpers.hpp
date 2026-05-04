@@ -488,6 +488,57 @@ inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(const TypeS
   return std::nullopt;
 }
 
+// Cross-table-aware variant of typespec_aggregate_owner_key.
+//
+// `ts.tag_text_id` may have been interned in a TextTable other than
+// `mod.link_name_texts` (e.g. parser/lexer token table). When that happens
+// the same logical record receives different TextId values in the two
+// tables, so the direct owner_key built from `ts.tag_text_id` misses
+// `mod.struct_def_owner_index` even though the record exists.
+//
+// This wrapper first builds the direct key. If `mod` already has an owner
+// entry under that key, the direct key is returned (fast path, fully
+// canonical). Otherwise it consults `mod.link_name_texts->find` with the
+// rendered C-string tag — which is cross-table-safe — to obtain the
+// canonical TextId in the HIR table, and rebuilds the key. If that
+// canonical key matches an owner entry it is returned; otherwise the
+// direct key is returned unchanged so callers fall back to compatibility
+// paths instead of silently substituting a different record.
+inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(
+    const TypeSpec& ts, const Module& mod) {
+  std::optional<HirRecordOwnerKey> direct = typespec_aggregate_owner_key(ts);
+  const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+
+  // Direct lookup is canonical only when the indexed rendered tag agrees
+  // with the TypeSpec's own rendered C-string. If they disagree, the
+  // direct key has collided with a different record in another intern
+  // table (e.g. parser table 7 = "Y", link_name_texts 7 = "YY") and we
+  // must canonicalize via the rendered string.
+  if (direct.has_value()) {
+    const SymbolName* rendered = mod.find_struct_def_tag_by_owner(*direct);
+    if (rendered != nullptr &&
+        (legacy_tag.empty() || std::string_view(*rendered) == legacy_tag)) {
+      return direct;
+    }
+  }
+
+  if (!mod.link_name_texts || legacy_tag.empty()) return direct;
+  const TextId canonical_id = mod.link_name_texts->find(legacy_tag);
+  if (canonical_id == kInvalidText) return direct;
+
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
+                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  const HirRecordOwnerKey canonical =
+      make_hir_record_owner_key(ns_qual, canonical_id);
+  if (mod.find_struct_def_tag_by_owner(canonical) != nullptr) return canonical;
+  return direct;
+}
+
 inline std::optional<std::string> typespec_aggregate_final_spelling(const TypeSpec& ts) {
   if (ts.base != TB_STRUCT && ts.base != TB_UNION) return std::nullopt;
   const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
@@ -531,7 +582,8 @@ inline bool is_named_aggregate_value(const TypeSpec& ts) {
 inline const HirStructDef* find_typespec_aggregate_layout(const Module& mod,
                                                           const TypeSpec& ts) {
   if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0) return nullptr;
-  if (const std::optional<HirRecordOwnerKey> owner_key = typespec_aggregate_owner_key(ts)) {
+  if (const std::optional<HirRecordOwnerKey> owner_key =
+          typespec_aggregate_owner_key(ts, mod)) {
     if (const HirStructDef* def = mod.find_struct_def_by_owner_structured(*owner_key)) {
       return def;
     }
