@@ -2393,9 +2393,10 @@ void test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrie
   set_legacy_typespec_tag(rendered_only, arena.strdup("RenderedT"));
   callee->template_arg_types[0] = rendered_only;
   c4c::TypeSpec resolved = bind_arg();
-  expect_true(resolved.base == c4c::TB_SHORT,
-              "legacy rendered type binding lookup remains available when no "
-              "TypeSpec metadata carrier exists");
+  expect_true(resolved.base == c4c::TB_TYPEDEF &&
+                  resolved.tag_text_id == c4c::kInvalidText,
+              "consteval type binding lookup should not recover no-carrier "
+              "rendered TypeSpec::tag fallback after tag deletion");
 
   expose_text_channel = true;
   c4c::TypeSpec text_carrier = rendered_only;
@@ -3827,11 +3828,9 @@ void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
               "origin-key-only alias substitution should normalize the outer "
               "origin from the structured key instead of rendered text" +
                   detail);
-  expect_true(legacy_typespec_tag_or_null(resolved) &&
-                  std::string(legacy_typespec_tag_or_null(resolved)) ==
-                      "Outer_@Inner:int",
+  expect_true(legacy_typespec_tag_or_null(resolved) == nullptr,
               "origin-key-only alias substitution should render follow-on "
-              "display text from structured nested args, not stale debug text" +
+              "structured metadata without restoring TypeSpec::tag display text" +
                   detail);
   expect_true(resolved.tpl_struct_args.data &&
                   resolved.tpl_struct_args.size == 1 &&
@@ -5180,9 +5179,10 @@ void test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag() {
 
   query.tag_text_id = c4c::kInvalidText;
   const c4c::TypeSpec fallback = parser.resolve_typedef_type_chain(query);
-  expect_true(fallback.base == c4c::TB_LONG,
-              "parser typedef-chain resolution should retain rendered tag "
-              "fallback when no tag_text_id carrier exists");
+  expect_true(fallback.base == c4c::TB_TYPEDEF &&
+                  fallback.tag_text_id == c4c::kInvalidText,
+              "parser typedef-chain resolution should reject no-carrier "
+              "rendered TypeSpec::tag fallback after tag deletion");
 }
 
 void test_parser_type_compatibility_uses_structured_nominal_identity() {
@@ -5254,9 +5254,9 @@ void test_parser_type_compatibility_uses_structured_nominal_identity() {
 
   lhs = make_nominal(c4c::TB_ENUM, "RenderedOnlyEnum");
   rhs = make_nominal(c4c::TB_ENUM, "RenderedOnlyEnum");
-  expect_true(parser.are_types_compatible(lhs, rhs),
-              "parser type compatibility should retain rendered tag fallback "
-              "when no nominal metadata exists");
+  expect_true(!parser.are_types_compatible(lhs, rhs),
+              "parser type compatibility should reject no-metadata rendered "
+              "tag fallback after TypeSpec::tag deletion");
 }
 
 void test_parser_record_ctor_classification_uses_structured_metadata() {
@@ -5301,9 +5301,9 @@ void test_parser_record_ctor_classification_uses_structured_metadata() {
               "rendered tag after structured TextId metadata misses");
 
   query.tag_text_id = c4c::kInvalidText;
-  expect_true(parser.resolves_to_record_ctor_type(query),
-              "record-constructor classification should retain rendered tag "
-              "fallback when no structured metadata carrier exists");
+  expect_true(!parser.resolves_to_record_ctor_type(query),
+              "record-constructor classification should reject no-carrier "
+              "rendered tag fallback after TypeSpec::tag deletion");
 
   c4c::TypeSpec direct_record{};
   direct_record.array_size = -1;
@@ -5385,9 +5385,9 @@ void test_parser_support_types_compatible_uses_structured_nominal_identity() {
 
   lhs = make_nominal(c4c::TB_ENUM, "SupportRenderedOnlyEnum");
   rhs = make_nominal(c4c::TB_ENUM, "SupportRenderedOnlyEnum");
-  expect_true(c4c::types_compatible_p(lhs, rhs, empty_typedefs),
-              "parser support type compatibility should retain rendered tag "
-              "fallback when no nominal metadata exists");
+  expect_true(!c4c::types_compatible_p(lhs, rhs, empty_typedefs),
+              "parser support type compatibility should reject no-metadata "
+              "rendered tag fallback after TypeSpec::tag deletion");
 }
 
 void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {

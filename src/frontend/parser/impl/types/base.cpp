@@ -2447,9 +2447,42 @@ TypeSpec Parser::parse_base_type() {
                 is_unqualified_typedef && ts.tag_text_id != kInvalidText
                     ? ts.tag_text_id
                     : parser_text_id_for_token(kInvalidText, tname);
+            auto find_structured_typedef_from_current_metadata =
+                [&]() -> const TypeSpec* {
+                if (ts.tag_text_id == kInvalidText) return nullptr;
+                const bool has_complete_qualifier_text_ids =
+                    ts.n_qualifier_segments > 0 && ts.qualifier_text_ids;
+                if (has_complete_qualifier_text_ids) {
+                    QualifiedNameRef qn;
+                    qn.base_text_id = ts.tag_text_id;
+                    qn.base_name = std::string(parser_text(ts.tag_text_id, {}));
+                    qn.is_global_qualified = ts.is_global_qualified;
+                    for (int qi = 0; qi < ts.n_qualifier_segments; ++qi) {
+                        TextId qualifier_text_id =
+                            ts.qualifier_text_ids
+                                ? ts.qualifier_text_ids[qi]
+                                : kInvalidText;
+                        if (qualifier_text_id == kInvalidText) return nullptr;
+                        qn.qualifier_text_ids.push_back(qualifier_text_id);
+                        qn.qualifier_segments.emplace_back(
+                            parser_text(qualifier_text_id, {}));
+                    }
+                    return find_typedef_type(qualified_name_key(qn));
+                }
+                if (ts.namespace_context_id >= 0) {
+                    return find_typedef_type(
+                        struct_typedef_key_in_context(ts.namespace_context_id,
+                                                      ts.tag_text_id));
+                }
+                return nullptr;
+            };
             const TypeSpec* typedef_type =
-                is_unqualified_typedef ? find_visible_typedef_type(tname_text_id)
-                                       : find_typedef_type(tname_text_id);
+                find_structured_typedef_from_current_metadata();
+            if (!typedef_type) {
+                typedef_type =
+                    is_unqualified_typedef ? find_visible_typedef_type(tname_text_id)
+                                           : find_typedef_type(tname_text_id);
+            }
             if (typedef_type) {
                 // Resolve: use the stored TypeSpec, preserving qualifiers from this context
                 bool save_const = ts.is_const, save_vol = ts.is_volatile;

@@ -36,10 +36,9 @@ c4c::TypeSpec make_typedef_ref(c4c::TextId name_text_id,
   return ts;
 }
 
-c4c::TypeSpec make_legacy_typedef_ref(const char* rendered_tag) {
+c4c::TypeSpec make_no_metadata_typedef_ref() {
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  set_legacy_tag_if_present(ts, rendered_tag, 0);
   ts.tag_text_id = c4c::kInvalidText;
   ts.namespace_context_id = -1;
   ts.n_qualifier_segments = 0;
@@ -72,9 +71,9 @@ void test_record_ctor_type_prefers_metadata_over_rendered_tag() {
                   make_typedef_ref(missing_text_id, "StaleBox")),
               "record constructor detection should not fall back to rendered tags when structured metadata is present but misses");
 
-  expect_true(parser.resolves_to_record_ctor_type(
-                  make_legacy_typedef_ref("StaleBox")),
-              "record constructor detection should preserve explicit no-metadata legacy tag compatibility");
+  expect_true(!parser.resolves_to_record_ctor_type(
+                  make_no_metadata_typedef_ref()),
+              "record constructor detection should reject no-metadata typedefs after TypeSpec::tag deletion");
 }
 
 }  // namespace

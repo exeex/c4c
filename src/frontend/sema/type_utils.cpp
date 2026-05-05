@@ -545,6 +545,13 @@ bool same_type_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
            same_text_name_identity(lhs, rhs);
   }
 
+  const bool lhs_has_any_text_name = has_any_text_name_metadata(lhs);
+  const bool rhs_has_any_text_name = has_any_text_name_metadata(rhs);
+  if (lhs_has_any_text_name || rhs_has_any_text_name) {
+    return lhs_has_any_text_name && rhs_has_any_text_name &&
+           same_text_name_identity(lhs, rhs);
+  }
+
   if (has_record_def_identity(lhs) || has_record_def_identity(rhs)) {
     return false;
   }

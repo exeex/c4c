@@ -84,11 +84,11 @@ void test_record_lookup_uses_text_identity_before_rendered_tag() {
                   parser, &structured) == real_record,
               "record lookup should use tag_text_id before rendered tag");
 
-  c4c::TypeSpec legacy = make_struct(c4c::kInvalidText,
-                                     "StaleRenderedRecord");
+  c4c::TypeSpec no_metadata = make_struct(c4c::kInvalidText,
+                                          "StaleRenderedRecord");
   expect_true(c4c::type_spec_structured_record_definition(
-                  parser, &legacy) == stale_record,
-              "record lookup should preserve no-metadata rendered-tag compatibility");
+                  parser, &no_metadata) == nullptr,
+              "record lookup should reject no-metadata rendered fallback after TypeSpec::tag deletion");
 }
 
 }  // namespace

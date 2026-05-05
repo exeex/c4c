@@ -5334,13 +5334,15 @@ c4c::Node* make_sema_template_param_holder(c4c::Parser& parser,
 c4c::Node* make_sema_cast_expr_function(c4c::Parser& parser,
                                         c4c::Arena& arena,
                                         const char* fn_name,
-                                        const char* cast_tag) {
+                                        const char* cast_tag,
+                                        c4c::TextId cast_text_id = c4c::kInvalidText) {
   c4c::Node* literal = parser.make_node(c4c::NK_INT_LIT, 1);
   literal->ival = 0;
 
   c4c::Node* cast = parser.make_node(c4c::NK_CAST, 1);
   cast->type = make_sema_lookup_ts(c4c::TB_TYPEDEF, 1);
   set_legacy_tag_if_present(cast->type, arena.strdup(cast_tag), 0);
+  cast->type.tag_text_id = cast_text_id;
   cast->left = literal;
 
   c4c::Node* stmt = parser.make_node(c4c::NK_EXPR_STMT, 1);
@@ -5362,7 +5364,7 @@ c4c::Node* make_sema_cast_expr_function(c4c::Parser& parser,
   return fn;
 }
 
-void test_sema_template_type_param_lookup_rejects_stale_rendered_name_after_text_miss() {
+void test_sema_template_type_param_lookup_rejects_stale_type_identity_after_text_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -5373,7 +5375,8 @@ void test_sema_template_type_param_lookup_rejects_stale_rendered_name_after_text
   c4c::Node* second_template = make_sema_template_param_holder(
       parser, arena, "second_template", "tp", texts.intern("second_tp"));
   c4c::Node* stale_cast =
-      make_sema_cast_expr_function(parser, arena, "uses_stale_tp", "tp");
+      make_sema_cast_expr_function(parser, arena, "uses_stale_tp", "tp",
+                                   texts.intern("tp"));
 
   c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
   program->n_children = 3;
@@ -5384,11 +5387,11 @@ void test_sema_template_type_param_lookup_rejects_stale_rendered_name_after_text
 
   const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
   expect_true(!result.ok && !result.diagnostics.empty() &&
-                  result.diagnostics.front().message == "cast to unknown type name 'tp'",
-              "template type-parameter lookup should reject stale rendered spelling after TextId disagreement");
+                  result.diagnostics.front().message == "cast to unknown type name '<anonymous>'",
+              "template type-parameter lookup should reject stale TypeSpec identity after TextId disagreement");
 }
 
-void test_sema_template_type_param_lookup_keeps_no_metadata_rendered_compatibility() {
+void test_sema_template_type_param_lookup_rejects_no_metadata_rendered_compatibility() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -5408,8 +5411,9 @@ void test_sema_template_type_param_lookup_keeps_no_metadata_rendered_compatibili
   const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
   const std::string diag =
       result.diagnostics.empty() ? "" : (": " + result.diagnostics.front().message);
-  expect_true(result.ok,
-              "template type-parameter lookup should keep rendered fallback when TextId metadata is absent" + diag);
+  expect_true(!result.ok && !result.diagnostics.empty() &&
+                  result.diagnostics.front().message == "cast to unknown type name '<anonymous>'",
+              "template type-parameter lookup should reject no-metadata rendered fallback after TypeSpec::tag deletion" + diag);
 }
 
 c4c::Node* make_sema_lookup_function(c4c::Parser& parser, c4c::Arena& arena,
@@ -8004,7 +8008,7 @@ void test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_ove
               "consteval type binding lookup should reject stale rendered names after metadata misses");
 }
 
-void test_consteval_type_binding_lookup_keeps_no_metadata_rendered_compatibility() {
+void test_consteval_type_binding_lookup_rejects_no_metadata_rendered_compatibility() {
   c4c::Arena arena;
   c4c::hir::TypeBindings rendered;
   rendered["legacy"] = make_sema_lookup_ts(c4c::TB_INT);
@@ -8015,10 +8019,8 @@ void test_consteval_type_binding_lookup_keeps_no_metadata_rendered_compatibility
   c4c::Node legacy_node =
       make_consteval_sizeof_type_node(make_consteval_typedef_ref(arena, "legacy"));
   auto legacy = c4c::hir::evaluate_constant_expr(&legacy_node, env);
-  expect_true(legacy.ok(),
-              "consteval type binding lookup should retain rendered fallback without metadata");
-  expect_eq_int(static_cast<int>(legacy.as_int()), 4,
-                "consteval type binding rendered fallback should still resolve no-metadata bindings");
+  expect_true(!legacy.ok(),
+              "consteval type binding lookup should reject no-metadata rendered fallback after TypeSpec::tag deletion");
 }
 
 c4c::Node* make_consteval_returning(c4c::Parser& parser, c4c::Arena& arena,
@@ -8475,8 +8477,8 @@ int main() {
   test_parser_template_static_member_lookup_prefers_record_definition();
   test_sema_static_member_type_lookup_prefers_structured_member_key();
   test_sema_static_member_type_lookup_rejects_stale_rendered_member_after_structured_miss();
-  test_sema_template_type_param_lookup_rejects_stale_rendered_name_after_text_miss();
-  test_sema_template_type_param_lookup_keeps_no_metadata_rendered_compatibility();
+  test_sema_template_type_param_lookup_rejects_stale_type_identity_after_text_miss();
+  test_sema_template_type_param_lookup_rejects_no_metadata_rendered_compatibility();
   test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_local_spelling();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_global_spelling();
@@ -8530,7 +8532,7 @@ int main() {
   test_consteval_type_binding_lookup_uses_typespec_text_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_uses_typespec_structured_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
-  test_consteval_type_binding_lookup_keeps_no_metadata_rendered_compatibility();
+  test_consteval_type_binding_lookup_rejects_no_metadata_rendered_compatibility();
   test_consteval_function_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
   test_sema_consteval_function_lookup_prefers_text_metadata_over_stale_rendered_name();
   test_sema_consteval_function_lookup_prefers_structured_metadata_over_stale_rendered_name();

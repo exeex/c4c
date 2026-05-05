@@ -92,7 +92,7 @@ void test_specialization_score_uses_template_param_text_identity() {
 
   arg_types[0].tag_text_id = c4c::kInvalidText;
   expect_true(c4c::specialization_match_score(&spec) == 4,
-              "specialization scoring should retain rendered fallback compatibility");
+              "specialization scoring should penalize missing structured template param identity");
 }
 
 void test_canonical_key_uses_text_identity_before_rendered_tag() {
@@ -122,8 +122,8 @@ void test_mangling_uses_record_metadata_before_rendered_tag() {
   set_legacy_tag_if_present(ts, "CompatRecord", 0);
   mangled.clear();
   c4c::append_type_mangled_suffix(mangled, ts);
-  expect_true(mangled == "struct_CompatRecord",
-              "mangled suffix should preserve explicit rendered fallback");
+  expect_true(mangled == "struct_anon",
+              "mangled suffix should use anonymous fallback when structured record metadata is absent");
 }
 
 }  // namespace

@@ -8,31 +8,28 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's focused implementation packet repaired the remaining LIR
-function-signature type-ref carrier failure after `TypeSpec::tag` deletion.
-LIR lowering now snapshots aggregate signature `TypeSpec` metadata into the
-LIR module text table and drops frontend-owned `record_def` / qualifier
-pointer carriers before storing the type on `LirFunction` metadata. The LIR
-verifier no longer dereferences those frontend-owned pointers when checking
-signature mirrors; it derives expected aggregate ids from the LIR-owned
-`tag_text_id` carrier and keeps rejecting direct known aggregate mirrors
-without `StructNameId`. Byval aggregate signature parameters with no direct
-`StructNameId` must still carry an aggregate ABI fragment instead of silently
-accepting scalar drift.
+Step 6's parser/fixture packet repaired the delegated five-test fallout after
+permanent `TypeSpec::tag` deletion. Parser typedef-chain resolution now checks
+the structured qualified `TypeSpec` metadata before falling back to legacy
+unqualified typedef spelling, so namespace-qualified typedef function-style
+casts recover the real typedef payload without rendered semantic lookup. Sema
+type-binding equivalence now accepts matching structured text-name metadata
+even when the name carrier is incomplete, preserving deferred member TextId
+authority over stale display spelling.
 
-Lifecycle close is not accepted yet. The post-deletion broad validation
-required by Step 6's completion check has not run after the focused repair.
+Obsolete fixture expectations that required no-metadata rendered `TypeSpec::tag`
+fallbacks were rewritten to the post-deletion contract: no-carrier typedef,
+record-constructor, nominal-compatibility, mangling, consteval type-binding, and
+origin-key display cases now reject or avoid rendered tag recovery. The stale
+template-parameter disagreement check remains a structured TextId miss and does
+not reintroduce rendered lookup.
 
 ## Suggested Next
 
-Run a supervisor-selected broad post-deletion validation packet before
-lifecycle close. At minimum, rebuild and run the broad frontend/HIR validation
-needed to cover `TypeSpec::tag` removal after the final Step 6 repair; if this
-is treated as the close gate for the source idea, run the full suite or an
-equivalent close-scope regression guard. Only close the idea after that broad
-proof is green, or split any remaining failures into follow-up open ideas.
-
-Do not treat the focused five-test proof as close-sufficient by itself.
+Run the supervisor-selected broad post-deletion validation gate for Step 6
+before lifecycle close. If this is the close gate for the source idea, use the
+full suite or an equivalent close-scope regression guard and split any remaining
+failures into follow-up ideas.
 
 ## Watchouts
 
@@ -41,28 +38,28 @@ Do not treat the focused five-test proof as close-sufficient by itself.
 - Preserve structured metadata precedence over stale rendered spelling.
 - Do not parse `debug_text` or encoded `tag_ctx..._textN` strings to recover
   template-parameter identity.
-- The LIR verifier repair intentionally uses LIR-owned `tag_text_id` and
-  `StructNameId` carriers, not parser-owned `record_def` pointers.
-- Keep the four HIR cases in the delegated subset as regression coverage for
-  template member typedefs and deferred consteval type binding.
+- The parser typedef-chain fix intentionally resolves from existing structured
+  `tag_text_id` / qualifier / namespace metadata before old spelling paths.
+- The no-carrier fixture rewrites are post-deletion contract changes only; do
+  not extend them into expectation downgrades for structured metadata misses.
 
 ## Proof
 
-Canonical focused proof log: `test_after.log`.
-
 Delegated proof command:
-`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_template_member_owner_signature_local|cpp_hir_template_member_owner_field_and_local|cpp_hir_fixpoint_convergence|cpp_hir_deferred_consteval_chain|frontend_lir_function_signature_type_ref)$' > test_after.log 2>&1`
+`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_core_record_ctor_structured_metadata|cpp_hir_parser_type_helper_structured_metadata|cpp_hir_parser_type_helper_residual_structured_metadata)$' > test_after.log 2>&1`
 
 Result: passed.
 
-`cmake --build build` passed. `ctest` ran the five delegated tests and all
-passed:
-`cpp_hir_template_member_owner_signature_local`,
-`cpp_hir_template_member_owner_field_and_local`,
-`cpp_hir_fixpoint_convergence`, and
-`cpp_hir_deferred_consteval_chain`, plus
-`frontend_lir_function_signature_type_ref`.
+`cmake --build build` passed. `ctest` ran the five delegated parser/fixture
+tests and all passed:
+`frontend_parser_tests`,
+`frontend_parser_lookup_authority_tests`,
+`cpp_hir_parser_core_record_ctor_structured_metadata`,
+`cpp_hir_parser_type_helper_structured_metadata`, and
+`cpp_hir_parser_type_helper_residual_structured_metadata`.
 
-Broad post-deletion frontend/HIR or full-suite validation after the final Step
-6 repair: not run yet; this is the next required lifecycle blocker before
-closing `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`.
+Canonical proof log: `test_after.log`.
+
+Broad post-deletion frontend/HIR or full-suite validation after this focused
+parser/fixture repair: not run yet; this remains the next lifecycle blocker
+before closing `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`.
