@@ -8,34 +8,63 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Closed `ideas/open/144_member_template_constructor_specialization_metadata.md`
-as `ideas/closed/144_member_template_constructor_specialization_metadata.md`
-and resumed the parent TypeSpec-tag deletion plan at Step 6.
+Executed parent Step 6 broad-validation triage after closing the constructor
+member-template specialization decomposition.
 
-The decomposition close gate accepted the canonical positive-Sema regression
-guard:
+The full-suite command completed and wrote `test_after.log`. Result: 2999/3023
+passing, 24 failing. This red full-suite result is triage data only, not a
+canonical accepted baseline.
 
-- `test_before.log`: 883/884, with only
-  `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
-  failing.
-- `test_after.log`: 884/884, no failures.
-- Guard result: pass, no new failing tests.
+Representative remaining failure clusters:
 
-The red full-suite candidate from the decomposition route had 24 known failures
-and was rejected as uncanonical. It is not close proof for the decomposition
-and is not acceptance proof for the parent route.
+- C++ qualified/template parser fallout: EASTL parse recipes and external
+  utility fail at `EASTL/internal/type_properties.h:357:46` with `expected
+  GREATER but got '<'`; vector/tuple adds `parse_top_level_parameter_list`
+  failures at `<`, `::`, and `(`. Related parser-only/debug/perf failures:
+  `cpp_parse_template_alias_empty_pack_default_arg_dump`,
+  `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_spelling_stack`,
+  `cpp_parser_debug_tentative_template_arg_lifecycle`,
+  `cpp_parser_debug_tentative_cli_only`, and
+  `cpp_qualified_template_call_template_arg_perf` timeout.
+- C++ parser/HIR dump mismatch:
+  `cpp_parse_record_base_variable_template_value_arg_dump` no longer emits the
+  expected `has_unique_object_representations_T_int` specialization dump.
+- C aggregate/member-owner frontend failures:
+  `c_testsuite_src_00019_c`, `llvm_gcc_c_torture_src_pr40022_c`, and
+  `llvm_gcc_c_torture_src_20001124_1_c` fail with `StmtEmitter: field ... not
+  found in struct/union ...`.
+- LIR structured signature mirror failures:
+  `llvm_gcc_c_torture_src_20040709_1_c`,
+  `llvm_gcc_c_torture_src_20040709_2_c`,
+  `llvm_gcc_c_torture_src_20040709_3_c`, and
+  `llvm_gcc_c_torture_src_pr23324_c` report return/parameter mirrors naming a
+  different structured type than the aggregate ABI type.
+- C runtime segfault cluster:
+  `llvm_gcc_c_torture_src_20020402_3_c`,
+  `llvm_gcc_c_torture_src_20071018_1_c`,
+  `llvm_gcc_c_torture_src_950426_1_c`, and
+  `llvm_gcc_c_torture_src_pr41463_c` compile with clang but the c2ll runtime
+  exits by segmentation fault.
 
 ## Suggested Next
 
-Execute parent Step 6 broad-validation / remaining full-suite triage. Start by
-establishing a fresh supervisor-selected canonical baseline for the parent
-TypeSpec-tag deletion route, then continue deleting `TypeSpec::tag` and split
-any unrelated validation boundary into a separate open idea.
+Recommended next Step 6 implementation packet: repair the dominant C++ parser
+qualified/template-id fallout first, starting from the shared
+`type_properties.h:357` / `expected GREATER but got '<'` boundary and the
+related parser debug stack/perf cases. Preserve the structured-authority guard:
+do not accept unknown namespace-qualified template ids from spelling alone, and
+do not recover semantics from rendered strings or `TypeSpec::tag`.
+
+After that parser packet, rerun a matching broad or focused parent Step 6 proof
+and then triage the smaller C aggregate-owner and LIR signature/runtime
+clusters separately if they remain.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- Do not rely on the rejected red full-suite candidate as canonical proof.
+- Treat this red full-suite result as triage data, not canonical accepted
+  baseline proof.
 - The constructor member-template specialization blocker is closed; do not
   reopen it unless a fresh parent deletion probe exposes a distinct regression
   in the same carrier.
@@ -44,11 +73,12 @@ any unrelated validation boundary into a separate open idea.
 
 ## Proof
 
-Close proof for the decomposition idea:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+Parent Step 6 broad-validation triage:
+`cmake --build build && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`
 
-Result: passed. Before: 883/884. After: 884/884. Resolved failure:
-`cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`.
+Result: failed, 2999/3023 passing with 24 failures.
 
-No build or full-suite validation was run by the plan owner during this
-lifecycle-only close/resume operation.
+Proof log: `test_after.log`.
+
+This red result is not an accepted baseline; it is the current parent Step 6
+triage snapshot for selecting the next implementation packet.
