@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/143_typespec_identity_normalization_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Normalize Parser Cast And Template Owner Identity
+Current Step ID: 6
+Current Step Title: Broad Validation And 141 Resume Decision
 
 ## Just Finished
 
@@ -19,10 +19,17 @@ The focused guard also verifies that `typename Owner<int>::type (&)(int)` and
 `typename H<T>::template Rebind<U>::Type (&)(Arg)` keep deferred member TextIds
 through abstract declarator application.
 
+Post-commit review in `review/143_step4_post_commit_route_review.md` judged
+Step 4 route-aligned, semantically scoped, and not testcase-overfit. The only
+blocking review finding was stale execution metadata still pointing at Step 4,
+so the current execution boundary is advanced to Step 6 broad validation and
+141 resume decision.
+
 ## Suggested Next
 
-Continue the normalization mainline against the remaining attribution-review
-families. The close bar for idea 143 is now full green:
+Execute Step 6 broad-failure triage before any lifecycle close or 141 resume
+decision. Continue the normalization mainline against the remaining
+attribution-review families. The close bar for idea 143 is full green:
 `ctest --test-dir build -j 8 --output-on-failure` must pass with zero failures,
 not merely show fewer failures than the current baseline.
 
