@@ -457,14 +457,22 @@ QualifiedNameKey intern_compatibility_key_from_rendered_qualified_spelling(
 std::vector<std::string> merge_leading_top_level_qualified_probe(
     const std::vector<Parser::ParseDebugEvent>& parse_debug_events,
     const std::vector<std::string>& summary_stack) {
-    if (summary_stack.size() < 2 || summary_stack.front() != "parse_top_level" ||
-        !is_top_level_qualified_probe_merge_target(summary_stack[1])) {
+    if (summary_stack.size() < 2 || summary_stack.front() != "parse_top_level") {
         return summary_stack;
     }
 
+    size_t merge_anchor_index = 0;
+    for (size_t i = 1; i < summary_stack.size(); ++i) {
+        if (is_top_level_qualified_probe_merge_target(summary_stack[i])) {
+            merge_anchor_index = i;
+            break;
+        }
+    }
+    if (merge_anchor_index == 0) return summary_stack;
+
     std::vector<std::string> leading_probe_frames;
     bool inside_top_level = false;
-    const std::string& merge_anchor = summary_stack[1];
+    const std::string& merge_anchor = summary_stack[merge_anchor_index];
     for (const Parser::ParseDebugEvent& event : parse_debug_events) {
         if (event.kind != "enter") continue;
         if (event.function_name == "parse_top_level") {
@@ -481,18 +489,24 @@ std::vector<std::string> merge_leading_top_level_qualified_probe(
     }
 
     if (leading_probe_frames.empty()) return summary_stack;
-    if (summary_stack.size() > leading_probe_frames.size() &&
-        std::equal(leading_probe_frames.begin(), leading_probe_frames.end(),
-                   summary_stack.begin() + 1)) {
+    size_t shared = 0;
+    while (shared < leading_probe_frames.size() &&
+           1 + shared < summary_stack.size() &&
+           leading_probe_frames[shared] == summary_stack[1 + shared]) {
+        ++shared;
+    }
+    if (shared == leading_probe_frames.size()) {
         return summary_stack;
     }
 
     std::vector<std::string> merged;
     merged.reserve(summary_stack.size() + leading_probe_frames.size());
-    merged.push_back(summary_stack.front());
-    merged.insert(merged.end(), leading_probe_frames.begin(),
+    merged.insert(merged.end(), summary_stack.begin(),
+                  summary_stack.begin() + 1 + shared);
+    merged.insert(merged.end(), leading_probe_frames.begin() + shared,
                   leading_probe_frames.end());
-    merged.insert(merged.end(), summary_stack.begin() + 1, summary_stack.end());
+    merged.insert(merged.end(), summary_stack.begin() + 1 + shared,
+                  summary_stack.end());
     return merged;
 }
 
