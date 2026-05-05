@@ -9,25 +9,24 @@ Current Step Title: Reprobe TypeSpec Tag Removal Build Boundary
 ## Just Finished
 
 Completed Step 1 fixture migration for
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp`.
+`tests/frontend/cpp_hir_static_member_base_metadata_test.cpp`.
 
-The lookup-authority fixture cluster no longer contains direct test-body
-`TypeSpec::tag` reads or writes. Legacy rendered spelling setup and diagnostics
-now go through SFINAE-gated test helpers, so the stale-rendered disagreement
-coverage remains active while `TypeSpec::tag` exists but the file also compiles
-under a controlled field-deletion probe.
+The static-member-base structured metadata fixture no longer contains direct
+test-body `TypeSpec::tag` writes. Stale rendered base spelling setup now goes
+through a SFINAE-gated helper, so the stale-rendered disagreement coverage
+remains active while `TypeSpec::tag` exists but the file also compiles under a
+controlled field-deletion probe.
 
 Temporarily removed `const char* tag` from `TypeSpec` in
 `src/frontend/parser/ast.hpp` and ran
-`cmake --build build --target frontend_parser_lookup_authority_tests`. The
+`cmake --build build --target cpp_hir_static_member_base_metadata_test`. The
 focused target built successfully, so there is no remaining deletion-probe
-blocker in this fixture cluster. Restored the field before final proof.
+blocker in this owned fixture. Restored the field before final proof.
 
 ## Suggested Next
 
-Run the next controlled `TypeSpec::tag` deletion probe at the supervisor-chosen
-scope, likely the broader build, to identify the next compile blocker outside
-`frontend_parser_lookup_authority_tests.cpp`.
+Migrate the next supervisor-chosen direct `TypeSpec::tag` fixture debt exposed
+by the broader deletion probe.
 
 ## Watchouts
 
@@ -38,26 +37,29 @@ scope, likely the broader build, to identify the next compile blocker outside
 - Preserve stale-rendered-spelling disagreement tests.
 - Split distinct downstream carrier boundaries into `ideas/open/*.md` instead
   of silently broadening the parent runbook.
-- `frontend_parser_lookup_authority_tests.cpp` still has SFINAE helper
+- `cpp_hir_static_member_base_metadata_test.cpp` still has SFINAE helper
   references to `.tag` by design; no direct fixture-body `.tag` references
   remain.
-- The focused deletion probe did not expose the next blocker. A broader
-  deletion probe is needed to find the next migration packet.
+- The focused deletion probe passed for the owned target. The broader
+  deletion-probe frontier still includes related direct tag debt in
+  `frontend_hir_lookup_tests.cpp`,
+  `cpp_hir_member_typedef_binding_metadata_test.cpp`, and
+  `cpp_hir_nested_member_typedef_record_def_metadata_test.cpp`.
 
 ## Proof
 
 Canonical proof log: `test_after.log`.
 
 Delegated proof command:
-`cmake --build build --target frontend_parser_lookup_authority_tests c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_lookup_authority_tests$'`
+`cmake --build build --target cpp_hir_static_member_base_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_static_member_base_structured_metadata$'`
 
-Result: passed. `frontend_parser_lookup_authority_tests` is green in
+Result: passed. `cpp_hir_static_member_base_structured_metadata` is green in
 `test_after.log`.
 
 Controlled deletion probe:
 - Temporarily removed `const char* tag` from `TypeSpec` in
   `src/frontend/parser/ast.hpp`.
-- Ran `cmake --build build --target frontend_parser_lookup_authority_tests`;
+- Ran `cmake --build build --target cpp_hir_static_member_base_metadata_test`;
   the focused target passed with the field removed, so no remaining blocker was
   found in this target.
 - Restored the field and reran the delegated proof with the field present,

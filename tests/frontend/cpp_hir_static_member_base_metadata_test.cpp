@@ -17,6 +17,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 c4c::Node make_int_literal(long long value) {
   c4c::Node lit{};
   lit.kind = c4c::NK_INT_LIT;
@@ -59,7 +67,7 @@ void test_static_member_base_lookup_prefers_record_def_over_stale_tag() {
 
   c4c::TypeSpec base_ts{};
   base_ts.base = c4c::TB_STRUCT;
-  base_ts.tag = "StaleRenderedBase";
+  set_legacy_tag_if_present(base_ts, "StaleRenderedBase", 0);
   base_ts.record_def = &good_base;
 
   c4c::Node derived = make_record("DerivedRecordDef", 201, 3, nullptr, 0);
@@ -92,7 +100,7 @@ void test_static_member_base_lookup_prefers_text_id_over_stale_tag() {
 
   c4c::TypeSpec base_ts{};
   base_ts.base = c4c::TB_STRUCT;
-  base_ts.tag = "StaleTextRenderedBase";
+  set_legacy_tag_if_present(base_ts, "StaleTextRenderedBase", 0);
   base_ts.tag_text_id = 301;
   base_ts.namespace_context_id = 5;
 
