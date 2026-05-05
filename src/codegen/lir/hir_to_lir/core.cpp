@@ -318,6 +318,28 @@ static const HirStructDef* lookup_structured_layout_compatibility_decl(
   return find_compatibility_decl(typespec_aggregate_final_spelling(ts));
 }
 
+static const HirStructDef* lookup_structured_layout_decl_by_lir_name(
+    const Module& mod, const LirModule& lir_module, StructNameId structured_name_id) {
+  if (structured_name_id == kInvalidStructName) return nullptr;
+  const std::string_view rendered_name =
+      lir_module.struct_names.spelling(structured_name_id);
+  if (rendered_name.empty()) return nullptr;
+  for (const auto& entry : mod.struct_defs) {
+    if (llvm_struct_type_str(entry.first) == rendered_name) return &entry.second;
+  }
+  return nullptr;
+}
+
+static bool legacy_layout_decl_matches_lir_name(const HirStructDef* legacy_decl,
+                                                const LirModule& lir_module,
+                                                StructNameId structured_name_id) {
+  if (!legacy_decl || structured_name_id == kInvalidStructName) return false;
+  const std::string_view rendered_name =
+      lir_module.struct_names.spelling(structured_name_id);
+  return !rendered_name.empty() &&
+         llvm_struct_type_str(legacy_decl->tag) == rendered_name;
+}
+
 static StructNameId lookup_structured_name_id_by_owner_or_compatibility(
     const Module& mod, const LirModule& lir_module, const TypeSpec& ts) {
   auto find_compatibility_name = [&](const std::optional<std::string>& tag)
@@ -369,6 +391,15 @@ StructuredLayoutLookup lookup_structured_layout(const Module& mod,
         lookup_structured_name_id_by_owner_or_compatibility(mod, *lir_module, ts);
   }
   if (result.structured_name_id == kInvalidStructName) return result;
+
+  if (!legacy_layout_decl_matches_lir_name(result.legacy_decl, *lir_module,
+                                          result.structured_name_id)) {
+    if (const HirStructDef* normalized_legacy_decl =
+            lookup_structured_layout_decl_by_lir_name(
+                mod, *lir_module, result.structured_name_id)) {
+      result.legacy_decl = normalized_legacy_decl;
+    }
+  }
 
   result.structured_lookup_attempted = true;
   result.structured_decl = lir_module->find_struct_decl(result.structured_name_id);

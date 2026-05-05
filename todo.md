@@ -8,20 +8,24 @@ Current Step Title: Triage Broad Validation Regression After Field Removal
 
 ## Just Finished
 
-Step 6 broad-validation triage fixed the delegated C/LIR aggregate identity
-failures where structured mirrors disagreed with rendered text. Call aggregate
-return mirrors now reuse the cross-table-aware `typespec_aggregate_owner_key`
-path and normalize the selected `StructNameId` against the rendered LLVM type
-before attaching it. Indexed/member GEP aggregate mirrors now normalize stale
-carried ids the same way. No tests were weakened and no rendered-tag consumer
-fallback was added.
+Step 6 broad-validation triage fixed a real structured layout parity mismatch
+by constraining legacy HIR layout selection to the normalized LIR aggregate
+identity. `lookup_structured_layout` now replaces a stale owner/compatibility
+legacy declaration when it disagrees with the already-normalized
+`StructNameId`, which fixes the `%struct.lock_chain` case that was pairing the
+structured `[i32]` layout with `lock_chain1`'s packed `[i8, i16]` legacy
+layout. The same correction removes the `%struct.Wrap` parity failure; no
+verifier/layout parity checks were weakened, no tests were weakened, and no
+rendered-tag consumer fallback was added.
 
 ## Suggested Next
 
-Continue Step 6 against the remaining C external-suite families exposed after
-identity normalization: structured layout parity mismatches for `%struct.Wrap`
-and `%struct.lock_chain`, plus the `20040709-{1,2,3}.c` runtime failures that
-now get past LIR call-return mirror verification.
+Continue Step 6 against the remaining C external-suite runtime families exposed
+after identity normalization. In the delegated subset, `00216.c` now gets past
+the `%struct.Wrap` layout parity check and fails later as
+`[RUNTIME_NONZERO] ... exit=no such file or directory`; previous
+`20040709-{1,2,3}.c` runtime failures remain outside this packet's proof
+subset.
 
 ## Watchouts
 
@@ -31,10 +35,9 @@ now get past LIR call-return mirror verification.
 - The fixed mirror failures were producer-side identity mismatches. Keep future
   call/GEP aggregate work on normalized `StructNameId` production; do not relax
   `verify.cpp` mirror/text checks to make the remaining parity failures pass.
-- The current GEP leftovers are no longer mirror/text disagreements. They are
-  layout identity/parity questions: `%struct.Wrap` has legacy size 0/fields []
-  vs structured fields [ptr], and `%struct.lock_chain` has legacy [i8, i16] vs
-  structured [i32].
+- The current delegated GEP layout parity leftovers are cleared. The remaining
+  observed failure in this proof subset is C-side runtime harness behavior for
+  `00216.c`, not a structured layout mismatch.
 - The repaired timeout came from open-coded injected reparses of dependent
   template owner prefixes. Future injected parser routes should use
   `parse_injected_base_type()` or otherwise include an EOF token and restore
@@ -48,13 +51,13 @@ now get past LIR call-return mirror verification.
 
 ## Proof
 
-Accepted proof is in `test_after.log`:
-`cmake --build build --target c4cll && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_src_00216_c|llvm_gcc_c_torture_src_20040709_(1|2|3)_c|llvm_gcc_c_torture_src_pr71083_c)$'`.
+Proof is in `test_after.log`:
+`cmake --build build --target c4cll && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_src_00216_c|llvm_gcc_c_torture_src_pr71083_c|frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|frontend_lir_global_type_ref|frontend_lir_extern_decl_type_ref)$'`.
 
-The delegated subset still fails 5/5, but the failure family changed as
-intended. The original `LirCallOp.return_type` mirror/text failures for
-`20040709-{1,2,3}.c` are fixed and those tests now reach `RUNTIME_FAIL`
-(`c2ll_exit=no such file or directory`). The original `LirGepOp.element_type`
-mirror/text failures for `00216.c` and `pr71083.c` are fixed and now fail as
-`LirStructuredLayoutObservation.parity` mismatches for `%struct.Wrap` and
-`%struct.lock_chain`.
+The delegated proof fails 1/6 after the layout fix. Passing tests:
+`llvm_gcc_c_torture_src_pr71083_c`, `frontend_lir_call_type_ref`,
+`frontend_lir_function_signature_type_ref`, `frontend_lir_global_type_ref`, and
+`frontend_lir_extern_decl_type_ref`. Remaining failure:
+`c_testsuite_src_00216_c` now reaches `[RUNTIME_NONZERO] ... exit=no such file
+or directory`; its previous `%struct.Wrap` structured layout parity mismatch is
+no longer present.
