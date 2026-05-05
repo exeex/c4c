@@ -1115,6 +1115,60 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         }
     };
 
+    const bool is_qualified =
+        qn.is_global_qualified || !qn.qualifier_segments.empty();
+    const int after_pos =
+        parser.core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
+        2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
+    if (is_qualified &&
+        after_pos < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+        parser.core_input_state_.tokens[after_pos].kind == TokenKind::Less) {
+        Node* primary_tpl = parser.find_template_struct_primary(qn);
+        if (!primary_tpl) return false;
+        Parser::TentativeParseGuard template_guard(parser);
+        std::string qualified_name;
+        if (!parser.consume_qualified_type_spelling_with_typename(
+                /*require_typename=*/false,
+                /*allow_global=*/true,
+                /*consume_final_template_args=*/false,
+                &qualified_name, nullptr)) {
+            return false;
+        }
+        std::vector<Parser::TemplateArgParseResult> parsed_args;
+        if (!parser.parse_template_argument_list(&parsed_args, primary_tpl))
+            return false;
+
+        out_ts->base = TB_STRUCT;
+        out_ts->tag_text_id = qn.base_text_id;
+        out_ts->tpl_struct_origin =
+            parser.arena_.strdup(qualified_name.c_str());
+        out_ts->tpl_struct_origin_key = parser.qualified_name_key(qn);
+        out_ts->tpl_struct_args.data = nullptr;
+        out_ts->tpl_struct_args.size = 0;
+        if (!parsed_args.empty()) {
+            out_ts->tpl_struct_args.data =
+                parser.arena_.alloc_array<TemplateArgRef>(parsed_args.size());
+            out_ts->tpl_struct_args.size =
+                static_cast<int>(parsed_args.size());
+            for (int i = 0; i < out_ts->tpl_struct_args.size; ++i) {
+                const Parser::TemplateArgParseResult& arg = parsed_args[i];
+                TemplateArgRef& ref = out_ts->tpl_struct_args.data[i];
+                ref.kind = arg.is_value ? TemplateArgKind::Value
+                                        : TemplateArgKind::Type;
+                ref.type = arg.is_value ? TypeSpec{} : arg.type;
+                ref.value = arg.is_value ? arg.value : 0;
+                ref.nttp_text_id =
+                    arg.is_value ? arg.nttp_text_id : kInvalidText;
+                ref.debug_text = nullptr;
+            }
+        }
+        set_declarator_legacy_display_tag_if_present(
+            *out_ts, parser.arena_.strdup(qualified_name.c_str()), 0);
+        attach_qualified_typespec_metadata();
+        template_guard.commit();
+        return true;
+    }
+
     if (const TypeSpec* member_typedef =
             record_member_typedef_type_from_structured_authority(parser, qn)) {
         *out_ts = *member_typedef;
@@ -1148,56 +1202,6 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
             /*allow_global=*/true,
             /*consume_final_template_args=*/false,
             nullptr, nullptr);
-        return true;
-    }
-
-    const bool is_qualified =
-        qn.is_global_qualified || !qn.qualifier_segments.empty();
-    const int after_pos =
-        parser.core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
-        2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
-    if (is_qualified &&
-        after_pos < static_cast<int>(parser.core_input_state_.tokens.size()) &&
-        parser.core_input_state_.tokens[after_pos].kind == TokenKind::Less) {
-        Parser::TentativeParseGuard guard(parser);
-        std::string qualified_name;
-        if (!parser.consume_qualified_type_spelling_with_typename(
-                /*require_typename=*/false,
-                /*allow_global=*/true,
-                /*consume_final_template_args=*/false,
-                &qualified_name, nullptr)) {
-            return false;
-        }
-        std::vector<Parser::TemplateArgParseResult> parsed_args;
-        if (!parser.parse_template_argument_list(&parsed_args)) return false;
-
-        bool has_dependent_type_arg = false;
-        for (const Parser::TemplateArgParseResult& arg : parsed_args) {
-            if (arg.is_value || arg.type.base != TB_TYPEDEF)
-                continue;
-            TextId arg_text_id = arg.type.template_param_text_id;
-            if (arg_text_id == kInvalidText) arg_text_id = arg.type.tag_text_id;
-            if (arg_text_id == kInvalidText) {
-                if (const char* legacy_tag =
-                        typespec_legacy_display_tag_if_present(arg.type, 0)) {
-                    arg_text_id = parser.find_parser_text_id(legacy_tag);
-                }
-            }
-            if (parser.is_template_scope_type_param(arg_text_id)) {
-                has_dependent_type_arg = true;
-                break;
-            }
-        }
-        if (!has_dependent_type_arg) return false;
-
-        out_ts->base = TB_TYPEDEF;
-        out_ts->tag_text_id = qn.base_text_id;
-        set_declarator_legacy_display_tag_if_present(
-            *out_ts, parser.arena_.strdup(qualified_name.c_str()), 0);
-        out_ts->tpl_struct_origin = parser.arena_.strdup(qualified_name.c_str());
-        out_ts->tpl_struct_origin_key = parser.qualified_name_key(qn);
-        attach_qualified_typespec_metadata();
-        guard.commit();
         return true;
     }
 

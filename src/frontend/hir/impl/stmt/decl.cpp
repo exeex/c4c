@@ -262,6 +262,15 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   auto resolve_decl_struct_owner_tag =
       [&](const TypeSpec& owner_ts,
           const std::string& context_name) -> std::string {
+    if (owner_ts.base == TB_TYPEDEF && owner_ts.tag_text_id != kInvalidText &&
+        module_->link_name_texts) {
+      const std::string_view tag_text =
+          module_->link_name_texts->lookup(owner_ts.tag_text_id);
+      if (!tag_text.empty() &&
+          module_->struct_defs.count(std::string(tag_text))) {
+        return std::string(tag_text);
+      }
+    }
     if ((owner_ts.base != TB_STRUCT && owner_ts.base != TB_UNION) ||
         owner_ts.ptr_level != 0 ||
         owner_ts.array_rank != 0) {
@@ -276,6 +285,14 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             return std::string(*owner_tag);
           }
         }
+      }
+    }
+    if (owner_ts.tag_text_id != kInvalidText && module_->link_name_texts) {
+      const std::string_view tag_text =
+          module_->link_name_texts->lookup(owner_ts.tag_text_id);
+      if (!tag_text.empty() &&
+          module_->struct_defs.count(std::string(tag_text))) {
+        return std::string(tag_text);
       }
     }
     if (has_decl_structured_owner_identity(owner_ts)) {
@@ -317,6 +334,43 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   const std::string decl_struct_owner_tag =
       resolve_decl_struct_owner_tag(
           d.type.spec, std::string("local-decl-struct-owner:") + d.name);
+  auto constructor_param_names_decl_owner =
+      [&](const TypeSpec& param_ts, const Node* ctor_node) -> bool {
+    if (decl_struct_owner_tag.empty()) return false;
+    if (param_ts.ptr_level != 0 || param_ts.array_rank != 0 ||
+        (!param_ts.is_lvalue_ref && !param_ts.is_rvalue_ref)) {
+      return false;
+    }
+    const HirStructDef* decl_layout = nullptr;
+    auto dit = module_->struct_defs.find(decl_struct_owner_tag);
+    if (dit != module_->struct_defs.end()) decl_layout = &dit->second;
+    if (!decl_layout) return false;
+    if (param_ts.namespace_context_id >= 0 &&
+        param_ts.tag_text_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = param_ts.namespace_context_id;
+      ns_qual.is_global_qualified = param_ts.is_global_qualified;
+      if (param_ts.qualifier_text_ids && param_ts.n_qualifier_segments > 0) {
+        ns_qual.segment_text_ids.assign(
+            param_ts.qualifier_text_ids,
+            param_ts.qualifier_text_ids + param_ts.n_qualifier_segments);
+      }
+      const HirRecordOwnerKey owner_key =
+          make_hir_record_owner_key(ns_qual, param_ts.tag_text_id);
+      if (const HirStructDef* structured =
+              module_->find_struct_def_by_owner_structured(owner_key)) {
+        return structured == decl_layout || structured->tag == decl_struct_owner_tag;
+      }
+      if (hir_record_owner_key_has_complete_metadata(owner_key)) return false;
+    }
+    if (ctor_node && ctor_node->unqualified_text_id != kInvalidText &&
+        param_ts.tag_text_id != kInvalidText &&
+        param_ts.tag_text_id == ctor_node->unqualified_text_id) {
+      return true;
+    }
+    return param_ts.tag_text_id != kInvalidText &&
+           param_ts.tag_text_id == decl_layout->tag_text_id;
+  };
   auto resolve_decl_struct_def =
       [&](const TypeSpec& owner_ts,
           const std::string& context_name)
@@ -353,7 +407,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
               resolve_decl_struct_owner_tag(
                   param_ts,
                   std::string("local-decl-copy-param-owner:") + d.name);
-          if (param_owner_tag == decl_struct_owner_tag &&
+          if ((param_owner_tag == decl_struct_owner_tag ||
+               (param_owner_tag.empty() &&
+                constructor_param_names_decl_owner(param_ts, ov.method_node))) &&
               (param_ts.is_lvalue_ref || param_ts.is_rvalue_ref)) {
             is_struct_copy_init = true;
             break;
@@ -623,7 +679,11 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             resolve_decl_struct_owner_tag(
                 param_ts,
                 std::string("local-decl-copy-param-owner:") + d.name);
-        if (param_owner_tag != decl_struct_owner_tag) continue;
+        if (param_owner_tag != decl_struct_owner_tag &&
+            !(param_owner_tag.empty() &&
+              constructor_param_names_decl_owner(param_ts, ov.method_node))) {
+          continue;
+        }
         if (!param_ts.is_lvalue_ref && !param_ts.is_rvalue_ref) continue;
         int score = 0;
         if (param_ts.is_rvalue_ref && !init_is_lvalue) {

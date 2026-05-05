@@ -237,11 +237,29 @@ ExprId Lowerer::lower_call_arg(FunctionCtx* ctx,
     TypeSpec direct_ts = *param_ts;
     direct_ts.is_lvalue_ref = false;
     direct_ts.is_rvalue_ref = false;
+    if (direct_ts.base == TB_STRUCT && direct_ts.ptr_level == 0 &&
+        direct_ts.tpl_struct_origin && direct_ts.tpl_struct_origin[0] &&
+        direct_ts.tpl_struct_args.data && direct_ts.tpl_struct_args.size > 0) {
+      return materialize_initializer_list_arg(ctx, arg_node, direct_ts);
+    }
+    TypeBindings empty_tpl_bindings;
+    NttpBindings empty_nttp_bindings;
+    realize_template_struct_if_needed(
+        direct_ts,
+        ctx ? ctx->tpl_bindings : empty_tpl_bindings,
+        ctx ? ctx->nttp_bindings : empty_nttp_bindings);
+    seed_and_resolve_pending_template_type_if_needed(
+        direct_ts,
+        ctx ? ctx->tpl_bindings : empty_tpl_bindings,
+        ctx ? ctx->nttp_bindings : empty_nttp_bindings,
+        arg_node,
+        PendingTemplateTypeKind::DeclarationType,
+        "call-init-list-param");
+    while (resolve_struct_member_typedef_if_ready(&direct_ts)) {
+    }
     resolve_typedef_to_struct(direct_ts);
     if (direct_ts.base == TB_STRUCT && direct_ts.ptr_level == 0) {
-      if (describe_initializer_list_struct(direct_ts, nullptr, nullptr, nullptr)) {
-        return materialize_initializer_list_arg(ctx, arg_node, direct_ts);
-      }
+      return materialize_initializer_list_arg(ctx, arg_node, direct_ts);
     }
   }
   if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref)) {
@@ -658,6 +676,17 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
         (callee_fn && static_cast<size_t>(i) < callee_fn->params.size())
             ? &callee_fn->params[static_cast<size_t>(i)].type.spec
             : nullptr;
+    TypeSpec ast_param_ts{};
+    if (n->children[i] && n->children[i]->kind == NK_INIT_LIST &&
+        n->left && n->left->kind == NK_VAR && n->left->name) {
+      auto fn_node_it = function_decl_nodes_.find(n->left->name);
+      if (fn_node_it != function_decl_nodes_.end() && fn_node_it->second &&
+          i < fn_node_it->second->n_params && fn_node_it->second->params &&
+          fn_node_it->second->params[i]) {
+        ast_param_ts = fn_node_it->second->params[i]->type;
+        param_ts = &ast_param_ts;
+      }
+    }
     c.args.push_back(lower_call_arg(ctx, n->children[i], param_ts));
   }
   TypeSpec ts = n->type;

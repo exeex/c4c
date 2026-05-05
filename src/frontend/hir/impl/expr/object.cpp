@@ -163,9 +163,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
     if (sit != module_->struct_defs.end() &&
         (cit == struct_constructors_.end() || cit->second.empty())) {
       TypeSpec tmp_ts{};
-      tmp_ts.base = TB_STRUCT;
-      set_typespec_final_spelling_tag_if_present(
-          tmp_ts, sit->second.tag.c_str(), 0);
+      populate_struct_owner_typespec(tmp_ts, sit->second.tag, 0);
       tmp_ts.array_size = -1;
       tmp_ts.inner_rank = -1;
 
@@ -257,8 +255,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
   }
 
   TypeSpec tmp_ts{};
-  tmp_ts.base = TB_STRUCT;
-  set_typespec_final_spelling_tag_if_present(tmp_ts, sit->second.tag.c_str(), 0);
+  populate_struct_owner_typespec(tmp_ts, sit->second.tag, 0);
   tmp_ts.array_size = -1;
   tmp_ts.inner_rank = -1;
 
@@ -354,7 +351,163 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
   TypeSpec elem_ts{};
   TypeSpec data_ptr_ts{};
   TypeSpec len_ts{};
-  if (!describe_initializer_list_struct(param_ts, &elem_ts, &data_ptr_ts, &len_ts)) {
+  TypeSpec list_ts = param_ts;
+  const HirStructDef* selected_initializer_list_layout = nullptr;
+  auto apply_initializer_list_layout_owner = [&](const HirStructDef& layout) {
+    selected_initializer_list_layout = &layout;
+    list_ts.base = layout.is_union ? TB_UNION : TB_STRUCT;
+    list_ts.ptr_level = 0;
+    list_ts.tag_text_id = layout.tag_text_id;
+    list_ts.namespace_context_id = layout.ns_qual.context_id;
+    list_ts.is_global_qualified = layout.ns_qual.is_global_qualified;
+    list_ts.qualifier_segments = nullptr;
+    list_ts.qualifier_text_ids =
+        layout.ns_qual.segment_text_ids.empty()
+            ? nullptr
+            : const_cast<TextId*>(layout.ns_qual.segment_text_ids.data());
+    list_ts.n_qualifier_segments =
+        static_cast<int>(layout.ns_qual.segment_text_ids.size());
+  };
+  auto describe_initializer_list_layout =
+      [&](const HirStructDef& layout,
+          TypeSpec* out_elem_ts,
+          TypeSpec* out_data_ptr_ts,
+          TypeSpec* out_len_ts) -> bool {
+    const HirStructField* data_field = nullptr;
+    const HirStructField* len_field = nullptr;
+    for (const auto& field : layout.fields) {
+      if (field.name == "_M_array") {
+        data_field = &field;
+      } else if (field.name == "_M_len") {
+        len_field = &field;
+      }
+    }
+    if (!data_field || !len_field || data_field->elem_type.ptr_level <= 0) {
+      return false;
+    }
+    if (out_data_ptr_ts) *out_data_ptr_ts = data_field->elem_type;
+    if (out_elem_ts) {
+      *out_elem_ts = data_field->elem_type;
+      out_elem_ts->ptr_level--;
+    }
+    if (out_len_ts) *out_len_ts = len_field->elem_type;
+    return true;
+  };
+  TemplateArgRef inferred_arg_ref{};
+  auto initializer_list_element_arg = [&]() -> std::optional<TypeSpec> {
+    if (list_ts.tpl_struct_args.data && list_ts.tpl_struct_args.size > 0 &&
+        list_ts.tpl_struct_args.data[0].kind == TemplateArgKind::Type) {
+      TypeSpec out = list_ts.tpl_struct_args.data[0].type;
+      resolve_typedef_to_struct(out);
+      out.is_const = false;
+      out.is_volatile = false;
+      return out;
+    }
+    return std::nullopt;
+  };
+  auto apply_layout_matching_initializer_list_element = [&]() -> bool {
+    if (!module_) return false;
+    std::optional<TypeSpec> wanted_elem = initializer_list_element_arg();
+    if (!wanted_elem) return false;
+    const HirStructDef* match = nullptr;
+    for (const auto& [_, def] : module_->struct_defs) {
+      if (list_ts.namespace_context_id >= 0 &&
+          def.ns_qual.context_id != list_ts.namespace_context_id) {
+        continue;
+      }
+      const HirStructField* data_field = nullptr;
+      const HirStructField* len_field = nullptr;
+      for (const auto& field : def.fields) {
+        if (field.name == "_M_array") {
+          data_field = &field;
+        } else if (field.name == "_M_len") {
+          len_field = &field;
+        }
+      }
+      if (!data_field || !len_field || data_field->elem_type.ptr_level <= 0) {
+        continue;
+      }
+      TypeSpec field_elem = data_field->elem_type;
+      field_elem.ptr_level--;
+      field_elem.is_const = false;
+      field_elem.is_volatile = false;
+      if (!generic_type_compatible(field_elem, *wanted_elem)) continue;
+      if (match) return false;
+      match = &def;
+    }
+    if (!match) return false;
+    apply_initializer_list_layout_owner(*match);
+    return true;
+  };
+  auto apply_instantiated_template_layout_owner = [&]() -> bool {
+    if (!module_ || !list_ts.tpl_struct_origin || !list_ts.tpl_struct_origin[0] ||
+        !list_ts.tpl_struct_args.data || list_ts.tpl_struct_args.size <= 0) {
+      return false;
+    }
+    const Node* primary_tpl = canonical_template_struct_primary(list_ts);
+    if (!primary_tpl) return apply_layout_matching_initializer_list_element();
+    TypeBindings empty_tpl_bindings;
+    NttpBindings empty_nttp_bindings;
+    ResolvedTemplateArgs resolved = materialize_template_args(
+        primary_tpl, list_ts,
+        ctx ? ctx->tpl_bindings : empty_tpl_bindings,
+        ctx ? ctx->nttp_bindings : empty_nttp_bindings);
+    const std::string tag = build_template_mangled_name(
+        primary_tpl, primary_tpl, list_ts.tpl_struct_origin, resolved);
+    auto it = module_->struct_defs.find(tag);
+    if (it == module_->struct_defs.end()) {
+      return apply_layout_matching_initializer_list_element();
+    }
+    apply_initializer_list_layout_owner(it->second);
+    return true;
+  };
+  if (list_ts.tpl_struct_origin && list_ts.tpl_struct_origin[0]) {
+    if (!apply_instantiated_template_layout_owner()) {
+      TypeBindings empty_tpl_bindings;
+      NttpBindings empty_nttp_bindings;
+      realize_template_struct_if_needed(
+          list_ts,
+          ctx ? ctx->tpl_bindings : empty_tpl_bindings,
+          ctx ? ctx->nttp_bindings : empty_nttp_bindings);
+    }
+  }
+  if (list_ts.tpl_struct_origin && list_ts.tpl_struct_origin[0] &&
+      (!list_ts.tpl_struct_args.data || list_ts.tpl_struct_args.size <= 0) &&
+      list_node && list_node->n_children > 0) {
+    const Node* first = init_item_value_node(list_node->children[0]);
+    if (first) {
+      TypeSpec first_ts = infer_generic_ctrl_type(ctx, first);
+      resolve_typedef_to_struct(first_ts);
+      inferred_arg_ref.kind = TemplateArgKind::Type;
+      inferred_arg_ref.type = first_ts;
+      inferred_arg_ref.value = 0;
+      inferred_arg_ref.nttp_text_id = kInvalidText;
+      inferred_arg_ref.debug_text = nullptr;
+      list_ts.tpl_struct_args.data = &inferred_arg_ref;
+      list_ts.tpl_struct_args.size = 1;
+      if (!apply_instantiated_template_layout_owner()) {
+        TypeBindings empty_tpl_bindings;
+        NttpBindings empty_nttp_bindings;
+        realize_template_struct_if_needed(
+            list_ts,
+            ctx ? ctx->tpl_bindings : empty_tpl_bindings,
+            ctx ? ctx->nttp_bindings : empty_nttp_bindings);
+      }
+    }
+  }
+  if (const HirStructDef* layout = find_struct_def_for_layout_type(list_ts)) {
+    apply_initializer_list_layout_owner(*layout);
+  }
+  if (!describe_initializer_list_struct(list_ts, &elem_ts, &data_ptr_ts, &len_ts) &&
+      !(selected_initializer_list_layout &&
+        describe_initializer_list_layout(
+            *selected_initializer_list_layout, &elem_ts, &data_ptr_ts, &len_ts))) {
+    apply_layout_matching_initializer_list_element();
+  }
+  if (!describe_initializer_list_struct(list_ts, &elem_ts, &data_ptr_ts, &len_ts) &&
+      !(selected_initializer_list_layout &&
+        describe_initializer_list_layout(
+            *selected_initializer_list_layout, &elem_ts, &data_ptr_ts, &len_ts))) {
     return append_expr(list_node, IntLiteral{0, false}, param_ts);
   }
 
@@ -394,7 +547,7 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
   LocalDecl tmp{};
   tmp.id = next_local_id();
   tmp.name = "__init_list_arg_" + std::to_string(tmp.id.value);
-  tmp.type = qtype_from(param_ts, ValueCategory::LValue);
+  tmp.type = qtype_from(list_ts, ValueCategory::LValue);
   tmp.storage = StorageClass::Auto;
   tmp.span = make_span(list_node);
   const std::string tmp_name = tmp.name;
@@ -403,13 +556,13 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
   tmp.init = append_expr(list_node, IntLiteral{0, false}, int_ts);
   const LocalId tmp_lid = tmp.id;
   ctx->locals[tmp_name] = tmp.id;
-  ctx->local_types.insert(tmp.id, param_ts);
+  ctx->local_types.insert(tmp.id, list_ts);
   append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(list_node)});
 
   DeclRef tmp_ref{};
   tmp_ref.name = tmp_name;
   tmp_ref.local = tmp_lid;
-  ExprId tmp_id = append_expr(list_node, tmp_ref, param_ts, ValueCategory::LValue);
+  ExprId tmp_id = append_expr(list_node, tmp_ref, list_ts, ValueCategory::LValue);
 
   auto assign_field = [&](const char* field_name, const TypeSpec& field_ts, ExprId rhs_id) {
     MemberExpr lhs{};
@@ -418,18 +571,23 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
     lhs.field_text_id = make_text_id(
         lhs.field, module_ ? module_->link_name_texts.get() : nullptr);
     const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
-        param_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
+        list_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
         ctx ? &ctx->nttp_bindings : nullptr,
         (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr,
         list_node, std::string("init-list-member:") + field_name);
     if (owner_tag) {
       lhs.resolved_owner_tag = *owner_tag;
       lhs.member_symbol_id = find_struct_member_symbol_id(
-          param_ts, *owner_tag, field_name, lhs.field_text_id);
-    } else if (const HirStructDef* layout = find_struct_def_for_layout_type(param_ts)) {
+          list_ts, *owner_tag, field_name, lhs.field_text_id);
+    } else if (const HirStructDef* layout = find_struct_def_for_layout_type(list_ts)) {
       lhs.resolved_owner_tag = layout->tag;
       lhs.member_symbol_id = find_struct_member_symbol_id(
-          param_ts, layout->tag, field_name, lhs.field_text_id);
+          list_ts, layout->tag, field_name, lhs.field_text_id);
+    } else if (selected_initializer_list_layout) {
+      lhs.resolved_owner_tag = selected_initializer_list_layout->tag;
+      lhs.member_symbol_id = find_struct_member_symbol_id(
+          list_ts, selected_initializer_list_layout->tag, field_name,
+          lhs.field_text_id);
     }
     lhs.is_arrow = false;
     ExprId lhs_id = append_expr(list_node, lhs, field_ts, ValueCategory::LValue);

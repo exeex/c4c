@@ -8,21 +8,18 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's parser/fixture packet repaired the delegated five-test fallout after
-permanent `TypeSpec::tag` deletion. Parser typedef-chain resolution now checks
-the structured qualified `TypeSpec` metadata before falling back to legacy
-unqualified typedef spelling, so namespace-qualified typedef function-style
-casts recover the real typedef payload without rendered semantic lookup. Sema
-type-binding equivalence now accepts matching structured text-name metadata
-even when the name carrier is incomplete, preserving deferred member TextId
-authority over stale display spelling.
+Step 6's HIR object/member materialization repair restored the three delegated
+helper contracts after permanent `TypeSpec::tag` deletion. Direct constructor
+and member-call temporaries now materialize with HIR struct-owner metadata
+instead of an empty rendered tag. `std::initializer_list<int>` call arguments
+now keep the typed template carrier through call lowering, select the
+instantiated HIR layout by structured template args or by `_M_array` element
+layout, and emit the backing compound literal plus initializer-list temp.
 
-Obsolete fixture expectations that required no-metadata rendered `TypeSpec::tag`
-fallbacks were rewritten to the post-deletion contract: no-carrier typedef,
-record-constructor, nominal-compatibility, mangling, consteval type-binding, and
-origin-key display cases now reject or avoid rendered tag recovery. The stale
-template-parameter disagreement check remains a structured TextId miss and does
-not reintroduce rendered lookup.
+Local copy-initialization now recognizes copy/move constructor parameters from
+structured owner carriers, including parser-provided constructor name TextIds
+for injected-class-name parameters, so `Box copy = seed` emits the copy
+constructor call instead of direct aggregate assignment.
 
 ## Suggested Next
 
@@ -33,33 +30,31 @@ failures into follow-up ideas.
 
 ## Watchouts
 
-- Do not replace `TypeSpec::tag` with another rendered-string semantic
-  authority.
-- Preserve structured metadata precedence over stale rendered spelling.
-- Do not parse `debug_text` or encoded `tag_ctx..._textN` strings to recover
-  template-parameter identity.
-- The parser typedef-chain fix intentionally resolves from existing structured
-  `tag_text_id` / qualifier / namespace metadata before old spelling paths.
-- The no-carrier fixture rewrites are post-deletion contract changes only; do
-  not extend them into expectation downgrades for structured metadata misses.
+- Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
+- The qualified-template parser change is intentionally isolated to preserving
+  structured `QualifiedNameKey` / template-arg carriers for qualified template
+  types such as `std::initializer_list<int>`, and now requires a known
+  structured template primary before accepting qualified template-ids.
+- Initializer-list materialization does not parse debug strings; its fallback
+  selects a unique HIR layout by namespace context, `_M_array` / `_M_len`
+  structure, and element-type compatibility.
+- Constructor copy-init matching uses structured constructor/parameter TextIds
+  and resolved HIR struct owners; it should not be broadened to accept arbitrary
+  unknown single-reference constructor parameters.
 
 ## Proof
 
 Delegated proof command:
-`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_core_record_ctor_structured_metadata|cpp_hir_parser_type_helper_structured_metadata|cpp_hir_parser_type_helper_residual_structured_metadata)$' > test_after.log 2>&1`
+`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_hir_template_struct_arg_materialization|cpp_hir_template_type_arg_encoding_structured_metadata|cpp_hir_expr_call_member_helper|cpp_hir_expr_object_materialization_helper|cpp_hir_stmt_local_decl_helper)$' > test_after.log 2>&1`
 
 Result: passed.
 
-`cmake --build build` passed. `ctest` ran the five delegated parser/fixture
-tests and all passed:
-`frontend_parser_tests`,
-`frontend_parser_lookup_authority_tests`,
-`cpp_hir_parser_core_record_ctor_structured_metadata`,
-`cpp_hir_parser_type_helper_structured_metadata`, and
-`cpp_hir_parser_type_helper_residual_structured_metadata`.
+`cmake --build build` passed. `ctest` ran the parser smoke, template metadata
+coverage, and three delegated HIR helper tests; all six passed:
+`frontend_parser_tests`, `cpp_hir_template_struct_arg_materialization`,
+`cpp_hir_template_type_arg_encoding_structured_metadata`,
+`cpp_hir_expr_call_member_helper`,
+`cpp_hir_expr_object_materialization_helper`, and
+`cpp_hir_stmt_local_decl_helper`.
 
 Canonical proof log: `test_after.log`.
-
-Broad post-deletion frontend/HIR or full-suite validation after this focused
-parser/fixture repair: not run yet; this remains the next lifecycle blocker
-before closing `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`.

@@ -1166,6 +1166,7 @@ bool try_parse_record_constructor_member(
         return false;
     }
 
+    const TextId ctor_name_text_id = parser.cur().text_id;
     const char* ctor_name = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
     parser.consume();  // consume the struct tag name
     parser.consume();  // consume '('
@@ -1196,6 +1197,8 @@ bool try_parse_record_constructor_member(
     Node* method = parser.make_node(NK_FUNCTION, parser.cur().line);
     method->type.base = TB_VOID;
     method->name = ctor_name;
+    method->unqualified_name = ctor_name;
+    method->unqualified_text_id = ctor_name_text_id;
     method->execution_domain = parser.pragma_state_.execution_domain;
     method->variadic = variadic;
     method->is_constructor = true;
