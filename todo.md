@@ -54,7 +54,7 @@ than an invalid initializer/no-binary failure.
 
 ## Proof
 
-Current executor proof is in `test_after.log`:
+Current accepted proof is in `test_before.log`:
 `cmake --build build --target c4cll && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_src_00216_c|llvm_gcc_c_torture_src_20040709_(1|2|3)_c|llvm_gcc_c_torture_src_20040703_1_c|llvm_gcc_c_torture_src_const_addr_expr_1_c)$'`.
 
 The delegated proof now passes 5/6. Passing tests:
