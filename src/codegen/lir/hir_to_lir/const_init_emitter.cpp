@@ -858,7 +858,8 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
             if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
               if (const GlobalVar* gv = select_global_object(*dr)) {
                 if (gv && gv->type.spec.array_rank > 0) {
-                  if (const auto* sd = lookup_const_init_struct_def(gv->type.spec)) {
+                  const TypeSpec elem_ts = drop_one_array_dim(gv->type.spec);
+                  if (const auto* sd = lookup_const_init_struct_def(elem_ts)) {
                     const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                     const std::string aty = llvm_alloca_ty(gv->type.spec);
                     const std::string global_name =
@@ -882,7 +883,8 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                 if (dr2 && rhs_val) {
                   if (const GlobalVar* gv = select_global_object(*dr2)) {
                     if (gv && gv->type.spec.array_rank > 0) {
-                      if (const auto* sd = lookup_const_init_struct_def(gv->type.spec)) {
+                      const TypeSpec elem_ts = drop_one_array_dim(gv->type.spec);
+                      if (const auto* sd = lookup_const_init_struct_def(elem_ts)) {
                         const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                         const std::string aty = llvm_alloca_ty(gv->type.spec);
                         const std::string global_name =
