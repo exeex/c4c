@@ -40,10 +40,16 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
       type.array_rank > 0 || !lir_module) {
     return LirTypeRef(rendered_text);
   }
-  if (rendered_text != llvm_ty(type)) return LirTypeRef(rendered_text);
 
   StructNameId name_id =
       call_target_aggregate_structured_name_id(mod, lir_module, rendered_text, type);
+  if (name_id == kInvalidStructName) {
+    const std::optional<std::string> structured_text = llvm_aggregate_value_ty(mod, type);
+    if (structured_text && *structured_text == rendered_text) {
+      name_id = normalize_lir_aggregate_struct_name_id(
+          lir_module, rendered_text, lir_module->struct_names.find(rendered_text), true);
+    }
+  }
   if (name_id == kInvalidStructName &&
       !typespec_legacy_tag_if_present(type, 0).empty()) {
     // Legacy compatibility for aggregate carriers that still only have a rendered tag.
@@ -118,7 +124,7 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
     unresolved_external_callee = false;
   }
 
-  info.ret_ty = llvm_ret_ty(info.ret_spec);
+  info.ret_ty = llvm_return_ty(mod_, info.ret_spec);
   info.builtin_special =
       info.builtin && info.builtin->lowering != BuiltinLoweringKind::AliasCall;
   if (unresolved_external_callee && !info.builtin_special) {

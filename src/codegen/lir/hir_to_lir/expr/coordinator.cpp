@@ -509,7 +509,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
     const auto spill_it = ctx.param_slots.find(*r.param_index + 0x80000000u);
     if (spill_it != ctx.param_slots.end()) {
       const TypeSpec& pts = ctx.fn->params[*r.param_index].type.spec;
-      const std::string ty = llvm_ty(pts);
+      const std::string ty = llvm_value_ty(mod_, pts);
       const std::string tmp = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, spill_it->second});
       return tmp;
@@ -519,7 +519,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
       const TypeSpec& pts = ctx.fn->params[*r.param_index].type.spec;
       if (amd64_fixed_aggregate_byval(mod_, pts)) {
         const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_ty(pts), it->second});
+        emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_value_ty(mod_, pts), it->second});
         return tmp;
       }
       return it->second;
@@ -529,7 +529,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
       const std::string pname = "%p." + sanitize_llvm_ident(ctx.fn->params[*r.param_index].name);
       ctx.param_slots[*r.param_index] = pname;
       const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_ty(pts), pname});
+      emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_value_ty(mod_, pts), pname});
       return tmp;
     }
   }
@@ -550,11 +550,11 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
     }
     if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
       const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(ts), it->second, false,
+      emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(mod_, ts), it->second, false,
                                      {"i64 0", "i64 0"}});
       return tmp;
     }
-    const std::string ty = llvm_ty(ts);
+    const std::string ty = llvm_value_ty(mod_, ts);
     if (ty == "void") return "0";
     const std::string tmp = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, it->second});
@@ -569,11 +569,11 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
     const std::string global_name = emitted_link_name(mod_, gv.link_name_id, gv.name);
     if (gv.type.spec.array_rank > 0 && !gv.type.spec.is_ptr_to_array) {
       const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(gv.type.spec),
+      emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(mod_, gv.type.spec),
                                      llvm_global_sym(global_name), false, {"i64 0", "i64 0"}});
       return tmp;
     }
-    const std::string ty = llvm_ty(gv.type.spec);
+    const std::string ty = llvm_value_ty(mod_, gv.type.spec);
     if (ty == "void") return "0";
     const std::string tmp = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, llvm_global_sym(global_name)});
@@ -596,7 +596,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
 
   const TypeSpec ets = resolve_expr_type(ctx, e);
   if (!has_concrete_type(ets)) return "0";
-  const std::string ty = llvm_ty(ets);
+  const std::string ty = llvm_value_ty(mod_, ets);
   if (ty == "void") return "0";
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, "@" + r.name});

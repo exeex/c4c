@@ -271,6 +271,14 @@ size_t sig_param_count(const FnPtrSig& sig);
 bool sig_is_variadic(const FnPtrSig& sig);
 bool sig_has_void_param_list(const FnPtrSig& sig);
 bool sig_has_meaningful_prototype(const FnPtrSig& sig);
+std::optional<std::string> llvm_aggregate_value_ty(const hir::Module& mod,
+                                                   const TypeSpec& ts);
+std::string llvm_value_ty(const hir::Module& mod, const TypeSpec& ts);
+std::string llvm_return_ty(const hir::Module& mod, const TypeSpec& ts);
+inline std::string llvm_alloca_ty(const TypeSpec& ts) {
+  return c4c::codegen::llvm_helpers::llvm_alloca_ty(ts);
+}
+std::string llvm_alloca_ty(const hir::Module& mod, const TypeSpec& ts);
 std::string llvm_fn_type_suffix_str(const hir::Module& mod, const FnPtrSig& sig);
 std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn);
 int llvm_struct_field_slot(const hir::Module& mod, const HirStructDef& sd,

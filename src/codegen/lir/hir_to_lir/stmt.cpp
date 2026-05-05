@@ -304,7 +304,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ReturnStmt& s) {
         !rts.is_lvalue_ref && !rts.is_rvalue_ref) {
       emit_term_ret(ctx, "void", std::nullopt);
     } else {
-      const std::string ret_ty = llvm_ret_ty(rts);
+      const std::string ret_ty = llvm_return_ty(mod_, rts);
       if (ret_ty == "ptr") {
         emit_term_ret(ctx, "ptr", "null");
       } else if (is_float_base(rts.base) && rts.ptr_level == 0) {
@@ -323,7 +323,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ReturnStmt& s) {
     coerce_target.ptr_level++;
   }
   val = coerce(ctx, val, ts, coerce_target);
-  emit_term_ret(ctx, llvm_ret_ty(ctx.fn->return_type.spec), val);
+  emit_term_ret(ctx, llvm_return_ty(mod_, ctx.fn->return_type.spec), val);
 }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s) { emit_control_flow_stmt(ctx, s); }

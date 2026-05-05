@@ -36,10 +36,16 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
       type.array_rank > 0 || !lir_module) {
     return LirTypeRef();
   }
-  if (rendered_text != llvm_ty(type)) return LirTypeRef();
 
   StructNameId name_id =
       call_aggregate_structured_name_id(mod, lir_module, rendered_text, type);
+  if (name_id == kInvalidStructName) {
+    const std::optional<std::string> structured_text = llvm_aggregate_value_ty(mod, type);
+    if (structured_text && *structured_text == rendered_text) {
+      name_id = normalize_lir_aggregate_struct_name_id(
+          lir_module, rendered_text, lir_module->struct_names.find(rendered_text), true);
+    }
+  }
   if (name_id == kInvalidStructName &&
       !typespec_legacy_tag_if_present(type, 0).empty()) {
     // Legacy compatibility for aggregate carriers that still only have a rendered tag.
@@ -270,12 +276,13 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       obj_ptr = emit_lval(ctx, call.args[arg_index], obj_ts);
     } else {
       const std::string tmp_addr = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_ty(out_arg_ts), {}, 0});
-      emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(out_arg_ts), arg, tmp_addr});
+      emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_value_ty(mod_, out_arg_ts), {}, 0});
+      emit_lir_op(ctx, lir::LirStoreOp{llvm_value_ty(mod_, out_arg_ts), arg, tmp_addr});
       obj_ptr = tmp_addr;
     }
     const int align = std::max(8, object_align_bytes(mod_, module_, out_arg_ts));
-    PreparedCallArg out{{{"ptr byval(" + llvm_ty(out_arg_ts) + ") align " + std::to_string(align),
+    PreparedCallArg out{{{"ptr byval(" + llvm_value_ty(mod_, out_arg_ts) + ") align " +
+                              std::to_string(align),
                           obj_ptr}},
                         false};
     return out;
@@ -284,12 +291,12 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   if (fixed_param_ts && llvm_cc::aarch64_fixed_vector_passed_as_i32(*fixed_param_ts, mod_)) {
     const std::string packed = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirCastOp{packed, lir::LirCastKind::Bitcast,
-                                    lir::LirTypeRef(llvm_ty(out_arg_ts)), arg,
+                                    lir::LirTypeRef(llvm_value_ty(mod_, out_arg_ts)), arg,
                                     lir::LirTypeRef("i32")});
     return {{{"i32", packed}}, false};
   }
 
-  const std::string out_llvm_ty = llvm_ty(out_arg_ts);
+  const std::string out_llvm_ty = llvm_value_ty(mod_, out_arg_ts);
   PreparedCallArg out_arg{
       {{out_llvm_ty, arg, lir_call_type_ref(out_llvm_ty, module_, mod_, out_arg_ts)}},
       false};
@@ -314,7 +321,8 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
   }
   if (force_memory) {
     const int align = std::max(8, object_align_bytes(mod_, module_, arg_ts));
-    out.args.push_back({"ptr byval(" + llvm_ty(arg_ts) + ") align " + std::to_string(align),
+    out.args.push_back({"ptr byval(" + llvm_value_ty(mod_, arg_ts) + ") align " +
+                            std::to_string(align),
                         obj_ptr});
     return out;
   }

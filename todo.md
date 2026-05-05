@@ -8,53 +8,59 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's template owner/member-context aggregate identity fallout is repaired
-for the parser/Sema-owned member-expression family without reintroducing
-`TypeSpec::tag`. Record body parsing now installs a scoped structured
-`record_def` carrier for the current record and its template-origin spelling,
-so constructor params, member params, locals, and implicit member bases keep
-aggregate identity through parser/Sema/HIR.
+Step 6's remaining LIR signature mirror boundary for template-instantiated
+aggregate parameters is repaired without reintroducing `TypeSpec::tag`.
+LIR now renders signature mirrors, signature text, call-site type refs, params,
+returns, allocas, loads, stores, and struct field declarations through a
+module-aware aggregate type renderer that consults structured `TypeSpec`
+metadata and HIR owner/layout indexes before falling back to scalar storage.
 
-Nested records declared inside an active record body now upgrade the same-scope
-tag-only binding to a concrete `record_def` binding after finalization. The
-upgrade is scoped and guarded so local current-record template-id heads such as
-`reverse_iterator<Iter>` still remain on the existing template-id parser path
-instead of being consumed as plain record names.
+The broader-regression repair keeps signature return mirrors tied to the
+original HIR `Function.return_type.spec` carrier rather than the LIR-owned copy
+that strips `record_def`. This preserves declared `StructNameId` mirrors for
+non-template iterator/member-return cases while retaining owner-aware rendering
+for template-instantiated aggregates.
 
-This fixed the dominant member-expression base failures, including
-`template_inline_method_member_context_frontend_cpp`, copy/move constructor and
-assignment cases, iterator member-operator cases, range-for member cases, and
-related by-value struct operator cases.
+The original failing mirror came from `Function.params[i].type.spec`: HIR
+carried structured aggregate params such as `sum_i(p: struct Pair_T_int)`, but
+`LirFunction.signature_param_type_refs` rendered from `llvm_ty(TypeSpec)`, which
+cannot recover owner-key aggregate spelling after `TypeSpec::tag` deletion and
+collapsed to `i32`.
+
+The nested call-site follow-on is also repaired semantically: when HIR carries
+two aggregate owner identities for equivalent template-instantiated layouts
+such as `Box_T_struct_Pair_T_int` and `Box_T_struct_tag_ctx0_local_text3`, LIR
+coerces aggregate values only after both structured layouts are found and their
+size, alignment, and module-aware field type sequence match.
 
 ## Suggested Next
 
-Next packet should target the remaining LIR signature mirror boundary for
-template-instantiated aggregate parameters. HIR now prints structured aggregate
-parameters such as `sum_i(p: struct Pair_T_int)`, but
-`LirFunction.signature_param_type_refs` is still rendered from a type carrier
-whose aggregate spelling collapses to `i32`.
+Next packet should target the remaining known positive/Sema failures from the
+`d0393bc89` baseline or run the supervisor-selected frontend/HIR validation
+before commit acceptance.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- Keep the record-body carrier scoped. The local `record_def` shortcut in
-  `parse_base_type` is intentionally limited to same-scope visible typedef
-  bindings and excludes heads followed by `<`.
-- The remaining LIR failures are not a parser member-base carrier issue:
-  `cpp_positive_sema_template_fn_struct_cpp` and
-  `cpp_positive_sema_template_struct_nested_cpp` still fail at
-  `LirFunction.signature_param_type_refs` mirror construction.
+- The aggregate value coercion is intentionally guarded by structured layout
+  lookup plus exact size/alignment/field-type equality. It should not be
+  widened into spelling-based equivalence.
+- `llvm_value_ty(mod, ts)` is a LIR helper for HIR/module-aware aggregate
+  rendering. Plain `llvm_ty(ts)` still exists for callers that do not have a
+  HIR module carrier.
 
 ## Proof
 
 Delegated proof command:
 `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
 
-Result: improved baseline, with no new failures.
+Result: monotonic improvement versus committed baseline `d0393bc89`.
 
-`cmake --build build` passed. The delegated CTest command exits non-zero
-because this positive/Sema subset is still red, but it improved
-`test_before.log` from 838/884 passing with 46 failures to 876/884 passing with
-8 failures. Failure comparison found 38 fixed tests and 0 new failures.
+The proof improved the committed `^cpp_positive_sema_` baseline from 876/884
+passing with 8 failures to 879/884 passing with 5 failures. There are 0 new
+failures relative to `log/baseline_d0393bc8963df21c6fd5b81b2a7eae62664459e0.log`.
+The fixed baseline failures are `cpp_positive_sema_template_deferred_method_cpp`,
+`cpp_positive_sema_template_fn_struct_cpp`, and
+`cpp_positive_sema_template_struct_nested_cpp`.
 
 Canonical proof log: `test_after.log`.

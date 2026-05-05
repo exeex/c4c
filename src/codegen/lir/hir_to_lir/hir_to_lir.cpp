@@ -117,10 +117,23 @@ LirTypeRef lir_field_type_ref(const std::string& rendered_text, LirModule* lir_m
                                 type.base == TB_UNION);
 }
 
+std::string lir_field_ty(const c4c::hir::Module& mod, const HirStructField& field) {
+  using namespace c4c::codegen::llvm_helpers;
+  if (field.array_first_dim >= 0) {
+    std::string elem_ty =
+        stmt_emitter_detail::llvm_alloca_ty(mod, field.elem_type);
+    if (elem_ty == "void") elem_ty = "i8";
+    return "[" + std::to_string(field.array_first_dim) + " x " + elem_ty + "]";
+  }
+  if (field.elem_type.base == TB_VA_LIST) return llvm_va_list_storage_ty();
+  return stmt_emitter_detail::llvm_value_ty(mod, field.elem_type);
+}
+
 LirTypeRef lir_field_type_ref(const HirStructField& field, LirModule* lir_module,
                               const c4c::hir::Module& mod) {
-  if (field.array_first_dim >= 0) return LirTypeRef(llvm_field_ty(field));
-  return lir_field_type_ref(llvm_field_ty(field), lir_module, mod, field.elem_type);
+  const std::string field_ty = lir_field_ty(mod, field);
+  if (field.array_first_dim >= 0) return LirTypeRef(field_ty);
+  return lir_field_type_ref(field_ty, lir_module, mod, field.elem_type);
 }
 
 std::optional<LirTypeRef> lir_global_type_ref(const std::string& rendered_text,
@@ -148,24 +161,30 @@ LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
       type.array_rank > 0) {
     return LirTypeRef(rendered_text);
   }
-  if (rendered_text != llvm_ty(type)) return LirTypeRef(rendered_text);
   const StructNameId name_id =
       lir_aggregate_structured_name_id(mod, lir_module, rendered_text, type);
   if (name_id == kInvalidStructName) return LirTypeRef(rendered_text);
   return lir_aggregate_type_ref(rendered_text, lir_module, name_id, type.base == TB_UNION);
 }
 
+std::string rendered_signature_return_type(const c4c::hir::Module& mod,
+                                           const TypeSpec& return_ts) {
+  return stmt_emitter_detail::llvm_return_ty(mod, return_ts);
+}
+
 std::string rendered_signature_param_type(const c4c::hir::Module& mod,
                                           LirModule* lir_module,
                                           const TypeSpec& param_ts) {
   using namespace c4c::codegen::llvm_helpers;
+  const std::optional<std::string> aggregate_ty =
+      stmt_emitter_detail::llvm_aggregate_value_ty(mod, param_ts);
   if (llvm_target_is_amd64_sysv(mod.target_profile) &&
       llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
-    return "ptr byval(" + llvm_ty(param_ts) + ") align " +
+    return "ptr byval(" + aggregate_ty.value_or(llvm_ty(param_ts)) + ") align " +
            std::to_string(std::max(8, object_align_bytes(mod, lir_module, param_ts)));
   }
   if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) return "i32";
-  return llvm_ty(param_ts);
+  return stmt_emitter_detail::llvm_value_ty(mod, param_ts);
 }
 
 void populate_signature_type_refs(const c4c::hir::Module& mod,
@@ -177,8 +196,8 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   lir_fn.signature_params.clear();
   lir_fn.signature_param_type_refs.clear();
   lir_fn.signature_return_type_ref =
-      lir_signature_type_ref(llvm_ret_ty(fn.return_type.spec), lir_module,
-                             mod, fn.return_type.spec);
+      lir_signature_type_ref(rendered_signature_return_type(mod, fn.return_type.spec),
+                             lir_module, mod, fn.return_type.spec);
 
   const bool void_param_list =
       fn.params.size() == 1 &&
@@ -661,7 +680,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         }
         if (!first) line << ", ";
         first = false;
-        const std::string field_ty = llvm_field_ty(f);
+        const std::string field_ty = lir_field_ty(mod, f);
         line << field_ty;
         structured_decl.fields.push_back({lir_field_type_ref(f, lir_module, mod)});
         cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
@@ -691,7 +710,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
   using namespace c4c::codegen::llvm_helpers;
 
   std::ostringstream sig_out;
-  const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
+  const std::string ret_ty = stmt_emitter_detail::llvm_return_ty(mod, fn.return_type.spec);
   const std::string emitted_name = emitted_link_name(mod, fn.link_name_id, fn.name);
 
   const bool void_param_list =
@@ -711,12 +730,12 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
       const TypeSpec& param_ts = fn.params[i].type.spec;
       if (llvm_target_is_amd64_sysv(mod.target_profile) &&
           llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
-        sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
+        sig_out << "ptr byval(" << stmt_emitter_detail::llvm_value_ty(mod, param_ts) << ") align "
                 << std::max(8, object_align_bytes(mod, lir_module, param_ts));
       } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
         sig_out << "i32";
       } else {
-        sig_out << llvm_ty(param_ts);
+        sig_out << stmt_emitter_detail::llvm_value_ty(mod, param_ts);
       }
     }
     if (fn.attrs.variadic) {
@@ -749,12 +768,12 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
     const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
     if (llvm_target_is_amd64_sysv(mod.target_profile) &&
         llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
-      sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
+      sig_out << "ptr byval(" << stmt_emitter_detail::llvm_value_ty(mod, param_ts) << ") align "
               << std::max(8, object_align_bytes(mod, lir_module, param_ts)) << " " << pname;
     } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
       sig_out << "i32 " << pname << ".abi";
     } else {
-      sig_out << llvm_ty(param_ts) << " " << pname;
+      sig_out << stmt_emitter_detail::llvm_value_ty(mod, param_ts) << " " << pname;
     }
   }
   if (fn.attrs.variadic) {
@@ -851,10 +870,11 @@ build_block_order(const c4c::hir::Function& fn) {
 // This post-pass injects a default "ret" matching the function's return type.
 
 static void inject_fallthrough_returns(LirFunction& lir_fn,
+                                       const c4c::hir::Module& mod,
                                        const c4c::hir::Function& fn) {
   using namespace c4c::codegen::llvm_helpers;
   const auto& rts = fn.return_type.spec;
-  const std::string ret_ty = llvm_ret_ty(rts);
+  const std::string ret_ty = stmt_emitter_detail::llvm_return_ty(mod, rts);
 
   // Pre-compute the default zero value for non-void returns.
   std::optional<std::string> zero_val;
@@ -984,8 +1004,11 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
     const std::string pname = "%p." + sanitize_llvm_ident(param.name);
     ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
     const int param_align = object_align_bytes(mod, lir_module, param.type.spec);
-    ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(param.type.spec), "", param_align});
-    ctx.alloca_insts.push_back(LirStoreOp{llvm_ty(param.type.spec), pname, slot});
+    ctx.alloca_insts.push_back(
+        LirAllocaOp{slot, stmt_emitter_detail::llvm_alloca_ty(mod, param.type.spec), "",
+                    param_align});
+    ctx.alloca_insts.push_back(
+        LirStoreOp{stmt_emitter_detail::llvm_value_ty(mod, param.type.spec), pname, slot});
   }
 
   std::unordered_map<std::string, int> name_count;
@@ -1007,10 +1030,13 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
         TypeSpec ptr_ts{};
         ptr_ts.base = TB_VOID;
         ptr_ts.ptr_level = 1;
-        ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(ptr_ts), "", 0});
+        ctx.alloca_insts.push_back(
+            LirAllocaOp{slot, stmt_emitter_detail::llvm_alloca_ty(mod, ptr_ts), "", 0});
       } else {
         const int stack_align = object_align_bytes(mod, lir_module, d->type.spec);
-        ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(d->type.spec), "", stack_align});
+        ctx.alloca_insts.push_back(
+            LirAllocaOp{slot, stmt_emitter_detail::llvm_alloca_ty(mod, d->type.spec), "",
+                        stack_align});
       }
     }
   }
@@ -1048,7 +1074,7 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
     if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
       ctx.alloca_insts.push_back(
           LirCastOp{pname, LirCastKind::Bitcast, LirTypeRef("i32"), pname + ".abi",
-                    LirTypeRef(llvm_ty(param_ts))});
+                    LirTypeRef(stmt_emitter_detail::llvm_value_ty(mod, param_ts))});
     }
   }
 
@@ -1401,7 +1427,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       lir_fn.alloca_insts = std::move(ctx.alloca_insts);
       lir_fn.blocks = std::move(ctx.lir_blocks);
 
-      inject_fallthrough_returns(lir_fn, fn);
+      inject_fallthrough_returns(lir_fn, hir_mod, fn);
       module.functions.push_back(std::move(lir_fn));
     }
   }

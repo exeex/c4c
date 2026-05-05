@@ -232,14 +232,14 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
         return it->second;
       }
       const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
-      ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(pts), "", 0});
+      ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(mod_, pts), "", 0});
       if (amd64_fixed_aggregate_byval(mod_, pts)) {
         module_->need_memcpy = true;
         emit_lir_op(ctx, lir::LirMemcpyOp{
                              slot, pname, std::to_string(llvm_cc::amd64_type_size_bytes(pts, mod_)),
                              false});
       } else {
-        ctx.alloca_insts.push_back(lir::LirStoreOp{llvm_ty(pts), pname, slot});
+        ctx.alloca_insts.push_back(lir::LirStoreOp{llvm_value_ty(mod_, pts), pname, slot});
       }
       ctx.param_slots[*r->param_index + 0x80000000u] = slot;
       return slot;
@@ -726,7 +726,7 @@ std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string
                                                    bool decay_from_array_object) {
   if (outer_array_rank(access_ts) > 0) {
     if (!decay_from_array_object) return ptr;
-    const std::string arr_alloca_ty = llvm_alloca_ty(access_ts);
+    const std::string arr_alloca_ty = llvm_alloca_ty(mod_, access_ts);
     if (arr_alloca_ty == "ptr") {
       const std::string tmp = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirLoadOp{tmp, std::string("ptr"), ptr});
@@ -736,7 +736,7 @@ std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string
     emit_lir_op(ctx, lir::LirGepOp{tmp, arr_alloca_ty, ptr, false, {"i64 0", "i64 0"}});
     return tmp;
   }
-  const std::string ty = llvm_ty(load_ts);
+  const std::string ty = llvm_value_ty(mod_, load_ts);
   if (ty == "void") return "";
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, ptr});

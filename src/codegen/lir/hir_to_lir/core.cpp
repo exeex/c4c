@@ -50,7 +50,15 @@ static void append_legacy_layout_field_types(const Module& mod, const HirStructD
       out.push_back("[" + std::to_string(f.offset_bytes - cur_offset) + " x i8]");
       cur_offset = f.offset_bytes;
     }
-    out.push_back(llvm_field_ty(f));
+    if (f.array_first_dim >= 0) {
+      std::string elem_ty = llvm_alloca_ty(mod, f.elem_type);
+      if (elem_ty == "void") elem_ty = "i8";
+      out.push_back("[" + std::to_string(f.array_first_dim) + " x " + elem_ty + "]");
+    } else if (f.elem_type.base == TB_VA_LIST) {
+      out.push_back(llvm_va_list_storage_ty());
+    } else {
+      out.push_back(llvm_value_ty(mod, f.elem_type));
+    }
     cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
   }
 
@@ -547,6 +555,59 @@ static bool sig_has_explicit_prototype(const FnPtrSig& sig) {
   return sig_is_variadic(sig) || sig_has_void_param_list(sig) || sig_param_count(sig) > 0;
 }
 
+std::optional<std::string> llvm_aggregate_value_ty(const hir::Module& mod,
+                                                   const TypeSpec& ts) {
+  if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0 ||
+      ts.array_rank != 0) {
+    return std::nullopt;
+  }
+  if (const std::optional<std::string> spelling =
+          typespec_aggregate_final_spelling(ts)) {
+    return llvm_struct_type_str(*spelling);
+  }
+  if (const std::optional<HirRecordOwnerKey> owner_key =
+          typespec_aggregate_owner_key(ts, mod)) {
+    const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+    if (structured_tag && !structured_tag->empty()) {
+      return llvm_struct_type_str(*structured_tag);
+    }
+  }
+  if (const std::optional<std::string> compatibility_tag =
+          typespec_aggregate_compatibility_tag(mod, ts)) {
+    return llvm_struct_type_str(*compatibility_tag);
+  }
+  return std::nullopt;
+}
+
+std::string llvm_value_ty(const hir::Module& mod, const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
+  if (ts.array_rank > 0) return "ptr";
+  if (const std::optional<std::string> aggregate_ty =
+          llvm_aggregate_value_ty(mod, ts)) {
+    return *aggregate_ty;
+  }
+  return llvm_ty(ts);
+}
+
+std::string llvm_return_ty(const hir::Module& mod, const TypeSpec& ts) {
+  if (ts.is_lvalue_ref || ts.is_rvalue_ref) return "ptr";
+  return llvm_value_ty(mod, ts);
+}
+
+std::string llvm_alloca_ty(const hir::Module& mod, const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
+  if (ts.array_rank > 0) {
+    TypeSpec elem = ts;
+    elem.array_rank--;
+    if (elem.array_rank > 0) {
+      for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
+    }
+    elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+    return "[" + std::to_string(ts.array_size) + " x " + llvm_alloca_ty(mod, elem) + "]";
+  }
+  return llvm_value_ty(mod, ts);
+}
+
 std::string llvm_fn_type_suffix_str(const hir::Module& mod, const FnPtrSig& sig) {
   if (!sig_has_explicit_prototype(sig)) return "";
   std::ostringstream out;
@@ -561,7 +622,7 @@ std::string llvm_fn_type_suffix_str(const hir::Module& mod, const FnPtrSig& sig)
     } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
       out << "i32";
     } else {
-      out << llvm_ty(param_ts);
+      out << llvm_value_ty(mod, param_ts);
     }
   }
   if (sig_is_variadic(sig)) {
@@ -598,7 +659,7 @@ std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn) 
     } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
       out << "i32";
     } else {
-      out << llvm_ty(param_ts);
+      out << llvm_value_ty(mod, param_ts);
     }
   }
   if (fn.attrs.variadic) {
@@ -1186,15 +1247,57 @@ const Expr& StmtEmitter::get_expr(ExprId id) const {
   throw std::runtime_error("StmtEmitter: expr not found id=" + std::to_string(id.value));
 }
 
+static bool aggregate_value_layout_compatible(const Module& mod,
+                                              const TypeSpec& from_ts,
+                                              const TypeSpec& to_ts) {
+  if ((from_ts.base != TB_STRUCT && from_ts.base != TB_UNION) ||
+      (to_ts.base != TB_STRUCT && to_ts.base != TB_UNION) ||
+      from_ts.base != to_ts.base ||
+      from_ts.ptr_level != 0 || to_ts.ptr_level != 0 ||
+      from_ts.array_rank != 0 || to_ts.array_rank != 0) {
+    return false;
+  }
+
+  const HirStructDef* from_def = find_typespec_aggregate_layout(mod, from_ts);
+  const HirStructDef* to_def = find_typespec_aggregate_layout(mod, to_ts);
+  if (!from_def || !to_def) return false;
+  if (from_def->size_bytes != to_def->size_bytes ||
+      from_def->align_bytes != to_def->align_bytes) {
+    return false;
+  }
+
+  std::vector<std::string> from_fields;
+  std::vector<std::string> to_fields;
+  append_legacy_layout_field_types(mod, *from_def, from_fields);
+  append_legacy_layout_field_types(mod, *to_def, to_fields);
+  return from_fields == to_fields;
+}
+
 std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSpec& from_ts,
                                 const TypeSpec& to_ts) {
-  const std::string ft = llvm_ty(from_ts);
-  const std::string tt = llvm_ty(to_ts);
+  const std::string ft = llvm_value_ty(mod_, from_ts);
+  const std::string tt = llvm_value_ty(mod_, to_ts);
   const TypeBase from_scalar_base = llvm_storage_base(from_ts);
   const TypeBase to_scalar_base = llvm_storage_base(to_ts);
   if (tt == "ptr" && val == "0") return "null";
   if (ft == tt) return val;
   if (ft == "ptr" && tt == "ptr") return val;
+
+  if (aggregate_value_layout_compatible(mod_, from_ts, to_ts)) {
+    const int size_bytes = sizeof_ts(mod_, from_ts);
+    const int align_bytes = std::max(object_align_bytes(mod_, from_ts),
+                                     object_align_bytes(mod_, to_ts));
+    const std::string src_slot = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirAllocaOp{src_slot, ft, "", align_bytes});
+    emit_lir_op(ctx, lir::LirStoreOp{ft, val, src_slot});
+    const std::string dst_slot = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirAllocaOp{dst_slot, tt, "", align_bytes});
+    if (module_) module_->need_memcpy = true;
+    emit_lir_op(ctx, lir::LirMemcpyOp{dst_slot, src_slot, std::to_string(size_bytes), false});
+    const std::string out = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirLoadOp{out, tt, dst_slot});
+    return out;
+  }
 
   if (((is_vector_value(from_ts) && is_any_int(to_ts.base) && to_ts.ptr_level == 0 &&
         to_ts.array_rank == 0) ||
