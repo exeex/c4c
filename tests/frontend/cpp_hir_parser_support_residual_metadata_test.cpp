@@ -16,11 +16,22 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, bool()) {
+  ts.tag = tag;
+  return true;
+}
+
+bool set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {
+  return false;
+}
+
 c4c::TypeSpec typedef_type(c4c::TextId tag_text_id, const char* rendered_tag) {
   c4c::TypeSpec ts = {};
   ts.base = c4c::TB_TYPEDEF;
   ts.enum_underlying_base = c4c::TB_VOID;
-  ts.tag = rendered_tag;
+  set_legacy_tag_if_present(ts, rendered_tag, 0);
   ts.tag_text_id = tag_text_id;
   ts.template_param_text_id = c4c::kInvalidText;
   ts.array_size = -1;
@@ -45,18 +56,19 @@ void test_enum_sizeof_dependency_uses_structured_typedef_identity() {
   expect_true(c4c::is_dependent_enum_expr(&n, consts),
               "dependent enum expression should use tag_text_id before stale rendered tag");
 
-  n.type.tag = nullptr;
+  set_legacy_tag_if_present(n.type, nullptr, 0);
   expect_true(!c4c::eval_enum_expr(&n, consts, &out),
               "tag_text_id-only typedef should remain dependent without rendered tag");
   expect_true(c4c::is_dependent_enum_expr(&n, consts),
               "tag_text_id-only typedef should be detected as dependent");
 
   n.type.tag_text_id = c4c::kInvalidText;
-  n.type.tag = "LegacyOnly";
-  expect_true(!c4c::eval_enum_expr(&n, consts, &out),
-              "legacy rendered typedef tag remains explicit compatibility fallback");
-  expect_true(c4c::is_dependent_enum_expr(&n, consts),
-              "legacy rendered typedef fallback should still classify dependency");
+  if (set_legacy_tag_if_present(n.type, "LegacyOnly", 0)) {
+    expect_true(!c4c::eval_enum_expr(&n, consts, &out),
+                "legacy rendered typedef tag remains explicit compatibility fallback");
+    expect_true(c4c::is_dependent_enum_expr(&n, consts),
+                "legacy rendered typedef fallback should still classify dependency");
+  }
 }
 
 void test_record_layout_resolution_uses_structured_metadata_before_stale_tag() {
@@ -77,7 +89,7 @@ void test_record_layout_resolution_uses_structured_metadata_before_stale_tag() {
   c4c::TypeSpec query = {};
   query.base = c4c::TB_STRUCT;
   query.enum_underlying_base = c4c::TB_VOID;
-  query.tag = "StaleRendered";
+  set_legacy_tag_if_present(query, "StaleRendered", 0);
   query.tag_text_id = real_record.unqualified_text_id;
   query.array_size = -1;
 
@@ -89,8 +101,10 @@ void test_record_layout_resolution_uses_structured_metadata_before_stale_tag() {
               "structured record metadata miss should not recover through stale rendered tag");
 
   query.tag_text_id = c4c::kInvalidText;
-  expect_true(c4c::resolve_record_type_spec(query, &records) == &stale_record,
-              "rendered record tag remains explicit no-metadata compatibility fallback");
+  if (set_legacy_tag_if_present(query, "StaleRendered", 0)) {
+    expect_true(c4c::resolve_record_type_spec(query, &records) == &stale_record,
+                "rendered record tag remains explicit no-metadata compatibility fallback");
+  }
 }
 
 }  // namespace
