@@ -287,6 +287,13 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         }
       }
     }
+    if (has_decl_structured_owner_identity(owner_ts)) {
+      if (auto owner_tag =
+              resolve_decl_structured_owner_tag(owner_ts, context_name)) {
+        return *owner_tag;
+      }
+      return {};
+    }
     if (owner_ts.tag_text_id != kInvalidText && module_->link_name_texts) {
       const std::string_view tag_text =
           module_->link_name_texts->lookup(owner_ts.tag_text_id);
@@ -294,13 +301,6 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
           module_->struct_defs.count(std::string(tag_text))) {
         return std::string(tag_text);
       }
-    }
-    if (has_decl_structured_owner_identity(owner_ts)) {
-      if (auto owner_tag =
-              resolve_decl_structured_owner_tag(owner_ts, context_name)) {
-        return *owner_tag;
-      }
-      return {};
     }
     return rendered_typespec_tag_for_decl_compatibility(module_, owner_ts)
         .value_or(std::string{});
