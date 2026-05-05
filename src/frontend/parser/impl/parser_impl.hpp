@@ -245,6 +245,14 @@ void begin_record_body_context(Parser& parser,
                                const char* tag,
                                TextId tag_text_id,
                                const char* template_origin_name,
+                               Node* record_def,
+                               std::string* saved_struct_tag,
+                               std::string* struct_source_name,
+                               bool* pushed_record_scope);
+void begin_record_body_context(Parser& parser,
+                               const char* tag,
+                               TextId tag_text_id,
+                               const char* template_origin_name,
                                std::string* saved_struct_tag,
                                std::string* struct_source_name);
 void parse_record_body(Parser& parser,
@@ -254,9 +262,11 @@ void parse_record_body_with_context(Parser& parser,
                                     const char* tag,
                                     TextId tag_text_id,
                                     const char* template_origin_name,
+                                    Node* record_def,
                                     Parser::RecordBodyState* body_state);
 void finish_record_body_context(Parser& parser,
-                                const std::string& saved_struct_tag);
+                                const std::string& saved_struct_tag,
+                                bool pushed_record_scope);
 void parse_record_definition_prelude(
     Parser& parser,
     int line,

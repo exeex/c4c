@@ -2331,6 +2331,25 @@ TypeSpec Parser::parse_base_type() {
                             break;
                         }
                         if (!already_have_base) {
+                            if (const TypeSpec* visible_record_type =
+                                    find_local_visible_typedef_type(name_text_id);
+                                visible_record_type &&
+                                (visible_record_type->base == TB_STRUCT ||
+                                 visible_record_type->base == TB_UNION ||
+                                 visible_record_type->base == TB_ENUM) &&
+                                visible_record_type->record_def &&
+                                !(core_input_state_.pos + 1 <
+                                      static_cast<int>(
+                                          core_input_state_.tokens.size()) &&
+                                  core_input_state_
+                                          .tokens[core_input_state_.pos + 1]
+                                          .kind == TokenKind::Less)) {
+                                ts = *visible_record_type;
+                                consume();
+                                base_set = true;
+                                done = true;
+                                break;
+                            }
                             has_typedef = true;
                             const VisibleNameResult visible_type =
                                 resolve_visible_type(name_text_id);

@@ -2019,13 +2019,47 @@ void begin_record_body_context(Parser& parser,
                                const char* tag,
                                TextId tag_text_id,
                                const char* template_origin_name,
+                               Node* record_def,
                                std::string* saved_struct_tag,
-                               std::string* struct_source_name) {
+                               std::string* struct_source_name,
+                               bool* pushed_record_scope) {
+    if (pushed_record_scope) *pushed_record_scope = false;
+    if (parser.is_cpp_mode() && record_def) {
+        parser.push_local_binding_scope();
+        if (pushed_record_scope) *pushed_record_scope = true;
+    }
+
     // Make the current record name available for self-type parsing within the
     // body before member dispatch starts.
-    if (parser.is_cpp_mode() && tag && tag[0])
-        parser.register_typedef_name(
-            parser.parser_text_id_for_token(kInvalidText, tag), false);
+    auto bind_record_body_type = [&](TextId name_text_id, const char* name) {
+        if (!parser.is_cpp_mode() || !record_def ||
+            name_text_id == kInvalidText || !name || !name[0])
+            return;
+        TypeSpec record_ts{};
+        record_ts.array_size = -1;
+        record_ts.array_rank = 0;
+        record_ts.inner_rank = -1;
+        for (int i = 0; i < 8; ++i) record_ts.array_dims[i] = -1;
+        record_ts.base =
+            record_def && record_def->is_union ? TB_UNION : TB_STRUCT;
+        record_ts.tag_text_id = name_text_id;
+        record_ts.record_def = record_def;
+        record_ts.namespace_context_id =
+            record_def && record_def->namespace_context_id >= 0
+                ? record_def->namespace_context_id
+                : parser.current_namespace_context_id();
+        set_struct_legacy_display_tag_if_present(record_ts, name, 0);
+        parser.register_typedef_binding(name_text_id, record_ts, false);
+    };
+
+    if (parser.is_cpp_mode() && tag && tag[0]) {
+        const TextId record_text_id =
+            tag_text_id != kInvalidText
+                ? tag_text_id
+                : parser.parser_text_id_for_token(kInvalidText, tag);
+        parser.register_typedef_name(record_text_id, false);
+        bind_record_body_type(record_text_id, tag);
+    }
 
     if (saved_struct_tag)
         *saved_struct_tag = parser.active_context_state_.current_struct_tag;
@@ -2048,6 +2082,7 @@ void begin_record_body_context(Parser& parser,
     const TextId template_origin_text_id =
         parser.parser_text_id_for_token(kInvalidText, template_origin_name);
     parser.register_typedef_name(template_origin_text_id, false);
+    bind_record_body_type(template_origin_text_id, template_origin_name);
     const bool has_existing_template_origin_type =
         std::strstr(template_origin_name, "::") == nullptr
             ? parser.has_visible_typedef_type(template_origin_text_id)
@@ -2058,6 +2093,18 @@ void begin_record_body_context(Parser& parser,
             tag ? parser.parser_text_id_for_token(kInvalidText, tag)
                 : kInvalidText);
     }
+}
+
+void begin_record_body_context(Parser& parser,
+                               const char* tag,
+                               TextId tag_text_id,
+                               const char* template_origin_name,
+                               std::string* saved_struct_tag,
+                               std::string* struct_source_name) {
+    bool pushed_record_scope = false;
+    begin_record_body_context(parser, tag, tag_text_id, template_origin_name,
+                              nullptr, saved_struct_tag, struct_source_name,
+                              &pushed_record_scope);
 }
 
 void parse_record_body(
@@ -2084,23 +2131,29 @@ void parse_record_body_with_context(
     const char* tag,
     TextId tag_text_id,
     const char* template_origin_name,
+    Node* record_def,
     Parser::RecordBodyState* body_state) {
     const TextId saved_struct_tag_text_id =
         parser.active_context_state_.current_struct_tag_text_id;
     std::string saved_struct_tag =
         parser.active_context_state_.current_struct_tag;
     std::string struct_source_name;
+    bool pushed_record_scope = false;
     begin_record_body_context(parser, tag, tag_text_id, template_origin_name,
-                              &saved_struct_tag, &struct_source_name);
+                              record_def, &saved_struct_tag,
+                              &struct_source_name, &pushed_record_scope);
     parse_record_body(parser, struct_source_name, body_state);
-    finish_record_body_context(parser, saved_struct_tag);
+    finish_record_body_context(parser, saved_struct_tag, pushed_record_scope);
     restore_current_struct_tag(parser, saved_struct_tag_text_id,
                                saved_struct_tag);
 }
 
 void finish_record_body_context(Parser& parser,
-                                const std::string& saved_struct_tag) {
+                                const std::string& saved_struct_tag,
+                                bool pushed_record_scope) {
     parser.expect(TokenKind::RBrace);
+    if (pushed_record_scope)
+        parser.pop_local_binding_scope();
     restore_current_struct_tag(parser,
                                parser.find_parser_text_id(saved_struct_tag),
                                saved_struct_tag);
@@ -2511,7 +2564,8 @@ void register_record_definition(Parser& parser,
                                      is_union ? TB_UNION : TB_STRUCT,
                                      sd->name, canonical_tag_text_id);
     const bool can_bind_concrete_record_def =
-        parser.template_state_.template_scope_stack.empty() &&
+        (parser.template_state_.template_scope_stack.empty() ||
+         parser.has_local_binding_scope()) &&
         sd->n_template_params <= 0 &&
         !(sd->template_origin_name && sd->template_origin_name[0]) &&
         sd->n_template_args <= 0;
@@ -2531,6 +2585,10 @@ void register_record_definition(Parser& parser,
         record_ts.qualifier_text_ids = sd->qualifier_text_ids;
         record_ts.n_qualifier_segments = sd->n_qualifier_segments;
         record_ts.is_global_qualified = sd->is_global_qualified;
+        if (parser.has_local_binding_scope()) {
+            (void)parser.lexical_scope_state_.visible_typedef_types
+                .erase_in_current_scope(LocalNameKey{binding_text_id});
+        }
         parser.register_typedef_binding(binding_text_id, record_ts, false);
     };
     register_record_type_binding(canonical_tag_text_id, canonical_tag_text_id);
@@ -2633,7 +2691,7 @@ void parse_record_definition_body(Parser& parser,
 
     Parser::RecordBodyState body_state;
     parse_record_body_with_context(parser, tag, tag_text_id, template_origin_name,
-                                   &body_state);
+                                   sd, &body_state);
     finalize_record_definition(parser, sd, is_union, source_tag, body_state);
 }
 

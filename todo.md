@@ -8,50 +8,53 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's parser-unit regression from the qualified alias-template parsing slice
-is repaired without reintroducing `TypeSpec::tag`. The
-`try_parse_qualified_base_type` fallback no longer accepts unknown
-namespace-qualified template ids such as `ns::Missing<int>` from spelling alone.
-Known qualified alias templates still resolve through the structured
-`ParserAliasTemplateInfo::member_typedef` /
-`ParserAliasTemplateMemberTypedefInfo` carrier, and concrete alias-template
-member typedefs can resolve immediately through the selected structured owner
-member typedef.
+Step 6's template owner/member-context aggregate identity fallout is repaired
+for the parser/Sema-owned member-expression family without reintroducing
+`TypeSpec::tag`. Record body parsing now installs a scoped structured
+`record_def` carrier for the current record and its template-origin spelling,
+so constructor params, member params, locals, and implicit member bases keep
+aggregate identity through parser/Sema/HIR.
 
-Unresolved qualified template-id type heads are now accepted only when the
-template-id is dependent through parsed template arguments or an active template
-type-parameter scope, preserving `ns::holder<T>` parameter parsing while
-rejecting non-dependent unknown qualified template ids.
+Nested records declared inside an active record body now upgrade the same-scope
+tag-only binding to a concrete `record_def` binding after finalization. The
+upgrade is scoped and guarded so local current-record template-id heads such as
+`reverse_iterator<Iter>` still remain on the existing template-id parser path
+instead of being consumed as plain record names.
+
+This fixed the dominant member-expression base failures, including
+`template_inline_method_member_context_frontend_cpp`, copy/move constructor and
+assignment cases, iterator member-operator cases, range-for member cases, and
+related by-value struct operator cases.
 
 ## Suggested Next
 
-Next packet can return to the remaining C++ positive/Sema fallout after this
-guard repair is reviewed and committed.
+Next packet should target the remaining LIR signature mirror boundary for
+template-instantiated aggregate parameters. HIR now prints structured aggregate
+parameters such as `sum_i(p: struct Pair_T_int)`, but
+`LirFunction.signature_param_type_refs` is still rendered from a type carrier
+whose aggregate spelling collapses to `i32`.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- Do not infer alias-template targets from `_t` spelling, debug text,
-  `tag_ctx`, rendered names, or module dump strings.
-- Keep the unknown-template guard dependent/structured-authority based; do not
-  restore a fallback that builds `TB_STRUCT` from qualified spelling alone.
-- The alias-template path must continue to prefer parser-owned structured
-  member-typedef metadata over stale rendered/deferred alias `TypeSpec`
-  spelling.
+- Keep the record-body carrier scoped. The local `record_def` shortcut in
+  `parse_base_type` is intentionally limited to same-scope visible typedef
+  bindings and excludes heads followed by `<`.
+- The remaining LIR failures are not a parser member-base carrier issue:
+  `cpp_positive_sema_template_fn_struct_cpp` and
+  `cpp_positive_sema_template_struct_nested_cpp` still fail at
+  `LirFunction.signature_param_type_refs` mirror construction.
 
 ## Proof
 
 Delegated proof command:
-`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_template_alias_member_typedef_dependent_ref_runtime_cpp|cpp_positive_sema_template_alias_member_typedef_reordered_owner_runtime_cpp|cpp_positive_sema_template_alias_member_typedef_structured_carrier_runtime_cpp|cpp_positive_sema_qualified_template_unresolved_param_type_parse_cpp|cpp_positive_sema_sfinae_template_parameter_patterns_parse_cpp)$' > test_after.log 2>&1`
+`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
 
-Result: passed.
+Result: improved baseline, with no new failures.
 
-`cmake --build build` passed. `frontend_parser_tests` passed again, and the
-five positive/Sema tests fixed by the previous slice remained passing:
-`cpp_positive_sema_template_alias_member_typedef_dependent_ref_runtime_cpp`,
-`cpp_positive_sema_template_alias_member_typedef_reordered_owner_runtime_cpp`,
-`cpp_positive_sema_template_alias_member_typedef_structured_carrier_runtime_cpp`,
-`cpp_positive_sema_qualified_template_unresolved_param_type_parse_cpp`, and
-`cpp_positive_sema_sfinae_template_parameter_patterns_parse_cpp`.
+`cmake --build build` passed. The delegated CTest command exits non-zero
+because this positive/Sema subset is still red, but it improved
+`test_before.log` from 838/884 passing with 46 failures to 876/884 passing with
+8 failures. Failure comparison found 38 fixed tests and 0 new failures.
 
 Canonical proof log: `test_after.log`.
