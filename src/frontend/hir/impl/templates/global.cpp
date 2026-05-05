@@ -84,10 +84,22 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
   for (int i = 0; i < ref->n_template_args; ++i) {
     HirTemplateArg arg{};
     arg.is_value = ref->template_arg_is_value && ref->template_arg_is_value[i];
+    const Node* value_expr =
+        ref->template_arg_exprs ? ref->template_arg_exprs[i] : nullptr;
+    const bool expects_type_arg =
+        primary && i < primary->n_template_params &&
+        !(primary->template_param_is_nttp && primary->template_param_is_nttp[i]);
+    const TypeSpec* projected_value_type = nullptr;
+    if (arg.is_value && expects_type_arg && value_expr &&
+        value_expr->type.tpl_struct_origin) {
+      projected_value_type = &value_expr->type;
+      arg.is_value = false;
+    }
     if (arg.is_value) {
       resolve_ast_template_value_arg(primary, ref, i, ctx, &arg.value);
-    } else if (ref->template_arg_types) {
-      TypeSpec ts = ref->template_arg_types[i];
+    } else if (projected_value_type || ref->template_arg_types) {
+      TypeSpec ts =
+          projected_value_type ? *projected_value_type : ref->template_arg_types[i];
       if (ctx && ts.base == TB_TYPEDEF) {
         if (ts.template_param_text_id != kInvalidText) {
           auto it = ctx->tpl_bindings_by_text.find(ts.template_param_text_id);

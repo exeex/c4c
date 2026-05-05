@@ -356,6 +356,93 @@ struct DeferredTemplateTypeResult {
 // ── Template mangling utilities ─────────────────────────────────────────────
 
 inline std::string nominal_type_suffix_for_mangling(const TypeSpec& ts) {
+  std::function<bool(const TypeSpec&)> has_unresolved_template_param_arg;
+  has_unresolved_template_param_arg = [&](const TypeSpec& arg) {
+    if (arg.template_param_text_id != kInvalidText ||
+        arg.template_param_owner_text_id != kInvalidText ||
+        arg.template_param_index >= 0) {
+      return true;
+    }
+    if (arg.tag_text_id != kInvalidText && !arg.record_def &&
+        !(arg.tpl_struct_origin && arg.tpl_struct_origin[0])) {
+      return true;
+    }
+    if (arg.tpl_struct_origin && arg.tpl_struct_origin[0] &&
+        arg.tpl_struct_args.data && arg.tpl_struct_args.size > 0) {
+      for (int i = 0; i < arg.tpl_struct_args.size; ++i) {
+        const TemplateArgRef& nested = arg.tpl_struct_args.data[i];
+        if (nested.kind == TemplateArgKind::Type &&
+            has_unresolved_template_param_arg(nested.type)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  bool can_use_origin_carrier = ts.tpl_struct_origin && ts.tpl_struct_origin[0] &&
+                                ts.tpl_struct_args.data &&
+                                ts.tpl_struct_args.size > 0;
+  if (can_use_origin_carrier) {
+    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+      const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
+      if (arg.kind == TemplateArgKind::Type &&
+          has_unresolved_template_param_arg(arg.type)) {
+        can_use_origin_carrier = false;
+        break;
+      }
+    }
+  }
+  if (can_use_origin_carrier) {
+    auto append_type_name = [](std::string& out, const TypeSpec& arg) {
+      if (arg.is_const) out += "const_";
+      if (arg.is_volatile) out += "volatile_";
+      switch (arg.base) {
+        case TB_INT: out += "int"; break;
+        case TB_UINT: out += "uint"; break;
+        case TB_CHAR: out += "char"; break;
+        case TB_SCHAR: out += "schar"; break;
+        case TB_UCHAR: out += "uchar"; break;
+        case TB_SHORT: out += "short"; break;
+        case TB_USHORT: out += "ushort"; break;
+        case TB_LONG: out += "long"; break;
+        case TB_ULONG: out += "ulong"; break;
+        case TB_LONGLONG: out += "llong"; break;
+        case TB_ULONGLONG: out += "ullong"; break;
+        case TB_FLOAT: out += "float"; break;
+        case TB_DOUBLE: out += "double"; break;
+        case TB_LONGDOUBLE: out += "ldouble"; break;
+        case TB_VOID: out += "void"; break;
+        case TB_BOOL: out += "bool"; break;
+        case TB_INT128: out += "i128"; break;
+        case TB_UINT128: out += "u128"; break;
+        case TB_STRUCT:
+        case TB_UNION:
+        case TB_ENUM:
+        case TB_TYPEDEF:
+          out += nominal_type_suffix_for_mangling(arg).substr(1);
+          break;
+        default:
+          out += "unknown";
+          break;
+      }
+      for (int i = 0; i < arg.ptr_level; ++i) out += "_ptr";
+      if (arg.is_lvalue_ref) out += "_ref";
+      if (arg.is_rvalue_ref) out += "_rref";
+    };
+    std::string out = "T";
+    out += ts.tpl_struct_origin;
+    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+      const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
+      out += "_";
+      if (arg.kind == TemplateArgKind::Value) {
+        out += std::to_string(arg.value);
+      } else {
+        out += "T_";
+        append_type_name(out, arg.type);
+      }
+    }
+    return out;
+  }
   if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
     if (ts.record_def->name && ts.record_def->name[0]) {
       return std::string("T") + ts.record_def->name;

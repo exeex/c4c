@@ -8,54 +8,49 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's focused HIR consteval/layout repair recovered the three record-layout
-consteval positive cases without reintroducing `TypeSpec::tag`. Consteval template type
-bindings now canonicalize parser-side record identity onto HIR text/namespace
-owner identity before pending evaluation, and pending consteval evaluation now
-mirrors type bindings through the structured/text binding maps needed by nested
-consteval calls.
+Step 6's alias-template member-typedef carrier repair is implemented without
+reintroducing `TypeSpec::tag`. Parser alias-template references now project the
+structured `ParserAliasTemplateInfo::member_typedef` /
+`ParserAliasTemplateMemberTypedefInfo` payload onto the reference expression's
+`TypeSpec`, including the owner template key, concrete owner arguments, and the
+deferred member typedef text id for
+`using add_lvalue_reference_t = typename add_lvalue_reference<T>::type`.
 
-The temporary debug probes in `src/frontend/hir/impl/templates/global.cpp` were
-removed, `src/frontend/sema/consteval.cpp` has no remaining diff, and the
-unsolved template-global lookup experiment was dropped from this slice. The
-inherited member typedef trait case remains blocked before specialization:
-`ns::is_reference_v<ns::add_lvalue_reference_t<int>>` arrives in HIR as a
-value-shaped template argument expression for a type template parameter.
+HIR template-global instantiation now accepts that projected expression type
+when a syntactically value-shaped argument is supplied for a type template
+parameter. The mangling path preserves the alias owner/argument carrier for
+fully concrete projected alias-template member typedefs, while avoiding the
+over-broad deferred-member primary lookup that had caused existing generic
+member owner chains like `box<T>` and `leaf<T>` to realize before template
+parameter substitution.
 
 ## Suggested Next
 
-Project the parser-owned alias-template member-typedef carrier into HIR-visible
-metadata, then rerun this Step 6 proof. The needed carrier is the
-`ParserAliasTemplateInfo::member_typedef` / `ParserAliasTemplateMemberTypedefInfo`
-payload for `using add_lvalue_reference_t = typename add_lvalue_reference<T>::type`
-attached either to the alias template reference expression or to a HIR-visible
-alias-template registry keyed by structured alias identity.
+Supervisor should review and commit this Step 6 repair slice, or choose any
+additional milestone-level validation needed before lifecycle handoff.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- Do not infer alias-template targets from `_t` spelling, debug text, or
-  `tag_ctx`/rendered strings. The current HIR-visible expression only carries
-  alias structured name identity plus the explicit `int` argument; it does not
-  carry the alias target `typename add_lvalue_reference<T>::type`.
-- The remaining failure should stay blocked until a structured alias-template
-  carrier is exposed; weakening the positive HIR contract would be overfit.
+- Do not infer alias-template targets from `_t` spelling, debug text,
+  `tag_ctx`, rendered names, or module dump strings. This slice carries the
+  alias member typedef through parser-owned structured metadata.
+- Origin-carrier mangling must stay gated to concrete template arguments; using
+  it for unresolved template parameters recreates fake owners such as
+  `box_T_tag_ctx...` and breaks existing member typedef owner chains.
 
 ## Proof
 
 Delegated proof command:
-`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_deferred_consteval_incomplete_type|cpp_hir_if_constexpr_branch_unlocks_later|cpp_hir_multistage_shape_chain)$' > test_after.log 2>&1`
+`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_|frontend_)' > test_after.log 2>&1`
 
 Result: passed.
 
-`cmake --build build` passed. The consteval/layout cases
-`cpp_hir_deferred_consteval_incomplete_type`,
-`cpp_hir_if_constexpr_branch_unlocks_later`, and
-`cpp_hir_multistage_shape_chain` passed.
-
-Remaining known Step 6 broad-gate blocker:
-`cpp_hir_template_inherited_member_typedef_trait`, where HIR still emits no
-instantiated `ns::is_reference_v_T_Tns::add_lvalue_reference_T_int` global
-because the alias-template argument is not materialized as a type.
+`cmake --build build` passed. The frontend/HIR subset passed 117/117 tests,
+including `cpp_hir_template_inherited_member_typedef_trait` and the repaired
+regressions `cpp_hir_template_member_owner_chain`,
+`cpp_hir_template_member_owner_decl_and_cast`,
+`cpp_hir_template_member_owner_field_and_local`, and
+`cpp_hir_template_member_owner_signature_local`.
 
 Canonical proof log: `test_after.log`.

@@ -39,6 +39,130 @@ static std::string expressions_typespec_display_name(const Parser& parser,
     return std::string(fallback);
 }
 
+static TextId alias_template_param_text_id(Parser& parser,
+                                           const ParserAliasTemplateInfo& info,
+                                           size_t index) {
+    if (index < info.param_name_text_ids.size() &&
+        info.param_name_text_ids[index] != kInvalidText) {
+        return info.param_name_text_ids[index];
+    }
+    const char* name =
+        index < info.param_names.size() ? info.param_names[index] : nullptr;
+    return name && name[0]
+               ? parser.parser_text_id_for_token(kInvalidText, name)
+               : kInvalidText;
+}
+
+static size_t alias_template_param_index(Parser& parser,
+                                         const ParserAliasTemplateInfo& info,
+                                         TextId text_id) {
+    if (text_id == kInvalidText) return info.param_names.size();
+    const size_t n = std::max(info.param_names.size(),
+                              info.param_name_text_ids.size());
+    for (size_t i = 0; i < n; ++i) {
+        if (alias_template_param_text_id(parser, info, i) == text_id) {
+            return i;
+        }
+    }
+    return n;
+}
+
+static Parser::TemplateArgParseResult substitute_alias_template_carrier_arg(
+    Parser& parser,
+    const ParserAliasTemplateInfo& info,
+    const Parser::TemplateArgParseResult& carrier,
+    const std::vector<Parser::TemplateArgParseResult>& actual_args) {
+    Parser::TemplateArgParseResult out = carrier;
+    TextId ref_text_id = kInvalidText;
+    if (carrier.is_value) {
+        ref_text_id = carrier.nttp_text_id;
+    } else if (carrier.type.base == TB_TYPEDEF) {
+        ref_text_id = carrier.type.tag_text_id != kInvalidText
+                          ? carrier.type.tag_text_id
+                          : carrier.type.template_param_text_id;
+    }
+    const size_t index = alias_template_param_index(parser, info, ref_text_id);
+    if (index < actual_args.size()) out = actual_args[index];
+    return out;
+}
+
+static void attach_alias_template_member_typedef_expr_type(
+    Parser& parser,
+    Node* ident,
+    const Parser::QualifiedNameRef& qn,
+    const std::vector<Parser::TemplateArgParseResult>& parsed_args) {
+    if (!ident || parsed_args.empty()) return;
+    const int context_id =
+        qn.qualifier_segments.empty()
+            ? (qn.is_global_qualified ? 0 : parser.current_namespace_context_id())
+            : parser.resolve_namespace_context(qn);
+    if (context_id < 0) return;
+    const QualifiedNameKey alias_key =
+        parser.alias_template_key_in_context(context_id, qn.base_text_id);
+    const ParserAliasTemplateInfo* info =
+        parser.find_alias_template_info(alias_key);
+    if (!info || !info->member_typedef.valid ||
+        info->member_typedef.owner_key.base_text_id == kInvalidText ||
+        info->member_typedef.member_text_id == kInvalidText) {
+        return;
+    }
+    const Node* owner_primary =
+        parser.find_template_struct_primary(info->member_typedef.owner_key);
+    if (!owner_primary) return;
+
+    TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = TB_STRUCT;
+    ts.tag_text_id = info->member_typedef.owner_key.base_text_id;
+    ts.namespace_context_id = info->member_typedef.owner_key.context_id;
+    ts.is_global_qualified = info->member_typedef.owner_key.is_global_qualified;
+    ts.tpl_struct_origin_key = info->member_typedef.owner_key;
+    const char* origin =
+        owner_primary->name && owner_primary->name[0]
+            ? owner_primary->name
+        : owner_primary->template_origin_name &&
+                owner_primary->template_origin_name[0]
+            ? owner_primary->template_origin_name
+        : owner_primary->unqualified_name && owner_primary->unqualified_name[0]
+            ? owner_primary->unqualified_name
+            : nullptr;
+    if (origin && origin[0]) ts.tpl_struct_origin = parser.arena_.strdup(origin);
+
+    if (!info->member_typedef.owner_args.empty()) {
+        ts.tpl_struct_args.data = parser.arena_.alloc_array<TemplateArgRef>(
+            info->member_typedef.owner_args.size());
+        ts.tpl_struct_args.size =
+            static_cast<int>(info->member_typedef.owner_args.size());
+        for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+            const Parser::TemplateArgParseResult actual =
+                substitute_alias_template_carrier_arg(
+                    parser, *info, info->member_typedef.owner_args[i],
+                    parsed_args);
+            TemplateArgRef& ref = ts.tpl_struct_args.data[i];
+            ref.kind = actual.is_value ? TemplateArgKind::Value
+                                       : TemplateArgKind::Type;
+            ref.type = actual.is_value ? TypeSpec{} : actual.type;
+            ref.value = actual.is_value ? actual.value : 0;
+            ref.nttp_text_id =
+                actual.is_value ? actual.nttp_text_id : kInvalidText;
+            ref.debug_text = nullptr;
+            if (actual.is_value) {
+                ref.type.array_size = -1;
+                ref.type.inner_rank = -1;
+                ref.type.array_size_expr = actual.expr;
+            }
+        }
+    }
+
+    const std::string member_name(
+        parser.parser_text(info->member_typedef.member_text_id, {}));
+    if (member_name.empty()) return;
+    ts.deferred_member_type_name = parser.arena_.strdup(member_name.c_str());
+    ts.deferred_member_type_text_id = info->member_typedef.member_text_id;
+    ident->type = ts;
+}
+
 static std::string expressions_constructor_display_name(const Parser& parser,
                                                         const TypeSpec& ts,
                                                         std::string_view fallback,
@@ -1482,6 +1606,8 @@ Node* parse_primary(Parser& parser) {
                         parser.is_concept_name(
                             parser.parser_text_id_for_token(
                                 qn.base_text_id, ident->name ? ident->name : ""));
+                    attach_alias_template_member_typedef_expr_type(
+                        parser, ident, qn, parsed_args);
                 }
             }
         }
@@ -1768,6 +1894,8 @@ Node* parse_primary(Parser& parser) {
                         parser.is_concept_name(
                             parser.parser_text_id_for_token(
                                 qn.base_text_id, ident->name ? ident->name : ""));
+                    attach_alias_template_member_typedef_expr_type(
+                        parser, ident, qn, parsed_args);
                     // Template<A,B>::member — resolve as qualified name.
                     // Re-parse from ident_start to trigger template struct
                     // instantiation and get the mangled tag.
