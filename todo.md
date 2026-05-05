@@ -8,53 +8,50 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's C++ positive/Sema parser fallout repair improved the
-`cpp_positive_sema_` baseline without reintroducing `TypeSpec::tag`. Qualified
-template-id type parsing now accepts qualified alias templates before `<...>`
-and projects the structured `ParserAliasTemplateInfo::member_typedef` /
-`ParserAliasTemplateMemberTypedefInfo` carrier into a `TypeSpec` for declaration
-and parameter type contexts. This repairs qualified/template alias member
-typedef cases such as `ns::alias_of_alias_t<int, short>` and
-`carrier_probe::pick_second_t<int, short>` without `_t` spelling inference or
-rendered-string semantic lookup.
+Step 6's parser-unit regression from the qualified alias-template parsing slice
+is repaired without reintroducing `TypeSpec::tag`. The
+`try_parse_qualified_base_type` fallback no longer accepts unknown
+namespace-qualified template ids such as `ns::Missing<int>` from spelling alone.
+Known qualified alias templates still resolve through the structured
+`ParserAliasTemplateInfo::member_typedef` /
+`ParserAliasTemplateMemberTypedefInfo` carrier, and concrete alias-template
+member typedefs can resolve immediately through the selected structured owner
+member typedef.
 
-The same qualified type parser now keeps unresolved qualified template-id type
-heads such as `ns::holder<T>` on the type side by carrying the structured
-qualified owner key plus parsed template arguments instead of leaving `<...>`
-for expression parsing.
+Unresolved qualified template-id type heads are now accepted only when the
+template-id is dependent through parsed template arguments or an active template
+type-parameter scope, preserving `ns::holder<T>` parameter parsing while
+rejecting non-dependent unknown qualified template ids.
 
 ## Suggested Next
 
-Next packet should target the remaining pre-existing C++ positive/Sema fallout
-left in `test_after.log`, dominated by EASTL/template-owner/member access and
-copy/move/range-for failures.
+Next packet can return to the remaining C++ positive/Sema fallout after this
+guard repair is reviewed and committed.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
 - Do not infer alias-template targets from `_t` spelling, debug text,
   `tag_ctx`, rendered names, or module dump strings.
-- The delegated proof is still red because 46 baseline failures remain, but the
-  failed set only shrank: 51 failures before, 46 after, with no new failures.
-- The repaired family includes
-  `cpp_positive_sema_template_alias_member_typedef_dependent_ref_runtime_cpp`,
-  `cpp_positive_sema_template_alias_member_typedef_reordered_owner_runtime_cpp`,
-  `cpp_positive_sema_template_alias_member_typedef_structured_carrier_runtime_cpp`,
-  `cpp_positive_sema_qualified_template_unresolved_param_type_parse_cpp`, and
-  adjacent `cpp_positive_sema_sfinae_template_parameter_patterns_parse_cpp`.
+- Keep the unknown-template guard dependent/structured-authority based; do not
+  restore a fallback that builds `TB_STRUCT` from qualified spelling alone.
+- The alias-template path must continue to prefer parser-owned structured
+  member-typedef metadata over stale rendered/deferred alias `TypeSpec`
+  spelling.
 
 ## Proof
 
 Delegated proof command:
-`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
+`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_template_alias_member_typedef_dependent_ref_runtime_cpp|cpp_positive_sema_template_alias_member_typedef_reordered_owner_runtime_cpp|cpp_positive_sema_template_alias_member_typedef_structured_carrier_runtime_cpp|cpp_positive_sema_qualified_template_unresolved_param_type_parse_cpp|cpp_positive_sema_sfinae_template_parameter_patterns_parse_cpp)$' > test_after.log 2>&1`
 
-Result: improved red baseline.
+Result: passed.
 
-`cmake --build build` passed. The `cpp_positive_sema_` subset now reports
-838/884 passing and 46 failing, compared with `test_before.log` at 833/884
-passing and 51 failing. Fixed tests: the three qualified/template alias member
-typedef cases, `cpp_positive_sema_qualified_template_unresolved_param_type_parse_cpp`,
-and `cpp_positive_sema_sfinae_template_parameter_patterns_parse_cpp`. No new
-failures were introduced.
+`cmake --build build` passed. `frontend_parser_tests` passed again, and the
+five positive/Sema tests fixed by the previous slice remained passing:
+`cpp_positive_sema_template_alias_member_typedef_dependent_ref_runtime_cpp`,
+`cpp_positive_sema_template_alias_member_typedef_reordered_owner_runtime_cpp`,
+`cpp_positive_sema_template_alias_member_typedef_structured_carrier_runtime_cpp`,
+`cpp_positive_sema_qualified_template_unresolved_param_type_parse_cpp`, and
+`cpp_positive_sema_sfinae_template_parameter_patterns_parse_cpp`.
 
 Canonical proof log: `test_after.log`.
