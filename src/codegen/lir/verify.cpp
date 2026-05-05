@@ -661,12 +661,17 @@ std::string_view function_signature_line(const LirFunction& fn) {
 StructNameId expected_direct_aggregate_signature_id(const LirModule& mod,
                                                     const TypeSpec& type) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
-      type.array_rank > 0 ||
-      !c4c::codegen::llvm_helpers::is_named_aggregate_value(type)) {
+      type.array_rank > 0 || type.tag_text_id == kInvalidText ||
+      !mod.link_name_texts) {
     return kInvalidStructName;
   }
-  const std::string rendered = c4c::codegen::llvm_helpers::llvm_ty(type);
-  return find_declared_struct_name_id(mod, rendered);
+  const std::string_view tag = mod.link_name_texts->lookup(type.tag_text_id);
+  if (tag.empty()) return kInvalidStructName;
+  const std::string rendered =
+      tag.rfind("%struct.", 0) == 0 || tag.rfind("%\"struct.", 0) == 0
+          ? std::string(tag)
+          : c4c::codegen::llvm_helpers::llvm_struct_type_str(std::string(tag));
+  return mod.struct_names.find(rendered);
 }
 
 bool aggregate_signature_param_mirror_matches_type(const LirTypeRef& mirror,
@@ -742,6 +747,19 @@ void verify_function_signature_param_type_ref_mirror(
 
   const StructNameId expected_id =
       expected_direct_aggregate_signature_id(mod, param->type);
+  const bool structured_aggregate_param =
+      (param->type.base == TB_STRUCT || param->type.base == TB_UNION) &&
+      param->type.ptr_level == 0 && param->type.array_rank == 0;
+  if (expected_id == kInvalidStructName && structured_aggregate_param &&
+      !mirror.has_struct_name_id()) {
+    if (mirror.str().find("byval(") == std::string::npos) {
+      std::ostringstream detail;
+      detail << "parameter " << index << " mirror for function '" << fn.name
+             << "' must carry a StructNameId or aggregate ABI fragment";
+      fail_verify(field, detail.str());
+    }
+    return;
+  }
   if (expected_id == kInvalidStructName) return;
 
   const std::string_view expected_name = mod.struct_names.spelling(expected_id);

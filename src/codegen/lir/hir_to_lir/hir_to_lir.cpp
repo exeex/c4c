@@ -36,11 +36,22 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
 
 TypeSpec lir_owned_type_spec(TypeSpec type, LirModule* lir_module) {
   if (!lir_module) return type;
-  const std::optional<std::string> tag =
-      c4c::codegen::llvm_helpers::typespec_aggregate_final_spelling(type);
-  if (!tag) return type;
-  c4c::codegen::llvm_helpers::set_typespec_legacy_tag_if_present(
-      type, lir_module->intern_type_tag(tag->c_str()), 0);
+  if (type.base != TB_STRUCT && type.base != TB_UNION) return type;
+  std::optional<std::string> tag;
+  if (type.tag_text_id != kInvalidText && lir_module->link_name_texts) {
+    const std::string_view text = lir_module->link_name_texts->lookup(type.tag_text_id);
+    if (!text.empty()) tag = std::string(text);
+  }
+  if (!tag) {
+    tag = c4c::codegen::llvm_helpers::typespec_aggregate_final_spelling(type);
+  }
+  if (tag && lir_module->link_name_texts) {
+    type.tag_text_id = lir_module->link_name_texts->intern(*tag);
+  }
+  type.record_def = nullptr;
+  type.qualifier_segments = nullptr;
+  type.qualifier_text_ids = nullptr;
+  type.n_qualifier_segments = 0;
   return type;
 }
 
