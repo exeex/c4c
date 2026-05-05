@@ -5,7 +5,6 @@ Source Idea Path: ideas/open/143_typespec_identity_normalization_boundary.md
 Source Plan Path: plan.md
 Current Step ID: 6
 Current Step Title: Triage Broad Validation Regression After Field Removal
-你該做code review了
 
 ## Just Finished
 
@@ -17,6 +16,11 @@ to resolve the whole array type. This emits real `getelementptr` initializers
 for `Upgd_minor_ID` and `Upgd_minor_ID1` instead of `ptr null`, eliminating the
 segfault. No tests were weakened and no rendered-tag consumer fallback was
 added.
+
+Accumulated Step 6 review in
+`review/143_step6_accumulated_identity_review.md` found no blocking findings,
+judged the route on track, and recommended continuing the current Step 6 route.
+The accepted focused proof was rolled forward to `test_before.log`.
 
 ## Suggested Next
 
@@ -56,7 +60,7 @@ harness failures after clang rejects the generated IR.
 
 ## Proof
 
-Proof is in `test_after.log`:
+Current accepted proof is in `test_before.log`:
 `cmake --build build --target c4cll && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_src_00216_c|llvm_gcc_c_torture_src_20040709_(1|2|3)_c|llvm_gcc_c_torture_src_20040703_1_c|llvm_gcc_c_torture_src_const_addr_expr_1_c)$'`.
 
 The delegated proof now passes 1/6. Passing test:
