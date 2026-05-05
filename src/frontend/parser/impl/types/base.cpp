@@ -2441,13 +2441,18 @@ TypeSpec Parser::parse_base_type() {
                     typedef_type->base == TB_TYPEDEF &&
                     typedef_type->tag_text_id != kInvalidText;
                 const TextId save_tag_text_id = ts.tag_text_id;
+                const bool should_preserve_typedef_source_text_id =
+                    save_tag_text_id != kInvalidText &&
+                    !typedef_type_has_structured_typedef_identity &&
+                    typedef_type->record_def == nullptr;
                 const bool save_is_global_qualified = ts.is_global_qualified;
                 const int save_namespace_context_id = ts.namespace_context_id;
                 const int save_n_qualifier_segments = ts.n_qualifier_segments;
                 const char** save_qualifier_segments = ts.qualifier_segments;
                 TextId* save_qualifier_text_ids = ts.qualifier_text_ids;
                 ts = *typedef_type;
-                if (has_qualified_type_metadata &&
+                if ((has_qualified_type_metadata ||
+                     should_preserve_typedef_source_text_id) &&
                     !typedef_type_has_structured_typedef_identity) {
                     ts.tag_text_id = save_tag_text_id;
                     ts.is_global_qualified = save_is_global_qualified;

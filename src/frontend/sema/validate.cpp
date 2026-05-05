@@ -1706,6 +1706,12 @@ class Validator {
   }
 
   bool can_defer_owner_qualified_cast_typedef(const TypeSpec& ts) const {
+    const bool has_deferred_member_owner =
+        ts.deferred_member_type_text_id != kInvalidText &&
+        (ts.record_def || ts.tag_text_id != kInvalidText ||
+         ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+         (ts.tpl_struct_origin && ts.tpl_struct_origin[0]));
+    if (has_deferred_member_owner) return true;
     if (!current_method_struct_key_.has_value() || !current_method_struct_key_->valid()) {
       return false;
     }

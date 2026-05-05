@@ -91,8 +91,12 @@ EASTL/template owner resolution.
 - The failure count from
   `review/139_140_141_failure_attribution_review.md` is reduced through
   semantic normalization rather than expectation rewrites.
-- `ctest --test-dir build -j 8 --output-on-failure` shows no new failures
-  relative to the accepted baseline for this idea.
+- All failures attributed in
+  `review/139_140_141_failure_attribution_review.md` are either fixed by
+  semantic normalization or explicitly split into a narrower follow-up idea
+  before this idea closes.
+- This idea cannot close on a partial baseline. Final close requires
+  `ctest --test-dir build -j 8 --output-on-failure` to pass with zero failures.
 
 ## Reviewer Reject Signals
 

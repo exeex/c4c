@@ -679,6 +679,62 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                 tokens_ = std::move(saved_toks);
                 pos_ = saved_pos;
 
+                auto attach_final_owner_spelling = [&]() {
+                    if (qn.qualifier_segments.empty()) return;
+                    Parser::QualifiedNameRef owner_qn;
+                    owner_qn.is_global_qualified = qn.is_global_qualified;
+                    const size_t owner_base_index = qn.qualifier_segments.size() - 1;
+                    owner_qn.qualifier_segments.assign(
+                        qn.qualifier_segments.begin(),
+                        qn.qualifier_segments.begin() + owner_base_index);
+                    owner_qn.qualifier_text_ids.assign(
+                        qn.qualifier_text_ids.begin(),
+                        qn.qualifier_text_ids.begin() + owner_base_index);
+                    owner_qn.base_name = qn.qualifier_segments[owner_base_index];
+                    owner_qn.base_text_id =
+                        owner_base_index < qn.qualifier_text_ids.size()
+                            ? qn.qualifier_text_ids[owner_base_index]
+                            : parser_text_id_for_token(kInvalidText,
+                                                       owner_qn.base_name);
+                    owner_ts.base = TB_TYPEDEF;
+                    owner_ts.tag_text_id = owner_qn.base_text_id;
+                    owner_ts.tpl_struct_origin_key = qualified_name_key(owner_qn);
+                    owner_ts.namespace_context_id =
+                        resolve_namespace_context(owner_qn);
+                    owner_ts.is_global_qualified = owner_qn.is_global_qualified;
+                    owner_ts.n_qualifier_segments =
+                        static_cast<int>(owner_qn.qualifier_segments.size());
+                    if (owner_ts.n_qualifier_segments > 0) {
+                        owner_ts.qualifier_segments =
+                            arena_.alloc_array<const char*>(
+                                owner_ts.n_qualifier_segments);
+                        owner_ts.qualifier_text_ids =
+                            arena_.alloc_array<TextId>(
+                                owner_ts.n_qualifier_segments);
+                        for (int i = 0; i < owner_ts.n_qualifier_segments; ++i) {
+                            owner_ts.qualifier_segments[i] =
+                                arena_.strdup(owner_qn.qualifier_segments[i].c_str());
+                            owner_ts.qualifier_text_ids[i] =
+                                i < static_cast<int>(
+                                        owner_qn.qualifier_text_ids.size())
+                                    ? owner_qn.qualifier_text_ids[i]
+                                    : kInvalidText;
+                        }
+                    }
+                    set_declarator_legacy_display_tag_if_present(
+                        owner_ts,
+                        arena_.strdup(
+                            qualified_name_text(owner_qn,
+                                                true /* include_global_prefix */)
+                                .c_str()),
+                        0);
+                };
+
+                if (!has_deferred_template_owner_member_identity(owner_ts) &&
+                    !qn.qualifier_segments.empty()) {
+                    attach_final_owner_spelling();
+                }
+
                 if (!has_deferred_template_owner_member_identity(owner_ts)) {
                     return false;
                 }
@@ -749,6 +805,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
             resolved_type_payload = structured_typedef;
             TypeSpec deferred_owner_member{};
             const bool structured_typedef_needs_owner_handoff =
+                spelled_name.find('<') != std::string::npos ||
                 structured_typedef->is_lvalue_ref ||
                 structured_typedef->is_rvalue_ref ||
                 template_state_.template_scope_stack.empty();
@@ -973,7 +1030,19 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                             register_structured_typedef_binding(
                                 structured_typedef_key, resolved_member);
                         }
-                        if (resolved_member.is_lvalue_ref ||
+                        TypeSpec deferred_owner_member{};
+                        if (spelled_name.find('<') != std::string::npos &&
+                            try_make_deferred_template_owner_member(
+                                &deferred_owner_member)) {
+                            deferred_owner_member.is_lvalue_ref =
+                                deferred_owner_member.is_lvalue_ref ||
+                                resolved_member.is_lvalue_ref;
+                            deferred_owner_member.is_rvalue_ref =
+                                !deferred_owner_member.is_lvalue_ref &&
+                                (deferred_owner_member.is_rvalue_ref ||
+                                 resolved_member.is_rvalue_ref);
+                            resolved_type = deferred_owner_member;
+                        } else if (resolved_member.is_lvalue_ref ||
                             resolved_member.is_rvalue_ref) {
                             resolved_type = {};
                             resolved_type.array_size = -1;
@@ -2078,6 +2147,22 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
 }
 
 TypeSpec Parser::parse_type_name() {
+    if (is_cpp_mode() && check(TokenKind::KwTypename)) {
+        const int saved_pos = pos_;
+        std::string resolved;
+        TypeSpec resolved_type{};
+        bool has_resolved_type = false;
+        if (parse_dependent_typename_specifier(&resolved, &resolved_type,
+                                               &has_resolved_type) &&
+            has_resolved_type &&
+            resolved_type.deferred_member_type_text_id != kInvalidText &&
+            is_parenthesized_pointer_declarator_start(*this)) {
+            const char* ignored = nullptr;
+            parse_declarator(resolved_type, &ignored);
+            return resolved_type;
+        }
+        pos_ = saved_pos;
+    }
     TypeSpec ts = parse_base_type();
     const char* ignored = nullptr;
     parse_declarator(ts, &ignored);
