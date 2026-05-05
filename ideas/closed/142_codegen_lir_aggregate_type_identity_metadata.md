@@ -1,7 +1,8 @@
 # Codegen LIR Aggregate Type Identity Metadata
 
-Status: Parked - runbook retired after codegen/LIR handback
+Status: Closed - runbook retired after codegen/LIR handback
 Created: 2026-05-03
+Closed: 2026-05-05
 
 Parent Ideas:
 - `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`
@@ -101,6 +102,26 @@ or resurrecting rendered spelling as semantic authority on `TypeSpec`.
 - `cmake --build --preset default` passes after normal, non-probe edits.
 - Focused codegen/LIR tests prove aggregate identity still works when rendered
   spelling is not used as the semantic lookup authority.
+
+## Completion Notes
+
+- Closed after parent
+  `ideas/closed/141_typespec_tag_field_removal_metadata_migration.md` completed
+  and `TypeSpec::tag` was removed with full-suite proof green at 3023/3023 in
+  `test_after.log`.
+- The codegen/LIR aggregate identity runbook was already retired after the
+  2026-05-03 codegen/LIR handback because the deletion probe no longer first
+  failed in the codegen hot regions owned by this idea.
+- No fresh parent deletion probe has exposed a new codegen/LIR aggregate
+  identity boundary, so reactivation is not appropriate.
+- The final parent review
+  `review/141_step6_final_full_suite_acceptance_review.md` notes that LIR
+  aggregate mirroring now prefers structured HIR aggregate layout lookup before
+  compatibility fallback, and treats the fallback as a non-blocking
+  compatibility watchpoint rather than a semantic replacement for
+  `TypeSpec::tag`.
+- If future work finds a distinct codegen/LIR aggregate identity gap, create a
+  new focused open idea rather than reopening this retired handback route.
 
 ## Reviewer Reject Signals
 
