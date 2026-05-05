@@ -16,6 +16,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 void test_preliminary_functional_cast_uses_template_param_text_id() {
   c4c::Lexer lexer("Box<unsigned, T(7)> after",
                    c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
@@ -63,7 +71,7 @@ void test_preliminary_functional_cast_uses_template_param_text_id() {
   box_alias.array_size = -1;
   box_alias.inner_rank = -1;
   box_alias.base = c4c::TB_STRUCT;
-  box_alias.tag = arena.strdup("Box");
+  set_legacy_tag_if_present(box_alias, arena.strdup("Box"), 0);
   box_alias.tag_text_id = box_text;
   parser.register_typedef_binding(box_text, box_alias, true);
 
