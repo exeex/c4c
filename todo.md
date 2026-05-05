@@ -8,103 +8,72 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Repaired the over-broad Step 6 array-object lvalue indexing follow-up from
-commit `c8c53a368`.
+Repaired the final Step 6 full-suite timeout in
+`cpp_qualified_template_call_template_arg_perf`.
 
-StmtEmitter `IndexExpr` lvalue lowering now preserves lvalue bases only for
-storage-backed array objects: member arrays, nested array-index lvalues,
-dereferenced pointer-to-array expressions, globals, and locals whose actual
-slot type is an array object. Adjusted parameters, VLAs, pointer slots, and
-other pointer-valued expressions remain on the rvalue/decay path.
+The parser now rejects non-call-like template arguments before entering the
+structured alias-template member-call NTTP carrier path, so ordinary template
+arguments do not pay alias lookup or expression-fallback costs. The structured
+carrier for `Alias<Ts...>::template member<Us...>()` now uses the parsed
+`NK_CALL`/`NK_MEMBER` tree directly instead of also building a rendered
+`$expr:` fallback string.
 
-The module-aware LIR alloca helper now emits outer array storage before
-collapsing pointer/function-pointer element types to `ptr`, so arrays of
-pointers and function pointers allocate `[N x ptr]` storage instead of a single
-pointer slot. Lvalue dereference now clears `is_ptr_to_array` after consuming
-the final pointer layer, matching the existing expression type resolver and
-restoring typed indexing for `(*p)[i]`.
+Template non-type parsing now treats leading `!` value-template expressions as
+clearly value-like and captures them through the existing bounded token carrier
+without a failed type/expression detour. The remaining speculative probes on
+this hot path use lite rollback where they only need cursor-level state.
 
-The exact delegated 13-test regression subset improved from 0/13 to 13/13.
-The original four runtime segfault fixes from `c8c53a368` and the prior
-metadata spot checks remain green.
+The member-template prelude parser also skips balanced defaults for unnamed
+type template parameters. Those parameters do not create a structured prelude
+binding, so their defaults are not retained metadata; consuming them
+syntactically avoids reparsing thousands of `typename enable_if<...>::type`
+defaults while preserving named/defaulted parameter carriers.
+
+The exact full-suite proof improved from the supervisor baseline of 3022/3023
+with only the perf timeout to 3023/3023. In the full-suite run,
+`cpp_qualified_template_call_template_arg_perf` passed in 2.06s.
 
 ## Suggested Next
 
-Recommended next Step 6 packet: supervisor-side broad/full validation for the
-parent TypeSpec-tag deletion route. The owned array/indexing/VLA/string
-regression subset and the original runtime segfault cluster are green.
+Recommended next Step 6 packet: supervisor-side regression review and commit
+for the completed TypeSpec-tag deletion validation route, since the delegated
+full-suite proof is now green.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- C array fields whose element type is a pointer have `ptr_level > 0` and
-  `outer_array_rank > 0`; they are still array objects and must not be loaded
-  before indexing.
-- C function parameters declared with array syntax are adjusted pointer
-  parameters. They may still carry array-rank metadata, so decl-ref parameter
-  bases must not be forced through the array-object lvalue indexing path.
-- Arrays of pointer or function-pointer elements still need real array storage
-  when they are local/global/member array objects; do not collapse outer array
-  dimensions to `ptr` before alloca/layout emission.
-- Pointer-to-array dereference consumes the pointer wrapper. The resulting
-  lvalue is an array object, so `is_ptr_to_array` must be cleared when the
-  final pointer layer is removed.
-- LIR function signature mirrors should derive aggregate identity from HIR
-  structured layouts first. Do not restore direct `tag_text_id`/stale
-  `record_def` spelling as the semantic source for owned function
-  return/parameter carriers.
-- HIR struct field TypeSpecs may arrive from parser with parser-table
-  `tag_text_id` and no `record_def`, especially for self/forward C tags. Keep
-  the structured owner-key canonicalization before field metadata is stored, so
-  StmtEmitter does not recover aggregate identity from rendered text.
-- The namespace-qualified unknown-template guard was checked separately with
-  `frontend_parser_tests`, which passed.
-- The prior qualified alias-template fix remains green in this proof; preserve
-  the structured `ParserAliasTemplateInfo` authority and the unknown
-  namespace-qualified template-id guard.
-- The `Owner<Args>::member` repair only succeeds after structured template
-  owner lookup plus selected-member typedef resolution; unknown member names
-  still roll back.
-- The prior perf guard's repeated full tentative-expression parsing in
-  qualified template-call default arguments is fixed by the structured carrier
-  in this packet; preserve the focused carrier shape rather than returning to
-  raw token capture.
-- This packet did not add rollback/lite-guard changes.
-- Variable-template value-argument evaluation now depends on structured
-  template-global registration plus owner-aware template-parameter metadata;
-  preserve owner/index checks so nested templates with the same parameter name
-  do not bind to the wrong scope.
-- Explicit NTTP argument preliminary evaluation must not see arbitrary current
-  template bindings. The local same-primary rebuild is intentionally limited to
-  direct functional-cast carriers and skips text ids already visible in the
-  saved outer bindings, so unrelated trait expressions such as struct-base
-  owner checks remain deferred instead of becoming parser-owned placeholders.
-- Concrete owner materialization is limited to structured, concrete template
-  owner arguments. Dependent owner arguments, including `sizeof...(pack)`,
-  still remain deferred for later specialization.
-- The constructor member-template specialization blocker is closed; do not
-  reopen it unless a fresh parent deletion probe exposes a distinct regression
-  in the same carrier.
-- Split unrelated LIR/BIR/backend/codegen or broad-validation boundaries into
-  follow-up open ideas rather than broadening this Step 6 packet.
+- The alias-template member-call NTTP path remains structured: parsed owner
+  and member template arguments attach to the call/member nodes, and semantic
+  identity comes from those carriers, not from `$expr:` text.
+- The prelude default skip is intentionally limited to unnamed type template
+  parameters, because named parameters need their structured default metadata
+  recorded for later parser/HIR handoff.
+- The bounded token carrier is still used for non-call-like value-template
+  expressions such as leading `!` trait expressions; avoid raw token capture
+  for call-like alias-template member expressions.
+- Keep rollback/lite-guard changes narrow. The main type-argument parser still
+  uses the heavy guard where parser-debug lifecycle tests expect it.
 
 ## Proof
 
-Step 6 delegated array/indexing regression proof:
-`cmake --build build && ctest --test-dir build --output-on-failure -R '^(positive_sema_inline_phase9_c|positive_sema_ok_expr_canonical_cast_index_c|llvm_gcc_c_torture_src_20180921_1_c|llvm_gcc_c_torture_src_strlen_4_c|llvm_gcc_c_torture_src_20040811_1_c|llvm_gcc_c_torture_src_20080424_1_c|llvm_gcc_c_torture_src_20090814_1_c|llvm_gcc_c_torture_src_920929_1_c|llvm_gcc_c_torture_src_pr43220_c|llvm_gcc_c_torture_src_pr58277_1_c|llvm_gcc_c_torture_src_pr58277_2_c|llvm_gcc_c_torture_src_pr58831_c|llvm_gcc_c_torture_src_vla_dealloc_1_c)$' > test_after.log 2>&1`
+Acceptance proof:
+`cmake --build build && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`
 
-Result: passed, 13/13. The rejected full-suite follow-up regressions for
-array parameters, pointer arrays, pointer-to-array indexing, strings, and VLAs
-are fixed.
+Result: passed, 3023/3023.
 
 Proof log: `test_after.log`.
 
-Original four `c8c53a368` runtime checks:
-`ctest --test-dir build --output-on-failure -R '^(llvm_gcc_c_torture_src_20020402_3_c|llvm_gcc_c_torture_src_20071018_1_c|llvm_gcc_c_torture_src_950426_1_c|llvm_gcc_c_torture_src_pr41463_c)$'`
+Focused perf check:
+`ctest --test-dir build --output-on-failure -R '^cpp_qualified_template_call_template_arg_perf$'`
 
-Result: passed, 4/4.
+Result: passed, 1/1, 1.77s isolated.
 
-Prior metadata spot checks:
-`ctest --test-dir build --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_type_base_prelim_eval_structured_metadata|c_testsuite_src_00019_c|llvm_gcc_c_torture_src_20040709_1_c|llvm_gcc_c_torture_src_pr40022_c|llvm_gcc_c_torture_src_pr23324_c)$'`
+Parser/EASTL/debug spot check:
+`ctest --test-dir build -j --output-on-failure -R '^(cpp_eastl_integer_sequence_parse_recipe|cpp_eastl_type_traits_parse_recipe|cpp_eastl_utility_parse_recipe|cpp_eastl_vector_parse_recipe|cpp_eastl_memory_uses_allocator_parse_recipe|eastl_cpp_external_utility_frontend_basic_cpp|cpp_parse_record_base_variable_template_value_arg_dump|cpp_parse_template_alias_empty_pack_default_arg_dump|cpp_parser_debug_qualified_type_template_arg_stack|cpp_parser_debug_qualified_type_spelling_stack|cpp_parser_debug_tentative_template_arg_lifecycle|cpp_parser_debug_tentative_cli_only)$'`
 
-Result: passed, 6/6.
+Result: passed, 12/12.
+
+Prior metadata/runtime spot check:
+`ctest --test-dir build --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_type_base_prelim_eval_structured_metadata|c_testsuite_src_00019_c|llvm_gcc_c_torture_src_20040709_1_c|llvm_gcc_c_torture_src_pr40022_c|llvm_gcc_c_torture_src_pr23324_c|llvm_gcc_c_torture_src_20020402_3_c|llvm_gcc_c_torture_src_pr41463_c)$'`
+
+Result: passed, 8/8.

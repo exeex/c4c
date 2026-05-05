@@ -54,6 +54,42 @@ static const char* capture_template_param_default_text(Parser& parser,
     return text.empty() ? nullptr : parser.arena_.strdup(text.c_str());
 }
 
+static void skip_record_template_param_default_tail(Parser& parser) {
+    int depth = 0;
+    int paren_depth = 0;
+    while (!parser.at_end()) {
+        if (parser.check(TokenKind::Less) || parser.check(TokenKind::LParen)) {
+            if (parser.check(TokenKind::LParen)) ++paren_depth;
+            else ++depth;
+        } else if (parser.check(TokenKind::RParen)) {
+            if (paren_depth > 0) --paren_depth;
+        } else if (parser.check(TokenKind::GreaterGreater)) {
+            if (paren_depth == 0 && depth <= 0) break;
+            if (paren_depth == 0 && depth == 1) {
+                parser.parse_greater_than_in_template_list(false);
+                break;
+            }
+            if (depth >= 2) depth -= 2;
+            else if (depth == 1) --depth;
+            parser.consume();
+            continue;
+        } else if (parser.check(TokenKind::Greater)) {
+            if (paren_depth == 0 && depth == 0) break;
+            if (depth > 0) --depth;
+        } else if (parser.check(TokenKind::Comma) && depth == 0 &&
+                   paren_depth == 0) {
+            break;
+        }
+        parser.consume();
+    }
+}
+
+static bool skip_record_template_param_default(Parser& parser) {
+    if (!parser.match(TokenKind::Assign)) return false;
+    skip_record_template_param_default_tail(parser);
+    return true;
+}
+
 static bool consume_record_template_param_default(Parser& parser,
                                                   bool prefer_type_default,
                                                   TypeSpec* default_type,
@@ -102,33 +138,7 @@ static bool consume_record_template_param_default(Parser& parser,
             std::string(parser.token_spelling(parser.cur())).c_str());
     }
 
-    int depth = 0;
-    int paren_depth = 0;
-    while (!parser.at_end()) {
-        if (parser.check(TokenKind::Less) || parser.check(TokenKind::LParen)) {
-            if (parser.check(TokenKind::LParen)) ++paren_depth;
-            else ++depth;
-        } else if (parser.check(TokenKind::RParen)) {
-            if (paren_depth > 0) --paren_depth;
-        } else if (parser.check(TokenKind::GreaterGreater)) {
-            if (paren_depth == 0 && depth <= 0) break;
-            if (paren_depth == 0 && depth == 1) {
-                parser.parse_greater_than_in_template_list(false);
-                break;
-            }
-            if (depth >= 2) depth -= 2;
-            else if (depth == 1) --depth;
-            parser.consume();
-            continue;
-        } else if (parser.check(TokenKind::Greater)) {
-            if (paren_depth == 0 && depth == 0) break;
-            if (depth > 0) --depth;
-        } else if (parser.check(TokenKind::Comma) && depth == 0 &&
-                   paren_depth == 0) {
-            break;
-        }
-        parser.consume();
-    }
+    skip_record_template_param_default_tail(parser);
     if (default_expr) {
         *default_expr = capture_template_param_default_text(
             parser, default_start, parser.pos_);
@@ -536,8 +546,12 @@ void parse_record_template_member_prelude(
             TypeSpec default_type = empty_template_default_type();
             long long default_value = 0;
             const char* default_expr = nullptr;
-            const bool has_default = consume_record_template_param_default(
-                parser, true, &default_type, &default_value, &default_expr);
+            const bool has_default =
+                pname.empty()
+                    ? skip_record_template_param_default(parser)
+                    : consume_record_template_param_default(
+                          parser, true, &default_type, &default_value,
+                          &default_expr);
             push_template_param(pname, pname_text_id, false, is_pack,
                                 has_default, &default_type, default_value,
                                 default_expr);

@@ -627,13 +627,88 @@ static bool try_parse_simple_template_type_arg_list(
 }
 
 static bool try_parse_alias_template_member_call_nttp_arg(
-    Parser& parser, int expr_start,
+    Parser& parser,
     Parser::TemplateArgParseResult* out_arg) {
     if (!out_arg || !parser.is_cpp_mode()) return false;
     if (!parser.check(TokenKind::Identifier) &&
         !parser.check(TokenKind::ColonColon)) {
         return false;
     }
+
+    const auto has_call_like_template_id_shape = [&]() -> bool {
+        const auto& tokens = parser.core_input_state_.tokens;
+        const int n = static_cast<int>(tokens.size());
+        int probe = parser.core_input_state_.pos;
+
+        auto skip_template_id_args = [&](int* io_probe) -> bool {
+            int p = *io_probe;
+            if (p >= n || tokens[p].kind != TokenKind::Less) return false;
+            int depth = 0;
+            while (p < n) {
+                const TokenKind k = tokens[p].kind;
+                if (k == TokenKind::Less) {
+                    ++depth;
+                    ++p;
+                    continue;
+                }
+                if (k == TokenKind::Greater) {
+                    ++p;
+                    if (depth > 0 && --depth == 0) {
+                        *io_probe = p;
+                        return true;
+                    }
+                    continue;
+                }
+                if (k == TokenKind::GreaterGreater) {
+                    ++p;
+                    if (depth <= 0) return false;
+                    if (depth == 1) return false;
+                    depth -= 2;
+                    if (depth == 0) {
+                        *io_probe = p;
+                        return true;
+                    }
+                    continue;
+                }
+                if ((k == TokenKind::RParen || k == TokenKind::Semi ||
+                     k == TokenKind::RBrace) &&
+                    depth > 0) {
+                    return false;
+                }
+                ++p;
+            }
+            return false;
+        };
+
+        if (probe < n && tokens[probe].kind == TokenKind::ColonColon) ++probe;
+        if (probe >= n || tokens[probe].kind != TokenKind::Identifier)
+            return false;
+        ++probe;
+        while (probe + 1 < n && tokens[probe].kind == TokenKind::ColonColon &&
+               tokens[probe + 1].kind == TokenKind::Identifier) {
+            probe += 2;
+        }
+        if (!skip_template_id_args(&probe)) return false;
+        if (probe >= n || tokens[probe].kind != TokenKind::ColonColon)
+            return false;
+        ++probe;
+        if (probe < n && tokens[probe].kind == TokenKind::KwTemplate) ++probe;
+        if (probe >= n || tokens[probe].kind != TokenKind::Identifier)
+            return false;
+        ++probe;
+        if (probe < n && tokens[probe].kind == TokenKind::Less &&
+            !skip_template_id_args(&probe)) {
+            return false;
+        }
+        if (probe >= n || tokens[probe].kind != TokenKind::LParen)
+            return false;
+        ++probe;
+        if (probe >= n || tokens[probe].kind != TokenKind::RParen)
+            return false;
+        return true;
+    };
+
+    if (!has_call_like_template_id_shape()) return false;
 
     Parser::TentativeParseGuardLite guard(parser);
     const int line = parser.cur().line;
@@ -697,12 +772,9 @@ static bool try_parse_alias_template_member_call_nttp_arg(
     call->left = member;
     call->n_children = 0;
 
-    const std::string expr_text = capture_template_arg_expr_text(
-        parser, parser.core_input_state_.tokens, expr_start, parser.pos_);
     out_arg->is_value = true;
     out_arg->value = 0;
-    out_arg->nttp_name =
-        parser.arena_.strdup((std::string("$expr:") + expr_text).c_str());
+    out_arg->nttp_name = nullptr;
     out_arg->nttp_text_id = kInvalidText;
     out_arg->expr = call;
     out_arg->captured_expr_tokens.clear();
@@ -719,8 +791,7 @@ bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* o
 
     TemplateArgParseResult arg;
     bool ok = false;
-    if (try_parse_alias_template_member_call_nttp_arg(
-            *this, core_input_state_.pos, &arg)) {
+    if (try_parse_alias_template_member_call_nttp_arg(*this, &arg)) {
         ok = true;
     }
     // Normalized disambiguation order (Clang ParseTemplateArgument style):
@@ -866,7 +937,7 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
                                               TemplateArgParseResult* out_arg) {
     if (!out_arg) return false;
 
-    TentativeParseGuard guard(*this);
+    TentativeParseGuardLite guard(*this);
     try {
         ++active_context_state_.template_arg_expr_depth;
         Node* expr = parse_assign_expr(*this);
@@ -942,7 +1013,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         return true;
     }
     if (check(TokenKind::Identifier)) {
-        TentativeParseGuard id_guard(*this);
+        TentativeParseGuardLite id_guard(*this);
         const TextId name_text_id = cur().text_id;
         const char* name =
             arena_.strdup(std::string(token_spelling(cur())).c_str());
@@ -966,6 +1037,13 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
     // Prefer a real expression parse before falling back to token capture.
     // This lets `<` participate as an operator inside expressions such as
     // `T(-1) < T(0)` instead of being mistaken for a nested template open.
+    if (check(TokenKind::Bang) &&
+        core_input_state_.pos + 1 <
+            static_cast<int>(core_input_state_.tokens.size()) &&
+        starts_with_value_like_template_expr(
+            *this, core_input_state_.tokens, core_input_state_.pos + 1)) {
+        return capture_template_arg_expr(expr_start, out_arg);
+    }
     if (try_parse_template_non_type_expr(expr_start, out_arg))
         return true;
 
@@ -1008,7 +1086,8 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
     return expect_value && (
         check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
         check(TokenKind::KwTrue) || check(TokenKind::KwFalse) ||
-        check(TokenKind::Minus) || check(TokenKind::Identifier));
+        check(TokenKind::Minus) || check(TokenKind::Bang) ||
+        check(TokenKind::Identifier));
 }
 
 bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
@@ -1807,7 +1886,7 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
                     ? parser.alias_template_key_in_context(context_id,
                                                            qn.base_text_id)
                     : QualifiedNameKey{};
-            Parser::TentativeParseGuard alias_guard(parser);
+            Parser::TentativeParseGuardLite alias_guard(parser);
             std::string qualified_name;
             if (!parser.consume_qualified_type_spelling_with_typename(
                     /*require_typename=*/false,
@@ -1872,7 +1951,7 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
             alias_guard.commit();
             return true;
         }
-        Parser::TentativeParseGuard template_guard(parser);
+        Parser::TentativeParseGuardLite template_guard(parser);
         std::string qualified_name;
         if (!parser.consume_qualified_type_spelling_with_typename(
                 /*require_typename=*/false,
