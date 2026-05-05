@@ -40,7 +40,7 @@ not merely this now-green delegated subset.
 
 ## Proof
 
-Accepted proof is in `test_after.log`:
+Accepted proof is in `test_before.log`:
 `cmake --build build --target frontend_parser_tests cpp_hir_parser_declarator_deferred_owner_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_declarator_deferred_owner_structured_metadata|cpp_positive_sema_(eastl_slice7_piecewise_ctor_parse|iterator_concepts_following_hash_base_parse|stl_iterator_then_max_size_type_parse)_cpp|cpp_eastl_tuple_fwd_decls_parse_recipe|cpp_positive_sema____generated_parser_disambiguation_matrix_compile_positive_owner_dependent_(template_member|typename)__decl_(function_lvalue_ref|function_pointer|function_rvalue_ref|member_function_pointer)__ctx_c_style_cast_target__compile_positive_cpp)$'`.
 
 The delegated subset ran 14 tests and all passed, including the four prior EOF
