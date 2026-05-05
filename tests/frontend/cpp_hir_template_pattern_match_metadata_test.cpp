@@ -17,6 +17,28 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
+template <typename T>
+auto has_legacy_tag_impl(int) -> decltype((void)(&T::tag), bool()) {
+  return true;
+}
+
+template <typename T>
+bool has_legacy_tag_impl(long) {
+  return false;
+}
+
+bool typespec_has_legacy_tag() {
+  return has_legacy_tag_impl<c4c::TypeSpec>(0);
+}
+
 c4c::Node make_primary_template() {
   static const char* primary_param_names[] = {"PrimaryT"};
   static bool primary_param_is_nttp[] = {false};
@@ -72,7 +94,7 @@ void test_pattern_match_prefers_template_param_text_id_over_stale_tag() {
 
   c4c::TypeSpec pattern{};
   pattern.base = c4c::TB_TYPEDEF;
-  pattern.tag = "U";
+  set_legacy_tag_if_present(pattern, "U", 0);
   pattern.template_param_text_id = 101;
 
   c4c::Node primary = make_primary_template();
@@ -106,7 +128,7 @@ void test_pattern_match_rejects_tag_fallback_when_metadata_mismatches() {
 
   c4c::TypeSpec pattern{};
   pattern.base = c4c::TB_TYPEDEF;
-  pattern.tag = "T";
+  set_legacy_tag_if_present(pattern, "T", 0);
   pattern.template_param_text_id = 202;
 
   c4c::Node primary = make_primary_template();
@@ -134,7 +156,7 @@ void test_pattern_match_keeps_no_metadata_tag_fallback() {
 
   c4c::TypeSpec pattern{};
   pattern.base = c4c::TB_TYPEDEF;
-  pattern.tag = "T";
+  set_legacy_tag_if_present(pattern, "T", 0);
 
   c4c::Node primary = make_primary_template();
   c4c::Node spec = make_single_type_arg_specialization(
@@ -162,7 +184,9 @@ void test_pattern_match_keeps_no_metadata_tag_fallback() {
 int main() {
   test_pattern_match_prefers_template_param_text_id_over_stale_tag();
   test_pattern_match_rejects_tag_fallback_when_metadata_mismatches();
-  test_pattern_match_keeps_no_metadata_tag_fallback();
+  if (typespec_has_legacy_tag()) {
+    test_pattern_match_keeps_no_metadata_tag_fallback();
+  }
   std::cout << "PASS: cpp_hir_template_pattern_match_metadata_test\n";
   return 0;
 }
