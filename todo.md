@@ -9,16 +9,17 @@ Current Step Title: Reprobe TypeSpec Tag Removal Build Boundary
 ## Just Finished
 
 Completed Step 1 fixture migration for
-`tests/frontend/cpp_hir_parser_type_base_alias_member_substitution_metadata_test.cpp`.
+`tests/frontend/cpp_hir_parser_type_base_deferred_member_template_origin_metadata_test.cpp`.
 
 The remaining direct `TypeSpec::tag` fixture setup in this target now goes
-through a SFINAE-gated helper. The alias-template member typedef substitution
-assertion remains active and unchanged, including the check that binds by
-structured `template_param_text_id` before stale rendered tag text.
+through a SFINAE-gated helper. The template-origin gate assertions remain
+active and unchanged: structured `tag_text_id` and `record_def` for `Box` stay
+authoritative over stale rendered template spelling, and the deferred
+`Owner<int, double>::type` argument still resolves to `int`.
 
 Temporarily removed `const char* tag` from `TypeSpec` in
 `src/frontend/parser/ast.hpp` and ran
-`cmake --build build --target cpp_hir_parser_type_base_alias_member_substitution_metadata_test`.
+`cmake --build build --target cpp_hir_parser_type_base_deferred_member_template_origin_metadata_test`.
 The owned target built successfully with the field removed, so no remaining
 deletion-probe blocker was found inside this owned target. Restored the field
 before final proof, leaving no `ast.hpp` diff.
@@ -44,17 +45,17 @@ delegate the next fixture target if another direct test debt bucket appears.
 Canonical proof log: `test_after.log`.
 
 Delegated proof command:
-`cmake --build build --target cpp_hir_parser_type_base_alias_member_substitution_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_parser_type_base_alias_member_substitution_structured_metadata$'`
+`cmake --build build --target cpp_hir_parser_type_base_deferred_member_template_origin_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_parser_type_base_deferred_member_template_origin_structured_metadata$'`
 
 Result: passed.
-`cpp_hir_parser_type_base_alias_member_substitution_structured_metadata` is
-green in `test_after.log`.
+`cpp_hir_parser_type_base_deferred_member_template_origin_structured_metadata`
+is green in `test_after.log`.
 
 Controlled deletion probe:
 - Temporarily removed `const char* tag` from `TypeSpec` in
   `src/frontend/parser/ast.hpp`.
 - Ran
-  `cmake --build build --target cpp_hir_parser_type_base_alias_member_substitution_metadata_test`;
+  `cmake --build build --target cpp_hir_parser_type_base_deferred_member_template_origin_metadata_test`;
   the focused target built successfully with the field removed, so no next
   blocker appeared inside this target.
 - Restored the field and reran the delegated proof with the field present,

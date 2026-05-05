@@ -17,6 +17,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 void test_template_origin_gate_prefers_text_id_with_deferred_member_arg() {
   const char* source =
       "template <typename T, typename U>\n"
@@ -73,7 +81,7 @@ void test_template_origin_gate_prefers_text_id_with_deferred_member_arg() {
   stale_box_ts.array_size = -1;
   stale_box_ts.inner_rank = -1;
   stale_box_ts.base = c4c::TB_STRUCT;
-  stale_box_ts.tag = arena.strdup("StaleRenderedBox");
+  set_legacy_tag_if_present(stale_box_ts, arena.strdup("StaleRenderedBox"), 0);
   stale_box_ts.tag_text_id = box_text;
   stale_box_ts.record_def = box;
   parser.register_typedef_binding(box_text, stale_box_ts, true);
