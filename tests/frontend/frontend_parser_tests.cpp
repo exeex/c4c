@@ -6401,7 +6401,7 @@ void test_parser_direct_record_types_carry_record_definition() {
               "direct union record identity should preserve TypeSpec tag spelling");
 }
 
-void test_parser_tag_only_record_types_keep_null_record_definition() {
+void test_parser_tag_only_record_types_carry_incomplete_record_definition() {
   c4c::Lexer lexer("struct Forward after;\n");
   const std::vector<c4c::Token> tokens = lexer.scan_all();
   c4c::Arena arena;
@@ -6413,9 +6413,17 @@ void test_parser_tag_only_record_types_keep_null_record_definition() {
   expect_true(tag_only_ts.tag_text_id != c4c::kInvalidText,
               "tag-only struct parsing should preserve the tag spelling");
   expect_eq(parser.parser_text(tag_only_ts.tag_text_id), "Forward",
-            "tag-only struct parsing should preserve the rendered tag spelling");
-  expect_true(tag_only_ts.record_def == nullptr,
-              "tag-only struct TypeSpec should not synthesize typed record identity");
+            "tag-only struct parsing should preserve source spelling through TextId metadata");
+  expect_true(tag_only_ts.record_def != nullptr,
+              "tag-only struct TypeSpec should carry parser-owned record identity");
+  expect_true(tag_only_ts.record_def->kind == c4c::NK_STRUCT_DEF,
+              "tag-only struct record identity should point at an NK_STRUCT_DEF");
+  expect_true(!tag_only_ts.record_def->is_union,
+              "tag-only struct record identity should preserve record kind");
+  expect_true(tag_only_ts.record_def->n_fields < 0,
+              "tag-only struct record identity should remain an incomplete declaration");
+  expect_true(std::string_view(tag_only_ts.record_def->name) == "Forward",
+              "tag-only struct record identity should preserve the source tag spelling");
 }
 
 c4c::TypeSpec parser_test_scalar_type(c4c::TypeBase base) {
@@ -7162,7 +7170,7 @@ void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payloa
   lhs.array_size = -1;
   lhs.inner_rank = -1;
   lhs.base = c4c::TB_STRUCT;
-  lhs.tag = arena.strdup("Box");
+  set_legacy_tag_if_present(lhs, arena.strdup("Box"), 0);
   lhs.tpl_struct_args.size = 1;
   lhs.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
   lhs.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
@@ -7273,14 +7281,14 @@ void test_parser_template_arg_ref_rendering_prefers_structured_nested_arg() {
   outer_alias.array_size = -1;
   outer_alias.inner_rank = -1;
   outer_alias.base = c4c::TB_STRUCT;
-  outer_alias.tag = arena.strdup("Outer");
+  set_legacy_tag_if_present(outer_alias, arena.strdup("Outer"), 0);
   parser.register_typedef_binding(outer_text, outer_alias, true);
 
   c4c::TypeSpec inner_alias{};
   inner_alias.array_size = -1;
   inner_alias.inner_rank = -1;
   inner_alias.base = c4c::TB_TYPEDEF;
-  inner_alias.tag = arena.strdup("Inner");
+  set_legacy_tag_if_present(inner_alias, arena.strdup("Inner"), 0);
   inner_alias.tpl_struct_origin = arena.strdup("Inner");
   inner_alias.tpl_struct_args.size = 1;
   inner_alias.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
@@ -7705,7 +7713,7 @@ c4c::Node make_consteval_sizeof_type_node(const c4c::TypeSpec& type) {
 c4c::TypeSpec make_consteval_typedef_ref(c4c::Arena& arena,
                                          const char* tag) {
   c4c::TypeSpec ts = make_sema_lookup_ts(c4c::TB_TYPEDEF);
-  ts.tag = arena.strdup(tag);
+  set_legacy_tag_if_present(ts, arena.strdup(tag), 0);
   return ts;
 }
 
@@ -7734,10 +7742,10 @@ void test_parser_consteval_sizeof_type_preserves_typedef_text_metadata() {
   const c4c::TextId t_text = lexer.text_table().intern("T");
   expect_true(sizeof_type->type.base == c4c::TB_TYPEDEF,
               "sizeof(T) should carry a typedef TypeSpec");
-  expect_eq(sizeof_type->type.tag, "T",
-            "sizeof(T) should preserve the source typedef spelling");
   expect_true(sizeof_type->type.tag_text_id == t_text,
               "sizeof(T) TypeSpec should carry intrinsic typedef TextId metadata");
+  expect_eq(parser.parser_text(sizeof_type->type.tag_text_id), "T",
+            "sizeof(T) should preserve the source typedef spelling through TextId metadata");
   expect_true(sizeof_type->type.template_param_owner_text_id == fn->unqualified_text_id,
               "sizeof(T) TypeSpec should carry intrinsic template owner metadata");
   expect_true(sizeof_type->type.template_param_owner_namespace_context_id ==
@@ -7760,7 +7768,8 @@ void test_parser_qualified_typespec_preserves_text_metadata_over_rendered_spelli
   const c4c::TextId alias_text = lexer.text_table().intern("Alias");
   const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
   c4c::TypeSpec alias_type = make_sema_lookup_ts(c4c::TB_INT);
-  alias_type.tag = arena.strdup("rendered_alias_payload");
+  set_legacy_tag_if_present(alias_type,
+                            arena.strdup("rendered_alias_payload"), 0);
   parser.register_structured_typedef_binding_in_context(ns_context, alias_text,
                                                         alias_type);
 
@@ -7775,7 +7784,7 @@ void test_parser_qualified_typespec_preserves_text_metadata_over_rendered_spelli
   expect_true(parsed.qualifier_text_ids[0] == ns_text,
               "qualified TypeSpec qualifier metadata should come from the token TextId");
 
-  parsed.tag = arena.strdup("stale_rendered_alias");
+  set_legacy_tag_if_present(parsed, arena.strdup("stale_rendered_alias"), 0);
   parsed.qualifier_segments[0] = arena.strdup("stale_rendered_namespace");
   expect_true(parsed.tag_text_id == alias_text,
               "stale rendered TypeSpec tag should not overwrite base TextId metadata");
@@ -7801,7 +7810,8 @@ void test_parser_qualified_typename_typespec_preserves_text_metadata_over_render
   alias_qn.base_text_id = alias_text;
 
   c4c::TypeSpec alias_type = make_sema_lookup_ts(c4c::TB_INT);
-  alias_type.tag = arena.strdup("rendered_typename_alias_payload");
+  set_legacy_tag_if_present(alias_type,
+                            arena.strdup("rendered_typename_alias_payload"), 0);
   parser.register_structured_typedef_binding(parser.qualified_name_key(alias_qn),
                                              alias_type);
 
@@ -7815,7 +7825,8 @@ void test_parser_qualified_typename_typespec_preserves_text_metadata_over_render
   expect_true(parsed.qualifier_text_ids[0] == ns_text,
               "qualified typename TypeSpec qualifier metadata should come from the token TextId");
 
-  parsed.tag = arena.strdup("stale_rendered_typename_alias");
+  set_legacy_tag_if_present(parsed,
+                            arena.strdup("stale_rendered_typename_alias"), 0);
   parsed.qualifier_segments[0] = arena.strdup("stale_rendered_typename_namespace");
   expect_true(parsed.tag_text_id == alias_text,
               "stale rendered qualified typename tag should not overwrite base TextId metadata");
@@ -7836,7 +7847,8 @@ void test_consteval_type_binding_lookup_uses_typespec_text_metadata_without_name
   expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION,
               "consteval TypeSpec lookup fixture should parse as a function");
   c4c::Node* sizeof_type = fn->body->children[0]->left;
-  sizeof_type->type.tag = arena.strdup("stale_rendered_T");
+  set_legacy_tag_if_present(sizeof_type->type, arena.strdup("stale_rendered_T"),
+                            0);
 
   c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
   callee->name = arena.strdup("width");
@@ -7879,7 +7891,8 @@ void test_consteval_type_binding_lookup_uses_typespec_structured_metadata_withou
   expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION,
               "consteval structured TypeSpec lookup fixture should parse as a function");
   c4c::Node* sizeof_type = fn->body->children[0]->left;
-  sizeof_type->type.tag = arena.strdup("stale_rendered_T");
+  set_legacy_tag_if_present(sizeof_type->type, arena.strdup("stale_rendered_T"),
+                            0);
   sizeof_type->type.tag_text_id = c4c::kInvalidText;
 
   c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
@@ -8481,7 +8494,7 @@ int main() {
   test_parser_template_instantiation_dedup_keys_structure_direct_emission();
   test_parser_template_substitution_preserves_record_definition_payloads();
   test_parser_direct_record_types_carry_record_definition();
-  test_parser_tag_only_record_types_keep_null_record_definition();
+  test_parser_tag_only_record_types_carry_incomplete_record_definition();
   test_parser_direct_record_type_head_uses_structured_metadata();
   test_parser_record_layout_const_eval_uses_record_definition_authority();
   test_parser_record_layout_const_eval_keeps_final_spelling_fallback();

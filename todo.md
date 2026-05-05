@@ -8,29 +8,31 @@ Current Step Title: Reprobe TypeSpec Tag Removal Build Boundary
 
 ## Just Finished
 
-Completed Step 1 inventory/probe for TypeSpec tag field removal.
+Completed Step 1 fixture migration for the first TypeSpec tag deletion blocker
+in `tests/frontend/frontend_parser_tests.cpp`, including the stale
+tag-only-record assertion that was blocking `frontend_parser_tests`.
 
-Current direct-reference inventory command:
-`rg -n "\.tag\b|->tag\b|decltype\([^\n]*tag" src/frontend/parser src/frontend/sema src/frontend/hir src/codegen tests/frontend`
+The direct fixture reads/writes at the prior deletion-probe sites now use the
+local SFINAE-compatible `set_legacy_tag_if_present` helper or TextId-backed
+spelling checks. A current direct-reference check for this file:
+`rg -n "\.tag\b|->tag\b|decltype\([^\n]*tag" tests/frontend/frontend_parser_tests.cpp`
+now reports only the SFINAE helper body.
 
-Inventory summary:
-- `src/frontend/parser/ast.hpp` still defines `TypeSpec::tag`.
-- App-source references to `TypeSpec::tag` are mostly SFINAE-gated legacy
-  display/final-spelling helpers in parser, Sema, HIR, and codegen shared
-  helpers; deleting the field does not currently break `c4cll`.
-- Raw `.tag` search also finds unrelated structured tags on HIR/LIR/backend
-  records, so those are not all TypeSpec debt.
-- The first compile blocker exposed outside `c4cll` is fixture/test debt in
-  `tests/frontend/frontend_parser_tests.cpp`: direct writes/reads at lines
-  7165, 7276, 7283, 7708, 7737, 7763, 7778, 7804, 7818, 7839, and 7882 after
-  the field is removed.
+The former tag-only record fixture now asserts the parser's current structured
+contract: `struct Forward after;` preserves source spelling through
+`tag_text_id` and carries an incomplete parser-owned `NK_STRUCT_DEF` record
+identity instead of expecting `record_def == nullptr`.
+
+With `const char* tag` temporarily removed from `TypeSpec`, `cmake --build build
+--target frontend_parser_tests` now passes, so this file is no longer the
+frontend parser test compile boundary for deleting the field.
 
 ## Suggested Next
 
-Execute a Step 4-style test fixture packet for
-`tests/frontend/frontend_parser_tests.cpp`: replace direct `TypeSpec::tag`
-setup/assertions with structured metadata or SFINAE-compatible helper checks
-without weakening stale-rendered-spelling disagreement coverage.
+Move the TypeSpec tag deletion probe to the next target that still has direct
+fixture references under `tests/frontend/`; a broad inventory outside
+`frontend_parser_tests.cpp` still finds direct `.tag` sites in focused metadata
+tests and larger lookup/HIR suites.
 
 ## Watchouts
 
@@ -41,20 +43,25 @@ without weakening stale-rendered-spelling disagreement coverage.
 - Preserve stale-rendered-spelling disagreement tests.
 - Split distinct downstream carrier boundaries into `ideas/open/*.md` instead
   of silently broadening the parent runbook.
-- `cmake --build build --target c4cll` passed while `TypeSpec::tag` was
-  temporarily removed, so the immediate app-build boundary is not parser/Sema,
-  HIR, or codegen source compilation.
-- `frontend_parser_tests` is only a probe result here, not the delegated proof
-  target; the failing probe log is `/tmp/typespec_tag_frontend_parser_tests_probe.log`.
+- The deletion probe did not expose a next compile blocker inside
+  `frontend_parser_tests`.
 
 ## Proof
+
+Canonical proof log: `test_after.log`.
+
+Delegated proof command:
+`cmake --build build --target frontend_parser_tests c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+
+Result: passed. The earlier runtime assertion
+`tag-only struct TypeSpec should not synthesize typed record identity` was
+updated to the current incomplete-record structured identity contract before
+the final proof run.
 
 Controlled deletion probe:
 - Temporarily removed `const char* tag` from `TypeSpec` in
   `src/frontend/parser/ast.hpp`.
-- Ran `cmake --build build --target c4cll > test_after.log 2>&1`; it passed.
-- Ran `cmake --build build --target frontend_parser_tests > /tmp/typespec_tag_frontend_parser_tests_probe.log 2>&1`; it failed on direct
-  `TypeSpec::tag` fixture references in `tests/frontend/frontend_parser_tests.cpp`.
-- Restored the field and ran `cmake --build build --target c4cll >> test_after.log 2>&1`; it passed, leaving the repository buildable.
-
-Canonical proof log: `test_after.log`.
+- Ran `cmake --build build --target frontend_parser_tests`; it passed and got
+  past the previous direct fixture references.
+- Restored the field and ran `cmake --build build --target frontend_parser_tests
+  c4cll`; it passed, leaving the repository buildable with the field present.
