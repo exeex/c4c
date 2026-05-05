@@ -8,26 +8,31 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Repaired the Step 6 C/torture runtime segfault cluster caused by array-object
-indexing through C aggregate fields.
+Repaired the over-broad Step 6 array-object lvalue indexing follow-up from
+commit `c8c53a368`.
 
-StmtEmitter `IndexExpr` lvalue lowering now keeps true array-object bases on the
-lvalue path before emitting the indexed GEP. This preserves the address of
-local/global/member array objects such as `field[i]` instead of loading the
-first array element and then treating that element value as the base pointer.
-Adjusted function-parameter array declarators remain on the existing rvalue
-pointer path, so `param[i]` still indexes the adjusted pointer value.
+StmtEmitter `IndexExpr` lvalue lowering now preserves lvalue bases only for
+storage-backed array objects: member arrays, nested array-index lvalues,
+dereferenced pointer-to-array expressions, globals, and locals whose actual
+slot type is an array object. Adjusted parameters, VLAs, pointer slots, and
+other pointer-valued expressions remain on the rvalue/decay path.
 
-The repair is structural TypeSpec-driven lowering via `outer_array_rank`, with
-an explicit adjusted-parameter guard. It does not use rendered names, testcase
-names, or legacy `TypeSpec::tag` recovery.
+The module-aware LIR alloca helper now emits outer array storage before
+collapsing pointer/function-pointer element types to `ptr`, so arrays of
+pointers and function pointers allocate `[N x ptr]` storage instead of a single
+pointer slot. Lvalue dereference now clears `is_ptr_to_array` after consuming
+the final pointer layer, matching the existing expression type resolver and
+restoring typed indexing for `(*p)[i]`.
+
+The exact delegated 13-test regression subset improved from 0/13 to 13/13.
+The original four runtime segfault fixes from `c8c53a368` and the prior
+metadata spot checks remain green.
 
 ## Suggested Next
 
 Recommended next Step 6 packet: supervisor-side broad/full validation for the
-parent TypeSpec-tag deletion route. The owned C/torture runtime segfault cluster
-is green; any remaining load-sensitive parser perf failure should stay split
-from backend runtime lowering.
+parent TypeSpec-tag deletion route. The owned array/indexing/VLA/string
+regression subset and the original runtime segfault cluster are green.
 
 ## Watchouts
 
@@ -38,6 +43,12 @@ from backend runtime lowering.
 - C function parameters declared with array syntax are adjusted pointer
   parameters. They may still carry array-rank metadata, so decl-ref parameter
   bases must not be forced through the array-object lvalue indexing path.
+- Arrays of pointer or function-pointer elements still need real array storage
+  when they are local/global/member array objects; do not collapse outer array
+  dimensions to `ptr` before alloca/layout emission.
+- Pointer-to-array dereference consumes the pointer wrapper. The resulting
+  lvalue is an array object, so `is_ptr_to_array` must be cleared when the
+  final pointer layer is removed.
 - LIR function signature mirrors should derive aggregate identity from HIR
   structured layouts first. Do not restore direct `tag_text_id`/stale
   `record_def` spelling as the semantic source for owned function
@@ -79,15 +90,21 @@ from backend runtime lowering.
 
 ## Proof
 
-Step 6 delegated runtime segfault proof:
-`cmake --build build && ctest --test-dir build --output-on-failure -R '^(llvm_gcc_c_torture_src_20020402_3_c|llvm_gcc_c_torture_src_20071018_1_c|llvm_gcc_c_torture_src_950426_1_c|llvm_gcc_c_torture_src_pr41463_c)$' > test_after.log 2>&1`
+Step 6 delegated array/indexing regression proof:
+`cmake --build build && ctest --test-dir build --output-on-failure -R '^(positive_sema_inline_phase9_c|positive_sema_ok_expr_canonical_cast_index_c|llvm_gcc_c_torture_src_20180921_1_c|llvm_gcc_c_torture_src_strlen_4_c|llvm_gcc_c_torture_src_20040811_1_c|llvm_gcc_c_torture_src_20080424_1_c|llvm_gcc_c_torture_src_20090814_1_c|llvm_gcc_c_torture_src_920929_1_c|llvm_gcc_c_torture_src_pr43220_c|llvm_gcc_c_torture_src_pr58277_1_c|llvm_gcc_c_torture_src_pr58277_2_c|llvm_gcc_c_torture_src_pr58831_c|llvm_gcc_c_torture_src_vla_dealloc_1_c)$' > test_after.log 2>&1`
 
-Result: passed, 4/4. The runtime segfaults in the delegated C/torture cluster
+Result: passed, 13/13. The rejected full-suite follow-up regressions for
+array parameters, pointer arrays, pointer-to-array indexing, strings, and VLAs
 are fixed.
 
 Proof log: `test_after.log`.
 
-Required spot checks:
+Original four `c8c53a368` runtime checks:
+`ctest --test-dir build --output-on-failure -R '^(llvm_gcc_c_torture_src_20020402_3_c|llvm_gcc_c_torture_src_20071018_1_c|llvm_gcc_c_torture_src_950426_1_c|llvm_gcc_c_torture_src_pr41463_c)$'`
+
+Result: passed, 4/4.
+
+Prior metadata spot checks:
 `ctest --test-dir build --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_type_base_prelim_eval_structured_metadata|c_testsuite_src_00019_c|llvm_gcc_c_torture_src_20040709_1_c|llvm_gcc_c_torture_src_pr40022_c|llvm_gcc_c_torture_src_pr23324_c)$'`
 
 Result: passed, 6/6.

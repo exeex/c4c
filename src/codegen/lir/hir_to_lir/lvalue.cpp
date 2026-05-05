@@ -264,7 +264,10 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       TypeSpec ptr_ts{};
       const std::string ptr = emit_rval_id(ctx, u->operand, ptr_ts);
       pts = ptr_ts;
-      if (pts.ptr_level > 0) pts.ptr_level--;
+      if (pts.ptr_level > 0) {
+        pts.ptr_level--;
+        if (pts.ptr_level == 0) pts.is_ptr_to_array = false;
+      }
       return ptr;
     }
     if (u->op == UnaryOp::RealPart || u->op == UnaryOp::ImagPart) {
@@ -286,10 +289,30 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
     std::string base;
     const TypeSpec resolved_base_ts = resolve_expr_type(ctx, idx->base);
     const Expr& base_expr = get_expr(idx->base);
-    const auto* base_ref = std::get_if<DeclRef>(&base_expr.payload);
-    const bool adjusted_array_param = base_ref && base_ref->param_index.has_value();
-    if (is_vector_value(resolved_base_ts) ||
-        (outer_array_rank(resolved_base_ts) > 0 && !adjusted_array_param)) {
+    auto base_is_array_object_lvalue = [&]() -> bool {
+      if (outer_array_rank(resolved_base_ts) <= 0) return false;
+      if (std::holds_alternative<MemberExpr>(base_expr.payload) ||
+          std::holds_alternative<IndexExpr>(base_expr.payload)) {
+        return true;
+      }
+      if (const auto* u = std::get_if<UnaryExpr>(&base_expr.payload)) {
+        return u->op == UnaryOp::Deref;
+      }
+      if (const auto* r = std::get_if<DeclRef>(&base_expr.payload)) {
+        if (r->param_index.has_value()) return false;
+        if (r->local) {
+          const auto type_it = ctx.local_types.find(r->local->value);
+          if (type_it == ctx.local_types.end()) return false;
+          const auto vla_it = ctx.local_is_vla.find(r->local->value);
+          if (vla_it != ctx.local_is_vla.end() && vla_it->second) return false;
+          return outer_array_rank(type_it->second) > 0 &&
+                 llvm_alloca_ty(mod_, type_it->second) != "ptr";
+        }
+        return r->global.has_value();
+      }
+      return false;
+    };
+    if (is_vector_value(resolved_base_ts) || base_is_array_object_lvalue()) {
       TypeSpec obj_ts{};
       base = emit_lval(ctx, idx->base, obj_ts);
       base_ts = obj_ts;

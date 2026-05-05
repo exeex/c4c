@@ -681,8 +681,7 @@ std::string llvm_return_ty(const hir::Module& mod, const TypeSpec& ts) {
 }
 
 std::string llvm_alloca_ty(const hir::Module& mod, const TypeSpec& ts) {
-  if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
-  if (ts.array_rank > 0) {
+  if (ts.array_rank > 0 && c4c::codegen::llvm_helpers::outer_array_rank(ts) > 0) {
     TypeSpec elem = ts;
     elem.array_rank--;
     if (elem.array_rank > 0) {
@@ -691,6 +690,8 @@ std::string llvm_alloca_ty(const hir::Module& mod, const TypeSpec& ts) {
     elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
     return "[" + std::to_string(ts.array_size) + " x " + llvm_alloca_ty(mod, elem) + "]";
   }
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
+  if (ts.array_rank > 0) return "ptr";
   if (ts.base == TB_VA_LIST) return llvm_va_list_storage_ty(mod.target_profile);
   return llvm_value_ty(mod, ts);
 }
