@@ -1927,6 +1927,7 @@ TypeSpec Parser::parse_base_type() {
     bool has_typedef  = false;
     bool done         = false;
     bool base_set     = false;  // true when ts.base was set directly (KwBuiltin, KwInt128, etc.)
+    bool typedef_name_from_using_alias = false;
     const char* typedef_final_spelling = nullptr;
     auto set_type_final_spelling = [&](std::string_view spelling) {
         const std::string stored(spelling);
@@ -2322,6 +2323,10 @@ TypeSpec Parser::parse_base_type() {
                             const std::string resolved =
                                 visible_type ? visible_name_spelling(visible_type)
                                              : std::string(name);
+                            typedef_name_from_using_alias =
+                                visible_type &&
+                                visible_type.source ==
+                                    VisibleNameSource::UsingAlias;
                             ts.tag_text_id = visible_type && visible_type.base_text_id != kInvalidText
                                                  ? visible_type.base_text_id
                                                  : name_text_id;
@@ -2443,6 +2448,7 @@ TypeSpec Parser::parse_base_type() {
                 const TextId save_tag_text_id = ts.tag_text_id;
                 const bool should_preserve_typedef_source_text_id =
                     save_tag_text_id != kInvalidText &&
+                    !typedef_name_from_using_alias &&
                     !typedef_type_has_structured_typedef_identity &&
                     typedef_type->record_def == nullptr;
                 const bool save_is_global_qualified = ts.is_global_qualified;
