@@ -8,54 +8,55 @@ Current Step Title: Implement Method Type-Pack Deduction
 
 ## Just Finished
 
-Implemented Step 4's parser-to-HIR constructor prelude carrier. Record-member
-template constructor `Node`s now receive the member-template prelude metadata
-that was previously only transient parser scope:
+Step 5 was probed and blocked; no source edits were kept.
 
-- `n_template_params` and parallel template parameter arrays are attached to
-  the constructor/method `Node`.
-- Template parameter text ids, type-vs-NTTP flags, pack flags, and simple
-  default carriers are preserved.
-- Nested `TemplateArgRef` type args inside constructor parameter types are
-  annotated with template-param text/index/owner metadata.
-- Forwarded NTTP pack args such as `Is...` are accepted as value template args
-  and keep their parser-owned `nttp_text_id`.
+The HIR-side constructor registry probe showed the first repair seam: instantiated
+template struct methods currently lower constructor bodies before all constructor
+overloads for that instantiated owner are registered. A temporary two-phase
+registration probe moved the focused failure from:
 
-The focused metadata proof covers a generic record-member template constructor
-with a defaulted type parameter, a type pack, and an NTTP pack; it verifies the
-constructor `Node` and nested `TemplateArgRef` carriers directly, without
-recovering semantics from debug/rendered strings.
+`no constructors found for delegating constructor call`
+
+to:
+
+`StmtEmitter: MemberExpr base has no struct tag (field='first')`
+
+That exposed the next, earlier carrier boundary: the direct qualified constructor
+call `eastl::pair<int, int>(...)` reaches HIR as `Var(eastl::pair)` with
+`has_template_args=false`, `n_template_args=0`, and no `TypeSpec` template-arg
+carrier on either the call or callee node. Without that structured explicit
+owner-argument carrier, HIR can only instantiate/lower the unresolved
+`eastl::pair_T1_T_T2_T` owner, so method type-pack deduction would still be
+grounded on an unresolved owner instead of the concrete `int, int` constructor
+specialization.
 
 ## Suggested Next
 
-Implement Step 5 HIR constructor registration/specialization now that the
-parser carrier is observable. The next slice should consume the structured
-method-template type-pack and NTTP-pack metadata on constructor `Node`s,
-specialize the constructor overload, and realize nested parameter types such as
-`Owner<Pack...>` from structured pack bindings.
+Implement the prerequisite Step 5 sub-seam: repair the parser-to-HIR handoff for
+qualified explicit constructor template-id expressions so
+`eastl::pair<int, int>(...)` reaches HIR with structured callee template
+arguments on the `NK_CALL`/callee `NK_VAR` path. After that carrier is
+observable, reapply the HIR two-phase instantiated-constructor registry repair
+and then specialize method-template constructor overloads from structured
+type-pack and NTTP-pack bindings.
 
 ## Watchouts
 
-The delegated positive-Sema proof is still 883/884 because the HIR constructor
-registry/specialization seam is not implemented in this slice. The remaining
-failure is still:
+The delegated positive-Sema proof is still 883/884. The remaining failure is
+still:
 
 `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
 
-The previous HIR workaround should not recover from `debug_text`; it can now
-read the constructor `Node` prelude metadata and nested `TemplateArgRef`
-identity directly.
+Do not recover the missing `pair<int, int>` owner from rendered names,
+`debug_text`, `_t` spellings, `tag_ctx`, module dumps, or the test shape. The
+next repair needs the structured explicit template-id carrier before HIR method
+pack deduction can be made semantic.
 
 ## Proof
 
-Focused metadata proof:
-`cmake --build build && ctest --test-dir build --output-on-failure -R '^cpp_hir_parser_declarations_residual_structured_metadata$'`
-
-Result: passed, 1/1.
-
-Delegated positive-Sema proof:
+Delegated positive-Sema proof after reverting non-commit-ready probe edits:
 `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
 
-Result: unchanged and monotonic, 883/884 passing with only
+Result: unchanged, 883/884 passing with only
 `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
 failing. Proof log: `test_after.log`.
