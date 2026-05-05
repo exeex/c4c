@@ -148,7 +148,7 @@ void test_record_producers_assign_structured_metadata_before_tag() {
               "struct metadata should survive absent rendered tag spelling");
 }
 
-void test_union_forward_producer_assigns_text_identity_without_record_def() {
+void test_union_forward_producer_assigns_incomplete_record_identity() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -166,12 +166,20 @@ void test_union_forward_producer_assigns_text_identity_without_record_def() {
   c4c::TypeSpec ts = parser.parse_base_type();
   expect_true(ts.base == c4c::TB_UNION,
               "union producer should parse a union type");
-  expect_true(ts.record_def == nullptr,
+  expect_true(ts.record_def != nullptr,
+              "forward union producer should attach parser-owned record identity");
+  expect_true(ts.record_def->kind == c4c::NK_STRUCT_DEF,
+              "forward union record identity should point at an NK_STRUCT_DEF");
+  expect_true(ts.record_def->is_union,
+              "forward union record identity should preserve record kind");
+  expect_true(ts.record_def->n_fields < 0,
               "forward union producer should not invent a complete record_def");
+  expect_true(std::string_view(ts.record_def->name) == "ForwardUnion",
+              "forward union record identity should preserve source tag spelling");
   expect_true(ts.tag_text_id == union_token.text_id,
               "forward union producer should still attach tag_text_id metadata");
   set_legacy_tag_if_present(ts, nullptr, 0);
-  expect_true(ts.tag_text_id == union_token.text_id,
+  expect_true(ts.record_def != nullptr && ts.tag_text_id == union_token.text_id,
               "forward union identity should not depend on rendered tag spelling");
 }
 
@@ -263,7 +271,7 @@ int main() {
   test_template_scope_type_param_producer_uses_text_carrier();
   test_simple_typedef_producer_keeps_carrier_despite_stale_tag();
   test_record_producers_assign_structured_metadata_before_tag();
-  test_union_forward_producer_assigns_text_identity_without_record_def();
+  test_union_forward_producer_assigns_incomplete_record_identity();
   test_enum_producer_preserves_text_identity_and_underlying_base();
   test_struct_template_fallthrough_uses_text_identity();
   std::cout << "PASS: cpp_hir_parser_type_base_producer_metadata_test\n";

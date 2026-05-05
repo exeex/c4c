@@ -8,31 +8,27 @@ Current Step Title: Reprobe TypeSpec Tag Removal Build Boundary
 
 ## Just Finished
 
-Completed Step 1 fixture migration for the first TypeSpec tag deletion blocker
-in `tests/frontend/frontend_parser_tests.cpp`, including the stale
-tag-only-record assertion that was blocking `frontend_parser_tests`.
+Completed Step 1 baseline repair for
+`cpp_hir_parser_type_base_producer_structured_metadata` in
+`tests/frontend/cpp_hir_parser_type_base_producer_metadata_test.cpp`.
 
-The direct fixture reads/writes at the prior deletion-probe sites now use the
-local SFINAE-compatible `set_legacy_tag_if_present` helper or TextId-backed
-spelling checks. A current direct-reference check for this file:
-`rg -n "\.tag\b|->tag\b|decltype\([^\n]*tag" tests/frontend/frontend_parser_tests.cpp`
-now reports only the SFINAE helper body.
+The forward-union producer fixture now matches the current parser structured
+contract: `union ForwardUnion value` carries source spelling through
+`tag_text_id` and attaches a parser-owned `NK_STRUCT_DEF` record identity while
+remaining incomplete (`n_fields < 0`) and preserving `is_union`.
 
-The former tag-only record fixture now asserts the parser's current structured
-contract: `struct Forward after;` preserves source spelling through
-`tag_text_id` and carries an incomplete parser-owned `NK_STRUCT_DEF` record
-identity instead of expecting `record_def == nullptr`.
-
-With `const char* tag` temporarily removed from `TypeSpec`, `cmake --build build
---target frontend_parser_tests` now passes, so this file is no longer the
-frontend parser test compile boundary for deleting the field.
+This preserves the existing stale-rendered-spelling guard: clearing the legacy
+rendered tag does not remove the structured union identity or its TextId
+carrier, and the test still rejects an invented complete `record_def`.
 
 ## Suggested Next
 
-Move the TypeSpec tag deletion probe to the next target that still has direct
-fixture references under `tests/frontend/`; a broad inventory outside
-`frontend_parser_tests.cpp` still finds direct `.tag` sites in focused metadata
-tests and larger lookup/HIR suites.
+Move the next TypeSpec tag deletion-probe packet to
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp`, which is now the
+first broad-build compile blocker after temporarily deleting `TypeSpec::tag`.
+Start with the direct stale-rendered fixture writes at lines such as 736, 783,
+2364, and 2414, then keep the same SFINAE/TextId/record_def migration shape
+used by the earlier parser fixtures.
 
 ## Watchouts
 
@@ -43,25 +39,36 @@ tests and larger lookup/HIR suites.
 - Preserve stale-rendered-spelling disagreement tests.
 - Split distinct downstream carrier boundaries into `ideas/open/*.md` instead
   of silently broadening the parent runbook.
-- The deletion probe did not expose a next compile blocker inside
-  `frontend_parser_tests`.
+- The delegated build target `frontend_parser_tests c4cll` does not rebuild
+  `cpp_hir_parser_type_base_producer_metadata_test`; the focused binary target
+  had to be built separately before CTest observed this packet's test edit.
+- The deletion probe also exposed direct `.tag` fixture debt in
+  `cpp_hir_static_member_base_metadata_test.cpp`,
+  `frontend_hir_lookup_tests.cpp`,
+  `cpp_hir_member_typedef_binding_metadata_test.cpp`, and
+  `cpp_hir_nested_member_typedef_record_def_metadata_test.cpp`, but
+  `frontend_parser_lookup_authority_tests.cpp` appeared first in the broad
+  build output.
 
 ## Proof
 
 Canonical proof log: `test_after.log`.
 
 Delegated proof command:
-`cmake --build build --target frontend_parser_tests c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+`cmake --build build --target frontend_parser_tests c4cll && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_type_base_producer_structured_metadata)$'`
 
-Result: passed. The earlier runtime assertion
-`tag-only struct TypeSpec should not synthesize typed record identity` was
-updated to the current incomplete-record structured identity contract before
-the final proof run.
+Result: passed after rebuilding the focused test binary with
+`cmake --build build --target cpp_hir_parser_type_base_producer_metadata_test`.
+Both `frontend_parser_tests` and
+`cpp_hir_parser_type_base_producer_structured_metadata` are green in
+`test_after.log`.
 
 Controlled deletion probe:
 - Temporarily removed `const char* tag` from `TypeSpec` in
   `src/frontend/parser/ast.hpp`.
-- Ran `cmake --build build --target frontend_parser_tests`; it passed and got
-  past the previous direct fixture references.
-- Restored the field and ran `cmake --build build --target frontend_parser_tests
-  c4cll`; it passed, leaving the repository buildable with the field present.
+- Ran `cmake --build build`; the frontend/parser/HIR libraries got past the
+  removal, then the broad build stopped first in
+  `tests/frontend/frontend_parser_lookup_authority_tests.cpp` on direct
+  `TypeSpec::tag` fixture reads/writes.
+- Restored the field and reran the delegated proof with the field present,
+  leaving the repository buildable for the owned proof subset.
