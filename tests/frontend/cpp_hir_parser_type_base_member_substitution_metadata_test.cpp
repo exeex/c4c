@@ -17,11 +17,19 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 void make_stale_t_param(c4c::Arena& arena, c4c::TextId t_text,
                         c4c::TypeSpec* type) {
   expect_true(type != nullptr, "test bug: type should be present");
   type->base = c4c::TB_TYPEDEF;
-  type->tag = arena.strdup("U");
+  set_legacy_tag_if_present(*type, arena.strdup("U"), 0);
   type->tag_text_id = c4c::kInvalidText;
   type->template_param_text_id = t_text;
 }
