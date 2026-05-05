@@ -22,6 +22,26 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
+template <typename T>
+auto expect_legacy_tag_final_spelling_if_present(const T& ts,
+                                                 const std::string& expected,
+                                                 int)
+    -> decltype((void)ts.tag) {
+  expect_true(ts.tag != nullptr && std::string(ts.tag) == expected,
+              "legacy TypeSpec::tag assignment is final-spelling compatibility only");
+}
+
+void expect_legacy_tag_final_spelling_if_present(const c4c::TypeSpec&,
+                                                 const std::string&, long) {}
+
 c4c::Node make_zero_param_primary(const char* name,
                                   c4c::TextId text_id,
                                   int namespace_id) {
@@ -59,7 +79,7 @@ void test_realize_template_struct_refreshes_structured_metadata() {
   ts.tpl_struct_origin = "StructuredRealized";
   ts.tpl_struct_origin_key.context_id = structured_namespace;
   ts.tpl_struct_origin_key.base_text_id = primary_text;
-  ts.tag = "StaleRenderedInput";
+  set_legacy_tag_if_present(ts, "StaleRenderedInput", 0);
   ts.tag_text_id = stale_tag_text;
   ts.namespace_context_id = stale_namespace;
 
@@ -74,8 +94,7 @@ void test_realize_template_struct_refreshes_structured_metadata() {
               "realization must refresh tag_text_id from the realized HirStructDef");
   expect_true(ts.namespace_context_id == structured_namespace,
               "realization must refresh namespace_context_id from the realized HirStructDef namespace");
-  expect_true(ts.tag != nullptr && std::string(ts.tag) == realized_it->second.tag,
-              "legacy TypeSpec::tag assignment is final-spelling compatibility only");
+  expect_legacy_tag_final_spelling_if_present(ts, realized_it->second.tag, 0);
 }
 
 }  // namespace
