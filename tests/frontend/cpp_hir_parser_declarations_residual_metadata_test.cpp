@@ -211,6 +211,54 @@ void test_record_member_template_constructor_prelude_carrier() {
               "Index<Is...> should carry NTTP text identity");
 }
 
+void test_qualified_explicit_constructor_template_id_carrier() {
+  c4c::Arena arena;
+  c4c::Lexer lexer(
+      "namespace ns {\n"
+      "template <typename T, typename U>\n"
+      "struct Owner { Owner(int); };\n"
+      "}\n"
+      "int main() {\n"
+      "  auto value = ns::Owner<int, long>(1);\n"
+      "  return 0;\n"
+      "}\n",
+      c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const c4c::Node* root = parse_cpp(arena, lexer);
+  const c4c::Node* main_fn = find_function(root, "main");
+  expect_true(main_fn && main_fn->body && main_fn->body->n_children >= 1,
+              "qualified constructor template-id fixture should have main body");
+  const c4c::Node* decl = main_fn->body->children[0];
+  expect_true(decl && decl->kind == c4c::NK_DECL && decl->init,
+              "qualified constructor template-id fixture should have initialized local");
+  const c4c::Node* call = decl->init;
+  expect_true(call->kind == c4c::NK_CALL && call->left &&
+                  call->left->kind == c4c::NK_VAR,
+              "qualified constructor template-id should parse as callee call");
+  const c4c::Node* callee = call->left;
+  expect_true(callee->has_template_args && callee->n_template_args == 2,
+              "constructor callee should retain explicit template args");
+  expect_true(callee->template_arg_types &&
+                  callee->template_arg_types[0].base == c4c::TB_INT &&
+                  callee->template_arg_types[1].base == c4c::TB_LONG,
+              "constructor callee template args should retain structured types");
+  expect_true(callee->type.base == c4c::TB_STRUCT &&
+                  callee->type.tpl_struct_args.size == 2 &&
+                  callee->type.tpl_struct_args.data,
+              "constructor callee should carry structured owner TypeSpec args");
+  expect_true(callee->type.tpl_struct_args.data[0].kind ==
+                      c4c::TemplateArgKind::Type &&
+                  callee->type.tpl_struct_args.data[0].type.base ==
+                      c4c::TB_INT &&
+                  callee->type.tpl_struct_args.data[1].kind ==
+                      c4c::TemplateArgKind::Type &&
+                  callee->type.tpl_struct_args.data[1].type.base ==
+                      c4c::TB_LONG,
+              "constructor owner TypeSpec args should remain structured");
+  expect_true(call->type.base == c4c::TB_STRUCT &&
+                  call->type.tpl_struct_args.size == 2,
+              "constructor call should carry the same concrete owner TypeSpec");
+}
+
 }  // namespace
 
 int main() {
@@ -218,6 +266,7 @@ int main() {
   test_declaration_paths_accept_current_struct_by_metadata();
   test_conversion_operator_mangling_uses_structured_type_name();
   test_record_member_template_constructor_prelude_carrier();
+  test_qualified_explicit_constructor_template_id_carrier();
   std::cout << "PASS: cpp_hir_parser_declarations_residual_metadata_test\n";
   return 0;
 }

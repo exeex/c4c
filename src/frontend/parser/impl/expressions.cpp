@@ -163,6 +163,69 @@ static void attach_alias_template_member_typedef_expr_type(
     ident->type = ts;
 }
 
+static void attach_constructor_owner_type_carrier(Parser& parser,
+                                                  Node* node,
+                                                  const TypeSpec& owner_ts) {
+    if (!node) return;
+    node->type = owner_ts;
+    if (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) {
+        node->template_origin_name =
+            parser.arena_.strdup(owner_ts.tpl_struct_origin);
+    }
+    if (!owner_ts.tpl_struct_args.data || owner_ts.tpl_struct_args.size <= 0) {
+        return;
+    }
+
+    node->has_template_args = true;
+    node->n_template_args = owner_ts.tpl_struct_args.size;
+    node->template_arg_types =
+        parser.arena_.alloc_array<TypeSpec>(node->n_template_args);
+    node->template_arg_is_value =
+        parser.arena_.alloc_array<bool>(node->n_template_args);
+    node->template_arg_values =
+        parser.arena_.alloc_array<long long>(node->n_template_args);
+    node->template_arg_nttp_names =
+        parser.arena_.alloc_array<const char*>(node->n_template_args);
+    node->template_arg_nttp_text_ids =
+        parser.arena_.alloc_array<TextId>(node->n_template_args);
+    node->template_arg_exprs =
+        parser.arena_.alloc_array<Node*>(node->n_template_args);
+
+    for (int i = 0; i < node->n_template_args; ++i) {
+        const TemplateArgRef& arg = owner_ts.tpl_struct_args.data[i];
+        const bool is_value = arg.kind == TemplateArgKind::Value;
+        node->template_arg_types[i] = is_value ? TypeSpec{} : arg.type;
+        node->template_arg_is_value[i] = is_value;
+        node->template_arg_values[i] = is_value ? arg.value : 0;
+        node->template_arg_nttp_names[i] = nullptr;
+        node->template_arg_nttp_text_ids[i] =
+            is_value ? arg.nttp_text_id : kInvalidText;
+        node->template_arg_exprs[i] =
+            is_value ? arg.type.array_size_expr : nullptr;
+    }
+}
+
+static Node* make_constructor_call_expr(Parser& parser,
+                                        int line,
+                                        const std::string& ctor_name,
+                                        const TypeSpec& owner_ts,
+                                        const std::vector<Node*>& args) {
+    Node* callee =
+        parser.make_var(parser.arena_.strdup(ctor_name.c_str()), line);
+    attach_constructor_owner_type_carrier(parser, callee, owner_ts);
+    Node* call = parser.make_node(NK_CALL, line);
+    call->left = callee;
+    attach_constructor_owner_type_carrier(parser, call, owner_ts);
+    call->n_children = static_cast<int>(args.size());
+    if (!args.empty()) {
+        call->children = parser.arena_.alloc_array<Node*>(call->n_children);
+        for (int i = 0; i < call->n_children; ++i) {
+            call->children[i] = args[i];
+        }
+    }
+    return call;
+}
+
 static std::string expressions_constructor_display_name(const Parser& parser,
                                                         const TypeSpec& ts,
                                                         std::string_view fallback,
@@ -1659,18 +1722,8 @@ Node* parse_primary(Parser& parser) {
                         expressions_constructor_display_name(
                             parser, cast_ts, visible_typedef_name,
                             record_ctor_like);
-                    Node* callee =
-                        parser.make_var(parser.arena_.strdup(ctor_name.c_str()),
-                                        ln);
-                    Node* call = parser.make_node(NK_CALL, ln);
-                    call->left = callee;
-                    call->n_children = static_cast<int>(args.size());
-                    if (!args.empty()) {
-                        call->children = parser.arena_.alloc_array<Node*>(call->n_children);
-                        for (int i = 0; i < call->n_children; ++i) {
-                            call->children[i] = args[i];
-                        }
-                    }
+                    Node* call = make_constructor_call_expr(
+                        parser, ln, ctor_name, cast_ts, args);
                     return parse_postfix(parser, call);
                 }
                 Node* operand = args.empty() ? parser.make_int_lit(0, ln) : args[0];
@@ -1756,16 +1809,8 @@ Node* parse_primary(Parser& parser) {
                             expressions_constructor_display_name(
                                 parser, cast_ts, candidate_type_name,
                                 record_ctor_like);
-                        Node* callee =
-                            parser.make_var(
-                                parser.arena_.strdup(ctor_name.c_str()), ln);
-                        Node* call = parser.make_node(NK_CALL, ln);
-                        call->left = callee;
-                        call->n_children = static_cast<int>(args.size());
-                        if (!args.empty()) {
-                            call->children = parser.arena_.alloc_array<Node*>(call->n_children);
-                            for (int i = 0; i < call->n_children; ++i) call->children[i] = args[i];
-                        }
+                        Node* call = make_constructor_call_expr(
+                            parser, ln, ctor_name, cast_ts, args);
                         return parse_postfix(parser, call);
                     }
                     Node* operand = args.empty() ? parser.make_int_lit(0, ln) : args[0];
@@ -2208,15 +2253,8 @@ Node* parse_primary(Parser& parser) {
                 const std::string ctor_name =
                     expressions_constructor_display_name(parser, cast_ts, "<ctor>",
                                                          record_ctor_like);
-                Node* callee =
-                    parser.make_var(parser.arena_.strdup(ctor_name.c_str()), ln);
-                Node* call = parser.make_node(NK_CALL, ln);
-                call->left = callee;
-                call->n_children = static_cast<int>(args.size());
-                if (!args.empty()) {
-                    call->children = parser.arena_.alloc_array<Node*>(call->n_children);
-                    for (int i = 0; i < call->n_children; ++i) call->children[i] = args[i];
-                }
+                Node* call = make_constructor_call_expr(
+                    parser, ln, ctor_name, cast_ts, args);
                 guard.commit();
                 return parse_postfix(parser, call);
             }
