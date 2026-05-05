@@ -8,14 +8,29 @@ Current Step Title: Reprobe TypeSpec Tag Removal Build Boundary
 
 ## Just Finished
 
-Lifecycle switched from closed idea 143 back to resumed idea 141. Idea 143
-closed after supervisor full validation passed 3023/3023 tests with zero
-failures.
+Completed Step 1 inventory/probe for TypeSpec tag field removal.
+
+Current direct-reference inventory command:
+`rg -n "\.tag\b|->tag\b|decltype\([^\n]*tag" src/frontend/parser src/frontend/sema src/frontend/hir src/codegen tests/frontend`
+
+Inventory summary:
+- `src/frontend/parser/ast.hpp` still defines `TypeSpec::tag`.
+- App-source references to `TypeSpec::tag` are mostly SFINAE-gated legacy
+  display/final-spelling helpers in parser, Sema, HIR, and codegen shared
+  helpers; deleting the field does not currently break `c4cll`.
+- Raw `.tag` search also finds unrelated structured tags on HIR/LIR/backend
+  records, so those are not all TypeSpec debt.
+- The first compile blocker exposed outside `c4cll` is fixture/test debt in
+  `tests/frontend/frontend_parser_tests.cpp`: direct writes/reads at lines
+  7165, 7276, 7283, 7708, 7737, 7763, 7778, 7804, 7818, 7839, and 7882 after
+  the field is removed.
 
 ## Suggested Next
 
-Execute Step 1 by inventorying current `TypeSpec::tag` references and running
-a controlled field-removal build probe to identify the next blocker family.
+Execute a Step 4-style test fixture packet for
+`tests/frontend/frontend_parser_tests.cpp`: replace direct `TypeSpec::tag`
+setup/assertions with structured metadata or SFINAE-compatible helper checks
+without weakening stale-rendered-spelling disagreement coverage.
 
 ## Watchouts
 
@@ -26,9 +41,20 @@ a controlled field-removal build probe to identify the next blocker family.
 - Preserve stale-rendered-spelling disagreement tests.
 - Split distinct downstream carrier boundaries into `ideas/open/*.md` instead
   of silently broadening the parent runbook.
+- `cmake --build build --target c4cll` passed while `TypeSpec::tag` was
+  temporarily removed, so the immediate app-build boundary is not parser/Sema,
+  HIR, or codegen source compilation.
+- `frontend_parser_tests` is only a probe result here, not the delegated proof
+  target; the failing probe log is `/tmp/typespec_tag_frontend_parser_tests_probe.log`.
 
 ## Proof
 
-Close/resume proof from `test_after.log`:
-`ctest --test-dir build -j 8 --output-on-failure > test_after.log 2>&1`
-passed 3023/3023 tests with zero failures.
+Controlled deletion probe:
+- Temporarily removed `const char* tag` from `TypeSpec` in
+  `src/frontend/parser/ast.hpp`.
+- Ran `cmake --build build --target c4cll > test_after.log 2>&1`; it passed.
+- Ran `cmake --build build --target frontend_parser_tests > /tmp/typespec_tag_frontend_parser_tests_probe.log 2>&1`; it failed on direct
+  `TypeSpec::tag` fixture references in `tests/frontend/frontend_parser_tests.cpp`.
+- Restored the field and ran `cmake --build build --target c4cll >> test_after.log 2>&1`; it passed, leaving the repository buildable.
+
+Canonical proof log: `test_after.log`.
