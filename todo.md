@@ -8,25 +8,27 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Repaired the Step 6 C/torture structured function signature mirror mismatch
-cluster in HIR-to-LIR lowering.
+Repaired the Step 6 C/torture StmtEmitter structured field lookup cluster for
+C aggregate fields whose parser TypeSpecs carried only parser-origin tag text
+ids.
 
-`lir_owned_type_spec` now receives the HIR module and derives aggregate
-return/parameter ownership from `find_typespec_aggregate_layout` before
-falling back to compatibility spelling. This keeps the LIR function
-`return_type` and `signature_params` mirrors aligned with the same structured
-record identity used by `signature_*_type_refs`, instead of carrying a stale
-`record_def`-derived tag after `TypeSpec::tag` removal.
+HIR struct field lowering now canonicalizes aggregate field TypeSpecs by
+matching parser `unqualified_text_id` metadata against already registered
+struct owner keys when `record_def` is absent. The canonical owner key updates
+the field TypeSpec's HIR `tag_text_id`, namespace metadata, and `record_def`
+carrier before the field is stored in `HirStructField`.
 
-The delegated C/torture proof improved from 0/4 to 4/4 passing, and the
-requested parser/HIR metadata spot checks remain green.
+This repairs recursive self-pointer fields, anonymous/forward struct pointer
+fields, and forward-declared C tag fields without falling back to HIR text-table
+spelling. The delegated proof improved from 0/3 to 3/3 passing, and the
+requested parser/HIR plus prior LIR signature spot checks remain green.
 
 ## Suggested Next
 
 Recommended next Step 6 packet: supervisor-side broad/full validation for the
-parent TypeSpec-tag deletion route. This LIR signature mirror slice is green
-for the owned C/torture cluster; remaining full-suite failures should be
-triaged as separate Step 6 packets.
+parent TypeSpec-tag deletion route. This StmtEmitter field lookup slice is
+green for the owned C/torture/C-testsuite cluster; remaining full-suite
+failures should be triaged as separate Step 6 packets.
 
 ## Watchouts
 
@@ -35,6 +37,10 @@ triaged as separate Step 6 packets.
   structured layouts first. Do not restore direct `tag_text_id`/stale
   `record_def` spelling as the semantic source for owned function
   return/parameter carriers.
+- HIR struct field TypeSpecs may arrive from parser with parser-table
+  `tag_text_id` and no `record_def`, especially for self/forward C tags. Keep
+  the structured owner-key canonicalization before field metadata is stored, so
+  StmtEmitter does not recover aggregate identity from rendered text.
 - The namespace-qualified unknown-template guard was checked separately with
   `frontend_parser_tests`, which passed.
 - The prior qualified alias-template fix remains green in this proof; preserve
@@ -68,15 +74,15 @@ triaged as separate Step 6 packets.
 
 ## Proof
 
-Step 6 delegated C/torture signature mirror proof:
-`cmake --build build && ctest --test-dir build --output-on-failure -R '^(llvm_gcc_c_torture_src_20040709_1_c|llvm_gcc_c_torture_src_20040709_2_c|llvm_gcc_c_torture_src_20040709_3_c|llvm_gcc_c_torture_src_pr23324_c)$' > test_after.log 2>&1`
+Step 6 delegated StmtEmitter field lookup proof:
+`cmake --build build && ctest --test-dir build --output-on-failure -R '^(c_testsuite_src_00019_c|llvm_gcc_c_torture_src_pr40022_c|llvm_gcc_c_torture_src_20001124_1_c)$' > test_after.log 2>&1`
 
-Result: passed, 4/4. The return mirror mismatches for `retmeC`/`retmeG` and
-the parameter mirror mismatch for `callee_af7` are fixed.
+Result: passed, 3/3. The field lookup failures for `p`, `a`, and
+`s_blocksize` are fixed.
 
 Proof log: `test_after.log`.
 
 Required spot checks:
-`ctest --test-dir build --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_type_base_prelim_eval_structured_metadata)$'`
+`ctest --test-dir build --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_type_base_prelim_eval_structured_metadata|llvm_gcc_c_torture_src_20040709_1_c|llvm_gcc_c_torture_src_pr23324_c)$'`
 
-Result: passed, 2/2.
+Result: passed, 4/4.

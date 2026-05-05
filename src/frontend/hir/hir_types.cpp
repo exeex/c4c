@@ -2377,13 +2377,42 @@ void Lowerer::lower_struct_def(const Node* sd) {
       while (resolve_struct_member_typedef_if_ready(&ft)) {
       }
     }
-    if ((ft.base == TB_STRUCT || ft.base == TB_UNION) && ft.record_def) {
-      const auto owner_it = struct_def_owner_by_node_.find(ft.record_def);
-      if (owner_it != struct_def_owner_by_node_.end()) {
-        const HirRecordOwnerKey& owner_key = owner_it->second;
+    if (ft.base == TB_STRUCT || ft.base == TB_UNION) {
+      auto apply_record_owner_key = [&](const HirRecordOwnerKey& owner_key,
+                                        const Node* owner_node) {
         ft.tag_text_id = owner_key.declaration_text_id;
         ft.namespace_context_id = owner_key.namespace_context_id;
         ft.is_global_qualified = owner_key.is_global_qualified;
+        if (owner_node) ft.record_def = const_cast<Node*>(owner_node);
+      };
+      if (ft.record_def) {
+        const auto owner_it = struct_def_owner_by_node_.find(ft.record_def);
+        if (owner_it != struct_def_owner_by_node_.end()) {
+          apply_record_owner_key(owner_it->second, ft.record_def);
+        }
+      } else if (ft.tag_text_id != kInvalidText) {
+        const HirRecordOwnerKey* matched_key = nullptr;
+        const Node* matched_node = nullptr;
+        for (const auto& [candidate_node, owner_key] :
+             struct_def_owner_by_node_) {
+          if (!candidate_node ||
+              candidate_node->unqualified_text_id != ft.tag_text_id) {
+            continue;
+          }
+          if (ft.namespace_context_id >= 0 &&
+              candidate_node->namespace_context_id !=
+                  ft.namespace_context_id) {
+            continue;
+          }
+          if (matched_key && *matched_key != owner_key) {
+            matched_key = nullptr;
+            matched_node = nullptr;
+            break;
+          }
+          matched_key = &owner_key;
+          matched_node = candidate_node;
+        }
+        if (matched_key) apply_record_owner_key(*matched_key, matched_node);
       }
     }
 
