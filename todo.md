@@ -8,60 +8,58 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's initializer-list/template aggregate fallout is repaired without
-reintroducing `TypeSpec::tag`.
+Step 6's C variadic/ABI fallout after the LIR aggregate renderer changes is
+repaired without reintroducing `TypeSpec::tag`.
 
-The LIR signature mirror for `std::initializer_list<int>` now resolves the
-aggregate parameter through HIR module ownership/layout metadata before scalar
-fallback. This keeps `sum_and_check(std::initializer_list<int>)` mirrored as the
-declared aggregate instead of collapsing to `i32`.
+The first bad boundary was the module-aware LIR alloca type renderer:
+`llvm_alloca_ty(mod, ts)` preserved structured aggregate rendering but fell back
+through `llvm_value_ty(mod, ts)` for `TB_VA_LIST`, which renders va_list values
+as `ptr`. On non-Apple aarch64, local `va_list ap` therefore became `alloca ptr`
+even though `llvm.va_start` writes the target va_list storage object
+`%struct.__va_list_tag_`. That corrupted the va_list storage before
+`va_arg`/variadic aggregate lowering ran, causing segfaults and the inline
+diagnostics timeout.
 
-The follow-on HIR method-body carrier break is repaired by threading the
-existing `HirRecordOwnerKey` for instantiated template structs into
-`lower_struct_method`. Implicit `this` member lookup now consults that structured
-owner key first, so instantiated methods such as
-`std::initializer_list_T_int__begin_const`, `end_const`, and `size_const`
-resolve `_M_array` and `_M_len` against the concrete instantiated layout rather
-than the primary template record node.
-
-The same full proof also shows `cpp_positive_sema_namespace_template_struct_basic_cpp`
-is repaired. The remaining failures are the pre-existing constructor lookup,
-global-qualified typedef cast, and consteval member-alias record-layout cases.
+The fix restores the existing target-aware va_list storage rule in the
+module-aware alloca path: `TB_VA_LIST` storage now uses
+`llvm_va_list_storage_ty(mod.target_profile)`. Aggregate value rendering remains
+structured/module-aware, while C ABI storage for va_list locals and slots stays
+target-correct.
 
 ## Suggested Next
 
-Next packet should target one of the three remaining Step 6 positive/Sema
-families: delegating constructor lookup for instantiated `eastl::pair`,
-global-qualified typedef-ref casts to an alias carrier, or consteval member
-alias record-layout resolution.
+Next packet should return to the remaining Step 6 positive/Sema failures now
+that the delegated ABI subset and broader va_arg torture cluster are green.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- Instantiated method bodies can have a primary-template `record_def` while the
-  concrete owner is only available through the instantiated `HirRecordOwnerKey`;
-  avoid recovering that relationship from rendered names.
-- LIR aggregate mirror recovery is guarded by HIR layout/owner indexes and only
-  accepts tags that correspond to declared HIR struct definitions.
+- Keep module-aware aggregate rendering and target ABI storage as separate
+  concerns: aggregate values may need structured HIR owner/layout metadata, but
+  `TB_VA_LIST` alloca storage must be target-profile driven.
+- The delegated proof covers the dominant ABI/va_list family, but the broader
+  full-suite va_arg cluster was also rerun before acceptance.
 
 ## Proof
 
 Delegated proof command:
-`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
+`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(positive_sema_inline_diagnostics_runtime_c|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_)' > test_after.log 2>&1`
 
-Result: monotonic improvement versus current committed baseline `14563a663`.
+Result: monotonic improvement versus the delegated `test_before.log` baseline.
 
-The proof improved the current `^cpp_positive_sema_` baseline from 879/884
-passing with 5 failures to 881/884 passing with 3 failures. There are 0 new
-failures relative to `test_before.log`.
+The proof improved the delegated subset from 0/5 passing to 5/5 passing. There
+are 0 new failures relative to `test_before.log`.
 
 Fixed baseline failures:
-- `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
-- `cpp_positive_sema_namespace_template_struct_basic_cpp`
+- `positive_sema_inline_diagnostics_runtime_c`
+- `positive_sema_ok_call_variadic_aggregate_runtime_c`
+- `abi_abi_variadic_forward_wrapper_c`
+- `abi_abi_variadic_struct_result_c`
+- `abi_abi_variadic_va_copy_accumulate_c`
 
-Remaining baseline failures:
-- `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
-- `cpp_positive_sema_c_style_cast_global_qualified_typedef_ref_alias_basic_cpp`
-- `cpp_positive_sema_consteval_typespec_member_alias_cpp`
+Additional proof:
+`ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_va_arg_' > /tmp/c4c_vaarg_after.log 2>&1`
+
+Result: passed 25/25.
 
 Canonical proof log: `test_after.log`.

@@ -691,6 +691,7 @@ std::string llvm_alloca_ty(const hir::Module& mod, const TypeSpec& ts) {
     elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
     return "[" + std::to_string(ts.array_size) + " x " + llvm_alloca_ty(mod, elem) + "]";
   }
+  if (ts.base == TB_VA_LIST) return llvm_va_list_storage_ty(mod.target_profile);
   return llvm_value_ty(mod, ts);
 }
 
