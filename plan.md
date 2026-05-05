@@ -1,192 +1,219 @@
-# TypeSpec Tag Field Removal Metadata Migration Runbook
+# Member-Template Constructor Specialization Metadata Runbook
 
 Status: Active
-Source Idea: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
-Resumed After: ideas/closed/143_typespec_identity_normalization_boundary.md
+Source Idea: ideas/open/144_member_template_constructor_specialization_metadata.md
+Activated From: ideas/open/141_typespec_tag_field_removal_metadata_migration.md Step 6 blocker
 
 ## Purpose
 
-Remove `TypeSpec::tag` as a cross-stage semantic identity field now that the
-TypeSpec identity-normalization boundary has passed full-suite validation.
+Split the repeated Step 6 constructor blocker out of the TypeSpec-tag deletion
+route and repair the semantic carrier for member-template constructor
+specialization.
 
 ## Goal
 
-Make `TypeSpec` carry semantic type identity through structured carriers such
-as `TextId`, `record_def`, owner/member/template metadata, HIR owner keys,
-declaration ids, or downstream type refs, while preserving rendered spelling
-only for non-semantic uses.
+Selected constructor bodies must lower under both the instantiated owner record
+and the selected constructor method-template bindings, including type packs and
+NTTP packs.
 
 ## Core Rule
 
-Do not replace `TypeSpec::tag` with another rendered-string semantic authority.
-If a metadata-backed path still needs a string to find a type, add or thread
-the missing structured carrier instead.
+Do not make the known positive-Sema testcase pass through named-case matching,
+rendered spelling recovery, or weaker expectations. Repair the constructor
+member-template specialization carrier.
 
 ## Read First
 
+- `ideas/open/144_member_template_constructor_specialization_metadata.md`
 - `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`
-- `ideas/closed/143_typespec_identity_normalization_boundary.md`
-- `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
-- `ideas/closed/140_hir_legacy_string_lookup_metadata_resweep.md`
-- `ideas/open/142_codegen_lir_aggregate_type_identity_metadata.md`
-- `review/139_140_141_failure_attribution_review.md`
+- `todo.md`
+- `test_after.log`
 
 ## Current Targets
 
-- `TypeSpec` definition and constructors in parser/frontend type surfaces.
-- Parser-owned semantic reads and writes of `TypeSpec::tag`.
-- HIR compile-time, type lowering, builtin, function, and build paths named in
-  the original deletion-probe failure clusters.
-- Frontend/HIR fixtures and structured-metadata tests that still reference
-  `TypeSpec::tag` directly.
-- Downstream LIR/BIR/backend carrier gaps exposed only after the field is
-  removed.
+- Constructor selection metadata that connects generated specialization records
+  back to primary record-member constructor templates.
+- Constructor `Node` metadata carrying record-member template prelude and
+  selected method-template information.
+- Deduction paths for constructor call arguments and delegating constructor
+  arguments.
+- NTTP-pack binding from template patterns such as `index_sequence<I...>`.
+- HIR lowering of selected constructor bodies under instantiated owner and
+  method-template bindings.
 
 ## Non-Goals
 
-- Do not remove diagnostics, dump text, ABI/link spelling, mangling, or final
-  emitted names merely because they are strings.
-- Do not resurrect semantic lookup through rendered spelling under a different
-  helper or field name.
-- Do not silently expand into broad LIR/BIR/backend rewrites; split distinct
-  downstream carrier boundaries into follow-up open ideas.
-- Do not weaken tests, mark supported cases unsupported, or add named-case
-  shortcuts.
+- Do not edit TypeSpec-tag deletion scope except for reintegration validation
+  after this carrier is repaired.
+- Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
+- Do not downgrade tests, mark supported paths unsupported, or rewrite
+  expectations to hide the missing carrier.
+- Do not broaden into unrelated LIR/BIR/backend/codegen work.
 
 ## Working Model
 
-- `TypeSpec::tag` is deletion debt, not a stable compatibility API.
-- Parser and Sema producers should use `tag_text_id`, `record_def`,
-  `QualifiedNameKey`, template-parameter metadata, deferred member metadata, or
-  another explicit domain key for semantic identity.
-- HIR consumers should use module-owned ids, declarations, owner keys, module
-  type refs, or canonical handoff helpers instead of rendered TypeSpec
-  spelling.
-- Retained rendered text must be visibly classified as display, diagnostics,
-  dumps, mangling, ABI/link spelling, final output, or no-metadata
-  compatibility outside `TypeSpec::tag`.
+- The parent TypeSpec-tag deletion route is blocked, not complete.
+- The first bad fact has moved from missing constructor lookup to missing
+  method-template/NTTP-pack specialization.
+- A generated specialization record may find the primary constructor body, but
+  that is insufficient unless the selected lowering environment also carries
+  method-template type-pack and NTTP-pack bindings.
+- Focused probes are useful only when they isolate one of the carrier seams and
+  preserve the existing positive-Sema contract.
 
 ## Execution Rules
 
-- Start each packet with an inventory or deletion probe so the next blocker is
-  observed rather than guessed.
-- Keep each packet tied to one failure cluster and one proving subset.
-- Prefer producer/handoff metadata repair over consumer-local rendered lookup.
-- Preserve stale-rendered-spelling disagreement tests.
-- When a blocker is a distinct downstream carrier boundary, record it as a new
-  `ideas/open/*.md` initiative instead of broadening this runbook.
+- Start with a baseline command that proves the current 883/884 state.
+- Inventory before changing code; identify which seam owns the first missing
+  structured fact.
+- Prefer the narrowest semantic carrier that composes through constructor
+  selection, delegation, and HIR lowering.
+- Keep implementation packets small enough to prove one seam at a time.
+- Split a new open idea if investigation exposes an unrelated downstream
+  carrier boundary.
 
-## Step 1: Reprobe TypeSpec Tag Removal Build Boundary
+## Step 1: Establish Positive-Sema Baseline
 
-Goal: find the current first blockers after the normalization boundary closed.
+Goal: preserve the current failure family before changing implementation.
 
-Primary Target: `TypeSpec` declaration, constructors, and current
-`TypeSpec::tag` references.
+Primary Target: `test_after.log` and the positive-Sema subset.
 
 Actions:
-- Inventory current `TypeSpec::tag` reads and writes with source locations.
-- Run a controlled deletion or compile probe that removes the field enough to
-  expose the first build blocker.
-- Classify blockers as parser/Sema producer metadata, HIR consumer metadata,
-  fixture/test debt, display-only spelling, or downstream carrier gap.
+- Run `ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_'`.
+- Confirm the baseline remains 883/884 with only
+  `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
+  failing.
+- Record the exact command and result in `todo.md`.
 
 Completion Check:
-- `todo.md` records the first blocker family, the command run, and the first
-  implementation packet target.
+- `todo.md` records the baseline command, pass/fail count, and the single
+  failure name.
 
-## Step 2: Migrate Parser And Sema Semantic Tag Uses
+## Step 2: Inventory Constructor Specialization Seams
 
-Goal: remove parser-owned semantic dependence on rendered `TypeSpec::tag`.
+Goal: map the separable specialization seams before implementation.
 
-Primary Target: parser AST/type construction, Sema type resolution, typedef,
-record, enum, template, and deferred-member paths.
-
-Actions:
-- Replace semantic reads with existing `tag_text_id`, `record_def`,
-  `QualifiedNameKey`, template parameter, or deferred member metadata.
-- Add producer metadata where a producer still has only a rendered tag.
-- Keep display spelling separate from semantic identity.
-
-Completion Check:
-- Focused parser/Sema build or test proof passes.
-- No metadata-backed path introduces rendered-string semantic rediscovery.
-
-## Step 3: Migrate HIR Semantic Tag Uses
-
-Goal: remove HIR dependence on rendered TypeSpec spelling as lookup authority.
-
-Primary Target: `compile_time_engine.hpp`, `hir_types.cpp`, `hir_ir.hpp`,
-`hir_functions.cpp`, `hir_lowering_core.cpp`, `builtin.cpp`, and
-`hir_build.cpp`.
+Primary Target: parser/Sema constructor selection, constructor `Node`
+metadata, template deduction, and HIR constructor lowering paths.
 
 Actions:
-- Route type, record, template, member, and compile-time lookups through HIR or
-  module structured carriers.
-- Use normalized owner keys, declaration ids, module type refs, or canonical
-  handoff helpers as primary identity.
-- Keep rendered spelling only where it is display or explicit no-metadata
-  compatibility.
-
-Completion Check:
-- HIR-focused tests and the relevant build target pass after the migrated
-  cluster.
-- Stale rendered spelling cannot override structured metadata.
-
-## Step 4: Remove Fixture And Test Direct Field Debt
-
-Goal: update tests and fixtures that directly reference `TypeSpec::tag` without
-weakening behavior.
-
-Primary Target: frontend/HIR unit tests, structured metadata fixtures, and
-deletion-probe residual test helpers.
-
-Actions:
-- Rewrite fixture construction to use structured metadata carriers.
-- Preserve or add tests where stale rendered spelling must lose to structured
+- Trace how generated specialization records point back to primary
+  record-member constructors.
+- Identify where constructor `Node`s lose record-member template prelude
   metadata.
-- Avoid expectation rewrites that merely hide an unresolved semantic gap.
+- Identify where constructor and delegating constructor arguments should drive
+  method type-pack deduction.
+- Identify where `index_sequence<I...>` or equivalent patterns should bind
+  NTTP packs.
+- Identify where HIR lowering chooses the constructor body and enters the body
+  without the selected method-template bindings.
 
 Completion Check:
-- Focused frontend/HIR fixture tests pass.
-- Test changes prove the migrated contract instead of lowering coverage.
+- `todo.md` lists the observed source surfaces and names the first seam to
+  implement.
 
-## Step 5: Split Or Repair Downstream Carrier Gaps
+## Step 3: Add Focused Probe Coverage If Needed
 
-Goal: handle downstream boundaries exposed by field removal without recreating
-rendered semantic identity on `TypeSpec`.
+Goal: prove a separable seam without overfitting the final fixture.
 
-Primary Target: LIR/BIR/backend/codegen call sites reached after frontend and
-HIR blockers are cleared.
+Primary Target: frontend or HIR probes near the smallest missing carrier.
 
 Actions:
-- If the gap is within this idea's frontend/HIR migration scope, thread the
-  structured carrier and prove it narrowly.
-- If the gap is a distinct downstream metadata boundary, create a follow-up
-  `ideas/open/*.md` with concrete reviewer reject signals.
-- Do not reactivate idea 142 unless a fresh probe shows the same codegen/LIR
-  aggregate identity boundary it owns.
+- Prefer existing tests if they already expose the chosen seam clearly.
+- Add a focused probe only when it distinguishes constructor prelude, method
+  type-pack deduction, NTTP-pack binding, or selected-body lowering.
+- Keep the final positive-Sema testcase as an end-to-end proof, not the only
+  evidence.
 
 Completion Check:
-- `todo.md` records whether the boundary was repaired here or split into a
-  separate source idea.
+- The chosen proof command is recorded in `todo.md`.
+- Any new probe fails for the missing semantic carrier before the code repair.
 
-## Step 6: Delete TypeSpec Tag And Validate
+## Step 4: Implement Constructor Prelude Carrier
 
-Goal: finish the field removal and prove the migration is stable.
+Goal: ensure constructor `Node`s preserve record-member template prelude when a
+selected constructor comes from a member template.
 
-Primary Target: `TypeSpec` definition and all remaining compile/test fallout.
+Primary Target: constructor AST/Sema metadata handoff.
 
 Actions:
-- Remove `const char* tag` from `TypeSpec`.
-- Remove obsolete compatibility shims that only existed to preserve the field.
-- Run `cmake --build build --target c4cll`.
-- Run focused tests for touched parser/Sema/HIR/downstream buckets.
-- Escalate to supervisor-selected broad validation when the build and focused
-  proofs are green.
+- Thread existing structured record-member template prelude metadata onto
+  constructor `Node`s.
+- Avoid synthesizing identity from rendered constructor names or tags.
+- Prove constructor lookup still reaches the intended primary constructor body.
 
 Completion Check:
-- `TypeSpec` has no `tag` field.
-- `cmake --build build --target c4cll` passes.
-- Required focused tests pass.
-- Broad validation is green or remaining failures are split into follow-up
-  ideas before lifecycle close.
+- Focused proof shows the selected constructor has structured prelude metadata
+  available at the next deduction/lowering boundary.
+
+## Step 5: Implement Method Type-Pack Deduction
+
+Goal: bind constructor method type packs from constructor and delegating
+constructor arguments.
+
+Primary Target: template deduction for selected constructor calls and
+delegating constructor calls.
+
+Actions:
+- Deduce packs such as `Args1` and `Args2` from the actual constructor
+  argument lists.
+- Preserve owner-record instantiation separately from method-template
+  specialization bindings.
+- Prove the selected constructor body no longer sees those type packs as
+  unresolved template parameters.
+
+Completion Check:
+- Focused proof shows method type packs are bound before constructor body
+  lowering.
+
+## Step 6: Implement NTTP-Pack Binding
+
+Goal: bind non-type template parameter packs used by constructor bodies.
+
+Primary Target: deduction from patterns such as `index_sequence<I...>`.
+
+Actions:
+- Bind packs such as `I1` and `I2` from structured template argument patterns.
+- Thread NTTP-pack bindings through the same selected method-template
+  specialization carrier as type packs.
+- Avoid case-specific `index_sequence` or `get` name shortcuts.
+
+Completion Check:
+- Focused proof shows calls such as `get<I>(args)` instantiate with concrete
+  NTTP arguments instead of `I=?`.
+
+## Step 7: Lower Selected Constructor Bodies Under Full Bindings
+
+Goal: make HIR lowering enter the chosen constructor body with both owner and
+method-template specialization state.
+
+Primary Target: selected constructor body lowering environment.
+
+Actions:
+- Combine instantiated owner record metadata with selected constructor
+  method-template type-pack and NTTP-pack bindings.
+- Lower public and private/delegating constructor bodies through the same
+  carrier shape.
+- Verify constructed object type inference no longer collapses to `void`.
+
+Completion Check:
+- The positive-Sema subset no longer has the constructor specialization
+  failure caused by unresolved `Args1`/`Args2` or `I1`/`I2`.
+
+## Step 8: Reintegrate With Parent TypeSpec-Tag Validation
+
+Goal: hand the repaired constructor specialization capability back to the
+parent deletion route.
+
+Primary Target: parent Step 6 validation entry point.
+
+Actions:
+- Rerun the supervisor-selected positive-Sema or TypeSpec-tag deletion subset.
+- Record whether the parent Step 6 route can resume from
+  `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`.
+- If a new unrelated boundary appears, create a separate open idea rather than
+  absorbing it into this one.
+
+Completion Check:
+- `todo.md` records the reintegration proof and the recommended lifecycle
+  action for the parent TypeSpec-tag deletion plan.
