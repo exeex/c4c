@@ -1,7 +1,8 @@
 # Member-Template Constructor Specialization Metadata
 
-Status: Open
+Status: Closed
 Created: 2026-05-05
+Closed: 2026-05-05
 
 Parent Idea:
 - `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`
@@ -95,6 +96,21 @@ semantic repair or a smaller validated split.
   unspecialized `Args1`/`Args2` or `I1`/`I2`.
 - The parent TypeSpec-tag deletion runbook can resume Step 6 validation without
   relying on rendered TypeSpec identity or constructor lookup shortcuts.
+
+## Completion Notes
+
+- Closed after commit `0d653f97d` implemented structured member-template
+  constructor specialization from parser/HIR carriers.
+- Regression guard accepted the canonical positive-Sema before/after logs:
+  `test_before.log` had 883/884 passing with only
+  `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
+  failing, and `test_after.log` had 884/884 passing with no new failures.
+- The close proof command was:
+  `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`.
+- The full-suite candidate remained red with 24 known failures and was
+  rejected as uncanonical. Remaining broad validation belongs to the parent
+  TypeSpec-tag deletion route or a separate follow-up idea, not this completed
+  decomposition idea.
 
 ## Reviewer Reject Signals
 
