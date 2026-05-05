@@ -998,6 +998,13 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
     if (starts_with_value_like_template_expr(
             *this, core_input_state_.tokens, core_input_state_.pos))
         return true;
+    if (check(TokenKind::KwSizeof) &&
+        core_input_state_.pos + 1 <
+            static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+            TokenKind::Ellipsis) {
+        return true;
+    }
     return expect_value && (
         check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
         check(TokenKind::KwTrue) || check(TokenKind::KwFalse) ||

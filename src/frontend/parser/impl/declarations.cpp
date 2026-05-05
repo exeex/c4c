@@ -24,14 +24,18 @@ namespace c4c {
 
 static void annotate_template_param_typespec(TypeSpec* ts, const Node* owner) {
     if (!ts || !owner || ts->base != TB_TYPEDEF ||
-        ts->tag_text_id == kInvalidText || owner->unqualified_text_id == kInvalidText ||
+        owner->unqualified_text_id == kInvalidText ||
         owner->n_template_params <= 0 || !owner->template_param_name_text_ids ||
         !owner->template_param_is_nttp) {
         return;
     }
+    const TextId type_text_id =
+        ts->template_param_text_id != kInvalidText ? ts->template_param_text_id
+                                                   : ts->tag_text_id;
+    if (type_text_id == kInvalidText) return;
     for (int i = 0; i < owner->n_template_params; ++i) {
         if (owner->template_param_is_nttp[i]) continue;
-        if (owner->template_param_name_text_ids[i] != ts->tag_text_id) continue;
+        if (owner->template_param_name_text_ids[i] != type_text_id) continue;
         ts->template_param_owner_namespace_context_id = owner->namespace_context_id;
         ts->template_param_owner_text_id = owner->unqualified_text_id;
         ts->template_param_index = i;
@@ -41,12 +45,16 @@ static void annotate_template_param_typespec(TypeSpec* ts, const Node* owner) {
 }
 
 static void annotate_template_param_type_refs(TypeSpec* ts, const Node* owner);
+static void annotate_template_param_type_refs(Node* node, const Node* owner);
 
 static void annotate_template_arg_refs(TemplateArgRefList* refs, const Node* owner) {
     if (!refs || !refs->data) return;
     for (int i = 0; i < refs->size; ++i) {
         if (refs->data[i].kind == TemplateArgKind::Type) {
             annotate_template_param_type_refs(&refs->data[i].type, owner);
+        } else if (refs->data[i].kind == TemplateArgKind::Value) {
+            annotate_template_param_type_refs(
+                refs->data[i].type.array_size_expr, owner);
         }
     }
 }
@@ -2230,6 +2238,33 @@ Node* parse_top_level(Parser& parser) {
             }
         } else {
             attach_template_params(templated);
+        }
+        auto register_template_global = [&](Node* node) {
+            if (!node || node->kind != NK_GLOBAL_VAR ||
+                node->n_template_params <= 0) {
+                return;
+            }
+            const TextId name_text_id =
+                node->unqualified_text_id != kInvalidText
+                    ? node->unqualified_text_id
+                    : parser.parser_text_id_for_token(
+                          kInvalidText,
+                          node->unqualified_name && node->unqualified_name[0]
+                              ? node->unqualified_name
+                              : node->name ? node->name : "");
+            const int context_id =
+                node->namespace_context_id >= 0
+                    ? node->namespace_context_id
+                    : parser.current_namespace_context_id();
+            parser.register_template_global_primary(context_id, name_text_id,
+                                                    node);
+        };
+        if (templated && templated->kind == NK_BLOCK) {
+            for (int i = 0; i < templated->n_children; ++i) {
+                register_template_global(templated->children[i]);
+            }
+        } else {
+            register_template_global(templated);
         }
         // Template struct definitions: struct Pair { ... } was parsed inside the
         // recursive parse_top_level call and stored in

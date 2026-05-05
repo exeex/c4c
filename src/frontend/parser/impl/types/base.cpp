@@ -3720,9 +3720,8 @@ TypeSpec Parser::parse_base_type() {
                     }
                 }
             } else if (is_cpp_mode() &&
-                       find_template_struct_primary(current_namespace_context_id(),
-                                                    active_context_state_
-                                                        .last_resolved_typedef_text_id)) {
+                       find_template_struct_primary_for_parse_base_type(
+                           *this, ts)) {
                 // Qualified names such as `ns::Template<T>` may resolve directly
                 // to a template primary without first passing through typedef
                 // registration. Reuse the existing template-struct
@@ -3934,6 +3933,9 @@ TypeSpec Parser::parse_base_type() {
                         struct PrelimTypeBindingMetadata {
                             std::string name;
                             TextId name_text_id = kInvalidText;
+                            int owner_namespace_context_id = -1;
+                            TextId owner_text_id = kInvalidText;
+                            int param_index = -1;
                             TypeSpec type{};
                         };
                         std::vector<PrelimTypeBindingMetadata> prelim_tb_meta;
@@ -3967,9 +3969,66 @@ TypeSpec Parser::parse_base_type() {
                                     parser_text_id_for_token(kInvalidText,
                                                              binding.name);
                             }
+                            binding.owner_namespace_context_id =
+                                primary_tpl->namespace_context_id;
+                            binding.owner_text_id =
+                                primary_tpl->unqualified_text_id != kInvalidText
+                                    ? primary_tpl->unqualified_text_id
+                                    : parser_text_id_for_token(
+                                          kInvalidText,
+                                          primary_tpl->unqualified_name &&
+                                                  primary_tpl
+                                                      ->unqualified_name[0]
+                                              ? primary_tpl->unqualified_name
+                                              : primary_tpl->name
+                                                    ? primary_tpl->name
+                                                    : "");
+                            binding.param_index = param_idx;
                             return binding;
                         };
-                        auto prelim_type_for_type =
+                        auto prelim_binding_matches_type =
+                            [&](const PrelimTypeBindingMetadata& binding,
+                                const TypeSpec& type,
+                                TextId type_text_id) -> bool {
+                            const bool type_has_owner =
+                                type.template_param_owner_text_id !=
+                                    kInvalidText ||
+                                type.template_param_index >= 0;
+                            if (type_has_owner) {
+                                if (binding.owner_text_id == kInvalidText) {
+                                    return false;
+                                }
+                                if (type.template_param_owner_text_id !=
+                                        kInvalidText &&
+                                    type.template_param_owner_text_id !=
+                                        binding.owner_text_id) {
+                                    return false;
+                                }
+                                if (type
+                                            .template_param_owner_namespace_context_id >=
+                                        0 &&
+                                    binding.owner_namespace_context_id >= 0 &&
+                                    type
+                                            .template_param_owner_namespace_context_id !=
+                                        binding.owner_namespace_context_id) {
+                                    return false;
+                                }
+                                if (type.template_param_index >= 0 &&
+                                    binding.param_index >= 0 &&
+                                    type.template_param_index !=
+                                        binding.param_index) {
+                                    return false;
+                                }
+                                return type_text_id == kInvalidText ||
+                                       binding.name_text_id == type_text_id ||
+                                       type.template_param_text_id ==
+                                           binding.name_text_id;
+                            }
+                            return binding.name_text_id != kInvalidText &&
+                                   binding.name_text_id == type_text_id;
+                        };
+                        std::function<TypeSpec(TypeSpec)> prelim_type_for_type;
+                        prelim_type_for_type =
                             [&](TypeSpec type) -> TypeSpec {
                             if (type.base == TB_TYPEDEF) {
                                 TextId type_text_id =
@@ -3985,8 +4044,9 @@ TypeSpec Parser::parse_base_type() {
                                             continue;
                                         }
                                         has_structured_binding = true;
-                                        if (binding.name_text_id ==
-                                            type_text_id) {
+                                        if (prelim_binding_matches_type(
+                                                binding, type,
+                                                type_text_id)) {
                                             return binding.type;
                                         }
                                     }
@@ -3999,6 +4059,122 @@ TypeSpec Parser::parse_base_type() {
                                          prelim_tb) {
                                         if (pname == legacy_tag) return pts;
                                     }
+                                }
+                            }
+                            if (type.tpl_struct_args.data &&
+                                type.tpl_struct_args.size > 0) {
+                                for (int ai = 0;
+                                     ai < type.tpl_struct_args.size; ++ai) {
+                                    TemplateArgRef& arg =
+                                        type.tpl_struct_args.data[ai];
+                                    if (arg.kind == TemplateArgKind::Type) {
+                                        arg.type =
+                                            prelim_type_for_type(arg.type);
+                                    }
+                                }
+                            }
+                            if (type.tpl_struct_origin_key.base_text_id !=
+                                    kInvalidText &&
+                                type.tpl_struct_args.data &&
+                                type.tpl_struct_args.size > 0) {
+                                const char* saved_member_name =
+                                    type.deferred_member_type_name;
+                                const TextId saved_member_text_id =
+                                    type.deferred_member_type_text_id;
+                                const Node* origin_primary =
+                                    find_template_struct_primary(
+                                        type.tpl_struct_origin_key);
+                                if (origin_primary) {
+                                    std::vector<ParsedTemplateArg> origin_args;
+                                    bool can_instantiate_origin = true;
+                                    for (int ai = 0;
+                                         ai < type.tpl_struct_args.size; ++ai) {
+                                        const TemplateArgRef& src =
+                                            type.tpl_struct_args.data[ai];
+                                        ParsedTemplateArg arg{};
+                                        if (src.kind ==
+                                            TemplateArgKind::Value) {
+                                            if (zero_value_arg_ref_uses_debug_fallback(
+                                                    src) ||
+                                                src.type.array_size_expr) {
+                                                can_instantiate_origin = false;
+                                                break;
+                                            }
+                                            arg.is_value = true;
+                                            arg.value = src.value;
+                                            arg.nttp_text_id =
+                                                src.nttp_text_id;
+                                        } else {
+                                            if (unstructured_type_arg_ref_uses_debug_fallback(
+                                                    src)) {
+                                                can_instantiate_origin = false;
+                                                break;
+                                            }
+                                            arg.is_value = false;
+                                            arg.type =
+                                                prelim_type_for_type(src.type);
+                                            if (arg.type.base == TB_TYPEDEF &&
+                                                !arg.type.record_def &&
+                                                (arg.type.tag_text_id !=
+                                                     kInvalidText ||
+                                                 arg.type
+                                                         .template_param_text_id !=
+                                                     kInvalidText)) {
+                                                can_instantiate_origin = false;
+                                                break;
+                                            }
+                                        }
+                                        origin_args.push_back(arg);
+                                    }
+                                    if (can_instantiate_origin) {
+                                        std::string origin_name =
+                                            type.tpl_struct_origin &&
+                                                    type.tpl_struct_origin[0]
+                                                ? type.tpl_struct_origin
+                                            : origin_primary
+                                                      ->template_origin_name &&
+                                                    origin_primary
+                                                        ->template_origin_name[0]
+                                                ? origin_primary
+                                                      ->template_origin_name
+                                            : origin_primary->name &&
+                                                    origin_primary->name[0]
+                                                ? origin_primary->name
+                                                : "";
+                                        std::string origin_mangled;
+                                        TypeSpec origin_resolved{};
+                                        if (!origin_name.empty() &&
+                                            ensure_template_struct_instantiated_from_args(
+                                                origin_name, origin_primary,
+                                                origin_args,
+                                                origin_primary->line,
+                                                &origin_mangled,
+                                                "prelim_alias_member_type_arg",
+                                                &origin_resolved)) {
+                                            type = origin_resolved;
+                                            type.deferred_member_type_name =
+                                                saved_member_name;
+                                            type.deferred_member_type_text_id =
+                                                saved_member_text_id;
+                                        }
+                                    }
+                                }
+                            }
+                            const std::string deferred_member_name =
+                                deferred_member_lookup_name(type);
+                            if (!deferred_member_name.empty()) {
+                                TypeSpec resolved_member{};
+                                if (lookup_struct_member_typedef_recursive_for_type(
+                                        type, deferred_member_name,
+                                        type.deferred_member_type_text_id,
+                                        &resolved_member)) {
+                                    resolved_member
+                                        .deferred_member_type_name = nullptr;
+                                    resolved_member
+                                        .deferred_member_type_text_id =
+                                        kInvalidText;
+                                    return prelim_type_for_type(
+                                        resolved_member);
                                 }
                             }
                             return type;
@@ -4110,8 +4286,320 @@ TypeSpec Parser::parse_base_type() {
                                 *out = node->ival;
                                 return true;
                             }
-                            if (node->kind == NK_VAR)
+                            auto push_template_eval_bindings =
+                                [&](const Node* owner,
+                                    const std::vector<ParsedTemplateArg>& args)
+                                -> std::pair<size_t, size_t> {
+                                const size_t old_tb = prelim_tb.size();
+                                const size_t old_nb = prelim_nb.size();
+                                if (!owner || !owner->template_param_names)
+                                    return {old_tb, old_nb};
+                                for (int pi = 0;
+                                     pi < owner->n_template_params &&
+                                     pi < static_cast<int>(args.size());
+                                     ++pi) {
+                                    const char* pn =
+                                        owner->template_param_names[pi];
+                                    if (!pn) continue;
+                                    if (owner->template_param_is_nttp &&
+                                        owner->template_param_is_nttp[pi]) {
+                                        if (!args[pi].is_value) continue;
+                                        prelim_nb.push_back({pn, args[pi].value});
+                                        prelim_nb_meta.push_back(
+                                            nttp_binding_metadata_for_template_param(
+                                                *this, owner, pi, pn,
+                                                args[pi].value));
+                                    } else if (!args[pi].is_value) {
+                                        prelim_tb.push_back({pn, args[pi].type});
+                                        PrelimTypeBindingMetadata meta{};
+                                        meta.name = pn;
+                                        meta.type = args[pi].type;
+                                        meta.owner_namespace_context_id =
+                                            owner->namespace_context_id;
+                                        meta.owner_text_id =
+                                            owner->unqualified_text_id !=
+                                                    kInvalidText
+                                                ? owner->unqualified_text_id
+                                                : parser_text_id_for_token(
+                                                      kInvalidText,
+                                                      owner->unqualified_name &&
+                                                              owner
+                                                                  ->unqualified_name
+                                                                      [0]
+                                                          ? owner
+                                                                ->unqualified_name
+                                                          : owner->name
+                                                                ? owner->name
+                                                                : "");
+                                        meta.param_index = pi;
+                                        if (owner->template_param_name_text_ids) {
+                                            meta.name_text_id =
+                                                owner
+                                                    ->template_param_name_text_ids
+                                                        [pi];
+                                        }
+                                        if (meta.name_text_id == kInvalidText) {
+                                            meta.name_text_id =
+                                                parser_text_id_for_token(
+                                                    kInvalidText, pn);
+                                        }
+                                        prelim_tb_meta.push_back(meta);
+                                    }
+                                }
+                                return {old_tb, old_nb};
+                            };
+                            auto pop_template_eval_bindings =
+                                [&](std::pair<size_t, size_t> sizes) {
+                                prelim_tb.resize(sizes.first);
+                                prelim_tb_meta.resize(sizes.first);
+                                prelim_nb.resize(sizes.second);
+                                prelim_nb_meta.resize(sizes.second);
+                            };
+                            auto parsed_args_from_template_ref =
+                                [&](const Node* ref,
+                                    std::vector<ParsedTemplateArg>* out_args)
+                                -> bool {
+                                if (!ref || !out_args ||
+                                    ref->n_template_args <= 0 ||
+                                    !ref->template_arg_is_value) {
+                                    return false;
+                                }
+                                out_args->clear();
+                                out_args->reserve(ref->n_template_args);
+                                for (int ai = 0; ai < ref->n_template_args;
+                                     ++ai) {
+                                    ParsedTemplateArg arg{};
+                                    arg.is_value =
+                                        ref->template_arg_is_value[ai];
+                                    if (arg.is_value) {
+                                        arg.value =
+                                            ref->template_arg_values
+                                                ? ref->template_arg_values[ai]
+                                                : 0;
+                                        arg.nttp_text_id =
+                                            ref->template_arg_nttp_text_ids
+                                                ? ref
+                                                      ->template_arg_nttp_text_ids
+                                                          [ai]
+                                                : kInvalidText;
+                                        arg.expr =
+                                            ref->template_arg_exprs
+                                                ? ref->template_arg_exprs[ai]
+                                                : nullptr;
+                                        if (arg.expr) {
+                                            long long ev = 0;
+                                            if (!eval_prelim_structured_nttp_expr(
+                                                    arg.expr, &ev)) {
+                                                return false;
+                                            }
+                                            arg.value = ev;
+                                            arg.expr = nullptr;
+                                        }
+                                    } else {
+                                        if (!ref->template_arg_types)
+                                            return false;
+                                        arg.type = prelim_type_for_type(
+                                            ref->template_arg_types[ai]);
+                                    }
+                                    out_args->push_back(arg);
+                                }
+                                return true;
+                            };
+                            std::function<bool(const Node*, const std::string&,
+                                               long long*)>
+                                lookup_static_member_recursive =
+                                    [&](const Node* cur,
+                                        const std::string& member_name,
+                                        long long* value) -> bool {
+                                if (!cur || !value) return false;
+                                std::vector<ParsedTemplateArg> cur_args;
+                                if (cur->n_template_args > 0 &&
+                                    cur->template_arg_is_value) {
+                                    for (int ai = 0; ai < cur->n_template_args;
+                                         ++ai) {
+                                        ParsedTemplateArg arg{};
+                                        arg.is_value =
+                                            cur->template_arg_is_value[ai];
+                                        if (arg.is_value) {
+                                            arg.value =
+                                                cur->template_arg_values
+                                                    ? cur
+                                                          ->template_arg_values
+                                                              [ai]
+                                                    : 0;
+                                        } else if (cur->template_arg_types) {
+                                            arg.type =
+                                                cur->template_arg_types[ai];
+                                        }
+                                        cur_args.push_back(arg);
+                                    }
+                                }
+                                const auto saved_sizes =
+                                    push_template_eval_bindings(cur, cur_args);
+                                for (int fi = 0; fi < cur->n_fields; ++fi) {
+                                    const Node* f = cur->fields[fi];
+                                    if (!f || f->kind != NK_DECL ||
+                                        !f->is_static || !f->name ||
+                                        member_name != f->name) {
+                                        continue;
+                                    }
+                                    if (f->init &&
+                                        eval_prelim_structured_nttp_expr(
+                                            f->init, value)) {
+                                        pop_template_eval_bindings(saved_sizes);
+                                        return true;
+                                    }
+                                    if (f->ival >= 0) {
+                                        *value = f->ival;
+                                        pop_template_eval_bindings(saved_sizes);
+                                        return true;
+                                    }
+                                }
+                                for (int ci = 0; ci < cur->n_children; ++ci) {
+                                    const Node* child = cur->children[ci];
+                                    if (!child || child->kind != NK_DECL ||
+                                        !child->is_static || !child->name ||
+                                        member_name != child->name) {
+                                        continue;
+                                    }
+                                    if (child->init &&
+                                        eval_prelim_structured_nttp_expr(
+                                            child->init, value)) {
+                                        pop_template_eval_bindings(saved_sizes);
+                                        return true;
+                                    }
+                                }
+                                for (int bi = 0; bi < cur->n_bases; ++bi) {
+                                    TypeSpec base_ts =
+                                        resolve_typedef_type_chain(
+                                            cur->base_types[bi]);
+                                    const Node* base_def =
+                                        resolve_record_type_spec(
+                                            base_ts,
+                                            &definition_state_
+                                                 .struct_tag_def_map);
+                                    if (base_def &&
+                                        lookup_static_member_recursive(
+                                            base_def, member_name, value)) {
+                                        pop_template_eval_bindings(saved_sizes);
+                                        return true;
+                                    }
+                                }
+                                pop_template_eval_bindings(saved_sizes);
+                                return false;
+                            };
+                            auto eval_template_struct_static_member =
+                                [&](const Node* ref, long long* value) -> bool {
+                                if (!ref || !value || !ref->has_template_args ||
+                                    ref->n_template_args <= 0 ||
+                                    ref->n_qualifier_segments <= 0 ||
+                                    ref->unqualified_text_id == kInvalidText) {
+                                    return false;
+                                }
+                                const TextId owner_text_id =
+                                    ref->qualifier_text_ids
+                                        ? ref->qualifier_text_ids
+                                              [ref->n_qualifier_segments - 1]
+                                        : kInvalidText;
+                                if (owner_text_id == kInvalidText) {
+                                    return false;
+                                }
+                                const int owner_context =
+                                    ref->namespace_context_id >= 0
+                                        ? ref->namespace_context_id
+                                        : current_namespace_context_id();
+                                const Node* owner_primary =
+                                    find_template_struct_primary(
+                                        owner_context, owner_text_id);
+                                if (!owner_primary) return false;
+                                std::vector<ParsedTemplateArg> owner_args;
+                                if (!parsed_args_from_template_ref(
+                                        ref, &owner_args)) {
+                                    return false;
+                                }
+                                const char* owner_name =
+                                    owner_primary->template_origin_name &&
+                                            owner_primary
+                                                ->template_origin_name[0]
+                                        ? owner_primary->template_origin_name
+                                    : owner_primary->name &&
+                                            owner_primary->name[0]
+                                        ? owner_primary->name
+                                    : owner_primary->unqualified_name;
+                                if (!owner_name || !owner_name[0]) {
+                                    return false;
+                                }
+                                std::string owner_mangled;
+                                TypeSpec owner_ts{};
+                                bool ok_static = ensure_template_struct_instantiated_from_args(
+                                        owner_name, owner_primary, owner_args,
+                                        owner_primary->line, &owner_mangled,
+                                        "structured_static_member_nttp",
+                                        &owner_ts);
+                                if (!ok_static) {
+                                    return false;
+                                }
+                                const Node* owner_def =
+                                    resolve_record_type_spec(
+                                        owner_ts,
+                                        &definition_state_
+                                             .struct_tag_def_map);
+                                if (!owner_def) {
+                                    auto it =
+                                        definition_state_.struct_tag_def_map
+                                            .find(owner_mangled);
+                                    if (it !=
+                                        definition_state_.struct_tag_def_map
+                                            .end()) {
+                                        owner_def = it->second;
+                                    }
+                                }
+                                if (!owner_def) return false;
+                                const std::string member_name(
+                                    parser_text(ref->unqualified_text_id, {}));
+                                return !member_name.empty() &&
+                                       lookup_static_member_recursive(
+                                           owner_def, member_name, value);
+                            };
+                            auto eval_template_global_ref =
+                                [&](const Node* ref, long long* value) -> bool {
+                                if (!ref || !value || !ref->has_template_args ||
+                                    ref->n_template_args <= 0 ||
+                                    ref->unqualified_text_id == kInvalidText) {
+                                    return false;
+                                }
+                                const int context =
+                                    ref->namespace_context_id >= 0
+                                        ? ref->namespace_context_id
+                                        : current_namespace_context_id();
+                                const Node* primary =
+                                    find_template_global_primary(
+                                        context, ref->unqualified_text_id);
+                                if (!primary || !primary->init) return false;
+                                std::vector<ParsedTemplateArg> global_args;
+                                if (!parsed_args_from_template_ref(
+                                        ref, &global_args)) {
+                                    return false;
+                                }
+                                const auto saved_sizes =
+                                    push_template_eval_bindings(primary,
+                                                                global_args);
+                                const bool ok =
+                                    eval_prelim_structured_nttp_expr(
+                                        primary->init, value);
+                                pop_template_eval_bindings(saved_sizes);
+                                return ok;
+                            };
+                            if (node->kind == NK_VAR) {
+                                if (eval_template_struct_static_member(node,
+                                                                       out)) {
+                                    return true;
+                                }
+                                if (eval_template_global_ref(node, out)) {
+                                    return true;
+                                }
                                 return prelim_nttp_value_for_ref(node, out);
+                            }
                             if (node->kind == NK_CAST && node->left)
                                 return eval_prelim_structured_nttp_expr(
                                     node->left, out);
@@ -4282,11 +4770,25 @@ TypeSpec Parser::parse_base_type() {
                             }
                             return false;
                         };
+                        const size_t explicit_eval_tb_size =
+                            prelim_tb.size();
+                        const size_t explicit_eval_nb_size =
+                            prelim_nb.size();
                         for (int pi = 0; pi < static_cast<int>(actual_args.size()) &&
                                          pi < primary_tpl->n_template_params; ++pi) {
                             const char* pn = primary_tpl->template_param_names[pi];
                             if (primary_tpl->template_param_is_nttp[pi]) {
                                 if (actual_args[pi].is_value) {
+                                    const size_t saved_tb_size =
+                                        prelim_tb.size();
+                                    const size_t saved_nb_size =
+                                        prelim_nb.size();
+                                    prelim_tb.resize(explicit_eval_tb_size);
+                                    prelim_tb_meta.resize(
+                                        explicit_eval_tb_size);
+                                    prelim_nb.resize(explicit_eval_nb_size);
+                                    prelim_nb_meta.resize(
+                                        explicit_eval_nb_size);
                                     long long ev = 0;
                                     Node* structured_expr =
                                         structured_nttp_expr_carrier(
@@ -4342,6 +4844,10 @@ TypeSpec Parser::parse_base_type() {
                                                 nullptr;
                                         }
                                     }
+                                    prelim_tb.resize(saved_tb_size);
+                                    prelim_tb_meta.resize(saved_tb_size);
+                                    prelim_nb.resize(saved_nb_size);
+                                    prelim_nb_meta.resize(saved_nb_size);
                                     prelim_nb.push_back({pn, actual_args[pi].value});
                                     prelim_nb_meta.push_back(
                                         nttp_binding_metadata_for_template_param(
@@ -4855,19 +5361,17 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         return false;
                                     };
-                                    auto substitute_bound_type_arg =
+                                    std::function<TypeSpec(TypeSpec)>
+                                        substitute_bound_type_arg;
+                                    substitute_bound_type_arg =
                                         [&](TypeSpec type) -> TypeSpec {
-                                        if (!(type.base == TB_TYPEDEF ||
-                                              (!type.record_def &&
-                                               !type.tpl_struct_origin))) {
-                                            return type;
-                                        }
                                         TypeSpec bound_type{};
                                         bool found_bound_type = false;
                                         const TextId type_text_id =
                                             template_param_text_id_for_type(type);
                                         bool has_structured_binding = false;
-                                        if (type_text_id != kInvalidText) {
+                                        if (type.base == TB_TYPEDEF &&
+                                            type_text_id != kInvalidText) {
                                             for (const auto& binding :
                                                  type_binding_meta) {
                                                 if (binding.name_text_id ==
@@ -4883,7 +5387,8 @@ TypeSpec Parser::parse_base_type() {
                                                 }
                                             }
                                         }
-                                        if (!found_bound_type &&
+                                        if (type.base == TB_TYPEDEF &&
+                                            !found_bound_type &&
                                             !has_structured_binding) {
                                             if (const char* legacy_tag =
                                                     parse_base_type_legacy_tag_if_no_metadata(
@@ -4918,6 +5423,146 @@ TypeSpec Parser::parse_base_type() {
                                                 type.is_volatile || outer_volatile;
                                             return type;
                                         }
+                                        if (type.tpl_struct_args.data &&
+                                            type.tpl_struct_args.size > 0) {
+                                            for (int tai = 0;
+                                                 tai <
+                                                 type.tpl_struct_args.size;
+                                                 ++tai) {
+                                                TemplateArgRef& targ =
+                                                    type.tpl_struct_args
+                                                        .data[tai];
+                                                if (targ.kind ==
+                                                    TemplateArgKind::Type) {
+                                                    targ.type =
+                                                        substitute_bound_type_arg(
+                                                            targ.type);
+                                                }
+                                            }
+                                        }
+                                        if (type.tpl_struct_origin_key
+                                                    .base_text_id !=
+                                                kInvalidText &&
+                                            type.tpl_struct_args.data &&
+                                            type.tpl_struct_args.size > 0) {
+                                            const char* saved_member_name =
+                                                type.deferred_member_type_name;
+                                            const TextId
+                                                saved_member_text_id =
+                                                    type
+                                                        .deferred_member_type_text_id;
+                                            const Node* origin_primary =
+                                                find_template_struct_primary(
+                                                    type
+                                                        .tpl_struct_origin_key);
+                                            if (origin_primary) {
+                                                std::vector<ParsedTemplateArg>
+                                                    origin_args;
+                                                bool can_instantiate_origin =
+                                                    true;
+                                                for (int tai = 0;
+                                                     tai <
+                                                     type.tpl_struct_args.size;
+                                                     ++tai) {
+                                                    const TemplateArgRef& src =
+                                                        type.tpl_struct_args
+                                                            .data[tai];
+                                                    ParsedTemplateArg arg{};
+                                                    if (src.kind ==
+                                                        TemplateArgKind::Value) {
+                                                        if (zero_value_arg_ref_uses_debug_fallback(
+                                                                src) ||
+                                                            src.type
+                                                                .array_size_expr) {
+                                                            can_instantiate_origin =
+                                                                false;
+                                                            break;
+                                                        }
+                                                        arg.is_value = true;
+                                                        arg.value = src.value;
+                                                        arg.nttp_text_id =
+                                                            src.nttp_text_id;
+                                                    } else {
+                                                        if (unstructured_type_arg_ref_uses_debug_fallback(
+                                                                src)) {
+                                                            can_instantiate_origin =
+                                                                false;
+                                                            break;
+                                                        }
+                                                        arg.is_value = false;
+                                                        arg.type =
+                                                            substitute_bound_type_arg(
+                                                                src.type);
+                                                        if (type_mentions_bound_param(
+                                                                arg.type)) {
+                                                            can_instantiate_origin =
+                                                                false;
+                                                            break;
+                                                        }
+                                                    }
+                                                    origin_args.push_back(arg);
+                                                }
+                                                const char* origin_name =
+                                                    origin_primary
+                                                                ->template_origin_name &&
+                                                            origin_primary
+                                                                ->template_origin_name
+                                                                    [0]
+                                                        ? origin_primary
+                                                              ->template_origin_name
+                                                    : origin_primary->name &&
+                                                            origin_primary
+                                                                ->name[0]
+                                                        ? origin_primary->name
+                                                    : origin_primary
+                                                                  ->unqualified_name &&
+                                                            origin_primary
+                                                                ->unqualified_name
+                                                                    [0]
+                                                        ? origin_primary
+                                                              ->unqualified_name
+                                                        : type.tpl_struct_origin;
+                                                std::string origin_mangled;
+                                                TypeSpec origin_resolved{};
+                                                if (can_instantiate_origin &&
+                                                    origin_name &&
+                                                    origin_name[0] &&
+                                                    ensure_template_struct_instantiated_from_args(
+                                                        origin_name,
+                                                        origin_primary,
+                                                        origin_args,
+                                                        origin_primary->line,
+                                                        &origin_mangled,
+                                                        "bound_alias_member_type_arg",
+                                                        &origin_resolved)) {
+                                                    type = origin_resolved;
+                                                    type.deferred_member_type_name =
+                                                        saved_member_name;
+                                                    type.deferred_member_type_text_id =
+                                                        saved_member_text_id;
+                                                }
+                                            }
+                                        }
+                                        const std::string deferred_member_name =
+                                            deferred_member_lookup_name(type);
+                                        if (!deferred_member_name.empty()) {
+                                            TypeSpec resolved_member{};
+                                            if (lookup_struct_member_typedef_recursive_for_type(
+                                                    type,
+                                                    deferred_member_name,
+                                                    type
+                                                        .deferred_member_type_text_id,
+                                                    &resolved_member)) {
+                                                resolved_member
+                                                    .deferred_member_type_name =
+                                                    nullptr;
+                                                resolved_member
+                                                    .deferred_member_type_text_id =
+                                                    kInvalidText;
+                                                return substitute_bound_type_arg(
+                                                    resolved_member);
+                                            }
+                                        }
                                         return type;
                                     };
                                     auto nttp_value_for_ref =
@@ -4950,7 +5595,7 @@ TypeSpec Parser::parse_base_type() {
                                     };
                                     auto type_is_unsigned_integer =
                                         [&](TypeSpec type) -> bool {
-                                        type = bound_type_for_type(type);
+                                        type = substitute_bound_type_arg(type);
                                         switch (type.base) {
                                             case TB_UCHAR:
                                             case TB_USHORT:
@@ -4980,7 +5625,8 @@ TypeSpec Parser::parse_base_type() {
                                             node->left->unqualified_text_id;
                                         candidate.array_size = -1;
                                         candidate.inner_rank = -1;
-                                        *out_type = bound_type_for_type(candidate);
+                                        *out_type =
+                                            substitute_bound_type_arg(candidate);
                                         if (out_type->base != TB_TYPEDEF ||
                                             out_type->record_def) {
                                             return true;
@@ -5016,7 +5662,307 @@ TypeSpec Parser::parse_base_type() {
                                         return false;
                                     };
                                     std::function<bool(const Node*, long long*)>
-                                        eval_structured_nttp_expr =
+                                        eval_structured_nttp_expr;
+                                    auto push_eval_bindings =
+                                        [&](const Node* owner,
+                                            const std::vector<ParsedTemplateArg>& args)
+                                        -> std::pair<size_t, size_t> {
+                                        const size_t old_tb =
+                                            type_bindings.size();
+                                        const size_t old_nb =
+                                            nttp_bindings.size();
+                                        if (!owner ||
+                                            !owner->template_param_names) {
+                                            return {old_tb, old_nb};
+                                        }
+                                        for (int pi = 0;
+                                             pi < owner->n_template_params &&
+                                             pi < static_cast<int>(
+                                                      args.size());
+                                             ++pi) {
+                                            const char* pn =
+                                                owner
+                                                    ->template_param_names[pi];
+                                            if (!pn) continue;
+                                            if (owner->template_param_is_nttp &&
+                                                owner
+                                                    ->template_param_is_nttp
+                                                        [pi]) {
+                                                if (!args[pi].is_value)
+                                                    continue;
+                                                nttp_bindings.push_back(
+                                                    {pn, args[pi].value});
+                                                nttp_binding_meta.push_back(
+                                                    nttp_binding_metadata_for_template_param(
+                                                        *this, owner, pi, pn,
+                                                        args[pi].value));
+                                            } else if (!args[pi].is_value) {
+                                                type_bindings.push_back(
+                                                    {pn, args[pi].type});
+                                                BaseTypeBindingMetadata meta{};
+                                                meta.name = pn;
+                                                meta.name_text_id =
+                                                    owner
+                                                        ->template_param_name_text_ids
+                                                        ? owner
+                                                              ->template_param_name_text_ids
+                                                                  [pi]
+                                                        : kInvalidText;
+                                                if (meta.name_text_id ==
+                                                    kInvalidText) {
+                                                    meta.name_text_id =
+                                                        parser_text_id_for_token(
+                                                            kInvalidText, pn);
+                                                }
+                                                meta.type = args[pi].type;
+                                                type_binding_meta.push_back(
+                                                    meta);
+                                            }
+                                        }
+                                        return {old_tb, old_nb};
+                                    };
+                                    auto pop_eval_bindings =
+                                        [&](std::pair<size_t, size_t> sizes) {
+                                        type_bindings.resize(sizes.first);
+                                        type_binding_meta.resize(sizes.first);
+                                        nttp_bindings.resize(sizes.second);
+                                        nttp_binding_meta.resize(sizes.second);
+                                    };
+                                    auto parsed_args_from_ref =
+                                        [&](const Node* ref,
+                                            std::vector<ParsedTemplateArg>*
+                                                out_args) -> bool {
+                                        if (!ref || !out_args ||
+                                            ref->n_template_args <= 0 ||
+                                            !ref->template_arg_is_value) {
+                                            return false;
+                                        }
+                                        out_args->clear();
+                                        out_args->reserve(
+                                            ref->n_template_args);
+                                        for (int ai = 0;
+                                             ai < ref->n_template_args; ++ai) {
+                                            ParsedTemplateArg arg{};
+                                            arg.is_value =
+                                                ref->template_arg_is_value[ai];
+                                            if (arg.is_value) {
+                                                arg.value =
+                                                    ref->template_arg_values
+                                                        ? ref
+                                                              ->template_arg_values
+                                                                  [ai]
+                                                        : 0;
+                                                arg.nttp_text_id =
+                                                    ref
+                                                            ->template_arg_nttp_text_ids
+                                                        ? ref
+                                                              ->template_arg_nttp_text_ids
+                                                                  [ai]
+                                                        : kInvalidText;
+                                                arg.expr =
+                                                    ref->template_arg_exprs
+                                                        ? ref
+                                                              ->template_arg_exprs
+                                                                  [ai]
+                                                        : nullptr;
+                                                if (arg.expr) {
+                                                    long long ev = 0;
+                                                    if (!eval_structured_nttp_expr(
+                                                            arg.expr, &ev)) {
+                                                        return false;
+                                                    }
+                                                    arg.value = ev;
+                                                    arg.expr = nullptr;
+                                                }
+                                            } else {
+                                                if (!ref->template_arg_types)
+                                                    return false;
+                                                arg.type =
+                                                    substitute_bound_type_arg(
+                                                        ref
+                                                            ->template_arg_types
+                                                                [ai]);
+                                                if (type_mentions_bound_param(
+                                                        arg.type)) {
+                                                    return false;
+                                                }
+                                            }
+                                            out_args->push_back(arg);
+                                        }
+                                        return true;
+                                    };
+                                    std::function<bool(const Node*,
+                                                       const std::string&,
+                                                       long long*)>
+                                        lookup_static_member_recursive =
+                                            [&](const Node* cur,
+                                                const std::string& member_name,
+                                                long long* value) -> bool {
+                                        if (!cur || !value) return false;
+                                        std::vector<ParsedTemplateArg> cur_args;
+                                        if (cur->n_template_args > 0 &&
+                                            cur->template_arg_is_value) {
+                                            for (int ai = 0;
+                                                 ai < cur->n_template_args;
+                                                 ++ai) {
+                                                cur_args.push_back(
+                                                    parsed_template_arg_from_node_slot(
+                                                        cur, ai));
+                                            }
+                                        }
+                                        const auto saved =
+                                            push_eval_bindings(cur, cur_args);
+                                        for (int fi = 0; fi < cur->n_fields;
+                                             ++fi) {
+                                            const Node* f = cur->fields[fi];
+                                            if (!f || f->kind != NK_DECL ||
+                                                !f->is_static || !f->name ||
+                                                member_name != f->name) {
+                                                continue;
+                                            }
+                                            if (f->init &&
+                                                eval_structured_nttp_expr(
+                                                    f->init, value)) {
+                                                pop_eval_bindings(saved);
+                                                return true;
+                                            }
+                                            if (f->ival >= 0) {
+                                                *value = f->ival;
+                                                pop_eval_bindings(saved);
+                                                return true;
+                                            }
+                                        }
+                                        for (int bi = 0; bi < cur->n_bases;
+                                             ++bi) {
+                                            TypeSpec base_ts =
+                                                resolve_typedef_type_chain(
+                                                    cur->base_types[bi]);
+                                            const Node* base_def =
+                                                resolve_record_type_spec(
+                                                    base_ts,
+                                                    &definition_state_
+                                                         .struct_tag_def_map);
+                                            if (base_def &&
+                                                lookup_static_member_recursive(
+                                                    base_def, member_name,
+                                                    value)) {
+                                                pop_eval_bindings(saved);
+                                                return true;
+                                            }
+                                        }
+                                        pop_eval_bindings(saved);
+                                        return false;
+                                    };
+                                    auto eval_template_struct_static_member =
+                                        [&](const Node* ref,
+                                            long long* value) -> bool {
+                                        if (!ref || !value ||
+                                            !ref->has_template_args ||
+                                            ref->n_template_args <= 0 ||
+                                            ref->n_qualifier_segments <= 0 ||
+                                            ref->unqualified_text_id ==
+                                                kInvalidText) {
+                                            return false;
+                                        }
+                                        const TextId owner_text_id =
+                                            ref->qualifier_text_ids
+                                                ? ref->qualifier_text_ids
+                                                      [ref
+                                                               ->n_qualifier_segments -
+                                                           1]
+                                                : kInvalidText;
+                                        if (owner_text_id == kInvalidText)
+                                            return false;
+                                        const int owner_context =
+                                            ref->namespace_context_id >= 0
+                                                ? ref->namespace_context_id
+                                                : current_namespace_context_id();
+                                        const Node* owner_primary =
+                                            find_template_struct_primary(
+                                                owner_context, owner_text_id);
+                                        if (!owner_primary) return false;
+                                        std::vector<ParsedTemplateArg>
+                                            owner_args;
+                                        if (!parsed_args_from_ref(
+                                                ref, &owner_args)) {
+                                            return false;
+                                        }
+                                        const char* owner_name =
+                                            owner_primary
+                                                        ->template_origin_name &&
+                                                    owner_primary
+                                                        ->template_origin_name
+                                                            [0]
+                                                ? owner_primary
+                                                      ->template_origin_name
+                                            : owner_primary->name &&
+                                                    owner_primary->name[0]
+                                                ? owner_primary->name
+                                            : owner_primary
+                                                      ->unqualified_name;
+                                        if (!owner_name || !owner_name[0])
+                                            return false;
+                                        std::string owner_mangled;
+                                        TypeSpec owner_ts{};
+                                        if (!ensure_template_struct_instantiated_from_args(
+                                                owner_name, owner_primary,
+                                                owner_args,
+                                                owner_primary->line,
+                                                &owner_mangled,
+                                                "bound_static_member_nttp",
+                                                &owner_ts)) {
+                                            return false;
+                                        }
+                                        const Node* owner_def =
+                                            resolve_record_type_spec(
+                                                owner_ts,
+                                                &definition_state_
+                                                     .struct_tag_def_map);
+                                        if (!owner_def) return false;
+                                        const std::string member_name(
+                                            parser_text(
+                                                ref->unqualified_text_id, {}));
+                                        return !member_name.empty() &&
+                                               lookup_static_member_recursive(
+                                                   owner_def, member_name,
+                                                   value);
+                                    };
+                                    auto eval_template_global_ref =
+                                        [&](const Node* ref,
+                                            long long* value) -> bool {
+                                        if (!ref || !value ||
+                                            !ref->has_template_args ||
+                                            ref->n_template_args <= 0 ||
+                                            ref->unqualified_text_id ==
+                                                kInvalidText) {
+                                            return false;
+                                        }
+                                        const int context =
+                                            ref->namespace_context_id >= 0
+                                                ? ref->namespace_context_id
+                                                : current_namespace_context_id();
+                                        const Node* primary =
+                                            find_template_global_primary(
+                                                context,
+                                                ref->unqualified_text_id);
+                                        if (!primary || !primary->init)
+                                            return false;
+                                        std::vector<ParsedTemplateArg>
+                                            global_args;
+                                        if (!parsed_args_from_ref(
+                                                ref, &global_args)) {
+                                            return false;
+                                        }
+                                        const auto saved =
+                                            push_eval_bindings(primary,
+                                                               global_args);
+                                        const bool ok =
+                                            eval_structured_nttp_expr(
+                                                primary->init, value);
+                                        pop_eval_bindings(saved);
+                                        return ok;
+                                    };
+                                    eval_structured_nttp_expr =
                                             [&](const Node* node,
                                                 long long* out) -> bool {
                                         if (!node || !out) return false;
@@ -5026,6 +5972,14 @@ TypeSpec Parser::parse_base_type() {
                                             return true;
                                         }
                                         if (node->kind == NK_VAR) {
+                                            if (eval_template_struct_static_member(
+                                                    node, out)) {
+                                                return true;
+                                            }
+                                            if (eval_template_global_ref(node,
+                                                                         out)) {
+                                                return true;
+                                            }
                                             return nttp_value_for_ref(node, out);
                                         }
                                         if (node->kind == NK_CAST && node->left) {
@@ -5044,7 +5998,8 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         if (node->kind == NK_SIZEOF_TYPE) {
                                             const TypeSpec sized =
-                                                bound_type_for_type(node->type);
+                                                substitute_bound_type_arg(
+                                                    node->type);
                                             if (sized.base == TB_TYPEDEF &&
                                                 (parse_base_type_has_structured_identity_metadata(
                                                      sized) ||

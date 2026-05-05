@@ -163,6 +163,46 @@ static void attach_alias_template_member_typedef_expr_type(
     ident->type = ts;
 }
 
+static bool instantiate_template_owner_expr_type(
+    Parser& parser,
+    const Parser::QualifiedNameRef& qn,
+    const std::vector<Parser::TemplateArgParseResult>& parsed_args,
+    int line,
+    TypeSpec* out) {
+    if (!out || parsed_args.empty()) return false;
+    for (const Parser::TemplateArgParseResult& arg : parsed_args) {
+        if (!arg.is_value) continue;
+        const bool has_dependent_expr =
+            arg.expr || arg.type.array_size_expr ||
+            !arg.captured_expr_tokens.empty() ||
+            arg.nttp_text_id != kInvalidText ||
+            (arg.nttp_name && std::strncmp(arg.nttp_name, "$expr:", 6) == 0);
+        if (has_dependent_expr) return false;
+    }
+    const Node* primary = parser.find_template_struct_primary(qn);
+    if (!primary) return false;
+
+    const char* template_name =
+        primary->template_origin_name && primary->template_origin_name[0]
+            ? primary->template_origin_name
+        : primary->name && primary->name[0]
+            ? primary->name
+        : primary->unqualified_name && primary->unqualified_name[0]
+            ? primary->unqualified_name
+            : nullptr;
+    if (!template_name || !template_name[0]) return false;
+
+    std::string mangled;
+    TypeSpec resolved{};
+    if (!parser.ensure_template_struct_instantiated_from_args(
+            template_name, primary, parsed_args, line, &mangled,
+            "expression_template_owner_member_access", &resolved)) {
+        return false;
+    }
+    *out = resolved;
+    return true;
+}
+
 static void attach_constructor_owner_type_carrier(Parser& parser,
                                                   Node* node,
                                                   const TypeSpec& owner_ts) {
@@ -1973,10 +2013,19 @@ Node* parse_primary(Parser& parser) {
                                 // Try to instantiate via parse_base_type to get
                                 // the structured owner for Template<Args>.
                                 int after_member_pos = parser.pos_;
-                                parser.pos_ = ident_start;
                                 bool template_owner_requires_structured_metadata = false;
+                                TypeSpec structured_owner_ts{};
+                                bool have_structured_owner =
+                                    instantiate_template_owner_expr_type(
+                                        parser, qn, parsed_args, ln,
+                                        &structured_owner_ts);
+                                if (!have_structured_owner) {
+                                    parser.pos_ = ident_start;
+                                }
                                 try {
-                                    TypeSpec ts = parser.parse_base_type();
+                                    TypeSpec ts = have_structured_owner
+                                                      ? structured_owner_ts
+                                                      : parser.parse_base_type();
                                     owner_namespace_context_id =
                                         ts.namespace_context_id;
                                     template_owner_requires_structured_metadata =
@@ -2039,7 +2088,39 @@ Node* parse_primary(Parser& parser) {
                                     member_qn.is_global_qualified = true;
                                     owner_name.erase(0, 2);
                                 }
-                                if (owner_text_id != kInvalidText) {
+                                if (have_structured_owner &&
+                                    owner_text_id != kInvalidText) {
+                                    member_qn.qualifier_segments.push_back(
+                                        owner_name);
+                                    member_qn.qualifier_text_ids.push_back(
+                                        owner_text_id);
+                                } else if (qn.base_text_id != kInvalidText) {
+                                    member_qn.is_global_qualified =
+                                        qn.is_global_qualified;
+                                    for (size_t qi = 0;
+                                         qi < qn.qualifier_segments.size();
+                                         ++qi) {
+                                        member_qn.qualifier_segments.push_back(
+                                            qn.qualifier_segments[qi]);
+                                        member_qn.qualifier_text_ids.push_back(
+                                            qi < qn.qualifier_text_ids.size()
+                                                ? qn.qualifier_text_ids[qi]
+                                                : parser
+                                                      .parser_text_id_for_token(
+                                                          kInvalidText,
+                                                          qn.qualifier_segments
+                                                              [qi]));
+                                    }
+                                    const std::string owner_segment =
+                                        std::string(parser.parser_text(
+                                            qn.base_text_id, qn.base_name));
+                                    member_qn.qualifier_segments.push_back(
+                                        owner_segment.empty()
+                                            ? std::string(qn.base_name)
+                                            : owner_segment);
+                                    member_qn.qualifier_text_ids.push_back(
+                                        qn.base_text_id);
+                                } else if (owner_text_id != kInvalidText) {
                                     member_qn.qualifier_segments.push_back(
                                         owner_name);
                                     member_qn.qualifier_text_ids.push_back(

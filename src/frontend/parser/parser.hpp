@@ -531,6 +531,10 @@ class Parser {
       const Node* primary_tpl) const;
   const std::vector<Node*>* find_template_struct_specializations(
       const QualifiedNameRef& name, const Node* primary_tpl = nullptr) const;
+  const Node* find_template_global_primary(const QualifiedNameKey& key) const;
+  const Node* find_template_global_primary(int context_id,
+                                           TextId name_text_id) const;
+  const Node* find_template_global_primary(const QualifiedNameRef& name) const;
   const Node* select_template_struct_pattern_for_args(
       const std::vector<TemplateArgParseResult>& args,
       const Node* primary_tpl,
@@ -544,6 +548,10 @@ class Parser {
       const QualifiedNameKey& key, Node* node);
   void register_template_struct_specialization(
       int context_id, TextId primary_name_text_id, Node* node);
+  void register_template_global_primary(const QualifiedNameKey& key,
+                                        Node* node);
+  void register_template_global_primary(int context_id, TextId name_text_id,
+                                        Node* node);
   bool parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl, int arg_idx,
                                     bool* out_has_more,

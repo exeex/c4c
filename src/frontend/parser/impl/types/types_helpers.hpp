@@ -629,6 +629,7 @@ void append_typespec_reparse_tokens(Parser& parser,
 bool instantiate_template_struct_via_injected_parse(
     Parser& parser,
     const std::string& template_name,
+    const Node* primary_tpl,
     const std::vector<ParsedTemplateArg>& args,
     int line,
     const char* debug_reason = nullptr,
@@ -637,7 +638,14 @@ bool instantiate_template_struct_via_injected_parse(
     Token t{};
     t.line = line;
     t.column = 0;
-    append_qualified_name_tokens(parser, &inject_toks, t, template_name);
+    const char* primary_name =
+        primary_tpl && primary_tpl->unqualified_name &&
+                primary_tpl->unqualified_name[0]
+            ? primary_tpl->unqualified_name
+        : primary_tpl && primary_tpl->name && primary_tpl->name[0]
+            ? primary_tpl->name
+        : template_name.c_str();
+    append_qualified_name_tokens(parser, &inject_toks, t, primary_name);
     inject_toks.push_back(parser.make_injected_token(t, TokenKind::Less, "<"));
     for (int ai = 0; ai < static_cast<int>(args.size()); ++ai) {
         if (ai > 0) {
@@ -663,8 +671,19 @@ bool instantiate_template_struct_via_injected_parse(
     inject_toks.push_back(parser.make_injected_token(t, TokenKind::Greater, ">"));
     inject_toks.push_back(parser.make_injected_token(t, TokenKind::Semi, ";"));
 
-    return parser.parse_injected_base_type(std::move(inject_toks), debug_reason,
-                                           out_resolved);
+    const bool pushed_namespace =
+        primary_tpl && primary_tpl->namespace_context_id >= 0 &&
+        primary_tpl->namespace_context_id != parser.current_namespace_context_id();
+    if (pushed_namespace) {
+        parser.push_namespace_context(primary_tpl->namespace_context_id);
+    }
+    const bool ok = parser.parse_injected_base_type(std::move(inject_toks),
+                                                    debug_reason,
+                                                    out_resolved);
+    if (pushed_namespace) {
+        parser.pop_namespace_context();
+    }
+    return ok;
 }
 
 bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,

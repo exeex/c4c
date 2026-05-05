@@ -199,6 +199,38 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
     return find_template_struct_specializations(context_id, name.base_text_id);
 }
 
+const Node* Parser::find_template_global_primary(
+    const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    auto it = template_state_.template_global_defs_by_key.find(key);
+    return it != template_state_.template_global_defs_by_key.end()
+               ? it->second
+               : nullptr;
+}
+
+const Node* Parser::find_template_global_primary(
+    int context_id, TextId name_text_id) const {
+    if (context_id < 0 || name_text_id == kInvalidText) return nullptr;
+    if (const Node* direct = find_template_global_primary(
+            alias_template_key_in_context(context_id, name_text_id))) {
+        return direct;
+    }
+    const VisibleNameResult resolved_value =
+        resolve_visible_value(name_text_id);
+    if (!resolved_value) return nullptr;
+    return find_template_global_primary(alias_template_key_in_context(
+        resolved_value.context_id, resolved_value.base_text_id));
+}
+
+const Node* Parser::find_template_global_primary(
+    const QualifiedNameRef& name) const {
+    const int context_id =
+        name.qualifier_segments.empty()
+            ? (name.is_global_qualified ? 0 : current_namespace_context_id())
+            : resolve_namespace_context(name);
+    return find_template_global_primary(context_id, name.base_text_id);
+}
+
 const Node* Parser::select_template_struct_pattern_for_args(
     const std::vector<TemplateArgParseResult>& args,
     const Node* primary_tpl,
@@ -241,6 +273,22 @@ void Parser::register_template_struct_specialization(
     int context_id, TextId primary_name_text_id, Node* node) {
     register_template_struct_specialization(
         alias_template_key_in_context(context_id, primary_name_text_id), node);
+}
+
+void Parser::register_template_global_primary(
+    const QualifiedNameKey& key, Node* node) {
+    if (!node || node->kind != NK_GLOBAL_VAR || node->n_template_params <= 0 ||
+        key.base_text_id == kInvalidText) {
+        return;
+    }
+    template_state_.template_global_defs_by_key[key] = node;
+}
+
+void Parser::register_template_global_primary(int context_id,
+                                              TextId name_text_id,
+                                              Node* node) {
+    register_template_global_primary(
+        alias_template_key_in_context(context_id, name_text_id), node);
 }
 
 bool Parser::ensure_template_struct_instantiated_from_args(
@@ -289,7 +337,7 @@ bool Parser::ensure_template_struct_instantiated_from_args(
 
     if (!definition_state_.struct_tag_def_map.count(*out_mangled)) {
         if (!instantiate_template_struct_via_injected_parse(
-                *this, template_name, args, line, debug_reason,
+                *this, template_name, primary_tpl, args, line, debug_reason,
                 out_resolved)) {
             return false;
         }

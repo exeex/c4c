@@ -205,6 +205,8 @@ struct ParserTemplateState {
       template_struct_defs_by_key;
   std::unordered_map<QualifiedNameKey, std::vector<Node*>, QualifiedNameKeyHash>
       template_struct_specializations_by_key;
+  std::unordered_map<QualifiedNameKey, Node*, QualifiedNameKeyHash>
+      template_global_defs_by_key;
   std::unordered_set<TemplateInstantiationKey, TemplateInstantiationKeyHash>
       instantiated_template_struct_keys_by_key;
   std::unordered_map<TemplateInstantiationMemberTypedefKey, TypeSpec,
