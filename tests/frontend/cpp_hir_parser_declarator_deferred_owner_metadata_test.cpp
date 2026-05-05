@@ -237,11 +237,48 @@ void test_type_name_preserves_deferred_owner_through_function_ref_declarator() {
               "template-member type-id should preserve structured owner identity");
 }
 
+void test_using_alias_dependent_typename_probe_restores_template_closes() {
+  const char* source =
+      "namespace eastl {\n"
+      "template <typename T>\n"
+      "struct remove_reference { using type = T; };\n"
+      "template <typename T>\n"
+      "struct add_lvalue_reference { using type = T&; };\n"
+      "template <bool B, typename T, typename F>\n"
+      "struct conditional { using type = T; };\n"
+      "template <typename T>\n"
+      "struct is_lvalue_reference { static constexpr bool value = true; };\n"
+      "template <unsigned long I, typename Tuple>\n"
+      "using tuple_element_t = int;\n"
+      "template <unsigned long I, typename Tuple>\n"
+      "using const_tuple_element_t = typename conditional<\n"
+      "    is_lvalue_reference<tuple_element_t<I, Tuple>>::value,\n"
+      "    typename add_lvalue_reference<const typename remove_reference<\n"
+      "        tuple_element_t<I, Tuple>>::type>::type,\n"
+      "    const tuple_element_t<I, Tuple>>::type;\n"
+      "}\n";
+
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(
+      tokens, arena, &lexer.text_table(), &lexer.file_table(),
+      c4c::SourceProfile::CppSubset,
+      "cpp_hir_parser_declarator_deferred_owner_metadata_test.cpp");
+  (void)parser.parse();
+  expect_true(parser.find_parser_text_id("const_tuple_element_t") !=
+                  c4c::kInvalidText,
+              "dependent typename using-alias should parse without corrupting "
+              "nested template-close tokens");
+}
+
 }  // namespace
 
 int main() {
   test_deferred_template_owner_prefers_structured_identity_over_stale_tag();
   test_type_name_preserves_deferred_owner_through_function_ref_declarator();
+  test_using_alias_dependent_typename_probe_restores_template_closes();
   std::cout << "PASS: "
                "cpp_hir_parser_declarator_deferred_owner_metadata_test\n";
   return 0;

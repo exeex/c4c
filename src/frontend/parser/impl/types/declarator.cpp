@@ -2148,7 +2148,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
 
 TypeSpec Parser::parse_type_name() {
     if (is_cpp_mode() && check(TokenKind::KwTypename)) {
-        const int saved_pos = pos_;
+        TentativeParseGuard guard(*this);
         std::string resolved;
         TypeSpec resolved_type{};
         bool has_resolved_type = false;
@@ -2159,9 +2159,9 @@ TypeSpec Parser::parse_type_name() {
             is_parenthesized_pointer_declarator_start(*this)) {
             const char* ignored = nullptr;
             parse_declarator(resolved_type, &ignored);
+            guard.commit();
             return resolved_type;
         }
-        pos_ = saved_pos;
     }
     TypeSpec ts = parse_base_type();
     const char* ignored = nullptr;
