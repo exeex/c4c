@@ -17,6 +17,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 void test_alias_member_substitution_prefers_template_param_text_id() {
   const char* source =
       "template <typename T, typename U>\n"
@@ -44,7 +52,7 @@ void test_alias_member_substitution_prefers_template_param_text_id() {
   c4c::TypeSpec& member_type = owner->member_typedef_types[0];
   expect_true(member_type.base == c4c::TB_TYPEDEF,
               "Owner<T, U>::type should carry a typedef parameter type");
-  member_type.tag = arena.strdup("U");
+  set_legacy_tag_if_present(member_type, arena.strdup("U"), 0);
   member_type.tag_text_id = c4c::kInvalidText;
   member_type.template_param_text_id = t_text;
 
