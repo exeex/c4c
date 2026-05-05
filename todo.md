@@ -8,29 +8,30 @@ Current Step Title: Triage Broad Validation Regression After Field Removal
 
 ## Just Finished
 
-Step 6 broad-validation triage fixed the delegated parser/EASTL EOF bucket
-where dependent `typename conditional<...>::type` using-aliases corrupted
-nested `>>` template-close tokens during the `parse_type_name()` leading
-`typename` probe. The probe now restores parser token mutations through the
-existing tentative guard, and the EASTL-shaped alias has a focused frontend
-regression test.
+Step 6 broad-validation triage fixed the remaining delegated C++ parse timeout:
+`cpp_eastl_vector_parse_recipe` no longer hangs while parsing EASTL
+`numeric_limits.h`. Dependent-typename owner-prefix reparses now go through
+`parse_injected_base_type()`, and that helper guarantees injected token streams
+end with `EndOfFile` so parse loops cannot pin on a terminal synthetic `;`.
+No tests were weakened and no rendered-tag consumer fallback was added.
 
 ## Suggested Next
 
-Continue Step 6 resume triage against the remaining broad-validation failures
-outside this EOF bucket. The close bar for idea 143 is still full green:
-`ctest --test-dir build -j 8 --output-on-failure` must pass with zero failures,
-not merely this now-green delegated subset.
+Continue Step 6 against the refreshed full-suite non-C++-route leftovers in
+the C external suites: incomplete C record typedef/object families
+(`RenderInfo`, `DB_LSN`, `DB_TXNLIST`), C struct mirror/name disagreement in
+GEP/call metadata, one C function redeclaration conflict, one C field lookup
+miss, and two C runtime abort/segfault cases.
 
 ## Watchouts
 
 - Do not delete `TypeSpec::tag` during this runbook.
 - Do not add another local rendered-tag fallback in a consumer as progress.
 - Preserve stale-rendered-spelling disagreement tests.
-- The repaired EOF family came from manual cursor-only rollback after a
-  dependent-typename probe; future parser probes that can call
-  `match_template_close()` need real tentative-state restoration so split
-  `>>`, `>=`, or `>>=` mutations do not leak.
+- The repaired timeout came from open-coded injected reparses of dependent
+  template owner prefixes. Future injected parser routes should use
+  `parse_injected_base_type()` or otherwise include an EOF token and restore
+  the full parser token stream.
 - Rejected baseline candidate: accepting the visible lexical alias
   type-argument failure as baseline drift is not valid because
   `frontend_parser_tests` contains the intended non-fabrication guard and the
@@ -40,9 +41,16 @@ not merely this now-green delegated subset.
 
 ## Proof
 
-Accepted proof is in `test_before.log`:
-`cmake --build build --target frontend_parser_tests cpp_hir_parser_declarator_deferred_owner_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_declarator_deferred_owner_structured_metadata|cpp_positive_sema_(eastl_slice7_piecewise_ctor_parse|iterator_concepts_following_hash_base_parse|stl_iterator_then_max_size_type_parse)_cpp|cpp_eastl_tuple_fwd_decls_parse_recipe|cpp_positive_sema____generated_parser_disambiguation_matrix_compile_positive_owner_dependent_(template_member|typename)__decl_(function_lvalue_ref|function_pointer|function_rvalue_ref|member_function_pointer)__ctx_c_style_cast_target__compile_positive_cpp)$'`.
+Accepted proof is in `test_after.log`:
+`cmake --build build --target frontend_parser_tests cpp_hir_parser_declarator_deferred_owner_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_declarator_deferred_owner_structured_metadata|cpp_eastl_(vector|utility|memory_uses_allocator)_parse_recipe)$'`.
 
-The delegated subset ran 14 tests and all passed, including the four prior EOF
-failures, `frontend_parser_tests`, the Step 4 deferred-owner focused test, and
-the dependent `typename`/cast matrix guards.
+The delegated subset ran 5 tests and all passed. `cpp_eastl_vector_parse_recipe`
+passed in 4.65s; EASTL utility and memory recipes plus
+`frontend_parser_tests` and
+`cpp_hir_parser_declarator_deferred_owner_structured_metadata` stayed green.
+
+Refreshed full-suite evidence was appended to `test_after.log` with
+`ctest --test-dir build -j --output-on-failure`: 3012/3023 passed, 11 failed,
+all in C external suites. Failing families were C incomplete object types,
+C struct mirror/name disagreement, one C conflicting function type, one C
+field lookup miss, and two C runtime abort/segfault cases.

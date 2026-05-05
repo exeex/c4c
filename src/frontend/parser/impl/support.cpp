@@ -146,6 +146,10 @@ bool Parser::parse_injected_base_type(std::vector<Token> tokens,
                                       const char* debug_reason,
                                       TypeSpec* out_resolved) {
     const int saved_pos = pos_;
+    if (tokens.empty() || tokens.back().kind != TokenKind::EndOfFile) {
+        const Token seed = tokens.empty() ? Token{} : tokens.back();
+        tokens.push_back(make_injected_token(seed, TokenKind::EndOfFile, ""));
+    }
     const std::string injected_detail =
         std::string("reason=") +
         (debug_reason ? debug_reason : "template_instantiation") +

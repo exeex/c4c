@@ -668,16 +668,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                     make_injected_token(sentinel_seed, TokenKind::Semi, ";");
                 inject_toks.push_back(sentinel);
 
-                int saved_pos = pos_;
-                auto saved_toks = std::move(tokens_);
-                tokens_ = std::move(inject_toks);
-                pos_ = 0;
-                try {
-                    owner_ts = parse_base_type();
-                } catch (...) {
-                }
-                tokens_ = std::move(saved_toks);
-                pos_ = saved_pos;
+                parse_injected_base_type(std::move(inject_toks),
+                                         "dependent_typename_owner_member",
+                                         &owner_ts);
 
                 auto attach_final_owner_spelling = [&]() {
                     if (qn.qualifier_segments.empty()) return;
@@ -851,16 +844,10 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                         make_injected_token(sentinel_seed, TokenKind::Semi, ";");
                     inject_toks.push_back(sentinel);
 
-                    int saved_pos = pos_;
-                    auto saved_toks = std::move(tokens_);
-                    tokens_ = std::move(inject_toks);
-                    pos_ = 0;
-                    try {
-                        owner_ts = parse_base_type();
-                    } catch (...) {
-                    }
-                    tokens_ = std::move(saved_toks);
-                    pos_ = saved_pos;
+                    parse_injected_base_type(
+                        std::move(inject_toks),
+                        "dependent_typename_preserved_owner_member",
+                        &owner_ts);
 
                     if (has_deferred_template_owner_member_identity(owner_ts)) {
                         owner_ts.deferred_member_type_name =
