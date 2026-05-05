@@ -8,49 +8,53 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's alias-template member-typedef carrier repair is implemented without
-reintroducing `TypeSpec::tag`. Parser alias-template references now project the
-structured `ParserAliasTemplateInfo::member_typedef` /
-`ParserAliasTemplateMemberTypedefInfo` payload onto the reference expression's
-`TypeSpec`, including the owner template key, concrete owner arguments, and the
-deferred member typedef text id for
-`using add_lvalue_reference_t = typename add_lvalue_reference<T>::type`.
+Step 6's C++ positive/Sema parser fallout repair improved the
+`cpp_positive_sema_` baseline without reintroducing `TypeSpec::tag`. Qualified
+template-id type parsing now accepts qualified alias templates before `<...>`
+and projects the structured `ParserAliasTemplateInfo::member_typedef` /
+`ParserAliasTemplateMemberTypedefInfo` carrier into a `TypeSpec` for declaration
+and parameter type contexts. This repairs qualified/template alias member
+typedef cases such as `ns::alias_of_alias_t<int, short>` and
+`carrier_probe::pick_second_t<int, short>` without `_t` spelling inference or
+rendered-string semantic lookup.
 
-HIR template-global instantiation now accepts that projected expression type
-when a syntactically value-shaped argument is supplied for a type template
-parameter. The mangling path preserves the alias owner/argument carrier for
-fully concrete projected alias-template member typedefs, while avoiding the
-over-broad deferred-member primary lookup that had caused existing generic
-member owner chains like `box<T>` and `leaf<T>` to realize before template
-parameter substitution.
+The same qualified type parser now keeps unresolved qualified template-id type
+heads such as `ns::holder<T>` on the type side by carrying the structured
+qualified owner key plus parsed template arguments instead of leaving `<...>`
+for expression parsing.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 6 repair slice, or choose any
-additional milestone-level validation needed before lifecycle handoff.
+Next packet should target the remaining pre-existing C++ positive/Sema fallout
+left in `test_after.log`, dominated by EASTL/template-owner/member access and
+copy/move/range-for failures.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
 - Do not infer alias-template targets from `_t` spelling, debug text,
-  `tag_ctx`, rendered names, or module dump strings. This slice carries the
-  alias member typedef through parser-owned structured metadata.
-- Origin-carrier mangling must stay gated to concrete template arguments; using
-  it for unresolved template parameters recreates fake owners such as
-  `box_T_tag_ctx...` and breaks existing member typedef owner chains.
+  `tag_ctx`, rendered names, or module dump strings.
+- The delegated proof is still red because 46 baseline failures remain, but the
+  failed set only shrank: 51 failures before, 46 after, with no new failures.
+- The repaired family includes
+  `cpp_positive_sema_template_alias_member_typedef_dependent_ref_runtime_cpp`,
+  `cpp_positive_sema_template_alias_member_typedef_reordered_owner_runtime_cpp`,
+  `cpp_positive_sema_template_alias_member_typedef_structured_carrier_runtime_cpp`,
+  `cpp_positive_sema_qualified_template_unresolved_param_type_parse_cpp`, and
+  adjacent `cpp_positive_sema_sfinae_template_parameter_patterns_parse_cpp`.
 
 ## Proof
 
 Delegated proof command:
-`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_|frontend_)' > test_after.log 2>&1`
+`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
 
-Result: passed.
+Result: improved red baseline.
 
-`cmake --build build` passed. The frontend/HIR subset passed 117/117 tests,
-including `cpp_hir_template_inherited_member_typedef_trait` and the repaired
-regressions `cpp_hir_template_member_owner_chain`,
-`cpp_hir_template_member_owner_decl_and_cast`,
-`cpp_hir_template_member_owner_field_and_local`, and
-`cpp_hir_template_member_owner_signature_local`.
+`cmake --build build` passed. The `cpp_positive_sema_` subset now reports
+838/884 passing and 46 failing, compared with `test_before.log` at 833/884
+passing and 51 failing. Fixed tests: the three qualified/template alias member
+typedef cases, `cpp_positive_sema_qualified_template_unresolved_param_type_parse_cpp`,
+and `cpp_positive_sema_sfinae_template_parameter_patterns_parse_cpp`. No new
+failures were introduced.
 
 Canonical proof log: `test_after.log`.
