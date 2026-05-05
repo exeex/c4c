@@ -483,6 +483,42 @@ static bool try_resolve_alias_template_member_typedef_type(
     return false;
 }
 
+static bool try_resolve_template_owner_member_typedef_type(
+    Parser& parser,
+    const Node* owner_primary,
+    const std::vector<Parser::TemplateArgParseResult>& actual_args,
+    TextId member_text_id,
+    TypeSpec* out_ts) {
+    if (!owner_primary || member_text_id == kInvalidText || !out_ts) {
+        return false;
+    }
+
+    std::vector<std::pair<std::string, TypeSpec>> type_bindings;
+    std::vector<std::pair<std::string, long long>> nttp_bindings;
+    const std::vector<Node*>* specializations =
+        parser.find_template_struct_specializations(owner_primary);
+    const Node* selected = parser.select_template_struct_pattern_for_args(
+        actual_args, owner_primary, specializations, &type_bindings,
+        &nttp_bindings);
+    (void)nttp_bindings;
+    if (!selected || selected->n_member_typedefs <= 0 ||
+        !selected->member_typedef_names || !selected->member_typedef_types) {
+        return false;
+    }
+
+    for (int i = 0; i < selected->n_member_typedefs; ++i) {
+        const char* member = selected->member_typedef_names[i];
+        if (!member || !member[0]) continue;
+        const TextId selected_member_text_id =
+            parser.parser_text_id_for_token(kInvalidText, member);
+        if (selected_member_text_id != member_text_id) continue;
+        *out_ts = declarator_apply_type_bindings(
+            parser, selected->member_typedef_types[i], type_bindings);
+        return true;
+    }
+    return false;
+}
+
 bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                           const Node* primary_tpl, int arg_idx,
                                           bool* out_has_more,
@@ -1646,6 +1682,24 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         std::vector<Parser::TemplateArgParseResult> parsed_args;
         if (!parser.parse_template_argument_list(&parsed_args, primary_tpl))
             return false;
+
+        if (parser.check(TokenKind::ColonColon)) {
+            parser.consume();
+            if (parser.check(TokenKind::KwTemplate)) parser.consume();
+            if (!parser.check(TokenKind::Identifier)) return false;
+            const Token& member_tok = parser.cur();
+            const TextId member_text_id =
+                parser.parser_text_id_for_token(
+                    member_tok.text_id, parser.token_spelling(member_tok));
+            parser.consume();
+            if (!try_resolve_template_owner_member_typedef_type(
+                    parser, primary_tpl, parsed_args, member_text_id,
+                    out_ts)) {
+                return false;
+            }
+            template_guard.commit();
+            return true;
+        }
 
         out_ts->base = TB_STRUCT;
         out_ts->tag_text_id = qn.base_text_id;
