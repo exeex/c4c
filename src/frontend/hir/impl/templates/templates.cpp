@@ -814,15 +814,6 @@ const Node* Lowerer::canonical_template_struct_primary(
   if (const Node* primary = find_template_struct_primary(ts.tpl_struct_origin)) {
     return primary;
   }
-  if (const size_t scope_sep = rendered_origin.rfind("::");
-      scope_sep != std::string::npos) {
-    const std::string unqualified = rendered_origin.substr(scope_sep + 2);
-    if (!unqualified.empty()) {
-      if (const Node* primary = find_template_struct_primary(unqualified)) {
-        return primary;
-      }
-    }
-  }
   auto try_family_root = [&](const std::string& raw_name) -> const Node* {
     const size_t scope_sep = raw_name.rfind("::");
     const size_t search_from = (scope_sep == std::string::npos) ? 0 : (scope_sep + 2);
