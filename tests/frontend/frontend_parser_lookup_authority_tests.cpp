@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -21,6 +22,33 @@ namespace {
 
 void expect_true(bool cond, const std::string& msg) {
   if (!cond) fail(msg);
+}
+
+template <typename T, typename = void>
+struct HasLegacyTypeSpecTag : std::false_type {};
+
+template <typename T>
+struct HasLegacyTypeSpecTag<T, std::void_t<decltype(std::declval<T&>().tag)>>
+    : std::true_type {};
+
+template <typename T>
+void set_legacy_typespec_tag(T& type, const char* tag) {
+  if constexpr (HasLegacyTypeSpecTag<T>::value) {
+    type.tag = tag;
+  } else {
+    (void)type;
+    (void)tag;
+  }
+}
+
+template <typename T>
+const char* legacy_typespec_tag_or_null(const T& type) {
+  if constexpr (HasLegacyTypeSpecTag<T>::value) {
+    return type.tag;
+  } else {
+    (void)type;
+    return nullptr;
+  }
 }
 
 c4c::Node* parse_cpp_source(c4c::Arena& arena, c4c::Lexer& lexer) {
@@ -733,7 +761,8 @@ void test_sema_record_completeness_uses_structured_metadata_before_rendered_tag(
     carried_type.array_size = -1;
     carried_type.inner_rank = -1;
     carried_type.base = c4c::TB_STRUCT;
-    carried_type.tag = arena.strdup("MissingRenderedComplete");
+    set_legacy_typespec_tag(carried_type,
+                            arena.strdup("MissingRenderedComplete"));
     carried_type.record_def = complete_record;
 
     c4c::Node* global = parser.make_node(c4c::NK_GLOBAL_VAR, 2);
@@ -780,7 +809,7 @@ void test_sema_record_completeness_uses_structured_metadata_before_rendered_tag(
     stale_type.array_size = -1;
     stale_type.inner_rank = -1;
     stale_type.base = c4c::TB_STRUCT;
-    stale_type.tag = arena.strdup("RenderedComplete");
+    set_legacy_typespec_tag(stale_type, arena.strdup("RenderedComplete"));
     stale_type.tag_text_id = missing_text;
     stale_type.namespace_context_id = namespace_context;
 
@@ -2361,7 +2390,7 @@ void test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrie
   rendered_only.array_size = -1;
   rendered_only.inner_rank = -1;
   rendered_only.base = c4c::TB_TYPEDEF;
-  rendered_only.tag = arena.strdup("RenderedT");
+  set_legacy_typespec_tag(rendered_only, arena.strdup("RenderedT"));
   callee->template_arg_types[0] = rendered_only;
   c4c::TypeSpec resolved = bind_arg();
   expect_true(resolved.base == c4c::TB_SHORT,
@@ -2411,7 +2440,7 @@ void test_consteval_type_binding_resolve_uses_tag_text_id_without_tag() {
   typedef_type.array_size = -1;
   typedef_type.inner_rank = -1;
   typedef_type.base = c4c::TB_TYPEDEF;
-  typedef_type.tag = nullptr;
+  set_legacy_typespec_tag(typedef_type, nullptr);
   typedef_type.tag_text_id = param_text;
 
   c4c::Node sizeof_type{};
@@ -2474,7 +2503,7 @@ void test_nested_consteval_call_preserves_structured_template_bindings() {
   inner_type_ref.array_size = -1;
   inner_type_ref.inner_rank = -1;
   inner_type_ref.base = c4c::TB_TYPEDEF;
-  inner_type_ref.tag = arena.strdup("RenderedInnerT");
+  set_legacy_typespec_tag(inner_type_ref, arena.strdup("RenderedInnerT"));
   inner_type_ref.tag_text_id = inner_t_text;
   inner_type_ref.template_param_owner_namespace_context_id =
       parser.current_namespace_context_id();
@@ -2522,7 +2551,8 @@ void test_nested_consteval_call_preserves_structured_template_bindings() {
   inner_callee->n_template_args = 2;
   inner_callee->template_arg_types = arena.alloc_array<c4c::TypeSpec>(2);
   inner_callee->template_arg_types[0] = make_ts(c4c::TB_TYPEDEF);
-  inner_callee->template_arg_types[0].tag = arena.strdup("RenderedOuterT");
+  set_legacy_typespec_tag(inner_callee->template_arg_types[0],
+                          arena.strdup("RenderedOuterT"));
   inner_callee->template_arg_types[0].tag_text_id = outer_t_text;
   inner_callee->template_arg_types[0].template_param_owner_namespace_context_id =
       parser.current_namespace_context_id();
@@ -2700,7 +2730,8 @@ void test_alias_template_deferred_nttp_bases_carry_structured_record_def() {
                 std::string("alias-template deferred NTTP base should carry "
                             "record_def for ") +
                     (record->name ? record->name : "<unnamed>"));
-    record->base_types[0].tag = arena.strdup("RenderedBaseDrift");
+    set_legacy_typespec_tag(record->base_types[0],
+                            arena.strdup("RenderedBaseDrift"));
     if (record->base_types[0].tpl_struct_args.data &&
         record->base_types[0].tpl_struct_args.size > 0) {
       record->base_types[0].tpl_struct_args.data[0].debug_text =
@@ -2747,7 +2778,7 @@ void test_alias_template_nttp_base_carrier_ignores_stale_debug_text() {
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_STRUCT;
-  aliased.tag = arena.strdup("Carrier_RenderedDrift");
+  set_legacy_typespec_tag(aliased, arena.strdup("Carrier_RenderedDrift"));
   aliased.tpl_struct_origin = arena.strdup("Carrier");
   aliased.record_def = carrier_record;
   aliased.tpl_struct_args.size = 1;
@@ -2772,7 +2803,7 @@ void test_alias_template_nttp_base_carrier_ignores_stale_debug_text() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -2820,7 +2851,8 @@ void test_alias_template_mixed_carrier_skips_rendered_arg_fallback() {
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_STRUCT;
-  aliased.tag = arena.strdup("Carrier_OpaqueNoCarrier_RenderedDrift");
+  set_legacy_typespec_tag(
+      aliased, arena.strdup("Carrier_OpaqueNoCarrier_RenderedDrift"));
   aliased.tpl_struct_origin = arena.strdup("Carrier");
   aliased.record_def = carrier_record;
   aliased.tpl_struct_args.size = 2;
@@ -2853,7 +2885,7 @@ void test_alias_template_mixed_carrier_skips_rendered_arg_fallback() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -2905,7 +2937,7 @@ void test_alias_template_record_def_blocks_debug_arg_substitution() {
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_STRUCT;
-  aliased.tag = arena.strdup("Carrier_T");
+  set_legacy_typespec_tag(aliased, arena.strdup("Carrier_T"));
   aliased.tpl_struct_origin = arena.strdup("Carrier");
   aliased.record_def = carrier_record;
   aliased.tpl_struct_args.size = 1;
@@ -2931,7 +2963,7 @@ void test_alias_template_record_def_blocks_debug_arg_substitution() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -2978,7 +3010,7 @@ void test_alias_template_origin_key_blocks_debug_arg_substitution() {
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_STRUCT;
-  aliased.tag = arena.strdup("Carrier_T");
+  set_legacy_typespec_tag(aliased, arena.strdup("Carrier_T"));
   aliased.tpl_struct_origin = arena.strdup("Carrier");
   aliased.tpl_struct_origin_key.context_id =
       parser.current_namespace_context_id();
@@ -3007,7 +3039,7 @@ void test_alias_template_origin_key_blocks_debug_arg_substitution() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -3047,7 +3079,7 @@ void test_alias_template_origin_key_only_blocks_debug_arg_substitution() {
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_STRUCT;
-  aliased.tag = arena.strdup("Carrier_T");
+  set_legacy_typespec_tag(aliased, arena.strdup("Carrier_T"));
   aliased.tpl_struct_origin = arena.strdup("Carrier");
   aliased.tpl_struct_origin_key.context_id =
       parser.current_namespace_context_id();
@@ -3075,7 +3107,7 @@ void test_alias_template_origin_key_only_blocks_debug_arg_substitution() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -3131,7 +3163,7 @@ void test_alias_member_typedef_origin_key_only_materializes_record_def() {
                   member_type.tpl_struct_origin_key.base_text_id !=
                       c4c::kInvalidText,
               "test fixture should start from an origin-key-only member type");
-  member_type.tag = arena.strdup("RenderedCarrierDrift");
+  set_legacy_typespec_tag(member_type, arena.strdup("RenderedCarrierDrift"));
   member_type.tpl_struct_origin = arena.strdup("RenderedCarrierDrift");
   if (member_type.tpl_struct_args.data && member_type.tpl_struct_args.size > 0) {
     member_type.tpl_struct_args.data[0].debug_text =
@@ -3210,7 +3242,7 @@ void test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name() 
   owner_member.array_size = -1;
   owner_member.inner_rank = -1;
   owner_member.base = c4c::TB_STRUCT;
-  owner_member.tag = arena.strdup("Carrier_3");
+  set_legacy_typespec_tag(owner_member, arena.strdup("Carrier_3"));
   owner_member.record_def = carrier_3;
 
   c4c::ParserTemplateState::TemplateInstantiationKey owner_3_key;
@@ -3259,7 +3291,7 @@ void test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name() 
   concrete_wrapper.array_size = -1;
   concrete_wrapper.inner_rank = -1;
   concrete_wrapper.base = c4c::TB_STRUCT;
-  concrete_wrapper.tag = arena.strdup("ConcreteWrapper");
+  set_legacy_typespec_tag(concrete_wrapper, arena.strdup("ConcreteWrapper"));
   concrete_wrapper.tag_text_id = concrete_wrapper_text;
   concrete_wrapper.record_def = wrapper_inst;
   parser.register_structured_typedef_binding_in_context(
@@ -3296,7 +3328,9 @@ void test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name() 
 
   c4c::TypeSpec resolved = parser.parse_base_type();
   std::string detail = " tag=";
-  detail += resolved.tag ? resolved.tag : "<null>";
+  detail += legacy_typespec_tag_or_null(resolved)
+                ? legacy_typespec_tag_or_null(resolved)
+                : "<null>";
   detail += " record=";
   detail += resolved.record_def ? (resolved.record_def->name ? resolved.record_def->name
                                                              : "<unnamed>")
@@ -3354,7 +3388,7 @@ void test_alias_member_typedef_type_substitution_uses_text_id_without_tag() {
   owner_int_type.array_size = -1;
   owner_int_type.inner_rank = -1;
   owner_int_type.base = c4c::TB_STRUCT;
-  owner_int_type.tag = arena.strdup("Owner_int_type");
+  set_legacy_typespec_tag(owner_int_type, arena.strdup("Owner_int_type"));
   owner_int_type.record_def = owner_int_record;
 
   c4c::ParserTemplateState::TemplateInstantiationKey owner_int_key;
@@ -3408,7 +3442,7 @@ void test_alias_member_typedef_type_substitution_uses_text_id_without_tag() {
   concrete_wrapper.array_size = -1;
   concrete_wrapper.inner_rank = -1;
   concrete_wrapper.base = c4c::TB_STRUCT;
-  concrete_wrapper.tag = arena.strdup("ConcreteWrapper");
+  set_legacy_typespec_tag(concrete_wrapper, arena.strdup("ConcreteWrapper"));
   concrete_wrapper.tag_text_id = concrete_wrapper_text;
   concrete_wrapper.record_def = wrapper_inst;
   parser.register_structured_typedef_binding_in_context(
@@ -3428,7 +3462,7 @@ void test_alias_member_typedef_type_substitution_uses_text_id_without_tag() {
   carrier_arg.is_value = false;
   carrier_arg.type.base = c4c::TB_TYPEDEF;
   carrier_arg.type.tag_text_id = t_text;
-  carrier_arg.type.tag = nullptr;
+  set_legacy_typespec_tag(carrier_arg.type, nullptr);
   info.owner_args.push_back(carrier_arg);
   info.member_text_id = type_text;
   parser.register_record_member_typedef_info(member_key, info);
@@ -3479,7 +3513,7 @@ void test_alias_template_member_typedef_arg_uses_text_id_over_stale_name() {
   owner_3_type.array_size = -1;
   owner_3_type.inner_rank = -1;
   owner_3_type.base = c4c::TB_STRUCT;
-  owner_3_type.tag = arena.strdup("Owner_3_type");
+  set_legacy_typespec_tag(owner_3_type, arena.strdup("Owner_3_type"));
   c4c::Node* owner_3_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   owner_3_record->name = arena.strdup("Owner_3_type");
   owner_3_record->unqualified_name = arena.strdup("Owner_3_type");
@@ -3502,7 +3536,7 @@ void test_alias_template_member_typedef_arg_uses_text_id_over_stale_name() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
 
@@ -3544,7 +3578,9 @@ void test_alias_template_member_typedef_arg_uses_text_id_over_stale_name() {
 
   c4c::TypeSpec resolved = parser.parse_base_type();
   std::string detail = " tag=";
-  detail += resolved.tag ? resolved.tag : "<null>";
+  detail += legacy_typespec_tag_or_null(resolved)
+                ? legacy_typespec_tag_or_null(resolved)
+                : "<null>";
   detail += " record=";
   detail += resolved.record_def ? (resolved.record_def->name
                                       ? resolved.record_def->name
@@ -3593,7 +3629,8 @@ void test_alias_template_member_typedef_type_arg_uses_text_id_without_tag() {
   owner_int_type.array_size = -1;
   owner_int_type.inner_rank = -1;
   owner_int_type.base = c4c::TB_STRUCT;
-  owner_int_type.tag = arena.strdup("Alias_owner_int_type");
+  set_legacy_typespec_tag(owner_int_type,
+                          arena.strdup("Alias_owner_int_type"));
   owner_int_type.record_def = owner_int_record;
 
   c4c::ParserTemplateState::TemplateInstantiationKey owner_int_key;
@@ -3610,7 +3647,7 @@ void test_alias_template_member_typedef_type_arg_uses_text_id_without_tag() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
 
@@ -3632,7 +3669,7 @@ void test_alias_template_member_typedef_type_arg_uses_text_id_without_tag() {
   carrier_arg.is_value = false;
   carrier_arg.type.base = c4c::TB_TYPEDEF;
   carrier_arg.type.tag_text_id = t_text;
-  carrier_arg.type.tag = nullptr;
+  set_legacy_typespec_tag(carrier_arg.type, nullptr);
   info.member_typedef.owner_args.push_back(carrier_arg);
   info.member_typedef.member_text_id = type_text;
   parser.register_alias_template_info_for_testing(
@@ -3691,14 +3728,14 @@ void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
   param_type.array_size = -1;
   param_type.inner_rank = -1;
   param_type.base = c4c::TB_TYPEDEF;
-  param_type.tag = arena.strdup("T");
+  set_legacy_typespec_tag(param_type, arena.strdup("T"));
   param_type.tag_text_id = param_text;
 
   c4c::TypeSpec inner_arg{};
   inner_arg.array_size = -1;
   inner_arg.inner_rank = -1;
   inner_arg.base = c4c::TB_STRUCT;
-  inner_arg.tag = arena.strdup("RenderedInnerTagDrift");
+  set_legacy_typespec_tag(inner_arg, arena.strdup("RenderedInnerTagDrift"));
   inner_arg.tpl_struct_origin = arena.strdup("RenderedInnerOriginDrift");
   inner_arg.tpl_struct_origin_key.context_id =
       parser.current_namespace_context_id();
@@ -3716,7 +3753,7 @@ void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_STRUCT;
-  aliased.tag = arena.strdup("RenderedOuterTagDrift");
+  set_legacy_typespec_tag(aliased, arena.strdup("RenderedOuterTagDrift"));
   aliased.tpl_struct_origin = arena.strdup("RenderedOuterOriginDrift");
   aliased.tpl_struct_origin_key.context_id =
       parser.current_namespace_context_id();
@@ -3742,7 +3779,7 @@ void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -3761,7 +3798,9 @@ void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
 
   c4c::TypeSpec resolved = parser.parse_base_type();
   std::string detail = " tag=";
-  detail += resolved.tag ? resolved.tag : "<null>";
+  detail += legacy_typespec_tag_or_null(resolved)
+                ? legacy_typespec_tag_or_null(resolved)
+                : "<null>";
   detail += " origin=";
   detail += resolved.tpl_struct_origin ? resolved.tpl_struct_origin : "<null>";
   detail += " args=";
@@ -3773,7 +3812,9 @@ void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
     detail += " arg_kind=";
     detail += std::to_string(static_cast<int>(arg.kind));
     detail += " arg_tag=";
-    detail += arg.type.tag ? arg.type.tag : "<null>";
+    detail += legacy_typespec_tag_or_null(arg.type)
+                  ? legacy_typespec_tag_or_null(arg.type)
+                  : "<null>";
     detail += " arg_origin=";
     detail += arg.type.tpl_struct_origin ? arg.type.tpl_struct_origin : "<null>";
     detail += " arg_record=";
@@ -3786,7 +3827,9 @@ void test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text() {
               "origin-key-only alias substitution should normalize the outer "
               "origin from the structured key instead of rendered text" +
                   detail);
-  expect_true(resolved.tag && std::string(resolved.tag) == "Outer_@Inner:int",
+  expect_true(legacy_typespec_tag_or_null(resolved) &&
+                  std::string(legacy_typespec_tag_or_null(resolved)) ==
+                      "Outer_@Inner:int",
               "origin-key-only alias substitution should render follow-on "
               "display text from structured nested args, not stale debug text" +
                   detail);
@@ -3834,7 +3877,7 @@ void test_alias_template_no_carrier_debug_arg_stays_debug_only() {
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_STRUCT;
-  aliased.tag = arena.strdup("Carrier_T");
+  set_legacy_typespec_tag(aliased, arena.strdup("Carrier_T"));
   aliased.tpl_struct_origin = arena.strdup("Carrier");
   aliased.tpl_struct_args.size = 1;
   aliased.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
@@ -3859,7 +3902,7 @@ void test_alias_template_no_carrier_debug_arg_stays_debug_only() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -3900,7 +3943,7 @@ void test_alias_template_direct_type_substitution_uses_tag_text_id() {
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_TYPEDEF;
-  aliased.tag = arena.strdup("RenderedDrift");
+  set_legacy_typespec_tag(aliased, arena.strdup("RenderedDrift"));
   aliased.tag_text_id = param_text;
 
   c4c::ParserAliasTemplateInfo info{};
@@ -3915,7 +3958,7 @@ void test_alias_template_direct_type_substitution_uses_tag_text_id() {
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -3947,7 +3990,7 @@ void test_alias_template_direct_type_substitution_uses_template_param_text_id_wi
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_TYPEDEF;
-  aliased.tag = nullptr;
+  set_legacy_typespec_tag(aliased, nullptr);
   aliased.template_param_text_id = param_text;
 
   c4c::ParserAliasTemplateInfo info{};
@@ -3962,7 +4005,7 @@ void test_alias_template_direct_type_substitution_uses_template_param_text_id_wi
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -3994,7 +4037,7 @@ void test_alias_template_nested_type_arg_substitution_uses_text_id_without_tag()
   aliased.array_size = -1;
   aliased.inner_rank = -1;
   aliased.base = c4c::TB_STRUCT;
-  aliased.tag = arena.strdup("Carrier_T");
+  set_legacy_typespec_tag(aliased, arena.strdup("Carrier_T"));
   aliased.tpl_struct_origin = arena.strdup("Carrier");
   aliased.tpl_struct_args.size = 1;
   aliased.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
@@ -4004,7 +4047,7 @@ void test_alias_template_nested_type_arg_substitution_uses_text_id_without_tag()
   carrier_arg.type.array_size = -1;
   carrier_arg.type.inner_rank = -1;
   carrier_arg.type.base = c4c::TB_TYPEDEF;
-  carrier_arg.type.tag = nullptr;
+  set_legacy_typespec_tag(carrier_arg.type, nullptr);
   carrier_arg.type.tag_text_id = param_text;
   carrier_arg.value = 0;
   carrier_arg.nttp_text_id = c4c::kInvalidText;
@@ -4022,7 +4065,7 @@ void test_alias_template_nested_type_arg_substitution_uses_text_id_without_tag()
   alias_typedef.array_size = -1;
   alias_typedef.inner_rank = -1;
   alias_typedef.base = c4c::TB_TYPEDEF;
-  alias_typedef.tag = arena.strdup("Alias");
+  set_legacy_typespec_tag(alias_typedef, arena.strdup("Alias"));
   alias_typedef.tag_text_id = alias_text;
   parser.register_typedef_binding(alias_text, alias_typedef, true);
   parser.register_alias_template_info_for_testing(
@@ -4153,7 +4196,9 @@ void test_dependent_member_typedef_base_carries_structured_record_def() {
           resolved.record_def->base_types) {
         const c4c::TypeSpec& base_ts = resolved.record_def->base_types[0];
         detail += " tag=";
-        detail += base_ts.tag ? base_ts.tag : "<null>";
+        detail += legacy_typespec_tag_or_null(base_ts)
+                      ? legacy_typespec_tag_or_null(base_ts)
+                      : "<null>";
         detail += " origin=";
         detail += base_ts.tpl_struct_origin ? base_ts.tpl_struct_origin : "<null>";
         detail += " deferred=";
@@ -4213,7 +4258,8 @@ void test_dependent_member_typedef_base_carries_structured_record_def() {
     expect_true(record->base_types[0].deferred_member_type_text_id ==
                     c4c::kInvalidText,
                 "dependent member-typedef base should be resolved before Sema");
-    record->base_types[0].tag = arena.strdup("RenderedMemberBaseDrift");
+    set_legacy_typespec_tag(record->base_types[0],
+                            arena.strdup("RenderedMemberBaseDrift"));
     if (record->base_types[0].tpl_struct_args.data &&
         record->base_types[0].tpl_struct_args.size > 0) {
       record->base_types[0].tpl_struct_args.data[0].debug_text =
@@ -4354,7 +4400,9 @@ void test_direct_template_explicit_nttp_expr_ignores_stale_display_text() {
 
   c4c::TypeSpec resolved = parser.parse_base_type();
   std::string detail = " tag=";
-  detail += resolved.tag ? resolved.tag : "<null>";
+  detail += legacy_typespec_tag_or_null(resolved)
+                ? legacy_typespec_tag_or_null(resolved)
+                : "<null>";
   detail += " origin=";
   detail += resolved.tpl_struct_origin ? resolved.tpl_struct_origin : "<null>";
   detail += " args=";
@@ -4491,7 +4539,8 @@ void test_template_specialization_param_lookup_rejects_rendered_fallback() {
     specialization->n_template_args = 2;
     specialization->template_arg_types = arena.alloc_array<c4c::TypeSpec>(2);
     specialization->template_arg_types[0] = make_type(c4c::TB_TYPEDEF);
-    specialization->template_arg_types[0].tag = arena.strdup("T");
+    set_legacy_typespec_tag(specialization->template_arg_types[0],
+                            arena.strdup("T"));
     specialization->template_arg_types[0].tag_text_id =
         with_text_ids ? type_param_text : c4c::kInvalidText;
     specialization->template_arg_types[1] = make_type(c4c::TB_INT);
@@ -4825,7 +4874,7 @@ void test_dependent_template_specialization_uses_typespec_carriers_before_text()
   auto make_type = [&]() {
     c4c::TypeSpec ts{};
     ts.base = c4c::TB_TYPEDEF;
-    ts.tag = arena.strdup("T");
+    set_legacy_typespec_tag(ts, arena.strdup("T"));
     ts.array_size = -1;
     ts.inner_rank = -1;
     return ts;
@@ -4855,7 +4904,7 @@ void test_dependent_template_specialization_uses_typespec_carriers_before_text()
               "non-matching TypeSpec::template_param_text_id carrier is present");
 
   specialization->template_arg_types[0] = make_type();
-  specialization->template_arg_types[0].tag = nullptr;
+  set_legacy_typespec_tag(specialization->template_arg_types[0], nullptr);
   specialization->template_arg_types[0].deferred_member_type_name =
       arena.strdup("T");
   specialization->template_arg_types[0].deferred_member_type_text_id =
@@ -4899,7 +4948,7 @@ void test_dependent_template_specialization_uses_nested_arg_carriers_before_debu
   auto make_nested_type = [&]() {
     c4c::TypeSpec ts{};
     ts.base = c4c::TB_TYPEDEF;
-    ts.tag = arena.strdup("Carrier");
+    set_legacy_typespec_tag(ts, arena.strdup("Carrier"));
     ts.array_size = -1;
     ts.inner_rank = -1;
     ts.tpl_struct_args.size = 1;
@@ -5035,7 +5084,7 @@ void test_typespec_equality_uses_structured_type_identity_before_rendered_tag() 
     ts.array_size = -1;
     ts.inner_rank = -1;
     ts.base = c4c::TB_TYPEDEF;
-    ts.tag = arena.strdup(rendered_tag);
+    set_legacy_typespec_tag(ts, arena.strdup(rendered_tag));
     return ts;
   };
 
@@ -5066,7 +5115,7 @@ void test_typespec_equality_uses_structured_type_identity_before_rendered_tag() 
               "TypeSpec equality should use namespace and tag TextId "
               "metadata before rendered tag spelling");
 
-  rhs.tag = lhs.tag;
+  set_legacy_typespec_tag(rhs, legacy_typespec_tag_or_null(lhs));
   rhs.tag_text_id = other_type_text;
   expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
               "TypeSpec equality should reject different tag TextIds even "
@@ -5086,7 +5135,7 @@ void test_typespec_equality_uses_structured_type_identity_before_rendered_tag() 
               "TypeSpec equality should use template parameter owner/index/"
               "TextId metadata before rendered tag spelling");
 
-  rhs.tag = lhs.tag;
+  set_legacy_typespec_tag(rhs, legacy_typespec_tag_or_null(lhs));
   rhs.template_param_text_id = other_template_param_text;
   expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
               "TypeSpec equality should reject different template parameter "
@@ -5121,7 +5170,7 @@ void test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag() {
   query.array_size = -1;
   query.inner_rank = -1;
   query.base = c4c::TB_TYPEDEF;
-  query.tag = arena.strdup("StaleRenderedAlias");
+  set_legacy_typespec_tag(query, arena.strdup("StaleRenderedAlias"));
   query.tag_text_id = structured_typedef_text;
 
   const c4c::TypeSpec resolved = parser.resolve_typedef_type_chain(query);
@@ -5152,7 +5201,7 @@ void test_parser_type_compatibility_uses_structured_nominal_identity() {
     ts.array_size = -1;
     ts.inner_rank = -1;
     ts.base = base;
-    ts.tag = arena.strdup(rendered_tag);
+    set_legacy_typespec_tag(ts, arena.strdup(rendered_tag));
     return ts;
   };
 
@@ -5169,7 +5218,7 @@ void test_parser_type_compatibility_uses_structured_nominal_identity() {
               "parser type compatibility should use shared record_def "
               "identity before stale rendered record tags");
 
-  rhs.tag = lhs.tag;
+  set_legacy_typespec_tag(rhs, legacy_typespec_tag_or_null(lhs));
   rhs.record_def = &other_record;
   expect_true(!parser.are_types_compatible(lhs, rhs),
               "parser type compatibility should reject different record_def "
@@ -5191,7 +5240,7 @@ void test_parser_type_compatibility_uses_structured_nominal_identity() {
               "parser type compatibility should use tag TextId and "
               "namespace metadata before stale rendered enum tags");
 
-  rhs.tag = lhs.tag;
+  set_legacy_typespec_tag(rhs, legacy_typespec_tag_or_null(lhs));
   rhs.tag_text_id = other_enum_text;
   expect_true(!parser.are_types_compatible(lhs, rhs),
               "parser type compatibility should reject different tag TextIds "
@@ -5228,7 +5277,7 @@ void test_parser_record_ctor_classification_uses_structured_metadata() {
   structured_record.array_size = -1;
   structured_record.inner_rank = -1;
   structured_record.base = c4c::TB_STRUCT;
-  structured_record.tag = arena.strdup("StructuredRecord");
+  set_legacy_typespec_tag(structured_record, arena.strdup("StructuredRecord"));
   structured_record.record_def = &record;
 
   parser.register_typedef_binding(structured_alias_text, structured_record,
@@ -5239,7 +5288,7 @@ void test_parser_record_ctor_classification_uses_structured_metadata() {
   query.array_size = -1;
   query.inner_rank = -1;
   query.base = c4c::TB_TYPEDEF;
-  query.tag = arena.strdup("StaleRenderedRecord");
+  set_legacy_typespec_tag(query, arena.strdup("StaleRenderedRecord"));
   query.tag_text_id = structured_alias_text;
 
   expect_true(parser.resolves_to_record_ctor_type(query),
@@ -5260,7 +5309,8 @@ void test_parser_record_ctor_classification_uses_structured_metadata() {
   direct_record.array_size = -1;
   direct_record.inner_rank = -1;
   direct_record.base = c4c::TB_TYPEDEF;
-  direct_record.tag = arena.strdup("DifferentRenderedRecord");
+  set_legacy_typespec_tag(direct_record,
+                          arena.strdup("DifferentRenderedRecord"));
   direct_record.tag_text_id = stale_record_text;
   direct_record.record_def = &record;
   expect_true(parser.resolves_to_record_ctor_type(direct_record),
@@ -5282,7 +5332,7 @@ void test_parser_support_types_compatible_uses_structured_nominal_identity() {
     ts.array_size = -1;
     ts.inner_rank = -1;
     ts.base = base;
-    ts.tag = arena.strdup(rendered_tag);
+    set_legacy_typespec_tag(ts, arena.strdup(rendered_tag));
     return ts;
   };
 
@@ -5299,7 +5349,7 @@ void test_parser_support_types_compatible_uses_structured_nominal_identity() {
               "parser support type compatibility should use shared "
               "record_def identity before stale rendered record tags");
 
-  rhs.tag = lhs.tag;
+  set_legacy_typespec_tag(rhs, legacy_typespec_tag_or_null(lhs));
   rhs.record_def = &other_record;
   expect_true(!c4c::types_compatible_p(lhs, rhs, empty_typedefs),
               "parser support type compatibility should reject different "
@@ -5321,7 +5371,7 @@ void test_parser_support_types_compatible_uses_structured_nominal_identity() {
               "parser support type compatibility should use tag TextId and "
               "namespace metadata before stale rendered enum tags");
 
-  rhs.tag = lhs.tag;
+  set_legacy_typespec_tag(rhs, legacy_typespec_tag_or_null(lhs));
   rhs.tag_text_id = other_enum_text;
   expect_true(!c4c::types_compatible_p(lhs, rhs, empty_typedefs),
               "parser support type compatibility should reject different tag "
@@ -5353,7 +5403,7 @@ void test_sema_this_lookup_rejects_rendered_after_metadata_miss() {
     ts.inner_rank = -1;
     ts.base = base;
     ts.ptr_level = ptr_level;
-    ts.tag = tag;
+    set_legacy_typespec_tag(ts, tag);
     return ts;
   };
 
