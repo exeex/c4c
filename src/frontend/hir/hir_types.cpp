@@ -206,6 +206,28 @@ ConstEvalEnv Lowerer::make_lowerer_consteval_env(
     env.struct_def_owner_index = &module_->struct_def_owner_index;
     env.link_name_texts = module_->link_name_texts.get();
   }
+  env.lookup_template_struct_primary =
+      [](const TypeSpec& owner, const void* ctx) -> const Node* {
+    if (!ctx || owner.tpl_struct_origin_key.base_text_id == kInvalidText) {
+      return nullptr;
+    }
+    const auto* lowerer = static_cast<const Lowerer*>(ctx);
+    if (owner.tpl_struct_origin_key.qualifier_path_id != kInvalidNamePath) {
+      return nullptr;
+    }
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = owner.tpl_struct_origin_key.context_id;
+    ns_qual.is_global_qualified =
+        owner.tpl_struct_origin_key.is_global_qualified;
+    const HirRecordOwnerKey owner_key =
+        make_hir_record_owner_key(ns_qual,
+                                  owner.tpl_struct_origin_key.base_text_id);
+    if (!hir_record_owner_key_has_complete_metadata(owner_key)) return nullptr;
+    auto it = lowerer->template_struct_defs_by_owner_.find(owner_key);
+    return it == lowerer->template_struct_defs_by_owner_.end() ? nullptr
+                                                               : it->second;
+  };
+  env.template_struct_lookup_ctx = this;
   return env;
 }
 

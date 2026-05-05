@@ -1268,6 +1268,23 @@ struct CompileTimeState {
         rendered_name, template_struct_defs_by_key_, template_struct_defs_);
   }
 
+  /// Look up a template struct definition by structured parser-owned origin.
+  const Node* find_template_struct_def(const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText ||
+        key.qualifier_path_id != kInvalidNamePath) {
+      return nullptr;
+    }
+    CompileTimeRegistryKey registry_key;
+    registry_key.registry_kind =
+        CompileTimeRegistryKeyKind::PrimaryTemplateStruct;
+    registry_key.declaration_kind = NK_STRUCT_DEF;
+    registry_key.namespace_context_id = key.context_id;
+    registry_key.is_global_qualified = key.is_global_qualified;
+    registry_key.unqualified_text_id = key.base_text_id;
+    const auto it = template_struct_defs_by_key_.find(registry_key);
+    return it == template_struct_defs_by_key_.end() ? nullptr : it->second;
+  }
+
   /// Look up registered template struct specializations (nullptr if unknown).
   const std::vector<const Node*>* find_template_struct_specializations(
       const std::string& name) const {

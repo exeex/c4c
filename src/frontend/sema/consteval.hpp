@@ -181,6 +181,11 @@ struct ConstEvalEnv {
       struct_def_owner_index = nullptr;
   const TextTable* link_name_texts = nullptr;
 
+  using TemplateStructLookupFn =
+      const Node* (*)(const TypeSpec& owner, const void* ctx);
+  TemplateStructLookupFn lookup_template_struct_primary = nullptr;
+  const void* template_struct_lookup_ctx = nullptr;
+
   std::optional<long long> lookup(const std::string& name) const {
     // 1. Scoped enum constants (innermost first).
     if (enum_scopes) {

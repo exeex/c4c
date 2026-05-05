@@ -80,6 +80,15 @@ ConstEvalEnv make_engine_consteval_env(
                    nullptr};
   env.enum_consts_by_key = &structured_maps.enum_consts_by_key;
   env.named_consts_by_key = &structured_maps.named_consts_by_key;
+  env.lookup_template_struct_primary =
+      [](const TypeSpec& owner, const void* ctx) -> const Node* {
+    if (!ctx || owner.tpl_struct_origin_key.base_text_id == kInvalidText) {
+      return nullptr;
+    }
+    const auto* state = static_cast<const CompileTimeState*>(ctx);
+    return state->find_template_struct_def(owner.tpl_struct_origin_key);
+  };
+  env.template_struct_lookup_ctx = &ct_state;
   return env;
 }
 

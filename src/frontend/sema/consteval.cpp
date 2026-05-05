@@ -173,8 +173,131 @@ bool has_type_binding_metadata_channel(const ConstEvalEnv& env) {
          (env.type_binding_keys_by_name && !env.type_binding_keys_by_name->empty());
 }
 
+TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env);
+
+bool member_typedef_matches(const Node* record_def,
+                            int index,
+                            TextId member_text_id,
+                            const char* member_name) {
+  if (!record_def || index < 0 || index >= record_def->n_member_typedefs) {
+    return false;
+  }
+  if (member_text_id != kInvalidText && record_def->member_typedef_text_ids &&
+      record_def->member_typedef_text_ids[index] == member_text_id) {
+    return true;
+  }
+  if (!member_name || !member_name[0] || !record_def->member_typedef_names) {
+    return false;
+  }
+  const char* candidate = record_def->member_typedef_names[index];
+  return candidate && std::strcmp(candidate, member_name) == 0;
+}
+
+bool resolve_record_member_typedef_type_for_consteval(
+    const TypeSpec& owner,
+    const ConstEvalEnv& env,
+    TypeSpec* out) {
+  const Node* owner_record = owner.record_def;
+  if (!owner_record && env.lookup_template_struct_primary) {
+    owner_record = env.lookup_template_struct_primary(
+        owner, env.template_struct_lookup_ctx);
+  }
+  if (!out || !owner_record || owner_record->kind != NK_STRUCT_DEF ||
+      owner_record->n_member_typedefs <= 0 ||
+      !owner_record->member_typedef_types ||
+      (owner.deferred_member_type_text_id == kInvalidText &&
+       (!owner.deferred_member_type_name ||
+        !owner.deferred_member_type_name[0]))) {
+    return false;
+  }
+
+  int member_index = -1;
+  for (int i = 0; i < owner_record->n_member_typedefs; ++i) {
+    if (member_typedef_matches(owner_record, i,
+                               owner.deferred_member_type_text_id,
+                               owner.deferred_member_type_name)) {
+      member_index = i;
+      break;
+    }
+  }
+  if (member_index < 0) return false;
+
+  TypeSpec member = owner_record->member_typedef_types[member_index];
+
+  TypeBindings owner_type_bindings;
+  TypeBindingTextMap owner_type_bindings_by_text;
+  TypeBindingStructuredMap owner_type_bindings_by_key;
+  TypeBindingNameTextMap owner_binding_text_ids_by_name;
+  TypeBindingNameStructuredMap owner_binding_keys_by_name;
+
+  if (owner.tpl_struct_args.data && owner.tpl_struct_args.size > 0 &&
+      owner_record->n_template_params > 0 &&
+      owner_record->template_param_names) {
+    const int count =
+        std::min(owner.tpl_struct_args.size, owner_record->n_template_params);
+    for (int i = 0; i < count; ++i) {
+      if (owner_record->template_param_is_nttp &&
+          owner_record->template_param_is_nttp[i]) {
+        continue;
+      }
+      if (owner.tpl_struct_args.data[i].kind != TemplateArgKind::Type) {
+        continue;
+      }
+      const char* param_name = owner_record->template_param_names[i];
+      if (!param_name || !param_name[0]) continue;
+
+      TypeSpec arg_ts = resolve_type(owner.tpl_struct_args.data[i].type, env);
+      owner_type_bindings[param_name] = arg_ts;
+
+      const TextId param_text_id =
+          owner_record->template_param_name_text_ids
+              ? owner_record->template_param_name_text_ids[i]
+              : kInvalidText;
+      if (param_text_id != kInvalidText) {
+        owner_type_bindings_by_text[param_text_id] = arg_ts;
+        owner_binding_text_ids_by_name[param_name] = param_text_id;
+      }
+
+      TypeBindingStructuredKey key;
+      key.namespace_context_id = owner_record->namespace_context_id;
+      key.template_text_id = owner_record->unqualified_text_id;
+      key.param_index = i;
+      key.param_text_id = param_text_id;
+      if (key.valid()) {
+        owner_type_bindings_by_key[key] = arg_ts;
+        owner_binding_keys_by_name[param_name] = key;
+      }
+    }
+  }
+
+  ConstEvalEnv member_env = env;
+  if (!owner_type_bindings.empty()) {
+    member_env.type_bindings = &owner_type_bindings;
+    if (!owner_type_bindings_by_text.empty()) {
+      member_env.type_bindings_by_text = &owner_type_bindings_by_text;
+      member_env.type_binding_text_ids_by_name =
+          &owner_binding_text_ids_by_name;
+    }
+    if (!owner_type_bindings_by_key.empty()) {
+      member_env.type_bindings_by_key = &owner_type_bindings_by_key;
+      member_env.type_binding_keys_by_name = &owner_binding_keys_by_name;
+    }
+  }
+
+  member = resolve_type(member, member_env);
+  member.deferred_member_type_name = nullptr;
+  member.deferred_member_type_text_id = kInvalidText;
+  *out = member;
+  return true;
+}
+
 // Resolve a TypeSpec through type_bindings if it's a TB_TYPEDEF with a known substitution.
 TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
+  TypeSpec resolved_member{};
+  if (resolve_record_member_typedef_type_for_consteval(
+          ts, env, &resolved_member)) {
+    return resolve_type(resolved_member, env);
+  }
   if (ts.base != TB_TYPEDEF) return ts;
   const bool has_intrinsic_carrier =
       has_type_binding_typespec_key_carrier(ts) ||
