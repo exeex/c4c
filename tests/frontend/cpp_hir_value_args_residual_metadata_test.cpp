@@ -22,6 +22,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 c4c::TypeSpec make_scalar_ts(c4c::TypeBase base) {
   c4c::TypeSpec ts{};
   ts.base = base;
@@ -55,7 +63,7 @@ void test_member_lookup_owner_uses_tag_text_id_before_stale_tag() {
   lowerer.module_ = &module;
 
   c4c::TypeSpec base_ts = make_scalar_ts(c4c::TB_STRUCT);
-  base_ts.tag = "StaleRenderedOwner";
+  set_legacy_tag_if_present(base_ts, "StaleRenderedOwner", 0);
   base_ts.tag_text_id = real_text;
   base_ts.namespace_context_id = 7;
 
@@ -80,7 +88,7 @@ void test_ast_template_type_arg_uses_template_param_text_id_binding() {
   ctx.tpl_bindings_by_text[t_text] = make_scalar_ts(c4c::TB_INT);
 
   c4c::TypeSpec arg_type = make_scalar_ts(c4c::TB_TYPEDEF);
-  arg_type.tag = "StaleRenderedParam";
+  set_legacy_tag_if_present(arg_type, "StaleRenderedParam", 0);
   arg_type.template_param_text_id = t_text;
 
   c4c::Node ref{};
@@ -129,7 +137,7 @@ void test_template_static_member_type_arg_uses_template_param_text_id_binding() 
 
   c4c::TypeSpec args[2];
   args[0] = make_scalar_ts(c4c::TB_TYPEDEF);
-  args[0].tag = "StaleRenderedParam";
+  set_legacy_tag_if_present(args[0], "StaleRenderedParam", 0);
   args[0].template_param_text_id = t_text;
   args[1] = make_scalar_ts(c4c::TB_INT);
 
@@ -180,7 +188,7 @@ void test_is_reference_trait_uses_structured_owner_before_stale_tag() {
   lowerer.struct_def_nodes_["add_lvalue_reference_int"] = &owner;
 
   c4c::TypeSpec arg = make_scalar_ts(c4c::TB_STRUCT);
-  arg.tag = "StaleRenderedReferenceOwner";
+  set_legacy_tag_if_present(arg, "StaleRenderedReferenceOwner", 0);
   arg.tag_text_id = owner_text;
   arg.namespace_context_id = 5;
 

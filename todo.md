@@ -9,18 +9,19 @@ Current Step Title: Reprobe TypeSpec Tag Removal Build Boundary
 ## Just Finished
 
 Completed Step 1 fixture migration for
-`tests/frontend/cpp_hir_template_realize_struct_metadata_test.cpp`.
+`tests/frontend/cpp_hir_value_args_residual_metadata_test.cpp`.
 
 The direct `TypeSpec::tag` fixture setup in this target now goes through a
-SFINAE-gated helper. The final legacy `TypeSpec::tag` spelling assertion is
-also SFINAE-gated because that compatibility field cannot exist after removal.
-The structured metadata assertions remain active and unchanged: realization
-must create the structured template instance despite stale incoming rendered
-tag, refresh `tag_text_id`, and refresh `namespace_context_id`.
+SFINAE-gated helper. The four structured metadata assertions remain active and
+unchanged: member lookup owner uses `tag_text_id` before stale rendered tag,
+AST template type args use `template_param_text_id` binding, template
+static-member type args use `template_param_text_id` binding, and
+`is_reference` recovery uses structured owner metadata before stale rendered
+tag.
 
 Temporarily removed `const char* tag` from `TypeSpec` in
 `src/frontend/parser/ast.hpp` and ran
-`cmake --build build --target cpp_hir_template_realize_struct_metadata_test`.
+`cmake --build build --target cpp_hir_value_args_residual_metadata_test`.
 The owned target built successfully with the field removed, so no remaining
 deletion-probe blocker was found inside this owned target. Restored the field
 before final proof, leaving no `ast.hpp` diff.
@@ -46,17 +47,17 @@ delegate the next fixture target if another direct test debt bucket appears.
 Canonical proof log: `test_after.log`.
 
 Delegated proof command:
-`cmake --build build --target cpp_hir_template_realize_struct_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_template_realize_struct_structured_metadata$'`
+`cmake --build build --target cpp_hir_value_args_residual_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_value_args_residual_structured_metadata$'`
 
 Result: passed.
-`cpp_hir_template_realize_struct_structured_metadata` is green in
+`cpp_hir_value_args_residual_structured_metadata` is green in
 `test_after.log`.
 
 Controlled deletion probe:
 - Temporarily removed `const char* tag` from `TypeSpec` in
   `src/frontend/parser/ast.hpp`.
 - Ran
-  `cmake --build build --target cpp_hir_template_realize_struct_metadata_test`;
+  `cmake --build build --target cpp_hir_value_args_residual_metadata_test`;
   the focused target built successfully with the field removed, so no next
   blocker appeared inside this target.
 - Restored the field and reran the delegated proof with the field present,
