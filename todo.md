@@ -8,55 +8,65 @@ Current Step Title: Implement Method Type-Pack Deduction
 
 ## Just Finished
 
-Implemented the prerequisite Step 5 parser-to-HIR carrier sub-seam for explicit
-constructor template-id calls. The parser now projects the structured owner
-`TypeSpec` returned by `parse_base_type()` onto synthesized constructor `NK_CALL`
-and callee `NK_VAR` nodes, including explicit template-argument arrays and the
-owner `TypeSpec` template-arg carrier.
+Probed the Step 5 HIR two-phase instantiated-constructor registration seam for
+concrete template owners, then reverted the non-commit-ready source edit because
+the delegated positive-Sema proof did not improve over the 883/884 baseline.
 
-A focused generic parser metadata test now proves
-`ns::Owner<int, long>(...)` reaches the call/callee path with:
+The reverted probe registered every constructor overload for the concrete
+instantiated owner before lowering constructor bodies. That moved the failing
+test past the original concrete-owner delegating lookup error:
 
-- `has_template_args=true` and `n_template_args=2` on the callee.
-- Structured `template_arg_types` for `int` and `long`.
-- A concrete owner `TypeSpec` with `tpl_struct_args` on both callee and call.
+`no constructors found for delegating constructor call to 'eastl::pair_T1_int_T2_int'`
 
-The full positive-Sema proof still reports 883/884, but the remaining failure
-moved from unresolved owner `eastl::pair_T1_T_T2_T` to concrete owner
-`eastl::pair_T1_int_T2_int`, showing the explicit constructor owner args now
-reach HIR.
+The next failure under that probe was:
+
+`StmtEmitter: MemberExpr base has no struct tag (field='value')`
+
+That is the first observed boundary after concrete-owner constructor lookup:
+delegating constructor lookup can find the sibling constructor once the
+two-phase registry exists, but the selected member-template constructor body is
+still lowered without call-specific method-template type-pack and NTTP-pack
+specialization. Its nested callable parameters and body expressions still carry
+unresolved pack-owned aggregate types, so member access on the lowered pack
+argument collapses to a base without a structured aggregate tag.
 
 ## Suggested Next
 
-Reapply the HIR two-phase instantiated-constructor registry repair for concrete
-template owners. Instantiated template struct methods need all constructor
-overloads registered for the concrete owner before any constructor body is
-lowered, so delegating constructor lookup can find sibling constructor
-templates on `Owner<Ts...>`.
+Implement the combined HIR repair: restore two-phase concrete-owner constructor
+registration and pair it with selected member-template constructor body
+specialization from structured type-pack and NTTP-pack bindings. The selected
+constructor body must lower callable parameters such as `tuple<Args...>` and
+value-pack uses such as `index_sequence<I...>` from parser-owned structured
+metadata, not from rendered names.
 
 ## Watchouts
 
-The delegated positive-Sema proof is still 883/884. The remaining failure is
-still:
+The committed tree remains at 883/884. The remaining failure is still:
 
 `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
 
-The missing parser carrier is repaired; do not regress it back to rendered-name
-recovery. The next HIR repair should consume the structured concrete owner and
-constructor `Node` metadata directly, then continue into method type-pack and
-NTTP-pack deduction.
+The two-phase registry by itself is necessary but not sufficient. A dirty probe
+showed it changes the first bad fact from missing concrete-owner constructor
+lookup to missing selected member-template constructor specialization. Do not
+commit the registry-only patch unless the same slice also repairs the
+call-specific type-pack/NTTP-pack binding or has a focused generic proof that
+the deferred/specialized lowering boundary is observable.
 
 ## Proof
-
-Focused metadata proof:
-`cmake --build build && ctest --test-dir build --output-on-failure -R '^cpp_hir_parser_declarations_residual_structured_metadata$'`
-
-Result: passed, 1/1.
 
 Delegated positive-Sema proof:
 `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
 
-Result: unchanged, 883/884 passing with only
+Final result after reverting non-commit-ready source edits: unchanged, 883/884
+passing with only
 `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
-failing. The failure now names concrete owner `eastl::pair_T1_int_T2_int`.
+failing. The refreshed clean-tree failure remains:
+
+`no constructors found for delegating constructor call to 'eastl::pair_T1_int_T2_int'`
+
+A dirty two-phase registry probe using the same command also remained 883/884
+but advanced that same test to `MemberExpr base has no struct tag
+(field='value')`; that probe was reverted per packet because it was not
+monotonic.
+
 Proof log: `test_after.log`.
