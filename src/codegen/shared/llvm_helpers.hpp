@@ -508,6 +508,16 @@ inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(
     const TypeSpec& ts, const Module& mod) {
   std::optional<HirRecordOwnerKey> direct = typespec_aggregate_owner_key(ts);
   const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+  std::string record_def_tag_storage;
+  std::string_view expected_tag = legacy_tag;
+  if (expected_tag.empty() && ts.record_def) {
+    if (ts.record_def->name && ts.record_def->name[0]) {
+      record_def_tag_storage = ts.record_def->name;
+    } else if (ts.record_def->unqualified_name && ts.record_def->unqualified_name[0]) {
+      record_def_tag_storage = ts.record_def->unqualified_name;
+    }
+    expected_tag = record_def_tag_storage;
+  }
 
   // Direct lookup is canonical only when the indexed rendered tag agrees
   // with the TypeSpec's own rendered C-string. If they disagree, the
@@ -517,14 +527,27 @@ inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(
   if (direct.has_value()) {
     const SymbolName* rendered = mod.find_struct_def_tag_by_owner(*direct);
     if (rendered != nullptr &&
-        (legacy_tag.empty() || std::string_view(*rendered) == legacy_tag)) {
+        (expected_tag.empty() || std::string_view(*rendered) == expected_tag)) {
       return direct;
     }
   }
 
-  if (!mod.link_name_texts || legacy_tag.empty()) return direct;
-  const TextId canonical_id = mod.link_name_texts->find(legacy_tag);
-  if (canonical_id == kInvalidText) return direct;
+  if (!expected_tag.empty()) {
+    for (const auto& [owner_key, rendered] : mod.struct_def_owner_index) {
+      if (std::string_view(rendered) == expected_tag) return owner_key;
+    }
+  }
+
+  if (!mod.link_name_texts || expected_tag.empty()) return direct;
+  const TextId canonical_id = mod.link_name_texts->find(expected_tag);
+  if (canonical_id == kInvalidText) {
+    const auto def_it = mod.struct_defs.find(std::string(expected_tag));
+    if (def_it == mod.struct_defs.end()) return direct;
+    const HirRecordOwnerKey def_key = make_hir_record_owner_key(def_it->second);
+    const SymbolName* def_rendered = mod.find_struct_def_tag_by_owner(def_key);
+    if (def_rendered && std::string_view(*def_rendered) == expected_tag) return def_key;
+    return direct;
+  }
 
   NamespaceQualifier ns_qual;
   ns_qual.context_id = ts.namespace_context_id;
