@@ -3,21 +3,17 @@
 Status: Active
 Source Idea Path: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reprobe TypeSpec Tag Removal Build Boundary
+Current Step ID: 6
+Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Completed Step 1 fixture migration for
-`tests/frontend/cpp_hir_value_args_residual_metadata_test.cpp`.
+Completed Step 1 deletion-boundary reprobe.
 
-The direct `TypeSpec::tag` fixture setup in this target now goes through a
-SFINAE-gated helper. The four structured metadata assertions remain active and
-unchanged: member lookup owner uses `tag_text_id` before stale rendered tag,
-AST template type args use `template_param_text_id` binding, template
-static-member type args use `template_param_text_id` binding, and
-`is_reference` recovery uses structured owner metadata before stale rendered
-tag.
+The final known direct fixture blockers were migrated, including
+`tests/frontend/cpp_hir_value_args_residual_metadata_test.cpp`. That target now
+uses a SFINAE-gated helper for the transitional `.tag` fixture setup while
+keeping the four structured metadata assertions active and unchanged.
 
 Temporarily removed `const char* tag` from `TypeSpec` in
 `src/frontend/parser/ast.hpp` and ran
@@ -26,10 +22,22 @@ The owned target built successfully with the field removed, so no remaining
 deletion-probe blocker was found inside this owned target. Restored the field
 before final proof, leaving no `ast.hpp` diff.
 
+Supervisor broad deletion probe 16 then temporarily removed `const char* tag`
+from `src/frontend/parser/ast.hpp` and ran `cmake --build build`. The full
+tree built successfully with the field removed. The field was restored
+afterward, leaving no `ast.hpp` diff.
+
+Lifecycle decision: Step 1 is complete. The source idea is not complete yet
+because `TypeSpec::tag` still exists in the checked-in tree; continue with Step
+6 permanent deletion and validation.
+
 ## Suggested Next
 
-Run the supervisor-chosen next broad TypeSpec::tag deletion boundary check and
-delegate the next fixture target if another direct test debt bucket appears.
+Delegate Step 6: permanently delete `const char* tag` from `TypeSpec`, remove
+any now-obsolete compatibility shims that only preserved the field, and run the
+supervisor-selected build and focused validation. Start with
+`cmake --build build --target c4cll`, then escalate to the broader validation
+the supervisor selects once focused proof is green.
 
 ## Watchouts
 
