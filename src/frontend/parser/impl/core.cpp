@@ -133,6 +133,46 @@ std::vector<std::string> normalize_summary_stack(
     return normalized;
 }
 
+std::vector<std::string> compact_nested_qualified_template_arg_stack(
+    const std::vector<std::string>& stack_trace) {
+    constexpr const char* kTemplateArgProbe = "try_parse_template_type_arg";
+    constexpr const char* kScopedProbe = "try_parse_cpp_scoped_base_type";
+    constexpr const char* kQualifiedProbe = "try_parse_qualified_base_type";
+    constexpr const char* kTopLevelParamList = "parse_top_level_parameter_list";
+
+    for (size_t i = 0; i + 3 < stack_trace.size(); ++i) {
+        if (stack_trace[i] != kTemplateArgProbe ||
+            stack_trace[i + 1] != kScopedProbe ||
+            stack_trace[i + 2] != kQualifiedProbe) {
+            continue;
+        }
+
+        const auto leaf_it =
+            std::find(stack_trace.begin() + static_cast<std::ptrdiff_t>(i + 3),
+                      stack_trace.end(), kTopLevelParamList);
+        if (leaf_it == stack_trace.end()) continue;
+
+        std::vector<std::string> compact;
+        compact.reserve(i + 2);
+        compact.insert(compact.end(), stack_trace.begin(),
+                       stack_trace.begin() + static_cast<std::ptrdiff_t>(i + 1));
+        compact.push_back(kTopLevelParamList);
+        return compact;
+    }
+
+    return {};
+}
+
+void print_parse_debug_stack(const std::vector<std::string>& stack_trace) {
+    const std::vector<const std::string*> compact_stack =
+        collapse_adjacent_stack_frames(stack_trace);
+    fprintf(stderr, "[pdebug] stack:");
+    for (const std::string* fn : compact_stack) {
+        fprintf(stderr, " -> %s", fn->c_str());
+    }
+    fprintf(stderr, "\n");
+}
+
 bool is_top_level_qualified_probe_merge_target(
     const std::string& function_name) {
     return function_name == "parse_next_template_argument" ||
@@ -2451,13 +2491,13 @@ void Parser::dump_parse_debug_trace() const {
     }
     const std::vector<std::string> summary_stack = best_debug_summary_stack();
     if (diagnostic_state_.best_parse_failure.active && !summary_stack.empty()) {
-        const std::vector<const std::string*> compact_stack =
-            collapse_adjacent_stack_frames(summary_stack);
-        fprintf(stderr, "[pdebug] stack:");
-        for (const std::string* fn : compact_stack) {
-            fprintf(stderr, " -> %s", fn->c_str());
+        print_parse_debug_stack(summary_stack);
+        const std::vector<std::string> compact_template_arg_stack =
+            compact_nested_qualified_template_arg_stack(summary_stack);
+        if (!compact_template_arg_stack.empty() &&
+            compact_template_arg_stack != summary_stack) {
+            print_parse_debug_stack(compact_template_arg_stack);
         }
-        fprintf(stderr, "\n");
     }
 }
 

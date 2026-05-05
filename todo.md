@@ -8,31 +8,25 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Repaired the parent Step 6 qualified template-owner member typedef handoff.
+Repaired the parent Step 6 parser-debug summary boundary for nested qualified
+template type-argument probes.
 
-The structured qualified-template parser now keeps `Owner<Args>::member` in
-the type-specifier path when `member` resolves to a record member typedef on
-the selected template owner. It selects the owner template pattern from the
-structured parsed arguments, applies type-parameter bindings to the member
-typedef, and returns the resolved `TypeSpec` before declarator parsing. This
-prevents `Owner<Args>::type value(` from being split into a standalone
-`Owner<Args>` type item followed by a separate `value(` parse.
+The parser-debug dump now preserves the full retained structured stack and also
+prints a compact high-level companion stack when a nested qualified
+template-argument probe unwinds into `parse_top_level_parameter_list`. This
+keeps the deeper `Owner<Nested<T>>::member` trace observable while restoring the
+stable spelling-stack summary used by the diagnostic guard.
 
-The delegated proof improved from the packet baseline of 8/13 passing to 10/13
+The delegated proof improved from the packet baseline of 10/13 passing to 11/13
 passing. Newly green in this packet:
 
-- `cpp_parser_debug_tentative_template_arg_lifecycle`
-- `cpp_parser_debug_tentative_cli_only`
+- `cpp_parser_debug_qualified_type_spelling_stack`
 
 Remaining failures in the delegated subset:
 
 - `cpp_qualified_template_call_template_arg_perf` still times out.
 - `cpp_parse_record_base_variable_template_value_arg_dump` still misses the
   expected `has_unique_object_representations_T_int` specialization dump.
-- `cpp_parser_debug_qualified_type_spelling_stack` still fails because the
-  repaired semantic path exposes the deeper nested `ns::Box<int>` probe in the
-  retained summary stack; the expected substring is now too shallow for the
-  full structured path.
 
 ## Suggested Next
 
@@ -42,9 +36,7 @@ quadratic qualified template-call default-argument parse path
 (`cpp_qualified_template_call_template_arg_perf`) and the missing concrete
 specialization for `Trait<T>::value` after a variable-template value argument
 in a record base clause
-(`cpp_parse_record_base_variable_template_value_arg_dump`). Treat the remaining
-parser-debug spelling-stack mismatch as a diagnostic-summary normalization
-follow-up after the semantic parser seams are smaller.
+(`cpp_parse_record_base_variable_template_value_arg_dump`).
 
 ## Watchouts
 
@@ -59,6 +51,10 @@ follow-up after the semantic parser seams are smaller.
   still roll back.
 - The perf guard shows quadratic behavior: local timing was roughly 1000
   generated declarations in 1.9s and 2000 in 7.3s, with 5000 timing out.
+- The parse-only value-template dump still lowers
+  `eastl::has_unique_object_representations<int>::value` as
+  `Var(eastl::has_unique_object_representations::value) specialize<1>` without
+  emitting the concrete `has_unique_object_representations_T_int` record.
 - The constructor member-template specialization blocker is closed; do not
   reopen it unless a fresh parent deletion probe exposes a distinct regression
   in the same carrier.
@@ -70,11 +66,11 @@ follow-up after the semantic parser seams are smaller.
 Parent Step 6 focused parser proof:
 `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(cpp_eastl_integer_sequence_parse_recipe|cpp_eastl_type_traits_parse_recipe|cpp_eastl_utility_parse_recipe|cpp_eastl_vector_parse_recipe|cpp_eastl_memory_uses_allocator_parse_recipe|eastl_cpp_external_utility_frontend_basic_cpp|cpp_qualified_template_call_template_arg_perf|cpp_parse_record_base_variable_template_value_arg_dump|cpp_parse_template_alias_empty_pack_default_arg_dump|cpp_parser_debug_qualified_type_template_arg_stack|cpp_parser_debug_qualified_type_spelling_stack|cpp_parser_debug_tentative_template_arg_lifecycle|cpp_parser_debug_tentative_cli_only)$' > test_after.log 2>&1`
 
-Result: failed but improved, 10/13 passing with 3 remaining failures.
+Result: failed but improved, 11/13 passing with 2 remaining failures.
 
 Proof log: `test_after.log`.
 
-Additional guard check:
-`ctest --test-dir build --output-on-failure -R '^frontend_parser_tests$'`
+Additional focused guard check:
+`cmake --build build && ctest --test-dir build --output-on-failure -R '^(cpp_parser_debug_qualified_type_template_arg_stack|cpp_parser_debug_qualified_type_spelling_stack|cpp_parser_debug_tentative_template_arg_lifecycle|cpp_parser_debug_tentative_cli_only)$'`
 
-Result: passed, 1/1.
+Result: passed, 4/4.
