@@ -808,6 +808,7 @@ struct QualifiedTypeProbe {
     int namespace_context_id = -1;
     Node* record_def = nullptr;
     const TypeSpec* record_member_typedef_type = nullptr;
+    const TypeSpec* resolved_typedef_type = nullptr;
     std::string resolved_typedef_name;
     std::string spelled_name;
 };
@@ -914,12 +915,16 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
             parser.resolve_qualified_type(qn);
         const std::string resolved =
             parser.visible_name_spelling(resolved_type);
+        const TypeSpec* resolved_typedef =
+            resolved_type ? parser.find_typedef_type(resolved_type.key)
+                          : nullptr;
         if (resolved_type &&
-            (parser.find_typedef_type(resolved_type.key) ||
+            (resolved_typedef ||
              (resolved_type.source != Parser::VisibleNameSource::Fallback &&
               visible_type_result_has_structured_record_definition(
                   parser, resolved_type)))) {
             probe.has_resolved_typedef = true;
+            probe.resolved_typedef_type = resolved_typedef;
             probe.resolved_typedef_name = resolved;
             return probe;
         }

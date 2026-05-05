@@ -8,58 +8,51 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's C variadic/ABI fallout after the LIR aggregate renderer changes is
-repaired without reintroducing `TypeSpec::tag`.
+Step 6's global namespace-qualified typedef-ref alias cast fallout is repaired
+without reintroducing `TypeSpec::tag`.
 
-The first bad boundary was the module-aware LIR alloca type renderer:
-`llvm_alloca_ty(mod, ts)` preserved structured aggregate rendering but fell back
-through `llvm_value_ty(mod, ts)` for `TB_VA_LIST`, which renders va_list values
-as `ptr`. On non-Apple aarch64, local `va_list ap` therefore became `alloca ptr`
-even though `llvm.va_start` writes the target va_list storage object
-`%struct.__va_list_tag_`. That corrupted the va_list storage before
-`va_arg`/variadic aggregate lowering ran, causing segfaults and the inline
-diagnostics timeout.
+The first bad boundary was the qualified type probe to declarator handoff:
+`probe_qualified_type` resolved `::ns::AliasL` through the namespace-context
+structured typedef key, but `try_parse_qualified_base_type` discarded that
+resolved `TypeSpec` and tried to rebuild the payload from the spelled qualified
+key. That left `using AliasL = int&` as an anonymous `TB_TYPEDEF`, so the
+c-style cast lost the lvalue-reference carrier and selected the rvalue overload.
 
-The fix restores the existing target-aware va_list storage rule in the
-module-aware alloca path: `TB_VA_LIST` storage now uses
-`llvm_va_list_storage_ty(mod.target_profile)`. Aggregate value rendering remains
-structured/module-aware, while C ABI storage for va_list locals and slots stays
-target-correct.
+The fix carries the resolved typedef `TypeSpec` on `QualifiedTypeProbe` and
+lets `try_parse_qualified_base_type` project that structured payload before
+falling back to member-typedef or unresolved typedef metadata.
 
 ## Suggested Next
 
-Next packet should return to the remaining Step 6 positive/Sema failures now
-that the delegated ABI subset and broader va_arg torture cluster are green.
+Next packet should target one of the two remaining Step 6 positive/Sema
+failures: delegating constructor lookup for instantiated template constructors,
+or consteval `sizeof(typename Outer<T>::Alias)` record-layout resolution.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- Keep module-aware aggregate rendering and target ABI storage as separate
-  concerns: aggregate values may need structured HIR owner/layout metadata, but
-  `TB_VA_LIST` alloca storage must be target-profile driven.
-- The delegated proof covers the dominant ABI/va_list family, but the broader
-  full-suite va_arg cluster was also rerun before acceptance.
+- The repaired path uses the resolved namespace-context typedef key as
+  structured authority; it does not infer meaning from `::ns::AliasL` spelling.
+- The two remaining failures still fail with their baseline symptoms:
+  delegating constructor lookup reports no constructors for
+  `eastl::pair_T1_T_T2_T`, and consteval member alias sizing reports unresolved
+  record layout.
 
 ## Proof
 
 Delegated proof command:
-`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(positive_sema_inline_diagnostics_runtime_c|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_)' > test_after.log 2>&1`
+`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
 
 Result: monotonic improvement versus the delegated `test_before.log` baseline.
 
-The proof improved the delegated subset from 0/5 passing to 5/5 passing. There
-are 0 new failures relative to `test_before.log`.
+The proof improved the delegated subset from 881/884 passing to 882/884
+passing. There are 0 new failures relative to `test_before.log`.
 
 Fixed baseline failures:
-- `positive_sema_inline_diagnostics_runtime_c`
-- `positive_sema_ok_call_variadic_aggregate_runtime_c`
-- `abi_abi_variadic_forward_wrapper_c`
-- `abi_abi_variadic_struct_result_c`
-- `abi_abi_variadic_va_copy_accumulate_c`
+- `cpp_positive_sema_c_style_cast_global_qualified_typedef_ref_alias_basic_cpp`
 
-Additional proof:
-`ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_va_arg_' > /tmp/c4c_vaarg_after.log 2>&1`
-
-Result: passed 25/25.
+Remaining failures:
+- `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
+- `cpp_positive_sema_consteval_typespec_member_alias_cpp`
 
 Canonical proof log: `test_after.log`.

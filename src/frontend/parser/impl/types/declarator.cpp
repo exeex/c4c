@@ -1588,7 +1588,12 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
 
     const QualifiedTypeProbe probe = probe_qualified_type(parser, qn);
     if (probe.has_resolved_typedef) {
-        if (probe.record_member_typedef_type) {
+        if (const TypeSpec* structured_typedef = probe.resolved_typedef_type) {
+            *out_ts = *structured_typedef;
+        } else if (const TypeSpec* structured_typedef =
+                       parser.find_typedef_type(parser.qualified_name_key(qn))) {
+            *out_ts = *structured_typedef;
+        } else if (probe.record_member_typedef_type) {
             *out_ts = *probe.record_member_typedef_type;
         } else {
             out_ts->base = TB_TYPEDEF;
