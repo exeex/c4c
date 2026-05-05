@@ -8,21 +8,19 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Repaired the parent Step 6 parser-debug summary boundary for nested qualified
-template type-argument probes.
+Blocked the parent Step 6 attempt to repair the final two focused parser
+subset failures.
 
-The parser-debug dump now preserves the full retained structured stack and also
-prints a compact high-level companion stack when a nested qualified
-template-argument probe unwinds into `parse_top_level_parameter_list`. This
-keeps the deeper `Owner<Nested<T>>::member` trace observable while restoring the
-stable spelling-stack summary used by the diagnostic guard.
+The local perf probe found that avoiding full tentative snapshots for
+qualified call-like template arguments can make
+`cpp_qualified_template_call_template_arg_perf` pass, but the only explored
+source route was not commit-ready: early value-expression token capture for
+alias/variable-template calls destabilized the EASTL recipe path, and broader
+lite-guard conversion allowed speculative parser state to escape rollback.
+Those non-ready source edits were reverted.
 
-The delegated proof improved from the packet baseline of 10/13 passing to 11/13
-passing. Newly green in this packet:
-
-- `cpp_parser_debug_qualified_type_spelling_stack`
-
-Remaining failures in the delegated subset:
+The refreshed delegated proof is back at the clean packet baseline: 11/13
+passing with the same two remaining failures:
 
 - `cpp_qualified_template_call_template_arg_perf` still times out.
 - `cpp_parse_record_base_variable_template_value_arg_dump` still misses the
@@ -30,13 +28,15 @@ Remaining failures in the delegated subset:
 
 ## Suggested Next
 
-Recommended next Step 6 implementation packet: repair one of the remaining
-semantic parser boundaries in the same subset. The clearest next seams are the
-quadratic qualified template-call default-argument parse path
-(`cpp_qualified_template_call_template_arg_perf`) and the missing concrete
-specialization for `Trait<T>::value` after a variable-template value argument
-in a record base clause
-(`cpp_parse_record_base_variable_template_value_arg_dump`).
+Recommended next Step 6 implementation packet: implement a structured
+non-type template argument expression carrier for call-like alias-template
+member expressions. The first bad boundary is
+`try_parse_template_non_type_arg`: expressions such as
+`Alias<Ts...>::template member<Us...>()` fall through to full expression
+parsing inside template-argument disambiguation. The next attempt should
+consume that structured expression shape without raw token capture, without
+swallowing `>>` needed by enclosing template lists, and without broad
+rollback-mode changes.
 
 ## Watchouts
 
@@ -49,8 +49,16 @@ in a record base clause
 - The `Owner<Args>::member` repair only succeeds after structured template
   owner lookup plus selected-member typedef resolution; unknown member names
   still roll back.
-- The perf guard shows quadratic behavior: local timing was roughly 1000
-  generated declarations in 1.9s and 2000 in 7.3s, with 5000 timing out.
+- The perf guard still shows quadratic behavior from repeated full
+  tentative-expression parsing in qualified template-call default arguments.
+- A rejected local probe made the perf case pass by token-capturing
+  value-like `Alias<Ts...>::template f<Us...>()` arguments, but it regressed
+  EASTL because direct variable-template arguments closed by `>>` need
+  structured closer splitting, not raw token capture.
+- Another rejected probe converted broad parser lookahead guards to lite
+  rollback; that can leak speculative parser symbol state and caused EASTL
+  recipe failures/kills. Keep rollback-mode changes narrow and prove each one
+  against EASTL/debug cases.
 - The parse-only value-template dump still lowers
   `eastl::has_unique_object_representations<int>::value` as
   `Var(eastl::has_unique_object_representations::value) specialize<1>` without
@@ -66,11 +74,13 @@ in a record base clause
 Parent Step 6 focused parser proof:
 `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(cpp_eastl_integer_sequence_parse_recipe|cpp_eastl_type_traits_parse_recipe|cpp_eastl_utility_parse_recipe|cpp_eastl_vector_parse_recipe|cpp_eastl_memory_uses_allocator_parse_recipe|eastl_cpp_external_utility_frontend_basic_cpp|cpp_qualified_template_call_template_arg_perf|cpp_parse_record_base_variable_template_value_arg_dump|cpp_parse_template_alias_empty_pack_default_arg_dump|cpp_parser_debug_qualified_type_template_arg_stack|cpp_parser_debug_qualified_type_spelling_stack|cpp_parser_debug_tentative_template_arg_lifecycle|cpp_parser_debug_tentative_cli_only)$' > test_after.log 2>&1`
 
-Result: failed but improved, 11/13 passing with 2 remaining failures.
+Result: failed, 11/13 passing with 2 remaining failures. This packet did not
+improve the baseline and is blocked with no source changes retained.
 
 Proof log: `test_after.log`.
 
-Additional focused guard check:
-`cmake --build build && ctest --test-dir build --output-on-failure -R '^(cpp_parser_debug_qualified_type_template_arg_stack|cpp_parser_debug_qualified_type_spelling_stack|cpp_parser_debug_tentative_template_arg_lifecycle|cpp_parser_debug_tentative_cli_only)$'`
+Additional rejected local probe:
+`cmake --build build && ctest --test-dir build --output-on-failure -R '^cpp_qualified_template_call_template_arg_perf$'`
 
-Result: passed, 4/4.
+Result: passed only while non-ready parser guard/capture edits were present;
+the edits were reverted because the delegated subset regressed.
