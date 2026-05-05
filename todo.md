@@ -9,19 +9,17 @@ Current Step Title: Reprobe TypeSpec Tag Removal Build Boundary
 ## Just Finished
 
 Completed Step 1 fixture migration for
-`tests/frontend/cpp_hir_template_pattern_match_metadata_test.cpp`.
+`tests/frontend/cpp_hir_template_canonical_primary_origin_metadata_test.cpp`.
 
 The direct `TypeSpec::tag` fixture setup in this target now goes through a
 SFINAE-gated helper. The structured metadata assertions remain active and
-unchanged: `template_param_text_id` still beats stale rendered tag text, and
-mismatched structured metadata still cannot recover through stale tag text. The
-legacy no-metadata tag-only fallback check remains active only while
-`TypeSpec::tag` exists, because that compatibility path cannot exist after the
-field is removed.
+unchanged: the structured template origin key still selects the canonical
+primary before stale rendered origin/tag fallback, and a complete structured
+origin key miss still cannot recover through stale rendered origin/tag fallback.
 
 Temporarily removed `const char* tag` from `TypeSpec` in
 `src/frontend/parser/ast.hpp` and ran
-`cmake --build build --target cpp_hir_template_pattern_match_metadata_test`.
+`cmake --build build --target cpp_hir_template_canonical_primary_origin_metadata_test`.
 The owned target built successfully with the field removed, so no remaining
 deletion-probe blocker was found inside this owned target. Restored the field
 before final proof, leaving no `ast.hpp` diff.
@@ -47,17 +45,17 @@ delegate the next fixture target if another direct test debt bucket appears.
 Canonical proof log: `test_after.log`.
 
 Delegated proof command:
-`cmake --build build --target cpp_hir_template_pattern_match_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_template_pattern_match_structured_metadata$'`
+`cmake --build build --target cpp_hir_template_canonical_primary_origin_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_template_canonical_primary_origin_structured_metadata$'`
 
 Result: passed.
-`cpp_hir_template_pattern_match_structured_metadata` is green in
+`cpp_hir_template_canonical_primary_origin_structured_metadata` is green in
 `test_after.log`.
 
 Controlled deletion probe:
 - Temporarily removed `const char* tag` from `TypeSpec` in
   `src/frontend/parser/ast.hpp`.
 - Ran
-  `cmake --build build --target cpp_hir_template_pattern_match_metadata_test`;
+  `cmake --build build --target cpp_hir_template_canonical_primary_origin_metadata_test`;
   the focused target built successfully with the field removed, so no next
   blocker appeared inside this target.
 - Restored the field and reran the delegated proof with the field present,

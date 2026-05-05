@@ -22,6 +22,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 c4c::Node make_primary(const char* name, c4c::TextId text_id,
                        int namespace_id) {
   c4c::Node node{};
@@ -46,7 +54,7 @@ c4c::TypeSpec make_origin_type(const char* rendered_origin,
   ts.tpl_struct_origin = rendered_origin;
   ts.tpl_struct_origin_key.context_id = namespace_id;
   ts.tpl_struct_origin_key.base_text_id = origin_text_id;
-  ts.tag = rendered_tag;
+  set_legacy_tag_if_present(ts, rendered_tag, 0);
   ts.tag_text_id = tag_text_id;
   ts.namespace_context_id = namespace_id;
   return ts;
