@@ -42,6 +42,29 @@ void expect_true(bool cond, const std::string& msg) {
   if (!cond) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
+template <typename T>
+auto has_legacy_tag_field(int)
+    -> decltype((void)std::declval<T&>().tag, bool()) {
+  return true;
+}
+
+template <typename>
+bool has_legacy_tag_field(long) {
+  return false;
+}
+
+bool has_typespec_legacy_tag() {
+  return has_legacy_tag_field<c4c::TypeSpec>(0);
+}
+
 const c4c::Node* find_function_node_by_name(const c4c::Node* n,
                                             const char* name) {
   if (!n || !name) return nullptr;
@@ -922,7 +945,7 @@ void test_template_struct_primary_lookup_uses_origin_key_before_stale_tag() {
   ts.tpl_struct_origin = "StaleOriginKeyPrimary_T0";
   ts.tpl_struct_origin_key.context_id = 0;
   ts.tpl_struct_origin_key.base_text_id = structured_text;
-  ts.tag = "StaleOriginKeyPrimary_T0";
+  set_legacy_tag_if_present(ts, "StaleOriginKeyPrimary_T0", 0);
   ts.tag_text_id = stale_inst_text;
 
   expect_true(lowerer.canonical_template_struct_primary(ts) ==
@@ -965,7 +988,7 @@ void test_inherited_static_member_eval_uses_base_record_def_before_stale_tag() {
   base_ts.array_size = -1;
   base_ts.inner_rank = -1;
   base_ts.base = c4c::TB_STRUCT;
-  base_ts.tag = "StaleInheritedStaticBase";
+  set_legacy_tag_if_present(base_ts, "StaleInheritedStaticBase", 0);
   base_ts.record_def = &real_base;
   c4c::TypeSpec bases[] = {base_ts};
   c4c::Node derived{};
@@ -1008,7 +1031,7 @@ void test_inherited_static_member_eval_base_record_def_miss_rejects_stale_tag() 
   base_ts.array_size = -1;
   base_ts.inner_rank = -1;
   base_ts.base = c4c::TB_STRUCT;
-  base_ts.tag = "StaleMissInheritedStaticBase";
+  set_legacy_tag_if_present(base_ts, "StaleMissInheritedStaticBase", 0);
   base_ts.record_def = &missing_base;
   c4c::TypeSpec bases[] = {base_ts};
   c4c::Node derived{};
@@ -1045,11 +1068,11 @@ void test_compile_time_function_specialization_type_arg_uses_record_def_identity
   spec_arg.array_size = -1;
   spec_arg.inner_rank = -1;
   spec_arg.base = c4c::TB_STRUCT;
-  spec_arg.tag = "StaleRenderedSpecArg";
+  set_legacy_tag_if_present(spec_arg, "StaleRenderedSpecArg", 0);
   spec_arg.record_def = &shared_record;
 
   c4c::TypeSpec binding_arg = spec_arg;
-  binding_arg.tag = "StaleRenderedBindingArg";
+  set_legacy_tag_if_present(binding_arg, "StaleRenderedBindingArg", 0);
 
   c4c::Node specialization{};
   specialization.kind = c4c::NK_FUNCTION;
@@ -1089,7 +1112,7 @@ void test_compile_time_function_specialization_type_arg_record_def_mismatch_reje
   spec_arg.array_size = -1;
   spec_arg.inner_rank = -1;
   spec_arg.base = c4c::TB_STRUCT;
-  spec_arg.tag = "SharedRenderedArg";
+  set_legacy_tag_if_present(spec_arg, "SharedRenderedArg", 0);
   spec_arg.record_def = &spec_record;
 
   c4c::TypeSpec binding_arg = spec_arg;
@@ -1113,6 +1136,8 @@ void test_compile_time_function_specialization_type_arg_record_def_mismatch_reje
 }
 
 void test_compile_time_function_specialization_tag_only_nominal_args_do_not_match() {
+  if (!has_typespec_legacy_tag()) return;
+
   c4c::hir::InstantiationRegistry registry;
 
   const char* template_params[] = {"T"};
@@ -1126,7 +1151,7 @@ void test_compile_time_function_specialization_tag_only_nominal_args_do_not_matc
   spec_arg.array_size = -1;
   spec_arg.inner_rank = -1;
   spec_arg.base = c4c::TB_STRUCT;
-  spec_arg.tag = "RenderedOnlyArg";
+  set_legacy_tag_if_present(spec_arg, "RenderedOnlyArg", 0);
 
   c4c::TypeSpec binding_arg = spec_arg;
 
@@ -1191,7 +1216,7 @@ void test_template_deduction_forwarding_consistency_uses_record_def_identity() {
   param_ts.array_size = -1;
   param_ts.inner_rank = -1;
   param_ts.base = c4c::TB_TYPEDEF;
-  param_ts.tag = "T";
+  set_legacy_tag_if_present(param_ts, "T", 0);
   param_ts.tag_text_id = template_param_text_ids[0];
   param_ts.template_param_text_id = template_param_text_ids[0];
   param_ts.template_param_index = 0;
@@ -1224,11 +1249,11 @@ void test_template_deduction_forwarding_consistency_uses_record_def_identity() {
   arg_a_ts.array_size = -1;
   arg_a_ts.inner_rank = -1;
   arg_a_ts.base = c4c::TB_STRUCT;
-  arg_a_ts.tag = "StaleRenderedForwardA";
+  set_legacy_tag_if_present(arg_a_ts, "StaleRenderedForwardA", 0);
   arg_a_ts.tag_text_id = shared_record.unqualified_text_id;
   arg_a_ts.record_def = &shared_record;
   c4c::TypeSpec arg_b_ts = arg_a_ts;
-  arg_b_ts.tag = "StaleRenderedForwardB";
+  set_legacy_tag_if_present(arg_b_ts, "StaleRenderedForwardB", 0);
 
   c4c::Node arg_a{};
   arg_a.kind = c4c::NK_CAST;
@@ -1260,7 +1285,7 @@ void test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag
   param_ts.array_size = -1;
   param_ts.inner_rank = -1;
   param_ts.base = c4c::TB_TYPEDEF;
-  param_ts.tag = "T";
+  set_legacy_tag_if_present(param_ts, "T", 0);
   param_ts.tag_text_id = template_param_text_ids[0];
   param_ts.template_param_text_id = template_param_text_ids[0];
   param_ts.template_param_index = 0;
@@ -1296,7 +1321,7 @@ void test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag
   arg_a_ts.array_size = -1;
   arg_a_ts.inner_rank = -1;
   arg_a_ts.base = c4c::TB_STRUCT;
-  arg_a_ts.tag = "SharedRenderedDeductionArg";
+  set_legacy_tag_if_present(arg_a_ts, "SharedRenderedDeductionArg", 0);
   arg_a_ts.tag_text_id = record_a.unqualified_text_id;
   arg_a_ts.record_def = &record_a;
   c4c::TypeSpec arg_b_ts = arg_a_ts;
@@ -1333,7 +1358,7 @@ void test_pending_type_ref_uses_structured_debug_payload_not_tag() {
   ts.array_size = -1;
   ts.inner_rank = -1;
   ts.base = c4c::TB_STRUCT;
-  ts.tag = "StalePendingRenderedTag";
+  set_legacy_tag_if_present(ts, "StalePendingRenderedTag", 0);
   ts.tag_text_id = texts.intern("StructuredPendingTag");
   ts.template_param_text_id = texts.intern("T");
   ts.deferred_member_type_text_id = texts.intern("type");
@@ -1378,7 +1403,7 @@ void test_canonical_type_str_uses_structured_record_key_not_tag() {
   ts.array_size = -1;
   ts.inner_rank = -1;
   ts.base = c4c::TB_STRUCT;
-  ts.tag = "StaleCanonicalRenderedTag";
+  set_legacy_tag_if_present(ts, "StaleCanonicalRenderedTag", 0);
   ts.tag_text_id = texts.intern("CanonicalRecord");
   ts.record_def = &record;
   ts.ptr_level = 1;
@@ -1400,7 +1425,7 @@ void test_canonical_type_str_no_metadata_uses_explicit_unknown_name() {
   ts.array_size = -1;
   ts.inner_rank = -1;
   ts.base = c4c::TB_STRUCT;
-  ts.tag = "LegacyOnlyCanonicalTag";
+  set_legacy_tag_if_present(ts, "LegacyOnlyCanonicalTag", 0);
 
   const std::string encoded = c4c::hir::canonical_type_str(ts);
 
@@ -1422,7 +1447,7 @@ void test_type_suffix_for_mangling_uses_record_def_not_stale_tag() {
   ts.array_size = -1;
   ts.inner_rank = -1;
   ts.base = c4c::TB_STRUCT;
-  ts.tag = "StaleMangleTag";
+  set_legacy_tag_if_present(ts, "StaleMangleTag", 0);
   ts.tag_text_id = record.unqualified_text_id;
   ts.record_def = &record;
   ts.ptr_level = 1;
@@ -1440,7 +1465,7 @@ void test_type_suffix_for_mangling_no_metadata_is_explicit_unknown() {
   ts.array_size = -1;
   ts.inner_rank = -1;
   ts.base = c4c::TB_STRUCT;
-  ts.tag = "LegacyOnlyMangleTag";
+  set_legacy_tag_if_present(ts, "LegacyOnlyMangleTag", 0);
 
   const std::string suffix = c4c::hir::type_suffix_for_mangling(ts);
 
@@ -1703,7 +1728,7 @@ void test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag() {
 
   c4c::TypeSpec query{};
   query.base = c4c::TB_STRUCT;
-  query.tag = "StaleRenderedLayout";
+  set_legacy_tag_if_present(query, "StaleRenderedLayout", 0);
   query.tag_text_id = record_node->unqualified_text_id;
   query.namespace_context_id = record_node->namespace_context_id;
   query.record_def = record_node;
@@ -1766,7 +1791,7 @@ void test_layout_type_lookup_prefers_structured_owner_over_stale_tag() {
 
   c4c::TypeSpec query{};
   query.base = c4c::TB_STRUCT;
-  query.tag = "StaleLayoutOwner";
+  set_legacy_tag_if_present(query, "StaleLayoutOwner", 0);
   query.tag_text_id = record_node->unqualified_text_id;
   query.namespace_context_id = record_node->namespace_context_id;
   query.record_def = record_node;
@@ -1803,7 +1828,7 @@ void test_layout_type_lookup_structured_owner_miss_rejects_stale_tag() {
 
   c4c::TypeSpec query{};
   query.base = c4c::TB_STRUCT;
-  query.tag = "StaleLayoutOwnerMiss";
+  set_legacy_tag_if_present(query, "StaleLayoutOwnerMiss", 0);
   query.tag_text_id = record_node->unqualified_text_id;
   query.namespace_context_id = record_node->namespace_context_id;
   query.record_def = record_node;
@@ -1849,7 +1874,7 @@ void test_compute_struct_layout_field_uses_record_def_before_stale_tag() {
 
   c4c::TypeSpec field_ts{};
   field_ts.base = c4c::TB_STRUCT;
-  field_ts.tag = "StaleFieldLayoutOwner";
+  set_legacy_tag_if_present(field_ts, "StaleFieldLayoutOwner", 0);
   field_ts.tag_text_id = record_node->unqualified_text_id;
   field_ts.namespace_context_id = record_node->namespace_context_id;
   field_ts.record_def = record_node;
@@ -1896,7 +1921,7 @@ void test_compute_struct_layout_field_structured_miss_rejects_stale_tag() {
 
   c4c::TypeSpec field_ts{};
   field_ts.base = c4c::TB_STRUCT;
-  field_ts.tag = "StaleFieldLayoutMiss";
+  set_legacy_tag_if_present(field_ts, "StaleFieldLayoutMiss", 0);
   field_ts.tag_text_id = record_node->unqualified_text_id;
   field_ts.namespace_context_id = record_node->namespace_context_id;
   field_ts.record_def = record_node;
@@ -1954,7 +1979,7 @@ void test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag() {
 
   c4c::TypeSpec query{};
   query.base = c4c::TB_STRUCT;
-  query.tag = "StaleBuiltinLayout";
+  set_legacy_tag_if_present(query, "StaleBuiltinLayout", 0);
   query.tag_text_id = record_node->unqualified_text_id;
   query.namespace_context_id = record_node->namespace_context_id;
   query.record_def = record_node;
@@ -2008,7 +2033,7 @@ void test_builtin_record_layout_structured_owner_miss_rejects_stale_tag() {
 
   c4c::TypeSpec query{};
   query.base = c4c::TB_STRUCT;
-  query.tag = "StaleBuiltinLayoutMiss";
+  set_legacy_tag_if_present(query, "StaleBuiltinLayoutMiss", 0);
   query.tag_text_id = record_node->unqualified_text_id;
   query.namespace_context_id = record_node->namespace_context_id;
   query.record_def = record_node;
@@ -2052,7 +2077,7 @@ void test_builtin_record_layout_no_owner_uses_tag_text_id_compatibility() {
 
   c4c::TypeSpec query{};
   query.base = c4c::TB_STRUCT;
-  query.tag = "StaleRenderedBuiltinCompat";
+  set_legacy_tag_if_present(query, "StaleRenderedBuiltinCompat", 0);
   query.tag_text_id = compat_def.tag_text_id;
   query.namespace_context_id = -1;
   query.array_size = -1;
@@ -2096,7 +2121,7 @@ void test_builtin_query_type_uses_template_param_text_id_binding() {
 
   c4c::TypeSpec concrete{};
   concrete.base = c4c::TB_STRUCT;
-  concrete.tag = "RenderedBindingPayload";
+  set_legacy_tag_if_present(concrete, "RenderedBindingPayload", 0);
   concrete.tag_text_id = record_node.unqualified_text_id;
   concrete.namespace_context_id = record_node.namespace_context_id;
   concrete.record_def = &record_node;
@@ -2109,7 +2134,7 @@ void test_builtin_query_type_uses_template_param_text_id_binding() {
 
   c4c::TypeSpec target{};
   target.base = c4c::TB_TYPEDEF;
-  target.tag = "StaleRenderedTemplateParam";
+  set_legacy_tag_if_present(target, "StaleRenderedTemplateParam", 0);
   target.template_param_text_id = module.link_name_texts->intern("T");
   target.ptr_level = 2;
   target.array_size = -1;
@@ -2143,7 +2168,7 @@ void test_builtin_query_type_uses_text_binding_when_module_text_missing() {
 
   c4c::TypeSpec target{};
   target.base = c4c::TB_TYPEDEF;
-  target.tag = "StaleRenderedTemplateParam";
+  set_legacy_tag_if_present(target, "StaleRenderedTemplateParam", 0);
   target.tag_text_id = parser_only_text_id;
   target.template_param_text_id = parser_only_text_id;
   target.array_size = -1;
@@ -2169,7 +2194,7 @@ void test_builtin_query_type_structured_miss_rejects_stale_tag() {
 
   c4c::TypeSpec concrete{};
   concrete.base = c4c::TB_STRUCT;
-  concrete.tag = "StaleRenderedTemplateParam";
+  set_legacy_tag_if_present(concrete, "StaleRenderedTemplateParam", 0);
   concrete.tag_text_id = record_node.unqualified_text_id;
   concrete.namespace_context_id = record_node.namespace_context_id;
   concrete.record_def = &record_node;
@@ -2181,7 +2206,7 @@ void test_builtin_query_type_structured_miss_rejects_stale_tag() {
 
   c4c::TypeSpec target{};
   target.base = c4c::TB_TYPEDEF;
-  target.tag = "StaleRenderedTemplateParam";
+  set_legacy_tag_if_present(target, "StaleRenderedTemplateParam", 0);
   target.template_param_text_id = module.link_name_texts->intern("T");
   target.array_size = -1;
   target.inner_rank = -1;
@@ -2207,7 +2232,7 @@ void test_builtin_query_type_no_metadata_keeps_compatibility_shape() {
 
   c4c::TypeSpec target{};
   target.base = c4c::TB_TYPEDEF;
-  target.tag = "LegacyRenderedParam";
+  set_legacy_tag_if_present(target, "LegacyRenderedParam", 0);
   target.array_size = -1;
   target.inner_rank = -1;
 
@@ -2241,7 +2266,7 @@ void test_lvalue_cast_uses_template_param_text_id_binding() {
   c4c::Node cast_node{};
   cast_node.kind = c4c::NK_CAST;
   cast_node.type.base = c4c::TB_TYPEDEF;
-  cast_node.type.tag = "StaleRenderedTemplateParam";
+  set_legacy_tag_if_present(cast_node.type, "StaleRenderedTemplateParam", 0);
   cast_node.type.template_param_text_id = param_text_id;
   cast_node.type.array_size = -1;
   cast_node.type.inner_rank = -1;
@@ -2267,7 +2292,7 @@ void test_lvalue_cast_structured_miss_rejects_stale_tag() {
   c4c::Node cast_node{};
   cast_node.kind = c4c::NK_CAST;
   cast_node.type.base = c4c::TB_TYPEDEF;
-  cast_node.type.tag = "StaleRenderedTemplateParam";
+  set_legacy_tag_if_present(cast_node.type, "StaleRenderedTemplateParam", 0);
   cast_node.type.template_param_text_id = module.link_name_texts->intern("T");
   cast_node.type.array_size = -1;
   cast_node.type.inner_rank = -1;
@@ -2312,7 +2337,7 @@ void test_callable_zero_sized_return_structured_miss_rejects_stale_tag() {
   fn.unqualified_text_id =
       module.link_name_texts->intern("callable_zero_return_miss");
   fn.type.base = c4c::TB_STRUCT;
-  fn.type.tag = "StaleCallableZeroReturn";
+  set_legacy_tag_if_present(fn.type, "StaleCallableZeroReturn", 0);
   fn.type.tag_text_id = missing_record.unqualified_text_id;
   fn.type.namespace_context_id = missing_record.namespace_context_id;
   fn.type.record_def = &missing_record;
@@ -2384,7 +2409,7 @@ void test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_t
 
   c4c::TypeSpec query{};
   query.base = c4c::TB_STRUCT;
-  query.tag = "StaleAggregateLayout";
+  set_legacy_tag_if_present(query, "StaleAggregateLayout", 0);
   query.tag_text_id = record_node->unqualified_text_id;
   query.namespace_context_id = record_node->namespace_context_id;
   query.record_def = record_node;
@@ -2639,7 +2664,7 @@ void test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag() {
   missing_ts.array_size = -1;
   missing_ts.inner_rank = -1;
   missing_ts.base = c4c::TB_STRUCT;
-  missing_ts.tag = arena.strdup("StaleDirectAggOwner");
+  set_legacy_tag_if_present(missing_ts, arena.strdup("StaleDirectAggOwner"), 0);
   missing_ts.tag_text_id = module.link_name_texts->intern("StaleDirectAggOwner");
   missing_ts.record_def = unresolved_record;
 
@@ -2718,7 +2743,7 @@ void test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag() {
   outer_ts.array_size = -1;
   outer_ts.inner_rank = -1;
   outer_ts.base = c4c::TB_STRUCT;
-  outer_ts.tag = arena.strdup("RealDirectAggOuter");
+  set_legacy_tag_if_present(outer_ts, arena.strdup("RealDirectAggOuter"), 0);
   outer_ts.record_def = outer_record;
 
   c4c::Node* field_source = parser.make_node(c4c::NK_VAR, 1);
@@ -2866,7 +2891,8 @@ void test_deferred_member_typedef_record_def_miss_rejects_stale_tag() {
   owner.array_size = -1;
   owner.inner_rank = -1;
   owner.base = c4c::TB_STRUCT;
-  owner.tag = arena.strdup("StaleRenderedOwnerWithAlias");
+  set_legacy_tag_if_present(
+      owner, arena.strdup("StaleRenderedOwnerWithAlias"), 0);
   owner.record_def = real_record;
   owner.deferred_member_type_name = arena.strdup("value_type");
 
