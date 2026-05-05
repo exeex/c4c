@@ -15,6 +15,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 c4c::Node* make_owner(c4c::Parser& parser,
                       c4c::Arena& arena,
                       const char* name,
@@ -68,7 +76,7 @@ void test_member_typedef_lookup_uses_owner_text_id_before_stale_tag() {
   owner_alias.array_size = -1;
   owner_alias.inner_rank = -1;
   owner_alias.base = c4c::TB_STRUCT;
-  owner_alias.tag = arena.strdup("StaleOwner");
+  set_legacy_tag_if_present(owner_alias, arena.strdup("StaleOwner"), 0);
   owner_alias.tag_text_id = real_owner_token.text_id;
   parser.register_typedef_binding(alias_name_token.text_id, owner_alias, true);
 
