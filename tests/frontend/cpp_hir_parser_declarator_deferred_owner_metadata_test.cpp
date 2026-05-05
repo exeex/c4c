@@ -17,6 +17,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype((void)(ts.tag = tag)) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 c4c::QualifiedNameKey parser_test_qualified_name_key(
     c4c::Parser& parser, std::initializer_list<std::string> qualifiers,
     const std::string& base) {
@@ -66,7 +74,8 @@ void test_deferred_template_owner_prefers_structured_identity_over_stale_tag() {
   stale_rendered_owner.array_size = -1;
   stale_rendered_owner.inner_rank = -1;
   stale_rendered_owner.base = c4c::TB_STRUCT;
-  stale_rendered_owner.tag = arena.strdup("StaleOwner");
+  set_legacy_tag_if_present(stale_rendered_owner, arena.strdup("StaleOwner"),
+                            0);
   stale_rendered_owner.tag_text_id = owner_text;
   stale_rendered_owner.record_def = owner;
   stale_rendered_owner.tpl_struct_origin = arena.strdup("StaleOwner");
