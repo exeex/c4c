@@ -1,12 +1,15 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/144_member_template_constructor_specialization_metadata.md
 Source Plan Path: plan.md
 Current Step ID: 8
 Current Step Title: Reintegrate With Parent TypeSpec-Tag Validation
 
 ## Just Finished
+
+Step 8 reintegration record is complete for the constructor-specialization
+decomposition plan.
 
 Step 5 completed in commit `0d653f97d` as a combined HIR repair for
 member-template constructors.
@@ -34,12 +37,21 @@ also satisfied the planned Step 6 NTTP-pack and Step 7 selected-constructor-body
 lowering boundaries enough that no Step 6/7 blocker is observable in the
 positive-Sema proof.
 
+Reintegration facts:
+
+- The delegated `^cpp_positive_sema_` proof is green at 884/884 after the
+  constructor-specialization repair.
+- The full-suite candidate remained red with 24 known failures and was rejected
+  as uncanonical, so it is not acceptance proof for this decomposition close.
+- No constructor-specialization-specific failure remains to keep this
+  decomposition idea open.
+
 ## Suggested Next
 
-Execute Step 8 reintegration with the parent TypeSpec-tag deletion validation
-route. Start from the green positive-Sema result, then decide whether the parent
-Step 6 deletion route can resume or whether the full-suite failure needs a
-separate open idea.
+Lifecycle action: close this constructor-specialization decomposition idea as
+complete, then resume the parent TypeSpec-tag deletion Step 6 / broad validation
+route. The remaining full-suite red state belongs to parent-route validation or
+a separate follow-up idea, not this completed decomposition packet.
 
 ## Watchouts
 
@@ -53,8 +65,8 @@ from rendered names, `_t` suffixes, `tag_ctx`, module dumps, or named testcase
 patterns.
 
 Do not treat the rejected full-suite baseline candidate as canonical proof. It
-is red and should only guide reintegration triage until a supervisor-selected
-canonical validation command is recorded.
+is red with 24 known failures and should only guide parent-route reintegration
+triage until a supervisor-selected canonical validation command is recorded.
 
 ## Proof
 
@@ -66,5 +78,7 @@ of 883/884 with no new failures in the delegated positive-Sema subset.
 
 Proof log: `test_after.log`.
 
-Full-suite baseline candidate: red and rejected as uncanonical. Do not use it
-as acceptance proof for lifecycle close or parent reintegration.
+Full-suite baseline candidate: red with 24 known failures and rejected as
+uncanonical. Do not recreate `test_baseline.new.log`; use the parent
+TypeSpec-tag deletion route to establish the next canonical broad-validation
+baseline.
