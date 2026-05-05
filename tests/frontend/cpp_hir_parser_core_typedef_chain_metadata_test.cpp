@@ -15,6 +15,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 c4c::TypeSpec make_scalar(c4c::TypeBase base) {
   c4c::TypeSpec ts{};
   ts.base = base;
@@ -27,7 +35,7 @@ c4c::TypeSpec make_typedef_ref(c4c::TextId name_text_id,
                                const char* rendered_tag) {
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = rendered_tag;
+  set_legacy_tag_if_present(ts, rendered_tag, 0);
   ts.tag_text_id = name_text_id;
   ts.namespace_context_id = 0;
   ts.n_qualifier_segments = 0;
