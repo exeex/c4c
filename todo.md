@@ -9,21 +9,21 @@ Current Step Title: Reprobe TypeSpec Tag Removal Build Boundary
 ## Just Finished
 
 Completed Step 1 fixture migration for
-`tests/frontend/frontend_hir_lookup_tests.cpp`.
+`tests/frontend/cpp_hir_member_typedef_readiness_metadata_test.cpp` and
+`tests/frontend/cpp_hir_member_typedef_origin_binding_metadata_test.cpp`.
 
-The remaining direct `TypeSpec::tag` fixture setup in this target now goes
-through SFINAE-gated helpers. Stale-rendered-spelling disagreement coverage
-continues to run while `TypeSpec::tag` exists, and the tag-only nominal
-specialization compatibility case is skipped only when the field is absent.
-Non-TypeSpec HIR struct `tag` fields, map keys, owner strings, and Node tags
-were left as direct fixture data.
+The remaining direct `TypeSpec::tag` fixture setup in these targets now goes
+through SFINAE-gated helpers. Stale-rendered-spelling disagreement assertions
+remain active while `TypeSpec::tag` exists, and the explicit tag-only
+no-metadata legacy compatibility check is skipped only when the field is
+absent.
 
 Temporarily removed `const char* tag` from `TypeSpec` in
 `src/frontend/parser/ast.hpp` and ran
-`cmake --build build --target frontend_hir_lookup_tests`. The focused target
-built successfully with the field removed, so no remaining deletion-probe
-blocker was found inside this owned target. Restored the field before final
-proof, leaving no `ast.hpp` diff.
+`cmake --build build --target cpp_hir_member_typedef_readiness_metadata_test cpp_hir_member_typedef_origin_binding_metadata_test`.
+Both owned targets built successfully with the field removed, so no remaining
+deletion-probe blocker was found inside these owned targets. Restored the field
+before final proof, leaving no `ast.hpp` diff.
 
 ## Suggested Next
 
@@ -39,25 +39,25 @@ delegate the next fixture target if another direct test debt bucket appears.
 - Preserve stale-rendered-spelling disagreement tests.
 - Split distinct downstream carrier boundaries into `ideas/open/*.md` instead
   of silently broadening the parent runbook.
-- `tests/frontend/frontend_hir_lookup_tests.cpp` still has SFINAE helper
-  references to `.tag` by design, and direct `.tag` writes remain only for
-  non-TypeSpec fixture data such as `c4c::hir::HirStructDef::tag`.
+- These two owned tests still have SFINAE helper references to `.tag` by design.
 
 ## Proof
 
 Canonical proof log: `test_after.log`.
 
 Delegated proof command:
-`cmake --build build --target frontend_hir_lookup_tests c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$'`
+`cmake --build build --target cpp_hir_member_typedef_readiness_metadata_test cpp_hir_member_typedef_origin_binding_metadata_test c4cll && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_member_typedef_readiness_structured_metadata|cpp_hir_member_typedef_origin_binding_structured_metadata)$'`
 
-Result: passed. `frontend_hir_lookup_tests` is green in `test_after.log`.
+Result: passed. `cpp_hir_member_typedef_readiness_structured_metadata` and
+`cpp_hir_member_typedef_origin_binding_structured_metadata` are green in
+`test_after.log`.
 
 Controlled deletion probe:
 - Temporarily removed `const char* tag` from `TypeSpec` in
   `src/frontend/parser/ast.hpp`.
 - Ran
-  `cmake --build build --target frontend_hir_lookup_tests`; the focused target
-  built successfully with the field removed, so no next blocker appeared inside
-  this target.
+  `cmake --build build --target cpp_hir_member_typedef_readiness_metadata_test cpp_hir_member_typedef_origin_binding_metadata_test`;
+  both focused targets built successfully with the field removed, so no next
+  blocker appeared inside these targets.
 - Restored the field and reran the delegated proof with the field present,
   leaving the repository buildable for the owned proof subset.

@@ -21,6 +21,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 c4c::TypeSpec make_scalar_ts(c4c::TypeBase base) {
   c4c::TypeSpec ts{};
   ts.base = base;
@@ -68,7 +76,7 @@ void test_readiness_prefers_tag_text_id_owner_over_stale_tag() {
   lowerer.struct_def_nodes_[stale_owner.name] = &stale_owner;
 
   c4c::TypeSpec owner_ts = make_scalar_ts(c4c::TB_STRUCT);
-  owner_ts.tag = "StaleOwner";
+  set_legacy_tag_if_present(owner_ts, "StaleOwner", 0);
   owner_ts.tag_text_id = real_owner_text;
   owner_ts.namespace_context_id = 5;
   owner_ts.deferred_member_type_name = "Alias";
@@ -97,7 +105,7 @@ void test_readiness_blocks_stale_tag_when_tag_text_id_misses() {
   lowerer.struct_def_nodes_[stale_owner.name] = &stale_owner;
 
   c4c::TypeSpec owner_ts = make_scalar_ts(c4c::TB_STRUCT);
-  owner_ts.tag = "StaleOwner";
+  set_legacy_tag_if_present(owner_ts, "StaleOwner", 0);
   owner_ts.tag_text_id = texts.intern("MissingOwner");
   owner_ts.namespace_context_id = 8;
   owner_ts.deferred_member_type_name = "Alias";
