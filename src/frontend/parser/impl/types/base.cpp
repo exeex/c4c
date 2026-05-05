@@ -4789,10 +4789,83 @@ TypeSpec Parser::parse_base_type() {
                                     prelim_nb.resize(explicit_eval_nb_size);
                                     prelim_nb_meta.resize(
                                         explicit_eval_nb_size);
-                                    long long ev = 0;
                                     Node* structured_expr =
                                         structured_nttp_expr_carrier(
                                             actual_args[pi]);
+                                    const bool direct_functional_cast_arg =
+                                        structured_expr &&
+                                        structured_expr->kind == NK_CALL &&
+                                        structured_expr->left &&
+                                        structured_expr->left->kind == NK_VAR;
+                                    if (direct_functional_cast_arg) {
+                                        for (int prior = 0; prior < pi;
+                                             ++prior) {
+                                            const char* prior_name =
+                                                primary_tpl->template_param_names
+                                                    ? primary_tpl
+                                                          ->template_param_names
+                                                              [prior]
+                                                    : nullptr;
+                                            if (!prior_name) continue;
+                                            if (primary_tpl
+                                                    ->template_param_is_nttp
+                                                        [prior]) {
+                                                if (!actual_args[prior]
+                                                         .is_value)
+                                                    continue;
+                                                ParserNttpBindingMetadata meta =
+                                                    nttp_binding_metadata_for_template_param(
+                                                        *this, primary_tpl,
+                                                        prior, prior_name,
+                                                        actual_args[prior]
+                                                            .value);
+                                                if (meta.name_text_id !=
+                                                    kInvalidText) {
+                                                    bool already_bound = false;
+                                                    for (const auto& existing :
+                                                         prelim_nb_meta) {
+                                                        if (existing
+                                                                .name_text_id ==
+                                                            meta.name_text_id) {
+                                                            already_bound = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                    if (already_bound) continue;
+                                                }
+                                                prelim_nb.push_back(
+                                                    {prior_name,
+                                                     actual_args[prior].value});
+                                                prelim_nb_meta.push_back(meta);
+                                            } else if (!actual_args[prior]
+                                                            .is_value) {
+                                                PrelimTypeBindingMetadata meta =
+                                                    prelim_type_binding_metadata(
+                                                        prior, prior_name,
+                                                        actual_args[prior]
+                                                            .type);
+                                                if (meta.name_text_id !=
+                                                    kInvalidText) {
+                                                    bool already_bound = false;
+                                                    for (const auto& existing :
+                                                         prelim_tb_meta) {
+                                                        if (existing
+                                                                .name_text_id ==
+                                                            meta.name_text_id) {
+                                                            already_bound = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                    if (already_bound) continue;
+                                                }
+                                                prelim_tb.push_back(
+                                                    {prior_name,
+                                                     actual_args[prior].type});
+                                                prelim_tb_meta.push_back(meta);
+                                            }
+                                        }
+                                    }
+                                    long long ev = 0;
                                     if (structured_expr &&
                                         eval_prelim_structured_nttp_expr(
                                             structured_expr, &ev)) {
