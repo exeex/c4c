@@ -160,6 +160,9 @@ ConstEvalResult evaluate_pending_consteval(
   TypeBindings tpl_bindings = pce.tpl_bindings;
   env.type_bindings = &tpl_bindings;
   TypeBindingTextMap tpl_bindings_by_text;
+  TypeBindingStructuredMap tpl_bindings_by_key;
+  TypeBindingNameTextMap tpl_binding_text_ids_by_name;
+  TypeBindingNameStructuredMap tpl_binding_keys_by_name;
   if (!tpl_bindings.empty() && ce_fn_def->template_param_names &&
       ce_fn_def->template_param_name_text_ids) {
     for (int i = 0; i < ce_fn_def->n_template_params; ++i) {
@@ -172,11 +175,27 @@ ConstEvalResult evaluate_pending_consteval(
       const TextId param_text_id = ce_fn_def->template_param_name_text_ids[i];
       if (param_text_id == kInvalidText) continue;
       auto it = tpl_bindings.find(param_name);
-      if (it != tpl_bindings.end()) tpl_bindings_by_text[param_text_id] = it->second;
+      if (it == tpl_bindings.end()) continue;
+      tpl_bindings_by_text[param_text_id] = it->second;
+      tpl_binding_text_ids_by_name[param_name] = param_text_id;
+      TypeBindingStructuredKey key;
+      key.namespace_context_id = ce_fn_def->namespace_context_id;
+      key.template_text_id = ce_fn_def->unqualified_text_id;
+      key.param_index = i;
+      key.param_text_id = param_text_id;
+      if (key.valid()) {
+        tpl_bindings_by_key[key] = it->second;
+        tpl_binding_keys_by_name[param_name] = key;
+      }
     }
   }
   if (!tpl_bindings_by_text.empty()) {
     env.type_bindings_by_text = &tpl_bindings_by_text;
+    env.type_binding_text_ids_by_name = &tpl_binding_text_ids_by_name;
+  }
+  if (!tpl_bindings_by_key.empty()) {
+    env.type_bindings_by_key = &tpl_bindings_by_key;
+    env.type_binding_keys_by_name = &tpl_binding_keys_by_name;
   }
   NttpBindings nttp_copy = pce.nttp_bindings;
   if (!nttp_copy.empty()) env.nttp_bindings = &nttp_copy;

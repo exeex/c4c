@@ -45,6 +45,39 @@ void record_nttp_text_binding(const Node* fn_def,
   (*out)[text_id] = value;
 }
 
+void canonicalize_consteval_template_type_binding(
+    TypeSpec& ts,
+    Module* module,
+    const std::unordered_map<std::string, const Node*>& struct_def_nodes) {
+  if (!module || (ts.base != TB_STRUCT && ts.base != TB_UNION)) {
+    return;
+  }
+  if (!ts.record_def && ts.tag_text_id != kInvalidText) {
+    for (const auto& [_, candidate] : struct_def_nodes) {
+      if (!candidate || candidate->kind != NK_STRUCT_DEF) continue;
+      if (candidate->unqualified_text_id != ts.tag_text_id) continue;
+      if (ts.namespace_context_id >= 0 &&
+          candidate->namespace_context_id != ts.namespace_context_id) {
+        continue;
+      }
+      ts.record_def = const_cast<Node*>(candidate);
+      break;
+    }
+  }
+  if (!ts.record_def || ts.record_def->kind != NK_STRUCT_DEF) return;
+
+  TextTable* texts = module->link_name_texts.get();
+  const TextId owner_text_id = make_unqualified_text_id(ts.record_def, texts);
+  if (owner_text_id == kInvalidText) return;
+
+  ts.tag_text_id = owner_text_id;
+  ts.namespace_context_id = ts.record_def->namespace_context_id;
+  ts.is_global_qualified = ts.record_def->is_global_qualified;
+  ts.qualifier_text_ids = ts.record_def->qualifier_text_ids;
+  ts.n_qualifier_segments = ts.record_def->n_qualifier_segments;
+  ts.record_def = nullptr;
+}
+
 DeclRef make_direct_call_decl_ref(Module& mod, std::string name,
                                   LinkNameId link_name_id = kInvalidLinkName) {
   DeclRef dr{};
@@ -782,6 +815,8 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
           arg_ts = *resolved;
         }
       }
+      canonicalize_consteval_template_type_binding(
+          arg_ts, module_, struct_def_nodes_);
       tpl_bindings[fn_def->template_param_names[i]] = arg_ts;
     }
     if (fn_def->template_param_has_default) {
@@ -793,8 +828,10 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
           ce_nttp_bindings[fn_def->template_param_names[i]] = value;
           record_nttp_text_binding(fn_def, i, value, &ce_nttp_bindings_by_text);
         } else {
-          tpl_bindings[fn_def->template_param_names[i]] =
-              fn_def->template_param_default_types[i];
+          TypeSpec default_ts = fn_def->template_param_default_types[i];
+          canonicalize_consteval_template_type_binding(
+              default_ts, module_, struct_def_nodes_);
+          tpl_bindings[fn_def->template_param_names[i]] = default_ts;
         }
       }
     }
