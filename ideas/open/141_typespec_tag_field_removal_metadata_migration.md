@@ -89,6 +89,17 @@ removal route, including:
 
 ## Lifecycle Checkpoints
 
+- 2026-05-05: Parked again before continuing field deletion. The broad
+  validation failures reviewed in
+  `review/139_140_141_failure_attribution_review.md` and the follow-up fixes
+  since `119a6ef0430fbb4967cfd79f7d6b3a12ad5f6bc8` show a shared upstream
+  route problem: raw `TypeSpec::tag_text_id` and rendered tag compatibility are
+  being canonicalized tentatively at many parser/Sema/HIR/codegen consumer
+  sites instead of once at TypeSpec production and parser-to-HIR handoff
+  boundaries. Do not continue deleting `TypeSpec::tag` under this parent
+  runbook until the separate normalization initiative
+  `ideas/open/143_typespec_identity_normalization_boundary.md` has established
+  a stable normalized identity contract.
 - 2026-05-03: Frontend/parser/Sema/HIR-owned deletion-probe residuals were
   cleared through Step 4. The next first failure is a downstream codegen/LIR
   carrier boundary at `src/codegen/shared/llvm_helpers.hpp:444`, with related

@@ -1,201 +1,183 @@
-# TypeSpec Tag Field Removal Metadata Migration Runbook
+# TypeSpec Identity Normalization Boundary Runbook
 
 Status: Active
-Source Idea: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
+Source Idea: ideas/open/143_typespec_identity_normalization_boundary.md
+Supersedes Active Runbook: ideas/open/141_typespec_tag_field_removal_metadata_migration.md
 
 ## Purpose
 
-Resume the parent `TypeSpec::tag` removal route after the codegen/LIR child
-runbook returned the remaining deletion-probe boundary to frontend/HIR test
-fixtures.
+Park the TypeSpec field-removal route and repair the upstream identity contract
+that caused repeated consumer-side canonicalization fixes after
+`119a6ef0430fbb4967cfd79f7d6b3a12ad5f6bc8`.
 
 ## Goal
 
-Remove `TypeSpec::tag` as a cross-stage semantic identity field without
-weakening parser, Sema, HIR, codegen, or backend behavior.
+Make TypeSpec semantic identity normalized at production and parser-to-HIR
+handoff boundaries so consumers stop rediscovering record, typedef, owner, and
+tag identity through scattered rendered-tag fallback.
 
 ## Core Rule
 
-Do not replace `TypeSpec::tag` with another rendered-string semantic lookup
-authority. Rendered names may remain only as final spelling, diagnostics,
-dumps, mangling, ABI/link text, or explicitly classified no-metadata
-compatibility outside `TypeSpec::tag`.
+Do not add another consumer-local tentative rendered-tag lookup when structured
+metadata exists. Normalize once, then consume a domain key.
 
 ## Read First
 
+- `ideas/open/143_typespec_identity_normalization_boundary.md`
+- `review/139_140_141_failure_attribution_review.md`
+- `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
+- `ideas/closed/140_hir_legacy_string_lookup_metadata_resweep.md`
 - `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`
-- `ideas/open/142_codegen_lir_aggregate_type_identity_metadata.md`
-- `src/frontend/parser/ast.hpp`
-- frontend/HIR tests that still read or write `TypeSpec::tag`
-- `review/step5_lir_aggregate_identity_route_review.md`
-- `review/step5_post_verifier_route_review.md`
+- commits since `119a6ef0430fbb4967cfd79f7d6b3a12ad5f6bc8`
 
 ## Current Targets
 
-- Frontend/HIR test fixtures reported by the latest temporary deletion probe:
-  `tests/frontend/frontend_parser_tests.cpp`,
-  `tests/frontend/frontend_parser_lookup_authority_tests.cpp`,
-  `tests/frontend/cpp_hir_template_type_arg_encoding_test.cpp`,
-  `tests/frontend/cpp_hir_static_member_base_metadata_test.cpp`, and
-  `tests/frontend/frontend_hir_lookup_tests.cpp`.
-- Other frontend/HIR tests that still directly construct, read, or write
-  `TypeSpec::tag` and therefore block compiling after the field is removed.
-- The final `TypeSpec` field declaration in `src/frontend/parser/ast.hpp`.
+- TypeSpec producer and typedef resolution surfaces in
+  `src/frontend/parser/impl/types/base.cpp` and related parser helpers.
+- HIR/module identity handoff helpers in `src/frontend/hir` and
+  `src/frontend/sema/consteval.*`.
+- Shared aggregate/type identity helpers in `src/codegen/shared/llvm_helpers.hpp`.
+- Remaining broad validation failures attributed to 139/140/141 identity
+  drift, especially record/layout lookup, parser cast disambiguation, and
+  template owner identity.
 
 ## Non-Goals
 
-- Reopening parked codegen/LIR idea 142 for parser or HIR test fixtures.
-- Rewriting diagnostics, dump text, mangling, ABI/link spelling, or final
-  output text merely because it is string-shaped.
-- Weakening tests, marking supported cases unsupported, or deleting stale-tag
-  disagreement coverage instead of preserving the same semantic contract with
-  structured metadata.
-- Broad parser, Sema, HIR, LIR, BIR, or backend rewrites outside the direct
-  field-removal boundary.
+- Do not delete `TypeSpec::tag` in this runbook.
+- Do not reopen 139 or 140 as broad cleanup routes; use them as historical
+  inputs.
+- Do not weaken tests or rewrite expectations to reduce the failure count.
+- Do not remove diagnostics, dumps, mangling, final output, or ABI/link text.
 
 ## Working Model
 
-- Use temporary deletion probes only to identify the next compile boundary; do
-  not commit a broken deletion build.
-- Treat test fixture `.tag` writes as compile blockers, not capability
-  progress by themselves. Preserve the fixture's semantic assertion through
-  `tag_text_id`, `record_def`, template/deferred-member metadata, or local
-  compatibility helpers that compile with or without the legacy field.
-- If a probe exposes a real frontend/HIR implementation residual, migrate the
-  producer or consumer contract. If it exposes a downstream carrier gap, split
-  a new child idea instead of expanding this runbook.
-- When all compile residuals are cleared, delete `TypeSpec::tag` and prove the
-  normal build.
+- `TypeSpec::tag_text_id` is only authoritative inside the text table that
+  produced it.
+- Parser producers should attach the best local identity immediately:
+  `record_def`, namespace-qualified `tag_text_id`, template parameter metadata,
+  deferred member metadata, or another explicit domain key.
+- Parser-to-HIR lowering should canonicalize parser-local identity into HIR
+  module identity such as `HirRecordOwnerKey`, `ModuleDeclLookupKey`,
+  `LinkNameId`, or module type refs.
+- Consumers may use rendered spelling only as classified no-metadata
+  compatibility or final/display spelling.
 
 ## Execution Rules
 
-- Keep packets small and buildable.
-- Update `todo.md` after each packet with the migrated fixture or
-  implementation family, proof command, and current deletion-probe boundary.
-- For fixture-only packets, run `cmake --build --preset default` and the
-  relevant frontend/HIR test subset selected by the supervisor.
-- For the final field-deletion packet, run `cmake --build build --target c4cll`
-  or the supervisor-selected equivalent build, then broader validation.
+- Keep each packet tied to one identity family and one proving subset.
+- Prefer extracting a shared normalization helper over adding new fallback
+  branches in consumers.
+- Preserve stale-rendered-spelling disagreement tests.
+- After each packet, update `todo.md` with the normalized boundary touched, the
+  tests run, and the remaining failure family.
 
-## Step 1: Classify Frontend/HIR Test Fixture Tag Uses
+## Step 1: Inventory Post-119a6ef Consumer Repairs
 
-Goal: identify which remaining test `.tag` references are compile blockers,
-intentional stale-rendered-spelling coverage, or no-metadata compatibility
-fixtures.
+Goal: identify duplicated canonicalization and tentative rendered-tag lookup
+patterns.
 
-Primary Target: `tests/frontend` `.tag` users and the deletion-probe failure
-list.
+Primary Target: commits and code touched after
+`119a6ef0430fbb4967cfd79f7d6b3a12ad5f6bc8`.
 
 Actions:
-- Search `tests/frontend` for direct `TypeSpec::tag` reads and writes.
-- Classify each use as stale-rendered-spelling disagreement coverage,
-  no-metadata compatibility fallback coverage, final display spelling, or a
-  removable compile-time fixture shortcut.
-- Pick the first narrow fixture family that can be migrated without changing
-  the tested semantic contract.
+- Inspect recent commits that changed consteval record lookup, codegen
+  aggregate lookup, owner-key lookup, and parser typedef TypeSpec resolution.
+- List consumer-local direct `tag_text_id` lookups against foreign
+  `TextTable` instances.
+- Classify each lookup as normalized identity, no-metadata compatibility, or
+  residual route drift.
 
 Completion Check:
-- `todo.md` records the classified fixture surface and first executable
-  migration target.
-- No implementation behavior is changed in this step.
+- `todo.md` records the duplicated patterns and the first normalization target.
 
-## Step 2: Migrate Fixture Helpers Off Direct Tag Access
+## Step 2: Normalize Parser TypeSpec Producer Identity
 
-Goal: make frontend/HIR tests compile without a `TypeSpec::tag` member while
-preserving the same structured-metadata assertions.
+Goal: make parser-produced TypeSpecs carry the right source identity before
+consumer lookup begins.
 
-Primary Target: helper-heavy frontend/HIR metadata tests.
+Primary Target: parser type producers and typedef resolution.
 
 Actions:
-- Replace direct fixture `.tag` reads and writes with local helper wrappers
-  only where the test intentionally covers legacy compatibility spelling.
-- Prefer structured carriers in fixtures: `tag_text_id`, `record_def`,
-  template parameter metadata, deferred owner/member metadata, or
-  `QualifiedNameKey`.
-- Keep stale-rendered-spelling disagreement tests meaningful; do not erase the
-  stale spelling setup unless the assertion no longer depends on it.
+- Ensure typedef resolution preserves source typedef identity unless a stronger
+  structured identity such as `record_def` applies.
+- Audit struct/union/enum/template/deferred-member producers for stale stored
+  TypeSpec metadata overwriting source carriers.
+- Add or preserve focused frontend/HIR metadata tests.
 
 Completion Check:
-- Migrated test families compile with and without the legacy field present.
-- Relevant frontend/HIR tests pass.
+- Focused parser/HIR producer metadata tests pass.
+- No new consumer-local rendered fallback is introduced.
 
-## Step 3: Re-run The TypeSpec Tag Deletion Probe
+## Step 3: Centralize HIR Record Owner Canonicalization
 
-Goal: confirm the first boundary has moved past frontend/HIR fixtures or
-classify the next owned residual.
+Goal: replace duplicated cross-table record owner repair with one shared
+Module-aware normalization path.
 
-Primary Target: temporary `TypeSpec::tag` deletion build.
+Primary Target: consteval, HIR lowering, and shared codegen aggregate helpers.
 
 Actions:
-- Temporarily remove or disable `TypeSpec::tag` in
-  `src/frontend/parser/ast.hpp`.
-- Run the supervisor-selected build probe.
-- Record the first remaining compile boundary and ownership in `todo.md`.
-- Restore the probe edit unless this step becomes the final accepted deletion
-  packet.
+- Define or consolidate a helper that converts TypeSpec aggregate identity into
+  a canonical HIR owner key using module-owned text tables.
+- Route record-layout and aggregate consumers through that helper.
+- Keep rendered tag lookup only as explicit no-metadata compatibility.
 
 Completion Check:
-- `todo.md` records the probe result.
-- The worktree returns to a normal buildable state after any non-final probe.
+- Group A/B-style record/layout tests remain green or improve.
+- Tests with stale rendered tags still reject wrong structured identity.
 
-## Step 4: Migrate Frontend/HIR Implementation Residuals
+## Step 4: Normalize Parser Cast And Template Owner Identity
 
-Goal: clear any remaining parser, Sema, or HIR implementation dependence on
-`TypeSpec::tag` exposed after fixture cleanup.
+Goal: address the remaining parser disambiguation and template-owner failures
+without reintroducing rendered-string authority.
 
-Primary Target: the first frontend/HIR implementation residual reported by the
-deletion probe.
+Primary Target: generated c-style-cast disambiguation tests and EASTL/template
+specialization incomplete-type failures.
 
 Actions:
-- Migrate semantic lookup to structured carriers such as `TextId`,
-  `record_def`, template parameter metadata, deferred member metadata,
-  `QualifiedNameKey`, HIR declaration ids, record owner keys, or module type
-  refs.
-- Preserve rendered spelling only at diagnostics, dumps, final output,
-  mangling, ABI/link text, or explicitly named no-metadata compatibility
-  boundaries.
-- Add or preserve focused tests that prove stale rendered spelling does not
-  decide semantic lookup when structured metadata exists.
+- Trace where owner-dependent `typename` and template-member cast targets lose
+  their structured owner.
+- Thread the normalized owner/type identity through the parser/Sema handoff.
+- Prove with same-feature generated matrix tests, not a named-case shortcut.
 
 Completion Check:
-- The migrated implementation family no longer reads `TypeSpec::tag` as
-  semantic authority when structured metadata is available.
-- `cmake --build --preset default` and the supervisor-selected focused subset
-  pass.
+- Group D parser disambiguation tests improve.
+- EASTL/template owner incomplete-type tests improve or are reclassified with
+  a precise blocker.
 
-## Step 5: Delete TypeSpec::tag And Prove The Field Removal
+## Step 5: Retire Consumer-Side Compatibility Debt
 
-Goal: remove the field from `TypeSpec` and accept only a buildable,
-non-overfit final state.
+Goal: remove or demote fallback helpers made unnecessary by normalization.
 
-Primary Target: `src/frontend/parser/ast.hpp` and any residual compile errors
-from removing the field.
+Primary Target: helpers named legacy/fallback/compatibility that still decide
+semantic identity in metadata-backed paths.
 
 Actions:
-- Delete the `TypeSpec::tag` field.
-- Fix remaining compile errors by removing direct field access or routing
-  semantics through existing structured metadata.
-- Do not restore a broad rendered-string compatibility field on `TypeSpec`.
+- Delete duplicated local fallback paths after their consumers use normalized
+  identity.
+- Keep compatibility helpers only where no metadata exists and name them
+  accordingly.
+- Add reviewer-facing notes in `todo.md` for any compatibility path retained.
 
 Completion Check:
-- `cmake --build build --target c4cll` or the supervisor-selected equivalent
-  build passes with `TypeSpec::tag` removed.
-- Focused frontend/HIR metadata tests pass.
+- The diff reduces consumer-local rediscovery code instead of moving it.
+- Retained string paths are visibly non-semantic or no-metadata compatibility.
 
-## Step 6: Validate And Close Or Split
+## Step 6: Broad Validation And 141 Resume Decision
 
-Goal: decide whether the parent source idea is complete or whether a newly
-exposed boundary needs its own follow-up idea.
+Goal: decide whether TypeSpec field removal can safely resume.
 
-Primary Target: validation logs and lifecycle state.
+Primary Target: full validation and lifecycle state.
 
 Actions:
-- Confirm retained rendered spelling is classified outside `TypeSpec::tag`.
-- Run broader validation selected by the supervisor.
-- If the field is removed and validation passes, close this source idea.
-- If a new non-frontend/HIR carrier boundary appears, create a narrower open
-  child idea and retire or park this runbook without claiming closure.
+- Run supervisor-selected broad validation, usually
+  `ctest --test-dir build -j 8 --output-on-failure`.
+- Compare remaining failures against
+  `review/139_140_141_failure_attribution_review.md`.
+- If normalized identity is stable, switch lifecycle back to idea 141.
+- If a distinct downstream boundary remains, create a narrower open idea
+  instead of expanding this runbook.
 
 Completion Check:
-- The lifecycle state reflects either source-idea closure or a documented
-  follow-up boundary.
+- Validation shows no new failures relative to this idea's accepted baseline.
+- Lifecycle state records whether 141 should resume or another child idea is
+  needed.
