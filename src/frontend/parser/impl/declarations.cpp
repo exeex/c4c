@@ -1970,7 +1970,7 @@ Node* parse_top_level(Parser& parser) {
         };
         auto try_consume_typedef_nttp_type_head = [&]() -> bool {
             if (parser.is_cpp_mode()) {
-                Parser::TentativeParseGuard guard(parser);
+                Parser::TentativeParseGuardLite guard(parser);
                 std::string head_name;
                 if (parser.consume_qualified_type_spelling(
                         /*allow_global=*/true,
@@ -2099,7 +2099,7 @@ Node* parse_top_level(Parser& parser) {
                 }
                 push_nttp_no_default();
             } else if (parser.is_cpp_mode()) {
-                Parser::TentativeParseGuard guard(parser);
+                Parser::TentativeParseGuardLite guard(parser);
                 std::string constraint_name;
                 if (parser.consume_qualified_type_spelling(
                         /*allow_global=*/true,

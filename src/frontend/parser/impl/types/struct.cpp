@@ -66,6 +66,22 @@ static bool consume_record_template_param_default(Parser& parser,
     if (default_expr) *default_expr = nullptr;
 
     if (prefer_type_default && default_type) {
+        if (parser.check(TokenKind::KwTypename)) {
+            Parser::TentativeParseGuardLite guard(parser);
+            try {
+                TypeSpec parsed = parser.parse_type_name();
+                guard.commit();
+                *default_type = parsed;
+                if (default_expr) {
+                    *default_expr = capture_template_param_default_text(
+                        parser, default_start, parser.pos_);
+                }
+                return true;
+            } catch (...) {
+                // guard restores pos_ on scope exit
+            }
+        }
+
         Parser::TentativeParseGuard guard(parser);
         try {
             TypeSpec parsed = parser.parse_type_name();
@@ -1446,7 +1462,7 @@ bool try_parse_record_method_or_field_member(
     // type prefix, so KwOperator can appear directly here.
     bool is_conversion_operator = false;
     if (parser.is_cpp_mode()) {
-        Parser::TentativeParseGuard operator_guard(parser);
+        Parser::TentativeParseGuardLite operator_guard(parser);
         while (!parser.at_end()) {
             if (parser.check(TokenKind::KwOperator)) {
                 is_conversion_operator = true;
@@ -1476,7 +1492,7 @@ bool try_parse_record_method_or_field_member(
     bool field_is_static = false;
     bool field_is_constexpr = false;
     if (parser.is_cpp_mode()) {
-        Parser::TentativeParseGuard peek_guard(parser);
+        Parser::TentativeParseGuardLite peek_guard(parser);
         while (!parser.at_end() && !parser.check(TokenKind::RBrace)) {
             if (parser.check(TokenKind::KwStatic)) { field_is_static = true; parser.consume(); continue; }
             if (parser.check(TokenKind::KwConstexpr)) { field_is_constexpr = true; parser.consume(); continue; }

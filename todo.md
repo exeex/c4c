@@ -8,35 +8,34 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Blocked the parent Step 6 attempt to repair the final two focused parser
-subset failures.
+Repaired the parent Step 6 parser perf boundary for call-like alias-template
+member expressions used as non-type template arguments.
 
-The local perf probe found that avoiding full tentative snapshots for
-qualified call-like template arguments can make
-`cpp_qualified_template_call_template_arg_perf` pass, but the only explored
-source route was not commit-ready: early value-expression token capture for
-alias/variable-template calls destabilized the EASTL recipe path, and broader
-lite-guard conversion allowed speculative parser state to escape rollback.
-Those non-ready source edits were reverted.
+`parse_next_template_argument` now has a structured fast carrier for
+`Alias<Ts...>::template member<Us...>()`-shaped value arguments. The carrier is
+an `NK_CALL` over `NK_MEMBER`/`NK_VAR` with parsed template-argument metadata on
+the owner and selected member; it does not raw-capture the token stream and it
+leaves enclosing `>>` handling to the existing template closer logic.
 
-The refreshed delegated proof is back at the clean packet baseline: 11/13
-passing with the same two remaining failures:
+The supporting parser work keeps rollback changes narrow: simple builtin/type
+template arguments and a few cursor-only lookahead probes now use lite
+tentative guards, while the broader parser disambiguation paths continue to
+use full rollback. The focused perf case now passes in the delegated subset.
 
-- `cpp_qualified_template_call_template_arg_perf` still times out.
+The refreshed delegated proof improved from 11/13 to 12/13 passing. The only
+remaining failure is:
+
 - `cpp_parse_record_base_variable_template_value_arg_dump` still misses the
   expected `has_unique_object_representations_T_int` specialization dump.
 
 ## Suggested Next
 
-Recommended next Step 6 implementation packet: implement a structured
-non-type template argument expression carrier for call-like alias-template
-member expressions. The first bad boundary is
-`try_parse_template_non_type_arg`: expressions such as
-`Alias<Ts...>::template member<Us...>()` fall through to full expression
-parsing inside template-argument disambiguation. The next attempt should
-consume that structured expression shape without raw token capture, without
-swallowing `>>` needed by enclosing template lists, and without broad
-rollback-mode changes.
+Recommended next Step 6 implementation packet: repair the variable-template
+value-argument record-base specialization seam. The first visible boundary is
+that `eastl::has_unique_object_representations<int>::value` is parsed/lowered
+as `Var(eastl::has_unique_object_representations::value) specialize<1>`
+without causing the concrete `has_unique_object_representations_T_int` record
+specialization to appear in the parse dump.
 
 ## Watchouts
 
@@ -49,16 +48,13 @@ rollback-mode changes.
 - The `Owner<Args>::member` repair only succeeds after structured template
   owner lookup plus selected-member typedef resolution; unknown member names
   still roll back.
-- The perf guard still shows quadratic behavior from repeated full
-  tentative-expression parsing in qualified template-call default arguments.
-- A rejected local probe made the perf case pass by token-capturing
-  value-like `Alias<Ts...>::template f<Us...>()` arguments, but it regressed
-  EASTL because direct variable-template arguments closed by `>>` need
-  structured closer splitting, not raw token capture.
-- Another rejected probe converted broad parser lookahead guards to lite
-  rollback; that can leak speculative parser symbol state and caused EASTL
-  recipe failures/kills. Keep rollback-mode changes narrow and prove each one
-  against EASTL/debug cases.
+- The prior perf guard's repeated full tentative-expression parsing in
+  qualified template-call default arguments is fixed by the structured carrier
+  in this packet; preserve the focused carrier shape rather than returning to
+  raw token capture.
+- Rollback-mode changes in this packet are limited to the new structured
+  carrier, simple type-argument fast paths, and cursor-only lookahead probes.
+  Do not broaden lite rollback without a matching parser-state audit.
 - The parse-only value-template dump still lowers
   `eastl::has_unique_object_representations<int>::value` as
   `Var(eastl::has_unique_object_representations::value) specialize<1>` without
@@ -71,16 +67,11 @@ rollback-mode changes.
 
 ## Proof
 
-Parent Step 6 focused parser proof:
+Step 6 focused parser proof after the structured NTTP-expression carrier:
 `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(cpp_eastl_integer_sequence_parse_recipe|cpp_eastl_type_traits_parse_recipe|cpp_eastl_utility_parse_recipe|cpp_eastl_vector_parse_recipe|cpp_eastl_memory_uses_allocator_parse_recipe|eastl_cpp_external_utility_frontend_basic_cpp|cpp_qualified_template_call_template_arg_perf|cpp_parse_record_base_variable_template_value_arg_dump|cpp_parse_template_alias_empty_pack_default_arg_dump|cpp_parser_debug_qualified_type_template_arg_stack|cpp_parser_debug_qualified_type_spelling_stack|cpp_parser_debug_tentative_template_arg_lifecycle|cpp_parser_debug_tentative_cli_only)$' > test_after.log 2>&1`
 
-Result: failed, 11/13 passing with 2 remaining failures. This packet did not
-improve the baseline and is blocked with no source changes retained.
+Result: failed, 12/13 passing. `cpp_qualified_template_call_template_arg_perf`
+passes in 4.40 sec; only
+`cpp_parse_record_base_variable_template_value_arg_dump` remains failing.
 
 Proof log: `test_after.log`.
-
-Additional rejected local probe:
-`cmake --build build && ctest --test-dir build --output-on-failure -R '^cpp_qualified_template_call_template_arg_perf$'`
-
-Result: passed only while non-ready parser guard/capture edits were present;
-the edits were reverted because the delegated subset regressed.

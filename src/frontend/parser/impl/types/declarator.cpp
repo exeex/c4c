@@ -519,6 +519,197 @@ static bool try_resolve_template_owner_member_typedef_type(
     return false;
 }
 
+static const ParserAliasTemplateInfo*
+find_structured_alias_template_info_for_expr_head(
+    Parser& parser, const Parser::QualifiedNameRef& qn) {
+    if (qn.base_text_id == kInvalidText) return nullptr;
+    if (qn.qualifier_segments.empty() && !qn.is_global_qualified) {
+        if (const ParserAliasTemplateInfo* info =
+                parser.find_alias_template_info_in_context(
+                    parser.current_namespace_context_id(), qn.base_text_id)) {
+            return info;
+        }
+        const Parser::VisibleNameResult visible =
+            parser.resolve_visible_type(qn.base_text_id);
+        if (visible) return parser.find_alias_template_info(visible.key);
+        return nullptr;
+    }
+
+    const int context_id =
+        qn.qualifier_segments.empty()
+            ? (qn.is_global_qualified ? 0
+                                      : parser.current_namespace_context_id())
+            : parser.resolve_namespace_context(qn);
+    if (context_id < 0) return nullptr;
+    return parser.find_alias_template_info(
+        parser.alias_template_key_in_context(context_id, qn.base_text_id));
+}
+
+static bool has_structured_alias_like_template_expr_head(
+    Parser& parser, const Parser::QualifiedNameRef& qn,
+    const ParserAliasTemplateInfo** out_alias_info) {
+    if (out_alias_info) *out_alias_info = nullptr;
+    if (const ParserAliasTemplateInfo* alias_info =
+            find_structured_alias_template_info_for_expr_head(parser, qn)) {
+        if (out_alias_info) *out_alias_info = alias_info;
+        return true;
+    }
+    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
+        return false;
+    }
+    return parser.find_visible_typedef_type(qn.base_text_id) != nullptr;
+}
+
+static void attach_template_arg_parse_results_to_node(
+    Parser& parser, Node* node,
+    const std::vector<Parser::TemplateArgParseResult>& args) {
+    if (!node) return;
+    node->has_template_args = true;
+    node->n_template_args = static_cast<int>(args.size());
+    if (node->n_template_args <= 0) return;
+    node->template_arg_types =
+        parser.arena_.alloc_array<TypeSpec>(node->n_template_args);
+    node->template_arg_is_value =
+        parser.arena_.alloc_array<bool>(node->n_template_args);
+    node->template_arg_values =
+        parser.arena_.alloc_array<long long>(node->n_template_args);
+    node->template_arg_nttp_names =
+        parser.arena_.alloc_array<const char*>(node->n_template_args);
+    node->template_arg_nttp_text_ids =
+        parser.arena_.alloc_array<TextId>(node->n_template_args);
+    node->template_arg_exprs =
+        parser.arena_.alloc_array<Node*>(node->n_template_args);
+    for (int i = 0; i < node->n_template_args; ++i) {
+        node->template_arg_types[i] = args[i].type;
+        node->template_arg_is_value[i] = args[i].is_value;
+        node->template_arg_values[i] = args[i].value;
+        node->template_arg_nttp_names[i] = args[i].nttp_name;
+        node->template_arg_nttp_text_ids[i] = args[i].nttp_text_id;
+        node->template_arg_exprs[i] = args[i].expr;
+    }
+}
+
+static bool try_parse_simple_template_type_arg_list(
+    Parser& parser, std::vector<Parser::TemplateArgParseResult>* out_args) {
+    if (!out_args || !parser.check(TokenKind::Less)) return false;
+    Parser::TentativeParseGuardLite guard(parser);
+    std::vector<Parser::TemplateArgParseResult> parsed;
+    parser.consume();  // <
+    while (!parser.at_end() && !parser.check_template_close()) {
+        if (!parser.check(TokenKind::Identifier)) return false;
+        const Token& tok = parser.cur();
+        const std::string spelling = std::string(parser.token_spelling(tok));
+        const TextId text_id =
+            parser.parser_text_id_for_token(tok.text_id, spelling);
+        parser.consume();
+        TypeSpec ts{};
+        ts.array_size = -1;
+        ts.inner_rank = -1;
+        ts.base = TB_TYPEDEF;
+        ts.tag_text_id = text_id;
+        set_declarator_legacy_display_tag_if_present(
+            ts, parser.arena_.strdup(spelling.c_str()), 0);
+        Parser::TemplateArgParseResult arg;
+        arg.is_value = false;
+        arg.type = ts;
+        arg.value = 0;
+        arg.nttp_name = nullptr;
+        arg.nttp_text_id = kInvalidText;
+        arg.expr = nullptr;
+        arg.captured_expr_tokens.clear();
+        parsed.push_back(arg);
+        if (!parser.match(TokenKind::Comma)) break;
+    }
+    if (!parser.match_template_close()) return false;
+    *out_args = std::move(parsed);
+    guard.commit();
+    return true;
+}
+
+static bool try_parse_alias_template_member_call_nttp_arg(
+    Parser& parser, int expr_start,
+    Parser::TemplateArgParseResult* out_arg) {
+    if (!out_arg || !parser.is_cpp_mode()) return false;
+    if (!parser.check(TokenKind::Identifier) &&
+        !parser.check(TokenKind::ColonColon)) {
+        return false;
+    }
+
+    Parser::TentativeParseGuardLite guard(parser);
+    const int line = parser.cur().line;
+    const Parser::QualifiedNameRef owner_qn =
+        parser.parse_qualified_name(/*allow_global=*/true);
+    const ParserAliasTemplateInfo* alias_info = nullptr;
+    if (!has_structured_alias_like_template_expr_head(
+            parser, owner_qn, &alias_info) ||
+        !parser.check(TokenKind::Less)) {
+        return false;
+    }
+
+    std::vector<Parser::TemplateArgParseResult> owner_args;
+    if (!try_parse_simple_template_type_arg_list(parser, &owner_args) &&
+        !parser.parse_template_argument_list(&owner_args, nullptr,
+                                             alias_info
+                                                 ? &alias_info->param_is_nttp
+                                                 : nullptr)) {
+        return false;
+    }
+    if (!parser.match(TokenKind::ColonColon)) return false;
+    if (parser.check(TokenKind::KwTemplate)) parser.consume();
+    if (!parser.check(TokenKind::Identifier)) return false;
+
+    const Token& member_tok = parser.cur();
+    const std::string member_name =
+        std::string(parser.token_spelling(member_tok));
+    const TextId member_text_id =
+        parser.parser_text_id_for_token(member_tok.text_id, member_name);
+    parser.consume();
+
+    std::vector<Parser::TemplateArgParseResult> member_args;
+    if (parser.check(TokenKind::Less)) {
+        if (!try_parse_simple_template_type_arg_list(parser, &member_args) &&
+            !parser.parse_template_argument_list(&member_args)) {
+            return false;
+        }
+    }
+    if (!parser.match(TokenKind::LParen)) return false;
+    if (!parser.match(TokenKind::RParen)) return false;
+    if (!parser.check(TokenKind::Comma) && !parser.check_template_close()) {
+        return false;
+    }
+
+    const std::string owner_name =
+        parser.qualified_name_text(owner_qn, true /* include_global_prefix */);
+    Node* owner =
+        parser.make_var(parser.arena_.strdup(owner_name.c_str()), line);
+    parser.apply_qualified_name(owner, owner_qn, owner->name);
+    attach_template_arg_parse_results_to_node(parser, owner, owner_args);
+
+    Node* member = parser.make_node(NK_MEMBER, line);
+    member->left = owner;
+    member->name = parser.arena_.strdup(member_name.c_str());
+    member->unqualified_name = member->name;
+    member->unqualified_text_id = member_text_id;
+    member->is_arrow = false;
+    attach_template_arg_parse_results_to_node(parser, member, member_args);
+
+    Node* call = parser.make_node(NK_CALL, line);
+    call->left = member;
+    call->n_children = 0;
+
+    const std::string expr_text = capture_template_arg_expr_text(
+        parser, parser.core_input_state_.tokens, expr_start, parser.pos_);
+    out_arg->is_value = true;
+    out_arg->value = 0;
+    out_arg->nttp_name =
+        parser.arena_.strdup((std::string("$expr:") + expr_text).c_str());
+    out_arg->nttp_text_id = kInvalidText;
+    out_arg->expr = call;
+    out_arg->captured_expr_tokens.clear();
+    guard.commit();
+    return true;
+}
+
 bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                           const Node* primary_tpl, int arg_idx,
                                           bool* out_has_more,
@@ -528,14 +719,18 @@ bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* o
 
     TemplateArgParseResult arg;
     bool ok = false;
+    if (try_parse_alias_template_member_call_nttp_arg(
+            *this, core_input_state_.pos, &arg)) {
+        ok = true;
+    }
     // Normalized disambiguation order (Clang ParseTemplateArgument style):
     //   1. try type-id
     //   2. try non-type expression
     // The primary_tpl hint (expect_value) is used only to prefer
     // non-type for tokens that are unambiguously value-like, avoiding
     // a redundant (and exception-throwing) type parse attempt.
-    if (!is_clearly_value_template_arg(primary_tpl, arg_idx,
-                                       explicit_param_is_nttp))
+    if (!ok && !is_clearly_value_template_arg(primary_tpl, arg_idx,
+                                              explicit_param_is_nttp))
         ok = try_parse_template_type_arg(&arg);
     if (!ok) ok = try_parse_template_non_type_arg(&arg);
     if (!ok) return false;
@@ -588,9 +783,9 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         return is_known_simple_type_head(*this, name_text_id, name);
     };
 
-    if (is_simple_known_template_type_head() &&
+    if ((is_type_kw(cur().kind) || is_simple_known_template_type_head()) &&
         !starts_template_id_type_head()) {
-        TentativeParseGuard fast_guard(*this);
+        TentativeParseGuardLite fast_guard(*this);
         try {
             TypeSpec ts = parse_base_type();
             if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
@@ -2192,7 +2387,7 @@ void parse_normal_declarator_tail(Parser& parser, TypeSpec& ts,
         (parser.check(TokenKind::Identifier) ||
          parser.check(TokenKind::ColonColon) ||
          parser.check(TokenKind::KwOperator))) {
-        Parser::TentativeParseGuard guard(parser);
+        Parser::TentativeParseGuardLite guard(parser);
         std::string qualified_name;
         Parser::QualifiedNameRef qualified_qn;
         if (parse_qualified_declarator_name(parser, &qualified_name,
