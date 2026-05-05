@@ -8,63 +8,53 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Executed parent Step 6 broad-validation triage after closing the constructor
-member-template specialization decomposition.
+Repaired the parent Step 6 qualified alias-template type parser boundary.
 
-The full-suite command completed and wrote `test_after.log`. Result: 2999/3023
-passing, 24 failing. This red full-suite result is triage data only, not a
-canonical accepted baseline.
+The structured `try_parse_qualified_base_type` alias-template branch now
+projects `ParserAliasTemplateInfo::aliased_type` when the alias is a direct
+type alias rather than a member-typedef carrier. This keeps semantic authority
+on the parser alias-template registry and fixes qualified plain aliases such
+as `ns::void_t<>` without accepting unknown namespace-qualified template ids
+from spelling alone.
 
-Representative remaining failure clusters:
+The delegated proof improved from the packet baseline of 0/13 passing to 7/13
+passing. Newly green in this packet:
 
-- C++ qualified/template parser fallout: EASTL parse recipes and external
-  utility fail at `EASTL/internal/type_properties.h:357:46` with `expected
-  GREATER but got '<'`; vector/tuple adds `parse_top_level_parameter_list`
-  failures at `<`, `::`, and `(`. Related parser-only/debug/perf failures:
-  `cpp_parse_template_alias_empty_pack_default_arg_dump`,
-  `cpp_parser_debug_qualified_type_template_arg_stack`,
-  `cpp_parser_debug_qualified_type_spelling_stack`,
-  `cpp_parser_debug_tentative_template_arg_lifecycle`,
-  `cpp_parser_debug_tentative_cli_only`, and
-  `cpp_qualified_template_call_template_arg_perf` timeout.
-- C++ parser/HIR dump mismatch:
-  `cpp_parse_record_base_variable_template_value_arg_dump` no longer emits the
+- `cpp_eastl_integer_sequence_parse_recipe`
+- `cpp_eastl_type_traits_parse_recipe`
+- `cpp_eastl_utility_parse_recipe`
+- `cpp_eastl_vector_parse_recipe`
+- `cpp_eastl_memory_uses_allocator_parse_recipe`
+- `eastl_cpp_external_utility_frontend_basic_cpp`
+- `cpp_parse_template_alias_empty_pack_default_arg_dump`
+
+Remaining failures in the delegated subset:
+
+- `cpp_qualified_template_call_template_arg_perf` still times out.
+- `cpp_parse_record_base_variable_template_value_arg_dump` still misses the
   expected `has_unique_object_representations_T_int` specialization dump.
-- C aggregate/member-owner frontend failures:
-  `c_testsuite_src_00019_c`, `llvm_gcc_c_torture_src_pr40022_c`, and
-  `llvm_gcc_c_torture_src_20001124_1_c` fail with `StmtEmitter: field ... not
-  found in struct/union ...`.
-- LIR structured signature mirror failures:
-  `llvm_gcc_c_torture_src_20040709_1_c`,
-  `llvm_gcc_c_torture_src_20040709_2_c`,
-  `llvm_gcc_c_torture_src_20040709_3_c`, and
-  `llvm_gcc_c_torture_src_pr23324_c` report return/parameter mirrors naming a
-  different structured type than the aggregate ABI type.
-- C runtime segfault cluster:
-  `llvm_gcc_c_torture_src_20020402_3_c`,
-  `llvm_gcc_c_torture_src_20071018_1_c`,
-  `llvm_gcc_c_torture_src_950426_1_c`, and
-  `llvm_gcc_c_torture_src_pr41463_c` compile with clang but the c2ll runtime
-  exits by segmentation fault.
+- `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_spelling_stack`,
+  `cpp_parser_debug_tentative_template_arg_lifecycle`, and
+  `cpp_parser_debug_tentative_cli_only` still fail their expected parser-debug
+  stack substrings.
 
 ## Suggested Next
 
-Recommended next Step 6 implementation packet: repair the dominant C++ parser
-qualified/template-id fallout first, starting from the shared
-`type_properties.h:357` / `expected GREATER but got '<'` boundary and the
-related parser debug stack/perf cases. Preserve the structured-authority guard:
-do not accept unknown namespace-qualified template ids from spelling alone, and
-do not recover semantics from rendered strings or `TypeSpec::tag`.
-
-After that parser packet, rerun a matching broad or focused parent Step 6 proof
-and then triage the smaller C aggregate-owner and LIR signature/runtime
-clusters separately if they remain.
+Recommended next Step 6 implementation packet: repair the remaining parser
+qualified/template debug/perf/value-template cluster. Start with the value
+template argument specialization dump for
+`has_unique_object_representations<int>` and the parser-debug stack cases,
+then rerun the same 13-test proof.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- Treat this red full-suite result as triage data, not canonical accepted
-  baseline proof.
+- The namespace-qualified unknown-template guard was checked separately with
+  `frontend_parser_tests`, which passed.
+- The qualified alias-template fix depends on a real
+  `ParserAliasTemplateInfo` lookup; unknown namespace-qualified template ids
+  still roll back instead of being accepted from spelling.
 - The constructor member-template specialization blocker is closed; do not
   reopen it unless a fresh parent deletion probe exposes a distinct regression
   in the same carrier.
@@ -73,12 +63,14 @@ clusters separately if they remain.
 
 ## Proof
 
-Parent Step 6 broad-validation triage:
-`cmake --build build && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`
+Parent Step 6 focused parser proof:
+`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(cpp_eastl_integer_sequence_parse_recipe|cpp_eastl_type_traits_parse_recipe|cpp_eastl_utility_parse_recipe|cpp_eastl_vector_parse_recipe|cpp_eastl_memory_uses_allocator_parse_recipe|eastl_cpp_external_utility_frontend_basic_cpp|cpp_qualified_template_call_template_arg_perf|cpp_parse_record_base_variable_template_value_arg_dump|cpp_parse_template_alias_empty_pack_default_arg_dump|cpp_parser_debug_qualified_type_template_arg_stack|cpp_parser_debug_qualified_type_spelling_stack|cpp_parser_debug_tentative_template_arg_lifecycle|cpp_parser_debug_tentative_cli_only)$' > test_after.log 2>&1`
 
-Result: failed, 2999/3023 passing with 24 failures.
+Result: failed but improved, 7/13 passing with 6 remaining failures.
 
 Proof log: `test_after.log`.
 
-This red result is not an accepted baseline; it is the current parent Step 6
-triage snapshot for selecting the next implementation packet.
+Additional guard check:
+`ctest --test-dir build --output-on-failure -R '^frontend_parser_tests$'`
+
+Result: passed, 1/1.

@@ -168,6 +168,107 @@ static Parser::TemplateArgParseResult declarator_substitute_alias_carrier_arg(
     return out;
 }
 
+static bool declarator_alias_type_param_index(
+    Parser& parser,
+    const ParserAliasTemplateInfo& info,
+    const TypeSpec& ts,
+    size_t* out_index) {
+    if (!out_index) return false;
+    TextId ref_text_id = ts.template_param_text_id;
+    if (ref_text_id == kInvalidText && ts.base == TB_TYPEDEF) {
+        ref_text_id = ts.tag_text_id;
+    }
+    const size_t index =
+        declarator_alias_template_param_index(parser, info, ref_text_id);
+    if (index >= declarator_alias_template_param_count(info)) return false;
+    if (index < info.param_is_nttp.size() && info.param_is_nttp[index])
+        return false;
+    *out_index = index;
+    return true;
+}
+
+static TypeSpec declarator_apply_alias_type_arg(TypeSpec pattern,
+                                                const TypeSpec& actual) {
+    const int outer_ptr_level = pattern.ptr_level;
+    const bool outer_lref = pattern.is_lvalue_ref;
+    const bool outer_rref = pattern.is_rvalue_ref;
+    const bool outer_const = pattern.is_const;
+    const bool outer_volatile = pattern.is_volatile;
+    const bool outer_noinline = pattern.is_noinline;
+    const bool outer_always_inline = pattern.is_always_inline;
+    pattern = actual;
+    pattern.ptr_level += outer_ptr_level;
+    pattern.is_lvalue_ref = pattern.is_lvalue_ref || outer_lref;
+    pattern.is_rvalue_ref =
+        !pattern.is_lvalue_ref && (pattern.is_rvalue_ref || outer_rref);
+    pattern.is_const = pattern.is_const || outer_const;
+    pattern.is_volatile = pattern.is_volatile || outer_volatile;
+    pattern.is_noinline = pattern.is_noinline || outer_noinline;
+    pattern.is_always_inline = pattern.is_always_inline || outer_always_inline;
+    return pattern;
+}
+
+static bool declarator_substitute_alias_aliased_type(
+    Parser& parser,
+    const ParserAliasTemplateInfo& info,
+    const std::vector<Parser::TemplateArgParseResult>& actual_args,
+    TypeSpec* in_out_ts) {
+    if (!in_out_ts) return false;
+
+    size_t param_index = 0;
+    if (declarator_alias_type_param_index(parser, info, *in_out_ts,
+                                          &param_index)) {
+        if (param_index >= actual_args.size() ||
+            actual_args[param_index].is_value) {
+            return false;
+        }
+        *in_out_ts =
+            declarator_apply_alias_type_arg(*in_out_ts,
+                                            actual_args[param_index].type);
+        return true;
+    }
+
+    if (in_out_ts->tpl_struct_args.data && in_out_ts->tpl_struct_args.size > 0) {
+        for (int i = 0; i < in_out_ts->tpl_struct_args.size; ++i) {
+            TemplateArgRef& nested = in_out_ts->tpl_struct_args.data[i];
+            if (nested.kind == TemplateArgKind::Type) {
+                if (!declarator_substitute_alias_aliased_type(
+                        parser, info, actual_args, &nested.type)) {
+                    return false;
+                }
+                continue;
+            }
+            if (nested.kind != TemplateArgKind::Value ||
+                nested.nttp_text_id == kInvalidText) {
+                continue;
+            }
+            const size_t value_index =
+                declarator_alias_template_param_index(parser, info,
+                                                      nested.nttp_text_id);
+            if (value_index >= actual_args.size() ||
+                value_index >= declarator_alias_template_param_count(info)) {
+                continue;
+            }
+            if (!actual_args[value_index].is_value) return false;
+            nested.value = actual_args[value_index].value;
+            nested.nttp_text_id = actual_args[value_index].nttp_text_id;
+            nested.type.array_size_expr = actual_args[value_index].expr;
+        }
+    }
+    return true;
+}
+
+static bool declarator_project_alias_template_type(
+    Parser& parser,
+    const ParserAliasTemplateInfo& info,
+    const std::vector<Parser::TemplateArgParseResult>& actual_args,
+    TypeSpec* out_ts) {
+    if (!out_ts) return false;
+    *out_ts = info.aliased_type;
+    return declarator_substitute_alias_aliased_type(parser, info, actual_args,
+                                                    out_ts);
+}
+
 static bool project_alias_template_member_typedef_type(
     Parser& parser,
     const ParserAliasTemplateInfo& info,
@@ -1493,6 +1594,8 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
                 if (!try_resolve_alias_template_member_typedef_type(
                         parser, *alias_info, parsed_args, out_ts)) {
                     if (!project_alias_template_member_typedef_type(
+                            parser, *alias_info, parsed_args, out_ts) &&
+                        !declarator_project_alias_template_type(
                             parser, *alias_info, parsed_args, out_ts)) {
                         return false;
                     }
