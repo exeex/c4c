@@ -8,32 +8,33 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Repaired the Step 6 parser/HIR structured metadata regression in functional
-cast preliminary evaluation for explicit NTTP template arguments.
+Repaired the Step 6 C/torture structured function signature mirror mismatch
+cluster in HIR-to-LIR lowering.
 
-The parser now evaluates a direct functional-cast explicit NTTP argument with
-the pre-template outer preliminary bindings plus only missing earlier
-parameters from the same primary template. That lets a structured expression
-such as `Box<unsigned, T(7)>` resolve `T` through the primary template
-parameter text-id/owner metadata rather than through stale rendered parameter
-spelling, while preserving the existing isolation from unrelated current
-template bindings and avoiding eager trait-base owner instantiation.
+`lir_owned_type_spec` now receives the HIR module and derives aggregate
+return/parameter ownership from `find_typespec_aggregate_layout` before
+falling back to compatibility spelling. This keeps the LIR function
+`return_type` and `signature_params` mirrors aligned with the same structured
+record identity used by `signature_*_type_refs`, instead of carrying a stale
+`record_def`-derived tag after `TypeSpec::tag` removal.
 
-The delegated two-test proof improved from the supervisor baseline of 1/2 to
-2/2 passing. The focused 13-test parser subset is green again after narrowing
-the prior-parameter rebuild, and the required spot checks for the
-namespace-qualified parser guard plus the two prior positive-Sema regressions
-all pass.
+The delegated C/torture proof improved from 0/4 to 4/4 passing, and the
+requested parser/HIR metadata spot checks remain green.
 
 ## Suggested Next
 
 Recommended next Step 6 packet: supervisor-side broad/full validation for the
-parent TypeSpec-tag deletion route. This metadata slice is isolated to the
-parser preliminary NTTP evaluator and the delegated proof is green.
+parent TypeSpec-tag deletion route. This LIR signature mirror slice is green
+for the owned C/torture cluster; remaining full-suite failures should be
+triaged as separate Step 6 packets.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
+- LIR function signature mirrors should derive aggregate identity from HIR
+  structured layouts first. Do not restore direct `tag_text_id`/stale
+  `record_def` spelling as the semantic source for owned function
+  return/parameter carriers.
 - The namespace-qualified unknown-template guard was checked separately with
   `frontend_parser_tests`, which passed.
 - The prior qualified alias-template fix remains green in this proof; preserve
@@ -67,22 +68,15 @@ parser preliminary NTTP evaluator and the delegated proof is green.
 
 ## Proof
 
-Step 6 delegated parser/HIR metadata proof:
-`cmake --build build && ctest --test-dir build --output-on-failure -R '^(cpp_hir_parser_type_base_prelim_eval_structured_metadata|cpp_qualified_template_call_template_arg_perf)$' > test_after.log 2>&1`
+Step 6 delegated C/torture signature mirror proof:
+`cmake --build build && ctest --test-dir build --output-on-failure -R '^(llvm_gcc_c_torture_src_20040709_1_c|llvm_gcc_c_torture_src_20040709_2_c|llvm_gcc_c_torture_src_20040709_3_c|llvm_gcc_c_torture_src_pr23324_c)$' > test_after.log 2>&1`
 
-Result: passed, 2/2. `cpp_hir_parser_type_base_prelim_eval_structured_metadata`
-now passes, and `cpp_qualified_template_call_template_arg_perf` remains green
-at 4.33 sec.
+Result: passed, 4/4. The return mirror mismatches for `retmeC`/`retmeG` and
+the parameter mirror mismatch for `callee_af7` are fixed.
 
 Proof log: `test_after.log`.
 
-Focused parser subset confirmation:
-`cmake --build build && ctest --test-dir build -j --output-on-failure -R '^(cpp_eastl_integer_sequence_parse_recipe|cpp_eastl_type_traits_parse_recipe|cpp_eastl_utility_parse_recipe|cpp_eastl_vector_parse_recipe|cpp_eastl_memory_uses_allocator_parse_recipe|eastl_cpp_external_utility_frontend_basic_cpp|cpp_qualified_template_call_template_arg_perf|cpp_parse_record_base_variable_template_value_arg_dump|cpp_parse_template_alias_empty_pack_default_arg_dump|cpp_parser_debug_qualified_type_template_arg_stack|cpp_parser_debug_qualified_type_spelling_stack|cpp_parser_debug_tentative_template_arg_lifecycle|cpp_parser_debug_tentative_cli_only)$'`
-
-Result: passed, 13/13. The previously regressed
-`eastl_cpp_external_utility_frontend_basic_cpp` is green.
-
 Required spot checks:
-`ctest --test-dir build --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_inherited_static_member_lookup_runtime_cpp|cpp_positive_sema_template_variable_member_typedef_normalization_runtime_cpp)$'`
+`ctest --test-dir build --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_type_base_prelim_eval_structured_metadata)$'`
 
-Result: passed, 3/3.
+Result: passed, 2/2.
