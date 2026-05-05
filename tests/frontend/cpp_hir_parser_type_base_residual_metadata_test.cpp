@@ -15,6 +15,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 void test_template_arg_ref_rendering_uses_text_id_before_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -51,14 +59,14 @@ void test_template_arg_ref_rendering_uses_text_id_before_stale_tag() {
   box_alias.array_size = -1;
   box_alias.inner_rank = -1;
   box_alias.base = c4c::TB_STRUCT;
-  box_alias.tag = arena.strdup("Box");
+  set_legacy_tag_if_present(box_alias, arena.strdup("Box"), 0);
   parser.register_typedef_binding(box_token.text_id, box_alias, true);
 
   c4c::TypeSpec arg_alias{};
   arg_alias.array_size = -1;
   arg_alias.inner_rank = -1;
   arg_alias.base = c4c::TB_STRUCT;
-  arg_alias.tag = arena.strdup("StaleRenderedArg");
+  set_legacy_tag_if_present(arg_alias, arena.strdup("StaleRenderedArg"), 0);
   arg_alias.tag_text_id = real_arg_text;
   parser.register_typedef_binding(real_arg_token.text_id, arg_alias, true);
 
