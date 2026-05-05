@@ -2137,6 +2137,25 @@ void Lowerer::lower_struct_def(const Node* sd) {
   def.is_union = sd->is_union;
   def.pack_align = sd->pack_align;
   def.struct_align = sd->struct_align;
+  TypeBindings struct_tpl_bindings;
+  NttpBindings struct_nttp_bindings;
+  std::unordered_map<TextId, TypeSpec> struct_tpl_bindings_by_text;
+  if (sd->n_template_args > 0 && sd->template_param_names) {
+    for (int i = 0; i < sd->n_template_args; ++i) {
+      const char* pname = sd->template_param_names[i];
+      if (!pname) continue;
+      if (sd->template_param_is_nttp && sd->template_param_is_nttp[i]) {
+        struct_nttp_bindings[pname] = sd->template_arg_values[i];
+      } else if (sd->template_arg_types) {
+        struct_tpl_bindings[pname] = sd->template_arg_types[i];
+        if (sd->template_param_name_text_ids &&
+            sd->template_param_name_text_ids[i] != kInvalidText) {
+          struct_tpl_bindings_by_text[sd->template_param_name_text_ids[i]] =
+              sd->template_arg_types[i];
+        }
+      }
+    }
+  }
   for (int bi = 0; bi < sd->n_bases; ++bi) {
     TypeSpec base = sd->base_types[bi];
     if (base.tpl_struct_origin) {
@@ -2218,7 +2237,6 @@ void Lowerer::lower_struct_def(const Node* sd) {
   // Build NTTP bindings for template instantiations so static constexpr
   // members that reference NTTP parameters (e.g. `static constexpr T value = v;`)
   // are evaluated correctly.
-  NttpBindings struct_nttp_bindings;
   NttpTextBindings struct_nttp_bindings_by_text;
   if (sd->n_template_args > 0 && sd->n_template_params > 0) {
     for (int pi = 0; pi < sd->n_template_params && pi < sd->n_template_args; ++pi) {
@@ -2303,6 +2321,40 @@ void Lowerer::lower_struct_def(const Node* sd) {
           struct_owner_key, hf.field_text_id, hf.member_symbol_id);
     }
     TypeSpec ft = f->type;
+    auto apply_field_template_bindings =
+        [&](TypeSpec& target, const auto& self) -> void {
+          apply_template_typedef_bindings(
+              target, struct_tpl_bindings, struct_tpl_bindings_by_text, sd);
+          if (!target.tpl_struct_args.data || target.tpl_struct_args.size <= 0) {
+            return;
+          }
+          for (int ai = 0; ai < target.tpl_struct_args.size; ++ai) {
+            TemplateArgRef& arg = target.tpl_struct_args.data[ai];
+            if (arg.kind != TemplateArgKind::Type) continue;
+            self(arg.type, self);
+            const std::string debug_text = encode_template_type_arg_ref_hir(arg.type);
+            arg.debug_text =
+                debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+          }
+        };
+    apply_field_template_bindings(ft, apply_field_template_bindings);
+    if (ft.base == TB_TYPEDEF && ft.tag_text_id != kInvalidText &&
+        sd->member_typedef_text_ids && sd->member_typedef_types) {
+      for (int mi = 0; mi < sd->n_member_typedefs; ++mi) {
+        if (sd->member_typedef_text_ids[mi] != ft.tag_text_id) continue;
+        ft = sd->member_typedef_types[mi];
+        apply_field_template_bindings(ft, apply_field_template_bindings);
+        break;
+      }
+    }
+    if (ft.deferred_member_type_name) {
+      seed_and_resolve_pending_template_type_if_needed(
+          ft, struct_tpl_bindings, struct_nttp_bindings, f,
+          PendingTemplateTypeKind::MemberTypedef,
+          std::string("struct-field-member:") + tag);
+      while (resolve_struct_member_typedef_if_ready(&ft)) {
+      }
+    }
     if ((ft.base == TB_STRUCT || ft.base == TB_UNION) && ft.record_def) {
       const auto owner_it = struct_def_owner_by_node_.find(ft.record_def);
       if (owner_it != struct_def_owner_by_node_.end()) {

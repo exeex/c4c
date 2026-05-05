@@ -183,19 +183,21 @@ TypeSpec Lowerer::resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) 
   if (!ctx || ctx->tpl_bindings.empty() || target.base != TB_TYPEDEF) {
     return target;
   }
-  if (target.template_param_text_id != kInvalidText) {
-    auto text_it = ctx->tpl_bindings_by_text.find(target.template_param_text_id);
+  const TextId carrier_text_id =
+      target.template_param_text_id != kInvalidText ? target.template_param_text_id
+                                                    : target.tag_text_id;
+  if (carrier_text_id != kInvalidText) {
+    auto text_it = ctx->tpl_bindings_by_text.find(carrier_text_id);
     if (text_it != ctx->tpl_bindings_by_text.end()) {
       return apply_builtin_query_template_binding(target, text_it->second);
     }
   }
-  if (target.template_param_text_id == kInvalidText || !module_ ||
-      !module_->link_name_texts) {
+  if (carrier_text_id == kInvalidText || !module_ || !module_->link_name_texts) {
     return target;
   }
 
   const std::string binding_key(
-      module_->link_name_texts->lookup(target.template_param_text_id));
+      module_->link_name_texts->lookup(carrier_text_id));
   if (!binding_key.empty()) {
     auto it = ctx->tpl_bindings.find(binding_key);
     if (it != ctx->tpl_bindings.end()) {

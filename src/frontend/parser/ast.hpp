@@ -103,10 +103,7 @@ struct TypeSpec {
     TypeBase base;
     TypeBase enum_underlying_base; // fixed underlying base for TB_ENUM, or TB_VOID when unknown/default
 
-    // Compatibility/display spelling: source names that may still bridge
-    // parser, Sema, HIR, and diagnostics where no TextId-backed authority
-    // exists yet.
-    const char* tag;         // struct/union/enum tag or typedef name (may be null)
+    // Structured source identity for tag/typedef names.
     TextId tag_text_id;      // parser-owned identity for tag/typedef names when available
     int template_param_owner_namespace_context_id = -1; // owning template namespace for type params
     TextId template_param_owner_text_id = kInvalidText; // owning function/template TextId for type params

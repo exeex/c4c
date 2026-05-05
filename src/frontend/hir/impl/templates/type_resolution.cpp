@@ -35,10 +35,12 @@ bool template_param_owner_matches(const TypeSpec& ts, const Node* template_owner
 const TypeSpec* find_template_typedef_binding(
     const TypeSpec& ts,
     const TypeBindings& type_bindings,
-    const Node* template_owner) {
-  if (ts.base != TB_TYPEDEF || !template_param_owner_matches(ts, template_owner)) {
+    const Node* template_owner,
+    const TextTable* texts) {
+  if (ts.base != TB_TYPEDEF) {
     return nullptr;
   }
+  if (!template_param_owner_matches(ts, template_owner)) return nullptr;
 
   auto binding_for_param_index = [&](int index) -> const TypeSpec* {
     if (!template_owner || !template_owner->template_param_names ||
@@ -76,7 +78,16 @@ const TypeSpec* find_template_typedef_binding(
   if (const TypeSpec* bound = binding_for_param_index(ts.template_param_index)) {
     return bound;
   }
-
+  const TextId carrier_text_id =
+      ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
+                                                : ts.tag_text_id;
+  if (carrier_text_id != kInvalidText && texts) {
+    const std::string key(texts->lookup(carrier_text_id));
+    if (!key.empty()) {
+      auto it = type_bindings.find(key);
+      if (it != type_bindings.end()) return &it->second;
+    }
+  }
   const bool has_structured_param_carrier =
       ts.template_param_text_id != kInvalidText ||
       ts.tag_text_id != kInvalidText ||
@@ -194,7 +205,9 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
           bool* substituted_type = nullptr) -> TypeSpec {
     if (substituted_type) *substituted_type = false;
     if (const TypeSpec* bound =
-            find_template_typedef_binding(ts, type_bindings, binding_owner)) {
+            find_template_typedef_binding(
+                ts, type_bindings, binding_owner,
+                module_ ? module_->link_name_texts.get() : nullptr)) {
       apply_template_typedef_binding(ts, *bound);
       if (substituted_type) *substituted_type = true;
     }
@@ -209,7 +222,8 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
         dst_arg = src_arg;
         if (src_arg.kind == TemplateArgKind::Type) {
           bool nested_substituted = false;
-          if (has_concrete_type(src_arg.type) || src_arg.type.tpl_struct_origin) {
+          if (src_arg.type.base == TB_TYPEDEF || has_concrete_type(src_arg.type) ||
+              src_arg.type.tpl_struct_origin) {
             dst_arg.type = apply_bindings(
                 src_arg.type, type_bindings, nttp_bindings, binding_owner,
                 &nested_substituted);
@@ -550,16 +564,42 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     *ts = structured_member;
     return true;
   }
-  auto apply_bindings = [&](TypeSpec resolved_member,
-                            const TypeBindings& type_bindings,
-                            const NttpBindings& nttp_bindings,
-                            const Node* binding_owner,
-                            bool* substituted_type = nullptr) -> TypeSpec {
+  std::function<TypeSpec(TypeSpec,
+                         const TypeBindings&,
+                         const NttpBindings&,
+                         const Node*,
+                         bool*)>
+      apply_bindings;
+  apply_bindings = [&](TypeSpec resolved_member,
+                       const TypeBindings& type_bindings,
+                       const NttpBindings& nttp_bindings,
+                       const Node* binding_owner,
+                       bool* substituted_type = nullptr) -> TypeSpec {
     if (substituted_type) *substituted_type = false;
     if (const TypeSpec* bound = find_template_typedef_binding(
-            resolved_member, type_bindings, binding_owner)) {
+            resolved_member, type_bindings, binding_owner,
+            module_ ? module_->link_name_texts.get() : nullptr)) {
       apply_template_typedef_binding(resolved_member, *bound);
       if (substituted_type) *substituted_type = true;
+    }
+    if (resolved_member.tpl_struct_origin && resolved_member.tpl_struct_args.data &&
+        resolved_member.tpl_struct_args.size > 0) {
+      for (int i = 0; i < resolved_member.tpl_struct_args.size; ++i) {
+        TemplateArgRef& arg = resolved_member.tpl_struct_args.data[i];
+        if (arg.kind != TemplateArgKind::Type) continue;
+        bool nested_substituted = false;
+        if (arg.type.base == TB_TYPEDEF || has_concrete_type(arg.type) ||
+            arg.type.tpl_struct_origin) {
+          arg.type = apply_bindings(arg.type, type_bindings, nttp_bindings,
+                                    binding_owner, &nested_substituted);
+        }
+        if (nested_substituted) {
+          if (substituted_type) *substituted_type = true;
+          const std::string debug_text = encode_template_type_arg_ref_hir(arg.type);
+          arg.debug_text =
+              debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+        }
+      }
     }
     if (resolved_member.array_size_expr &&
         resolved_member.array_size_expr->kind == NK_VAR &&

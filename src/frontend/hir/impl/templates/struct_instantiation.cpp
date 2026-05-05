@@ -46,9 +46,10 @@ const TypeSpec* find_template_typedef_binding(
     const TypeBindings& type_bindings,
     const std::unordered_map<TextId, TypeSpec>& type_bindings_by_text,
     const Node* template_owner) {
-  if (ts.base != TB_TYPEDEF || !template_param_owner_matches(ts, template_owner)) {
+  if (ts.base != TB_TYPEDEF) {
     return nullptr;
   }
+  const bool owner_matches = template_param_owner_matches(ts, template_owner);
 
   const TextId carrier_text_id =
       ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
@@ -57,6 +58,7 @@ const TypeSpec* find_template_typedef_binding(
     auto text_it = type_bindings_by_text.find(carrier_text_id);
     if (text_it != type_bindings_by_text.end()) return &text_it->second;
   }
+  if (!owner_matches) return nullptr;
 
   if (!template_owner || !template_owner->template_param_names ||
       ts.template_param_index < 0 ||
@@ -279,6 +281,52 @@ std::optional<HirStructField> Lowerer::instantiate_template_struct_field(
   TypeSpec ft = orig_f->type;
   apply_template_typedef_bindings(
       ft, selected_type_bindings, selected_type_bindings_by_text, tpl_def);
+  auto apply_nested_template_bindings =
+      [&](TypeSpec& target, const auto& self) -> void {
+        apply_template_typedef_bindings(
+            target, selected_type_bindings, selected_type_bindings_by_text,
+            tpl_def);
+        if (!target.tpl_struct_args.data || target.tpl_struct_args.size <= 0) {
+          return;
+        }
+        for (int i = 0; i < target.tpl_struct_args.size; ++i) {
+          TemplateArgRef& arg = target.tpl_struct_args.data[i];
+          if (arg.kind != TemplateArgKind::Type) continue;
+          self(arg.type, self);
+          const std::string debug_text = encode_template_type_arg_ref_hir(arg.type);
+          arg.debug_text =
+              debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+        }
+      };
+  auto resolve_current_member_typedef = [&]() -> bool {
+    if (ft.base != TB_TYPEDEF || ft.tag_text_id == kInvalidText ||
+        !tpl_def->member_typedef_text_ids || !tpl_def->member_typedef_types) {
+      return false;
+    }
+    for (int i = 0; i < tpl_def->n_member_typedefs; ++i) {
+      if (tpl_def->member_typedef_text_ids[i] != ft.tag_text_id) continue;
+      TypeSpec resolved = tpl_def->member_typedef_types[i];
+      apply_nested_template_bindings(resolved, apply_nested_template_bindings);
+      seed_and_resolve_pending_template_type_if_needed(
+          resolved, selected_type_bindings, selected_nttp_bindings_map, orig_f,
+          PendingTemplateTypeKind::MemberTypedef,
+          "template-struct-field-member-typedef", tpl_def);
+      while (resolve_struct_member_typedef_if_ready(&resolved)) {
+      }
+      ft = resolved;
+      return true;
+    }
+    return false;
+  };
+  resolve_current_member_typedef();
+  if (ft.deferred_member_type_name) {
+    seed_and_resolve_pending_template_type_if_needed(
+        ft, selected_type_bindings, selected_nttp_bindings_map, orig_f,
+        PendingTemplateTypeKind::MemberTypedef,
+        "template-struct-field-deferred-member", tpl_def);
+    while (resolve_struct_member_typedef_if_ready(&ft)) {
+    }
+  }
   materialize_template_array_extent(ft, selected_nttp_bindings_map);
 
   HirStructField hf;

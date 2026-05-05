@@ -949,6 +949,9 @@ void Lowerer::realize_template_struct(
     ts.tag_text_id = realized_def->tag_text_id;
     ts.namespace_context_id = realized_def->ns_qual.context_id;
   }
+  if (ts.deferred_member_type_name) {
+    assign_template_arg_refs_from_hir_args(&ts, resolved.concrete_args);
+  }
   while (resolve_struct_member_typedef_if_ready(&ts)) {
   }
   if (!ts.deferred_member_type_name) {

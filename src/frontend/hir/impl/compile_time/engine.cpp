@@ -159,6 +159,25 @@ ConstEvalResult evaluate_pending_consteval(
   ConstEvalEnv env = make_engine_consteval_env(ct_state, structured_maps);
   TypeBindings tpl_bindings = pce.tpl_bindings;
   env.type_bindings = &tpl_bindings;
+  TypeBindingTextMap tpl_bindings_by_text;
+  if (!tpl_bindings.empty() && ce_fn_def->template_param_names &&
+      ce_fn_def->template_param_name_text_ids) {
+    for (int i = 0; i < ce_fn_def->n_template_params; ++i) {
+      if (ce_fn_def->template_param_is_nttp &&
+          ce_fn_def->template_param_is_nttp[i]) {
+        continue;
+      }
+      const char* param_name = ce_fn_def->template_param_names[i];
+      if (!param_name) continue;
+      const TextId param_text_id = ce_fn_def->template_param_name_text_ids[i];
+      if (param_text_id == kInvalidText) continue;
+      auto it = tpl_bindings.find(param_name);
+      if (it != tpl_bindings.end()) tpl_bindings_by_text[param_text_id] = it->second;
+    }
+  }
+  if (!tpl_bindings_by_text.empty()) {
+    env.type_bindings_by_text = &tpl_bindings_by_text;
+  }
   NttpBindings nttp_copy = pce.nttp_bindings;
   if (!nttp_copy.empty()) env.nttp_bindings = &nttp_copy;
   NttpTextBindings nttp_text_copy = pce.nttp_bindings_by_text;
