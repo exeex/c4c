@@ -8,50 +8,40 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's consteval member-alias `sizeof` fallout is repaired without
-reintroducing `TypeSpec::tag`.
+Step 6's final constructor packet is blocked before a commit-ready repair.
 
-The first bad boundary was the consteval type resolver for
-`typename Outer<T>::Alias`: the parsed `TypeSpec` carried structured template
-owner metadata (`tpl_struct_origin_key`, concrete template args, and
-`deferred_member_type_text_id`), but the evaluator only substituted direct
-`TB_TYPEDEF` template params before calling `sizeof`. It therefore treated the
-owner struct as the sized type and failed record-layout lookup.
-
-The fix gives `ConstEvalEnv` a structured template-primary lookup hook and lets
-`resolve_type` reduce record member typedef carriers before layout queries. The
-member alias is matched by parser text id when present, the owner template
-params are rebound from the concrete owner args, and the alias target is then
-resolved through the existing consteval type-binding maps.
+The first bad boundary is the parser/HIR carrier for member-template
+constructors. The constructor overload is now registered for
+`eastl::pair_T1_int_T2_int`, but the member constructor `Node` does not carry
+its own `template<class... Args1, ...>` parameter list. The remaining NTTP pack
+use in `index_sequence<I1...>` also arrives without a structured
+`nttp_text_id`, so the private delegating constructor cannot instantiate
+`get<I1>(first_args)` with a concrete tuple owner. HIR still lowers `get` with
+`t: struct<?>*&`, and LIR fails on `.value`.
 
 ## Suggested Next
 
-Next packet should target the final Step 6 positive/Sema failure: delegating
-constructor lookup for instantiated template constructors.
+Next packet should repair parser-to-HIR member-template constructor metadata:
+carry method template type-pack and NTTP-pack parameter lists, including
+structured text ids for pack references inside constructor initializer
+arguments.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- The consteval template-primary lookup uses structured owner keys. Qualified
-  origins with qualifier-path ids are still guarded rather than recovered from
-  rendered spelling.
-- The remaining constructor failure still reports no constructors for
-  `eastl::pair_T1_T_T2_T`.
+- A partial HIR-side deduction attempt can specialize the public `pair<int,int>`
+  constructor, but it cannot safely recover `I1`/`I2` without the missing
+  structured NTTP carrier. Do not replace that with debug-text or rendered-name
+  recovery.
 
 ## Proof
 
 Delegated proof command:
 `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
 
-Result: monotonic improvement versus the delegated `test_before.log` baseline.
-
-The proof improved the delegated subset from 882/884 passing to 883/884
-passing. There are 0 new failures relative to `test_before.log`.
-
-Fixed baseline failures:
-- `cpp_positive_sema_consteval_typespec_member_alias_cpp`
-
-Remaining failures:
+Result: blocked. The full delegated proof was refreshed in `test_after.log`
+and remained at 883/884 passing with only:
 - `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
 
-Canonical proof log: `test_after.log`.
+The packet is not commit-ready for code. Canonical proof log:
+`test_after.log`.
