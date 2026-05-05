@@ -752,6 +752,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
           throw std::runtime_error(
               "error: call to deleted constructor '" + struct_tag + "'");
         }
+        const std::string ctor_mangled = ensure_constructor_overload_lowered(
+            *best, struct_tag, &ctx, args, nargs);
         DeclRef this_ref{};
         this_ref.name = "this";
         this_ref.name_text_id = make_text_id(
@@ -764,7 +766,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
             method_node, this_ref, this_ts, ValueCategory::LValue);
 
         CallExpr c{};
-        DeclRef callee_ref = make_link_name_decl_ref(*module_, best->mangled_name);
+        DeclRef callee_ref = make_link_name_decl_ref(*module_, ctor_mangled);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
         TypeSpec callee_ts = fn_ts;
@@ -927,8 +929,10 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
               diag += "'";
               throw std::runtime_error(diag);
             }
+            const std::string ctor_mangled = ensure_constructor_overload_lowered(
+                *best, field_ctor_tag, &ctx, args, nargs);
             CallExpr c{};
-            DeclRef callee_ref = make_link_name_decl_ref(*module_, best->mangled_name);
+            DeclRef callee_ref = make_link_name_decl_ref(*module_, ctor_mangled);
             TypeSpec fn_ts{};
             fn_ts.base = TB_VOID;
             TypeSpec callee_ts = fn_ts;

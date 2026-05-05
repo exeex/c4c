@@ -219,12 +219,54 @@ void Lowerer::register_instantiated_template_struct_methods(
     const Node* tpl_def,
     const TypeBindings& method_tpl_bindings,
     const NttpBindings& method_nttp_bindings) {
+  std::unordered_map<const Node*, std::string> constructor_mangled_names;
+  NttpTextBindings method_nttp_bindings_by_text =
+      build_call_nttp_text_bindings(nullptr, tpl_def, method_nttp_bindings);
+  for (int mi = 0; mi < tpl_def->n_children; ++mi) {
+    const Node* method = tpl_def->children[mi];
+    if (!method || method->kind != NK_FUNCTION || !method->name ||
+        !method->is_constructor) {
+      continue;
+    }
+    auto& ctors = struct_constructors_[mangled];
+    const int ctor_idx = static_cast<int>(ctors.size());
+    std::string mmangled = mangled + "__" + method->name;
+    if (ctor_idx > 0) mmangled += "__" + std::to_string(ctor_idx);
+    ctors.push_back({mmangled, method, method_tpl_bindings,
+                     method_nttp_bindings, method_nttp_bindings_by_text,
+                     owner_key});
+    constructor_mangled_names[method] = mmangled;
+
+    if (ctor_idx == 0) {
+      const std::string mkey = mangled + "::" + method->name;
+      struct_methods_[mkey] = mmangled;
+      struct_method_link_name_ids_[mkey] = module_->link_names.intern(mmangled);
+      struct_method_ret_types_[mkey] = method->type;
+      if (owner_key) {
+        register_struct_method_owner_lookup(
+            *owner_key, method, false, mkey, mmangled, method->type);
+      }
+    }
+  }
+
   for (int mi = 0; mi < tpl_def->n_children; ++mi) {
     const Node* method = tpl_def->children[mi];
     if (!method || method->kind != NK_FUNCTION || !method->name) continue;
     const char* csuf = method->is_const_method ? "_const" : "";
     std::string mmangled = mangled + "__" + method->name + csuf;
     std::string mkey = mangled + "::" + method->name + csuf;
+    if (method->is_constructor) {
+      auto ctor_it = constructor_mangled_names.find(method);
+      if (ctor_it == constructor_mangled_names.end()) continue;
+      if (method->n_template_params > 0) continue;
+      lower_struct_method(ctor_it->second, mangled, method,
+                          &method_tpl_bindings, &method_nttp_bindings,
+                          method_nttp_bindings_by_text.empty()
+                              ? nullptr
+                              : &method_nttp_bindings_by_text,
+                          &owner_key);
+      continue;
+    }
     if (struct_methods_.count(mkey)) continue;
     struct_methods_[mkey] = mmangled;
     struct_method_link_name_ids_[mkey] = module_->link_names.intern(mmangled);
@@ -242,6 +284,52 @@ void Lowerer::register_instantiated_template_struct_methods(
                             : &method_nttp_bindings_by_text,
                         &owner_key);
   }
+}
+
+std::string Lowerer::ensure_constructor_overload_lowered(
+    const CtorOverload& overload,
+    const std::string& struct_tag,
+    FunctionCtx* ctx,
+    Node* const* arg_nodes,
+    int nargs) {
+  if (!overload.method_node) return overload.mangled_name;
+
+  TypeBindings type_bindings = overload.tpl_bindings;
+  NttpBindings nttp_bindings = overload.nttp_bindings;
+  NttpTextBindings nttp_bindings_by_text = overload.nttp_bindings_by_text;
+  bool needs_specialization = overload.method_node->n_template_params > 0;
+  if (needs_specialization) {
+    if (!deduce_template_bindings_from_call_args(
+            overload.method_node, ctx, arg_nodes, nargs,
+            &type_bindings, &nttp_bindings)) {
+      return overload.mangled_name;
+    }
+    NttpTextBindings method_nttp_by_text =
+        build_call_nttp_text_bindings(nullptr, overload.method_node, nttp_bindings);
+    nttp_bindings_by_text.insert(
+        method_nttp_by_text.begin(), method_nttp_by_text.end());
+  }
+
+  std::string lowered_name = overload.mangled_name;
+  if (needs_specialization) {
+    lowered_name = mangle_template_name(
+        overload.mangled_name, type_bindings, nttp_bindings);
+  }
+
+  if (module_) {
+    for (const Function& fn : module_->functions) {
+      if (fn.name == lowered_name) return lowered_name;
+    }
+  }
+
+  lower_struct_method(lowered_name, struct_tag, overload.method_node,
+                      type_bindings.empty() ? nullptr : &type_bindings,
+                      nttp_bindings.empty() ? nullptr : &nttp_bindings,
+                      nttp_bindings_by_text.empty()
+                          ? nullptr
+                          : &nttp_bindings_by_text,
+                      overload.owner_key ? &overload.owner_key : nullptr);
+  return lowered_name;
 }
 
 void Lowerer::record_instantiated_template_struct_field_metadata(

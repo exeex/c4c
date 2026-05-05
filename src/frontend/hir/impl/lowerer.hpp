@@ -299,6 +299,8 @@ class Lowerer {
     std::vector<DtorLocal> dtor_stack;
   };
 
+  struct CtorOverload;
+
   static bool is_lvalue_ref_ts(const TypeSpec& ts);
 
   static std::string pack_binding_name(const std::string& base, int index);
@@ -973,6 +975,14 @@ class Lowerer {
   TypeBindings try_deduce_template_type_args(
       const Node* call_node, const Node* fn_def, const Node* enclosing_fn);
 
+  bool deduce_template_bindings_from_call_args(
+      const Node* fn_def,
+      FunctionCtx* ctx,
+      Node* const* arg_nodes,
+      int nargs,
+      TypeBindings* out_type_bindings,
+      NttpBindings* out_nttp_bindings);
+
   // Check if deduced bindings cover all required type parameters (those
   // without defaults).
   static bool deduction_covers_all_type_params(const TypeBindings& deduced,
@@ -1046,6 +1056,13 @@ class Lowerer {
       const Node* call_var,
       const TypeBindings* enclosing_bindings,
       const NttpBindings* enclosing_nttp = nullptr);
+
+  std::string ensure_constructor_overload_lowered(
+      const CtorOverload& overload,
+      const std::string& struct_tag,
+      FunctionCtx* ctx,
+      Node* const* arg_nodes,
+      int nargs);
 
   // Recursively collect template instantiations from call sites in AST.
   void collect_template_instantiations(const Node* n, const Node* enclosing_fn);
@@ -1199,6 +1216,10 @@ class Lowerer {
   struct CtorOverload {
     std::string mangled_name;
     const Node* method_node;  // for parameter type matching
+    TypeBindings tpl_bindings;
+    NttpBindings nttp_bindings;
+    NttpTextBindings nttp_bindings_by_text;
+    std::optional<HirRecordOwnerKey> owner_key;
   };
   std::unordered_map<std::string, std::vector<CtorOverload>> struct_constructors_;
   // Destructor per struct tag: tag → {mangled, method_node}.

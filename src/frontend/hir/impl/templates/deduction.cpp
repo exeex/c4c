@@ -131,6 +131,223 @@ std::optional<std::string> template_type_param_binding_name_for_deduction(
   return std::nullopt;
 }
 
+int template_param_index_for_type_deduction(const TypeSpec& ts,
+                                            const Node* fn_def) {
+  if (ts.base != TB_TYPEDEF || !fn_def || fn_def->n_template_params <= 0 ||
+      !fn_def->template_param_names) {
+    return -1;
+  }
+  if (ts.template_param_index >= 0 &&
+      ts.template_param_index < fn_def->n_template_params &&
+      fn_def->template_param_names[ts.template_param_index] &&
+      !(fn_def->template_param_is_nttp &&
+        fn_def->template_param_is_nttp[ts.template_param_index])) {
+    const bool owner_matches =
+        ts.template_param_owner_text_id != kInvalidText &&
+        fn_def->unqualified_text_id != kInvalidText &&
+        ts.template_param_owner_text_id == fn_def->unqualified_text_id &&
+        (ts.template_param_owner_namespace_context_id < 0 ||
+         ts.template_param_owner_namespace_context_id == fn_def->namespace_context_id);
+    if (owner_matches) return ts.template_param_index;
+  }
+
+  const TextId carrier_text_id = template_param_carrier_text_id_for_deduction(ts);
+  if (carrier_text_id == kInvalidText || !fn_def->template_param_name_text_ids) {
+    return -1;
+  }
+  for (int i = 0; i < fn_def->n_template_params; ++i) {
+    if (!fn_def->template_param_names[i]) continue;
+    if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) {
+      continue;
+    }
+    if (fn_def->template_param_name_text_ids[i] == carrier_text_id) return i;
+  }
+  return -1;
+}
+
+int template_param_index_for_nttp_deduction(const TemplateArgRef& arg,
+                                            const Node* fn_def) {
+  if (!fn_def || fn_def->n_template_params <= 0 ||
+      !fn_def->template_param_names || !fn_def->template_param_name_text_ids ||
+      arg.nttp_text_id == kInvalidText) {
+    return -1;
+  }
+  for (int i = 0; i < fn_def->n_template_params; ++i) {
+    if (!fn_def->template_param_names[i]) continue;
+    if (!fn_def->template_param_is_nttp || !fn_def->template_param_is_nttp[i]) {
+      continue;
+    }
+    if (fn_def->template_param_name_text_ids[i] == arg.nttp_text_id) return i;
+  }
+  return -1;
+}
+
+bool bind_deduced_type(TypeBindings& deduced,
+                       const std::string& key,
+                       TypeSpec value) {
+  value.is_lvalue_ref = false;
+  value.is_rvalue_ref = false;
+  auto it = deduced.find(key);
+  if (it == deduced.end()) {
+    deduced[key] = value;
+    return true;
+  }
+  TypeSpec existing = it->second;
+  existing.is_lvalue_ref = false;
+  existing.is_rvalue_ref = false;
+  return existing.base == value.base &&
+         existing.ptr_level == value.ptr_level &&
+         typespec_nominal_match_for_deduction(existing, value);
+}
+
+bool bind_deduced_nttp(NttpBindings& deduced,
+                       const std::string& key,
+                       long long value) {
+  auto it = deduced.find(key);
+  if (it == deduced.end()) {
+    deduced[key] = value;
+    return true;
+  }
+  return it->second == value;
+}
+
+std::string pack_binding_key(const char* base, int index) {
+  return std::string(base ? base : "") + "#" + std::to_string(index);
+}
+
+bool deduce_type_pattern_from_type(TypeSpec param_ts,
+                                   TypeSpec arg_ts,
+                                   const Node* fn_def,
+                                   TypeBindings& deduced_types,
+                                   NttpBindings& deduced_nttp);
+
+bool deduce_template_arg_pattern(const TemplateArgRef& param_arg,
+                                 const TemplateArgRef& arg,
+                                 const Node* fn_def,
+                                 TypeBindings& deduced_types,
+                                 NttpBindings& deduced_nttp) {
+  if (param_arg.kind == TemplateArgKind::Type) {
+    if (arg.kind != TemplateArgKind::Type) return false;
+    return deduce_type_pattern_from_type(
+        param_arg.type, arg.type, fn_def, deduced_types, deduced_nttp);
+  }
+  if (param_arg.kind != TemplateArgKind::Value || arg.kind != TemplateArgKind::Value) {
+    return false;
+  }
+  const int nttp_index = template_param_index_for_nttp_deduction(param_arg, fn_def);
+  if (nttp_index < 0) return param_arg.value == arg.value;
+  const char* pname = fn_def->template_param_names[nttp_index];
+  if (!pname) return false;
+  const bool is_pack =
+      fn_def->template_param_is_pack && fn_def->template_param_is_pack[nttp_index];
+  return bind_deduced_nttp(
+      deduced_nttp, is_pack ? pack_binding_key(pname, 0) : std::string(pname),
+      arg.value);
+}
+
+bool deduce_template_arg_list(const TemplateArgRefList& param_args,
+                              const TemplateArgRefList& arg_args,
+                              const Node* fn_def,
+                              TypeBindings& deduced_types,
+                              NttpBindings& deduced_nttp) {
+  if (!param_args.data || param_args.size <= 0) {
+    return !arg_args.data || arg_args.size <= 0;
+  }
+  if (!arg_args.data) return false;
+
+  int ai = 0;
+  for (int pi = 0; pi < param_args.size; ++pi) {
+    const TemplateArgRef& param_arg = param_args.data[pi];
+    if (param_arg.kind == TemplateArgKind::Type) {
+      const int type_index =
+          template_param_index_for_type_deduction(param_arg.type, fn_def);
+      const bool is_pack =
+          type_index >= 0 && fn_def->template_param_is_pack &&
+          fn_def->template_param_is_pack[type_index];
+      if (is_pack) {
+        const int remaining_patterns = param_args.size - pi - 1;
+        const int pack_count = arg_args.size - ai - remaining_patterns;
+        if (pack_count < 0) return false;
+        const char* pname = fn_def->template_param_names[type_index];
+        for (int pack_index = 0; pack_index < pack_count; ++pack_index, ++ai) {
+          if (arg_args.data[ai].kind != TemplateArgKind::Type) return false;
+          if (!bind_deduced_type(
+                  deduced_types, pack_binding_key(pname, pack_index),
+                  arg_args.data[ai].type)) {
+            return false;
+          }
+        }
+        continue;
+      }
+    } else if (param_arg.kind == TemplateArgKind::Value) {
+      const int nttp_index =
+          template_param_index_for_nttp_deduction(param_arg, fn_def);
+      const bool is_pack =
+          nttp_index >= 0 && fn_def->template_param_is_pack &&
+          fn_def->template_param_is_pack[nttp_index];
+      if (is_pack) {
+        const int remaining_patterns = param_args.size - pi - 1;
+        const int pack_count = arg_args.size - ai - remaining_patterns;
+        if (pack_count < 0) return false;
+        const char* pname = fn_def->template_param_names[nttp_index];
+        for (int pack_index = 0; pack_index < pack_count; ++pack_index, ++ai) {
+          if (arg_args.data[ai].kind != TemplateArgKind::Value) return false;
+          if (!bind_deduced_nttp(
+                  deduced_nttp, pack_binding_key(pname, pack_index),
+                  arg_args.data[ai].value)) {
+            return false;
+          }
+        }
+        continue;
+      }
+    }
+
+    if (ai >= arg_args.size) return false;
+    if (!deduce_template_arg_pattern(
+            param_arg, arg_args.data[ai], fn_def, deduced_types, deduced_nttp)) {
+      return false;
+    }
+    ++ai;
+  }
+  return ai == arg_args.size;
+}
+
+bool deduce_type_pattern_from_type(TypeSpec param_ts,
+                                   TypeSpec arg_ts,
+                                   const Node* fn_def,
+                                   TypeBindings& deduced_types,
+                                   NttpBindings& deduced_nttp) {
+  param_ts.is_lvalue_ref = false;
+  param_ts.is_rvalue_ref = false;
+  arg_ts.is_lvalue_ref = false;
+  arg_ts.is_rvalue_ref = false;
+
+  const int type_index = template_param_index_for_type_deduction(param_ts, fn_def);
+  if (type_index >= 0) {
+    const char* pname = fn_def->template_param_names[type_index];
+    if (!pname) return false;
+    const bool is_pack =
+        fn_def->template_param_is_pack && fn_def->template_param_is_pack[type_index];
+    return bind_deduced_type(
+        deduced_types, is_pack ? pack_binding_key(pname, 0) : std::string(pname),
+        arg_ts);
+  }
+
+  if (param_ts.base != arg_ts.base ||
+      param_ts.ptr_level != arg_ts.ptr_level ||
+      param_ts.array_rank != arg_ts.array_rank) {
+    return false;
+  }
+  if (!typespec_nominal_match_for_deduction(param_ts, arg_ts)) return false;
+
+  if (param_ts.tpl_struct_args.data && param_ts.tpl_struct_args.size > 0) {
+    return deduce_template_arg_list(
+        param_ts.tpl_struct_args, arg_ts.tpl_struct_args, fn_def,
+        deduced_types, deduced_nttp);
+  }
+  return true;
+}
+
 const TypeSpec* find_enclosing_type_binding_for_deduction(
     const TypeSpec& ts,
     const TypeBindings* enclosing_bindings,
@@ -552,6 +769,41 @@ TypeBindings Lowerer::try_deduce_template_type_args(
   }
 
   return deduced;
+}
+
+bool Lowerer::deduce_template_bindings_from_call_args(
+    const Node* fn_def,
+    FunctionCtx* ctx,
+    Node* const* arg_nodes,
+    int nargs,
+    TypeBindings* out_type_bindings,
+    NttpBindings* out_nttp_bindings) {
+  if (!fn_def || !out_type_bindings || !out_nttp_bindings) return false;
+  if (fn_def->n_template_params <= 0) return true;
+  const int match_count = std::min(nargs, fn_def->n_params);
+  for (int i = 0; i < match_count; ++i) {
+    const Node* param = fn_def->params[i];
+    const Node* arg = arg_nodes ? arg_nodes[i] : nullptr;
+    if (!param || !arg) continue;
+
+    TypeSpec arg_ts = infer_generic_ctrl_type(ctx, arg);
+    resolve_typedef_to_struct(arg_ts);
+    if (arg_ts.base != TB_STRUCT && arg->kind == NK_CALL && arg->left) {
+      TypeSpec constructed_ts = infer_generic_ctrl_type(ctx, arg->left);
+      resolve_typedef_to_struct(constructed_ts);
+      if (constructed_ts.base == TB_STRUCT && constructed_ts.ptr_level == 0) {
+        arg_ts = constructed_ts;
+      }
+    }
+
+    if (!deduce_type_pattern_from_type(
+            param->type, arg_ts, fn_def, *out_type_bindings,
+            *out_nttp_bindings)) {
+      return false;
+    }
+  }
+  fill_deduced_defaults(*out_type_bindings, fn_def);
+  return true;
 }
 
 bool Lowerer::deduction_covers_all_type_params(const TypeBindings& deduced,

@@ -253,6 +253,8 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
     diag += "'";
     throw std::runtime_error(diag);
   }
+  const std::string ctor_mangled = ensure_constructor_overload_lowered(
+      *best, lookup_callee_tag, ctx, n->children, n->n_children);
 
   TypeSpec tmp_ts{};
   populate_struct_owner_typespec(tmp_ts, sit->second.tag, 0);
@@ -273,7 +275,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
 
   CallExpr ctor_call{};
   DeclRef callee_ref{};
-  callee_ref.name = best->mangled_name;
+  callee_ref.name = ctor_mangled;
   attach_decl_ref_link_name_id(callee_ref);
   TypeSpec fn_ts{};
   fn_ts.base = TB_VOID;

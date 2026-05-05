@@ -503,8 +503,6 @@ void Lowerer::lower_function(const Node* fn_node,
 
 TypeSpec Lowerer::substitute_signature_template_type(
     TypeSpec ts, const TypeBindings* tpl_bindings) {
-  if (ts.base != TB_TYPEDEF) return ts;
-
   auto substitute_template_owner_params = [&](TypeSpec& target,
                                               const Node* owner_tpl,
                                               const auto& self) -> void {
@@ -544,6 +542,67 @@ TypeSpec Lowerer::substitute_signature_template_type(
       }
     }
   };
+
+  auto substitute_bound_params = [&](TypeSpec& target, const auto& self) -> void {
+    if (target.base == TB_TYPEDEF) {
+      bool applied = false;
+      if (target.template_param_text_id != kInvalidText) {
+        applied = apply_signature_template_binding_by_text_spelling(
+            target, tpl_bindings,
+            module_ ? module_->link_name_texts.get() : nullptr);
+      }
+      if (!applied) {
+        apply_legacy_template_binding_without_usable_text_spelling(
+            target, tpl_bindings, module_ ? module_->link_name_texts.get() : nullptr);
+      }
+    }
+    if (target.tpl_struct_args.data && target.tpl_struct_args.size > 0) {
+      std::vector<TemplateArgRef> rebound;
+      rebound.reserve(target.tpl_struct_args.size);
+      for (int i = 0; i < target.tpl_struct_args.size; ++i) {
+        TemplateArgRef arg = target.tpl_struct_args.data[i];
+        if (arg.kind == TemplateArgKind::Type) {
+          const std::string pack_base =
+              template_param_binding_key_from_text(
+                  arg.type, module_ ? module_->link_name_texts.get() : nullptr);
+          std::vector<std::pair<int, TypeSpec>> pack_types;
+          if (!pack_base.empty() && tpl_bindings) {
+            for (const auto& [key, concrete] : *tpl_bindings) {
+              int pack_index = 0;
+              if (parse_pack_binding_name(key, pack_base, &pack_index)) {
+                pack_types.push_back({pack_index, concrete});
+              }
+            }
+          }
+          if (!pack_types.empty()) {
+            std::sort(pack_types.begin(), pack_types.end(),
+                      [](const auto& a, const auto& b) {
+                        return a.first < b.first;
+                      });
+            for (const auto& [_, concrete] : pack_types) {
+              TemplateArgRef expanded{};
+              expanded.kind = TemplateArgKind::Type;
+              expanded.type = concrete;
+              rebound.push_back(expanded);
+            }
+            continue;
+          } else {
+            self(arg.type, self);
+          }
+        }
+        rebound.push_back(arg);
+      }
+      if (static_cast<int>(rebound.size()) != target.tpl_struct_args.size) {
+        TemplateArgRef* data = new TemplateArgRef[rebound.size()]();
+        for (size_t ri = 0; ri < rebound.size(); ++ri) data[ri] = rebound[ri];
+        target.tpl_struct_args.data = data;
+        target.tpl_struct_args.size = static_cast<int>(rebound.size());
+      }
+    }
+  };
+
+  substitute_bound_params(ts, substitute_bound_params);
+  if (ts.base != TB_TYPEDEF) return ts;
 
   auto resolve_qualified_member_typedef_by_text_id = [&]() -> std::optional<TypeSpec> {
     if (!tpl_bindings || !ts.qualifier_text_ids ||
