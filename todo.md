@@ -8,31 +8,36 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Repaired the Step 6 C/torture StmtEmitter structured field lookup cluster for
-C aggregate fields whose parser TypeSpecs carried only parser-origin tag text
-ids.
+Repaired the Step 6 C/torture runtime segfault cluster caused by array-object
+indexing through C aggregate fields.
 
-HIR struct field lowering now canonicalizes aggregate field TypeSpecs by
-matching parser `unqualified_text_id` metadata against already registered
-struct owner keys when `record_def` is absent. The canonical owner key updates
-the field TypeSpec's HIR `tag_text_id`, namespace metadata, and `record_def`
-carrier before the field is stored in `HirStructField`.
+StmtEmitter `IndexExpr` lvalue lowering now keeps true array-object bases on the
+lvalue path before emitting the indexed GEP. This preserves the address of
+local/global/member array objects such as `field[i]` instead of loading the
+first array element and then treating that element value as the base pointer.
+Adjusted function-parameter array declarators remain on the existing rvalue
+pointer path, so `param[i]` still indexes the adjusted pointer value.
 
-This repairs recursive self-pointer fields, anonymous/forward struct pointer
-fields, and forward-declared C tag fields without falling back to HIR text-table
-spelling. The delegated proof improved from 0/3 to 3/3 passing, and the
-requested parser/HIR plus prior LIR signature spot checks remain green.
+The repair is structural TypeSpec-driven lowering via `outer_array_rank`, with
+an explicit adjusted-parameter guard. It does not use rendered names, testcase
+names, or legacy `TypeSpec::tag` recovery.
 
 ## Suggested Next
 
 Recommended next Step 6 packet: supervisor-side broad/full validation for the
-parent TypeSpec-tag deletion route. This StmtEmitter field lookup slice is
-green for the owned C/torture/C-testsuite cluster; remaining full-suite
-failures should be triaged as separate Step 6 packets.
+parent TypeSpec-tag deletion route. The owned C/torture runtime segfault cluster
+is green; any remaining load-sensitive parser perf failure should stay split
+from backend runtime lowering.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
+- C array fields whose element type is a pointer have `ptr_level > 0` and
+  `outer_array_rank > 0`; they are still array objects and must not be loaded
+  before indexing.
+- C function parameters declared with array syntax are adjusted pointer
+  parameters. They may still carry array-rank metadata, so decl-ref parameter
+  bases must not be forced through the array-object lvalue indexing path.
 - LIR function signature mirrors should derive aggregate identity from HIR
   structured layouts first. Do not restore direct `tag_text_id`/stale
   `record_def` spelling as the semantic source for owned function
@@ -74,15 +79,15 @@ failures should be triaged as separate Step 6 packets.
 
 ## Proof
 
-Step 6 delegated StmtEmitter field lookup proof:
-`cmake --build build && ctest --test-dir build --output-on-failure -R '^(c_testsuite_src_00019_c|llvm_gcc_c_torture_src_pr40022_c|llvm_gcc_c_torture_src_20001124_1_c)$' > test_after.log 2>&1`
+Step 6 delegated runtime segfault proof:
+`cmake --build build && ctest --test-dir build --output-on-failure -R '^(llvm_gcc_c_torture_src_20020402_3_c|llvm_gcc_c_torture_src_20071018_1_c|llvm_gcc_c_torture_src_950426_1_c|llvm_gcc_c_torture_src_pr41463_c)$' > test_after.log 2>&1`
 
-Result: passed, 3/3. The field lookup failures for `p`, `a`, and
-`s_blocksize` are fixed.
+Result: passed, 4/4. The runtime segfaults in the delegated C/torture cluster
+are fixed.
 
 Proof log: `test_after.log`.
 
 Required spot checks:
-`ctest --test-dir build --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_type_base_prelim_eval_structured_metadata|llvm_gcc_c_torture_src_20040709_1_c|llvm_gcc_c_torture_src_pr23324_c)$'`
+`ctest --test-dir build --output-on-failure -R '^(frontend_parser_tests|cpp_hir_parser_type_base_prelim_eval_structured_metadata|c_testsuite_src_00019_c|llvm_gcc_c_torture_src_20040709_1_c|llvm_gcc_c_torture_src_pr40022_c|llvm_gcc_c_torture_src_pr23324_c)$'`
 
-Result: passed, 4/4.
+Result: passed, 6/6.

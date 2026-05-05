@@ -284,8 +284,12 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
   if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
     TypeSpec base_ts{};
     std::string base;
-    if (const TypeSpec resolved_base_ts = resolve_expr_type(ctx, idx->base);
-        is_vector_value(resolved_base_ts)) {
+    const TypeSpec resolved_base_ts = resolve_expr_type(ctx, idx->base);
+    const Expr& base_expr = get_expr(idx->base);
+    const auto* base_ref = std::get_if<DeclRef>(&base_expr.payload);
+    const bool adjusted_array_param = base_ref && base_ref->param_index.has_value();
+    if (is_vector_value(resolved_base_ts) ||
+        (outer_array_rank(resolved_base_ts) > 0 && !adjusted_array_param)) {
       TypeSpec obj_ts{};
       base = emit_lval(ctx, idx->base, obj_ts);
       base_ts = obj_ts;
