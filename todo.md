@@ -8,21 +8,22 @@ Current Step Title: Triage Broad Validation Regression After Field Removal
 
 ## Just Finished
 
-Step 6 broad-validation triage fixed the remaining delegated runtime abort in
-`llvm_gcc_c_torture_src_20040703_1_c`. The abort was caused by positional
-struct global initializer items being ignored by the constant-initializer
-emitter, so `cpp_num num = { 0, 3, 0, 0 }` lowered as all zeros and failed the
-runtime result checks. Struct global initializer lowering now maps positional
-items through the same field-index path as designated items, preserving the
-`low = 3` field without adding rendered-tag consumer fallback or weakening
-tests.
+Step 6 broad-validation triage cleared the delegated focused C failure bucket:
+`c_testsuite_src_00170_c`, `llvm_gcc_c_torture_src_20000605_1_c`,
+`llvm_gcc_c_torture_src_20001124_1_c`, and
+`llvm_gcc_c_torture_src_20011008_3_c`. The fixes keep forward record nodes as
+structured TypeSpec carriers, let completeness checks upgrade those forward
+carriers to later complete definitions by parser-owned identity, preserve
+parser-local enum tag identity for compatible forward enum declarations, and
+stop HIR owner lookup from treating bare parser `tag_text_id` values as
+module-owned structured keys. No tests were weakened and no rendered-tag
+consumer fallback was added.
 
 ## Suggested Next
 
 Continue Step 6 by deciding the next supervisor packet from the remaining
-full-suite baseline families: C `00170.c`, gcc torture `20001124-1.c` and
-`pr71083.c`, plus the C++ parser/metadata and EASTL owner-dependent template
-disambiguation failures.
+full-suite baseline families: gcc torture `pr71083.c`, plus the C++
+parser/metadata and EASTL owner-dependent template disambiguation failures.
 
 ## Watchouts
 
@@ -39,10 +40,17 @@ disambiguation failures.
   bitfield global initializer type mismatches such as `@sC` are fixed.
 - `20040703-1.c` now compiles and runs in the delegated proof; `@num` lowers as
   `%struct.cpp_num { i32 0, i32 3, i32 0, i32 0 }` instead of a zero aggregate.
+- `00170.c` now compiles and runs; forward enum declaration identity is treated
+  as the same parser-local enum tag when the definition arrives.
+- `20000605-1.c` and `20011008-3.c` now compile and run; typedefs to forward
+  records are accepted once the matching complete record definition is known.
+- `20001124-1.c` now compiles and runs; `inode->i_sb` keeps the `super_block`
+  owner instead of resolving a bare parser `tag_text_id` through the HIR module
+  text table as `file`.
 - `test_baseline.log` still records these full-suite failure families not
   cleared by this delegated packet: parser TypeSpec structured metadata,
-  EASTL/template owner-dependent parser disambiguation, `c_testsuite_src_00170_c`,
-  and gcc torture `20001124-1.c`/`pr71083.c`.
+  EASTL/template owner-dependent parser disambiguation, and gcc torture
+  `pr71083.c`.
 - The repaired timeout came from open-coded injected reparses of dependent
   template owner prefixes. Future injected parser routes should use
   `parse_injected_base_type()` or otherwise include an EOF token and restore
@@ -57,9 +65,9 @@ disambiguation failures.
 ## Proof
 
 Current accepted proof is in `test_after.log`:
-`cmake --build build --target c4cll && ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_20040703_1_c|c_testsuite_src_00216_c|llvm_gcc_c_torture_src_20040709_(1|2|3)_c|llvm_gcc_c_torture_src_const_addr_expr_1_c)$'`.
+`cmake --build build --target c4cll && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_src_00170_c|llvm_gcc_c_torture_src_20000605_1_c|llvm_gcc_c_torture_src_20001124_1_c|llvm_gcc_c_torture_src_20011008_3_c)$'`.
 
-The delegated proof now passes 6/6. Passing tests:
-`llvm_gcc_c_torture_src_20040703_1_c`,
-`c_testsuite_src_00216_c`, `llvm_gcc_c_torture_src_20040709_{1,2,3}_c`, and
-`llvm_gcc_c_torture_src_const_addr_expr_1_c`.
+The delegated proof now passes 4/4. Passing tests:
+`c_testsuite_src_00170_c`, `llvm_gcc_c_torture_src_20000605_1_c`,
+`llvm_gcc_c_torture_src_20001124_1_c`, and
+`llvm_gcc_c_torture_src_20011008_3_c`.

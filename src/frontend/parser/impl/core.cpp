@@ -912,6 +912,14 @@ bool same_nominal_typespec_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
 
     if (lhs.record_def || rhs.record_def) return false;
 
+    if (lhs.tag_text_id != kInvalidText || rhs.tag_text_id != kInvalidText) {
+        return lhs.tag_text_id != kInvalidText &&
+               rhs.tag_text_id != kInvalidText &&
+               lhs.tag_text_id == rhs.tag_text_id &&
+               lhs.n_qualifier_segments == rhs.n_qualifier_segments &&
+               lhs.namespace_context_id == rhs.namespace_context_id;
+    }
+
     return same_legacy_tag_only_nominal_typespec_identity(lhs, rhs);
 }
 

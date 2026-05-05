@@ -516,6 +516,33 @@ Node* resolve_record_type_spec(
     const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map) {
     if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+        if (ts.record_def->n_fields < 0 && compatibility_tag_map) {
+            auto matches_record_identity = [&](const Node* candidate) {
+                if (!candidate || candidate->kind != NK_STRUCT_DEF ||
+                    candidate->n_fields < 0) {
+                    return false;
+                }
+                if (ts.record_def->unqualified_text_id != kInvalidText &&
+                    candidate->unqualified_text_id ==
+                        ts.record_def->unqualified_text_id) {
+                    return true;
+                }
+                if (ts.record_def->name && candidate->name &&
+                    std::strcmp(ts.record_def->name, candidate->name) == 0) {
+                    return true;
+                }
+                if (ts.record_def->unqualified_name &&
+                    candidate->unqualified_name &&
+                    std::strcmp(ts.record_def->unqualified_name,
+                                candidate->unqualified_name) == 0) {
+                    return true;
+                }
+                return false;
+            };
+            for (const auto& entry : *compatibility_tag_map) {
+                if (matches_record_identity(entry.second)) return entry.second;
+            }
+        }
         return ts.record_def;
     }
     if (!compatibility_tag_map) return nullptr;

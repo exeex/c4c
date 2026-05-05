@@ -240,7 +240,9 @@ std::optional<HirRecordOwnerKey> template_origin_owner_key_from_type(
 
 std::optional<HirRecordOwnerKey> record_owner_key_from_type_tag_metadata(
     const TypeSpec& ts) {
-  if (ts.tag_text_id == kInvalidText) return std::nullopt;
+  if (ts.tag_text_id == kInvalidText || ts.namespace_context_id < 0) {
+    return std::nullopt;
+  }
   NamespaceQualifier ns_qual;
   ns_qual.context_id = ts.namespace_context_id;
   ns_qual.is_global_qualified = ts.is_global_qualified;
@@ -256,8 +258,7 @@ std::optional<HirRecordOwnerKey> record_owner_key_from_type_tag_metadata(
 
 bool typespec_has_structured_owner_metadata(const TypeSpec& ts) {
   return (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) ||
-         ts.tag_text_id != kInvalidText ||
-         ts.namespace_context_id >= 0 ||
+         (ts.tag_text_id != kInvalidText && ts.namespace_context_id >= 0) ||
          (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) ||
          (ts.tpl_struct_origin_key.base_text_id != kInvalidText) ||
          (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) ||
@@ -298,7 +299,8 @@ std::optional<std::string> structured_owner_tag_from_type(
       if (module->struct_defs.count(*owner_tag)) return std::string(*owner_tag);
     }
   }
-  if (ts.tag_text_id != kInvalidText && module->link_name_texts) {
+  if (ts.tag_text_id != kInvalidText && ts.namespace_context_id >= 0 &&
+      module->link_name_texts) {
     const std::string_view tag_text = module->link_name_texts->lookup(ts.tag_text_id);
     if (!tag_text.empty() && module->struct_defs.count(std::string(tag_text))) {
       return std::string(tag_text);

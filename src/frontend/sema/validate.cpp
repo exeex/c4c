@@ -1443,6 +1443,16 @@ class Validator {
       if (has_rendered_tag) {
         (void)compare_sema_lookup_presence(legacy_complete, record_complete);
       }
+      if (!record_complete) {
+        if (auto record_key = sema_symbol_name_key(ts.record_def);
+            record_key.has_value() && record_key->valid()) {
+          const bool structured_complete =
+              ts.base == TB_STRUCT
+                  ? complete_structs_by_key_.count(*record_key) > 0
+                  : complete_unions_by_key_.count(*record_key) > 0;
+          if (structured_complete) return true;
+        }
+      }
       return record_complete;
     }
 

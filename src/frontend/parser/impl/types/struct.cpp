@@ -2290,6 +2290,10 @@ Node* parse_record_tag_setup(
             ref->is_union = is_union;
             ref->n_fields = -1;  // -1 = forward reference (no body)
         }
+        if (source_tag && source_tag[0]) {
+            parser.apply_decl_namespace(ref, parser.current_namespace_context_id(),
+                                        source_tag);
+        }
         if (parser.is_cpp_mode() && resolved_tag && resolved_tag[0]) {
             const TextId resolved_tag_text_id =
                 parser.parser_text_id_for_token(kInvalidText, resolved_tag);

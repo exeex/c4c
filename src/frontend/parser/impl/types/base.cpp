@@ -56,8 +56,15 @@ static void set_parse_base_type_record_metadata(Parser& parser,
                                                 Node* record,
                                                 TypeBase base) {
     ts.base = base;
-    ts.record_def = (record && record->n_fields >= 0) ? record : nullptr;
+    ts.record_def = record;
     ts.tag_text_id = parse_base_type_record_text_id(parser, record);
+    if (record && record->namespace_context_id >= 0) {
+        ts.namespace_context_id = record->namespace_context_id;
+        ts.qualifier_segments = record->qualifier_segments;
+        ts.qualifier_text_ids = record->qualifier_text_ids;
+        ts.n_qualifier_segments = record->n_qualifier_segments;
+        ts.is_global_qualified = record->is_global_qualified;
+    }
     set_parse_base_type_legacy_tag_if_present(
         ts, parse_base_type_final_spelling_compat(parser, ts, record), 0);
 }
@@ -67,6 +74,13 @@ static void set_parse_base_type_enum_metadata(Parser& parser,
                                               Node* enum_def) {
     ts.base = TB_ENUM;
     ts.tag_text_id = parse_base_type_record_text_id(parser, enum_def);
+    if (enum_def && enum_def->namespace_context_id >= 0) {
+        ts.namespace_context_id = enum_def->namespace_context_id;
+        ts.qualifier_segments = enum_def->qualifier_segments;
+        ts.qualifier_text_ids = enum_def->qualifier_text_ids;
+        ts.n_qualifier_segments = enum_def->n_qualifier_segments;
+        ts.is_global_qualified = enum_def->is_global_qualified;
+    }
     set_parse_base_type_legacy_tag_if_present(
         ts, parse_base_type_final_spelling_compat(parser, ts, enum_def), 0);
 }
