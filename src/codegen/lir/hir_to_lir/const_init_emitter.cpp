@@ -1330,10 +1330,6 @@ std::vector<std::string> ConstInitEmitter::emit_const_struct_fields_impl(const T
   };
 
   if (const auto* list = std::get_if<InitList>(&init)) {
-    if (!is_explicitly_mapped_list(*list)) {
-      if (out_field_types) *out_field_types = std::move(field_types);
-      return field_vals;
-    }
     size_t next_idx = 0;
     for (const auto& item : list->items) {
       const auto maybe_idx = find_struct_field_index(sd, item, next_idx);
