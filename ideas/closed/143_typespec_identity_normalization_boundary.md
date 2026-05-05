@@ -1,6 +1,6 @@
 # TypeSpec Identity Normalization Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-05-05
 
 Related Ideas:
@@ -114,3 +114,19 @@ EASTL/template owner resolution.
   of proving same-feature stale-rendered-spelling disagreement.
 - The route claims progress by deleting `TypeSpec::tag` before proving the
   normalized identity boundary is stable.
+
+## Closure
+
+Closed: 2026-05-05
+
+Closure proof:
+
+```sh
+ctest --test-dir build -j 8 --output-on-failure > test_after.log 2>&1
+```
+
+Result recorded by supervisor: 3023/3023 tests passed, zero failures.
+
+Lifecycle decision: the TypeSpec normalization boundary is stable enough to
+resume `ideas/open/141_typespec_tag_field_removal_metadata_migration.md`.
+No narrower child idea is required from Step 6.
