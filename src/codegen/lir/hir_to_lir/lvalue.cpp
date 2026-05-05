@@ -10,6 +10,7 @@ namespace {
 
 StructNameId indexed_gep_structured_name_id(const c4c::hir::Module& mod,
                                             const lir::LirModule* module,
+                                            const std::string& rendered_text,
                                             const TypeSpec& elem_ts) {
   if (!module || (elem_ts.base != TB_STRUCT && elem_ts.base != TB_UNION) ||
       elem_ts.ptr_level != 0 || elem_ts.array_rank != 0) {
@@ -24,7 +25,7 @@ StructNameId indexed_gep_structured_name_id(const c4c::hir::Module& mod,
 
   const StructNameId name_id =
       module->struct_names.find(llvm_struct_type_str(*structured_tag));
-  return module->find_struct_decl(name_id) ? name_id : kInvalidStructName;
+  return normalize_lir_aggregate_struct_name_id(module, rendered_text, name_id, true);
 }
 
 std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
@@ -47,6 +48,7 @@ LirTypeRef lir_aggregate_gep_type_ref(const std::string& rendered_text,
                                       lir::LirModule* module, StructNameId name_id,
                                       bool is_union) {
   if (!module) return LirTypeRef(rendered_text);
+  name_id = normalize_lir_aggregate_struct_name_id(module, rendered_text, name_id, false);
   if (name_id == kInvalidStructName) name_id = module->struct_names.intern(rendered_text);
   return is_union ? LirTypeRef::union_type(rendered_text, name_id)
                   : LirTypeRef::struct_type(rendered_text, name_id);
@@ -306,7 +308,7 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
     } else {
       pts = resolve_indexed_gep_pointee_type(pts);
       return emit_indexed_gep(ctx, base, base_ts, ix64,
-                              indexed_gep_structured_name_id(mod_, module_, pts));
+                              indexed_gep_structured_name_id(mod_, module_, llvm_ty(pts), pts));
     }
   }
   if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
@@ -692,7 +694,8 @@ LirTypeRef StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts,
   if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) && elem_ts.ptr_level == 0 &&
       elem_ts.array_rank == 0) {
     if (elem_structured_name_id == kInvalidStructName) {
-      elem_structured_name_id = indexed_gep_structured_name_id(mod_, module_, elem_ts);
+      elem_structured_name_id =
+          indexed_gep_structured_name_id(mod_, module_, rendered_text, elem_ts);
     }
     const char* site = elem_structured_name_id == kInvalidStructName
                            ? "indexed-gep-aggregate-legacy-compat"

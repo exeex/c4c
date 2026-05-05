@@ -10,39 +10,9 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
-std::optional<HirRecordOwnerKey> call_aggregate_owner_key_from_type(const TypeSpec& ts) {
-  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
-    const TextId declaration_text_id = ts.record_def->unqualified_text_id;
-    if (declaration_text_id != kInvalidText) {
-      NamespaceQualifier ns_qual;
-      ns_qual.context_id = ts.record_def->namespace_context_id;
-      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
-      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
-        ns_qual.segment_text_ids.assign(
-            ts.record_def->qualifier_text_ids,
-            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
-      }
-      const HirRecordOwnerKey owner_key =
-          make_hir_record_owner_key(ns_qual, declaration_text_id);
-      if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
-    }
-  }
-
-  if (ts.tag_text_id == kInvalidText) return std::nullopt;
-  NamespaceQualifier ns_qual;
-  ns_qual.context_id = ts.namespace_context_id;
-  ns_qual.is_global_qualified = ts.is_global_qualified;
-  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
-    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
-                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
-  }
-  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
-  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
-  return std::nullopt;
-}
-
 StructNameId call_aggregate_structured_name_id(const c4c::hir::Module& mod,
                                                const lir::LirModule* module,
+                                               const std::string& rendered_text,
                                                const TypeSpec& aggregate_ts) {
   if (!module || (aggregate_ts.base != TB_STRUCT && aggregate_ts.base != TB_UNION) ||
       aggregate_ts.ptr_level != 0 || aggregate_ts.array_rank != 0) {
@@ -50,14 +20,14 @@ StructNameId call_aggregate_structured_name_id(const c4c::hir::Module& mod,
   }
 
   const std::optional<HirRecordOwnerKey> owner_key =
-      call_aggregate_owner_key_from_type(aggregate_ts);
+      typespec_aggregate_owner_key(aggregate_ts, mod);
   if (!owner_key) return kInvalidStructName;
   const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
   if (!structured_tag || structured_tag->empty()) return kInvalidStructName;
 
   const StructNameId name_id =
       module->struct_names.find(llvm_struct_type_str(*structured_tag));
-  return module->find_struct_decl(name_id) ? name_id : kInvalidStructName;
+  return normalize_lir_aggregate_struct_name_id(module, rendered_text, name_id, true);
 }
 
 LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_module,
@@ -68,11 +38,13 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
   }
   if (rendered_text != llvm_ty(type)) return LirTypeRef();
 
-  StructNameId name_id = call_aggregate_structured_name_id(mod, lir_module, type);
+  StructNameId name_id =
+      call_aggregate_structured_name_id(mod, lir_module, rendered_text, type);
   if (name_id == kInvalidStructName &&
       !typespec_legacy_tag_if_present(type, 0).empty()) {
     // Legacy compatibility for aggregate carriers that still only have a rendered tag.
-    name_id = lir_module->struct_names.intern(rendered_text);
+    name_id = normalize_lir_aggregate_struct_name_id(
+        lir_module, rendered_text, lir_module->struct_names.find(rendered_text), true);
   }
   if (name_id == kInvalidStructName) return LirTypeRef();
   return type.base == TB_UNION ? LirTypeRef::union_type(rendered_text, name_id)
@@ -222,7 +194,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   }
   if (is_variadic_aggregate) {
     const StructNameId structured_name_id =
-        call_aggregate_structured_name_id(mod_, module_, arg_ts);
+        call_aggregate_structured_name_id(mod_, module_, llvm_ty(arg_ts), arg_ts);
     const char* layout_site = structured_name_id == kInvalidStructName
                                   ? "variadic-aggregate-arg-legacy-compat"
                                   : "variadic-aggregate-arg";

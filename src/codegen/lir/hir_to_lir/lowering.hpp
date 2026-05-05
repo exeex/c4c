@@ -295,6 +295,10 @@ StructuredLayoutLookup lookup_structured_layout(const Module& mod,
                                                 const char* site = "lookup_structured_layout",
                                                 StructNameId structured_name_id =
                                                     kInvalidStructName);
+StructNameId normalize_lir_aggregate_struct_name_id(const LirModule* lir_module,
+                                                    std::string_view rendered_text,
+                                                    StructNameId candidate,
+                                                    bool require_decl);
 std::optional<int> structured_layout_align_bytes(const Module& mod,
                                                  const LirModule* lir_module,
                                                  const StructuredLayoutLookup& layout);

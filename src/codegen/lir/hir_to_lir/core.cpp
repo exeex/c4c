@@ -384,6 +384,25 @@ StructuredLayoutLookup lookup_structured_layout(const Module& mod,
   return result;
 }
 
+StructNameId normalize_lir_aggregate_struct_name_id(const LirModule* lir_module,
+                                                    std::string_view rendered_text,
+                                                    StructNameId candidate,
+                                                    bool require_decl) {
+  if (!lir_module || rendered_text.empty()) return kInvalidStructName;
+
+  auto is_usable = [&](StructNameId name_id) {
+    if (name_id == kInvalidStructName) return false;
+    if (lir_module->struct_names.spelling(name_id) != rendered_text) return false;
+    return !require_decl || lir_module->find_struct_decl(name_id) != nullptr;
+  };
+
+  if (is_usable(candidate)) return candidate;
+
+  const StructNameId rendered_id = lir_module->struct_names.find(rendered_text);
+  if (is_usable(rendered_id)) return rendered_id;
+  return kInvalidStructName;
+}
+
 bool amd64_registers_available(const llvm_cc::Amd64VarargInfo& layout,
                                const Amd64CallArgState& state) {
   if (layout.gp_chunks > 0) {
