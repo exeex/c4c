@@ -5,6 +5,7 @@ Source Idea Path: ideas/open/143_typespec_identity_normalization_boundary.md
 Source Plan Path: plan.md
 Current Step ID: 6
 Current Step Title: Triage Broad Validation Regression After Field Removal
+你該做code review了
 
 ## Just Finished
 
