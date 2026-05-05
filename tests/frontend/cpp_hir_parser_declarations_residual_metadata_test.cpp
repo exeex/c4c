@@ -130,12 +130,94 @@ void test_conversion_operator_mangling_uses_structured_type_name() {
               "conversion operator mangling should use structured target type spelling");
 }
 
+void test_record_member_template_constructor_prelude_carrier() {
+  c4c::Arena arena;
+  c4c::Lexer lexer(
+      "template <typename... T>\n"
+      "struct Box {};\n"
+      "template <unsigned long... I>\n"
+      "struct Index {};\n"
+      "struct Carrier {\n"
+      "  template <class Value = int, class... Args, unsigned long... Is>\n"
+      "  Carrier(Box<Value> one, Box<Args...> many, Index<Is...> seq);\n"
+      "};\n",
+      c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const c4c::Node* root = parse_cpp(arena, lexer);
+  const c4c::Node* carrier = find_record(root, "Carrier");
+  expect_true(carrier != nullptr, "Carrier record should parse");
+  expect_true(carrier->n_children == 1,
+              "Carrier should retain one member constructor");
+  const c4c::Node* ctor = carrier->children[0];
+  expect_true(ctor && ctor->kind == c4c::NK_FUNCTION && ctor->is_constructor,
+              "member template should attach to the constructor Node");
+  expect_true(ctor->n_template_params == 3,
+              "constructor Node should carry member-template params");
+  expect_true(ctor->template_param_name_text_ids[0] != c4c::kInvalidText &&
+                  ctor->template_param_name_text_ids[1] != c4c::kInvalidText &&
+                  ctor->template_param_name_text_ids[2] != c4c::kInvalidText,
+              "constructor template params should carry text ids");
+  expect_true(!ctor->template_param_is_nttp[0] &&
+                  !ctor->template_param_is_nttp[1] &&
+                  ctor->template_param_is_nttp[2],
+              "constructor prelude should distinguish type and NTTP params");
+  expect_true(!ctor->template_param_is_pack[0] &&
+                  ctor->template_param_is_pack[1] &&
+                  ctor->template_param_is_pack[2],
+              "constructor prelude should retain pack flags");
+  expect_true(ctor->template_param_has_default[0] &&
+                  ctor->template_param_default_types[0].base == c4c::TB_INT,
+              "constructor prelude should retain type-param defaults");
+  expect_true(ctor->n_params == 3,
+              "constructor should retain its three explicit params");
+
+  const c4c::TemplateArgRefList& value_args =
+      ctor->params[0]->type.tpl_struct_args;
+  expect_true(value_args.size == 1 && value_args.data,
+              "Box<Value> should retain one nested template arg");
+  const c4c::TypeSpec& value_ref = value_args.data[0].type;
+  expect_true(value_args.data[0].kind == c4c::TemplateArgKind::Type,
+              "Box<Value> arg should be a type arg");
+  expect_true(value_ref.template_param_text_id ==
+                  ctor->template_param_name_text_ids[0],
+              "Box<Value> should carry template-param text identity");
+  expect_true(value_ref.template_param_index == 0 &&
+                  value_ref.template_param_owner_text_id ==
+                      ctor->unqualified_text_id,
+              "Box<Value> should carry template-param owner/index identity");
+
+  const c4c::TemplateArgRefList& pack_args =
+      ctor->params[1]->type.tpl_struct_args;
+  expect_true(pack_args.size == 1 && pack_args.data,
+              "Box<Args...> should retain one nested pack arg");
+  const c4c::TypeSpec& pack_ref = pack_args.data[0].type;
+  expect_true(pack_args.data[0].kind == c4c::TemplateArgKind::Type,
+              "Box<Args...> arg should be a type arg");
+  expect_true(pack_ref.template_param_text_id ==
+                  ctor->template_param_name_text_ids[1],
+              "Box<Args...> should carry pack text identity");
+  expect_true(pack_ref.template_param_index == 1 &&
+                  pack_ref.template_param_owner_text_id ==
+                      ctor->unqualified_text_id,
+              "Box<Args...> should carry pack owner/index identity");
+
+  const c4c::TemplateArgRefList& nttp_args =
+      ctor->params[2]->type.tpl_struct_args;
+  expect_true(nttp_args.size == 1 && nttp_args.data,
+              "Index<Is...> should retain one nested value pack arg");
+  expect_true(nttp_args.data[0].kind == c4c::TemplateArgKind::Value,
+              "Index<Is...> arg should be a value arg");
+  expect_true(nttp_args.data[0].nttp_text_id ==
+                  ctor->template_param_name_text_ids[2],
+              "Index<Is...> should carry NTTP text identity");
+}
+
 }  // namespace
 
 int main() {
   test_template_param_typedef_producer_keeps_structured_identity();
   test_declaration_paths_accept_current_struct_by_metadata();
   test_conversion_operator_mangling_uses_structured_type_name();
+  test_record_member_template_constructor_prelude_carrier();
   std::cout << "PASS: cpp_hir_parser_declarations_residual_metadata_test\n";
   return 0;
 }

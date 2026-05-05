@@ -33,6 +33,207 @@ static TextId record_member_type_text_id(Parser& parser, const Node* record) {
     return kInvalidText;
 }
 
+static TypeSpec empty_template_default_type() {
+    TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    return ts;
+}
+
+static const char* capture_template_param_default_text(Parser& parser,
+                                                       int start_pos,
+                                                       int end_pos) {
+    if (start_pos < 0 || end_pos <= start_pos) return nullptr;
+    std::string text;
+    for (int i = start_pos; i < end_pos &&
+         i < static_cast<int>(parser.core_input_state_.tokens.size()); ++i) {
+        if (!text.empty()) text += " ";
+        text += std::string(
+            parser.token_spelling(parser.core_input_state_.tokens[i]));
+    }
+    return text.empty() ? nullptr : parser.arena_.strdup(text.c_str());
+}
+
+static bool consume_record_template_param_default(Parser& parser,
+                                                  bool prefer_type_default,
+                                                  TypeSpec* default_type,
+                                                  long long* default_value,
+                                                  const char** default_expr) {
+    if (!parser.match(TokenKind::Assign)) return false;
+    const int default_start = parser.pos_;
+    if (default_type) *default_type = empty_template_default_type();
+    if (default_value) *default_value = 0;
+    if (default_expr) *default_expr = nullptr;
+
+    if (prefer_type_default && default_type) {
+        Parser::TentativeParseGuard guard(parser);
+        try {
+            TypeSpec parsed = parser.parse_type_name();
+            guard.commit();
+            *default_type = parsed;
+            if (default_expr) {
+                *default_expr = capture_template_param_default_text(
+                    parser, default_start, parser.pos_);
+            }
+            return true;
+        } catch (...) {
+            // guard restores pos_ on scope exit
+        }
+    }
+
+    if (default_value && parser.check(TokenKind::IntLit)) {
+        *default_value = parse_int_lexeme(
+            std::string(parser.token_spelling(parser.cur())).c_str());
+    }
+
+    int depth = 0;
+    int paren_depth = 0;
+    while (!parser.at_end()) {
+        if (parser.check(TokenKind::Less) || parser.check(TokenKind::LParen)) {
+            if (parser.check(TokenKind::LParen)) ++paren_depth;
+            else ++depth;
+        } else if (parser.check(TokenKind::RParen)) {
+            if (paren_depth > 0) --paren_depth;
+        } else if (parser.check(TokenKind::GreaterGreater)) {
+            if (paren_depth == 0 && depth <= 0) break;
+            if (paren_depth == 0 && depth == 1) {
+                parser.parse_greater_than_in_template_list(false);
+                break;
+            }
+            if (depth >= 2) depth -= 2;
+            else if (depth == 1) --depth;
+            parser.consume();
+            continue;
+        } else if (parser.check(TokenKind::Greater)) {
+            if (paren_depth == 0 && depth == 0) break;
+            if (depth > 0) --depth;
+        } else if (parser.check(TokenKind::Comma) && depth == 0 &&
+                   paren_depth == 0) {
+            break;
+        }
+        parser.consume();
+    }
+    if (default_expr) {
+        *default_expr = capture_template_param_default_text(
+            parser, default_start, parser.pos_);
+    }
+    return true;
+}
+
+static void annotate_record_member_template_param_typespec(TypeSpec* ts,
+                                                           const Node* owner) {
+    if (!ts || !owner) return;
+    if (ts->base == TB_TYPEDEF && ts->tag_text_id != kInvalidText &&
+        owner->unqualified_text_id != kInvalidText &&
+        owner->n_template_params > 0 && owner->template_param_name_text_ids &&
+        owner->template_param_is_nttp) {
+        for (int i = 0; i < owner->n_template_params; ++i) {
+            if (owner->template_param_is_nttp[i]) continue;
+            if (owner->template_param_name_text_ids[i] != ts->tag_text_id) {
+                continue;
+            }
+            ts->template_param_owner_namespace_context_id =
+                owner->namespace_context_id;
+            ts->template_param_owner_text_id = owner->unqualified_text_id;
+            ts->template_param_index = i;
+            ts->template_param_text_id = owner->template_param_name_text_ids[i];
+            break;
+        }
+    }
+    if (ts->tpl_struct_args.data) {
+        for (int i = 0; i < ts->tpl_struct_args.size; ++i) {
+            TemplateArgRef& arg = ts->tpl_struct_args.data[i];
+            if (arg.kind == TemplateArgKind::Type) {
+                annotate_record_member_template_param_typespec(&arg.type, owner);
+            }
+        }
+    }
+}
+
+static void annotate_record_member_template_param_refs(Node* node,
+                                                       const Node* owner) {
+    if (!node) return;
+    annotate_record_member_template_param_typespec(&node->type, owner);
+    annotate_record_member_template_param_refs(node->type.array_size_expr, owner);
+    if (node->template_param_default_types) {
+        for (int i = 0; i < node->n_template_params; ++i) {
+            annotate_record_member_template_param_typespec(
+                &node->template_param_default_types[i], owner);
+        }
+    }
+    if (node->template_arg_types) {
+        for (int i = 0; i < node->n_template_args; ++i) {
+            annotate_record_member_template_param_typespec(
+                &node->template_arg_types[i], owner);
+        }
+    }
+    if (node->template_arg_exprs) {
+        for (int i = 0; i < node->n_template_args; ++i) {
+            annotate_record_member_template_param_refs(
+                node->template_arg_exprs[i], owner);
+        }
+    }
+    if (node->params) {
+        for (int i = 0; i < node->n_params; ++i) {
+            annotate_record_member_template_param_refs(node->params[i], owner);
+        }
+    }
+    if (node->children) {
+        for (int i = 0; i < node->n_children; ++i) {
+            annotate_record_member_template_param_refs(node->children[i], owner);
+        }
+    }
+    if (node->left) annotate_record_member_template_param_refs(node->left, owner);
+    if (node->right) annotate_record_member_template_param_refs(node->right, owner);
+    if (node->cond) annotate_record_member_template_param_refs(node->cond, owner);
+    if (node->then_) annotate_record_member_template_param_refs(node->then_, owner);
+    if (node->else_) annotate_record_member_template_param_refs(node->else_, owner);
+    if (node->ctor_init_args) {
+        for (int i = 0; i < node->n_ctor_inits; ++i) {
+            for (int j = 0; j < node->ctor_init_nargs[i]; ++j) {
+                annotate_record_member_template_param_refs(
+                    node->ctor_init_args[i][j], owner);
+            }
+        }
+    }
+}
+
+static void attach_record_member_template_params(
+    Parser& parser,
+    Node* node,
+    const std::vector<Parser::InjectedTemplateParam>& params) {
+    if (!node || params.empty()) return;
+    node->n_template_params = static_cast<int>(params.size());
+    node->template_param_names =
+        parser.arena_.alloc_array<const char*>(node->n_template_params);
+    node->template_param_name_text_ids =
+        parser.arena_.alloc_array<TextId>(node->n_template_params);
+    node->template_param_is_nttp =
+        parser.arena_.alloc_array<bool>(node->n_template_params);
+    node->template_param_is_pack =
+        parser.arena_.alloc_array<bool>(node->n_template_params);
+    node->template_param_has_default =
+        parser.arena_.alloc_array<bool>(node->n_template_params);
+    node->template_param_default_types =
+        parser.arena_.alloc_array<TypeSpec>(node->n_template_params);
+    node->template_param_default_values =
+        parser.arena_.alloc_array<long long>(node->n_template_params);
+    node->template_param_default_exprs =
+        parser.arena_.alloc_array<const char*>(node->n_template_params);
+    for (int i = 0; i < node->n_template_params; ++i) {
+        const Parser::InjectedTemplateParam& param = params[i];
+        node->template_param_names[i] = param.name;
+        node->template_param_name_text_ids[i] = param.name_text_id;
+        node->template_param_is_nttp[i] = param.is_nttp;
+        node->template_param_is_pack[i] = param.is_pack;
+        node->template_param_has_default[i] = param.has_default;
+        node->template_param_default_types[i] = param.default_type;
+        node->template_param_default_values[i] = param.default_value;
+        node->template_param_default_exprs[i] = param.default_expr;
+    }
+    annotate_record_member_template_param_refs(node, node);
+}
+
 struct ParserFunctionParamScopeGuard {
     Parser* parser = nullptr;
     bool active = false;
@@ -239,6 +440,32 @@ void parse_record_template_member_prelude(
     };
     auto& arena_ = parser.arena_;
     auto& pos_ = parser.pos_;
+    auto push_template_param =
+        [&](const std::string& pname, TextId pname_text_id, bool is_nttp,
+            bool is_pack, bool has_default = false,
+            const TypeSpec* default_type = nullptr,
+            long long default_value = 0,
+            const char* default_expr = nullptr) {
+            if (pname.empty()) return;
+            const TextId binding_text_id =
+                pname_text_id != kInvalidText
+                    ? pname_text_id
+                    : parser_text_id_for_token(kInvalidText, pname);
+            const char* stored_name = arena_.strdup(pname.c_str());
+            if (!is_nttp) register_synthesized_typedef_binding(binding_text_id);
+            Parser::InjectedTemplateParam param;
+            param.name_text_id = binding_text_id;
+            param.name = stored_name;
+            param.is_nttp = is_nttp;
+            param.is_pack = is_pack;
+            param.has_default = has_default;
+            param.registered_typedef = !is_nttp;
+            param.default_type =
+                default_type ? *default_type : empty_template_default_type();
+            param.default_value = default_value;
+            param.default_expr = default_expr;
+            injected_type_params->push_back(param);
+        };
     if (pushed_template_scope) *pushed_template_scope = false;
     if (!(is_cpp_mode() && check(TokenKind::KwTemplate)))
         return;
@@ -253,136 +480,73 @@ void parse_record_template_member_prelude(
                 TypeSpec param_ts = parse_type_name();
                 (void)param_ts;
                 while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
-                if (check(TokenKind::Ellipsis)) consume();
-                if (check(TokenKind::Identifier)) consume();
-                if (check(TokenKind::Assign)) {
+                bool is_pack = false;
+                if (check(TokenKind::Ellipsis)) {
+                    is_pack = true;
                     consume();
-                    int depth = 0, paren_depth = 0;
-                    while (!at_end()) {
-                        if (check(TokenKind::Less) || check(TokenKind::LParen)) {
-                            if (check(TokenKind::LParen)) ++paren_depth;
-                            else ++depth;
-                        } else if (check(TokenKind::RParen)) {
-                            if (paren_depth > 0) --paren_depth;
-                        } else if (check(TokenKind::GreaterGreater)) {
-                            if (paren_depth == 0 && depth <= 0) break;
-                            if (paren_depth == 0 && depth == 1) {
-                                parse_greater_than_in_template_list(false);
-                                break;
-                            }
-                            if (depth >= 2) depth -= 2;
-                            else if (depth == 1) --depth;
-                            consume();
-                            continue;
-                        } else if (check(TokenKind::Greater)) {
-                            if (paren_depth == 0 && depth == 0) break;
-                            if (depth > 0) --depth;
-                        } else if (check(TokenKind::Comma) && depth == 0 &&
-                                   paren_depth == 0) {
-                            break;
-                        }
-                        consume();
-                    }
                 }
+                std::string pname;
+                TextId pname_text_id = kInvalidText;
+                if (check(TokenKind::Identifier)) {
+                    pname = std::string(token_spelling(cur()));
+                    pname_text_id = parser_text_id_for_token(cur().text_id, pname);
+                    consume();
+                }
+                TypeSpec default_type = empty_template_default_type();
+                long long default_value = 0;
+                const char* default_expr = nullptr;
+                const bool has_default = consume_record_template_param_default(
+                    parser, false, &default_type, &default_value, &default_expr);
+                push_template_param(pname, pname_text_id, true, is_pack,
+                                    has_default, &default_type, default_value,
+                                    default_expr);
                 if (!match(TokenKind::Comma)) break;
                 continue;
             }
 
             consume();
-            if (check(TokenKind::Ellipsis)) consume();
+            bool is_pack = false;
+            if (check(TokenKind::Ellipsis)) {
+                is_pack = true;
+                consume();
+            }
+            std::string pname;
+            TextId pname_text_id = kInvalidText;
             if (check(TokenKind::Identifier)) {
-                const std::string pname = std::string(token_spelling(cur()));
-                const TextId pname_text_id =
-                    parser_text_id_for_token(cur().text_id, pname);
+                pname = std::string(token_spelling(cur()));
+                pname_text_id = parser_text_id_for_token(cur().text_id, pname);
                 consume();
-                register_synthesized_typedef_binding(pname_text_id);
-                injected_type_params->push_back(
-                    {pname_text_id, arena_.strdup(pname.c_str())});
             }
-            if (check(TokenKind::Assign)) {
-                consume();
-                bool parsed_default_type = false;
-                {
-                    Parser::TentativeParseGuard guard(parser);
-                    try {
-                        TypeSpec ignored_default = parse_type_name();
-                        (void)ignored_default;
-                        guard.commit();
-                        parsed_default_type = true;
-                    } catch (...) {
-                        // guard restores pos_ on scope exit
-                    }
-                }
-                if (!parsed_default_type) {
-                    int depth = 0, paren_depth = 0;
-                    while (!at_end()) {
-                        if (check(TokenKind::Less) || check(TokenKind::LParen)) {
-                            if (check(TokenKind::LParen)) ++paren_depth;
-                            else ++depth;
-                        } else if (check(TokenKind::RParen)) {
-                            if (paren_depth > 0) --paren_depth;
-                        } else if (check(TokenKind::GreaterGreater)) {
-                            if (paren_depth == 0 && depth <= 0) break;
-                            if (paren_depth == 0 && depth == 1) {
-                                parse_greater_than_in_template_list(false);
-                                break;
-                            }
-                            if (depth >= 2) depth -= 2;
-                            else if (depth == 1) --depth;
-                            consume();
-                            continue;
-                        } else if (check(TokenKind::Greater)) {
-                            if (paren_depth == 0 && depth == 0) break;
-                            if (depth > 0) --depth;
-                        } else if (check(TokenKind::Comma) && depth == 0 &&
-                                   paren_depth == 0) {
-                            break;
-                        }
-                        consume();
-                    }
-                }
-            }
+            TypeSpec default_type = empty_template_default_type();
+            long long default_value = 0;
+            const char* default_expr = nullptr;
+            const bool has_default = consume_record_template_param_default(
+                parser, true, &default_type, &default_value, &default_expr);
+            push_template_param(pname, pname_text_id, false, is_pack,
+                                has_default, &default_type, default_value,
+                                default_expr);
         } else if (consume_template_parameter_type_start(/*allow_typename_keyword=*/true)) {
             while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
-            if (check(TokenKind::Ellipsis)) consume();
+            bool is_pack = false;
+            if (check(TokenKind::Ellipsis)) {
+                is_pack = true;
+                consume();
+            }
+            std::string pname;
+            TextId pname_text_id = kInvalidText;
             if (check(TokenKind::Identifier)) {
-                const std::string pname = std::string(token_spelling(cur()));
-                const TextId pname_text_id =
-                    parser_text_id_for_token(cur().text_id, pname);
+                pname = std::string(token_spelling(cur()));
+                pname_text_id = parser_text_id_for_token(cur().text_id, pname);
                 consume();
-                register_synthesized_typedef_binding(pname_text_id);
-                injected_type_params->push_back(
-                    {pname_text_id, arena_.strdup(pname.c_str())});
             }
-            if (check(TokenKind::Assign)) {
-                consume();
-                int depth = 0, paren_depth = 0;
-                while (!at_end()) {
-                    if (check(TokenKind::Less) || check(TokenKind::LParen)) {
-                        if (check(TokenKind::LParen)) ++paren_depth;
-                        else ++depth;
-                    } else if (check(TokenKind::RParen)) {
-                        if (paren_depth > 0) --paren_depth;
-                    } else if (check(TokenKind::GreaterGreater)) {
-                        if (paren_depth == 0 && depth <= 0) break;
-                        if (paren_depth == 0 && depth == 1) {
-                            parse_greater_than_in_template_list(false);
-                            break;
-                        }
-                        if (depth >= 2) depth -= 2;
-                        else if (depth == 1) --depth;
-                        consume();
-                        continue;
-                    } else if (check(TokenKind::Greater)) {
-                        if (paren_depth == 0 && depth == 0) break;
-                        if (depth > 0) --depth;
-                    } else if (check(TokenKind::Comma) && depth == 0 &&
-                               paren_depth == 0) {
-                        break;
-                    }
-                    consume();
-                }
-            }
+            TypeSpec default_type = empty_template_default_type();
+            long long default_value = 0;
+            const char* default_expr = nullptr;
+            const bool has_default = consume_record_template_param_default(
+                parser, false, &default_type, &default_value, &default_expr);
+            push_template_param(pname, pname_text_id, true, is_pack,
+                                has_default, &default_type, default_value,
+                                default_expr);
         } else if (is_cpp_mode()) {
             bool parsed_constrained_type_param = false;
             {
@@ -393,59 +557,26 @@ void parse_record_template_member_prelude(
                         /*consume_final_template_args=*/true,
                         &constraint_name, nullptr) &&
                     (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
-                    if (check(TokenKind::Ellipsis)) consume();
+                    bool is_pack = false;
+                    if (check(TokenKind::Ellipsis)) {
+                        is_pack = true;
+                        consume();
+                    }
+                    std::string pname;
+                    TextId pname_text_id = kInvalidText;
                     if (check(TokenKind::Identifier)) {
-                        const std::string pname = std::string(token_spelling(cur()));
-                        const TextId pname_text_id =
-                            parser_text_id_for_token(cur().text_id, pname);
+                        pname = std::string(token_spelling(cur()));
+                        pname_text_id = parser_text_id_for_token(cur().text_id, pname);
                         consume();
-                        register_synthesized_typedef_binding(pname_text_id);
-                        injected_type_params->push_back(
-                            {pname_text_id, arena_.strdup(pname.c_str())});
                     }
-                    if (check(TokenKind::Assign)) {
-                        consume();
-                        bool parsed_default_type = false;
-                        {
-                            Parser::TentativeParseGuard default_guard(parser);
-                            try {
-                                TypeSpec ignored_default = parse_type_name();
-                                (void)ignored_default;
-                                default_guard.commit();
-                                parsed_default_type = true;
-                            } catch (...) {
-                                // default_guard restores pos_ on scope exit
-                            }
-                        }
-                        if (!parsed_default_type) {
-                            int depth = 0, paren_depth = 0;
-                            while (!at_end()) {
-                                if (check(TokenKind::Less) || check(TokenKind::LParen)) {
-                                    if (check(TokenKind::LParen)) ++paren_depth;
-                                    else ++depth;
-                                } else if (check(TokenKind::RParen)) {
-                                    if (paren_depth > 0) --paren_depth;
-                                } else if (check(TokenKind::GreaterGreater)) {
-                                    if (paren_depth == 0 && depth <= 0) break;
-                                    if (paren_depth == 0 && depth == 1) {
-                                        parse_greater_than_in_template_list(false);
-                                        break;
-                                    }
-                                    if (depth >= 2) depth -= 2;
-                                    else if (depth == 1) --depth;
-                                    consume();
-                                    continue;
-                                } else if (check(TokenKind::Greater)) {
-                                    if (paren_depth == 0 && depth == 0) break;
-                                    if (depth > 0) --depth;
-                                } else if (check(TokenKind::Comma) && depth == 0 &&
-                                           paren_depth == 0) {
-                                    break;
-                                }
-                                consume();
-                            }
-                        }
-                    }
+                    TypeSpec default_type = empty_template_default_type();
+                    long long default_value = 0;
+                    const char* default_expr = nullptr;
+                    const bool has_default = consume_record_template_param_default(
+                        parser, true, &default_type, &default_value, &default_expr);
+                    push_template_param(pname, pname_text_id, false, is_pack,
+                                        has_default, &default_type, default_value,
+                                        default_expr);
                     parsed_constrained_type_param =
                         check(TokenKind::Comma) || check_template_close();
                     if (parsed_constrained_type_param) guard.commit();
@@ -455,43 +586,32 @@ void parse_record_template_member_prelude(
                 // C++20 constrained type parameter, e.g. `template<C T>`.
             } else {
             bool parsed_typed_nttp = false;
+            std::string typed_nttp_name;
+            TextId typed_nttp_text_id = kInvalidText;
+            bool typed_nttp_is_pack = false;
+            bool typed_nttp_has_default = false;
+            TypeSpec typed_nttp_default_type = empty_template_default_type();
+            long long typed_nttp_default_value = 0;
+            const char* typed_nttp_default_expr = nullptr;
             {
                 Parser::TentativeParseGuard guard(parser);
                 try {
                     TypeSpec param_ts = parse_type_name();
                     (void)param_ts;
                     while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
-                    if (check(TokenKind::Ellipsis)) consume();
-                    if (check(TokenKind::Identifier)) consume();
-                    if (check(TokenKind::Assign)) {
+                    if (check(TokenKind::Ellipsis)) {
+                        typed_nttp_is_pack = true;
                         consume();
-                        int depth = 0, paren_depth = 0;
-                        while (!at_end()) {
-                            if (check(TokenKind::Less) || check(TokenKind::LParen)) {
-                                if (check(TokenKind::LParen)) ++paren_depth;
-                                else ++depth;
-                            } else if (check(TokenKind::RParen)) {
-                                if (paren_depth > 0) --paren_depth;
-                            } else if (check(TokenKind::GreaterGreater)) {
-                                if (paren_depth == 0 && depth <= 0) break;
-                                if (paren_depth == 0 && depth == 1) {
-                                    parse_greater_than_in_template_list(false);
-                                    break;
-                                }
-                                if (depth >= 2) depth -= 2;
-                                else if (depth == 1) --depth;
-                                consume();
-                                continue;
-                            } else if (check(TokenKind::Greater)) {
-                                if (paren_depth == 0 && depth == 0) break;
-                                if (depth > 0) --depth;
-                            } else if (check(TokenKind::Comma) && depth == 0 &&
-                                       paren_depth == 0) {
-                                break;
-                            }
-                            consume();
-                        }
                     }
+                    if (check(TokenKind::Identifier)) {
+                        typed_nttp_name = std::string(token_spelling(cur()));
+                        typed_nttp_text_id =
+                            parser_text_id_for_token(cur().text_id, typed_nttp_name);
+                        consume();
+                    }
+                    typed_nttp_has_default = consume_record_template_param_default(
+                        parser, false, &typed_nttp_default_type,
+                        &typed_nttp_default_value, &typed_nttp_default_expr);
                     parsed_typed_nttp =
                         check(TokenKind::Comma) || check_template_close();
                     if (parsed_typed_nttp) guard.commit();
@@ -502,6 +622,12 @@ void parse_record_template_member_prelude(
             if (parsed_typed_nttp) {
                 // Typed NTTP with a typedef/alias type head, e.g.
                 // `__enable_if_t<Cond, bool> = true`.
+                push_template_param(typed_nttp_name, typed_nttp_text_id, true,
+                                    typed_nttp_is_pack,
+                                    typed_nttp_has_default,
+                                    &typed_nttp_default_type,
+                                    typed_nttp_default_value,
+                                    typed_nttp_default_expr);
             } else {
                 // pos_ is back to the start of the NTTP token
                 const int saved_type_head_pos = pos_;
@@ -552,59 +678,28 @@ void parse_record_template_member_prelude(
                             /*consume_final_template_args=*/true,
                             &constraint_name, nullptr) &&
                         (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
-                        if (check(TokenKind::Ellipsis)) consume();
+                        bool is_pack = false;
+                        if (check(TokenKind::Ellipsis)) {
+                            is_pack = true;
+                            consume();
+                        }
+                        std::string pname;
+                        TextId pname_text_id = kInvalidText;
                         if (check(TokenKind::Identifier)) {
-                            const std::string pname = std::string(token_spelling(cur()));
-                            const TextId pname_text_id =
+                            pname = std::string(token_spelling(cur()));
+                            pname_text_id =
                                 parser_text_id_for_token(cur().text_id, pname);
                             consume();
-                            register_synthesized_typedef_binding(pname_text_id);
-                            injected_type_params->push_back(
-                                {pname_text_id, arena_.strdup(pname.c_str())});
                         }
-                        if (check(TokenKind::Assign)) {
-                            consume();
-                            bool parsed_default_type = false;
-                            {
-                                Parser::TentativeParseGuard default_guard(parser);
-                                try {
-                                    TypeSpec ignored_default = parse_type_name();
-                                    (void)ignored_default;
-                                    default_guard.commit();
-                                    parsed_default_type = true;
-                                } catch (...) {
-                                    // default_guard restores pos_ on scope exit
-                                }
-                            }
-                            if (!parsed_default_type) {
-                                int depth = 0, paren_depth = 0;
-                                while (!at_end()) {
-                                    if (check(TokenKind::Less) || check(TokenKind::LParen)) {
-                                        if (check(TokenKind::LParen)) ++paren_depth;
-                                        else ++depth;
-                                    } else if (check(TokenKind::RParen)) {
-                                        if (paren_depth > 0) --paren_depth;
-                                    } else if (check(TokenKind::GreaterGreater)) {
-                                        if (paren_depth == 0 && depth <= 0) break;
-                                        if (paren_depth == 0 && depth == 1) {
-                                            parse_greater_than_in_template_list(false);
-                                            break;
-                                        }
-                                        if (depth >= 2) depth -= 2;
-                                        else if (depth == 1) --depth;
-                                        consume();
-                                        continue;
-                                    } else if (check(TokenKind::Greater)) {
-                                        if (paren_depth == 0 && depth == 0) break;
-                                        if (depth > 0) --depth;
-                                    } else if (check(TokenKind::Comma) && depth == 0 &&
-                                               paren_depth == 0) {
-                                        break;
-                                    }
-                                    consume();
-                                }
-                            }
-                        }
+                        TypeSpec default_type = empty_template_default_type();
+                        long long default_value = 0;
+                        const char* default_expr = nullptr;
+                        const bool has_default = consume_record_template_param_default(
+                            parser, true, &default_type, &default_value,
+                            &default_expr);
+                        push_template_param(pname, pname_text_id, false, is_pack,
+                                            has_default, &default_type,
+                                            default_value, default_expr);
                     } else {
                         pos_ = saved_constraint_pos;
                         consume();
@@ -624,7 +719,7 @@ void parse_record_template_member_prelude(
             Parser::TemplateScopeParam p;
             p.name_text_id = injected.name_text_id;
             p.name = injected.name;
-            p.is_nttp = false;
+            p.is_nttp = injected.is_nttp;
             member_params.push_back(p);
         }
         parser.push_template_scope(Parser::TemplateScopeKind::MemberTemplate,
@@ -1955,9 +2050,18 @@ bool try_parse_record_member_with_template_prelude(
     parse_optional_cpp20_requires_clause(parser);
     if (try_skip_record_friend_member(parser)) return true;
     if (try_skip_record_static_assert_member(parser, methods)) return true;
-    return try_parse_record_member_dispatch(
+    const size_t methods_before = methods ? methods->size() : 0;
+    const bool parsed = try_parse_record_member_dispatch(
         parser, struct_source_name, fields, methods, member_typedef_names,
         member_typedef_types, member_typedef_infos, check_dup_field);
+    if (parsed && methods &&
+        !tmpl_guard.injected_type_params.empty()) {
+        for (size_t i = methods_before; i < methods->size(); ++i) {
+            attach_record_member_template_params(
+                parser, (*methods)[i], tmpl_guard.injected_type_params);
+        }
+    }
+    return parsed;
 }
 
 bool begin_record_member_parse(Parser& parser) {

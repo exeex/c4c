@@ -186,6 +186,13 @@ struct ParserTemplateScopeParam {
 struct ParserInjectedTemplateParam {
   TextId name_text_id = kInvalidText;
   const char* name = nullptr;
+  bool is_nttp = false;
+  bool is_pack = false;
+  bool has_default = false;
+  bool registered_typedef = true;
+  TypeSpec default_type{};
+  long long default_value = 0;
+  const char* default_expr = nullptr;
 };
 
 // Boundary role: parser-local state/table frame for active template scopes.

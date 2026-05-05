@@ -1708,6 +1708,7 @@ ParserRecordTemplatePreludeGuard::~ParserRecordTemplatePreludeGuard() {
         parser->template_state_.template_scope_stack.pop_back();
     }
     for (const ParserInjectedTemplateParam& param : injected_type_params) {
+        if (!param.registered_typedef) continue;
         parser->unregister_typedef_binding(param.name_text_id);
     }
 }
@@ -1724,6 +1725,7 @@ ParserTemplateDeclarationPreludeGuard::
         parser->template_state_.template_scope_stack.pop_back();
     }
     for (const ParserInjectedTemplateParam& param : injected_type_params) {
+        if (!param.registered_typedef) continue;
         parser->unregister_typedef_binding(param.name_text_id);
     }
 }

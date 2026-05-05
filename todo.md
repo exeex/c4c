@@ -3,52 +3,59 @@
 Status: Active
 Source Idea Path: ideas/open/144_member_template_constructor_specialization_metadata.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Implement Constructor Prelude Carrier
+Current Step ID: 5
+Current Step Title: Implement Method Type-Pack Deduction
 
 ## Just Finished
 
-Attempted Step 5's HIR callable parameter substitution repair for nested
-method-template packs. The HIR-side source edits were reverted because the
-live parser-to-HIR carrier is still missing the structured method-template
-prelude metadata needed to bind the packs without using debug text.
+Implemented Step 4's parser-to-HIR constructor prelude carrier. Record-member
+template constructor `Node`s now receive the member-template prelude metadata
+that was previously only transient parser scope:
 
-Focused evidence from the reverted probe:
-- Both `pair` constructor `Node`s reach HIR with `n_template_params=0`.
-- The nested `tuple<Args1...>` / `tuple<Args2...>` parameter argument refs
-  reach HIR as `TB_TYPEDEF` entries with invalid `template_param_text_id`,
-  `template_param_index`, and `template_param_owner_text_id`.
-- The `index_sequence<I1...>` / `index_sequence<I2...>` value refs reach HIR
-  with invalid `nttp_text_id`; only debug/display text remains.
+- `n_template_params` and parallel template parameter arrays are attached to
+  the constructor/method `Node`.
+- Template parameter text ids, type-vs-NTTP flags, pack flags, and simple
+  default carriers are preserved.
+- Nested `TemplateArgRef` type args inside constructor parameter types are
+  annotated with template-param text/index/owner metadata.
+- Forwarded NTTP pack args such as `Is...` are accepted as value template args
+  and keep their parser-owned `nttp_text_id`.
 
-Because the remaining names are only debug/rendered payload, HIR cannot
-semantically deduce `Args1#0=int`, `Args2#0=int`, `I1#0=0`, or `I2#0=0`
-inside `lower_struct_method` / `append_callable_params` under the packet
-constraints.
+The focused metadata proof covers a generic record-member template constructor
+with a defaulted type parameter, a type pack, and an NTTP pack; it verifies the
+constructor `Node` and nested `TemplateArgRef` carriers directly, without
+recovering semantics from debug/rendered strings.
 
 ## Suggested Next
 
-Implement the parser-to-HIR constructor prelude carrier seam: record-member
-template constructor `Node`s must reach HIR with full structured prelude
-metadata, including `n_template_params`, template parameter text ids,
-type/NTTP/pack carriers, defaults where present, and nested `TemplateArgRef`
-text/index/owner metadata inside constructor parameter types. Defer the HIR
-callable substitution repair until that parser carrier is observable without
-recovering semantics from `debug_text`.
+Implement Step 5 HIR constructor registration/specialization now that the
+parser carrier is observable. The next slice should consume the structured
+method-template type-pack and NTTP-pack metadata on constructor `Node`s,
+specialize the constructor overload, and realize nested parameter types such as
+`Owner<Pack...>` from structured pack bindings.
 
 ## Watchouts
 
-The HIR constructor registry repair still appears useful, but it is not a
-commit-ready slice by itself because the delegated `^cpp_positive_sema_` proof
-does not improve until the structured method-template parameter carriers are
-present. No source changes are left in the tree from this blocked packet.
+The delegated positive-Sema proof is still 883/884 because the HIR constructor
+registry/specialization seam is not implemented in this slice. The remaining
+failure is still:
+
+`cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
+
+The previous HIR workaround should not recover from `debug_text`; it can now
+read the constructor `Node` prelude metadata and nested `TemplateArgRef`
+identity directly.
 
 ## Proof
 
-Delegated proof command:
+Focused metadata proof:
+`cmake --build build && ctest --test-dir build --output-on-failure -R '^cpp_hir_parser_declarations_residual_structured_metadata$'`
+
+Result: passed, 1/1.
+
+Delegated positive-Sema proof:
 `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
 
-Result: blocked. Existing `test_after.log` remains the refreshed delegated
-proof at 883/884 passing with only
+Result: unchanged and monotonic, 883/884 passing with only
 `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
-failing.
+failing. Proof log: `test_after.log`.

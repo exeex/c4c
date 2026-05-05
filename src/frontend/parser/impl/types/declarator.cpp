@@ -615,6 +615,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         const char* name =
             arena_.strdup(std::string(token_spelling(cur())).c_str());
         consume();
+        if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
         if (check(TokenKind::Comma) || check_template_close()) {
             out_arg->is_value = true;
             out_arg->value = 0;
