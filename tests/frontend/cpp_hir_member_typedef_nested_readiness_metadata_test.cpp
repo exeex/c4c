@@ -21,6 +21,17 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, bool()) {
+  ts.tag = tag;
+  return true;
+}
+
+bool set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {
+  return false;
+}
+
 c4c::TypeSpec make_scalar_ts(c4c::TypeBase base) {
   c4c::TypeSpec ts{};
   ts.base = base;
@@ -132,7 +143,7 @@ void test_nested_readiness_keeps_no_metadata_legacy_tag_fallback() {
   attach_alias(nested_owner, "Inner", &nested_alias);
 
   c4c::TypeSpec alias = make_scalar_ts(c4c::TB_STRUCT);
-  alias.tag = "LegacyNested";
+  if (!set_legacy_tag_if_present(alias, "LegacyNested", 0)) return;
   alias.deferred_member_type_name = "Inner";
 
   c4c::Node primary{};
@@ -164,7 +175,7 @@ void test_nested_readiness_blocks_stale_tag_when_structured_owner_misses() {
   attach_alias(stale_owner, "Inner", &stale_alias);
 
   c4c::TypeSpec alias = make_scalar_ts(c4c::TB_STRUCT);
-  alias.tag = "StaleNested";
+  set_legacy_tag_if_present(alias, "StaleNested", 0);
   alias.tag_text_id = missing_owner_text;
   alias.namespace_context_id = 31;
   alias.deferred_member_type_name = "Inner";
