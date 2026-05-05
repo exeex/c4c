@@ -8,59 +8,60 @@ Current Step Title: Delete TypeSpec Tag And Validate
 
 ## Just Finished
 
-Step 6's remaining LIR signature mirror boundary for template-instantiated
-aggregate parameters is repaired without reintroducing `TypeSpec::tag`.
-LIR now renders signature mirrors, signature text, call-site type refs, params,
-returns, allocas, loads, stores, and struct field declarations through a
-module-aware aggregate type renderer that consults structured `TypeSpec`
-metadata and HIR owner/layout indexes before falling back to scalar storage.
+Step 6's initializer-list/template aggregate fallout is repaired without
+reintroducing `TypeSpec::tag`.
 
-The broader-regression repair keeps signature return mirrors tied to the
-original HIR `Function.return_type.spec` carrier rather than the LIR-owned copy
-that strips `record_def`. This preserves declared `StructNameId` mirrors for
-non-template iterator/member-return cases while retaining owner-aware rendering
-for template-instantiated aggregates.
+The LIR signature mirror for `std::initializer_list<int>` now resolves the
+aggregate parameter through HIR module ownership/layout metadata before scalar
+fallback. This keeps `sum_and_check(std::initializer_list<int>)` mirrored as the
+declared aggregate instead of collapsing to `i32`.
 
-The original failing mirror came from `Function.params[i].type.spec`: HIR
-carried structured aggregate params such as `sum_i(p: struct Pair_T_int)`, but
-`LirFunction.signature_param_type_refs` rendered from `llvm_ty(TypeSpec)`, which
-cannot recover owner-key aggregate spelling after `TypeSpec::tag` deletion and
-collapsed to `i32`.
+The follow-on HIR method-body carrier break is repaired by threading the
+existing `HirRecordOwnerKey` for instantiated template structs into
+`lower_struct_method`. Implicit `this` member lookup now consults that structured
+owner key first, so instantiated methods such as
+`std::initializer_list_T_int__begin_const`, `end_const`, and `size_const`
+resolve `_M_array` and `_M_len` against the concrete instantiated layout rather
+than the primary template record node.
 
-The nested call-site follow-on is also repaired semantically: when HIR carries
-two aggregate owner identities for equivalent template-instantiated layouts
-such as `Box_T_struct_Pair_T_int` and `Box_T_struct_tag_ctx0_local_text3`, LIR
-coerces aggregate values only after both structured layouts are found and their
-size, alignment, and module-aware field type sequence match.
+The same full proof also shows `cpp_positive_sema_namespace_template_struct_basic_cpp`
+is repaired. The remaining failures are the pre-existing constructor lookup,
+global-qualified typedef cast, and consteval member-alias record-layout cases.
 
 ## Suggested Next
 
-Next packet should target the remaining known positive/Sema failures from the
-`d0393bc89` baseline or run the supervisor-selected frontend/HIR validation
-before commit acceptance.
+Next packet should target one of the three remaining Step 6 positive/Sema
+families: delegating constructor lookup for instantiated `eastl::pair`,
+global-qualified typedef-ref casts to an alias carrier, or consteval member
+alias record-layout resolution.
 
 ## Watchouts
 
 - Do not reintroduce `TypeSpec::tag` or rendered-string semantic lookup.
-- The aggregate value coercion is intentionally guarded by structured layout
-  lookup plus exact size/alignment/field-type equality. It should not be
-  widened into spelling-based equivalence.
-- `llvm_value_ty(mod, ts)` is a LIR helper for HIR/module-aware aggregate
-  rendering. Plain `llvm_ty(ts)` still exists for callers that do not have a
-  HIR module carrier.
+- Instantiated method bodies can have a primary-template `record_def` while the
+  concrete owner is only available through the instantiated `HirRecordOwnerKey`;
+  avoid recovering that relationship from rendered names.
+- LIR aggregate mirror recovery is guarded by HIR layout/owner indexes and only
+  accepts tags that correspond to declared HIR struct definitions.
 
 ## Proof
 
 Delegated proof command:
 `cmake --build build && ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_' > test_after.log 2>&1`
 
-Result: monotonic improvement versus committed baseline `d0393bc89`.
+Result: monotonic improvement versus current committed baseline `14563a663`.
 
-The proof improved the committed `^cpp_positive_sema_` baseline from 876/884
-passing with 8 failures to 879/884 passing with 5 failures. There are 0 new
-failures relative to `log/baseline_d0393bc8963df21c6fd5b81b2a7eae62664459e0.log`.
-The fixed baseline failures are `cpp_positive_sema_template_deferred_method_cpp`,
-`cpp_positive_sema_template_fn_struct_cpp`, and
-`cpp_positive_sema_template_struct_nested_cpp`.
+The proof improved the current `^cpp_positive_sema_` baseline from 879/884
+passing with 5 failures to 881/884 passing with 3 failures. There are 0 new
+failures relative to `test_before.log`.
+
+Fixed baseline failures:
+- `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+- `cpp_positive_sema_namespace_template_struct_basic_cpp`
+
+Remaining baseline failures:
+- `cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp`
+- `cpp_positive_sema_c_style_cast_global_qualified_typedef_ref_alias_basic_cpp`
+- `cpp_positive_sema_consteval_typespec_member_alias_cpp`
 
 Canonical proof log: `test_after.log`.

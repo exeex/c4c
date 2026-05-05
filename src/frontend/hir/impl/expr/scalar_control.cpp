@@ -296,19 +296,20 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       return append_expr(n, IntLiteral{*v, false}, ts);
     }
     TypeSpec this_owner_ts{};
-    this_owner_ts.base = TB_STRUCT;
-    set_typespec_final_spelling_tag_if_present(
-        this_owner_ts, ctx->method_struct_tag.c_str(), 0);
-    this_owner_ts.array_size = -1;
-    this_owner_ts.inner_rank = -1;
-    auto owner_sdit = struct_def_nodes_.find(ctx->method_struct_tag);
-    if (owner_sdit != struct_def_nodes_.end()) {
-      this_owner_ts.record_def = const_cast<Node*>(owner_sdit->second);
+    populate_struct_owner_typespec(this_owner_ts, ctx->method_struct_tag, 0);
+    const HirStructDef* owner_layout = nullptr;
+    if (ctx->method_struct_owner_key) {
+      owner_layout =
+          module_->find_struct_def_by_owner_structured(*ctx->method_struct_owner_key);
     }
-    const HirStructDef* owner_layout =
-        find_struct_def_for_layout_type(this_owner_ts);
-    if (owner_layout &&
-        find_struct_instance_field_including_bases(this_owner_ts, r.name)) {
+    if (!owner_layout) {
+      owner_layout = find_struct_def_for_layout_type(this_owner_ts);
+    }
+    const HirStructField* implicit_field =
+        owner_layout ? ::c4c::hir::find_struct_instance_field_including_bases(
+                           *module_, owner_layout->tag, r.name)
+                     : nullptr;
+    if (owner_layout && implicit_field) {
       DeclRef this_ref{};
       this_ref.name = "this";
       auto pit = ctx->params.find("this");

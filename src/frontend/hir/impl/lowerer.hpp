@@ -290,6 +290,7 @@ class Lowerer {
     NttpTextBindings nttp_bindings_by_text; // non-type template param TextId → value
     std::unordered_map<std::string, std::vector<PackParamElem>> pack_params;
     std::string method_struct_tag; // non-empty when lowering a struct method body
+    std::optional<HirRecordOwnerKey> method_struct_owner_key;
     // Destructor tracking: records locals that need destructor calls at scope exit.
     struct DtorLocal {
       LocalId local_id;
@@ -683,7 +684,8 @@ class Lowerer {
                            const Node* method_node,
                            const TypeBindings* tpl_bindings = nullptr,
                            const NttpBindings* nttp_bindings = nullptr,
-                           const NttpTextBindings* nttp_text_bindings = nullptr);
+                           const NttpTextBindings* nttp_text_bindings = nullptr,
+                           const std::optional<HirRecordOwnerKey>* owner_key = nullptr);
 
   // Hoist a compound literal to an anonymous global variable.
   // Returns the ExprId of an AddrOf(DeclRef{clit_name}) expression.

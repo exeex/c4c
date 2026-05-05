@@ -555,26 +555,112 @@ static bool sig_has_explicit_prototype(const FnPtrSig& sig) {
   return sig_is_variadic(sig) || sig_has_void_param_list(sig) || sig_param_count(sig) > 0;
 }
 
+std::optional<std::string> unique_template_instance_aggregate_ty(
+    const hir::Module& mod, const TypeSpec& ts) {
+  if (!ts.tpl_struct_origin || !ts.tpl_struct_origin[0] ||
+      !ts.tpl_struct_args.data || ts.tpl_struct_args.size <= 0) {
+    return std::nullopt;
+  }
+
+  std::vector<TextId> primary_text_ids;
+  auto add_primary_id = [&](TextId id) {
+    if (id == kInvalidText) return;
+    if (std::find(primary_text_ids.begin(), primary_text_ids.end(), id) ==
+        primary_text_ids.end()) {
+      primary_text_ids.push_back(id);
+    }
+  };
+  add_primary_id(ts.tpl_struct_origin_key.base_text_id);
+  if (ts.record_def) add_primary_id(ts.record_def->unqualified_text_id);
+  add_primary_id(ts.tag_text_id);
+  if (mod.link_name_texts && ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
+    std::string_view origin = ts.tpl_struct_origin;
+    const size_t scope_pos = origin.rfind("::");
+    if (scope_pos != std::string_view::npos) origin.remove_prefix(scope_pos + 2);
+    add_primary_id(mod.link_name_texts->find(origin));
+  }
+  if (primary_text_ids.empty()) return std::nullopt;
+
+  const SymbolName* match = nullptr;
+  const int wanted_context_id =
+      ts.namespace_context_id >= 0 ? ts.namespace_context_id
+                                   : ts.tpl_struct_origin_key.context_id;
+  for (const auto& [owner_key, rendered_tag] : mod.struct_def_owner_index) {
+    if (owner_key.kind != HirRecordOwnerKeyKind::TemplateInstantiation ||
+        mod.struct_defs.count(rendered_tag) == 0) {
+      continue;
+    }
+    if (std::find(primary_text_ids.begin(), primary_text_ids.end(),
+                  owner_key.declaration_text_id) == primary_text_ids.end()) {
+      continue;
+    }
+    if (wanted_context_id >= 0 &&
+        owner_key.namespace_context_id != wanted_context_id) {
+      continue;
+    }
+    if (match && *match != rendered_tag) return std::nullopt;
+    match = &rendered_tag;
+  }
+  if (!match) return std::nullopt;
+  return llvm_struct_type_str(*match);
+}
+
+std::optional<std::string> unique_decl_text_aggregate_ty(const hir::Module& mod,
+                                                         const TypeSpec& ts) {
+  if (ts.tag_text_id == kInvalidText) return std::nullopt;
+  const SymbolName* match = nullptr;
+  for (const auto& [owner_key, rendered_tag] : mod.struct_def_owner_index) {
+    if (owner_key.declaration_text_id != ts.tag_text_id ||
+        mod.struct_defs.count(rendered_tag) == 0) {
+      continue;
+    }
+    if (ts.namespace_context_id >= 0 &&
+        owner_key.namespace_context_id != ts.namespace_context_id) {
+      continue;
+    }
+    if (match && *match != rendered_tag) return std::nullopt;
+    match = &rendered_tag;
+  }
+  if (!match) return std::nullopt;
+  return llvm_struct_type_str(*match);
+}
+
 std::optional<std::string> llvm_aggregate_value_ty(const hir::Module& mod,
                                                    const TypeSpec& ts) {
   if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0 ||
       ts.array_rank != 0) {
     return std::nullopt;
   }
-  if (const std::optional<std::string> spelling =
-          typespec_aggregate_final_spelling(ts)) {
-    return llvm_struct_type_str(*spelling);
+  if (const HirStructDef* layout = find_typespec_aggregate_layout(mod, ts)) {
+    return llvm_struct_type_str(layout->tag);
+  }
+  if (const std::optional<std::string> declared_ty =
+          unique_decl_text_aggregate_ty(mod, ts)) {
+    return declared_ty;
+  }
+  if (const std::optional<std::string> template_instance_ty =
+          unique_template_instance_aggregate_ty(mod, ts)) {
+    return template_instance_ty;
   }
   if (const std::optional<HirRecordOwnerKey> owner_key =
           typespec_aggregate_owner_key(ts, mod)) {
     const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
-    if (structured_tag && !structured_tag->empty()) {
+    if (structured_tag && !structured_tag->empty() &&
+        mod.struct_defs.count(*structured_tag) != 0) {
       return llvm_struct_type_str(*structured_tag);
+    }
+  }
+  if (const std::optional<std::string> spelling =
+          typespec_aggregate_final_spelling(ts)) {
+    if (mod.struct_defs.count(*spelling) != 0) {
+      return llvm_struct_type_str(*spelling);
     }
   }
   if (const std::optional<std::string> compatibility_tag =
           typespec_aggregate_compatibility_tag(mod, ts)) {
-    return llvm_struct_type_str(*compatibility_tag);
+    if (mod.struct_defs.count(*compatibility_tag) != 0) {
+      return llvm_struct_type_str(*compatibility_tag);
+    }
   }
   return std::nullopt;
 }

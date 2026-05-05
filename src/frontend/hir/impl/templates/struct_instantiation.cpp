@@ -239,7 +239,8 @@ void Lowerer::register_instantiated_template_struct_methods(
                         &method_tpl_bindings, &method_nttp_bindings,
                         method_nttp_bindings_by_text.empty()
                             ? nullptr
-                            : &method_nttp_bindings_by_text);
+                            : &method_nttp_bindings_by_text,
+                        &owner_key);
   }
 }
 

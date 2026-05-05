@@ -558,7 +558,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
                                   const Node* method_node,
                                   const TypeBindings* tpl_bindings,
                                   const NttpBindings* nttp_bindings,
-                                  const NttpTextBindings* nttp_text_bindings) {
+                                  const NttpTextBindings* nttp_text_bindings,
+                                  const std::optional<HirRecordOwnerKey>* owner_key) {
   if (method_node->is_deleted) return;
   Function fn{};
   fn.id = next_fn_id();
@@ -583,6 +584,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   if (nttp_bindings) ctx.nttp_bindings = *nttp_bindings;
   if (nttp_text_bindings) ctx.nttp_bindings_by_text = *nttp_text_bindings;
   ctx.method_struct_tag = struct_tag;
+  if (owner_key && *owner_key) ctx.method_struct_owner_key = **owner_key;
 
   {
     Param this_param{};
