@@ -1,7 +1,8 @@
 # TypeSpec Tag Field Removal Metadata Migration
 
-Status: Open
+Status: Closed
 Created: 2026-05-01
+Closed: 2026-05-05
 
 Parent Ideas:
 - `ideas/open/139_parser_sema_rendered_string_lookup_removal.md`
@@ -152,6 +153,31 @@ removal route, including:
   removed.
 - Focused frontend/HIR tests prove structured metadata wins over stale rendered
   type spelling for covered routes.
+
+## Completion Notes
+
+- Closed at HEAD `13d651722` after Step 6 validation completed.
+- `TypeSpec::tag` is removed and must remain removed.
+- The canonical accepted full-suite proof is `test_after.log`:
+  `cmake --build build && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`
+  passed 3023/3023 tests with zero failures.
+- The final full-suite acceptance review
+  `review/141_step6_final_full_suite_acceptance_review.md` reported no
+  blocking findings and recommended accepting the green Step 6 route for final
+  lifecycle handling.
+- The earlier hook parser metadata review
+  `review/141_step6_hook_parser_metadata_review.md` also reported no blocking
+  findings; its full-suite warning was resolved by the final accepted
+  full-suite proof.
+- Non-blocking follow-up watchpoints from final review: keep future
+  `TentativeParseGuardLite` uses narrow and keep the LIR aggregate
+  compatibility fallback visible as compatibility, not semantic replacement
+  for `TypeSpec::tag`.
+- The close-time regression guard script was run, but the existing
+  `test_before.log` covered a 13-test triage subset while `test_after.log`
+  covered the full 3023-test suite, so that comparison is not used as the
+  authoritative matching-scope proof. Closure rests on the accepted full-suite
+  green `test_after.log` and no-blocker review.
 
 ## Reviewer Reject Signals
 
