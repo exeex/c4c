@@ -21,6 +21,14 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 c4c::TypeSpec make_scalar_ts(c4c::TypeBase base) {
   c4c::TypeSpec ts{};
   ts.base = base;
@@ -44,7 +52,7 @@ void test_nested_deferred_member_typedef_uses_record_def_owner() {
   nested_owner.n_member_typedefs = 1;
 
   c4c::TypeSpec alias = make_scalar_ts(c4c::TB_STRUCT);
-  alias.tag = "StaleRenderedOwner";
+  set_legacy_tag_if_present(alias, "StaleRenderedOwner", 0);
   alias.record_def = &nested_owner;
   alias.deferred_member_type_name = "type";
 

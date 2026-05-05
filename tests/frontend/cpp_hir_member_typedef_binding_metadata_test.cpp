@@ -21,6 +21,24 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+template <typename T>
+auto legacy_tag_available(int) -> decltype(static_cast<void>(&T::tag), bool()) {
+  return true;
+}
+
+template <typename T>
+bool legacy_tag_available(long) {
+  return false;
+}
+
+template <typename T>
+auto set_legacy_tag_if_present(T& ts, const char* tag, int)
+    -> decltype(ts.tag = tag, void()) {
+  ts.tag = tag;
+}
+
+void set_legacy_tag_if_present(c4c::TypeSpec&, const char*, long) {}
+
 c4c::TypeSpec make_scalar_ts(c4c::TypeBase base) {
   c4c::TypeSpec ts{};
   ts.base = base;
@@ -35,7 +53,7 @@ c4c::TypeSpec make_param_ref(const char* rendered_tag,
                              int owner_namespace_id,
                              int param_index) {
   c4c::TypeSpec ts = make_scalar_ts(c4c::TB_TYPEDEF);
-  ts.tag = rendered_tag;
+  set_legacy_tag_if_present(ts, rendered_tag, 0);
   ts.template_param_text_id = param_text_id;
   ts.template_param_owner_text_id = owner_text_id;
   ts.template_param_owner_namespace_context_id = owner_namespace_id;
@@ -125,13 +143,15 @@ void test_structured_mismatch_blocks_stale_tag_fallback() {
 }
 
 void test_no_metadata_tag_fallback_still_binds() {
+  if (!legacy_tag_available<c4c::TypeSpec>(0)) return;
+
   c4c::TextTable texts;
   const c4c::TextId owner_text = texts.intern("Box");
   const c4c::TextId t_text = texts.intern("T");
   const c4c::TextId u_text = texts.intern("U");
 
   c4c::TypeSpec alias = make_scalar_ts(c4c::TB_TYPEDEF);
-  alias.tag = "U";
+  set_legacy_tag_if_present(alias, "U", 0);
   c4c::Node owner = make_instantiated_owner(owner_text, t_text, u_text, alias);
   c4c::TypeSpec resolved = resolve_alias(&owner);
 
