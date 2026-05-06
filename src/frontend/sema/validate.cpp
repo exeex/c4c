@@ -161,6 +161,28 @@ static std::optional<SemaStructuredNameKey> sema_qualified_symbol_name_key(
   return key;
 }
 
+static std::optional<SemaStructuredNameKey> sema_record_owner_key_from_qualifier(
+    const Node* node) {
+  if (!node || node->namespace_context_id < 0 || node->n_qualifier_segments <= 0 ||
+      !node->qualifier_text_ids) {
+    return std::nullopt;
+  }
+  const TextId owner_text_id = node->qualifier_text_ids[node->n_qualifier_segments - 1];
+  if (owner_text_id == kInvalidText) return std::nullopt;
+
+  SemaStructuredNameKey key;
+  key.namespace_context_id = node->namespace_context_id;
+  key.base_text_id = owner_text_id;
+  key.qualifier_text_ids.reserve(
+      static_cast<std::size_t>(node->n_qualifier_segments - 1));
+  for (int i = 0; i + 1 < node->n_qualifier_segments; ++i) {
+    const TextId segment = node->qualifier_text_ids[i];
+    if (segment == kInvalidText) return std::nullopt;
+    key.qualifier_text_ids.push_back(segment);
+  }
+  return key;
+}
+
 static std::optional<SemaStructuredNameKey> sema_using_value_alias_target_key(
     const Node* node) {
   if (!node || node->using_value_alias_target_namespace_context_id < 0 ||
@@ -1610,20 +1632,30 @@ class Validator {
     return std::nullopt;
   }
 
-  static std::optional<SemaStructuredNameKey> static_member_owner_key_from_reference(
-      const Node* reference) {
-    if (!reference || reference->namespace_context_id < 0 ||
-        reference->unqualified_text_id == kInvalidText ||
-        reference->n_qualifier_segments <= 0 || !reference->qualifier_text_ids) {
-      return std::nullopt;
+  std::optional<SemaStructuredNameKey> resolve_record_owner_key_from_qualifier(
+      const Node* node) const {
+    auto key = sema_record_owner_key_from_qualifier(node);
+    if (!key.has_value() || !key->valid()) return std::nullopt;
+    if (struct_defs_by_key_.count(*key) > 0) return key;
+
+    std::optional<SemaStructuredNameKey> unique;
+    for (const auto& [candidate, record] : struct_defs_by_key_) {
+      (void)record;
+      if (candidate.namespace_context_id != key->namespace_context_id ||
+          candidate.base_text_id != key->base_text_id ||
+          candidate.is_global_qualified != key->is_global_qualified) {
+        continue;
+      }
+      if (unique.has_value() && *unique != candidate) return std::nullopt;
+      unique = candidate;
     }
-    const TextId owner_text_id =
-        reference->qualifier_text_ids[reference->n_qualifier_segments - 1];
-    if (owner_text_id == kInvalidText) return std::nullopt;
-    SemaStructuredNameKey key;
-    key.namespace_context_id = reference->namespace_context_id;
-    key.base_text_id = owner_text_id;
-    return key;
+    return unique;
+  }
+
+  std::optional<SemaStructuredNameKey> static_member_owner_key_from_reference(
+      const Node* reference) const {
+    if (!reference || reference->unqualified_text_id == kInvalidText) return std::nullopt;
+    return resolve_record_owner_key_from_qualifier(reference);
   }
 
   std::optional<TypeSpec> lookup_struct_static_member_type(const Node* reference) const {
@@ -1703,16 +1735,7 @@ class Validator {
 
   std::optional<SemaStructuredNameKey> method_owner_key_from_qualifier(
       const Node* fn) const {
-    if (!fn || fn->namespace_context_id < 0 || fn->n_qualifier_segments <= 0 ||
-        !fn->qualifier_text_ids) {
-      return std::nullopt;
-    }
-    const TextId owner_text_id = fn->qualifier_text_ids[fn->n_qualifier_segments - 1];
-    if (owner_text_id == kInvalidText) return std::nullopt;
-    SemaStructuredNameKey key;
-    key.namespace_context_id = fn->namespace_context_id;
-    key.base_text_id = owner_text_id;
-    return key;
+    return resolve_record_owner_key_from_qualifier(fn);
   }
 
   const Node* method_owner_record_from_qualifier(const Node* fn) const {
@@ -2208,7 +2231,7 @@ class Validator {
     }
     if (const Node* owner_record = enclosing_method_owner_record(fn)) {
       current_method_struct_tag_ = owner_record->name ? owner_record->name : "";
-      current_method_struct_key_ = sema_symbol_name_key(owner_record);
+      current_method_struct_key_ = sema_structured_name_key(owner_record);
       current_method_struct_record_ = owner_record;
     }
     if (current_method_struct_record_) {
