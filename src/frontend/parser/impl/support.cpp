@@ -509,9 +509,15 @@ bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
     const std::unordered_map<std::string, long long>* compatibility_named_consts);
 
-// Resolve record layout identity. TypeSpec::record_def is authoritative; the
-// rendered tag map is a final-spelling compatibility fallback for tag-only
-// TypeSpecs that have not carried typed record identity through the parser.
+// Resolve the parser's provisional record carrier for parser-side constant
+// layout. The carrier is structured parser output: record kind, tag TextId,
+// namespace/global qualifier context, qualifier TextIds, source spelling on the
+// related AST node, and declaration/reference role from AST context.
+//
+// This helper intentionally does not introduce a rendered-string semantic
+// field. The rendered tag map below is only a compatibility fallback for
+// sizeof/alignof/offsetof paths that have not yet been routed through Sema's
+// record table; Sema owns final record identity and completion.
 Node* resolve_record_type_spec(
     const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map) {

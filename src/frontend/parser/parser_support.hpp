@@ -17,10 +17,12 @@ Node* resolve_record_type_spec(
     const std::unordered_map<std::string, Node*>* compatibility_tag_map);
 
 // Parser-owned constant evaluation should pass named constants through the
-// TextId table. TypeSpec::record_def is the record-layout authority; rendered
-// struct tags remain a tag-only compatibility bridge for sizeof/alignof/
-// offsetof callers that still carry final spelling without typed record
-// identity.
+// TextId table. For record layout queries, TypeSpec carries only provisional
+// parser output: record kind through TypeBase, tag TextId, namespace context,
+// qualifier TextId sequence, source spelling/location on the owning Node, and
+// declaration/reference role from AST context. resolve_record_type_spec keeps
+// the existing parser-side layout bridge alive for sizeof/alignof/offsetof,
+// but Sema owns final record identity and completion.
 bool eval_const_int(Node* n, long long* out,
                     const std::unordered_map<std::string, Node*>*
                         compatibility_tag_map = nullptr,

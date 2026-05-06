@@ -103,19 +103,25 @@ struct TypeSpec {
     TypeBase base;
     TypeBase enum_underlying_base; // fixed underlying base for TB_ENUM, or TB_VOID when unknown/default
 
-    // Structured source identity for tag/typedef names.
+    // Provisional parser carrier: source tag/typedef text identity. For
+    // records this is the base spelling that Sema combines with namespace and
+    // qualifier context to choose the final record-domain identity.
     TextId tag_text_id;      // parser-owned identity for tag/typedef names when available
     int template_param_owner_namespace_context_id = -1; // owning template namespace for type params
     TextId template_param_owner_text_id = kInvalidText; // owning function/template TextId for type params
     int template_param_index = -1; // owning template parameter index, or -1 when not a type param
     TextId template_param_text_id = kInvalidText; // parser-owned identity for the template parameter
 
-    // Cross-stage type contract: parser-owned record identity for structured
-    // type names.
+    // Provisional parser carrier for record type names. This preserves the
+    // parsed struct/union declaration/reference node so parser-side layout
+    // compatibility code can find fields, but it is not final semantic record
+    // identity; Sema owns declaration/reference merging and completion.
     Node* record_def;        // concrete parser-owned NK_STRUCT_DEF for struct/union types, or null
 
-    // Compatibility/display spelling: qualified source name path attached to
-    // tagged/typedef names until all consumers use structured identity.
+    // Provisional parser carrier: qualified source spelling attached to
+    // tagged/typedef names. The TextId sequence plus namespace/global context
+    // is structured metadata for Sema, while qualifier_segments remains
+    // compatibility/display spelling and must not become record identity.
     const char** qualifier_segments; // structured qualifier path for tagged/typedef names
     TextId* qualifier_text_ids;       // parser-owned text identity for qualifier_segments
     int n_qualifier_segments;        // qualifier segment count (excludes base name)
@@ -339,8 +345,11 @@ struct Node {
     // return types, casts, sizeof/alignof, compound literals, and params.
     TypeSpec type;
 
-    // Name/text identity bridge: source and canonical names for identifiers,
-    // declarations, labels, members, records, and enums.
+    // Provisional parser carrier: source spelling/location and structured name
+    // metadata for identifiers, declarations, labels, members, records, and
+    // enums. Sema interprets the declaration/reference role from NodeKind and
+    // context; parser strings are diagnostics/display bridges, not final
+    // record identity.
     const char* name;
     const char* unqualified_name; // source spelling base name before namespace canonicalization
     TextId unqualified_text_id;   // parser-owned text identity for unqualified_name

@@ -21,6 +21,11 @@ struct ValidateResult {
   std::vector<Diagnostic> diagnostics;
 };
 
+// Structured semantic name key built from the parser's provisional carrier
+// fields: namespace context, global qualification, qualifier TextId sequence,
+// and base TextId. This key is the input shape for Sema record-domain lookup;
+// parser-rendered strings stay diagnostics/compatibility data, and final
+// record declaration/reference identity belongs to Sema's record tables.
 struct SemaStructuredNameKey {
   int namespace_context_id = -1;
   bool is_global_qualified = false;
