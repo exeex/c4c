@@ -6566,7 +6566,7 @@ void test_parser_record_layout_const_eval_uses_record_definition_authority() {
                 "offsetof should use record_def authority before stale final-spelling fallback");
 }
 
-void test_parser_record_layout_const_eval_keeps_final_spelling_fallback() {
+void test_parser_record_layout_const_eval_rejects_textid_only_map_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -6578,43 +6578,39 @@ void test_parser_record_layout_const_eval_keeps_final_spelling_fallback() {
                          parser_test_scalar_type(c4c::TB_CHAR)),
        parser_test_field(parser, arena, "value",
                          parser_test_scalar_type(c4c::TB_CHAR))});
-  const c4c::TextId fallback_text_id = parser_test_text_id(parser, "Fallback");
-  fallback->unqualified_text_id = fallback_text_id;
+  fallback->unqualified_text_id = parser_test_text_id(parser, "Fallback");
 
   std::unordered_map<std::string, c4c::Node*> compatibility_tag_map;
   compatibility_tag_map["Fallback"] = fallback;
 
   c4c::TypeSpec tag_only = parser_test_scalar_type(c4c::TB_STRUCT);
-  tag_only.tag_text_id = fallback_text_id;
-  set_legacy_tag_if_present(tag_only, arena.strdup("Fallback"), 0);
+  tag_only.tag_text_id = fallback->unqualified_text_id;
 
   c4c::Node* align_node = parser.make_node(c4c::NK_ALIGNOF_TYPE, 1);
   align_node->type = tag_only;
   long long align_value = 0;
   expect_true(c4c::eval_const_int(align_node, &align_value,
                                   &compatibility_tag_map),
-              "alignof should keep tag-only final-spelling compatibility fallback");
-  expect_eq_int(static_cast<int>(align_value), 1,
-                "alignof fallback should use the rendered compatibility tag map");
+              "alignof should still produce a conservative value for unresolved records");
+  expect_eq_int(static_cast<int>(align_value), 8,
+                "alignof should not use TextId-only parser tag maps as record authority");
 
   c4c::Node* size_node = parser.make_node(c4c::NK_SIZEOF_TYPE, 1);
   size_node->type = tag_only;
   long long size_value = 0;
   expect_true(c4c::eval_const_int(size_node, &size_value,
                                   &compatibility_tag_map),
-              "sizeof should keep tag-only final-spelling compatibility fallback");
-  expect_eq_int(static_cast<int>(size_value), 2,
-                "sizeof fallback should use the rendered compatibility tag map");
+              "sizeof should still produce a conservative value for unresolved records");
+  expect_eq_int(static_cast<int>(size_value), 8,
+                "sizeof should not use TextId-only parser tag maps as record authority");
 
   c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
   offset_node->type = tag_only;
   offset_node->name = arena.strdup("value");
   long long offset_value = 0;
-  expect_true(c4c::eval_const_int(offset_node, &offset_value,
-                                  &compatibility_tag_map),
-              "offsetof should keep tag-only final-spelling compatibility fallback");
-  expect_eq_int(static_cast<int>(offset_value), 1,
-                "offsetof fallback should use the rendered compatibility tag map");
+  expect_true(!c4c::eval_const_int(offset_node, &offset_value,
+                                   &compatibility_tag_map),
+              "offsetof should reject TextId-only parser tag maps as record authority");
 }
 
 void test_parser_record_layout_const_eval_rejects_structured_tag_fallback() {
@@ -6668,7 +6664,7 @@ void test_parser_record_layout_const_eval_rejects_structured_tag_fallback() {
                 "record_def authority should preserve the resolved record layout");
 }
 
-void test_parser_record_layout_const_eval_accepts_structured_context_match() {
+void test_parser_record_layout_const_eval_rejects_structured_context_map_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -6722,19 +6718,21 @@ void test_parser_record_layout_const_eval_accepts_structured_context_match() {
 
   compatibility_tag_map["ns::Record"] = record;
 
-  expect_true(c4c::resolve_record_type_spec(structured,
-                                            &compatibility_tag_map) == record,
-              "structured record TypeSpec without record_def should match a record with the same TextId and full structured context");
-
   c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
   offset_node->type = structured;
   offset_node->name = arena.strdup("value");
   long long offset_value = 0;
+  expect_true(!c4c::eval_const_int(offset_node, &offset_value,
+                                   &compatibility_tag_map),
+              "constant-layout eval should reject structured map matches without record_def");
+
+  structured.record_def = record;
+  offset_node->type = structured;
   expect_true(c4c::eval_const_int(offset_node, &offset_value,
                                   &compatibility_tag_map),
-              "constant-layout eval should accept structured record context matches without record_def");
+              "constant-layout eval should use record_def for structured records");
   expect_eq_int(static_cast<int>(offset_value), 4,
-                "structured context match should use the matching record layout");
+                "record_def authority should use the matching record layout");
 }
 
 void test_parser_record_layout_const_eval_rejects_context_defaulted_textid_match() {
@@ -8859,9 +8857,9 @@ int main() {
   test_parser_tag_only_record_types_carry_incomplete_record_definition();
   test_parser_direct_record_type_head_uses_structured_metadata();
   test_parser_record_layout_const_eval_uses_record_definition_authority();
-  test_parser_record_layout_const_eval_keeps_final_spelling_fallback();
+  test_parser_record_layout_const_eval_rejects_textid_only_map_authority();
   test_parser_record_layout_const_eval_rejects_structured_tag_fallback();
-  test_parser_record_layout_const_eval_accepts_structured_context_match();
+  test_parser_record_layout_const_eval_rejects_structured_context_map_authority();
   test_parser_record_layout_const_eval_rejects_context_defaulted_textid_match();
   test_parser_record_lookup_by_text_id_is_ambiguity_safe();
   test_parser_incomplete_decl_checks_prefer_record_definition();

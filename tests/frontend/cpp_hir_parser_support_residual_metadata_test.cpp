@@ -71,7 +71,7 @@ void test_enum_sizeof_dependency_uses_structured_typedef_identity() {
   }
 }
 
-void test_record_layout_resolution_uses_structured_metadata_before_stale_tag() {
+void test_record_layout_resolution_uses_record_definition_before_stale_tag() {
   c4c::Node real_record = {};
   real_record.kind = c4c::NK_STRUCT_DEF;
   real_record.name = "RealRecord";
@@ -91,10 +91,15 @@ void test_record_layout_resolution_uses_structured_metadata_before_stale_tag() {
   query.enum_underlying_base = c4c::TB_VOID;
   set_legacy_tag_if_present(query, "StaleRendered", 0);
   query.tag_text_id = real_record.unqualified_text_id;
+  query.record_def = &real_record;
   query.array_size = -1;
 
   expect_true(c4c::resolve_record_type_spec(query, &records) == &real_record,
-              "record layout lookup should use tag_text_id before stale rendered tag");
+              "record layout lookup should use record_def before stale rendered tag");
+
+  query.record_def = nullptr;
+  expect_true(c4c::resolve_record_type_spec(query, &records) == &real_record,
+              "public parser support keeps bounded tag_text_id compatibility for non-layout callers");
 
   query.tag_text_id = 99;
   expect_true(c4c::resolve_record_type_spec(query, &records) == nullptr,
@@ -103,15 +108,24 @@ void test_record_layout_resolution_uses_structured_metadata_before_stale_tag() {
   query.tag_text_id = c4c::kInvalidText;
   if (set_legacy_tag_if_present(query, "StaleRendered", 0)) {
     expect_true(c4c::resolve_record_type_spec(query, &records) == &stale_record,
-                "rendered record tag remains explicit no-metadata compatibility fallback");
+                "legacy rendered record tag remains explicit compatibility fallback");
   }
+
+  c4c::Node incomplete_record = {};
+  incomplete_record.kind = c4c::NK_STRUCT_DEF;
+  incomplete_record.name = "RealRecord";
+  incomplete_record.unqualified_text_id = real_record.unqualified_text_id;
+  incomplete_record.n_fields = -1;
+  query.record_def = &incomplete_record;
+  expect_true(c4c::resolve_record_type_spec(query, &records) == &real_record,
+              "public parser support keeps bounded incomplete-record completion compatibility");
 }
 
 }  // namespace
 
 int main() {
   test_enum_sizeof_dependency_uses_structured_typedef_identity();
-  test_record_layout_resolution_uses_structured_metadata_before_stale_tag();
+  test_record_layout_resolution_uses_record_definition_before_stale_tag();
   std::cout << "PASS: cpp_hir_parser_support_residual_metadata_test\n";
   return 0;
 }

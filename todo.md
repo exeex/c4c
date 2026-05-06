@@ -8,23 +8,27 @@ Current Step Title: Migrate Remaining Parser Record Lookup Families
 
 ## Just Finished
 
-Step 4B completed the fallback deletion follow-up and was committed as
-`0c1abb4b2 Repair structured template constructor handoff`.
+Step 4C started by splitting parser support record resolution for
+constant-layout evaluation from the broader parser-local compatibility bridge.
+`sizeof`, `alignof`, and `offsetof` now use direct complete `record_def`
+authority for structured records and reject parser tag-map recovery for
+TextId/context-only structured record carriers.
 
 ## Suggested Next
 
-Continue with plan Step 4C: migrate the remaining parser `sizeof`, `alignof`,
-`offsetof`, and support-helper lookup families one executor packet at a time.
+Continue Step 4C by migrating the next parser record lookup family that still
+uses rendered tag maps as semantic authority, keeping parser-local
+compatibility bridges out of structured layout decisions.
 
 ## Watchouts
 
-Do not restore parser-map uniqueness, rendered-key matching, or
-context-defaulted `TextId` lookup. Step 4C should remove parser-owned semantic
-authority from each remaining lookup family while preserving parser-local
-grammar support and any explicitly bounded compatibility handoff.
+`resolve_record_type_spec` still preserves a parser-local compatibility bridge
+for non-layout probes and declaration checks; the stricter helper is private to
+constant layout. Do not route `sizeof`/`alignof`/`offsetof` back through the
+public compatibility bridge for structured carriers.
 
 ## Proof
 
-Step 4B proof was green before the supervisor rolled `test_after.log` forward
-to `test_before.log`. Step 4C still needs fresh build or compile proof plus the
-supervisor-selected narrow tests after implementation.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_support_residual_structured_metadata|frontend_hir_lookup_tests|cpp_eastl_vector_parse_recipe)$' > test_after.log`
+
+Result: passed; `test_after.log` contains the green proof run.

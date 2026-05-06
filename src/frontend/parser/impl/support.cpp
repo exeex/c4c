@@ -554,9 +554,9 @@ bool eval_const_int(Node* n, long long* out,
 // related AST node, and declaration/reference role from AST context.
 //
 // This helper intentionally does not introduce a rendered-string semantic
-// field. The rendered tag map below is only a compatibility fallback for
-// sizeof/alignof/offsetof paths that have not yet been routed through Sema's
-// record table; Sema owns final record identity and completion.
+// field. The rendered tag map below is a parser-local compatibility bridge for
+// non-layout probes and declaration checks that have not yet been routed
+// through Sema's record table; Sema owns final record identity and completion.
 Node* resolve_record_type_spec(
     const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map) {
@@ -617,6 +617,28 @@ Node* resolve_record_type_spec(
     return sd && sd->kind == NK_STRUCT_DEF ? sd : nullptr;
 }
 
+static Node* resolve_record_type_spec_for_constant_layout(
+    const TypeSpec& ts,
+    const std::unordered_map<std::string, Node*>* compatibility_tag_map) {
+    // Constant layout must not recover structured record identity through
+    // parser maps. Only a direct complete record_def, or a TextId-less legacy
+    // final-spelling carrier when one exists, may provide fields here.
+    if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+        return ts.record_def->n_fields >= 0 ? ts.record_def : nullptr;
+    }
+    if (ts.tag_text_id != kInvalidText || ts.namespace_context_id >= 0 ||
+        ts.is_global_qualified || ts.n_qualifier_segments > 0) {
+        return nullptr;
+    }
+    if (!compatibility_tag_map) return nullptr;
+    const char* tag = support_legacy_typespec_tag_if_present(ts, 0);
+    if (!tag) return nullptr;
+    const auto it = compatibility_tag_map->find(tag);
+    if (it == compatibility_tag_map->end()) return nullptr;
+    Node* sd = it->second;
+    return sd && sd->kind == NK_STRUCT_DEF && sd->n_fields >= 0 ? sd : nullptr;
+}
+
 static long long struct_align(const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map);
 static long long struct_sizeof(const TypeSpec& ts,
@@ -641,7 +663,8 @@ static long long field_align(const TypeSpec& ts,
 // Compute the alignment of a struct/union (max alignment of its fields).
 static long long struct_align(const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map) {
-    Node* sd = resolve_record_type_spec(ts, compatibility_tag_map);
+    Node* sd = resolve_record_type_spec_for_constant_layout(
+        ts, compatibility_tag_map);
     if (!sd) return 8;
     long long max_align = 1;
     for (int i = 0; i < sd->n_fields; i++) {
@@ -657,7 +680,8 @@ static long long struct_align(const TypeSpec& ts,
 // Compute sizeof a struct (with alignment padding).
 static long long struct_sizeof(const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map) {
-    Node* sd = resolve_record_type_spec(ts, compatibility_tag_map);
+    Node* sd = resolve_record_type_spec_for_constant_layout(
+        ts, compatibility_tag_map);
     if (!sd) return 8;
     long long offset = 0, max_align = 1;
     for (int i = 0; i < sd->n_fields; i++) {
@@ -681,13 +705,15 @@ static long long struct_sizeof(const TypeSpec& ts,
     return (offset + max_align - 1) / max_align * max_align;
 }
 
-// Helper: compute offsetof(type, field_name) using typed record identity first
-// and rendered tag lookup only as a compatibility fallback.
+// Helper: compute offsetof(type, field_name) using a direct complete record_def.
+// TextId-less legacy/final-spelling compatibility is the only parser-map
+// fallback allowed here.
 static bool compute_offsetof(const TypeSpec& ts, const char* field_name,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
     long long* out) {
     if (!field_name) return false;
-    Node* sd = resolve_record_type_spec(ts, compatibility_tag_map);
+    Node* sd = resolve_record_type_spec_for_constant_layout(
+        ts, compatibility_tag_map);
     if (!sd) return false;
     std::string path(field_name);
     std::string head = path;
