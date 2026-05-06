@@ -913,6 +913,96 @@ void test_sema_same_spelling_record_completion_uses_structured_identity() {
                        : std::string(": ") + result.diagnostics.front().message));
 }
 
+void test_sema_record_completion_preserves_global_and_qualifier_metadata() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const int namespace_context = parser.current_namespace_context_id();
+  const c4c::TextId record_text = texts.intern("Shared");
+  const c4c::TextId owner_a_text = texts.intern("OwnerA");
+  const c4c::TextId owner_b_text = texts.intern("OwnerB");
+
+  auto make_complete_record = [&](const char* rendered_name) {
+    c4c::Node* record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    record->name = arena.strdup(rendered_name);
+    record->unqualified_name = arena.strdup("Shared");
+    record->unqualified_text_id = record_text;
+    record->namespace_context_id = namespace_context;
+    record->is_global_qualified = true;
+    record->n_qualifier_segments = 1;
+    record->qualifier_segments = arena.alloc_array<const char*>(1);
+    record->qualifier_segments[0] = arena.strdup("OwnerA");
+    record->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+    record->qualifier_text_ids[0] = owner_a_text;
+    record->n_fields = 0;
+    return record;
+  };
+
+  auto make_global = [&](const char* name, c4c::TextId qualifier_text,
+                         bool is_global_qualified) {
+    c4c::TypeSpec carried = make_ts(c4c::TB_STRUCT);
+    carried.tag_text_id = record_text;
+    carried.namespace_context_id = namespace_context;
+    carried.is_global_qualified = is_global_qualified;
+    carried.n_qualifier_segments = 1;
+    carried.qualifier_segments = arena.alloc_array<const char*>(1);
+    carried.qualifier_segments[0] = arena.strdup(
+        qualifier_text == owner_a_text ? "OwnerA" : "OwnerB");
+    carried.qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+    carried.qualifier_text_ids[0] = qualifier_text;
+
+    c4c::Node* global = parser.make_node(c4c::NK_GLOBAL_VAR, 2);
+    global->name = arena.strdup(name);
+    global->unqualified_name = arena.strdup(name);
+    global->unqualified_text_id = texts.intern(name);
+    global->namespace_context_id = namespace_context;
+    global->type = carried;
+    return global;
+  };
+
+  auto validate_single = [&](c4c::Node* global) {
+    c4c::Node* complete_record = make_complete_record("OwnerA::Shared");
+    c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+    program->n_children = 2;
+    program->children = arena.alloc_array<c4c::Node*>(2);
+    program->children[0] = complete_record;
+    program->children[1] = global;
+    return c4c::sema::validate_program(program);
+  };
+
+  const c4c::sema::ValidateResult matching = validate_single(
+      make_global("matching_record", owner_a_text, true));
+  expect_true(matching.ok,
+              "Sema record completion should accept matching global and "
+              "qualifier TextId metadata" +
+                  (matching.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + matching.diagnostics.front().message));
+
+  const c4c::sema::ValidateResult qualifier_mismatch = validate_single(
+      make_global("qualifier_mismatch", owner_b_text, true));
+  expect_true(!qualifier_mismatch.ok,
+              "Sema record completion should reject same namespace/base TextId "
+              "records with mismatched qualifier TextId metadata");
+
+  const c4c::sema::ValidateResult global_mismatch = validate_single(
+      make_global("global_mismatch", owner_a_text, false));
+  expect_true(!global_mismatch.ok,
+              "Sema record completion should reject same namespace/base TextId "
+              "records with mismatched global qualification metadata");
+}
+
 void test_sema_template_static_member_lookup_rejects_stale_rendered_owner_reentry() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6135,6 +6225,7 @@ int main() {
   test_sema_static_member_lookup_rejects_rendered_after_metadata_miss();
   test_sema_record_completeness_uses_structured_metadata_before_rendered_tag();
   test_sema_same_spelling_record_completion_uses_structured_identity();
+  test_sema_record_completion_preserves_global_and_qualifier_metadata();
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
   test_parsed_static_member_alias_owner_uses_canonical_owner_metadata();
   test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift();

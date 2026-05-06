@@ -411,7 +411,7 @@ bool typespec_has_any_name_metadata(const TypeSpec& ts) {
 
 std::optional<SemaStructuredNameKey> structured_type_name_key_from_metadata(
     const TypeSpec& ts) {
-  if (auto key = sema_symbol_name_key(ts.record_def); key.has_value()) {
+  if (auto key = sema_structured_name_key(ts.record_def); key.has_value()) {
     return key;
   }
   if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
@@ -1502,13 +1502,7 @@ class Validator {
     // name metadata used to select the Sema record table. Rendered-tag fallback
     // below is only a compatibility bridge for carriers that have no structured
     // metadata yet.
-    if (auto key = sema_symbol_name_key(ts.record_def); key.has_value()) {
-      return key;
-    }
-    if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
-      SemaStructuredNameKey key;
-      key.namespace_context_id = ts.namespace_context_id;
-      key.base_text_id = ts.tag_text_id;
+    if (auto key = structured_type_name_key_from_metadata(ts); key.has_value()) {
       return key;
     }
     if (!typespec_has_any_name_metadata(ts)) {
@@ -1523,13 +1517,7 @@ class Validator {
     // Strict record-domain key extraction for completion/layout checks. This
     // path never consults rendered strings, so it cannot merge unrelated
     // typedef/value/function names or stale parser spelling into record tables.
-    if (auto key = sema_symbol_name_key(ts.record_def); key.has_value()) {
-      return key;
-    }
-    if (ts.namespace_context_id >= 0 && ts.tag_text_id != kInvalidText) {
-      SemaStructuredNameKey key;
-      key.namespace_context_id = ts.namespace_context_id;
-      key.base_text_id = ts.tag_text_id;
+    if (auto key = structured_type_name_key_from_metadata(ts); key.has_value()) {
       return key;
     }
     return std::nullopt;
@@ -1552,7 +1540,7 @@ class Validator {
     if (!n || n->kind != NK_STRUCT_DEF || !n->name || !n->name[0]) return;
     // Zero-sized structs/unions are a GCC extension; treat them as complete.
     const std::string tag(n->name);
-    const auto record_key = sema_symbol_name_key(n);
+    const auto record_key = sema_structured_name_key(n);
     // The declaration node is normalized into the record-domain table keyed by
     // Sema name metadata. Forward declarations, references, and later
     // definitions for the same struct/union identity meet through this table;
