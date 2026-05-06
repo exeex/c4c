@@ -158,10 +158,10 @@ Completion check:
   without collision.
 - Build or compile proof plus focused Sema/parser tests are green.
 
-### Step 4: Migrate Parser Record Lookup Families
+### Step 4: Migrate Parser Record Lookup Families Without Parser Identity Authority
 
-Goal: remove parser-owned rendered-string maps as semantic authority one lookup
-family at a time.
+Goal: remove parser-owned rendered-string and `TextId`-only maps as semantic
+authority one lookup family at a time.
 
 Primary targets:
 - `resolve_record_type_spec`
@@ -171,14 +171,34 @@ Primary targets:
 
 Actions:
 - Pick one lookup family per executor packet.
+- Before continuing other Step 4 work, repair `resolve_record_type_spec` so it
+  does not accept a context-defaulted unique same-`TextId` candidate from
+  `struct_tag_def_map` as semantic identity. Either delete/narrow that parser
+  compatibility path to full structured carrier matches, or replace the final
+  decision with a Sema-owned structured record lookup.
+- When namespace context is present, check the full structured metadata needed
+  by the record-domain contract: record kind, namespace context,
+  global-qualification state, qualifier `TextId` sequence or equivalent
+  canonical key, and base tag `TextId`. Do not use namespace context alone as
+  permission to ignore conflicting structured qualifier metadata unless Sema
+  owns and documents that canonicalization.
 - Replace final record identity decisions with Sema-confirmed identity or a
   clearly bounded compatibility handoff.
 - Keep parser provisional metadata available for parse-time needs only.
+- Do not add or widen parser-map fallback authority based on unique `TextId`
+  matches, rendered key order, or absence of competing parser-map entries.
 - Do not weaken behavior while migration is incomplete.
 
 Completion check:
 - The migrated lookup family no longer treats `defined_struct_tags` or
   `struct_tag_def_map` as authoritative semantic record identity.
+- `resolve_record_type_spec` no longer resolves context-defaulted structured
+  carriers through parser-map uniqueness by `TextId`, unless the path is an
+  explicitly temporary compatibility hole recorded in `todo.md` with a bounded
+  deletion packet.
+- Structured lookup proof includes mismatched namespace/global/qualifier
+  metadata cases and rejects them unless a Sema-owned canonical key proves they
+  are the same record.
 - Any remaining parser mirror is explicitly documented or named as temporary
   compatibility, diagnostics, testing, or parser-local support.
 - Narrow behavior tests and build proof are green.
