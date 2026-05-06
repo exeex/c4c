@@ -512,6 +512,61 @@ static bool typespec_has_structured_record_context(const TypeSpec& ts) {
     return false;
 }
 
+static bool type_record_context_matches_candidate(const TypeSpec& ts,
+                                                  const Node* candidate) {
+    if (!candidate || candidate->kind != NK_STRUCT_DEF) return false;
+    if (ts.tag_text_id == kInvalidText ||
+        candidate->unqualified_text_id != ts.tag_text_id) {
+        return false;
+    }
+    if (ts.namespace_context_id >= 0) {
+        return candidate->namespace_context_id == ts.namespace_context_id;
+    }
+    if (ts.is_global_qualified != candidate->is_global_qualified ||
+        ts.n_qualifier_segments != candidate->n_qualifier_segments) {
+        return false;
+    }
+    if (ts.n_qualifier_segments <= 0) return ts.is_global_qualified;
+    if (!ts.qualifier_text_ids || !candidate->qualifier_text_ids) return false;
+    for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        if (ts.qualifier_text_ids[i] == kInvalidText ||
+            candidate->qualifier_text_ids[i] != ts.qualifier_text_ids[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool typespec_has_only_default_record_context(const TypeSpec& ts) {
+    return ts.tag_text_id != kInvalidText &&
+           ts.namespace_context_id == 0 &&
+           !ts.is_global_qualified &&
+           ts.n_qualifier_segments == 0;
+}
+
+static Node* unique_structured_record_candidate_for_text_id(
+    const TypeSpec& ts,
+    const std::unordered_map<std::string, Node*>* compatibility_tag_map) {
+    if (!typespec_has_only_default_record_context(ts)) return nullptr;
+    Node* matched = nullptr;
+    for (const auto& entry : *compatibility_tag_map) {
+        Node* candidate = entry.second;
+        if (!candidate || candidate->kind != NK_STRUCT_DEF ||
+            candidate->unqualified_text_id != ts.tag_text_id ||
+            candidate->n_fields < 0) {
+            continue;
+        }
+        const bool candidate_has_context =
+            candidate->namespace_context_id >= 0 ||
+            candidate->is_global_qualified ||
+            candidate->n_qualifier_segments > 0;
+        if (!candidate_has_context) continue;
+        if (matched && matched != candidate) return nullptr;
+        matched = candidate;
+    }
+    return matched;
+}
+
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
     const std::unordered_map<TextId, long long>* structured_named_consts);
@@ -563,6 +618,16 @@ Node* resolve_record_type_spec(
     }
     if (!compatibility_tag_map) return nullptr;
     if (typespec_has_structured_record_context(ts)) {
+        for (const auto& entry : *compatibility_tag_map) {
+            if (type_record_context_matches_candidate(ts, entry.second)) {
+                return entry.second;
+            }
+        }
+        if (Node* unique =
+                unique_structured_record_candidate_for_text_id(
+                    ts, compatibility_tag_map)) {
+            return unique;
+        }
         return nullptr;
     }
     if (ts.tag_text_id != kInvalidText) {

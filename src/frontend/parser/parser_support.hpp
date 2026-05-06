@@ -22,8 +22,10 @@ Node* resolve_record_type_spec(
 // qualifier TextId sequence, source spelling/location on the owning Node, and
 // declaration/reference role from AST context. resolve_record_type_spec keeps
 // the existing parser-side layout bridge alive for unstructured legacy/tag-only
-// sizeof/alignof/offsetof callers. Structured record carriers require
-// record_def; Sema owns final record identity and completion.
+// sizeof/alignof/offsetof callers. Structured record carriers use record_def
+// first and otherwise require full structured context, or one unambiguous
+// structured parser-record candidate for context-defaulted carriers, to match a
+// parser record; Sema owns final record identity and completion.
 bool eval_const_int(Node* n, long long* out,
                     const std::unordered_map<std::string, Node*>*
                         compatibility_tag_map = nullptr,
