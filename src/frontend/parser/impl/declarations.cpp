@@ -4133,8 +4133,7 @@ top_level_base_ready:
             !gv->type.is_lvalue_ref && !gv->type.is_rvalue_ref &&
             gv->type.ptr_level == 0 && gv->type.array_rank == 0) {
             long long cv = 0;
-            if (eval_const_int(ginit, &cv, &parser.definition_state_.struct_tag_def_map,
-                               &parser.binding_state_.const_int_bindings)) {
+            if (parser.eval_const_int_with_parser_tables(ginit, &cv)) {
                 const TextId binding_name_text_id =
                     source_name_text_id != kInvalidText
                         ? source_name_text_id

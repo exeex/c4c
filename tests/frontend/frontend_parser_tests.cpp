@@ -6566,6 +6566,52 @@ void test_parser_record_layout_const_eval_uses_record_definition_authority() {
                 "offsetof should use record_def authority before stale final-spelling fallback");
 }
 
+void test_parser_constexpr_declaration_layout_uses_record_definition_authority() {
+  c4c::Lexer lexer("constexpr int k = sizeof(Alias);\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* real = parser_test_record(
+      parser, arena, "Real",
+      {parser_test_field(parser, arena, "head",
+                         parser_test_scalar_type(c4c::TB_CHAR)),
+       parser_test_field(parser, arena, "value",
+                         parser_test_scalar_type(c4c::TB_INT))});
+  c4c::Node* stale = parser_test_record(
+      parser, arena, "Stale",
+      {parser_test_field(parser, arena, "head",
+                         parser_test_scalar_type(c4c::TB_CHAR)),
+       parser_test_field(parser, arena, "value",
+                         parser_test_scalar_type(c4c::TB_CHAR))});
+
+  c4c::TypeSpec alias_type = parser_test_scalar_type(c4c::TB_STRUCT);
+  alias_type.tag_text_id = parser_test_text_id(parser, "CShared");
+  alias_type.namespace_context_id = parser.current_namespace_context_id();
+  set_legacy_tag_if_present(alias_type, arena.strdup("CShared"), 0);
+  alias_type.record_def = real;
+
+  stale->unqualified_text_id = alias_type.tag_text_id;
+  stale->namespace_context_id = alias_type.namespace_context_id;
+  parser.definition_state_.struct_tag_def_map["CShared"] = stale;
+  parser.register_typedef_binding(parser_test_text_id(parser, "Alias"),
+                                  alias_type, true);
+
+  c4c::Node* decl = parse_top_level(parser);
+  expect_true(decl && decl->kind == c4c::NK_GLOBAL_VAR && decl->is_constexpr,
+              "constexpr declaration layout fixture should parse");
+
+  const auto it = parser.binding_state_.const_int_bindings.find(
+      parser_test_text_id(parser, "k"));
+  expect_true(it != parser.binding_state_.const_int_bindings.end(),
+              "constexpr declaration should register a const-int binding");
+  expect_eq_int(static_cast<int>(it->second), 8,
+                "constexpr declaration layout should use direct record_def "
+                "authority before stale parser-map layout");
+}
+
 void test_parser_record_layout_const_eval_rejects_textid_only_map_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -9147,6 +9193,7 @@ int main() {
   test_parser_tag_only_record_types_carry_incomplete_record_definition();
   test_parser_direct_record_type_head_uses_structured_metadata();
   test_parser_record_layout_const_eval_uses_record_definition_authority();
+  test_parser_constexpr_declaration_layout_uses_record_definition_authority();
   test_parser_record_layout_const_eval_rejects_textid_only_map_authority();
   test_parser_record_layout_const_eval_rejects_structured_tag_fallback();
   test_parser_record_layout_const_eval_rejects_structured_context_map_authority();
