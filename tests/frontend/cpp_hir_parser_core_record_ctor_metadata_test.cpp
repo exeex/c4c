@@ -60,12 +60,22 @@ void test_record_ctor_type_prefers_metadata_over_rendered_tag() {
   box_def->name = "Box";
   box_def->unqualified_text_id = box_text_id;
   box_def->namespace_context_id = 0;
-  parser.definition_state_.struct_tag_def_map["Box"] = box_def;
   parser.definition_state_.defined_struct_tags.insert("StaleBox");
+
+  c4c::TypeSpec box_record{};
+  box_record.base = c4c::TB_STRUCT;
+  box_record.tag_text_id = box_text_id;
+  box_record.namespace_context_id = 0;
+  box_record.record_def = box_def;
+  box_record.n_qualifier_segments = 0;
+  box_record.array_size = -1;
+  box_record.inner_rank = -1;
+  parser.register_structured_typedef_binding_in_context(0, box_text_id,
+                                                        box_record);
 
   expect_true(parser.resolves_to_record_ctor_type(
                   make_typedef_ref(box_text_id, "StaleBox")),
-              "record constructor detection should use tag_text_id metadata before stale rendered tags");
+              "record constructor detection should use structured typedef/record metadata before stale rendered tags");
 
   expect_true(!parser.resolves_to_record_ctor_type(
                   make_typedef_ref(missing_text_id, "StaleBox")),

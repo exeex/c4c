@@ -1034,19 +1034,6 @@ bool typespec_resolves_to_structured_record_ctor_type(const Parser& parser,
         return true;
     }
 
-    for (const auto& [rendered_tag, record] :
-         parser.definition_state_.struct_tag_def_map) {
-        (void)rendered_tag;
-        if (!record || record->kind != NK_STRUCT_DEF ||
-            record->unqualified_text_id != ts.tag_text_id) {
-            continue;
-        }
-        if (ts.namespace_context_id >= 0 &&
-            record->namespace_context_id != ts.namespace_context_id) {
-            continue;
-        }
-        return true;
-    }
     return false;
 }
 
