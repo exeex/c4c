@@ -903,14 +903,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             return false;
         }
 
-        const Node* sdef = resolve_record_type_spec(
-            resolved_ref_ts, &definition_state_.struct_tag_def_map);
-        if (!sdef) {
-            auto sdef_it = definition_state_.struct_tag_def_map.find(ref_mangled);
-            if (sdef_it != definition_state_.struct_tag_def_map.end()) {
-                sdef = sdef_it->second;
-            }
-        }
+        const Node* sdef = resolve_record_type_spec(resolved_ref_ts, nullptr);
         if (!sdef) {
             ti = saved_ti;
             return false;
