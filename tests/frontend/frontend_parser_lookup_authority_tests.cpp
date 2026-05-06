@@ -1194,6 +1194,201 @@ void test_parsed_template_static_member_lookup_uses_structured_owner_after_rende
                        : std::string(": ") + result.diagnostics.front().message));
 }
 
+void test_parser_template_static_member_base_lookup_rejects_stale_map_after_structured_miss() {
+  const char* source =
+      "template <typename T>\n"
+      "struct Base {};\n"
+      "template <typename T>\n"
+      "struct Derived : Base<T> {};\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  c4c::Node* derived_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(),
+      lexer.text_table().intern("Derived"));
+  expect_true(derived_primary != nullptr,
+              "Derived primary should be registered for static-member lookup test");
+
+  c4c::Parser::TemplateArgParseResult arg{};
+  arg.is_value = false;
+  arg.type = make_ts(c4c::TB_INT);
+  std::vector<c4c::Parser::TemplateArgParseResult> args;
+  args.push_back(arg);
+
+  std::string mangled;
+  c4c::TypeSpec resolved{};
+  expect_true(parser.ensure_template_struct_instantiated_from_args(
+                  "Derived", derived_primary, args, derived_primary->line,
+                  &mangled, "static_member_base_lookup_authority_test",
+                  &resolved),
+              "Derived<int> should instantiate for base lookup authority test");
+  expect_true(resolved.record_def && resolved.record_def->n_bases == 1 &&
+                  resolved.record_def->base_types,
+              "Derived<int> should carry one base TypeSpec");
+
+  const c4c::TextId missing_base_text =
+      lexer.text_table().intern("MissingBase<int>");
+  const c4c::TextId stale_value_text = lexer.text_table().intern("value");
+
+  c4c::Node* incomplete_structured_base =
+      parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  incomplete_structured_base->name = arena.strdup("StaleRenderedBase<int>");
+  incomplete_structured_base->unqualified_name =
+      arena.strdup("MissingBase<int>");
+  incomplete_structured_base->unqualified_text_id = missing_base_text;
+  incomplete_structured_base->namespace_context_id =
+      parser.current_namespace_context_id();
+  incomplete_structured_base->n_fields = -1;
+
+  c4c::Node* stale_map_base = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  stale_map_base->name = arena.strdup("StaleRenderedBase<int>");
+  stale_map_base->unqualified_name = arena.strdup("StaleRenderedBase<int>");
+  stale_map_base->unqualified_text_id =
+      lexer.text_table().intern("StaleRenderedBase<int>");
+  stale_map_base->namespace_context_id = parser.current_namespace_context_id();
+  stale_map_base->n_fields = 1;
+  stale_map_base->fields = arena.alloc_array<c4c::Node*>(1);
+  c4c::Node* stale_value = parser.make_node(c4c::NK_DECL, 1);
+  stale_value->name = arena.strdup("value");
+  stale_value->unqualified_name = arena.strdup("value");
+  stale_value->unqualified_text_id = stale_value_text;
+  stale_value->namespace_context_id = stale_map_base->namespace_context_id;
+  stale_value->is_static = true;
+  stale_value->type = make_ts(c4c::TB_INT);
+  stale_value->ival = 7;
+  stale_map_base->fields[0] = stale_value;
+  parser.definition_state_.struct_tag_def_map["StaleRenderedBase<int>"] =
+      stale_map_base;
+
+  c4c::TypeSpec& base_ts = resolved.record_def->base_types[0];
+  auto make_static_value_record = [&](const char* name, c4c::TextId text_id,
+                                      bool is_global,
+                                      c4c::TextId qualifier_text_id,
+                                      long long value) {
+    c4c::Node* record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    record->name = arena.strdup(name);
+    record->unqualified_name = arena.strdup(name);
+    record->unqualified_text_id = text_id;
+    record->namespace_context_id = parser.current_namespace_context_id();
+    record->is_global_qualified = is_global;
+    if (qualifier_text_id != c4c::kInvalidText) {
+      record->n_qualifier_segments = 1;
+      record->qualifier_segments = arena.alloc_array<const char*>(1);
+      record->qualifier_segments[0] = arena.strdup("Owner");
+      record->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+      record->qualifier_text_ids[0] = qualifier_text_id;
+    }
+    record->n_fields = 1;
+    record->fields = arena.alloc_array<c4c::Node*>(1);
+    c4c::Node* field = parser.make_node(c4c::NK_DECL, 1);
+    field->name = arena.strdup("value");
+    field->unqualified_name = arena.strdup("value");
+    field->unqualified_text_id = stale_value_text;
+    field->namespace_context_id = record->namespace_context_id;
+    field->is_static = true;
+    field->type = make_ts(c4c::TB_INT);
+    field->ival = value;
+    record->fields[0] = field;
+    return record;
+  };
+
+  auto eval_static_value = [&]() {
+    c4c::Token seed{};
+    std::vector<c4c::Token> expr_tokens = {
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Derived"),
+        parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+        parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+        parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+        parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+    };
+    long long out = 0;
+    return parser.eval_deferred_nttp_expr_tokens("Derived", expr_tokens, {},
+                                                {}, &out);
+  };
+
+  base_ts = make_ts(c4c::TB_STRUCT);
+  base_ts.record_def = incomplete_structured_base;
+  base_ts.tag_text_id = missing_base_text;
+  base_ts.namespace_context_id = parser.current_namespace_context_id();
+  set_legacy_typespec_tag(base_ts, "StaleRenderedBase<int>");
+
+  expect_true(!eval_static_value(),
+              "template static-member base lookup should reject stale parser-map "
+              "base records after structured record metadata misses");
+
+  const c4c::TextId expected_owner_text =
+      lexer.text_table().intern("ExpectedOwner");
+  const c4c::TextId stale_owner_text = lexer.text_table().intern("StaleOwner");
+  const c4c::TextId qualified_base_text =
+      lexer.text_table().intern("QualifiedBase<int>");
+  parser.definition_state_.struct_defs.push_back(make_static_value_record(
+      "QualifiedBase<int>", qualified_base_text, false, stale_owner_text, 11));
+  incomplete_structured_base->unqualified_text_id = qualified_base_text;
+  incomplete_structured_base->n_qualifier_segments = 1;
+  incomplete_structured_base->qualifier_segments =
+      arena.alloc_array<const char*>(1);
+  incomplete_structured_base->qualifier_segments[0] =
+      arena.strdup("ExpectedOwner");
+  incomplete_structured_base->qualifier_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  incomplete_structured_base->qualifier_text_ids[0] = expected_owner_text;
+  base_ts = make_ts(c4c::TB_STRUCT);
+  base_ts.record_def = incomplete_structured_base;
+  base_ts.tag_text_id = qualified_base_text;
+  base_ts.namespace_context_id = parser.current_namespace_context_id();
+  base_ts.n_qualifier_segments = 1;
+  base_ts.qualifier_text_ids = incomplete_structured_base->qualifier_text_ids;
+  expect_true(!eval_static_value(),
+              "template static-member base lookup should reject same-TextId "
+              "struct_defs records with mismatched qualifier metadata");
+
+  const c4c::TextId global_base_text =
+      lexer.text_table().intern("GlobalBase<int>");
+  parser.definition_state_.struct_defs.push_back(make_static_value_record(
+      "GlobalBase<int>", global_base_text, false, c4c::kInvalidText, 13));
+  incomplete_structured_base->unqualified_text_id = global_base_text;
+  incomplete_structured_base->n_qualifier_segments = 0;
+  incomplete_structured_base->qualifier_segments = nullptr;
+  incomplete_structured_base->qualifier_text_ids = nullptr;
+  incomplete_structured_base->is_global_qualified = true;
+  base_ts = make_ts(c4c::TB_STRUCT);
+  base_ts.record_def = incomplete_structured_base;
+  base_ts.tag_text_id = global_base_text;
+  base_ts.namespace_context_id = parser.current_namespace_context_id();
+  base_ts.is_global_qualified = true;
+  expect_true(!eval_static_value(),
+              "template static-member base lookup should reject same-TextId "
+              "struct_defs records with mismatched global qualification");
+
+  c4c::Node* complete_direct_base = make_static_value_record(
+      "DirectCompleteBase<int>",
+      lexer.text_table().intern("DirectCompleteBase<int>"), false,
+      c4c::kInvalidText, 17);
+  base_ts = make_ts(c4c::TB_STRUCT);
+  base_ts.record_def = complete_direct_base;
+  base_ts.tag_text_id = lexer.text_table().intern("WrongDirectBase<int>");
+  base_ts.namespace_context_id = -1;
+  base_ts.is_global_qualified = true;
+  expect_true(eval_static_value(),
+              "template static-member base lookup should accept a direct "
+              "complete record_def before structured fallback checks");
+}
+
 void test_parsed_nested_static_member_lookup_uses_structured_owner_after_rendered_path_drift() {
   const char* source =
       "struct Outer {\n"
@@ -5725,6 +5920,7 @@ int main() {
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
   test_parsed_static_member_alias_owner_uses_canonical_owner_metadata();
   test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift();
+  test_parser_template_static_member_base_lookup_rejects_stale_map_after_structured_miss();
   test_parsed_nested_static_member_lookup_uses_structured_owner_after_rendered_path_drift();
   test_sema_instance_field_lookup_rejects_stale_member_spelling();
   test_parsed_record_fields_carry_member_text_ids_into_sema();
