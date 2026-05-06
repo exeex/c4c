@@ -1,7 +1,8 @@
 # Move Record Tag Authority From Parser To Sema
 
-Status: Open
+Status: Closed
 Created: 2026-05-06
+Closed: 2026-05-06
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
@@ -117,6 +118,23 @@ parser string-table cleanups are attempted.
   identity.
 - HIR handoff either consumes sema-confirmed record identity or has a separate
   open follow-up idea documenting the missing module-domain carrier.
+
+## Closure Note
+
+Closed after `review/step8_final_boundary_review.md` found no implementation
+closure blocker. The final reviewer noted only regression-log scope hygiene;
+canonical `test_before.log` and `test_after.log` were normalized to matching
+full-suite scope, each reporting 3023/3023 passing tests.
+
+Close-time regression guard:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS. The non-decreasing mode is used because closure is a lifecycle
+transition against an accepted full-suite baseline, with no implementation
+delta expected to increase the pass count.
 
 ## Reviewer Reject Signals
 
