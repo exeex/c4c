@@ -47,6 +47,7 @@ c4c::Node* make_record(c4c::Parser& parser, const char* name,
   record->unqualified_text_id = name_text_id;
   record->namespace_context_id = 0;
   parser.definition_state_.struct_tag_def_map[name] = record;
+  parser.definition_state_.struct_defs.push_back(record);
   return record;
 }
 

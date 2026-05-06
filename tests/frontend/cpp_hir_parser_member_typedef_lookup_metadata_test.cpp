@@ -71,6 +71,8 @@ void test_member_typedef_lookup_uses_owner_text_id_before_stale_tag() {
                  c4c::TB_DOUBLE);
   parser.register_struct_definition_for_testing("RealOwner", real_owner);
   parser.register_struct_definition_for_testing("StaleOwner", stale_owner);
+  parser.definition_state_.struct_defs.push_back(real_owner);
+  parser.definition_state_.struct_defs.push_back(stale_owner);
 
   c4c::TypeSpec owner_alias{};
   owner_alias.array_size = -1;
