@@ -7039,6 +7039,122 @@ void test_parser_incomplete_decl_checks_prefer_record_definition() {
                 "test fixture should balance the local visible typedef scope");
     parser.pop_template_scope();
   }
+
+  auto make_c_alias_type = [](c4c::Parser& parser,
+                              c4c::Arena& arena,
+                              c4c::Node* real) -> c4c::TypeSpec {
+    c4c::TypeSpec alias_ts = parser_test_scalar_type(c4c::TB_STRUCT);
+    alias_ts.tag_text_id = parser_test_text_id(parser, "CShared");
+    alias_ts.namespace_context_id = parser.current_namespace_context_id();
+    set_legacy_tag_if_present(alias_ts, arena.strdup("CShared"), 0);
+    alias_ts.record_def = real;
+    return alias_ts;
+  };
+
+  auto make_c_structured_tag_only_type =
+      [](c4c::Parser& parser, c4c::Arena& arena) -> c4c::TypeSpec {
+    c4c::TypeSpec alias_ts = parser_test_scalar_type(c4c::TB_STRUCT);
+    alias_ts.tag_text_id = parser_test_text_id(parser, "CShared");
+    alias_ts.namespace_context_id = parser.current_namespace_context_id();
+    set_legacy_tag_if_present(alias_ts, arena.strdup("CShared"), 0);
+    return alias_ts;
+  };
+
+  {
+    c4c::Lexer lexer("Alias c_global_value;\n",
+                     c4c::lex_profile_from(c4c::SourceProfile::C));
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::C);
+
+    c4c::Node* real = parser_test_record(parser, arena, "CReal", {});
+    c4c::Node* stale_complete =
+        parser_test_record(parser, arena, "CShared", {});
+    stale_complete->unqualified_text_id =
+        parser_test_text_id(parser, "CShared");
+    stale_complete->namespace_context_id =
+        parser.current_namespace_context_id();
+    parser.definition_state_.struct_tag_def_map["CShared"] = stale_complete;
+    parser.register_typedef_binding(parser_test_text_id(parser, "Alias"),
+                                    make_c_alias_type(parser, arena, real),
+                                    true);
+
+    c4c::Node* decl = parse_top_level(parser);
+    expect_true(decl != nullptr && decl->kind == c4c::NK_GLOBAL_VAR,
+                "C top-level declarations should accept complete typedef "
+                "record_def metadata even when the parser tag map is stale");
+    expect_true(decl->type.record_def == real,
+                "C top-level declarations should preserve direct typedef "
+                "record_def identity");
+  }
+
+  {
+    c4c::Lexer lexer("Alias c_global_value;\n",
+                     c4c::lex_profile_from(c4c::SourceProfile::C));
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::C);
+
+    c4c::Node* stale_complete =
+        parser_test_record(parser, arena, "CShared", {});
+    stale_complete->unqualified_text_id =
+        parser_test_text_id(parser, "CShared");
+    stale_complete->namespace_context_id =
+        parser.current_namespace_context_id();
+    parser.definition_state_.struct_tag_def_map["CShared"] = stale_complete;
+    parser.register_typedef_binding(
+        parser_test_text_id(parser, "Alias"),
+        make_c_structured_tag_only_type(parser, arena), true);
+
+    bool threw = false;
+    try {
+      (void)parse_top_level(parser);
+    } catch (const std::runtime_error&) {
+      threw = true;
+    }
+    expect_true(threw,
+                "C top-level declarations should reject structured typedef "
+                "misses instead of recovering completion from stale parser "
+                "tag maps by TextId");
+  }
+
+  {
+    c4c::Lexer lexer("Alias c_local_value;\n",
+                     c4c::lex_profile_from(c4c::SourceProfile::C));
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::C);
+
+    c4c::Node* stale_complete =
+        parser_test_record(parser, arena, "CShared", {});
+    stale_complete->unqualified_text_id =
+        parser_test_text_id(parser, "CShared");
+    stale_complete->namespace_context_id =
+        parser.current_namespace_context_id();
+    parser.definition_state_.struct_tag_def_map["CShared"] = stale_complete;
+
+    const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+    parser.push_local_binding_scope();
+    parser.bind_local_typedef(alias_text,
+                              make_c_structured_tag_only_type(parser, arena));
+
+    bool threw = false;
+    try {
+      (void)c4c::parse_stmt(parser);
+    } catch (const std::runtime_error&) {
+      threw = true;
+    }
+    expect_true(threw,
+                "C local declarations should reject structured typedef "
+                "misses instead of recovering completion from stale parser "
+                "tag maps by TextId");
+    expect_true(parser.pop_local_binding_scope(),
+                "test fixture should balance the C local visible typedef "
+                "scope");
+  }
 }
 
 void test_parser_qualified_template_record_refs_carry_record_definition() {

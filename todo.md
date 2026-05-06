@@ -8,41 +8,33 @@ Current Step Title: Migrate Remaining Parser Record Lookup Families
 
 ## Just Finished
 
-Step 4C parser record-constructor classification migration completed. The
-structured helper no longer scans
-`definition_state_.struct_tag_def_map` by `tag_text_id`/namespace context, and
-the parser core record-projection classifier no longer consults
-`resolve_record_type_spec` or `definition_state_.struct_tag_def_map` when
-`record_def` metadata is missing. The remaining record-constructor
-classification fallback no longer treats `definition_state_.defined_struct_tags`
-or `definition_state_.struct_tag_def_map` as semantic record identity for
-rendered/tag-only typedef probes; the retained branch is documented as
-template-primary compatibility only. Focused metadata fixtures now seed stale
-`defined_struct_tags` and `struct_tag_def_map` entries and still prove
-structured metadata succeeds while structured misses and no-metadata typedefs
-fail.
+Step 4C C declaration-completeness migration completed. The C typedef-target
+completion helper no longer scans `definition_state_.struct_tag_def_map` by
+`tag_text_id`/namespace context when visible typedef metadata lacks
+`record_def`; direct complete `record_def` metadata on the typedef remains
+accepted. Focused C parser fixtures now seed stale complete parser-map records
+and prove structured typedef misses fail for both top-level and local
+declarations instead of recovering completion from parser-map TextId matches.
 
 ## Suggested Next
 
 Supervisor should review and commit this focused Step 4C slice with
-`src/frontend/parser/impl/core.cpp`,
-`tests/frontend/cpp_hir_parser_core_record_ctor_metadata_test.cpp`,
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp`, this `todo.md`
-update, and `test_after.log` if it is tracked in the local workflow. The
-untracked review artifacts remain outside this packet.
+`src/frontend/parser/impl/declarations.cpp`,
+`tests/frontend/frontend_parser_tests.cpp`, this `todo.md` update, and
+`test_after.log` if it is tracked in the local workflow. The untracked review
+artifacts remain outside this packet.
 
 ## Watchouts
 
-Structured-metadata misses and no-metadata typedef probes still fail as
-expected. This packet did not add parser-map lookup, rendered-name recovery,
-debug-text recovery, `@origin` string recovery, or unique TextId parser-map
-recovery. Any remaining `struct_tag_def_map` references in parser core belong to
-other lookup families, not record-constructor classification identity.
+The remaining `declaration_complete_object_record_def` parser-map lookup is the
+legacy TextId-less compatibility branch and still rejects structured carriers
+before consulting the map. This packet did not change record layout constant
+evaluation or other parser-map consumers outside declaration completeness.
 
 ## Proof
 
 Proof run:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_core_record_ctor_structured_metadata)$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests)$' > test_after.log`
 
-Result: passed, 3/3 tests. Proof log: `test_after.log`.
+Result: passed, 2/2 tests. Proof log: `test_after.log`.

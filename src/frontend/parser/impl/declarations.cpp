@@ -455,29 +455,6 @@ static bool typespec_has_structured_record_carrier_local(const TypeSpec& ts) {
            ts.is_global_qualified || ts.n_qualifier_segments > 0;
 }
 
-static Node* declaration_record_def_for_c_typedef_target(Parser& parser,
-                                                         const TypeSpec& ts) {
-    if (parser.is_cpp_mode() || ts.tag_text_id == kInvalidText) return nullptr;
-
-    Node* match = nullptr;
-    for (const auto& [rendered_tag, record] :
-         parser.definition_state_.struct_tag_def_map) {
-        (void)rendered_tag;
-        if (!record || record->kind != NK_STRUCT_DEF ||
-            record->unqualified_text_id != ts.tag_text_id ||
-            record->n_fields < 0) {
-            continue;
-        }
-        if (ts.namespace_context_id >= 0 &&
-            record->namespace_context_id != ts.namespace_context_id) {
-            continue;
-        }
-        if (match && match != record) return nullptr;
-        match = record;
-    }
-    return match;
-}
-
 static Node* declaration_complete_object_typedef_record_def(Parser& parser,
                                                             const TypeSpec& ts) {
     const TextId typedef_text_id =
@@ -488,10 +465,6 @@ static Node* declaration_complete_object_typedef_record_def(Parser& parser,
                 visible->record_def->n_fields >= 0) {
                 return visible->record_def;
             }
-            if (Node* def =
-                    declaration_record_def_for_c_typedef_target(parser, *visible)) {
-                return def;
-            }
         }
     }
 
@@ -500,10 +473,6 @@ static Node* declaration_complete_object_typedef_record_def(Parser& parser,
             if (visible->record_def && visible->record_def->kind == NK_STRUCT_DEF &&
                 visible->record_def->n_fields >= 0) {
                 return visible->record_def;
-            }
-            if (Node* def =
-                    declaration_record_def_for_c_typedef_target(parser, *visible)) {
-                return def;
             }
         }
     }
