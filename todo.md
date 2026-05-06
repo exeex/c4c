@@ -8,24 +8,23 @@ Current Step Title: Migrate Parser Record Lookup Families
 
 ## Just Finished
 
-Completed the Step 4 repair for parser constant-layout record lookup.
-`resolve_record_type_spec` still prefers `record_def` and rejects stale
-structured tag fallback, but now accepts structured no-`record_def` carriers
-when the record table has a matching full context or one unambiguous structured
-record candidate. This restores `cpp_eastl_vector_parse_recipe` without using
-rendered/tag fallback as record authority.
+Completed the Step 4 repair for parser context/TextId record lookup.
+`record_definition_in_context_by_text_id` now scans unique record nodes from
+`struct_tag_def_map`, preserves duplicate rendered keys for the same structured
+record, and rejects same-context/same-TextId different-record ambiguity instead
+of choosing by rendered map iteration order.
 
 ## Suggested Next
 
 Continue Step 4 by migrating the next parser record lookup family that still
-uses compatibility tag storage for structured carriers, keeping fallback paths
-bounded by structured identity or legacy-only compatibility.
+uses compatibility tag storage for structured carriers, keeping ambiguity checks
+explicit when a lookup can see multiple rendered aliases.
 
 ## Watchouts
 
-Context-defaulted structured record carriers are accepted only when the parser
-record table has one unique structured candidate for the TextId; ambiguous
-matches still fail so `tag_text_id` alone does not choose between records.
+`record_definition_in_context_by_text_id` now returns `nullptr` for both misses
+and ambiguity; callers that need diagnostics must keep ambiguity local instead
+of reintroducing rendered-key ordering.
 
 ## Proof
 

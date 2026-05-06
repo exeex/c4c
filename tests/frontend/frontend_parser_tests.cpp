@@ -6758,6 +6758,47 @@ void test_parser_record_layout_const_eval_accepts_unique_structured_record_match
               "context-defaulted structured TypeSpec should reject ambiguous TextId-only record matches");
 }
 
+void test_parser_record_lookup_by_text_id_is_ambiguity_safe() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId record_text = parser_test_text_id(parser, "Record");
+  c4c::Node* record = parser_test_record(parser, arena, "ns::Record", {});
+  record->unqualified_text_id = record_text;
+  record->namespace_context_id = 9;
+
+  parser.definition_state_.struct_tag_def_map["Record"] = record;
+  parser.definition_state_.struct_tag_def_map["ns::Record"] = record;
+
+  expect_true(c4c::record_definition_in_context_by_text_id(
+                  parser, record->namespace_context_id, record_text) == record,
+              "record lookup should accept duplicate rendered keys for one structured record node");
+
+  c4c::Node* other_context =
+      parser_test_record(parser, arena, "other::Record", {});
+  other_context->unqualified_text_id = record_text;
+  other_context->namespace_context_id = 10;
+  parser.definition_state_.struct_tag_def_map["other::Record"] = other_context;
+
+  expect_true(c4c::record_definition_in_context_by_text_id(
+                  parser, record->namespace_context_id, record_text) == record,
+              "record lookup should ignore same-TextId records in another namespace context");
+
+  c4c::Node* ambiguous =
+      parser_test_record(parser, arena, "ambiguous::Record", {});
+  ambiguous->unqualified_text_id = record_text;
+  ambiguous->namespace_context_id = record->namespace_context_id;
+  parser.definition_state_.struct_tag_def_map["ambiguous::Record"] = ambiguous;
+
+  expect_true(c4c::record_definition_in_context_by_text_id(
+                  parser, record->namespace_context_id, record_text) ==
+                  nullptr,
+              "record lookup should reject same-context same-TextId different-record ambiguity");
+}
+
 void test_parser_incomplete_decl_checks_prefer_record_definition() {
   auto make_alias_type = [](c4c::Parser& parser,
                             c4c::Arena& arena,
@@ -8645,6 +8686,7 @@ int main() {
   test_parser_record_layout_const_eval_rejects_structured_tag_fallback();
   test_parser_record_layout_const_eval_accepts_structured_context_match();
   test_parser_record_layout_const_eval_accepts_unique_structured_record_match();
+  test_parser_record_lookup_by_text_id_is_ambiguity_safe();
   test_parser_incomplete_decl_checks_prefer_record_definition();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
