@@ -455,24 +455,63 @@ static bool typespec_has_structured_record_carrier_local(const TypeSpec& ts) {
            ts.is_global_qualified || ts.n_qualifier_segments > 0;
 }
 
+static Node* declaration_record_def_for_c_typedef_target(Parser& parser,
+                                                         const TypeSpec& ts) {
+    if (parser.is_cpp_mode() || ts.tag_text_id == kInvalidText) return nullptr;
+
+    Node* match = nullptr;
+    for (Node* record : parser.definition_state_.struct_defs) {
+        if (!record || record->kind != NK_STRUCT_DEF || record->n_fields < 0 ||
+            record->unqualified_text_id != ts.tag_text_id) {
+            continue;
+        }
+        if ((ts.base == TB_STRUCT || ts.base == TB_UNION) &&
+            record->is_union != (ts.base == TB_UNION)) {
+            continue;
+        }
+        if (ts.namespace_context_id >= 0 &&
+            record->namespace_context_id != ts.namespace_context_id) {
+            continue;
+        }
+        if (match && match != record) return nullptr;
+        match = record;
+    }
+    return match;
+}
+
 static Node* declaration_complete_object_typedef_record_def(Parser& parser,
-                                                            const TypeSpec& ts) {
+                                                            TypeSpec& ts) {
+    auto complete_visible_typedef = [&](TextId typedef_text_id,
+                                        const TypeSpec& visible) -> Node* {
+        if (visible.record_def && visible.record_def->kind == NK_STRUCT_DEF &&
+            visible.record_def->n_fields >= 0) {
+            return visible.record_def;
+        }
+        Node* def = declaration_record_def_for_c_typedef_target(parser, visible);
+        if (!def) return nullptr;
+        TypeSpec completed = visible;
+        completed.record_def = def;
+        parser.register_typedef_binding(typedef_text_id, completed,
+                                        parser.is_user_typedef_name(typedef_text_id));
+        return def;
+    };
+
     const TextId typedef_text_id =
         parser.active_context_state_.last_resolved_typedef_text_id;
     if (typedef_text_id != kInvalidText) {
         if (const TypeSpec* visible = parser.find_visible_typedef_type(typedef_text_id)) {
-            if (visible->record_def && visible->record_def->kind == NK_STRUCT_DEF &&
-                visible->record_def->n_fields >= 0) {
-                return visible->record_def;
+            if (Node* def = complete_visible_typedef(typedef_text_id, *visible)) {
+                ts.record_def = def;
+                return def;
             }
         }
     }
 
     if (ts.tag_text_id != kInvalidText) {
         if (const TypeSpec* visible = parser.find_visible_typedef_type(ts.tag_text_id)) {
-            if (visible->record_def && visible->record_def->kind == NK_STRUCT_DEF &&
-                visible->record_def->n_fields >= 0) {
-                return visible->record_def;
+            if (Node* def = complete_visible_typedef(ts.tag_text_id, *visible)) {
+                ts.record_def = def;
+                return def;
             }
         }
     }
@@ -481,7 +520,7 @@ static Node* declaration_complete_object_typedef_record_def(Parser& parser,
 }
 
 static Node* declaration_complete_object_record_def(Parser& parser,
-                                                    const TypeSpec& ts) {
+                                                    TypeSpec& ts) {
     if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF &&
         ts.record_def->n_fields >= 0) {
         return ts.record_def;
@@ -1161,7 +1200,7 @@ Node* parse_local_decl(Parser& parser) {
     TypeSpec base_ts = parser.parse_base_type();
     parser.parse_attributes(&base_ts);
 
-    auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
+    auto is_incomplete_object_type = [&](TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (declaration_record_completion_deferred_to_hir(parser, ts)) return false;
@@ -3182,7 +3221,7 @@ top_level_base_ready:
     const TextId ret_typedef_name_id =
         parser.active_context_state_.last_resolved_typedef_text_id;
 
-    auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
+    auto is_incomplete_object_type = [&](TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (declaration_record_completion_deferred_to_hir(parser, ts)) return false;

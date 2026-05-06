@@ -7061,6 +7061,28 @@ void test_parser_incomplete_decl_checks_prefer_record_definition() {
   };
 
   {
+    c4c::Lexer lexer("typedef struct CReal CRealAlias;\n"
+                     "struct CReal { int field; };\n"
+                     "CRealAlias c_global_value;\n",
+                     c4c::lex_profile_from(c4c::SourceProfile::C));
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::C);
+
+    (void)parse_top_level(parser);
+    (void)parse_top_level(parser);
+    c4c::Node* decl = parse_top_level(parser);
+    expect_true(decl != nullptr && decl->kind == c4c::NK_GLOBAL_VAR,
+                "C top-level declarations should complete typedef-forward "
+                "records from structured struct_defs metadata");
+    expect_true(decl->type.record_def != nullptr &&
+                    decl->type.record_def->n_fields >= 0,
+                "C typedef-forward declarations should retain complete "
+                "record_def metadata after lazy completion");
+  }
+
+  {
     c4c::Lexer lexer("Alias c_global_value;\n",
                      c4c::lex_profile_from(c4c::SourceProfile::C));
     const std::vector<c4c::Token> tokens = lexer.scan_all();
