@@ -170,12 +170,23 @@ Primary targets:
   rendered-tag maps
 
 Actions:
-- Pick one lookup family per executor packet.
-- Before continuing other Step 4 work, repair `resolve_record_type_spec` so it
-  does not accept a context-defaulted unique same-`TextId` candidate from
-  `struct_tag_def_map` as semantic identity. Either delete/narrow that parser
-  compatibility path to full structured carrier matches, or replace the final
-  decision with a Sema-owned structured record lookup.
+- Execute this step in substeps so the reviewed route does not regress EASTL
+  parse coverage while removing parser-map identity authority:
+  - Step 4A: supply the missing parser/Sema carrier for record references that
+    reach `resolve_record_type_spec` without `record_def`. The carrier must
+    preserve enough authoritative metadata for the later lookup decision:
+    record kind, namespace context or Sema-owned owner key, global qualification
+    state, qualifier `TextId` sequence or equivalent canonical key, base tag
+    `TextId`, source location, and declaration/reference role. The immediate
+    proof target is the EASTL `vector` and `reverse_iterator` path that becomes
+    incomplete when the unique same-`TextId` parser-map fallback is removed.
+  - Step 4B: repair `resolve_record_type_spec` so it does not accept a
+    context-defaulted unique same-`TextId` candidate from `struct_tag_def_map`
+    as semantic identity. Delete/narrow that parser compatibility path to full
+    structured carrier matches, or replace the final decision with a Sema-owned
+    structured record lookup.
+  - Step 4C: migrate the remaining parser `sizeof`, `alignof`, `offsetof`, and
+    support-helper lookup families one executor packet at a time.
 - When namespace context is present, check the full structured metadata needed
   by the record-domain contract: record kind, namespace context,
   global-qualification state, qualifier `TextId` sequence or equivalent
@@ -190,6 +201,9 @@ Actions:
 - Do not weaken behavior while migration is incomplete.
 
 Completion check:
+- Step 4A is complete only when the EASTL record references that currently lack
+  `record_def` also carry authoritative namespace/owner metadata or a
+  Sema-owned record identity handoff, without restoring TextId-only lookup.
 - The migrated lookup family no longer treats `defined_struct_tags` or
   `struct_tag_def_map` as authoritative semantic record identity.
 - `resolve_record_type_spec` no longer resolves context-defaulted structured
