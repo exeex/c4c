@@ -6616,6 +6616,57 @@ void test_parser_record_layout_const_eval_keeps_final_spelling_fallback() {
                 "offsetof fallback should use the rendered compatibility tag map");
 }
 
+void test_parser_record_layout_const_eval_rejects_structured_tag_fallback() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* stale = parser_test_record(
+      parser, arena, "Stale",
+      {parser_test_field(parser, arena, "head",
+                         parser_test_scalar_type(c4c::TB_CHAR)),
+       parser_test_field(parser, arena, "value",
+                         parser_test_scalar_type(c4c::TB_CHAR))});
+  stale->unqualified_text_id = parser_test_text_id(parser, "Record");
+  stale->namespace_context_id = 3;
+
+  std::unordered_map<std::string, c4c::Node*> compatibility_tag_map;
+  compatibility_tag_map["Record"] = stale;
+
+  c4c::TypeSpec structured = parser_test_scalar_type(c4c::TB_STRUCT);
+  structured.tag_text_id = stale->unqualified_text_id;
+  structured.namespace_context_id = 7;
+  structured.is_global_qualified = true;
+  structured.n_qualifier_segments = 1;
+  structured.qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  structured.qualifier_text_ids[0] = parser_test_text_id(parser, "ns");
+  structured.qualifier_segments = arena.alloc_array<const char*>(1);
+  structured.qualifier_segments[0] = arena.strdup("stale_rendered_ns");
+  set_legacy_tag_if_present(structured, arena.strdup("Record"), 0);
+
+  expect_true(c4c::resolve_record_type_spec(structured,
+                                            &compatibility_tag_map) == nullptr,
+              "structured record TypeSpec without record_def should not use tag/TextId fallback authority");
+
+  c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
+  offset_node->type = structured;
+  offset_node->name = arena.strdup("value");
+  long long offset_value = 0;
+  expect_true(!c4c::eval_const_int(offset_node, &offset_value,
+                                   &compatibility_tag_map),
+              "constant-layout eval should reject stale tag fallback when structured record metadata is present");
+
+  structured.record_def = stale;
+  offset_node->type = structured;
+  expect_true(c4c::eval_const_int(offset_node, &offset_value,
+                                  &compatibility_tag_map),
+              "constant-layout eval should still prefer record_def for structured record TypeSpecs");
+  expect_eq_int(static_cast<int>(offset_value), 1,
+                "record_def authority should preserve the resolved record layout");
+}
+
 void test_parser_incomplete_decl_checks_prefer_record_definition() {
   auto make_alias_type = [](c4c::Parser& parser,
                             c4c::Arena& arena,
@@ -8500,6 +8551,7 @@ int main() {
   test_parser_direct_record_type_head_uses_structured_metadata();
   test_parser_record_layout_const_eval_uses_record_definition_authority();
   test_parser_record_layout_const_eval_keeps_final_spelling_fallback();
+  test_parser_record_layout_const_eval_rejects_structured_tag_fallback();
   test_parser_incomplete_decl_checks_prefer_record_definition();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();

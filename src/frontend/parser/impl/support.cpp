@@ -502,6 +502,16 @@ long long alignof_type_spec(const TypeSpec& ts) {
     return align_base(effective_scalar_base(ts), ts.ptr_level);
 }
 
+static bool typespec_has_structured_record_context(const TypeSpec& ts) {
+    if (ts.namespace_context_id >= 0 || ts.is_global_qualified) return true;
+    if (ts.n_qualifier_segments <= 0) return false;
+    if (!ts.qualifier_text_ids) return true;
+    for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        if (ts.qualifier_text_ids[i] != kInvalidText) return true;
+    }
+    return false;
+}
+
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
     const std::unordered_map<TextId, long long>* structured_named_consts);
@@ -552,6 +562,9 @@ Node* resolve_record_type_spec(
         return ts.record_def;
     }
     if (!compatibility_tag_map) return nullptr;
+    if (typespec_has_structured_record_context(ts)) {
+        return nullptr;
+    }
     if (ts.tag_text_id != kInvalidText) {
         for (const auto& entry : *compatibility_tag_map) {
             Node* sd = entry.second;
