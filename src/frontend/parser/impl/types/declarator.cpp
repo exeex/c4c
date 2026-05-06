@@ -2006,6 +2006,27 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
                 ref.debug_text = nullptr;
             }
         }
+        if (!declarator_template_args_are_dependent(parsed_args)) {
+            const char* origin =
+                primary_tpl->name && primary_tpl->name[0]
+                    ? primary_tpl->name
+                    : primary_tpl->template_origin_name &&
+                              primary_tpl->template_origin_name[0]
+                          ? primary_tpl->template_origin_name
+                          : primary_tpl->unqualified_name &&
+                                    primary_tpl->unqualified_name[0]
+                                ? primary_tpl->unqualified_name
+                                : qualified_name.c_str();
+            TypeSpec resolved = *out_ts;
+            std::string mangled;
+            if (origin && origin[0] &&
+                parser.ensure_template_struct_instantiated_from_args(
+                    origin, primary_tpl, parsed_args, primary_tpl->line,
+                    &mangled, "qualified_template_record_reference",
+                    &resolved)) {
+                *out_ts = resolved;
+            }
+        }
         set_declarator_legacy_display_tag_if_present(
             *out_ts, parser.arena_.strdup(qualified_name.c_str()), 0);
         attach_qualified_typespec_metadata();

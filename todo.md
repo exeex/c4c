@@ -8,36 +8,34 @@ Current Step Title: Supply Parser/Sema Carrier For Record References
 
 ## Just Finished
 
-Lifecycle repair rewrote Step 4 into ordered substeps after the reviewed
-`resolve_record_type_spec` repair exposed a missing carrier handoff. The active
-route stays inside the source idea because parser provisional carriers and
-Sema-owned record identity are already in scope.
+Step 4A supplied the missing qualified-template parser carrier upstream of
+`resolve_record_type_spec`: non-dependent qualified template record references
+now invoke template instantiation during `try_parse_qualified_base_type`, so
+`eastl::vector<int>` and `eastl::reverse_iterator<int*>`-shaped TypeSpecs carry
+`record_def` while retaining namespace/qualifier metadata. Added parser proof
+that stale display spelling still resolves through `record_def` without a
+parser-map fallback.
 
 ## Suggested Next
 
-Execute Step 4A: provide the missing parser/Sema carrier for record references
-that reach `resolve_record_type_spec` without `record_def`. The immediate
-target is the EASTL `vector` and `reverse_iterator` TypeSpecs that failed as
-incomplete after the TextId-only parser-map fallback was removed.
-
-The next packet should supply authoritative namespace/owner metadata or a
-Sema-owned record identity handoff for those references before deleting or
-narrowing the unique same-`TextId` path in Step 4B.
+Execute Step 4B: delete or narrow the context-defaulted unique same-`TextId`
+candidate path in `resolve_record_type_spec`, replacing any still-needed
+acceptance with full structured carrier matches or a Sema-owned structured
+record lookup.
 
 ## Watchouts
 
-`TypeSpec` has no legacy rendered tag visible to `resolve_record_type_spec`
-(`support_legacy_typespec_tag_if_present(const TypeSpec&, long)` returns
-`nullptr`), so a parser-only exact rendered fallback cannot repair the EASTL
-failure. Restoring the old unique same-`TextId` scan would reintroduce the
-reviewed route drift. Do not broaden parser-map uniqueness, rendered-key
-matching, or context-defaulted TextId lookup while implementing Step 4A.
+Step 4A deliberately materializes only non-dependent qualified template
+references; dependent template references stay as structured origin/argument
+carriers for later instantiation. Step 4B should not reintroduce parser-map
+uniqueness, rendered-key matching, or context-defaulted TextId lookup. Existing
+tests still include `test_parser_record_layout_const_eval_accepts_unique_structured_record_match`,
+which should be revised or removed as part of Step 4B's fallback deletion.
 
 ## Proof
 
 `test_after.log` records the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_eastl_vector_parse_recipe)$'`.
-Build passed and `frontend_parser_tests` plus
-`frontend_parser_lookup_authority_tests` passed. `cpp_eastl_vector_parse_recipe`
-failed with incomplete `vector` and `reverse_iterator` records after the
-TextId-only fallback was removed.
+Build passed, and `frontend_parser_tests`,
+`frontend_parser_lookup_authority_tests`, and `cpp_eastl_vector_parse_recipe`
+all passed.

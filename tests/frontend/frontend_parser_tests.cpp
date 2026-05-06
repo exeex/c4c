@@ -6860,6 +6860,67 @@ void test_parser_incomplete_decl_checks_prefer_record_definition() {
   }
 }
 
+void test_parser_qualified_template_record_refs_carry_record_definition() {
+  const char* source =
+      "namespace eastl {\n"
+      "template <typename Iter>\n"
+      "struct reverse_iterator {\n"
+      "  Iter current;\n"
+      "};\n"
+      "template <typename T>\n"
+      "struct vector {\n"
+      "  typedef T* iterator;\n"
+      "  typedef eastl::reverse_iterator<iterator> reverse_iterator;\n"
+      "  T* data;\n"
+      "};\n"
+      "}\n"
+      "eastl::vector<int> values;\n"
+      "eastl::reverse_iterator<int*> rit;\n";
+  c4c::Lexer lexer(source, c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* root = parser.parse();
+  expect_true(root && root->kind == c4c::NK_PROGRAM,
+              "qualified template record reference test should parse");
+
+  c4c::Node* values = nullptr;
+  c4c::Node* rit = nullptr;
+  for (int i = 0; root && i < root->n_children; ++i) {
+    c4c::Node* child = root->children[i];
+    if (!child || child->kind != c4c::NK_GLOBAL_VAR || !child->name) continue;
+    if (std::string_view(child->name) == "values") values = child;
+    if (std::string_view(child->name) == "rit") rit = child;
+  }
+
+  expect_true(values && values->type.record_def,
+              "qualified eastl::vector<T> TypeSpec should carry record_def before Sema");
+  expect_true(rit && rit->type.record_def,
+              "qualified eastl::reverse_iterator<T> TypeSpec should carry record_def before Sema");
+  expect_true(values->type.namespace_context_id >= 0 &&
+                  values->type.n_qualifier_segments == 1 &&
+                  values->type.qualifier_text_ids &&
+                  values->type.qualifier_text_ids[0] != c4c::kInvalidText,
+              "qualified eastl::vector<T> TypeSpec should retain namespace/qualifier metadata");
+  expect_true(rit->type.namespace_context_id >= 0 &&
+                  rit->type.n_qualifier_segments == 1 &&
+                  rit->type.qualifier_text_ids &&
+                  rit->type.qualifier_text_ids[0] != c4c::kInvalidText,
+              "qualified eastl::reverse_iterator<T> TypeSpec should retain namespace/qualifier metadata");
+
+  set_legacy_tag_if_present(values->type, arena.strdup("stale::vector"), 0);
+  set_legacy_tag_if_present(rit->type, arena.strdup("stale::reverse_iterator"),
+                            0);
+  expect_true(c4c::resolve_record_type_spec(values->type, nullptr) ==
+                  values->type.record_def,
+              "qualified vector record reference should resolve through record_def without parser-map fallback");
+  expect_true(c4c::resolve_record_type_spec(rit->type, nullptr) ==
+                  rit->type.record_def,
+              "qualified reverse_iterator record reference should resolve through record_def without parser-map fallback");
+}
+
 void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -8688,6 +8749,7 @@ int main() {
   test_parser_record_layout_const_eval_accepts_unique_structured_record_match();
   test_parser_record_lookup_by_text_id_is_ambiguity_safe();
   test_parser_incomplete_decl_checks_prefer_record_definition();
+  test_parser_qualified_template_record_refs_carry_record_definition();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_alias_template_substitution_prefers_param_text_id();
