@@ -8,19 +8,19 @@ Current Step Title: Migrate Remaining Parser Record Lookup Families
 
 ## Just Finished
 
-Step 4C template static-member/base lookup migration completed for
-`Parser::eval_deferred_nttp_expr_tokens`. Recursive base traversal now resolves
-structured base record carriers through direct complete `record_def` or
-`definition_state_.struct_defs` matches that require record kind, namespace
-context, global qualification state, qualifier TextId sequence, and base tag
-TextId. It uses `definition_state_.struct_tag_def_map` only for TextId-less
-legacy carriers. Focused lookup-authority coverage rejects stale parser-map
-recovery plus same-TextId/same-context `struct_defs` candidates with mismatched
-qualifier or global metadata, while direct complete `record_def` still wins.
+Step 4C static-member initializer migration completed for
+`Parser::eval_deferred_nttp_expr_tokens`. Static field and child initializer
+constant evaluation now withholds `definition_state_.struct_tag_def_map` unless
+the initializer's record-layout queries are explicitly limited to TextId-less
+legacy carriers; structured record carriers use direct complete `record_def`
+layout or the existing unresolved-layout fallback without parser-map recovery.
+Focused lookup-authority coverage drives `Trait<int>::value` through the
+deferred NTTP static-member path and distinguishes stale parser-map layout from
+direct complete `record_def` layout.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 4C template static-member/base
+Supervisor should review and commit this Step 4C static-member initializer
 lookup slice with `src/frontend/parser/impl/types/template.cpp`,
 `tests/frontend/frontend_parser_lookup_authority_tests.cpp`, this `todo.md`
 update, and `test_after.log` if it is tracked in the local workflow. The
@@ -28,12 +28,11 @@ untracked review artifacts remain outside this packet.
 
 ## Watchouts
 
-The static-member evaluator still passes `struct_tag_def_map` into
-`eval_const_int` for static field initializer evaluation; this slice only
-migrates final base record identity selection during recursive base traversal.
-The new helper intentionally treats incomplete structured `record_def`
-carriers with TextIds as structured misses unless the full applicable record
-metadata matches a complete `struct_defs` candidate.
+`eval_const_int` still returns its conservative unresolved struct size when a
+structured layout carrier is incomplete; this slice only ensures stale parser
+map entries cannot provide that layout authority from the template
+static-member initializer call site. TextId-less legacy initializer carriers
+still receive the compatibility map.
 
 ## Proof
 

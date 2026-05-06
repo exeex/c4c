@@ -143,6 +143,86 @@ const Node* template_static_member_base_record_definition(
                                     &parser.definition_state_.struct_tag_def_map);
 }
 
+bool template_static_member_layout_type_allows_legacy_map(
+    const TypeSpec& ts,
+    bool* needs_legacy_map) {
+    if (ts.base != TB_STRUCT && ts.base != TB_UNION) return true;
+    if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF &&
+        ts.record_def->n_fields >= 0) {
+        return true;
+    }
+
+    const bool text_id_less_legacy_carrier =
+        !ts.record_def && ts.tag_text_id == kInvalidText &&
+        ts.namespace_context_id < 0 && !ts.is_global_qualified &&
+        ts.n_qualifier_segments <= 0;
+    if (text_id_less_legacy_carrier) {
+        if (needs_legacy_map) *needs_legacy_map = true;
+        return true;
+    }
+    return false;
+}
+
+bool template_static_member_initializer_allows_legacy_map(
+    const Node* node,
+    bool* needs_legacy_map) {
+    if (!node) return true;
+    if (node->kind == NK_OFFSETOF || node->kind == NK_ALIGNOF_TYPE ||
+        node->kind == NK_SIZEOF_TYPE) {
+        if (!template_static_member_layout_type_allows_legacy_map(
+                node->type, needs_legacy_map)) {
+            return false;
+        }
+    }
+    if (node->left &&
+        !template_static_member_initializer_allows_legacy_map(
+            node->left, needs_legacy_map)) {
+        return false;
+    }
+    if (node->right &&
+        !template_static_member_initializer_allows_legacy_map(
+            node->right, needs_legacy_map)) {
+        return false;
+    }
+    if (node->cond &&
+        !template_static_member_initializer_allows_legacy_map(
+            node->cond, needs_legacy_map)) {
+        return false;
+    }
+    if (node->then_ &&
+        !template_static_member_initializer_allows_legacy_map(
+            node->then_, needs_legacy_map)) {
+        return false;
+    }
+    if (node->else_ &&
+        !template_static_member_initializer_allows_legacy_map(
+            node->else_, needs_legacy_map)) {
+        return false;
+    }
+    if (node->children) {
+        for (int i = 0; i < node->n_children; ++i) {
+            if (!template_static_member_initializer_allows_legacy_map(
+                    node->children[i], needs_legacy_map)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+const std::unordered_map<std::string, Node*>*
+template_static_member_initializer_compatibility_tag_map(
+    Parser& parser,
+    const Node* initializer) {
+    bool needs_legacy_map = false;
+    if (!template_static_member_initializer_allows_legacy_map(
+            initializer, &needs_legacy_map)) {
+        return nullptr;
+    }
+    return needs_legacy_map ? &parser.definition_state_.struct_tag_def_map
+                            : nullptr;
+}
+
 QualifiedNameKey template_instantiation_name_key(
     Parser& parser,
     const Node* primary_tpl,
@@ -991,8 +1071,11 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     if (!f->name || member_name != f->name) continue;
                     if (f->init) {
                         long long v = 0;
+                        const auto* compatibility_tag_map =
+                            template_static_member_initializer_compatibility_tag_map(
+                                *this, f->init);
                         if (eval_const_int(
-                                f->init, &v, &definition_state_.struct_tag_def_map,
+                                f->init, &v, compatibility_tag_map,
                                 &binding_state_.const_int_bindings)) {
                             *val = v;
                             return true;
@@ -1006,9 +1089,11 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     if (!child->name || member_name != child->name) continue;
                     if (child->init) {
                         long long v = 0;
+                        const auto* compatibility_tag_map =
+                            template_static_member_initializer_compatibility_tag_map(
+                                *this, child->init);
                         if (eval_const_int(
-                                child->init, &v,
-                                &definition_state_.struct_tag_def_map,
+                                child->init, &v, compatibility_tag_map,
                                 &binding_state_.const_int_bindings)) {
                             *val = v;
                             return true;

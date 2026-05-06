@@ -1389,6 +1389,143 @@ void test_parser_template_static_member_base_lookup_rejects_stale_map_after_stru
               "complete record_def before structured fallback checks");
 }
 
+void test_parser_template_static_member_initializer_rejects_stale_map_after_structured_miss() {
+  const char* source =
+      "template <typename T>\n"
+      "struct Trait {\n"
+      "  static int value;\n"
+      "};\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  auto make_int_field = [&](const char* name) {
+    c4c::Node* field = parser.make_node(c4c::NK_DECL, 1);
+    field->name = arena.strdup(name);
+    field->unqualified_name = arena.strdup(name);
+    field->unqualified_text_id = lexer.text_table().intern(name);
+    field->namespace_context_id = parser.current_namespace_context_id();
+    field->type = make_ts(c4c::TB_INT);
+    return field;
+  };
+
+  auto make_record_with_three_ints = [&](const char* name,
+                                         c4c::TextId text_id) {
+    c4c::Node* record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    record->name = arena.strdup(name);
+    record->unqualified_name = arena.strdup(name);
+    record->unqualified_text_id = text_id;
+    record->namespace_context_id = parser.current_namespace_context_id();
+    record->n_fields = 3;
+    record->fields = arena.alloc_array<c4c::Node*>(3);
+    record->fields[0] = make_int_field("a");
+    record->fields[1] = make_int_field("b");
+    record->fields[2] = make_int_field("c");
+    return record;
+  };
+
+  c4c::Node* trait_primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), lexer.text_table().intern("Trait"));
+  expect_true(trait_primary != nullptr,
+              "Trait primary should be registered for static initializer test");
+
+  c4c::Parser::TemplateArgParseResult arg{};
+  arg.is_value = false;
+  arg.type = make_ts(c4c::TB_INT);
+  std::vector<c4c::Parser::TemplateArgParseResult> args;
+  args.push_back(arg);
+
+  std::string mangled;
+  c4c::TypeSpec resolved{};
+  expect_true(parser.ensure_template_struct_instantiated_from_args(
+                  "Trait", trait_primary, args, trait_primary->line, &mangled,
+                  "static_member_initializer_lookup_authority_test",
+                  &resolved),
+              "Trait<int> should instantiate for static initializer test");
+  expect_true(resolved.record_def && resolved.record_def->n_fields == 1 &&
+                  resolved.record_def->fields,
+              "Trait<int> should carry one static field");
+  c4c::Node* value_field = resolved.record_def->fields[0];
+  expect_true(value_field && value_field->is_static,
+              "Trait<int>::value should be a static field");
+  value_field->ival = -1;
+
+  const c4c::TextId structured_text =
+      lexer.text_table().intern("StructuredInitRecord");
+  c4c::Node* stale_map_record = make_record_with_three_ints(
+      "StaleRenderedInitRecord",
+      lexer.text_table().intern("StaleRenderedInitRecord"));
+  parser.definition_state_.struct_tag_def_map["StaleRenderedInitRecord"] =
+      stale_map_record;
+
+  c4c::Node* incomplete_structured_record =
+      parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  incomplete_structured_record->name = arena.strdup("StaleRenderedInitRecord");
+  incomplete_structured_record->unqualified_name =
+      arena.strdup("StructuredInitRecord");
+  incomplete_structured_record->unqualified_text_id = structured_text;
+  incomplete_structured_record->namespace_context_id =
+      parser.current_namespace_context_id();
+  incomplete_structured_record->n_fields = -1;
+
+  c4c::Node* sizeof_init = parser.make_node(c4c::NK_SIZEOF_TYPE, 1);
+  sizeof_init->type = make_ts(c4c::TB_STRUCT);
+  sizeof_init->type.record_def = incomplete_structured_record;
+  sizeof_init->type.tag_text_id = structured_text;
+  sizeof_init->type.namespace_context_id =
+      parser.current_namespace_context_id();
+  set_legacy_typespec_tag(sizeof_init->type, "StaleRenderedInitRecord");
+  value_field->init = sizeof_init;
+
+  auto eval_static_value = [&](long long* out) {
+    c4c::Token seed{};
+    std::vector<c4c::Token> expr_tokens = {
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Trait"),
+        parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+        parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+        parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+        parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+    };
+    return parser.eval_deferred_nttp_expr_tokens("Trait", expr_tokens, {}, {},
+                                                out);
+  };
+
+  long long out = 0;
+  expect_true(eval_static_value(&out) && out == 8,
+              "template static-member initializer lookup should use "
+              "conservative unresolved layout instead of stale parser-map "
+              "record layout after structured metadata misses");
+
+  c4c::Node* direct_complete_record =
+      make_record_with_three_ints("DirectCompleteInitRecord",
+                                  lexer.text_table().intern(
+                                      "DirectCompleteInitRecord"));
+  sizeof_init->type = make_ts(c4c::TB_STRUCT);
+  sizeof_init->type.record_def = direct_complete_record;
+  sizeof_init->type.tag_text_id =
+      lexer.text_table().intern("WrongDirectInitRecord");
+  sizeof_init->type.namespace_context_id = -1;
+  sizeof_init->type.is_global_qualified = true;
+  out = 0;
+  expect_true(eval_static_value(&out) && out == 12,
+              "template static-member initializer lookup should evaluate "
+              "direct complete record_def layout without parser-map identity");
+}
+
 void test_parsed_nested_static_member_lookup_uses_structured_owner_after_rendered_path_drift() {
   const char* source =
       "struct Outer {\n"
@@ -5921,6 +6058,7 @@ int main() {
   test_parsed_static_member_alias_owner_uses_canonical_owner_metadata();
   test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift();
   test_parser_template_static_member_base_lookup_rejects_stale_map_after_structured_miss();
+  test_parser_template_static_member_initializer_rejects_stale_map_after_structured_miss();
   test_parsed_nested_static_member_lookup_uses_structured_owner_after_rendered_path_drift();
   test_sema_instance_field_lookup_rejects_stale_member_spelling();
   test_parsed_record_fields_carry_member_text_ids_into_sema();
