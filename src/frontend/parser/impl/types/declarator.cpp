@@ -2299,6 +2299,98 @@ bool parse_qualified_declarator_name(Parser& parser, std::string* out_name,
     return true;
 }
 
+bool try_parse_destructor_declarator_from_owner_type(
+    Parser& parser, const TypeSpec& owner_type, std::string* out_name,
+    TextId* out_name_text_id, Parser::QualifiedNameRef* out_qn) {
+    if (!out_name || !parser.is_cpp_mode() ||
+        !parser.check(TokenKind::ColonColon) ||
+        parser.peek(1).kind != TokenKind::Tilde ||
+        parser.peek(2).kind != TokenKind::Identifier) {
+        return false;
+    }
+
+    Parser::QualifiedNameRef owner_qn;
+    owner_qn.is_global_qualified = owner_type.is_global_qualified;
+    owner_qn.qualifier_segments.reserve(
+        owner_type.n_qualifier_segments > 0 ? owner_type.n_qualifier_segments
+                                            : 0);
+    owner_qn.qualifier_text_ids.reserve(owner_qn.qualifier_segments.capacity());
+    for (int i = 0; i < owner_type.n_qualifier_segments; ++i) {
+        const char* segment =
+            owner_type.qualifier_segments ? owner_type.qualifier_segments[i]
+                                          : nullptr;
+        TextId segment_text_id =
+            owner_type.qualifier_text_ids ? owner_type.qualifier_text_ids[i]
+                                          : kInvalidText;
+        if (segment_text_id == kInvalidText && segment && segment[0]) {
+            segment_text_id =
+                parser.parser_text_id_for_token(kInvalidText, segment);
+        }
+        owner_qn.qualifier_segments.emplace_back(
+            segment ? segment
+                    : std::string(parser.parser_text(segment_text_id, {})));
+        owner_qn.qualifier_text_ids.push_back(segment_text_id);
+    }
+
+    owner_qn.base_text_id = owner_type.tpl_struct_origin_key.base_text_id;
+    if (owner_qn.base_text_id == kInvalidText && owner_type.record_def) {
+        owner_qn.base_text_id = owner_type.record_def->unqualified_text_id;
+    }
+    if (owner_qn.base_text_id == kInvalidText) {
+        owner_qn.base_text_id = owner_type.tag_text_id;
+    }
+    if (owner_qn.base_text_id == kInvalidText &&
+        owner_type.tpl_struct_origin && owner_type.tpl_struct_origin[0]) {
+        std::string origin(owner_type.tpl_struct_origin);
+        const size_t sep = origin.rfind("::");
+        owner_qn.base_name = sep == std::string::npos ? origin : origin.substr(sep + 2);
+        owner_qn.base_text_id =
+            parser.parser_text_id_for_token(kInvalidText, owner_qn.base_name);
+    }
+    if (owner_qn.base_text_id == kInvalidText) return false;
+    if (owner_qn.base_name.empty()) {
+        owner_qn.base_name =
+            std::string(parser.parser_text(owner_qn.base_text_id, {}));
+    }
+    if (owner_qn.base_name.empty()) return false;
+
+    parser.consume();  // ::
+    parser.consume();  // ~
+    const Token& dtor_tok = parser.cur();
+    const std::string dtor_base(parser.token_spelling(dtor_tok));
+    const TextId dtor_base_text_id =
+        parser.parser_text_id_for_token(dtor_tok.text_id, dtor_base);
+    parser.consume();
+
+    std::string owner_name =
+        parser.qualified_name_text(owner_qn, true /* include_global_prefix */);
+    if (owner_name.empty()) owner_name = owner_qn.base_name;
+    std::string qualified_name = owner_name;
+    qualified_name += "::~";
+    qualified_name += dtor_base;
+    *out_name = parser.arena_.strdup(qualified_name.c_str());
+
+    if (out_name_text_id) {
+        const std::string dtor_name = std::string("~") + dtor_base;
+        *out_name_text_id =
+            parser.parser_text_id_for_token(kInvalidText, dtor_name);
+    }
+    if (out_qn) {
+        Parser::QualifiedNameRef qn;
+        qn.is_global_qualified = owner_qn.is_global_qualified;
+        qn.qualifier_segments = owner_qn.qualifier_segments;
+        qn.qualifier_text_ids = owner_qn.qualifier_text_ids;
+        qn.qualifier_segments.push_back(owner_qn.base_name);
+        qn.qualifier_text_ids.push_back(owner_qn.base_text_id);
+        qn.base_name = std::string("~") + dtor_base;
+        qn.base_text_id = out_name_text_id ? *out_name_text_id
+                                           : parser.parser_text_id_for_token(
+                                                 kInvalidText, qn.base_name);
+        *out_qn = std::move(qn);
+    }
+    return true;
+}
+
 bool parse_qualified_declarator_name(Parser& parser, std::string* out_name,
                                      TextId* out_name_text_id) {
     return parse_qualified_declarator_name(
@@ -2497,10 +2589,19 @@ void parse_normal_declarator_tail(Parser& parser, TypeSpec& ts,
         Parser::TentativeParseGuardLite guard(parser);
         std::string qualified_name;
         Parser::QualifiedNameRef qualified_qn;
-        if (parse_qualified_declarator_name(parser, &qualified_name,
+        if (try_parse_destructor_declarator_from_owner_type(
+                parser, ts, &qualified_name, out_name_text_id,
+                &qualified_qn) ||
+            parse_qualified_declarator_name(parser, &qualified_name,
                                             out_name_text_id, &qualified_qn)) {
             *out_name = parser.arena_.strdup(qualified_name.c_str());
             if (out_qn) *out_qn = std::move(qualified_qn);
+            if (qualified_name.find("::~") != std::string::npos) {
+                ts = TypeSpec{};
+                ts.array_size = -1;
+                ts.inner_rank = -1;
+                ts.base = TB_VOID;
+            }
             guard.commit();
         }
         // guard restores pos_ on scope exit if not committed

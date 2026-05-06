@@ -1,41 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/145_move_record_tag_authority_from_parser_to_sema.md
 Source Plan Path: plan.md
-Current Step ID: 4A
-Current Step Title: Supply Parser/Sema Carrier For Record References
+Current Step ID: 4B
+Current Step Title: Delete TextId-Only Parser-Map Record Fallback
 
 # Current Packet
 
 ## Just Finished
 
-Step 4A supplied the missing qualified-template parser carrier upstream of
-`resolve_record_type_spec`: non-dependent qualified template record references
-now invoke template instantiation during `try_parse_qualified_base_type`, so
-`eastl::vector<int>` and `eastl::reverse_iterator<int*>`-shaped TypeSpecs carry
-`record_def` while retaining namespace/qualifier metadata. Added parser proof
-that stale display spelling still resolves through `record_def` without a
-parser-map fallback.
+Step 4A/4B repaired the remaining parser-owned carrier gap after deleting the
+context-defaulted unique same-`TextId` parser-map fallback from
+`resolve_record_type_spec`. `vector<T, Allocator>::~vector` now parses as an
+out-of-class destructor by carrying the owner metadata from the consumed
+template owner `TypeSpec` into the declarator name and normalizing the function
+type to `void` before incomplete-object checks. Out-of-class template member
+bodies now also consult the current-record dependent member typedef carrier for
+unqualified member typedefs such as `reverse_iterator`.
+
+Parser tests cover the fallback deletion, stale structured-context rejection,
+the out-of-class destructor owner path, and the repaired `reverse_iterator`
+member-typedef carrier path.
 
 ## Suggested Next
 
-Execute Step 4B: delete or narrow the context-defaulted unique same-`TextId`
-candidate path in `resolve_record_type_spec`, replacing any still-needed
-acceptance with full structured carrier matches or a Sema-owned structured
-record lookup.
+Supervisor should review and commit the completed Step 4B slice, or escalate to
+broader validation if treating this as a milestone.
 
 ## Watchouts
 
-Step 4A deliberately materializes only non-dependent qualified template
-references; dependent template references stay as structured origin/argument
-carriers for later instantiation. Step 4B should not reintroduce parser-map
-uniqueness, rendered-key matching, or context-defaulted TextId lookup. Existing
-tests still include `test_parser_record_layout_const_eval_accepts_unique_structured_record_match`,
-which should be revised or removed as part of Step 4B's fallback deletion.
+Do not restore parser-map uniqueness, rendered-key matching, or
+context-defaulted TextId lookup. The accepted route is parser-owned structured
+carrier repair in `base.cpp` and `declarator.cpp`; Sema/HIR files were not
+needed.
 
 ## Proof
 
 `test_after.log` records the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_eastl_vector_parse_recipe)$'`.
-Build passed, and `frontend_parser_tests`,
+Build passed. `frontend_parser_tests`,
 `frontend_parser_lookup_authority_tests`, and `cpp_eastl_vector_parse_recipe`
-all passed.
+all passed with the Step 4B fallback deletion still in place.

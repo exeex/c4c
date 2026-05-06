@@ -8,6 +8,7 @@
 
 #include <cstdlib>
 #include <exception>
+#include <functional>
 #include <initializer_list>
 #include <iostream>
 #include <string>
@@ -6683,9 +6684,25 @@ void test_parser_record_layout_const_eval_accepts_structured_context_match() {
                          parser_test_scalar_type(c4c::TB_INT))});
   record->unqualified_text_id = record_text;
   record->namespace_context_id = 11;
+  record->is_global_qualified = true;
+  record->n_qualifier_segments = 1;
+  record->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  record->qualifier_text_ids[0] = parser_test_text_id(parser, "ns");
+
+  c4c::Node* stale_qualifier = parser_test_record(
+      parser, arena, "other::Record",
+      {parser_test_field(parser, arena, "value",
+                         parser_test_scalar_type(c4c::TB_CHAR))});
+  stale_qualifier->unqualified_text_id = record_text;
+  stale_qualifier->namespace_context_id = record->namespace_context_id;
+  stale_qualifier->is_global_qualified = true;
+  stale_qualifier->n_qualifier_segments = 1;
+  stale_qualifier->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  stale_qualifier->qualifier_text_ids[0] =
+      parser_test_text_id(parser, "other");
 
   std::unordered_map<std::string, c4c::Node*> compatibility_tag_map;
-  compatibility_tag_map["stale_rendered_Record"] = record;
+  compatibility_tag_map["stale_rendered_Record"] = stale_qualifier;
 
   c4c::TypeSpec structured = parser_test_scalar_type(c4c::TB_STRUCT);
   structured.tag_text_id = record_text;
@@ -6700,8 +6717,14 @@ void test_parser_record_layout_const_eval_accepts_structured_context_match() {
                             0);
 
   expect_true(c4c::resolve_record_type_spec(structured,
+                                            &compatibility_tag_map) == nullptr,
+              "structured record TypeSpec without record_def should reject a same-namespace candidate with stale qualifier metadata");
+
+  compatibility_tag_map["ns::Record"] = record;
+
+  expect_true(c4c::resolve_record_type_spec(structured,
                                             &compatibility_tag_map) == record,
-              "structured record TypeSpec without record_def should match a record with the same TextId and namespace context");
+              "structured record TypeSpec without record_def should match a record with the same TextId and full structured context");
 
   c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
   offset_node->type = structured;
@@ -6714,7 +6737,7 @@ void test_parser_record_layout_const_eval_accepts_structured_context_match() {
                 "structured context match should use the matching record layout");
 }
 
-void test_parser_record_layout_const_eval_accepts_unique_structured_record_match() {
+void test_parser_record_layout_const_eval_rejects_context_defaulted_textid_match() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -6742,8 +6765,16 @@ void test_parser_record_layout_const_eval_accepts_unique_structured_record_match
                             arena.strdup("stale_rendered_Record"), 0);
 
   expect_true(c4c::resolve_record_type_spec(context_defaulted,
-                                            &compatibility_tag_map) == record,
-              "context-defaulted structured TypeSpec should match one unique structured record candidate");
+                                            &compatibility_tag_map) == nullptr,
+              "context-defaulted structured TypeSpec should reject unique TextId-only record matches");
+
+  c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
+  offset_node->type = context_defaulted;
+  offset_node->name = arena.strdup("value");
+  long long offset_value = 0;
+  expect_true(!c4c::eval_const_int(offset_node, &offset_value,
+                                   &compatibility_tag_map),
+              "constant-layout eval should reject context-defaulted TextId-only record matches");
 
   c4c::Node* ambiguous = parser_test_record(
       parser, arena, "other::Record",
@@ -6919,6 +6950,91 @@ void test_parser_qualified_template_record_refs_carry_record_definition() {
   expect_true(c4c::resolve_record_type_spec(rit->type, nullptr) ==
                   rit->type.record_def,
               "qualified reverse_iterator record reference should resolve through record_def without parser-map fallback");
+}
+
+void test_parser_out_of_class_template_owner_carriers_survive_destructor_path() {
+  const char* source =
+      "namespace eastl {\n"
+      "template <typename Iter>\n"
+      "struct reverse_iterator {\n"
+      "  Iter current;\n"
+      "};\n"
+      "template <typename T, typename Allocator>\n"
+      "struct vector {\n"
+      "  typedef eastl::reverse_iterator<T*> reverse_iterator;\n"
+      "  T* mpBegin;\n"
+      "  ~vector();\n"
+      "  reverse_iterator erase_last(const T& value);\n"
+      "};\n"
+      "template <typename T, typename Allocator>\n"
+      "vector<T, Allocator>::~vector() {\n"
+      "  T* p = mpBegin;\n"
+      "}\n"
+      "template <typename T, typename Allocator>\n"
+      "typename vector<T, Allocator>::reverse_iterator\n"
+      "vector<T, Allocator>::erase_last(const T& value) {\n"
+      "  reverse_iterator it;\n"
+      "  return it;\n"
+      "}\n"
+      "}\n";
+  c4c::Lexer lexer(source, c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* root = parser.parse();
+  expect_true(root && root->kind == c4c::NK_PROGRAM,
+              "out-of-class template owner carrier test should parse");
+
+  c4c::Node* dtor = nullptr;
+  c4c::Node* erase_last = nullptr;
+  std::function<void(c4c::Node*)> find_functions = [&](c4c::Node* node) {
+    if (!node) return;
+    if (node->kind == c4c::NK_FUNCTION && node->name) {
+      const std::string_view name(node->name);
+      if (name.find("::~vector") != std::string_view::npos) dtor = node;
+      if (name.find("::erase_last") != std::string_view::npos)
+        erase_last = node;
+    }
+    for (int i = 0; i < node->n_children; ++i) find_functions(node->children[i]);
+  };
+  find_functions(root);
+
+  expect_true(dtor != nullptr,
+              "out-of-class vector<T, Allocator>::~vector should parse as a function, not an incomplete object");
+  expect_true(dtor->type.base == c4c::TB_VOID,
+              "out-of-class destructor declarator should normalize the consumed owner TypeSpec to void");
+  expect_true(dtor->n_qualifier_segments > 0 && dtor->qualifier_text_ids &&
+                  dtor->qualifier_text_ids[dtor->n_qualifier_segments - 1] !=
+                      c4c::kInvalidText,
+              "out-of-class destructor should retain structured owner TextId metadata");
+
+  expect_true(erase_last != nullptr,
+              "out-of-class template member using a member typedef return should parse");
+  auto has_record_def_or_deferred_owner = [](const c4c::TypeSpec& type) {
+    return type.record_def != nullptr ||
+           (type.tpl_struct_origin_key.base_text_id != c4c::kInvalidText &&
+            type.deferred_member_type_text_id != c4c::kInvalidText &&
+            type.tpl_struct_args.data && type.tpl_struct_args.size > 0) ||
+           (type.tag_text_id != c4c::kInvalidText &&
+            type.namespace_context_id > 0);
+  };
+  expect_true(has_record_def_or_deferred_owner(erase_last->type),
+              "out-of-class member typedef return should carry record_def or structured owner metadata");
+  c4c::Node* local_it = nullptr;
+  if (erase_last && erase_last->body) {
+    for (int i = 0; i < erase_last->body->n_children; ++i) {
+      c4c::Node* stmt = erase_last->body->children[i];
+      if (stmt && stmt->kind == c4c::NK_DECL && stmt->name &&
+          std::string_view(stmt->name) == "it") {
+        local_it = stmt;
+        break;
+      }
+    }
+  }
+  expect_true(local_it && has_record_def_or_deferred_owner(local_it->type),
+              "unqualified reverse_iterator local in out-of-class template member should carry record_def or structured owner metadata");
 }
 
 void test_parser_alias_template_value_probes_use_token_spelling() {
@@ -8746,10 +8862,11 @@ int main() {
   test_parser_record_layout_const_eval_keeps_final_spelling_fallback();
   test_parser_record_layout_const_eval_rejects_structured_tag_fallback();
   test_parser_record_layout_const_eval_accepts_structured_context_match();
-  test_parser_record_layout_const_eval_accepts_unique_structured_record_match();
+  test_parser_record_layout_const_eval_rejects_context_defaulted_textid_match();
   test_parser_record_lookup_by_text_id_is_ambiguity_safe();
   test_parser_incomplete_decl_checks_prefer_record_definition();
   test_parser_qualified_template_record_refs_carry_record_definition();
+  test_parser_out_of_class_template_owner_carriers_survive_destructor_path();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_alias_template_substitution_prefers_param_text_id();
