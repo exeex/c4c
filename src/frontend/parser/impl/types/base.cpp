@@ -757,10 +757,8 @@ void Parser::parse_attributes(TypeSpec* ts) {
                         Node* align_expr = parse_assign_expr(*this);
                         long long align_val = 0;
                         if (align_expr &&
-                            eval_const_int(
-                                align_expr, &align_val,
-                                &definition_state_.struct_tag_def_map,
-                                &binding_state_.const_int_bindings) &&
+                            eval_const_int_with_parser_tables(align_expr,
+                                                              &align_val) &&
                             align_val > 0) {
                             align = align_val;
                         }
@@ -776,9 +774,7 @@ void Parser::parse_attributes(TypeSpec* ts) {
                     consume();
                     Node* sz_expr = parse_assign_expr(*this);
                     long long sz_val = 0;
-                    eval_const_int(sz_expr, &sz_val,
-                                   &definition_state_.struct_tag_def_map,
-                                   &binding_state_.const_int_bindings);
+                    eval_const_int_with_parser_tables(sz_expr, &sz_val);
                     expect(TokenKind::RParen);
                     apply_vector_size_attr(sz_val);
                 }

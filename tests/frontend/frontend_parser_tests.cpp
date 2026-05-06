@@ -6612,6 +6612,78 @@ void test_parser_constexpr_declaration_layout_uses_record_definition_authority()
                 "authority before stale parser-map layout");
 }
 
+void test_parser_type_attribute_layout_uses_record_definition_authority() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::Node* real = parser_test_record(
+      parser, arena, "Real",
+      {parser_test_field(parser, arena, "head",
+                         parser_test_scalar_type(c4c::TB_CHAR)),
+       parser_test_field(parser, arena, "value",
+                         parser_test_scalar_type(c4c::TB_INT))});
+  c4c::Node* stale = parser_test_record(
+      parser, arena, "Stale",
+      {parser_test_field(parser, arena, "head",
+                         parser_test_scalar_type(c4c::TB_CHAR)),
+       parser_test_field(parser, arena, "value",
+                         parser_test_scalar_type(c4c::TB_CHAR))});
+
+  c4c::TypeSpec alias_type = parser_test_scalar_type(c4c::TB_STRUCT);
+  alias_type.tag_text_id = parser_test_text_id(parser, "AttrShared");
+  alias_type.namespace_context_id = parser.current_namespace_context_id();
+  set_legacy_tag_if_present(alias_type, arena.strdup("AttrShared"), 0);
+  alias_type.record_def = real;
+
+  stale->unqualified_text_id = alias_type.tag_text_id;
+  stale->namespace_context_id = alias_type.namespace_context_id;
+  parser.definition_state_.struct_tag_def_map["AttrShared"] = stale;
+  parser.register_typedef_binding(parser_test_text_id(parser, "Alias"),
+                                  alias_type, true);
+
+  c4c::TypeSpec ts = parser_test_scalar_type(c4c::TB_INT);
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::KwAttribute,
+                                 "__attribute__"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "aligned"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::KwSizeof, "sizeof"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::Comma, ","),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier,
+                                 "vector_size"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::KwSizeof, "sizeof"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  });
+  parser.parse_attributes(&ts);
+
+  expect_eq_int(ts.align_bytes, 8,
+                "aligned attribute layout should use direct record_def "
+                "authority before stale parser-map layout");
+  expect_true(ts.is_vector,
+              "vector_size attribute should be applied from the evaluated layout");
+  expect_eq_int(static_cast<int>(ts.vector_bytes), 8,
+                "vector_size attribute layout should use direct record_def "
+                "authority before stale parser-map layout");
+  expect_eq_int(ts.vector_lanes, 2,
+                "vector_size lanes should be finalized from the direct record_def layout");
+}
+
 void test_parser_record_layout_const_eval_rejects_textid_only_map_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -9194,6 +9266,7 @@ int main() {
   test_parser_direct_record_type_head_uses_structured_metadata();
   test_parser_record_layout_const_eval_uses_record_definition_authority();
   test_parser_constexpr_declaration_layout_uses_record_definition_authority();
+  test_parser_type_attribute_layout_uses_record_definition_authority();
   test_parser_record_layout_const_eval_rejects_textid_only_map_authority();
   test_parser_record_layout_const_eval_rejects_structured_tag_fallback();
   test_parser_record_layout_const_eval_rejects_structured_context_map_authority();
