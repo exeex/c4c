@@ -497,6 +497,9 @@ bool has_any_text_name_metadata(const TypeSpec& ts) {
 }
 
 bool same_text_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
+  // Text-name equality is only the name component of record identity. Record
+  // kind is checked by callers through TypeBase, and declaration/completion
+  // authority lives in the Sema record tables rather than this comparison.
   if (lhs.namespace_context_id != rhs.namespace_context_id ||
       lhs.tag_text_id != rhs.tag_text_id ||
       lhs.is_global_qualified != rhs.is_global_qualified ||
@@ -511,6 +514,8 @@ bool same_text_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
 
 bool same_rendered_type_name_compatibility(const TypeSpec& lhs,
                                            const TypeSpec& rhs) {
+  // Rendered-name equality is the last compatibility path for carriers without
+  // structured metadata. It must not be treated as semantic record identity.
   if (has_any_text_name_metadata(lhs) || has_any_text_name_metadata(rhs)) {
     return false;
   }

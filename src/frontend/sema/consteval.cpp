@@ -476,14 +476,19 @@ const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv&
     return &layout_it->second;
   };
 
+  // Constant-layout lookup follows the Sema/HIR record-domain contract:
+  // TypeSpec carries record kind and structured name metadata to the owner
+  // index; rendered strings below are compatibility bridges while parser
+  // carriers migrate, not authoritative identity.
+
   // Path 1: trust ts as-is (works when tag_text_id is in link_name_texts).
   if (auto direct = record_owner_key_from_typespec(ts); direct.has_value()) {
     if (const HirStructDef* def = try_owner_lookup(*direct)) return def;
   }
 
-  // Path 2: canonicalize via link_name_texts->find(rendered_tag). Recovers
-  // from intern-table mismatches (e.g. ts.tag_text_id from parser token
-  // table while owner_index is keyed in HIR link_name_texts).
+  // Path 2: canonicalize a rendered mirror via link_name_texts->find(). This
+  // recovers from intern-table mismatches during the transition, but still ends
+  // at an owner-index lookup keyed by structured record metadata.
   const char* compatibility_tag = typespec_legacy_display_tag_if_present(ts, 0);
   if (env.link_name_texts && compatibility_tag && compatibility_tag[0]) {
     const TextId canonical_id = env.link_name_texts->find(compatibility_tag);

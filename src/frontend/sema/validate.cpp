@@ -777,11 +777,24 @@ class Validator {
       structured_cpp_overload_sigs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
+  // Record-domain tables are keyed by SemaStructuredNameKey and partitioned by
+  // record kind via the destination table. A `struct X` and `union X` do not
+  // share identity with each other or with typedef/value/function tables.
+  //
+  // `structured_record_keys_by_tag_` is a rendered-string mirror for legacy
+  // parser carriers and diagnostics/tests. It is ambiguous-safe compatibility
+  // glue, not the semantic authority for record identity.
   std::unordered_map<std::string, SemaStructuredNameKey> structured_record_keys_by_tag_;
   std::unordered_set<std::string> ambiguous_structured_record_tags_;
+  // Completion belongs to these Sema tables. Forward declarations and later
+  // definitions with the same record-kind/key pair converge here instead of
+  // relying on parser-rendered tag spelling.
   std::unordered_set<SemaStructuredNameKey, SemaStructuredNameKeyHash> complete_structs_by_key_;
   std::unordered_set<SemaStructuredNameKey, SemaStructuredNameKeyHash> complete_unions_by_key_;
   std::unordered_map<const Node*, const Node*> method_owner_records_;
+  // Declaration/reference ownership for record lookup. This table is in the
+  // record domain, separate from structured_globals_, structured_funcs_, and
+  // enum/const maps even when the base TextId is the same.
   std::unordered_map<SemaStructuredNameKey, const Node*, SemaStructuredNameKeyHash>
       struct_defs_by_key_;
   std::unordered_map<std::string, std::vector<const Node*>> struct_defs_by_unqualified_name_;
@@ -1484,6 +1497,11 @@ class Validator {
 
   std::optional<SemaStructuredNameKey> structured_record_key_for_type(
       const TypeSpec& ts) const {
+    // Constant-layout callers are migrating here: TypeSpec supplies record kind
+    // through TB_STRUCT/TB_UNION, while this helper supplies the structured
+    // name metadata used to select the Sema record table. Rendered-tag fallback
+    // below is only a compatibility bridge for carriers that have no structured
+    // metadata yet.
     if (auto key = sema_symbol_name_key(ts.record_def); key.has_value()) {
       return key;
     }
@@ -1502,6 +1520,9 @@ class Validator {
 
   std::optional<SemaStructuredNameKey> structured_record_key_for_type_metadata(
       const TypeSpec& ts) const {
+    // Strict record-domain key extraction for completion/layout checks. This
+    // path never consults rendered strings, so it cannot merge unrelated
+    // typedef/value/function names or stale parser spelling into record tables.
     if (auto key = sema_symbol_name_key(ts.record_def); key.has_value()) {
       return key;
     }
@@ -1516,6 +1537,9 @@ class Validator {
 
   void note_structured_record_key_for_tag(const std::string& tag,
                                           const SemaStructuredNameKey& key) {
+    // Rendered tag mirrors are intentionally lossy. Keep them only while they
+    // map to exactly one structured record key; ambiguous spellings must force
+    // structured lookup instead of choosing a string-shaped winner.
     if (ambiguous_structured_record_tags_.count(tag) > 0) return;
     auto [it, inserted] = structured_record_keys_by_tag_.emplace(tag, key);
     if (!inserted && it->second != key) {
@@ -1529,6 +1553,10 @@ class Validator {
     // Zero-sized structs/unions are a GCC extension; treat them as complete.
     const std::string tag(n->name);
     const auto record_key = sema_symbol_name_key(n);
+    // The declaration node is normalized into the record-domain table keyed by
+    // Sema name metadata. Forward declarations, references, and later
+    // definitions for the same struct/union identity meet through this table;
+    // legacy tag strings are recorded only as compatibility mirrors.
     if (record_key.has_value() && record_key->valid()) {
       note_structured_record_key_for_tag(tag, *record_key);
     }

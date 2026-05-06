@@ -23,9 +23,13 @@ struct ValidateResult {
 
 // Structured semantic name key built from the parser's provisional carrier
 // fields: namespace context, global qualification, qualifier TextId sequence,
-// and base TextId. This key is the input shape for Sema record-domain lookup;
-// parser-rendered strings stay diagnostics/compatibility data, and final
-// record declaration/reference identity belongs to Sema's record tables.
+// and base TextId.
+//
+// Record-domain identity is this key plus the record kind carried by TypeBase
+// or Node::is_union. That domain is intentionally separate from typedef,
+// value, and function identity even when those declarations share the same
+// spelling. Sema record tables own declaration/reference/completion merging;
+// parser-rendered strings are compatibility, diagnostics, and test mirrors.
 struct SemaStructuredNameKey {
   int namespace_context_id = -1;
   bool is_global_qualified = false;
