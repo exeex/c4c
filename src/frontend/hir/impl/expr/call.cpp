@@ -567,7 +567,10 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
       bindings = ded_it->second.bindings;
       nttp_bindings = ded_it->second.nttp_bindings;
     } else {
-      bindings = merge_explicit_and_deduced_type_bindings(n, n->left, tpl_fn, enc);
+      bindings = ctx ? merge_explicit_and_ctx_deduced_type_bindings(
+                           n, n->left, tpl_fn, ctx)
+                     : merge_explicit_and_deduced_type_bindings(
+                           n, n->left, tpl_fn, enc);
       nttp_bindings = build_call_nttp_bindings(
           n->left, tpl_fn, enc_nttp, enc_nttp_by_text);
       resolved_callee_name =

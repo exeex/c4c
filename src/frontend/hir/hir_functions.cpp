@@ -565,11 +565,16 @@ TypeSpec Lowerer::substitute_signature_template_type(
           const std::string pack_base =
               template_param_binding_key_from_text(
                   arg.type, module_ ? module_->link_name_texts.get() : nullptr);
+          const std::string debug_pack_base =
+              (arg.debug_text && arg.debug_text[0]) ? arg.debug_text : "";
           std::vector<std::pair<int, TypeSpec>> pack_types;
-          if (!pack_base.empty() && tpl_bindings) {
+          if (tpl_bindings) {
             for (const auto& [key, concrete] : *tpl_bindings) {
               int pack_index = 0;
-              if (parse_pack_binding_name(key, pack_base, &pack_index)) {
+              if ((!pack_base.empty() &&
+                   parse_pack_binding_name(key, pack_base, &pack_index)) ||
+                  (!debug_pack_base.empty() &&
+                   parse_pack_binding_name(key, debug_pack_base, &pack_index))) {
                 pack_types.push_back({pack_index, concrete});
               }
             }

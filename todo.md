@@ -8,18 +8,17 @@ Current Step Title: Delete TextId-Only Parser-Map Record Fallback
 
 ## Just Finished
 
-Step 4A/4B repaired the remaining parser-owned carrier gap after deleting the
-context-defaulted unique same-`TextId` parser-map fallback from
-`resolve_record_type_spec`. `vector<T, Allocator>::~vector` now parses as an
-out-of-class destructor by carrying the owner metadata from the consumed
-template owner `TypeSpec` into the declarator name and normalizing the function
-type to `void` before incomplete-object checks. Out-of-class template member
-bodies now also consult the current-record dependent member typedef carrier for
-unqualified member typedefs such as `reverse_iterator`.
+Step 4B completed the fallback deletion follow-up without restoring parser-map
+uniqueness. Parser explicit template constructor carriers now preserve
+structured template-record metadata, HIR template deduction can match
+structured template origins and record-def template arg payloads, and
+materialization can expand foreign method-pack refs such as `Args1#0=int`.
 
-Parser tests cover the fallback deletion, stale structured-context rejection,
-the out-of-class destructor owner path, and the repaired `reverse_iterator`
-member-typedef carrier path.
+The final unblock was the specialized constructor handoff: constructor
+overload lowering now avoids template-erased parser-instantiated constructor
+clones, keeps class bindings on constructor overload records, and routes
+explicit-template calls through context-aware deduction so `get<>(first_args)`
+can see the active lowered `FunctionCtx` parameter type.
 
 ## Suggested Next
 
@@ -29,14 +28,18 @@ broader validation if treating this as a milestone.
 ## Watchouts
 
 Do not restore parser-map uniqueness, rendered-key matching, or
-context-defaulted TextId lookup. The accepted route is parser-owned structured
-carrier repair in `base.cpp` and `declarator.cpp`; Sema/HIR files were not
-needed.
+context-defaulted TextId lookup. The existing HIR tests in
+`frontend_hir_lookup_tests` cover structured pack deduction and foreign-pack
+materialization in isolation. The constructor repair is a general
+context-aware deduction and overload-registration fix, not a named-case
+shortcut for `eastl::get` or the runtime fixture.
 
 ## Proof
 
 `test_after.log` records the delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_eastl_vector_parse_recipe)$'`.
-Build passed. `frontend_parser_tests`,
-`frontend_parser_lookup_authority_tests`, and `cpp_eastl_vector_parse_recipe`
-all passed with the Step 4B fallback deletion still in place.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_eastl_vector_parse_recipe|cpp_hir_parser_declarations_residual_structured_metadata|frontend_hir_lookup_tests|cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp)$'`.
+Build passed. `frontend_parser_tests`, `frontend_parser_lookup_authority_tests`,
+`cpp_eastl_vector_parse_recipe`,
+`cpp_hir_parser_declarations_residual_structured_metadata`,
+`frontend_hir_lookup_tests`, and
+`cpp_positive_sema_ctor_init_piecewise_delegating_template_runtime_cpp` passed.

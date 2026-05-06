@@ -39,6 +39,61 @@ bool typespec_base_requires_nominal_identity_for_deduction(TypeBase base) {
          base == TB_TYPEDEF;
 }
 
+bool qualified_name_key_has_base(const QualifiedNameKey& key) {
+  return key.base_text_id != kInvalidText;
+}
+
+bool record_matches_template_origin_key(const Node* record,
+                                        const QualifiedNameKey& key) {
+  if (!record || !qualified_name_key_has_base(key)) return false;
+  if (record->unqualified_text_id != key.base_text_id) return false;
+  return key.context_id < 0 || record->namespace_context_id < 0 ||
+         record->namespace_context_id == key.context_id;
+}
+
+const char* record_template_origin_name_for_deduction(const Node* record) {
+  if (!record) return nullptr;
+  if (record->template_origin_name && record->template_origin_name[0]) {
+    return record->template_origin_name;
+  }
+  if (record->n_template_params > 0) {
+    if (record->unqualified_name && record->unqualified_name[0]) {
+      return record->unqualified_name;
+    }
+    return record->name;
+  }
+  return nullptr;
+}
+
+const char* typespec_template_origin_name_for_deduction(const TypeSpec& ts) {
+  if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) return ts.tpl_struct_origin;
+  return record_template_origin_name_for_deduction(ts.record_def);
+}
+
+bool template_origin_identity_match_for_deduction(const TypeSpec& param_ts,
+                                                  const TypeSpec& arg_ts) {
+  const bool param_has_key =
+      qualified_name_key_has_base(param_ts.tpl_struct_origin_key);
+  const bool arg_has_key =
+      qualified_name_key_has_base(arg_ts.tpl_struct_origin_key);
+  if (param_has_key || arg_has_key) {
+    if (param_has_key && arg_has_key) {
+      return param_ts.tpl_struct_origin_key == arg_ts.tpl_struct_origin_key;
+    }
+    if (param_has_key) {
+      return record_matches_template_origin_key(
+          arg_ts.record_def, param_ts.tpl_struct_origin_key);
+    }
+    return record_matches_template_origin_key(
+        param_ts.record_def, arg_ts.tpl_struct_origin_key);
+  }
+
+  const char* param_origin =
+      typespec_template_origin_name_for_deduction(param_ts);
+  const char* arg_origin = typespec_template_origin_name_for_deduction(arg_ts);
+  return param_origin && arg_origin && std::strcmp(param_origin, arg_origin) == 0;
+}
+
 std::optional<bool> structured_typespec_nominal_match_for_deduction(
     const TypeSpec& existing_ts,
     const TypeSpec& deduced_ts) {
@@ -215,6 +270,39 @@ std::string pack_binding_key(const char* base, int index) {
   return std::string(base ? base : "") + "#" + std::to_string(index);
 }
 
+TemplateArgRefList template_arg_list_for_deduction(
+    const TypeSpec& ts,
+    std::vector<TemplateArgRef>& scratch) {
+  if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
+    return ts.tpl_struct_args;
+  }
+  if (!ts.record_def || ts.record_def->n_template_args <= 0) return {};
+  scratch.reserve(ts.record_def->n_template_args);
+  for (int i = 0; i < ts.record_def->n_template_args; ++i) {
+    TemplateArgRef ref{};
+    const bool is_value =
+        ts.record_def->template_arg_is_value &&
+        ts.record_def->template_arg_is_value[i];
+    ref.kind = is_value ? TemplateArgKind::Value : TemplateArgKind::Type;
+    if (is_value) {
+      ref.value =
+          ts.record_def->template_arg_values ? ts.record_def->template_arg_values[i] : 0;
+      ref.nttp_text_id =
+          ts.record_def->template_arg_nttp_text_ids
+              ? ts.record_def->template_arg_nttp_text_ids[i]
+              : kInvalidText;
+      ref.debug_text =
+          ts.record_def->template_arg_nttp_names
+              ? ts.record_def->template_arg_nttp_names[i]
+              : nullptr;
+    } else if (ts.record_def->template_arg_types) {
+      ref.type = ts.record_def->template_arg_types[i];
+    }
+    scratch.push_back(ref);
+  }
+  return TemplateArgRefList{scratch.data(), static_cast<int>(scratch.size())};
+}
+
 bool deduce_type_pattern_from_type(TypeSpec param_ts,
                                    TypeSpec arg_ts,
                                    const Node* fn_def,
@@ -338,13 +426,22 @@ bool deduce_type_pattern_from_type(TypeSpec param_ts,
       param_ts.array_rank != arg_ts.array_rank) {
     return false;
   }
-  if (!typespec_nominal_match_for_deduction(param_ts, arg_ts)) return false;
 
-  if (param_ts.tpl_struct_args.data && param_ts.tpl_struct_args.size > 0) {
+  std::vector<TemplateArgRef> param_arg_scratch;
+  std::vector<TemplateArgRef> arg_arg_scratch;
+  const TemplateArgRefList param_args =
+      template_arg_list_for_deduction(param_ts, param_arg_scratch);
+  const TemplateArgRefList arg_args =
+      template_arg_list_for_deduction(arg_ts, arg_arg_scratch);
+  if (param_args.data && param_args.size > 0) {
+    if (!template_origin_identity_match_for_deduction(param_ts, arg_ts)) {
+      return false;
+    }
     return deduce_template_arg_list(
-        param_ts.tpl_struct_args, arg_ts.tpl_struct_args, fn_def,
-        deduced_types, deduced_nttp);
+        param_args, arg_args, fn_def, deduced_types, deduced_nttp);
   }
+
+  if (!typespec_nominal_match_for_deduction(param_ts, arg_ts)) return false;
   return true;
 }
 
@@ -765,10 +862,78 @@ TypeBindings Lowerer::try_deduce_template_type_args(
       } else {
         deduced[*param_binding_name] = deduced_ts;
       }
+    } else {
+      auto arg_type = try_infer_arg_type_for_deduction(arg, enclosing_fn);
+      if (!arg_type) continue;
+      NttpBindings ignored_nttp;
+      if (!deduce_type_pattern_from_type(
+              param_ts, *arg_type, fn_def, deduced, ignored_nttp)) {
+        return {};
+      }
     }
   }
 
   return deduced;
+}
+
+std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
+    FunctionCtx* ctx,
+    const Node* call_node) {
+  if (!call_node || !call_node->left || call_node->left->kind != NK_VAR ||
+      !call_node->left->name || !ct_state_) {
+    return std::nullopt;
+  }
+  if (call_node->kind != NK_CALL && call_node->kind != NK_BUILTIN_CALL) {
+    return std::nullopt;
+  }
+
+  const Node* callee_def = ct_state_->find_template_def(call_node->left->name);
+  if (!callee_def || callee_def->n_template_params <= 0) return std::nullopt;
+
+  TypeBindings call_bindings = build_call_bindings(
+      call_node->left, callee_def,
+      ctx && !ctx->tpl_bindings.empty() ? &ctx->tpl_bindings : nullptr);
+  NttpBindings call_nttp_bindings = build_call_nttp_bindings(
+      call_node->left, callee_def,
+      ctx && !ctx->nttp_bindings.empty() ? &ctx->nttp_bindings : nullptr,
+      ctx && !ctx->nttp_bindings_by_text.empty()
+          ? &ctx->nttp_bindings_by_text
+          : nullptr);
+
+  TypeBindings deduced_types;
+  NttpBindings deduced_nttp;
+  if (deduce_template_bindings_from_call_args(
+          callee_def, ctx, call_node->children, call_node->n_children,
+          &deduced_types, &deduced_nttp)) {
+    for (const auto& [name, ts] : deduced_types) {
+      call_bindings.emplace(name, ts);
+    }
+    for (const auto& [name, value] : deduced_nttp) {
+      call_nttp_bindings.emplace(name, value);
+    }
+  }
+  fill_deduced_defaults(call_bindings, callee_def);
+
+  TypeSpec result_ts = callee_def->type;
+  if (!call_bindings.empty()) {
+    result_ts = substitute_signature_template_type(result_ts, &call_bindings);
+  }
+  if (ctx && !ctx->tpl_bindings.empty()) {
+    result_ts = substitute_signature_template_type(result_ts, &ctx->tpl_bindings);
+  }
+
+  TypeBindings resolution_bindings = ctx ? ctx->tpl_bindings : TypeBindings{};
+  for (const auto& [name, ts] : call_bindings) {
+    resolution_bindings[name] = ts;
+  }
+  if (result_ts.tpl_struct_origin) {
+    seed_and_resolve_pending_template_type_if_needed(
+        result_ts, resolution_bindings, call_nttp_bindings, call_node,
+        PendingTemplateTypeKind::OwnerStruct,
+        "ctx-deduction-template-call-result");
+  }
+  resolve_typedef_to_struct(result_ts);
+  return reference_value_ts(result_ts);
 }
 
 bool Lowerer::deduce_template_bindings_from_call_args(
@@ -787,9 +952,40 @@ bool Lowerer::deduce_template_bindings_from_call_args(
     if (!param || !arg) continue;
 
     TypeSpec arg_ts = infer_generic_ctrl_type(ctx, arg);
+    if (ctx && !ctx->tpl_bindings.empty()) {
+      arg_ts = substitute_signature_template_type(arg_ts, &ctx->tpl_bindings);
+      if (arg_ts.tpl_struct_origin) {
+        seed_and_resolve_pending_template_type_if_needed(
+            arg_ts, ctx->tpl_bindings, ctx->nttp_bindings, arg,
+            PendingTemplateTypeKind::OwnerStruct,
+            "ctx-deduction-arg");
+      }
+    }
     resolve_typedef_to_struct(arg_ts);
+    const bool arg_needs_template_call_result =
+        arg->kind == NK_CALL && arg->left &&
+        (arg_ts.base != TB_STRUCT ||
+         (arg_ts.ptr_level == 0 && !arg_ts.record_def &&
+          arg_ts.tag_text_id == kInvalidText));
+    if (arg_needs_template_call_result) {
+      if (auto template_result_ts =
+              try_infer_template_call_result_for_deduction(ctx, arg)) {
+        arg_ts = *template_result_ts;
+        resolve_typedef_to_struct(arg_ts);
+      }
+    }
     if (arg_ts.base != TB_STRUCT && arg->kind == NK_CALL && arg->left) {
       TypeSpec constructed_ts = infer_generic_ctrl_type(ctx, arg->left);
+      if (ctx && !ctx->tpl_bindings.empty()) {
+        constructed_ts =
+            substitute_signature_template_type(constructed_ts, &ctx->tpl_bindings);
+        if (constructed_ts.tpl_struct_origin) {
+          seed_and_resolve_pending_template_type_if_needed(
+              constructed_ts, ctx->tpl_bindings, ctx->nttp_bindings, arg->left,
+              PendingTemplateTypeKind::OwnerStruct,
+              "ctx-deduction-constructed-arg");
+        }
+      }
       resolve_typedef_to_struct(constructed_ts);
       if (constructed_ts.base == TB_STRUCT && constructed_ts.ptr_level == 0) {
         arg_ts = constructed_ts;
@@ -841,6 +1037,29 @@ TypeBindings Lowerer::merge_explicit_and_deduced_type_bindings(
   TypeBindings deduced = try_deduce_template_type_args(call_node, fn_def, enclosing_fn);
   for (const auto& [name, ts] : deduced) {
     bindings.emplace(name, ts);
+  }
+  fill_deduced_defaults(bindings, fn_def);
+  return bindings;
+}
+
+TypeBindings Lowerer::merge_explicit_and_ctx_deduced_type_bindings(
+    const Node* call_node, const Node* call_var, const Node* fn_def,
+    FunctionCtx* ctx) {
+  TypeBindings bindings =
+      build_call_bindings(call_var, fn_def,
+                          ctx && !ctx->tpl_bindings.empty()
+                              ? &ctx->tpl_bindings
+                              : nullptr);
+  if (!call_node || !fn_def || !ctx) return bindings;
+
+  TypeBindings deduced;
+  NttpBindings deduced_nttp;
+  if (deduce_template_bindings_from_call_args(
+          fn_def, ctx, call_node->children, call_node->n_children,
+          &deduced, &deduced_nttp)) {
+    for (const auto& [name, ts] : deduced) {
+      bindings.emplace(name, ts);
+    }
   }
   fill_deduced_defaults(bindings, fn_def);
   return bindings;

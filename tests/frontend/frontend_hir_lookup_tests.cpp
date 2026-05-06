@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -1344,6 +1345,198 @@ void test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag
 
   expect_true(deduced.empty(),
               "repeated type-parameter deduction should reject mismatched record_def despite matching rendered tags");
+}
+
+void test_template_deduction_structured_pack_matches_instantiated_record_origin() {
+  c4c::hir::Lowerer lowerer;
+  c4c::TextTable texts;
+
+  const c4c::TextId fn_text = texts.intern("piecewise_ctor");
+  const c4c::TextId args_text = texts.intern("Args1");
+  const c4c::TextId tuple_text = texts.intern("tuple");
+  const c4c::TextId stale_pattern_text = texts.intern("tuple_T_Args1");
+  const c4c::TextId stale_inst_text = texts.intern("tuple_T_int");
+
+  c4c::Node tuple_primary{};
+  tuple_primary.kind = c4c::NK_STRUCT_DEF;
+  tuple_primary.name = "tuple";
+  tuple_primary.unqualified_name = "tuple";
+  tuple_primary.unqualified_text_id = tuple_text;
+  tuple_primary.namespace_context_id = 7;
+  tuple_primary.n_template_params = 1;
+
+  c4c::TypeSpec pattern_arg_ts{};
+  pattern_arg_ts.array_size = -1;
+  pattern_arg_ts.inner_rank = -1;
+  pattern_arg_ts.base = c4c::TB_TYPEDEF;
+  set_legacy_tag_if_present(pattern_arg_ts, "Args1", 0);
+  pattern_arg_ts.tag_text_id = args_text;
+  pattern_arg_ts.template_param_text_id = args_text;
+  pattern_arg_ts.template_param_index = 0;
+  pattern_arg_ts.template_param_owner_text_id = fn_text;
+  pattern_arg_ts.template_param_owner_namespace_context_id = 7;
+
+  c4c::TemplateArgRef pattern_arg{};
+  pattern_arg.kind = c4c::TemplateArgKind::Type;
+  pattern_arg.type = pattern_arg_ts;
+  c4c::TemplateArgRef pattern_args[] = {pattern_arg};
+
+  c4c::TypeSpec param_ts{};
+  param_ts.array_size = -1;
+  param_ts.inner_rank = -1;
+  param_ts.base = c4c::TB_STRUCT;
+  set_legacy_tag_if_present(param_ts, "StaleTuplePatternRecord", 0);
+  param_ts.tag_text_id = stale_pattern_text;
+  param_ts.record_def = &tuple_primary;
+  param_ts.tpl_struct_origin = "tuple";
+  param_ts.tpl_struct_origin_key.context_id = 7;
+  param_ts.tpl_struct_origin_key.base_text_id = tuple_text;
+  param_ts.tpl_struct_args = c4c::TemplateArgRefList{pattern_args, 1};
+
+  c4c::Node param{};
+  param.kind = c4c::NK_VAR;
+  param.type = param_ts;
+  c4c::Node* params[] = {&param};
+
+  const char* template_params[] = {"Args1"};
+  c4c::TextId template_param_text_ids[] = {args_text};
+  bool template_param_is_pack[] = {true};
+  bool template_param_is_nttp[] = {false};
+  c4c::Node fn_def{};
+  fn_def.kind = c4c::NK_FUNCTION;
+  fn_def.name = "piecewise_ctor";
+  fn_def.unqualified_text_id = fn_text;
+  fn_def.namespace_context_id = 7;
+  fn_def.template_param_names = template_params;
+  fn_def.template_param_name_text_ids = template_param_text_ids;
+  fn_def.template_param_is_pack = template_param_is_pack;
+  fn_def.template_param_is_nttp = template_param_is_nttp;
+  fn_def.n_template_params = 1;
+  fn_def.params = params;
+  fn_def.n_params = 1;
+
+  c4c::TypeSpec int_arg_ts{};
+  int_arg_ts.array_size = -1;
+  int_arg_ts.inner_rank = -1;
+  int_arg_ts.base = c4c::TB_INT;
+  c4c::TemplateArgRef int_arg{};
+  int_arg.kind = c4c::TemplateArgKind::Type;
+  int_arg.type = int_arg_ts;
+  c4c::TemplateArgRef inst_args[] = {int_arg};
+
+  c4c::Node tuple_int{};
+  tuple_int.kind = c4c::NK_STRUCT_DEF;
+  tuple_int.name = "tuple_T_int";
+  tuple_int.unqualified_name = "tuple_T_int";
+  tuple_int.unqualified_text_id = stale_inst_text;
+  tuple_int.namespace_context_id = 7;
+  tuple_int.template_origin_name = "tuple";
+
+  c4c::TypeSpec arg_ts{};
+  arg_ts.array_size = -1;
+  arg_ts.inner_rank = -1;
+  arg_ts.base = c4c::TB_STRUCT;
+  set_legacy_tag_if_present(arg_ts, "StaleTupleInstRecord", 0);
+  arg_ts.tag_text_id = stale_inst_text;
+  arg_ts.record_def = &tuple_int;
+  arg_ts.tpl_struct_origin = "tuple";
+  arg_ts.tpl_struct_origin_key.context_id = 7;
+  arg_ts.tpl_struct_origin_key.base_text_id = tuple_text;
+  arg_ts.tpl_struct_args = c4c::TemplateArgRefList{inst_args, 1};
+
+  c4c::Node arg{};
+  arg.kind = c4c::NK_CAST;
+  arg.type = arg_ts;
+  c4c::Node* args[] = {&arg};
+
+  c4c::hir::TypeBindings deduced_types;
+  c4c::hir::NttpBindings deduced_nttp;
+  const bool deduced = lowerer.deduce_template_bindings_from_call_args(
+      &fn_def, nullptr, args, 1, &deduced_types, &deduced_nttp);
+
+  auto it = deduced_types.find("Args1#0");
+  expect_true(deduced && it != deduced_types.end() &&
+                  it->second.base == c4c::TB_INT,
+              "structured deduction should bind Args1#0=int by tuple origin instead of mismatching concrete instantiated record names");
+}
+
+void test_template_materialization_substitutes_foreign_pack_ref_in_nested_owner() {
+  c4c::hir::Lowerer lowerer;
+  c4c::TextTable texts;
+
+  const c4c::TextId pair_ctor_text = texts.intern("pair");
+  const c4c::TextId args1_text = texts.intern("Args1");
+  const c4c::TextId tuple_text = texts.intern("tuple");
+  const c4c::TextId tuple_param_text = texts.intern("T");
+
+  const char* tuple_param_names[] = {"T"};
+  c4c::TextId tuple_param_text_ids[] = {tuple_param_text};
+  bool tuple_param_is_pack[] = {false};
+  bool tuple_param_is_nttp[] = {false};
+  bool tuple_param_has_default[] = {false};
+  c4c::TypeSpec tuple_param_default_types[1]{};
+  long long tuple_param_default_values[] = {LLONG_MIN};
+
+  c4c::Node tuple_primary{};
+  tuple_primary.kind = c4c::NK_STRUCT_DEF;
+  tuple_primary.name = "eastl::tuple";
+  tuple_primary.unqualified_name = "tuple";
+  tuple_primary.unqualified_text_id = tuple_text;
+  tuple_primary.namespace_context_id = 7;
+  tuple_primary.template_param_names = tuple_param_names;
+  tuple_primary.template_param_name_text_ids = tuple_param_text_ids;
+  tuple_primary.template_param_is_pack = tuple_param_is_pack;
+  tuple_primary.template_param_is_nttp = tuple_param_is_nttp;
+  tuple_primary.template_param_has_default = tuple_param_has_default;
+  tuple_primary.template_param_default_types = tuple_param_default_types;
+  tuple_primary.template_param_default_values = tuple_param_default_values;
+  tuple_primary.n_template_params = 1;
+
+  c4c::TypeSpec foreign_pack_ref{};
+  foreign_pack_ref.array_size = -1;
+  foreign_pack_ref.inner_rank = -1;
+  foreign_pack_ref.base = c4c::TB_TYPEDEF;
+  foreign_pack_ref.tag_text_id = args1_text;
+  foreign_pack_ref.template_param_text_id = args1_text;
+  foreign_pack_ref.template_param_index = 0;
+  foreign_pack_ref.template_param_owner_text_id = pair_ctor_text;
+  foreign_pack_ref.template_param_owner_namespace_context_id = 7;
+
+  c4c::TemplateArgRef tuple_arg{};
+  tuple_arg.kind = c4c::TemplateArgKind::Type;
+  tuple_arg.type = foreign_pack_ref;
+  tuple_arg.debug_text = "Args1";
+  c4c::TemplateArgRef tuple_args[] = {tuple_arg};
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tpl_struct_origin = "eastl::tuple";
+  owner_ts.tpl_struct_origin_key.context_id = 7;
+  owner_ts.tpl_struct_origin_key.base_text_id = tuple_text;
+  owner_ts.tpl_struct_args = c4c::TemplateArgRefList{tuple_args, 1};
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+  c4c::hir::TypeBindings bindings;
+  bindings["Args1#0"] = int_ts;
+
+  const c4c::hir::ResolvedTemplateArgs resolved =
+      lowerer.materialize_template_args(&tuple_primary, owner_ts, bindings, {});
+
+  auto it = resolved.type_bindings.begin();
+  for (; it != resolved.type_bindings.end(); ++it) {
+    if (it->first == "T") break;
+  }
+  expect_true(it != resolved.type_bindings.end() &&
+                  it->second.base == c4c::TB_INT &&
+                  resolved.concrete_args.size() == 1 &&
+                  !resolved.concrete_args[0].is_value &&
+                  resolved.concrete_args[0].type.base == c4c::TB_INT,
+              "template materialization should substitute foreign Args1#0=int instead of preserving the Args1 carrier");
 }
 
 void test_pending_type_ref_uses_structured_debug_payload_not_tag() {
@@ -2928,6 +3121,8 @@ int main() {
   test_compile_time_function_specialization_primitive_args_still_match();
   test_template_deduction_forwarding_consistency_uses_record_def_identity();
   test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag();
+  test_template_deduction_structured_pack_matches_instantiated_record_origin();
+  test_template_materialization_substitutes_foreign_pack_ref_in_nested_owner();
   test_pending_type_ref_uses_structured_debug_payload_not_tag();
   test_pending_type_ref_no_metadata_keeps_shape_payload();
   test_canonical_type_str_uses_structured_record_key_not_tag();

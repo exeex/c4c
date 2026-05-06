@@ -1239,6 +1239,42 @@ TypeSpec Parser::parse_base_type() {
         }
         return spec.deferred_member_type_name ? spec.deferred_member_type_name : "";
     };
+    auto rendered_template_arg_refs_from_parsed_args =
+        [&](const std::vector<ParsedTemplateArg>& args) -> std::string {
+        std::string arg_refs;
+        for (const ParsedTemplateArg& arg : args) {
+            if (!arg_refs.empty()) arg_refs += ",";
+            if (arg.is_value) {
+                if (arg.nttp_name && arg.nttp_name[0])
+                    arg_refs += arg.nttp_name;
+                else
+                    arg_refs += std::to_string(arg.value);
+            } else if (arg.type.tpl_struct_origin ||
+                       arg.type.tpl_struct_origin_key.base_text_id !=
+                           kInvalidText) {
+                arg_refs += "@";
+                if (arg.type.tpl_struct_origin_key.base_text_id !=
+                    kInvalidText) {
+                    arg_refs += parser_text(
+                        arg.type.tpl_struct_origin_key.base_text_id, {});
+                } else {
+                    arg_refs += arg.type.tpl_struct_origin;
+                }
+                arg_refs += ":";
+                arg_refs += template_arg_refs_text(arg.type);
+                const std::string member_name =
+                    deferred_member_lookup_name(arg.type);
+                if (!member_name.empty()) {
+                    arg_refs += "$";
+                    arg_refs += member_name;
+                }
+            } else {
+                const std::string type_name = render_template_arg_ref(arg);
+                arg_refs += type_name.empty() ? "?" : type_name;
+            }
+        }
+        return arg_refs;
+    };
 
     std::function<bool(const TypeSpec&, const std::string&, TextId, TypeSpec*)>
         lookup_struct_member_typedef_recursive_for_type;
@@ -3907,40 +3943,9 @@ TypeSpec Parser::parse_base_type() {
                         }
                     }
                     if (primary_tpl && has_pack_param) {
-                        std::string arg_refs;
-                        for (const auto& arg : actual_args) {
-                            if (!arg_refs.empty()) arg_refs += ",";
-                            if (arg.is_value) {
-                                if (arg.nttp_name && arg.nttp_name[0]) arg_refs += arg.nttp_name;
-                                else arg_refs += std::to_string(arg.value);
-                                } else if (arg.type.tpl_struct_origin ||
-                                           arg.type.tpl_struct_origin_key
-                                                   .base_text_id !=
-                                               kInvalidText) {
-                                arg_refs += "@";
-                                if (arg.type.tpl_struct_origin_key
-                                        .base_text_id != kInvalidText) {
-                                    arg_refs += parser_text(
-                                        arg.type.tpl_struct_origin_key
-                                            .base_text_id,
-                                        {});
-                                } else {
-                                    arg_refs += arg.type.tpl_struct_origin;
-                                }
-                                arg_refs += ":";
-                                arg_refs += template_arg_refs_text(arg.type);
-                                const std::string member_name =
-                                    deferred_member_lookup_name(arg.type);
-                                if (!member_name.empty()) {
-                                    arg_refs += "$";
-                                    arg_refs += member_name;
-                                }
-                            } else {
-                                const std::string type_name =
-                                    render_template_arg_ref(arg);
-                                arg_refs += type_name.empty() ? "?" : type_name;
-                            }
-                        }
+                        const std::string arg_refs =
+                            rendered_template_arg_refs_from_parsed_args(
+                                actual_args);
                         ts.tpl_struct_origin = arena_.strdup(tpl_name.c_str());
                         ts.tpl_struct_origin_key =
                             template_instantiation_name_key_for_direct_emit(
@@ -7327,6 +7332,18 @@ TypeSpec Parser::parse_base_type() {
                     ts.tag_text_id = mangled_text_id;
                     ts.namespace_context_id = mangled_namespace_context;
                     ts.record_def = instantiated_record;
+                    ts.tpl_struct_origin = arena_.strdup(tpl_name.c_str());
+                    ts.tpl_struct_origin_key =
+                        template_instantiation_name_key_for_direct_emit(
+                            *this, primary_tpl, tpl_name);
+                    if (parsed_args_have_simple_structured_carrier(actual_args)) {
+                        set_template_arg_refs_from_parsed_args(&ts, actual_args);
+                    } else {
+                        set_template_arg_debug_refs_text(
+                            &ts,
+                            rendered_template_arg_refs_from_parsed_args(
+                                actual_args));
+                    }
                     set_parse_base_type_legacy_tag_if_present(
                         ts, arena_.strdup(mangled.c_str()), 0);
                 }
@@ -7363,7 +7380,8 @@ TypeSpec Parser::parse_base_type() {
                     const TextId member_text_id =
                         core_input_state_.tokens[core_input_state_.pos + 1].text_id;
                     const bool should_preserve_deferred_template_member =
-                        ts.tpl_struct_origin && ts.tpl_struct_args.size > 0 &&
+                        !ts.record_def && ts.tpl_struct_origin &&
+                        ts.tpl_struct_args.size > 0 &&
                         member == "type";
                     if (should_preserve_deferred_template_member) {
                         consume(); // ::

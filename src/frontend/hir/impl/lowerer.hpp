@@ -983,6 +983,10 @@ class Lowerer {
       TypeBindings* out_type_bindings,
       NttpBindings* out_nttp_bindings);
 
+  std::optional<TypeSpec> try_infer_template_call_result_for_deduction(
+      FunctionCtx* ctx,
+      const Node* call_node);
+
   // Check if deduced bindings cover all required type parameters (those
   // without defaults).
   static bool deduction_covers_all_type_params(const TypeBindings& deduced,
@@ -995,6 +999,9 @@ class Lowerer {
       const Node* call_node, const Node* call_var, const Node* fn_def,
       const TypeBindings* enclosing_bindings = nullptr,
       const Node* enclosing_fn = nullptr);
+  TypeBindings merge_explicit_and_ctx_deduced_type_bindings(
+      const Node* call_node, const Node* call_var, const Node* fn_def,
+      FunctionCtx* ctx);
 
   // ── End template argument deduction ────────────────────────────────────
 

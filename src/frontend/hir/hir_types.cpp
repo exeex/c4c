@@ -1080,7 +1080,10 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
     const Node* tpl_fn = ct_state_->find_template_def(call->left->name);
     if (tpl_fn) {
       TypeBindings bindings =
-          merge_explicit_and_deduced_type_bindings(call, call->left, tpl_fn, enc);
+          ctx ? merge_explicit_and_ctx_deduced_type_bindings(
+                    call, call->left, tpl_fn, const_cast<FunctionCtx*>(ctx))
+              : merge_explicit_and_deduced_type_bindings(
+                    call, call->left, tpl_fn, enc);
       NttpBindings nttp_bindings =
           build_call_nttp_bindings(call->left, tpl_fn, enc_nttp, enc_nttp_by_text);
       std::string resolved_name =
@@ -2571,11 +2574,16 @@ void Lowerer::lower_struct_def(const Node* sd) {
     // Constructors get special handling: stored in struct_constructors_
     // with unique mangled names to support overloading by parameter types.
     if (method->is_constructor) {
+      if (sd->n_template_args > 0 && sd->template_origin_name &&
+          method->n_template_params == 0) {
+        continue;
+      }
       auto& ctors = struct_constructors_[tag];
       int ctor_idx = static_cast<int>(ctors.size());
       std::string mangled = std::string(tag) + "__" + method->name;
       if (ctor_idx > 0) mangled += "__" + std::to_string(ctor_idx);
-      ctors.push_back({mangled, method});
+      ctors.push_back({mangled, method, method_tpl_bindings,
+                       method_nttp_bindings, method_nttp_bindings_by_text});
       // Also register in struct_methods_ so the first ctor is findable.
       if (ctor_idx == 0) {
         std::string key = std::string(tag) + "::" + method->name;

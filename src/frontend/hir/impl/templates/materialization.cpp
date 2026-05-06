@@ -24,6 +24,23 @@ auto assign_typespec_legacy_tag_if_present(T& ts, const char* tag, int)
 
 void assign_typespec_legacy_tag_if_present(TypeSpec&, const char*, long) {}
 
+bool parse_pack_binding_name_hir(const std::string& key,
+                                 const std::string& base,
+                                 int* out_index = nullptr) {
+  if (key.size() <= base.size() + 1) return false;
+  if (key.compare(0, base.size(), base) != 0) return false;
+  if (key[base.size()] != '#') return false;
+  int index = 0;
+  try {
+    index = std::stoi(key.substr(base.size() + 1));
+  } catch (...) {
+    return false;
+  }
+  if (index < 0) return false;
+  if (out_index) *out_index = index;
+  return true;
+}
+
 void assign_decoded_record_identity(TypeSpec& ts,
                                     const Node* record,
                                     TypeBase base,
@@ -143,8 +160,17 @@ struct HirTemplateArgMaterializer {
   std::vector<std::pair<std::string, long long>> merged_nttp_bindings() const;
   bool has_type_binding(const char* param_name) const;
   bool has_nttp_binding(const char* param_name) const;
-  const TypeSpec* find_bound_type_for_param_ref(const TypeSpec& ts) const;
-  TypeSpec substitute_bound_type(TypeSpec ts) const;
+  bool template_param_owner_matches_primary(const TypeSpec& ts) const;
+  std::vector<std::string> type_binding_name_candidates(
+      const TypeSpec& ts,
+      const char* debug_name) const;
+  const TypeSpec* find_bound_type_for_param_ref(
+      const TypeSpec& ts,
+      const char* debug_name = nullptr) const;
+  std::vector<std::pair<int, TypeSpec>> find_bound_type_pack_for_param_ref(
+      const TypeSpec& ts,
+      const char* debug_name = nullptr) const;
+  TypeSpec substitute_bound_type(TypeSpec ts, const char* debug_name = nullptr) const;
   bool decode_type_ref(const std::string& ref, TypeSpec* out_type) const;
   bool can_bind_value_param(const std::string& ref) const;
   bool can_bind_type_param(const std::string& ref) const;
@@ -208,8 +234,44 @@ bool HirTemplateArgMaterializer::has_nttp_binding(const char* param_name) const 
   return false;
 }
 
-const TypeSpec* HirTemplateArgMaterializer::find_bound_type_for_param_ref(
+bool HirTemplateArgMaterializer::template_param_owner_matches_primary(
     const TypeSpec& ts) const {
+  if (!primary_tpl || ts.template_param_owner_text_id == kInvalidText ||
+      primary_tpl->unqualified_text_id == kInvalidText) {
+    return true;
+  }
+  if (ts.template_param_owner_text_id != primary_tpl->unqualified_text_id) {
+    return false;
+  }
+  return ts.template_param_owner_namespace_context_id < 0 ||
+         primary_tpl->namespace_context_id < 0 ||
+         ts.template_param_owner_namespace_context_id ==
+             primary_tpl->namespace_context_id;
+}
+
+std::vector<std::string>
+HirTemplateArgMaterializer::type_binding_name_candidates(
+    const TypeSpec& ts,
+    const char* debug_name) const {
+  std::vector<std::string> names;
+  auto append_unique = [&](std::string name) {
+    if (name.empty()) return;
+    if (std::find(names.begin(), names.end(), name) == names.end()) {
+      names.push_back(std::move(name));
+    }
+  };
+
+  if (debug_name && debug_name[0]) append_unique(debug_name);
+  if (const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+      legacy_tag && legacy_tag[0]) {
+    append_unique(legacy_tag);
+  }
+  return names;
+}
+
+const TypeSpec* HirTemplateArgMaterializer::find_bound_type_for_param_ref(
+    const TypeSpec& ts,
+    const char* debug_name) const {
   if (ts.base != TB_TYPEDEF || !primary_tpl || !primary_tpl->template_param_names) {
     return nullptr;
   }
@@ -228,34 +290,71 @@ const TypeSpec* HirTemplateArgMaterializer::find_bound_type_for_param_ref(
     return it == tpl_bindings.end() ? nullptr : &it->second;
   };
 
-  if (const TypeSpec* bound = binding_for_param_index(ts.template_param_index)) {
-    return bound;
-  }
+  const bool owner_matches = template_param_owner_matches_primary(ts);
+  if (owner_matches) {
+    if (const TypeSpec* bound = binding_for_param_index(ts.template_param_index)) {
+      return bound;
+    }
 
-  const TextId carrier_text_id =
-      ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
-                                                : ts.tag_text_id;
-  if (carrier_text_id != kInvalidText && primary_tpl->template_param_name_text_ids) {
-    for (int i = 0; i < primary_tpl->n_template_params; ++i) {
-      if (primary_tpl->template_param_name_text_ids[i] != carrier_text_id) {
-        continue;
+    const TextId carrier_text_id =
+        ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
+                                                  : ts.tag_text_id;
+    if (carrier_text_id != kInvalidText && primary_tpl->template_param_name_text_ids) {
+      for (int i = 0; i < primary_tpl->n_template_params; ++i) {
+        if (primary_tpl->template_param_name_text_ids[i] != carrier_text_id) {
+          continue;
+        }
+        if (const TypeSpec* bound = binding_for_param_index(i)) return bound;
       }
-      if (const TypeSpec* bound = binding_for_param_index(i)) return bound;
     }
   }
 
   const bool has_structured_param_carrier =
-      ts.template_param_index >= 0 || carrier_text_id != kInvalidText ||
+      ts.template_param_index >= 0 ||
+      ts.template_param_text_id != kInvalidText ||
+      ts.tag_text_id != kInvalidText ||
       ts.template_param_owner_text_id != kInvalidText;
+  for (const std::string& name : type_binding_name_candidates(ts, debug_name)) {
+    auto it = tpl_bindings.find(name);
+    if (it != tpl_bindings.end()) return &it->second;
+  }
+
+  if (has_structured_param_carrier) return nullptr;
   const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
-  if (has_structured_param_carrier || !legacy_tag) return nullptr;
+  if (!legacy_tag) return nullptr;
 
   auto it = tpl_bindings.find(legacy_tag);
   return it == tpl_bindings.end() ? nullptr : &it->second;
 }
 
-TypeSpec HirTemplateArgMaterializer::substitute_bound_type(TypeSpec ts) const {
-  if (const TypeSpec* bound = find_bound_type_for_param_ref(ts)) {
+std::vector<std::pair<int, TypeSpec>>
+HirTemplateArgMaterializer::find_bound_type_pack_for_param_ref(
+    const TypeSpec& ts,
+    const char* debug_name) const {
+  std::vector<std::pair<int, TypeSpec>> pack_entries;
+  if (ts.base != TB_TYPEDEF) return pack_entries;
+
+  for (const std::string& name : type_binding_name_candidates(ts, debug_name)) {
+    for (const auto& [binding_name, bound_type] : tpl_bindings) {
+      int pack_index = 0;
+      if (parse_pack_binding_name_hir(binding_name, name, &pack_index)) {
+        pack_entries.push_back({pack_index, bound_type});
+      }
+    }
+    if (!pack_entries.empty()) break;
+  }
+
+  std::sort(pack_entries.begin(), pack_entries.end(),
+            [](const auto& lhs, const auto& rhs) {
+              return lhs.first < rhs.first;
+            });
+  return pack_entries;
+}
+
+TypeSpec HirTemplateArgMaterializer::substitute_bound_type(
+    TypeSpec ts,
+    const char* debug_name) const {
+  if (const TypeSpec* bound = find_bound_type_for_param_ref(ts, debug_name)) {
     const int outer_ptr_level = ts.ptr_level;
     const bool outer_lref = ts.is_lvalue_ref;
     const bool outer_rref = ts.is_rvalue_ref;
@@ -267,6 +366,44 @@ TypeSpec HirTemplateArgMaterializer::substitute_bound_type(TypeSpec ts) const {
     ts.is_rvalue_ref = !ts.is_lvalue_ref && (ts.is_rvalue_ref || outer_rref);
     ts.is_const = ts.is_const || outer_const;
     ts.is_volatile = ts.is_volatile || outer_volatile;
+  }
+  if (ts.tpl_struct_origin && ts.tpl_struct_args.data &&
+      ts.tpl_struct_args.size > 0) {
+    std::vector<HirTemplateArg> nested_args;
+    nested_args.reserve(ts.tpl_struct_args.size);
+    bool changed = false;
+    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+      const TemplateArgRef& src = ts.tpl_struct_args.data[i];
+      if (src.kind == TemplateArgKind::Type) {
+        const std::vector<std::pair<int, TypeSpec>> pack_entries =
+            find_bound_type_pack_for_param_ref(src.type, src.debug_text);
+        if (!pack_entries.empty()) {
+          for (const auto& [_, pack_type] : pack_entries) {
+            HirTemplateArg arg{};
+            arg.is_value = false;
+            arg.type = pack_type;
+            nested_args.push_back(arg);
+          }
+          changed = true;
+          continue;
+        }
+        const TypeSpec substituted =
+            substitute_bound_type(src.type, src.debug_text);
+        changed = true;
+        HirTemplateArg arg{};
+        arg.is_value = false;
+        arg.type = substituted;
+        nested_args.push_back(arg);
+        continue;
+      }
+      HirTemplateArg arg{};
+      arg.is_value = true;
+      arg.value = src.value;
+      nested_args.push_back(arg);
+    }
+    if (changed) {
+      assign_template_arg_refs_from_hir_args(&ts, nested_args);
+    }
   }
   return ts;
 }
@@ -549,7 +686,13 @@ bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
 
   if (ref.kind == TemplateArgKind::Type &&
       (has_concrete_type(ref.type) || ref.type.tpl_struct_origin)) {
-    out_arg->type = substitute_bound_type(ref.type);
+    const std::vector<std::pair<int, TypeSpec>> pack_entries =
+        find_bound_type_pack_for_param_ref(ref.type, ref.debug_text);
+    if (pack_entries.size() == 1) {
+      out_arg->type = pack_entries.front().second;
+    } else {
+      out_arg->type = substitute_bound_type(ref.type, ref.debug_text);
+    }
     return true;
   }
   return false;
@@ -682,8 +825,27 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
     if (is_pack) {
       int pack_index = 0;
       while (ai < owner_ts.tpl_struct_args.size) {
+        const TemplateArgRef& typed_ref = owner_ts.tpl_struct_args.data[ai];
+        if (typed_ref.kind == TemplateArgKind::Type) {
+          const std::vector<std::pair<int, TypeSpec>> pack_entries =
+              find_bound_type_pack_for_param_ref(typed_ref.type,
+                                                 typed_ref.debug_text);
+          if (!pack_entries.empty()) {
+            ++ai;
+            for (const auto& [_, pack_type] : pack_entries) {
+              HirTemplateArg arg{};
+              arg.is_value = false;
+              arg.type = pack_type;
+              result.concrete_args.push_back(arg);
+              const std::string packed_name =
+                  make_pack_name(param_name, pack_index++);
+              result.type_bindings.push_back({packed_name, arg.type});
+            }
+            continue;
+          }
+        }
         HirTemplateArg arg{};
-        if (!resolve_explicit_typed_arg(pi, owner_ts.tpl_struct_args.data[ai], &arg)) {
+        if (!resolve_explicit_typed_arg(pi, typed_ref, &arg)) {
           break;
         }
         ++ai;
