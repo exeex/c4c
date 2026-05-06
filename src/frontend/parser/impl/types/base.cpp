@@ -1093,15 +1093,18 @@ TypeSpec Parser::parse_base_type() {
             pos_ = saved_pos;
             return reparsed_all ? reparsed_expr : nullptr;
         };
+    constexpr int kMaxTemplateOriginNormalizeDepth = 64;
     auto set_template_arg_refs_from_parsed_args =
         [&](TypeSpec* target, const std::vector<ParsedTemplateArg>& args) {
             if (!target) return;
             target->tpl_struct_args.data = nullptr;
             target->tpl_struct_args.size = 0;
             if (args.empty()) return;
-            std::function<void(TypeSpec*)> preserve_template_origin_spelling =
-                [&](TypeSpec* spec) {
+            std::unordered_set<const TemplateArgRef*> preserving_arg_lists;
+            std::function<void(TypeSpec*, int)> preserve_template_origin_spelling =
+                [&](TypeSpec* spec, int depth) {
                 if (!spec) return;
+                if (depth > kMaxTemplateOriginNormalizeDepth) return;
                 if (!spec->tpl_struct_origin &&
                     spec->tpl_struct_origin_key.base_text_id !=
                         kInvalidText) {
@@ -1132,13 +1135,18 @@ TypeSpec Parser::parse_base_type() {
                     spec->tpl_struct_args.size <= 0) {
                     return;
                 }
+                if (!preserving_arg_lists.insert(spec->tpl_struct_args.data).second) {
+                    return;
+                }
                 for (int ai = 0; ai < spec->tpl_struct_args.size; ++ai) {
                     TemplateArgRef& nested =
                         spec->tpl_struct_args.data[ai];
                     if (nested.kind == TemplateArgKind::Type) {
-                        preserve_template_origin_spelling(&nested.type);
+                        preserve_template_origin_spelling(&nested.type,
+                                                          depth + 1);
                     }
                 }
+                preserving_arg_lists.erase(spec->tpl_struct_args.data);
             };
             target->tpl_struct_args.data =
                 arena_.alloc_array<TemplateArgRef>(args.size());
@@ -1150,7 +1158,7 @@ TypeSpec Parser::parse_base_type() {
                                         : TemplateArgKind::Type;
                 out.type = arg.is_value ? TypeSpec{} : arg.type;
                 if (!arg.is_value) {
-                    preserve_template_origin_spelling(&out.type);
+                    preserve_template_origin_spelling(&out.type, 0);
                 }
                 if (arg.is_value) {
                     out.type.array_size = -1;
@@ -1229,9 +1237,11 @@ TypeSpec Parser::parse_base_type() {
         }
         return refs;
     };
-    std::function<bool(TypeSpec*)> normalize_template_origin_key_spelling =
-        [&](TypeSpec* spec) -> bool {
+    std::unordered_set<const TemplateArgRef*> normalizing_arg_lists;
+    std::function<bool(TypeSpec*, int)> normalize_template_origin_key_spelling =
+        [&](TypeSpec* spec, int depth) -> bool {
         if (!spec) return false;
+        if (depth > kMaxTemplateOriginNormalizeDepth) return false;
         bool changed = false;
         if (spec->tpl_struct_origin_key.base_text_id != kInvalidText) {
             std::string origin;
@@ -1271,13 +1281,17 @@ TypeSpec Parser::parse_base_type() {
             }
         }
         if (spec->tpl_struct_args.data && spec->tpl_struct_args.size > 0) {
+            if (!normalizing_arg_lists.insert(spec->tpl_struct_args.data).second) {
+                return changed;
+            }
             for (int ai = 0; ai < spec->tpl_struct_args.size; ++ai) {
                 TemplateArgRef& arg = spec->tpl_struct_args.data[ai];
                 if (arg.kind == TemplateArgKind::Type &&
-                    normalize_template_origin_key_spelling(&arg.type)) {
+                    normalize_template_origin_key_spelling(&arg.type, depth + 1)) {
                     changed = true;
                 }
             }
+            normalizing_arg_lists.erase(spec->tpl_struct_args.data);
         }
         return changed;
     };
@@ -3801,7 +3815,7 @@ TypeSpec Parser::parse_base_type() {
                                         alias_parse_ok = false;
                                     } else {
                                         normalize_template_origin_key_spelling(
-                                            &ts);
+                                            &ts, 0);
                                         materialize_template_origin_record_def(
                                             &ts);
                                     }

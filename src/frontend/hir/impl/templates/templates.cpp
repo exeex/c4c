@@ -797,7 +797,7 @@ const Node* Lowerer::canonical_template_struct_primary(
       record_template_struct_primary_lookup_parity(origin_it->second);
       return origin_it->second;
     }
-    if (!ts.tpl_struct_origin || !ts.tpl_struct_origin[0]) return nullptr;
+    return nullptr;
   }
   const std::string rendered_origin =
       (ts.tpl_struct_origin && ts.tpl_struct_origin[0])

@@ -5,6 +5,7 @@
 #include <sstream>
 #include <cstring>
 #include <stdexcept>
+#include <unordered_set>
 
 #define finalize_pending_operator_name finalize_pending_operator_name_types_helpers
 #define is_cpp20_requires_clause_decl_boundary \
@@ -47,22 +48,43 @@ static void annotate_template_param_typespec(TypeSpec* ts, const Node* owner) {
 static void annotate_template_param_type_refs(TypeSpec* ts, const Node* owner);
 static void annotate_template_param_type_refs(Node* node, const Node* owner);
 
-static void annotate_template_arg_refs(TemplateArgRefList* refs, const Node* owner) {
+static constexpr int kMaxTemplateParamAnnotateDepth = 64;
+
+static void annotate_template_param_type_refs_impl(
+    TypeSpec* ts, const Node* owner,
+    std::unordered_set<const TemplateArgRef*>& visiting_arg_lists, int depth);
+
+static void annotate_template_arg_refs(
+    TemplateArgRefList* refs, const Node* owner,
+    std::unordered_set<const TemplateArgRef*>& visiting_arg_lists, int depth) {
     if (!refs || !refs->data) return;
+    if (depth > kMaxTemplateParamAnnotateDepth) return;
+    if (!visiting_arg_lists.insert(refs->data).second) return;
     for (int i = 0; i < refs->size; ++i) {
         if (refs->data[i].kind == TemplateArgKind::Type) {
-            annotate_template_param_type_refs(&refs->data[i].type, owner);
+            annotate_template_param_type_refs_impl(
+                &refs->data[i].type, owner, visiting_arg_lists, depth + 1);
         } else if (refs->data[i].kind == TemplateArgKind::Value) {
-            annotate_template_param_type_refs(
-                refs->data[i].type.array_size_expr, owner);
+            annotate_template_param_type_refs(refs->data[i].type.array_size_expr,
+                                              owner);
         }
     }
+    visiting_arg_lists.erase(refs->data);
+}
+
+static void annotate_template_param_type_refs_impl(
+    TypeSpec* ts, const Node* owner,
+    std::unordered_set<const TemplateArgRef*>& visiting_arg_lists, int depth) {
+    if (!ts) return;
+    if (depth > kMaxTemplateParamAnnotateDepth) return;
+    annotate_template_param_typespec(ts, owner);
+    annotate_template_arg_refs(&ts->tpl_struct_args, owner, visiting_arg_lists,
+                               depth);
 }
 
 static void annotate_template_param_type_refs(TypeSpec* ts, const Node* owner) {
-    if (!ts) return;
-    annotate_template_param_typespec(ts, owner);
-    annotate_template_arg_refs(&ts->tpl_struct_args, owner);
+    std::unordered_set<const TemplateArgRef*> visiting_arg_lists;
+    annotate_template_param_type_refs_impl(ts, owner, visiting_arg_lists, 0);
 }
 
 static void annotate_template_param_type_refs(Node* node, const Node* owner) {
@@ -433,10 +455,70 @@ static bool typespec_has_structured_record_carrier_local(const TypeSpec& ts) {
            ts.is_global_qualified || ts.n_qualifier_segments > 0;
 }
 
+static Node* declaration_record_def_for_c_typedef_target(Parser& parser,
+                                                         const TypeSpec& ts) {
+    if (parser.is_cpp_mode() || ts.tag_text_id == kInvalidText) return nullptr;
+
+    Node* match = nullptr;
+    for (const auto& [rendered_tag, record] :
+         parser.definition_state_.struct_tag_def_map) {
+        (void)rendered_tag;
+        if (!record || record->kind != NK_STRUCT_DEF ||
+            record->unqualified_text_id != ts.tag_text_id ||
+            record->n_fields < 0) {
+            continue;
+        }
+        if (ts.namespace_context_id >= 0 &&
+            record->namespace_context_id != ts.namespace_context_id) {
+            continue;
+        }
+        if (match && match != record) return nullptr;
+        match = record;
+    }
+    return match;
+}
+
+static Node* declaration_complete_object_typedef_record_def(Parser& parser,
+                                                            const TypeSpec& ts) {
+    const TextId typedef_text_id =
+        parser.active_context_state_.last_resolved_typedef_text_id;
+    if (typedef_text_id != kInvalidText) {
+        if (const TypeSpec* visible = parser.find_visible_typedef_type(typedef_text_id)) {
+            if (visible->record_def && visible->record_def->kind == NK_STRUCT_DEF &&
+                visible->record_def->n_fields >= 0) {
+                return visible->record_def;
+            }
+            if (Node* def =
+                    declaration_record_def_for_c_typedef_target(parser, *visible)) {
+                return def;
+            }
+        }
+    }
+
+    if (ts.tag_text_id != kInvalidText) {
+        if (const TypeSpec* visible = parser.find_visible_typedef_type(ts.tag_text_id)) {
+            if (visible->record_def && visible->record_def->kind == NK_STRUCT_DEF &&
+                visible->record_def->n_fields >= 0) {
+                return visible->record_def;
+            }
+            if (Node* def =
+                    declaration_record_def_for_c_typedef_target(parser, *visible)) {
+                return def;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
 static Node* declaration_complete_object_record_def(Parser& parser,
                                                     const TypeSpec& ts) {
-    if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+    if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF &&
+        ts.record_def->n_fields >= 0) {
         return ts.record_def;
+    }
+    if (Node* def = declaration_complete_object_typedef_record_def(parser, ts)) {
+        return def;
     }
     if (typespec_has_structured_record_carrier_local(ts)) {
         return nullptr;
