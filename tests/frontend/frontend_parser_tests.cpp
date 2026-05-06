@@ -1513,6 +1513,7 @@ void test_parser_nested_dependent_typename_prefers_record_definition() {
   root->fields = arena.alloc_array<c4c::Node*>(1);
   root->fields[0] = nested_field;
   parser.register_struct_definition_for_testing("Root", root);
+  parser.definition_state_.struct_defs.push_back(root);
 
   parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
@@ -1570,6 +1571,7 @@ void test_parser_nested_dependent_typename_uses_tagless_record_definition() {
   root->fields = arena.alloc_array<c4c::Node*>(1);
   root->fields[0] = nested_field;
   parser.register_struct_definition_for_testing("Root", root);
+  parser.definition_state_.struct_defs.push_back(root);
 
   parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
@@ -2332,6 +2334,7 @@ void test_parser_qualified_functional_cast_owner_requires_structured_authority()
   structured_owner->member_typedef_types[0].base = c4c::TB_INT;
   structured_parser.register_struct_definition_for_testing("Owner",
                                                            structured_owner);
+  structured_parser.definition_state_.struct_defs.push_back(structured_owner);
 
   c4c::Parser::QualifiedNameRef owner_qn;
   owner_qn.qualifier_segments.push_back("ns");
@@ -2467,6 +2470,7 @@ void test_parser_qualified_member_typedef_lookup_requires_structured_metadata() 
   structured_owner->member_typedef_types[0].base = c4c::TB_INT;
   structured_parser.register_struct_definition_for_testing("ns::Owner",
                                                            structured_owner);
+  structured_parser.definition_state_.struct_defs.push_back(structured_owner);
   structured_parser.replace_token_stream_for_testing({
       structured_parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
       structured_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ns"),
@@ -6497,6 +6501,7 @@ void test_parser_direct_record_type_head_uses_structured_metadata() {
       parser.current_namespace_context_id();
   parser.register_struct_definition_for_testing("stale_rendered_key",
                                                 structured_record);
+  parser.definition_state_.struct_defs.push_back(structured_record);
 
   expect_true(c4c::is_known_simple_type_head(parser, structured_text,
                                              "Structured"),
@@ -6917,18 +6922,35 @@ void test_parser_record_lookup_by_text_id_is_ambiguity_safe() {
   record->unqualified_text_id = record_text;
   record->namespace_context_id = 9;
 
-  parser.definition_state_.struct_tag_def_map["Record"] = record;
-  parser.definition_state_.struct_tag_def_map["ns::Record"] = record;
+  c4c::Node* stale_map_record =
+      parser_test_record(parser, arena, "stale::Record", {});
+  stale_map_record->unqualified_text_id = record_text;
+  stale_map_record->namespace_context_id = record->namespace_context_id;
+  c4c::Node* conflicting_map_record =
+      parser_test_record(parser, arena, "conflicting::Record", {});
+  conflicting_map_record->unqualified_text_id = record_text;
+  conflicting_map_record->namespace_context_id =
+      record->namespace_context_id;
+  parser.definition_state_.struct_tag_def_map["Record"] = stale_map_record;
+  parser.definition_state_.struct_tag_def_map["ns::Record"] =
+      conflicting_map_record;
+
+  expect_true(c4c::record_definition_in_context_by_text_id(
+                  parser, record->namespace_context_id, record_text) ==
+                  nullptr,
+              "record lookup should not recover same-context TextId identity from stale parser tag-map entries");
+
+  parser.definition_state_.struct_defs.push_back(record);
 
   expect_true(c4c::record_definition_in_context_by_text_id(
                   parser, record->namespace_context_id, record_text) == record,
-              "record lookup should accept duplicate rendered keys for one structured record node");
+              "record lookup should use structured record definitions instead of conflicting parser tag-map entries");
 
   c4c::Node* other_context =
       parser_test_record(parser, arena, "other::Record", {});
   other_context->unqualified_text_id = record_text;
   other_context->namespace_context_id = 10;
-  parser.definition_state_.struct_tag_def_map["other::Record"] = other_context;
+  parser.definition_state_.struct_defs.push_back(other_context);
 
   expect_true(c4c::record_definition_in_context_by_text_id(
                   parser, record->namespace_context_id, record_text) == record,
@@ -6938,7 +6960,7 @@ void test_parser_record_lookup_by_text_id_is_ambiguity_safe() {
       parser_test_record(parser, arena, "ambiguous::Record", {});
   ambiguous->unqualified_text_id = record_text;
   ambiguous->namespace_context_id = record->namespace_context_id;
-  parser.definition_state_.struct_tag_def_map["ambiguous::Record"] = ambiguous;
+  parser.definition_state_.struct_defs.push_back(ambiguous);
 
   expect_true(c4c::record_definition_in_context_by_text_id(
                   parser, record->namespace_context_id, record_text) ==

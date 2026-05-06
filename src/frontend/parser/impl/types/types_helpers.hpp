@@ -293,10 +293,8 @@ Node* record_definition_in_context_by_text_id(const Parser& parser,
     if (context_id < 0 || name_text_id == kInvalidText) return nullptr;
 
     RecordDefinitionContextLookup lookup;
-    std::unordered_set<Node*> seen_records;
-    for (const auto& entry : parser.definition_state_.struct_tag_def_map) {
-        Node* record = entry.second;
-        if (!record || !seen_records.insert(record).second) continue;
+    for (Node* record : parser.definition_state_.struct_defs) {
+        if (!record) continue;
         if (record->kind != NK_STRUCT_DEF) continue;
         if (record->namespace_context_id != context_id) continue;
         if (record->unqualified_text_id != name_text_id) continue;
