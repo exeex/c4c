@@ -6435,6 +6435,59 @@ void test_parser_tag_only_record_types_carry_incomplete_record_definition() {
               "tag-only struct record identity should preserve the source tag spelling");
 }
 
+void test_parser_c_typedef_name_stays_separate_from_record_tag_identity() {
+  c4c::Lexer lexer("typedef char Shared;\n"
+                   "struct Shared { int field; };\n"
+                   "Shared alias_value;\n"
+                   "struct Shared record_value;\n",
+                   c4c::lex_profile_from(c4c::SourceProfile::C));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::C);
+
+  (void)parse_top_level(parser);
+  (void)parse_top_level(parser);
+  c4c::Node* alias_decl = parse_top_level(parser);
+  c4c::Node* record_decl = parse_top_level(parser);
+
+  const c4c::TypeSpec* typedef_type =
+      parser.find_typedef_type(parser_test_text_id(parser, "Shared"));
+  expect_true(typedef_type != nullptr && typedef_type->base == c4c::TB_CHAR &&
+                  typedef_type->record_def == nullptr,
+              "C typedef/tag separation fixture should retain the typedef "
+              "binding in the ordinary identifier namespace");
+  c4c::Node* record_def = nullptr;
+  for (c4c::Node* candidate : parser.definition_state_.struct_defs) {
+    if (candidate && candidate->unqualified_text_id ==
+                         parser_test_text_id(parser, "Shared")) {
+      record_def = candidate;
+      break;
+    }
+  }
+  expect_true(record_def != nullptr && record_def->kind == c4c::NK_STRUCT_DEF,
+              "C typedef/tag separation fixture should register the record "
+              "definition in structured record storage");
+  expect_true(alias_decl != nullptr && alias_decl->kind == c4c::NK_GLOBAL_VAR,
+              "C typedef/tag separation fixture should parse the typedef use");
+  expect_true(record_decl != nullptr && record_decl->kind == c4c::NK_GLOBAL_VAR,
+              "C typedef/tag separation fixture should parse the tag use");
+
+  expect_true(alias_decl->type.base == c4c::TB_CHAR &&
+                  alias_decl->type.record_def == nullptr,
+              "C typedef identity should not be promoted into record tag "
+              "identity for same-spelling typedef names");
+  expect_true(record_decl->type.base == c4c::TB_STRUCT &&
+                  record_decl->type.record_def == record_def,
+              "C record tag identity should resolve to the same-spelling "
+              "record definition without consuming typedef identity");
+
+  expect_true(typedef_type != nullptr && typedef_type->base == c4c::TB_CHAR &&
+                  typedef_type->record_def == nullptr,
+              "same-spelling record tags should not overwrite the typedef "
+              "binding for the ordinary identifier namespace");
+}
+
 c4c::TypeSpec parser_test_scalar_type(c4c::TypeBase base) {
   c4c::TypeSpec ts{};
   ts.base = base;
@@ -9285,6 +9338,7 @@ int main() {
   test_parser_template_substitution_preserves_record_definition_payloads();
   test_parser_direct_record_types_carry_record_definition();
   test_parser_tag_only_record_types_carry_incomplete_record_definition();
+  test_parser_c_typedef_name_stays_separate_from_record_tag_identity();
   test_parser_direct_record_type_head_uses_structured_metadata();
   test_parser_record_layout_const_eval_uses_record_definition_authority();
   test_parser_constexpr_declaration_layout_uses_record_definition_authority();

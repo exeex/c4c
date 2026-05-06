@@ -833,6 +833,86 @@ void test_sema_record_completeness_uses_structured_metadata_before_rendered_tag(
   }
 }
 
+void test_sema_same_spelling_record_completion_uses_structured_identity() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId shared_text = texts.intern("Shared");
+  const int left_context = parser.ensure_named_namespace_context(
+      parser.current_namespace_context_id(), texts.intern("left"));
+  const int right_context = parser.ensure_named_namespace_context(
+      parser.current_namespace_context_id(), texts.intern("right"));
+
+  auto make_record = [&](const char* rendered_name, int namespace_context,
+                         int n_fields) {
+    c4c::Node* record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    record->name = arena.strdup(rendered_name);
+    record->unqualified_name = arena.strdup("Shared");
+    record->unqualified_text_id = shared_text;
+    record->namespace_context_id = namespace_context;
+    record->n_fields = n_fields;
+    if (n_fields > 0) {
+      record->fields = arena.alloc_array<c4c::Node*>(n_fields);
+      for (int i = 0; i < n_fields; ++i) {
+        c4c::Node* field = parser.make_node(c4c::NK_DECL, 1);
+        field->name = arena.strdup(i == 0 ? "first" : "second");
+        field->unqualified_name = field->name;
+        field->unqualified_text_id =
+            texts.intern(i == 0 ? "first" : "second");
+        field->namespace_context_id = namespace_context;
+        field->type = make_ts(c4c::TB_INT);
+        record->fields[i] = field;
+      }
+    }
+    return record;
+  };
+
+  c4c::Node* left_complete = make_record("left::Shared", left_context, 1);
+  c4c::Node* right_complete = make_record("right::Shared", right_context, 2);
+  c4c::Node* left_forward = make_record("stale_rendered::Shared",
+                                        left_context, -1);
+
+  c4c::TypeSpec carried = make_ts(c4c::TB_STRUCT);
+  carried.record_def = left_forward;
+  carried.tag_text_id = shared_text;
+  carried.namespace_context_id = left_context;
+  set_legacy_typespec_tag(carried, arena.strdup("Shared"));
+
+  c4c::Node* global = parser.make_node(c4c::NK_GLOBAL_VAR, 2);
+  global->name = arena.strdup("uses_left_forward");
+  global->unqualified_name = arena.strdup("uses_left_forward");
+  global->unqualified_text_id = texts.intern("uses_left_forward");
+  global->namespace_context_id = parser.current_namespace_context_id();
+  global->type = carried;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 3;
+  program->children = arena.alloc_array<c4c::Node*>(3);
+  program->children[0] = left_complete;
+  program->children[1] = right_complete;
+  program->children[2] = global;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(result.ok,
+              "Sema record completion should use the structured record key "
+              "for an incomplete same-spelling record instead of ambiguous "
+              "rendered tag identity" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_sema_template_static_member_lookup_rejects_stale_rendered_owner_reentry() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6054,6 +6134,7 @@ int main() {
   test_sema_template_static_member_lookup_rejects_rendered_after_metadata_miss();
   test_sema_static_member_lookup_rejects_rendered_after_metadata_miss();
   test_sema_record_completeness_uses_structured_metadata_before_rendered_tag();
+  test_sema_same_spelling_record_completion_uses_structured_identity();
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
   test_parsed_static_member_alias_owner_uses_canonical_owner_metadata();
   test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift();
