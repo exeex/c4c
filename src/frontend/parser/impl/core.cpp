@@ -214,9 +214,7 @@ bool is_record_projection_type(const Parser& parser, const TypeSpec& type) {
     if (type.base != TB_STRUCT && type.base != TB_UNION) return false;
     if (parser.active_context_state_.current_struct_tag.empty()) return true;
     if (type.record_def) return type.record_def->n_fields >= 0;
-    const Node* record =
-        resolve_record_type_spec(type, &parser.definition_state_.struct_tag_def_map);
-    return record && record->n_fields >= 0;
+    return false;
 }
 
 bool spelling_matches_current_record(std::string_view spelling,

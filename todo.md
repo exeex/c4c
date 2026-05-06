@@ -11,23 +11,28 @@ Current Step Title: Migrate Remaining Parser Record Lookup Families
 Step 4C parser record-constructor classification migration completed. The
 structured helper no longer scans
 `definition_state_.struct_tag_def_map` by `tag_text_id`/namespace context, and
-the focused white-box fixture now proves direct structured typedef metadata
-carrying `record_def` wins over stale rendered tag state.
+the parser core record-projection classifier no longer consults
+`resolve_record_type_spec` or `definition_state_.struct_tag_def_map` when
+`record_def` metadata is missing. The focused lookup-authority fixture now
+proves a stale rendered `struct_tag_def_map` entry cannot make projection
+classification succeed, while direct `record_def` metadata remains accepted.
 
 ## Suggested Next
 
 Supervisor should review and commit this focused Step 4C slice with
 `src/frontend/parser/impl/core.cpp`,
-`tests/frontend/cpp_hir_parser_core_record_ctor_metadata_test.cpp`, and this
-`todo.md` update. The untracked
-`review/step4c_repair_route_review.md` remains outside this packet.
+`tests/frontend/frontend_parser_lookup_authority_tests.cpp`, this `todo.md`
+update, and `test_after.log` if it is tracked in the local workflow. The
+untracked `review/step4c_repair_route_review.md` remains outside this packet.
 
 ## Watchouts
 
 Structured-metadata misses and no-metadata typedef probes still fail as
 expected. This packet did not add parser-map lookup, rendered-name recovery,
 debug-text recovery, `@origin` string recovery, or unique TextId parser-map
-recovery.
+recovery. The remaining `struct_tag_def_map` reference in `core.cpp` belongs to
+the separate legacy record-constructor compatibility fallback, not projection
+classification.
 
 ## Proof
 

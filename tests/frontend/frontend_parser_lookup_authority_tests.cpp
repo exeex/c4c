@@ -5318,6 +5318,50 @@ void test_parser_record_ctor_classification_uses_structured_metadata() {
               "record_def metadata before rendered tag spelling");
 }
 
+void test_parser_record_projection_rejects_stale_struct_tag_map_identity() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId owner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Owner");
+  const c4c::TextId sibling_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Sibling");
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "StructuredNs");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  expect_true(ns_context > 0, "test namespace context should be created");
+  parser.push_namespace_context(ns_context);
+  parser.set_current_struct_tag(owner_text, "Owner");
+
+  c4c::TypeSpec sibling_type{};
+  sibling_type.array_size = -1;
+  sibling_type.inner_rank = -1;
+  sibling_type.base = c4c::TB_STRUCT;
+  sibling_type.tag_text_id = sibling_text;
+  sibling_type.namespace_context_id = parser.current_namespace_context_id();
+  parser.register_structured_typedef_binding_in_context(
+      parser.current_namespace_context_id(), sibling_text, sibling_type);
+
+  c4c::Node stale_record{};
+  stale_record.kind = c4c::NK_STRUCT_DEF;
+  stale_record.name = "Sibling";
+  stale_record.unqualified_name = "Sibling";
+  stale_record.unqualified_text_id = sibling_text;
+  stale_record.namespace_context_id = parser.current_namespace_context_id();
+  stale_record.n_fields = 0;
+  parser.definition_state_.struct_tag_def_map["Sibling"] = &stale_record;
+
+  const c4c::Parser::VisibleNameResult visible =
+      parser.resolve_visible_type(sibling_text);
+  expect_true(visible && visible.source == c4c::Parser::VisibleNameSource::Fallback,
+              "record projection classification should reject stale "
+              "struct_tag_def_map identity when TypeSpec record_def metadata "
+              "is missing");
+}
+
 void test_parser_support_types_compatible_uses_structured_nominal_identity() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5740,6 +5784,7 @@ int main() {
   test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag();
   test_parser_type_compatibility_uses_structured_nominal_identity();
   test_parser_record_ctor_classification_uses_structured_metadata();
+  test_parser_record_projection_rejects_stale_struct_tag_map_identity();
   test_parser_support_types_compatible_uses_structured_nominal_identity();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();
