@@ -8,17 +8,30 @@ Current Step Title: Migrate Remaining Parser Record Lookup Families
 
 ## Just Finished
 
-Step 4C started by splitting parser support record resolution for
-constant-layout evaluation from the broader parser-local compatibility bridge.
-`sizeof`, `alignof`, and `offsetof` now use direct complete `record_def`
-authority for structured records and reject parser tag-map recovery for
-TextId/context-only structured record carriers.
+Step 4C dirty repair review blocked acceptance of the current route. The
+reviewer report `review/step4c_repair_route_review.md` judged the repair
+`drifting from source idea` because HIR rebuilt nested record/template carriers
+from `TemplateArgRef::debug_text`, `@origin:args`, rendered module names, and
+`module_->struct_defs.find(rendered_name)` recovery.
 
 ## Suggested Next
 
-Continue Step 4C by migrating the next parser record lookup family that still
-uses rendered tag maps as semantic authority, keeping parser-local
-compatibility bridges out of structured layout decisions.
+Route the next Step 4C executor packet as a narrowed repair:
+
+- Preserve structured nested template argument carriers through parser-to-HIR
+  lowering.
+- Carry `tpl_struct_origin_key` and nested `TemplateArgRef` metadata as typed
+  data instead of serializing to display text and reparsing it later.
+- Keep the directionally aligned pieces only if they no longer depend on
+  `debug_text` or rendered-name recovery: `tpl_struct_origin_key` realization,
+  recursive nested template struct argument realization, and constructor
+  registration for parser-emitted template struct instances.
+- Treat codegen aggregate-store changes as acceptable only if the executor can
+  prove they are direct fallout from the structured HIR carrier handoff;
+  otherwise split or leave them for supervisor routing.
+- If the executor cannot preserve these carriers with a bounded Step 4C handoff,
+  stop and ask the supervisor to split downstream HIR carrier work into a new
+  `ideas/open/` initiative with reviewer reject signals.
 
 ## Watchouts
 
@@ -27,8 +40,20 @@ for non-layout probes and declaration checks; the stricter helper is private to
 constant layout. Do not route `sizeof`/`alignof`/`offsetof` back through the
 public compatibility bridge for structured carriers.
 
+Do not accept a repair whose semantic identity path reparses
+`TemplateArgRef::debug_text`, `@origin:args`, rendered template instance names,
+or rendered module record names. Those strings may remain diagnostics/display
+metadata only.
+
+Do not use fixture-name matching, expectation downgrades, or supported-path
+weakening to claim Step 4C progress. The known blocker is nested template field
+carriers like `Holder::boxed_pair` / `Holder::paired_box` lowering through
+`Box_T_void` / `Pair_T_void` or `struct<?>`; the repair must address that
+carrier handoff semantically.
+
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_support_residual_structured_metadata|frontend_hir_lookup_tests|cpp_eastl_vector_parse_recipe)$' > test_after.log`
-
-Result: passed; `test_after.log` contains the green proof run.
+No acceptance proof for the dirty Step 4C repair. The previous narrow proof is
+not sufficient because the reviewer rejected the route. The next executor
+should rerun the supervisor-selected Step 4C subset after replacing the
+debug-text/rendered-name recovery path with structured carrier preservation.

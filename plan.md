@@ -187,6 +187,13 @@ Actions:
     structured record lookup.
   - Step 4C: migrate the remaining parser `sizeof`, `alignof`, `offsetof`, and
     support-helper lookup families one executor packet at a time.
+  - Step 4C repair route: if a migrated parser lookup exposes nested template
+    record carriers that arrive in HIR as `struct<?>` or `*_T_void`, preserve
+    the structured carrier graph through parser-to-HIR lowering. Carry
+    `tpl_struct_origin_key` and nested `TemplateArgRef` metadata as typed data;
+    do not rebuild semantic record identity from `TemplateArgRef::debug_text`,
+    `@origin:args` strings, rendered module names, encoded template instance
+    names, or `module_->struct_defs.find(rendered_name)` recovery.
 - When namespace context is present, check the full structured metadata needed
   by the record-domain contract: record kind, namespace context,
   global-qualification state, qualifier `TextId` sequence or equivalent
@@ -198,6 +205,12 @@ Actions:
 - Keep parser provisional metadata available for parse-time needs only.
 - Do not add or widen parser-map fallback authority based on unique `TextId`
   matches, rendered key order, or absence of competing parser-map entries.
+- Do not serialize a structured pending template record carrier into display
+  text and later parse that text back into identity. `debug_text` may remain
+  diagnostic/display metadata only.
+- Keep codegen aggregate-store fallout out of Step 4C unless the executor
+  proves it is directly required by the structured carrier handoff. Otherwise
+  leave it for a separate supervisor-routed slice or follow-up idea.
 - Do not weaken behavior while migration is incomplete.
 
 Completion check:
@@ -215,6 +228,9 @@ Completion check:
   are the same record.
 - Any remaining parser mirror is explicitly documented or named as temporary
   compatibility, diagnostics, testing, or parser-local support.
+- Nested template record carriers such as `Box<Pair<int>>` or
+  `Pair<Box<int>>` lower with concrete structured HIR record identity without
+  reparsing `debug_text`, `@origin:args`, or rendered module names.
 - Narrow behavior tests and build proof are green.
 
 ### Step 5: Add Identity-Focused Tests
@@ -253,7 +269,10 @@ Actions:
   broad module-domain refactor.
 - If a small handoff is sufficient, implement only that bounded handoff.
 - If broader HIR carrier work is required, create a separate `ideas/open/`
-  follow-up instead of expanding this plan.
+  follow-up instead of expanding this plan. The follow-up must include
+  reviewer reject signals against debug-text reparsing, rendered module-name
+  identity recovery, testcase-shaped fixture shortcuts, and broad backend/codegen
+  rewrites claimed as record-carrier progress.
 
 Completion check:
 - HIR no longer needs to rediscover record identity from parser string maps for
