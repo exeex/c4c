@@ -6887,6 +6887,158 @@ void test_parser_incomplete_decl_checks_prefer_record_definition() {
     expect_true(parser.pop_local_binding_scope(),
                 "test fixture should balance the local visible typedef scope");
   }
+
+  auto make_structured_tag_only_type = [](c4c::Parser& parser,
+                                          c4c::Arena& arena) -> c4c::TypeSpec {
+    c4c::TypeSpec alias_ts = parser_test_scalar_type(c4c::TB_STRUCT);
+    alias_ts.tag_text_id = parser_test_text_id(parser, "Shared");
+    alias_ts.namespace_context_id = parser.current_namespace_context_id();
+    set_legacy_tag_if_present(alias_ts, arena.strdup("Shared"), 0);
+    return alias_ts;
+  };
+
+  {
+    c4c::Lexer lexer("Alias global_value;\n", c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    c4c::Node* stale_complete = parser_test_record(parser, arena, "Shared", {});
+    stale_complete->unqualified_text_id = parser_test_text_id(parser, "Shared");
+    stale_complete->namespace_context_id =
+        parser.current_namespace_context_id();
+    parser.definition_state_.struct_tag_def_map["Shared"] = stale_complete;
+    parser.register_typedef_binding(
+        parser_test_text_id(parser, "Alias"),
+        make_structured_tag_only_type(parser, arena), true);
+
+    bool threw = false;
+    try {
+      (void)parse_top_level(parser);
+    } catch (const std::runtime_error&) {
+      threw = true;
+    }
+    expect_true(threw,
+                "top-level declaration checks should reject structured tag-only TypeSpecs instead of recovering completion from the parser map");
+  }
+
+  {
+    c4c::Lexer lexer("Alias local_value;\n", c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    c4c::Node* stale_complete = parser_test_record(parser, arena, "Shared", {});
+    stale_complete->unqualified_text_id = parser_test_text_id(parser, "Shared");
+    stale_complete->namespace_context_id =
+        parser.current_namespace_context_id();
+    parser.definition_state_.struct_tag_def_map["Shared"] = stale_complete;
+
+    const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+    parser.push_local_binding_scope();
+    parser.bind_local_typedef(
+        alias_text, make_structured_tag_only_type(parser, arena));
+
+    bool threw = false;
+    try {
+      (void)c4c::parse_stmt(parser);
+    } catch (const std::runtime_error&) {
+      threw = true;
+    }
+    expect_true(threw,
+                "local declaration checks should reject structured tag-only TypeSpecs instead of recovering completion from the parser map");
+    expect_true(parser.pop_local_binding_scope(),
+                "test fixture should balance the local visible typedef scope");
+  }
+
+  {
+    c4c::Lexer lexer("Alias pending_value;\n", c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    c4c::TypeSpec pending = make_structured_tag_only_type(parser, arena);
+    pending.tpl_struct_origin_key.context_id =
+        parser.current_namespace_context_id();
+    pending.tpl_struct_origin_key.base_text_id =
+        parser_test_text_id(parser, "Box");
+    pending.tpl_struct_args.size = 1;
+    pending.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+    pending.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
+    pending.tpl_struct_args.data[0].type = parser_test_scalar_type(c4c::TB_INT);
+
+    const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+    parser.push_local_binding_scope();
+    parser.bind_local_typedef(alias_text, pending);
+
+    c4c::Node* decl = c4c::parse_stmt(parser);
+    expect_true(decl != nullptr && decl->kind == c4c::NK_DECL,
+                "declaration checks should defer key-only pending template struct carriers to HIR instead of requiring parser-map completion");
+    expect_true(decl->type.tpl_struct_origin_key.base_text_id !=
+                    c4c::kInvalidText,
+                "pending template struct declaration should preserve the structured origin key");
+    expect_true(parser.pop_local_binding_scope(),
+                "test fixture should balance the local visible typedef scope");
+  }
+
+  {
+    c4c::Lexer lexer("Alias pending_value;\n", c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    c4c::TypeSpec pending = make_structured_tag_only_type(parser, arena);
+    pending.tpl_struct_args.size = 1;
+    pending.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+    pending.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
+    pending.tpl_struct_args.data[0].type = parser_test_scalar_type(c4c::TB_INT);
+
+    const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+    parser.push_local_binding_scope();
+    parser.bind_local_typedef(alias_text, pending);
+
+    c4c::Node* decl = c4c::parse_stmt(parser);
+    expect_true(decl != nullptr && decl->kind == c4c::NK_DECL,
+                "declaration checks should defer template-arg structured carriers to HIR without requiring parser-map completion");
+    expect_true(decl->type.tpl_struct_args.size == 1 &&
+                    decl->type.tpl_struct_args.data,
+                "template-arg deferred declaration should preserve structured argument payload");
+    expect_true(parser.pop_local_binding_scope(),
+                "test fixture should balance the local visible typedef scope");
+  }
+
+  {
+    c4c::Lexer lexer("Alias dependent_template_value;\n",
+                     c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    const c4c::TextId type_param_text =
+        parser_test_text_id(parser, "T");
+    c4c::Parser::TemplateScopeParam param{};
+    param.name_text_id = type_param_text;
+    param.name = arena.strdup("T");
+    parser.push_template_scope(
+        c4c::Parser::TemplateScopeKind::FreeFunctionTemplate, {param});
+
+    const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+    parser.push_local_binding_scope();
+    parser.bind_local_typedef(
+        alias_text, make_structured_tag_only_type(parser, arena));
+
+    c4c::Node* decl = c4c::parse_stmt(parser);
+    expect_true(decl != nullptr && decl->kind == c4c::NK_DECL,
+                "declaration checks should defer local typedef record completion inside active template scopes without parser-map recovery");
+    expect_true(parser.pop_local_binding_scope(),
+                "test fixture should balance the local visible typedef scope");
+    parser.pop_template_scope();
+  }
 }
 
 void test_parser_qualified_template_record_refs_carry_record_definition() {

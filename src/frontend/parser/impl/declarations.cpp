@@ -428,6 +428,66 @@ static bool typespec_matches_current_struct_local(Parser& parser,
            lhs_type.context_id == rhs_type.context_id;
 }
 
+static bool typespec_has_structured_record_carrier_local(const TypeSpec& ts) {
+    return ts.tag_text_id != kInvalidText || ts.namespace_context_id >= 0 ||
+           ts.is_global_qualified || ts.n_qualifier_segments > 0;
+}
+
+static Node* declaration_complete_object_record_def(Parser& parser,
+                                                    const TypeSpec& ts) {
+    if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+        return ts.record_def;
+    }
+    if (typespec_has_structured_record_carrier_local(ts)) {
+        return nullptr;
+    }
+    const char* tag = declarations_legacy_typespec_tag_if_present(ts, 0);
+    if (!tag || !tag[0]) return nullptr;
+
+    // Parser-local compatibility for legacy TextId-less declaration carriers.
+    // Structured tag/context/qualifier carriers must not recover completion
+    // through the parser tag map; Sema owns final record identity.
+    const auto it = parser.definition_state_.struct_tag_def_map.find(tag);
+    if (it == parser.definition_state_.struct_tag_def_map.end()) {
+        return nullptr;
+    }
+    Node* def = it->second;
+    return def && def->kind == NK_STRUCT_DEF ? def : nullptr;
+}
+
+static bool declaration_typespec_is_hir_deferred_carrier(const TypeSpec& ts) {
+    return ts.tpl_struct_origin ||
+           ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+           (ts.tpl_struct_args.size > 0 && ts.tpl_struct_args.data) ||
+           ts.deferred_member_type_text_id != kInvalidText ||
+           ts.template_param_text_id != kInvalidText;
+}
+
+static bool declaration_record_completion_deferred_to_hir(Parser& parser,
+                                                          const TypeSpec& ts) {
+    if (declaration_typespec_is_hir_deferred_carrier(ts)) return true;
+    if (ts.tag_text_id == kInvalidText) return false;
+    const TypeSpec* visible = parser.find_visible_typedef_type(ts.tag_text_id);
+    if (visible && declaration_typespec_is_hir_deferred_carrier(*visible)) {
+        return true;
+    }
+    const TextId typedef_text_id =
+        parser.active_context_state_.last_resolved_typedef_text_id;
+    if (typedef_text_id == kInvalidText || typedef_text_id == ts.tag_text_id) {
+        return parser.is_cpp_mode() &&
+               !parser.template_state_.template_scope_stack.empty() &&
+               parser.find_local_visible_typedef_type(ts.tag_text_id) !=
+                   nullptr;
+    }
+    visible = parser.find_visible_typedef_type(typedef_text_id);
+    if (visible && declaration_typespec_is_hir_deferred_carrier(*visible)) {
+        return true;
+    }
+    return parser.is_cpp_mode() &&
+           !parser.template_state_.template_scope_stack.empty() &&
+           parser.find_local_visible_typedef_type(typedef_text_id) != nullptr;
+}
+
 static void append_type_mangled_suffix_local(const Parser& parser,
                                              std::string& out,
                                              const TypeSpec& ts) {
@@ -1053,11 +1113,9 @@ Node* parse_local_decl(Parser& parser) {
     auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
-        if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
+        if (declaration_record_completion_deferred_to_hir(parser, ts)) return false;
         if (typespec_matches_current_struct_local(parser, ts)) return false;
-        Node* def = resolve_record_type_spec(
-            ts, &parser.definition_state_.struct_tag_def_map);
-        if (!def) return true;
+        Node* def = declaration_complete_object_record_def(parser, ts);
         return !def || def->n_fields < 0;
     };
 
@@ -3076,11 +3134,9 @@ top_level_base_ready:
     auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
-        if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
+        if (declaration_record_completion_deferred_to_hir(parser, ts)) return false;
         if (typespec_matches_current_struct_local(parser, ts)) return false;
-        Node* def = resolve_record_type_spec(
-            ts, &parser.definition_state_.struct_tag_def_map);
-        if (!def) return true;
+        Node* def = declaration_complete_object_record_def(parser, ts);
         return !def || def->n_fields < 0;
     };
     if (is_typedef) {

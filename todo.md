@@ -8,48 +8,41 @@ Current Step Title: Migrate Remaining Parser Record Lookup Families
 
 ## Just Finished
 
-Step 4C structured-carrier rework removed the reviewer-blocked HIR semantic
-recovery from `TemplateArgRef::debug_text`, `@origin:args`, rendered module
-names, and `module_->struct_defs.find(rendered_name)`. The parser now keeps
-nested pending template struct arguments in typed `TemplateArgRef` payloads,
-and HIR realizes nested template struct carriers from `tpl_struct_origin_key`
-plus typed args instead of reparsing display text.
+Step 4C declaration-time incomplete object checks now use a declaration-local
+completion path instead of `resolve_record_type_spec(...,
+struct_tag_def_map)`. Direct complete `record_def` remains authoritative,
+current-struct and HIR-deferred template carriers remain allowed, and only
+TextId-less legacy carriers can use the parser tag map as parser-local
+compatibility. Structured tag/context/qualifier carriers without direct
+completion now reject stale parser-map recovery.
 
-Step 4C callable return-type substitution is now repaired. Recursive signature
-template substitution writes back same-size nested `TemplateArgRef`
-substitutions such as `Box<T>` to `Box<int>`, and the return-type preparation
-path no longer re-routes already-realized concrete structured returns through
-template-origin recovery.
+Focused parser coverage now checks top-level and local stale-map rejection for
+structured tag-only records, plus HIR-deferred template/local typedef cases
+needed to preserve EASTL parsing without restoring map authority.
 
 ## Suggested Next
 
-Supervisor should review and commit the completed Step 4C structured-carrier
-repair slice, including the parser/HIR carrier changes, callable return
-substitution fix, directly required template-struct constructor registration,
-and the generic aggregate value typing fallout.
+Supervisor should review and commit this Step 4C declaration-check slice with
+`src/frontend/parser/impl/declarations.cpp`,
+`tests/frontend/frontend_parser_tests.cpp`, and this `todo.md` update. The
+untracked `review/step4c_repair_route_review.md` remains outside this packet.
 
 ## Watchouts
 
-`resolve_record_type_spec` still preserves a parser-local compatibility bridge
-for non-layout probes and declaration checks; the stricter helper is private to
-constant layout. Do not route `sizeof`/`alignof`/`offsetof` back through the
-public compatibility bridge for structured carriers.
+The declaration helper intentionally does not recover structured tag TextId,
+namespace, or qualifier carriers through `struct_tag_def_map`. The remaining
+fallback is named/commented as parser-local compatibility for TextId-less
+legacy declaration carriers only.
 
-Do not accept a repair whose semantic identity path reparses
-`TemplateArgRef::debug_text`, `@origin:args`, rendered template instance names,
-or rendered module record names. Those strings may remain diagnostics/display
-metadata only.
-
-Do not use fixture-name matching, expectation downgrades, or supported-path
-weakening to claim Step 4C progress. The known blocker is nested template field
-carriers like `Holder::boxed_pair` / `Holder::paired_box` lowering through
-`Box_T_void` / `Pair_T_void` or `struct<?>`; this packet repaired that field
-handoff and the nested template function return signature.
+EASTL still depends on parser-local grammar deferral for active template-scope
+local typedef records whose final `TypeSpec` has no direct record carrier. This
+packet preserves that by deferring to HIR/Sema rather than by consulting the
+parser record map.
 
 ## Proof
 
 Proof run:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_support_residual_structured_metadata|frontend_hir_lookup_tests|cpp_eastl_vector_parse_recipe|cpp_positive_sema_ctor_init_delegating_unqualified_template_runtime_cpp|cpp_positive_sema_ctor_init_member_default_value_init_runtime_cpp|cpp_positive_sema_ctor_init_member_typedef_ctor_runtime_cpp|cpp_positive_sema_template_struct_advanced_cpp)$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_declarations_residual_structured_metadata|cpp_hir_parser_type_base_residual_structured_metadata|cpp_eastl_vector_parse_recipe|negative_tests_bad_sizeof_incomplete_struct_type|cpp_positive_sema_template_struct_advanced_cpp)$' > test_after.log`
 
-Result: passed, 9/9 tests. Proof log: `test_after.log`.
+Result: passed, 7/7 tests. Proof log: `test_after.log`.
