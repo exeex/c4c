@@ -61,6 +61,9 @@ void test_record_ctor_type_prefers_metadata_over_rendered_tag() {
   box_def->unqualified_text_id = box_text_id;
   box_def->namespace_context_id = 0;
   parser.definition_state_.defined_struct_tags.insert("StaleBox");
+  c4c::Node* stale_box_def = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  stale_box_def->name = "StaleBox";
+  parser.definition_state_.struct_tag_def_map["StaleBox"] = stale_box_def;
 
   c4c::TypeSpec box_record{};
   box_record.base = c4c::TB_STRUCT;

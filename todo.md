@@ -13,26 +13,31 @@ structured helper no longer scans
 `definition_state_.struct_tag_def_map` by `tag_text_id`/namespace context, and
 the parser core record-projection classifier no longer consults
 `resolve_record_type_spec` or `definition_state_.struct_tag_def_map` when
-`record_def` metadata is missing. The focused lookup-authority fixture now
-proves a stale rendered `struct_tag_def_map` entry cannot make projection
-classification succeed, while direct `record_def` metadata remains accepted.
+`record_def` metadata is missing. The remaining record-constructor
+classification fallback no longer treats `definition_state_.defined_struct_tags`
+or `definition_state_.struct_tag_def_map` as semantic record identity for
+rendered/tag-only typedef probes; the retained branch is documented as
+template-primary compatibility only. Focused metadata fixtures now seed stale
+`defined_struct_tags` and `struct_tag_def_map` entries and still prove
+structured metadata succeeds while structured misses and no-metadata typedefs
+fail.
 
 ## Suggested Next
 
 Supervisor should review and commit this focused Step 4C slice with
 `src/frontend/parser/impl/core.cpp`,
+`tests/frontend/cpp_hir_parser_core_record_ctor_metadata_test.cpp`,
 `tests/frontend/frontend_parser_lookup_authority_tests.cpp`, this `todo.md`
 update, and `test_after.log` if it is tracked in the local workflow. The
-untracked `review/step4c_repair_route_review.md` remains outside this packet.
+untracked review artifacts remain outside this packet.
 
 ## Watchouts
 
 Structured-metadata misses and no-metadata typedef probes still fail as
 expected. This packet did not add parser-map lookup, rendered-name recovery,
 debug-text recovery, `@origin` string recovery, or unique TextId parser-map
-recovery. The remaining `struct_tag_def_map` reference in `core.cpp` belongs to
-the separate legacy record-constructor compatibility fallback, not projection
-classification.
+recovery. Any remaining `struct_tag_def_map` references in parser core belong to
+other lookup families, not record-constructor classification identity.
 
 ## Proof
 

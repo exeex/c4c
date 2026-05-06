@@ -5283,6 +5283,7 @@ void test_parser_record_ctor_classification_uses_structured_metadata() {
   parser.register_typedef_binding(structured_alias_text, structured_record,
                                   false);
   parser.definition_state_.defined_struct_tags.insert("StaleRenderedRecord");
+  parser.definition_state_.struct_tag_def_map["StaleRenderedRecord"] = &record;
 
   c4c::TypeSpec query{};
   query.array_size = -1;
