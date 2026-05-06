@@ -411,7 +411,7 @@ LoadedAssignableValue StmtEmitter::emit_load_assignable_value(FnCtx& ctx,
 
   loaded.value_ts = lhs.pointee_ts;
   loaded.value = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirLoadOp{loaded.value, llvm_ty(lhs.pointee_ts), lhs.ptr});
+  emit_lir_op(ctx, lir::LirLoadOp{loaded.value, llvm_value_ty(mod_, lhs.pointee_ts), lhs.ptr});
   return loaded;
 }
 
@@ -434,7 +434,7 @@ std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const Assignabl
                                       std::to_string(sizeof_ts(mod_, lhs.pointee_ts)), false});
     return value;
   }
-  emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(lhs.pointee_ts), value, lhs.ptr});
+  emit_lir_op(ctx, lir::LirStoreOp{llvm_value_ty(mod_, lhs.pointee_ts), value, lhs.ptr});
   return value;
 }
 

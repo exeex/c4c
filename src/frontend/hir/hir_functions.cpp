@@ -559,6 +559,7 @@ TypeSpec Lowerer::substitute_signature_template_type(
     if (target.tpl_struct_args.data && target.tpl_struct_args.size > 0) {
       std::vector<TemplateArgRef> rebound;
       rebound.reserve(target.tpl_struct_args.size);
+      bool changed = false;
       for (int i = 0; i < target.tpl_struct_args.size; ++i) {
         TemplateArgRef arg = target.tpl_struct_args.data[i];
         if (arg.kind == TemplateArgKind::Type) {
@@ -590,14 +591,17 @@ TypeSpec Lowerer::substitute_signature_template_type(
               expanded.type = concrete;
               rebound.push_back(expanded);
             }
+            changed = true;
             continue;
           } else {
             self(arg.type, self);
+            changed = true;
           }
         }
         rebound.push_back(arg);
       }
-      if (static_cast<int>(rebound.size()) != target.tpl_struct_args.size) {
+      if (changed ||
+          static_cast<int>(rebound.size()) != target.tpl_struct_args.size) {
         TemplateArgRef* data = new TemplateArgRef[rebound.size()]();
         for (size_t ri = 0; ri < rebound.size(); ++ri) data[ri] = rebound[ri];
         target.tpl_struct_args.data = data;
@@ -695,6 +699,13 @@ void Lowerer::resolve_signature_template_type_if_needed(
     const Node* span_node,
     const std::string& context_name) {
   if (!tpl_bindings) return;
+  if (!ts.tpl_struct_origin &&
+      ts.tpl_struct_origin_key.base_text_id == kInvalidText &&
+      ts.tpl_struct_args.size <= 0 &&
+      ts.base != TB_TYPEDEF &&
+      !ts.deferred_member_type_name) {
+    return;
+  }
   if (!ts.tpl_struct_origin) {
     recover_template_struct_identity_from_tag(&ts, current_struct_tag);
   }

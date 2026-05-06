@@ -2346,6 +2346,14 @@ void Lowerer::lower_struct_def(const Node* sd) {
           struct_owner_key, hf.field_text_id, hf.member_symbol_id);
     }
     TypeSpec ft = f->type;
+    if (resolved_types_) {
+      if (auto ct = resolved_types_->lookup(f)) {
+        TypeSpec resolved_ft = sema::typespec_from_canonical(*ct);
+        if (resolved_ft.base != TB_VOID || ft.base == TB_VOID) {
+          ft = resolved_ft;
+        }
+      }
+    }
     auto apply_field_template_bindings =
         [&](TypeSpec& target, const auto& self) -> void {
           apply_template_typedef_bindings(
@@ -2358,8 +2366,12 @@ void Lowerer::lower_struct_def(const Node* sd) {
             if (arg.kind != TemplateArgKind::Type) continue;
             self(arg.type, self);
             const std::string debug_text = encode_template_type_arg_ref_hir(arg.type);
-            arg.debug_text =
-                debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+            if (!(arg.type.base == TB_VOID && arg.debug_text &&
+                  arg.debug_text[0] &&
+                  std::strcmp(arg.debug_text, "void") != 0)) {
+              arg.debug_text =
+                  debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+            }
           }
         };
     apply_field_template_bindings(ft, apply_field_template_bindings);
@@ -2380,6 +2392,53 @@ void Lowerer::lower_struct_def(const Node* sd) {
       while (resolve_struct_member_typedef_if_ready(&ft)) {
       }
     }
+    auto realize_field_template_structs =
+        [&](TypeSpec& target, const auto& self) -> void {
+          if (!target.tpl_struct_origin &&
+              target.tpl_struct_origin_key.base_text_id != kInvalidText) {
+            if (const Node* primary =
+                    canonical_template_struct_primary(target, nullptr)) {
+              if (primary->template_origin_name &&
+                  primary->template_origin_name[0]) {
+                target.tpl_struct_origin = primary->template_origin_name;
+              } else if (primary->name && primary->name[0]) {
+                target.tpl_struct_origin = primary->name;
+              } else if (primary->unqualified_name &&
+                         primary->unqualified_name[0]) {
+                target.tpl_struct_origin = primary->unqualified_name;
+              }
+            }
+          }
+          if (target.tpl_struct_args.data && target.tpl_struct_args.size > 0) {
+            for (int ai = 0; ai < target.tpl_struct_args.size; ++ai) {
+              TemplateArgRef& arg = target.tpl_struct_args.data[ai];
+              if (arg.kind != TemplateArgKind::Type) continue;
+              self(arg.type, self);
+              const std::string debug_text =
+                  encode_template_type_arg_ref_hir(arg.type);
+              arg.debug_text =
+                  debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+            }
+          }
+          if (!target.tpl_struct_origin &&
+              target.tpl_struct_origin_key.base_text_id == kInvalidText) {
+            return;
+          }
+          if (target.tpl_struct_args.data && target.tpl_struct_args.size > 0) {
+            for (int ai = 0; ai < target.tpl_struct_args.size; ++ai) {
+              const TemplateArgRef& arg = target.tpl_struct_args.data[ai];
+              if (arg.kind != TemplateArgKind::Type) continue;
+              if (!has_concrete_type(arg.type) && !arg.type.tpl_struct_origin &&
+                  arg.type.tpl_struct_origin_key.base_text_id == kInvalidText) {
+                return;
+              }
+            }
+          }
+          realize_template_struct_if_needed(
+              target, struct_tpl_bindings, struct_nttp_bindings);
+          resolve_typedef_to_struct(target);
+        };
+    realize_field_template_structs(ft, realize_field_template_structs);
     if (ft.base == TB_STRUCT || ft.base == TB_UNION) {
       auto apply_record_owner_key = [&](const HirRecordOwnerKey& owner_key,
                                         const Node* owner_node) {

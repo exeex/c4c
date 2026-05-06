@@ -167,7 +167,8 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
   TypeSpec rhs_ts{};
   std::string rhs = emit_rval_id(ctx, *d.init, rhs_ts);
   const std::string ty =
-      (d.type.spec.array_rank > 0) ? llvm_alloca_ty(d.type.spec) : llvm_ty(d.type.spec);
+      (d.type.spec.array_rank > 0) ? llvm_alloca_ty(mod_, d.type.spec)
+                                   : llvm_value_ty(mod_, d.type.spec);
   const bool is_agg_or_array =
       d.type.spec.array_rank > 0 ||
       (d.type.spec.is_vector && d.type.spec.vector_lanes > 0) ||

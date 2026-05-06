@@ -505,6 +505,16 @@ void Lowerer::instantiate_template_struct_body(
     const TemplateStructInstanceKey& instance_key) {
   if (module_->struct_defs.count(mangled) ||
       instantiated_tpl_struct_keys_.count(instance_key)) {
+    const auto existing = module_->struct_defs.find(mangled);
+    if (existing != module_->struct_defs.end() &&
+        struct_constructors_.find(mangled) == struct_constructors_.end()) {
+      std::optional<HirRecordOwnerKey> owner_key =
+          make_template_struct_instance_owner_key(
+              existing->second, primary_tpl, instance_key);
+      register_instantiated_template_struct_methods(
+          mangled, owner_key, tpl_def, selected_pattern.type_bindings,
+          selected_pattern.nttp_bindings);
+    }
     return;
   }
   instantiated_tpl_struct_keys_.insert(instance_key);

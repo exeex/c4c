@@ -797,7 +797,7 @@ const Node* Lowerer::canonical_template_struct_primary(
       record_template_struct_primary_lookup_parity(origin_it->second);
       return origin_it->second;
     }
-    return nullptr;
+    if (!ts.tpl_struct_origin || !ts.tpl_struct_origin[0]) return nullptr;
   }
   const std::string rendered_origin =
       (ts.tpl_struct_origin && ts.tpl_struct_origin[0])
@@ -843,7 +843,10 @@ void Lowerer::realize_template_struct_if_needed(
     const TypeBindings& tpl_bindings,
     const NttpBindings& nttp_bindings,
     const Node* primary_tpl) {
-  if (!ts.tpl_struct_origin) return;
+  if (!ts.tpl_struct_origin &&
+      ts.tpl_struct_origin_key.base_text_id == kInvalidText) {
+    return;
+  }
   realize_template_struct(
       ts, canonical_template_struct_primary(ts, primary_tpl),
       tpl_bindings, nttp_bindings);
@@ -894,15 +897,52 @@ void Lowerer::realize_template_struct(
     const Node* primary_tpl,
     const TypeBindings& tpl_bindings,
     const NttpBindings& nttp_bindings) {
-  if (!primary_tpl && !ts.tpl_struct_origin) return;
+  if (!primary_tpl && !ts.tpl_struct_origin &&
+      ts.tpl_struct_origin_key.base_text_id == kInvalidText) {
+    return;
+  }
   const char* origin = ts.tpl_struct_origin;
   if (!primary_tpl && origin) primary_tpl = find_template_struct_primary(origin);
   if (!primary_tpl) return;
   if (!origin) origin = primary_tpl->name;
   if (primary_tpl->name) ts.tpl_struct_origin = primary_tpl->name;
+  auto preserve_nested_template_origin_spelling =
+      [&](TypeSpec& target, const auto& self) -> void {
+        if (!target.tpl_struct_origin &&
+            target.tpl_struct_origin_key.base_text_id != kInvalidText) {
+          if (const Node* nested_primary =
+                  canonical_template_struct_primary(target, nullptr)) {
+            if (nested_primary->template_origin_name &&
+                nested_primary->template_origin_name[0]) {
+              target.tpl_struct_origin = nested_primary->template_origin_name;
+            } else if (nested_primary->name && nested_primary->name[0]) {
+              target.tpl_struct_origin = nested_primary->name;
+            } else if (nested_primary->unqualified_name &&
+                       nested_primary->unqualified_name[0]) {
+              target.tpl_struct_origin = nested_primary->unqualified_name;
+            }
+          }
+        }
+        if (!target.tpl_struct_args.data || target.tpl_struct_args.size <= 0) {
+          return;
+        }
+        for (int ai = 0; ai < target.tpl_struct_args.size; ++ai) {
+          TemplateArgRef& arg = target.tpl_struct_args.data[ai];
+          if (arg.kind == TemplateArgKind::Type) self(arg.type, self);
+        }
+      };
+  preserve_nested_template_origin_spelling(
+      ts, preserve_nested_template_origin_spelling);
 
   ResolvedTemplateArgs resolved =
       materialize_template_args(primary_tpl, ts, tpl_bindings, nttp_bindings);
+  for (auto& arg : resolved.concrete_args) {
+    if (arg.is_value) continue;
+    if (arg.type.tpl_struct_origin ||
+        arg.type.tpl_struct_origin_key.base_text_id != kInvalidText) {
+      realize_template_struct_if_needed(arg.type, tpl_bindings, nttp_bindings);
+    }
+  }
   bool has_generic_type_arg = false;
   for (const auto& arg : resolved.concrete_args) {
     if (!arg.is_value && !has_concrete_type(arg.type) && !arg.type.tpl_struct_origin) {
@@ -911,7 +951,11 @@ void Lowerer::realize_template_struct(
   }
 
   for (const auto& arg : resolved.concrete_args) {
-    if (!arg.is_value && arg.type.tpl_struct_origin) return;
+    if (!arg.is_value &&
+        (arg.type.tpl_struct_origin ||
+         arg.type.tpl_struct_origin_key.base_text_id != kInvalidText)) {
+      return;
+    }
   }
 
   TemplateStructEnv tpl_env = build_template_struct_env(primary_tpl);
@@ -956,6 +1000,7 @@ void Lowerer::realize_template_struct(
   }
   if (!ts.deferred_member_type_name) {
     ts.tpl_struct_origin = nullptr;
+    ts.tpl_struct_origin_key = {};
     ts.tpl_struct_args.data = nullptr;
     ts.tpl_struct_args.size = 0;
   }

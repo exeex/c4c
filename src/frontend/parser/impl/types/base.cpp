@@ -1099,6 +1099,47 @@ TypeSpec Parser::parse_base_type() {
             target->tpl_struct_args.data = nullptr;
             target->tpl_struct_args.size = 0;
             if (args.empty()) return;
+            std::function<void(TypeSpec*)> preserve_template_origin_spelling =
+                [&](TypeSpec* spec) {
+                if (!spec) return;
+                if (!spec->tpl_struct_origin &&
+                    spec->tpl_struct_origin_key.base_text_id !=
+                        kInvalidText) {
+                    const Node* primary =
+                        find_template_struct_primary(
+                            spec->tpl_struct_origin_key);
+                    if (!primary &&
+                        spec->tpl_struct_origin_key.context_id >= 0) {
+                        primary = find_template_struct_primary(
+                            spec->tpl_struct_origin_key.context_id,
+                            spec->tpl_struct_origin_key.base_text_id);
+                    }
+                    if (primary && primary->template_origin_name &&
+                        primary->template_origin_name[0]) {
+                        spec->tpl_struct_origin =
+                            arena_.strdup(primary->template_origin_name);
+                    } else if (primary && primary->name &&
+                               primary->name[0]) {
+                        spec->tpl_struct_origin =
+                            arena_.strdup(primary->name);
+                    } else if (primary && primary->unqualified_name &&
+                               primary->unqualified_name[0]) {
+                        spec->tpl_struct_origin =
+                            arena_.strdup(primary->unqualified_name);
+                    }
+                }
+                if (!spec->tpl_struct_args.data ||
+                    spec->tpl_struct_args.size <= 0) {
+                    return;
+                }
+                for (int ai = 0; ai < spec->tpl_struct_args.size; ++ai) {
+                    TemplateArgRef& nested =
+                        spec->tpl_struct_args.data[ai];
+                    if (nested.kind == TemplateArgKind::Type) {
+                        preserve_template_origin_spelling(&nested.type);
+                    }
+                }
+            };
             target->tpl_struct_args.data =
                 arena_.alloc_array<TemplateArgRef>(args.size());
             target->tpl_struct_args.size = static_cast<int>(args.size());
@@ -1108,6 +1149,9 @@ TypeSpec Parser::parse_base_type() {
                 out.kind = arg.is_value ? TemplateArgKind::Value
                                         : TemplateArgKind::Type;
                 out.type = arg.is_value ? TypeSpec{} : arg.type;
+                if (!arg.is_value) {
+                    preserve_template_origin_spelling(&out.type);
+                }
                 if (arg.is_value) {
                     out.type.array_size = -1;
                     out.type.inner_rank = -1;
@@ -1123,18 +1167,23 @@ TypeSpec Parser::parse_base_type() {
                     : arena_.strdup(debug_ref.c_str());
             }
         };
-    auto parsed_args_have_simple_structured_carrier =
+    auto parsed_args_have_structured_carrier =
         [](const std::vector<ParsedTemplateArg>& args) -> bool {
         if (args.empty()) return false;
         for (const ParsedTemplateArg& arg : args) {
             if (arg.is_value) return true;
-            if (arg.type.tpl_struct_origin ||
+            if (arg.type.base != TB_VOID ||
+                arg.type.tpl_struct_origin ||
+                arg.type.tpl_struct_origin_key.base_text_id != kInvalidText ||
+                arg.type.record_def ||
+                arg.type.tag_text_id != kInvalidText ||
+                arg.type.template_param_text_id != kInvalidText ||
+                arg.type.deferred_member_type_text_id != kInvalidText ||
                 (arg.type.tpl_struct_args.data &&
-                 arg.type.tpl_struct_args.size > 0)) {
-                return false;
-            }
+                 arg.type.tpl_struct_args.size > 0))
+                return true;
         }
-        return true;
+        return false;
     };
     auto set_template_arg_debug_refs_text =
         [&](TypeSpec* target, const std::string& refs_text) {
@@ -3950,7 +3999,7 @@ TypeSpec Parser::parse_base_type() {
                         ts.tpl_struct_origin_key =
                             template_instantiation_name_key_for_direct_emit(
                                 *this, primary_tpl, tpl_name);
-                        if (parsed_args_have_simple_structured_carrier(actual_args))
+                        if (parsed_args_have_structured_carrier(actual_args))
                             set_template_arg_refs_from_parsed_args(&ts, actual_args);
                         else
                             set_template_arg_debug_refs_text(&ts, arg_refs);
@@ -5108,7 +5157,9 @@ TypeSpec Parser::parse_base_type() {
                     // If so, defer instantiation to HIR template function lowering.
                     bool has_unresolved_type_arg = false;
                     for (const auto& [pn, pts] : type_bindings) {
-                        if (pts.base == TB_TYPEDEF || pts.tpl_struct_origin) {
+                        if (pts.base == TB_TYPEDEF || pts.tpl_struct_origin ||
+                            pts.tpl_struct_origin_key.base_text_id !=
+                                kInvalidText) {
                             has_unresolved_type_arg = true;
                             break;
                         }
@@ -5165,10 +5216,22 @@ TypeSpec Parser::parse_base_type() {
                                 if (ati < (int)type_bindings.size()) {
                                     if (!arg_refs.empty()) arg_refs += ",";
                                     const TypeSpec& ats = type_bindings[ati++].second;
-                                    if (ats.tpl_struct_origin) {
-                                        // Nested pending template struct: encode as @origin:args
+                                    if (ats.tpl_struct_origin ||
+                                        ats.tpl_struct_origin_key.base_text_id !=
+                                            kInvalidText) {
+                                        // Compatibility display fallback for
+                                        // nested pending template structs. The
+                                        // typed TemplateArgRef carrier remains
+                                        // the semantic handoff when available.
                                         arg_refs += "@";
-                                        arg_refs += ats.tpl_struct_origin;
+                                        if (ats.tpl_struct_origin_key.base_text_id !=
+                                            kInvalidText) {
+                                            arg_refs += parser_text(
+                                                ats.tpl_struct_origin_key.base_text_id,
+                                                {});
+                                        } else {
+                                            arg_refs += ats.tpl_struct_origin;
+                                        }
                                         arg_refs += ":";
                                         arg_refs += template_arg_refs_text(ats);
                                         if (ats.deferred_member_type_name &&
@@ -5196,7 +5259,7 @@ TypeSpec Parser::parse_base_type() {
                         ts.tpl_struct_origin = arena_.strdup(family_name.c_str());
                         ts.tpl_struct_origin_key =
                             structured_emitted_instance_key.template_key;
-                        if (parsed_args_have_simple_structured_carrier(concrete_args))
+                        if (parsed_args_have_structured_carrier(concrete_args))
                             set_template_arg_refs_from_parsed_args(&ts, concrete_args);
                         else
                             set_template_arg_debug_refs_text(&ts, arg_refs);
@@ -7046,8 +7109,31 @@ TypeSpec Parser::parse_base_type() {
                                 }
                             }
                         }
-                        auto substitute_direct_member_template_param =
+                        std::function<TypeSpec(TypeSpec)>
+                            substitute_direct_member_template_param;
+                        substitute_direct_member_template_param =
                             [&](TypeSpec type) -> TypeSpec {
+                            if (type.tpl_struct_args.data &&
+                                type.tpl_struct_args.size > 0) {
+                                TemplateArgRef* substituted_args =
+                                    arena_.alloc_array<TemplateArgRef>(
+                                        type.tpl_struct_args.size);
+                                for (int tai = 0;
+                                     tai < type.tpl_struct_args.size;
+                                     ++tai) {
+                                    substituted_args[tai] =
+                                        type.tpl_struct_args.data[tai];
+                                    TemplateArgRef& targ =
+                                        substituted_args[tai];
+                                    if (targ.kind ==
+                                        TemplateArgKind::Type) {
+                                        targ.type =
+                                            substitute_direct_member_template_param(
+                                                targ.type);
+                                    }
+                                }
+                                type.tpl_struct_args.data = substituted_args;
+                            }
                             if (type.base != TB_TYPEDEF) return type;
                             TypeSpec bound_type{};
                             bool found_bound_type = false;
@@ -7336,7 +7422,7 @@ TypeSpec Parser::parse_base_type() {
                     ts.tpl_struct_origin_key =
                         template_instantiation_name_key_for_direct_emit(
                             *this, primary_tpl, tpl_name);
-                    if (parsed_args_have_simple_structured_carrier(actual_args)) {
+                    if (parsed_args_have_structured_carrier(actual_args)) {
                         set_template_arg_refs_from_parsed_args(&ts, actual_args);
                     } else {
                         set_template_arg_debug_refs_text(

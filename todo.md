@@ -8,30 +8,25 @@ Current Step Title: Migrate Remaining Parser Record Lookup Families
 
 ## Just Finished
 
-Step 4C dirty repair review blocked acceptance of the current route. The
-reviewer report `review/step4c_repair_route_review.md` judged the repair
-`drifting from source idea` because HIR rebuilt nested record/template carriers
-from `TemplateArgRef::debug_text`, `@origin:args`, rendered module names, and
-`module_->struct_defs.find(rendered_name)` recovery.
+Step 4C structured-carrier rework removed the reviewer-blocked HIR semantic
+recovery from `TemplateArgRef::debug_text`, `@origin:args`, rendered module
+names, and `module_->struct_defs.find(rendered_name)`. The parser now keeps
+nested pending template struct arguments in typed `TemplateArgRef` payloads,
+and HIR realizes nested template struct carriers from `tpl_struct_origin_key`
+plus typed args instead of reparsing display text.
+
+Step 4C callable return-type substitution is now repaired. Recursive signature
+template substitution writes back same-size nested `TemplateArgRef`
+substitutions such as `Box<T>` to `Box<int>`, and the return-type preparation
+path no longer re-routes already-realized concrete structured returns through
+template-origin recovery.
 
 ## Suggested Next
 
-Route the next Step 4C executor packet as a narrowed repair:
-
-- Preserve structured nested template argument carriers through parser-to-HIR
-  lowering.
-- Carry `tpl_struct_origin_key` and nested `TemplateArgRef` metadata as typed
-  data instead of serializing to display text and reparsing it later.
-- Keep the directionally aligned pieces only if they no longer depend on
-  `debug_text` or rendered-name recovery: `tpl_struct_origin_key` realization,
-  recursive nested template struct argument realization, and constructor
-  registration for parser-emitted template struct instances.
-- Treat codegen aggregate-store changes as acceptable only if the executor can
-  prove they are direct fallout from the structured HIR carrier handoff;
-  otherwise split or leave them for supervisor routing.
-- If the executor cannot preserve these carriers with a bounded Step 4C handoff,
-  stop and ask the supervisor to split downstream HIR carrier work into a new
-  `ideas/open/` initiative with reviewer reject signals.
+Supervisor should review and commit the completed Step 4C structured-carrier
+repair slice, including the parser/HIR carrier changes, callable return
+substitution fix, directly required template-struct constructor registration,
+and the generic aggregate value typing fallout.
 
 ## Watchouts
 
@@ -48,12 +43,13 @@ metadata only.
 Do not use fixture-name matching, expectation downgrades, or supported-path
 weakening to claim Step 4C progress. The known blocker is nested template field
 carriers like `Holder::boxed_pair` / `Holder::paired_box` lowering through
-`Box_T_void` / `Pair_T_void` or `struct<?>`; the repair must address that
-carrier handoff semantically.
+`Box_T_void` / `Pair_T_void` or `struct<?>`; this packet repaired that field
+handoff and the nested template function return signature.
 
 ## Proof
 
-No acceptance proof for the dirty Step 4C repair. The previous narrow proof is
-not sufficient because the reviewer rejected the route. The next executor
-should rerun the supervisor-selected Step 4C subset after replacing the
-debug-text/rendered-name recovery path with structured carrier preservation.
+Proof run:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_support_residual_structured_metadata|frontend_hir_lookup_tests|cpp_eastl_vector_parse_recipe|cpp_positive_sema_ctor_init_delegating_unqualified_template_runtime_cpp|cpp_positive_sema_ctor_init_member_default_value_init_runtime_cpp|cpp_positive_sema_ctor_init_member_typedef_ctor_runtime_cpp|cpp_positive_sema_template_struct_advanced_cpp)$' > test_after.log`
+
+Result: passed, 9/9 tests. Proof log: `test_after.log`.
