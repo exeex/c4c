@@ -43,6 +43,31 @@ c4c::Node make_primary(const char* name, c4c::TextId text_id,
   return node;
 }
 
+c4c::Node make_zero_param_primary(const char* name, c4c::TextId text_id,
+                                  int namespace_id) {
+  c4c::Node node = make_primary(name, text_id, namespace_id);
+  node.n_template_params = 0;
+  return node;
+}
+
+void configure_one_type_param(c4c::Node& node) {
+  static const char* param_names[] = {"T"};
+  static c4c::TextId param_text_ids[] = {c4c::kInvalidText};
+  static bool param_is_pack[] = {false};
+  static bool param_is_nttp[] = {false};
+  static bool param_has_default[] = {false};
+  static c4c::TypeSpec param_default_types[] = {c4c::TypeSpec{}};
+  static long long param_default_values[] = {0};
+  node.template_param_names = param_names;
+  node.template_param_name_text_ids = param_text_ids;
+  node.template_param_is_pack = param_is_pack;
+  node.template_param_is_nttp = param_is_nttp;
+  node.template_param_has_default = param_has_default;
+  node.template_param_default_types = param_default_types;
+  node.template_param_default_values = param_default_values;
+  node.n_template_params = 1;
+}
+
 c4c::TypeSpec make_origin_type(const char* rendered_origin,
                                const char* rendered_tag,
                                c4c::TextId origin_text_id,
@@ -243,6 +268,119 @@ void test_collect_initial_type_definitions_rejects_stale_qualified_origin_recove
       "structured template specialization registration must not recover a rendered-only ns::Wrapper primary by splitting ns::Wrapper_T_int");
 }
 
+void test_realize_template_struct_origin_key_miss_rejects_stale_rendered_primary() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text = texts.intern("StaleRealizePrimary");
+  const c4c::TextId stale_instance_text = texts.intern("StaleRealizePrimary");
+  const c4c::TextId missing_text = texts.intern("MissingRealizePrimary");
+
+  c4c::Node stale_primary =
+      make_zero_param_primary("StaleRealizePrimary", stale_text, 0);
+  lowerer.register_template_struct_primary("StaleRealizePrimary",
+                                           &stale_primary);
+
+  c4c::TypeSpec ts =
+      make_origin_type("StaleRealizePrimary", "StaleRealizePrimary",
+                       missing_text, stale_instance_text, 0);
+
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  lowerer.realize_template_struct(ts, nullptr, type_bindings, nttp_bindings);
+
+  expect_true(module.struct_defs.find("StaleRealizePrimary") ==
+                  module.struct_defs.end(),
+              "realize_template_struct must not instantiate a stale rendered primary after complete origin-key miss");
+  expect_true(ts.tpl_struct_origin &&
+                  std::string(ts.tpl_struct_origin) == "StaleRealizePrimary",
+              "blocked realization should leave the unresolved rendered origin intact");
+}
+
+void test_realize_template_struct_record_owner_miss_rejects_stale_rendered_primary() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text = texts.intern("StaleRecordRealizePrimary");
+  const c4c::TextId missing_text = texts.intern("MissingRecordRealizePrimary");
+
+  c4c::Node stale_primary =
+      make_zero_param_primary("StaleRecordRealizePrimary", stale_text, 0);
+  lowerer.register_template_struct_primary("StaleRecordRealizePrimary",
+                                           &stale_primary);
+
+  c4c::Node missing_record =
+      make_primary("MissingRecordRealizePrimary", missing_text, 11);
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tpl_struct_origin = "StaleRecordRealizePrimary";
+  set_legacy_tag_if_present(ts, "StaleRecordRealizePrimary", 0);
+  ts.tag_text_id = stale_text;
+  ts.record_def = &missing_record;
+
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  lowerer.realize_template_struct(ts, nullptr, type_bindings, nttp_bindings);
+
+  expect_true(module.struct_defs.find("StaleRecordRealizePrimary") ==
+                  module.struct_defs.end(),
+              "realize_template_struct must not instantiate a stale rendered primary after record-owner miss");
+  expect_true(ts.tpl_struct_origin &&
+                  std::string(ts.tpl_struct_origin) ==
+                      "StaleRecordRealizePrimary",
+              "blocked record-owner realization should leave the unresolved rendered origin intact");
+}
+
+void test_realize_template_struct_no_metadata_keeps_exact_rendered_compatibility() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId legacy_text = texts.intern("LegacyRealizePrimary");
+  c4c::Node legacy_primary =
+      make_primary("LegacyRealizePrimary", legacy_text, 0);
+  configure_one_type_param(legacy_primary);
+  lowerer.register_template_struct_primary("LegacyRealizePrimary",
+                                           &legacy_primary);
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+
+  c4c::TemplateArgRef arg{};
+  arg.kind = c4c::TemplateArgKind::Type;
+  arg.type = int_ts;
+  c4c::TemplateArgRef args[] = {arg};
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tpl_struct_origin = "LegacyRealizePrimary";
+  ts.tpl_struct_args = c4c::TemplateArgRefList{args, 1};
+  set_legacy_tag_if_present(ts, "LegacyRealizePrimary", 0);
+  ts.tag_text_id = legacy_text;
+
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  lowerer.realize_template_struct(ts, nullptr, type_bindings, nttp_bindings);
+
+  expect_true(ts.tpl_struct_origin == nullptr,
+              "successful legacy realization should consume template origin metadata");
+}
+
 }  // namespace
 
 int main() {
@@ -252,6 +390,9 @@ int main() {
   test_canonical_primary_no_metadata_keeps_qualified_family_root_compatibility();
   test_canonical_primary_record_owner_miss_rejects_qualified_family_root();
   test_collect_initial_type_definitions_rejects_stale_qualified_origin_recovery();
+  test_realize_template_struct_origin_key_miss_rejects_stale_rendered_primary();
+  test_realize_template_struct_record_owner_miss_rejects_stale_rendered_primary();
+  test_realize_template_struct_no_metadata_keeps_exact_rendered_compatibility();
   std::cout << "PASS: cpp_hir_template_canonical_primary_origin_metadata_test\n";
   return 0;
 }

@@ -909,7 +909,31 @@ void Lowerer::realize_template_struct(
     return;
   }
   const char* origin = ts.tpl_struct_origin;
-  if (!primary_tpl && origin) primary_tpl = find_template_struct_primary(origin);
+  if (!primary_tpl) {
+    if (origin) {
+      const Node* rendered_primary = find_template_struct_primary(origin);
+      bool reject_rendered_primary = false;
+      if (rendered_primary &&
+          (!ts.tpl_struct_args.data || ts.tpl_struct_args.size <= 0)) {
+        const std::optional<HirRecordOwnerKey> rendered_key =
+            make_struct_def_node_owner_key(rendered_primary);
+        if (rendered_key) {
+          if (auto origin_key = template_origin_owner_key_hir(ts);
+              origin_key && *rendered_key != *origin_key) {
+            reject_rendered_primary = true;
+          }
+          if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF &&
+              ts.record_def->n_template_params > 0) {
+            if (auto record_key = make_struct_def_node_owner_key(ts.record_def);
+                record_key && *rendered_key != *record_key) {
+              reject_rendered_primary = true;
+            }
+          }
+        }
+      }
+      if (!reject_rendered_primary) primary_tpl = rendered_primary;
+    }
+  }
   if (!primary_tpl) return;
   if (!origin) origin = primary_tpl->name;
   if (primary_tpl->name) ts.tpl_struct_origin = primary_tpl->name;
