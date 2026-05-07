@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/149_template_instantiation_structured_argument_key.md
 Source Plan Path: plan.md
 Current Step ID: 6
@@ -8,29 +8,27 @@ Current Step Title: Remove or Label Remaining String Mirrors
 
 ## Just Finished
 
-Completed the Step 5 pending-template-type identity packet. The latest slice
-changed `make_pending_template_type_key` to build a structured
-`PendingTemplateTypeKey` over pending kind, structured `TypeSpec`, owner
-identity, ordered type/NTTP bindings, context, and span. Pending-template-type
-dedup and resolved tracking now use structured key sets; the retained rendered
-pending-type string is display/compatibility-only.
+Completed the final Step 6 string-mirror cleanup. The remaining semantic
+`canonical_type_str` callers in template value-argument `is_same` handling now
+use `specialization_type_identity_equal` on structured `TypeSpec` values.
+`canonical_type_str` remains only as an explicit compatibility wrapper over
+`format_type_for_specialization_display_key`; `make_specialization_key` builds
+`SpecializationKey::canonical` through the display-named helper while
+structured owner/argument identity remains authoritative. Pending-template
+display renderers and the HIR record-owner serialized specialization bridge are
+commented as display/compatibility-only mirrors with removal criteria.
 
 ## Suggested Next
 
-Execute Step 6: Remove or Label Remaining String Mirrors.
-
-Next coherent packet: clean up string helpers and compatibility tests that are
-now display-only, without changing pending-template-type semantic identity.
-Delete obsolete string-key helpers where semantic callers are gone, or rename
-and label surviving rendered fields as display-only or compatibility mirrors
-with concrete removal criteria recorded here.
+Next coherent packet: supervisor lifecycle review for Step 6 completion and
+commit readiness.
 
 ## Watchouts
 
 - `HirRecordOwnerTemplateIdentity::specialization_key` still stores
-  `spec_key.canonical` as a metadata bridge; later packets should replace that
-  bridge only when record-owner template identity can carry the structured key
-  without widening this slice.
+  `spec_key.canonical` as a serialized compatibility bridge; remove it only
+  after HIR record-owner identity can carry structured specialization owner and
+  argument data directly.
 - `encode_pending_type_ref` is retained as a compatibility wrapper over
   `format_pending_type_ref_for_display` because existing frontend lookup tests
   still call it directly; it is no longer part of pending-type dedup/resolved
@@ -44,6 +42,13 @@ with concrete removal criteria recorded here.
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_lookup_tests|cpp_hir_)'`
 
 Result: 109/109 tests passed. Proof log: `test_after.log`.
+
+Cleanup check:
+
+`rg -n "canonical_type_str" src tests --glob '!build/**'`
+
+Result: only the compatibility wrapper definition remains in
+`src/frontend/hir/hir_ir.hpp`.
 
 Supervisor regression guard:
 

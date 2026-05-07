@@ -1390,11 +1390,16 @@ enum class HirRecordOwnerKeyKind : uint8_t {
   TemplateInstantiation,
 };
 
-/// Bridge payload for template records while template identity still enters HIR
-/// through declaration metadata plus a serialized specialization key.
+/// Compatibility bridge for template records while template identity still
+/// enters HIR record ownership through declaration metadata plus the
+/// display-only SpecializationKey::canonical string.
+///
+/// Removal criterion: replace `specialization_key` with a structured
+/// specialization identity payload once HIR record owners can carry the same
+/// owner/argument identity data as SpecializationKey.
 struct HirRecordOwnerTemplateIdentity {
   TextId primary_declaration_text_id = kInvalidText;
-  std::string specialization_key;
+  std::string specialization_key;  // serialized display/compatibility mirror
 
   [[nodiscard]] bool operator==(const HirRecordOwnerTemplateIdentity& other) const {
     return primary_declaration_text_id == other.primary_declaration_text_id &&
@@ -1590,7 +1595,8 @@ struct HirStructMemberLookupKeyHash {
 /// Type bindings for template parameter substitution.
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
 
-inline std::string canonical_nominal_type_component(const TypeSpec& ts) {
+inline std::string format_nominal_type_for_specialization_display_key(
+    const TypeSpec& ts) {
   if (ts.record_def && ts.record_def->unqualified_text_id != kInvalidText) {
     return "record.ctx" + std::to_string(ts.record_def->namespace_context_id) +
            ".text" + std::to_string(ts.record_def->unqualified_text_id);
@@ -1630,8 +1636,13 @@ inline std::string canonical_nominal_type_component(const TypeSpec& ts) {
   return "?";
 }
 
-/// Canonical type string for specialization keys (deterministic, no whitespace).
-inline std::string canonical_type_str(const TypeSpec& ts) {
+/// Display/compatibility type component for SpecializationKey::canonical.
+///
+/// Specialization identity uses SpecializationArgumentIdentity and
+/// specialization_type_identity_* helpers. This rendered string is retained
+/// for dumps, metadata bridges, and callers that have not moved to structured
+/// type identity yet.
+inline std::string format_type_for_specialization_display_key(const TypeSpec& ts) {
   std::string s;
   if (ts.is_const) s += "const_";
   if (ts.is_volatile) s += "volatile_";
@@ -1654,9 +1665,15 @@ inline std::string canonical_type_str(const TypeSpec& ts) {
     case TB_LONGDOUBLE:    s += "ldouble"; break;
     case TB_INT128:        s += "i128"; break;
     case TB_UINT128:       s += "u128"; break;
-    case TB_STRUCT:        s += "struct." + canonical_nominal_type_component(ts); break;
-    case TB_UNION:         s += "union." + canonical_nominal_type_component(ts); break;
-    case TB_ENUM:          s += "enum." + canonical_nominal_type_component(ts); break;
+    case TB_STRUCT:
+      s += "struct." + format_nominal_type_for_specialization_display_key(ts);
+      break;
+    case TB_UNION:
+      s += "union." + format_nominal_type_for_specialization_display_key(ts);
+      break;
+    case TB_ENUM:
+      s += "enum." + format_nominal_type_for_specialization_display_key(ts);
+      break;
     case TB_FUNC_PTR:      s += "fnptr"; break;
     default:               s += "unknown"; break;
   }
@@ -1672,6 +1689,12 @@ inline std::string canonical_type_str(const TypeSpec& ts) {
     }
   }
   return s;
+}
+
+/// Compatibility wrapper for old callers/tests. Do not add new semantic users;
+/// compare TypeSpec values with specialization_type_identity_equal instead.
+inline std::string canonical_type_str(const TypeSpec& ts) {
+  return format_type_for_specialization_display_key(ts);
 }
 
 /// Build a specialization key from template name, parameter order, and bindings.
@@ -1696,7 +1719,7 @@ inline SpecializationKey make_specialization_key(
     if (it != bindings.end()) {
       arg.kind = SpecializationArgumentKind::Type;
       arg.type = it->second;
-      key += canonical_type_str(it->second);
+      key += format_type_for_specialization_display_key(it->second);
     } else {
       arg.kind = SpecializationArgumentKind::Missing;
       key += "?";
@@ -1745,7 +1768,7 @@ inline SpecializationKey make_specialization_key(
       if (it != bindings.end()) {
         arg.kind = SpecializationArgumentKind::Type;
         arg.type = it->second;
-        key += canonical_type_str(it->second);
+        key += format_type_for_specialization_display_key(it->second);
       } else {
         arg.kind = SpecializationArgumentKind::Missing;
         key += "?";

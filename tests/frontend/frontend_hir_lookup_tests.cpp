@@ -1898,7 +1898,7 @@ void test_pending_type_ref_no_metadata_keeps_shape_payload() {
               "pending type refs without name metadata should retain structural shape payload");
 }
 
-void test_canonical_type_str_uses_structured_record_key_not_tag() {
+void test_specialization_display_type_uses_structured_record_key_not_tag() {
   c4c::TextTable texts;
 
   c4c::Node record{};
@@ -1916,29 +1916,31 @@ void test_canonical_type_str_uses_structured_record_key_not_tag() {
   ts.record_def = &record;
   ts.ptr_level = 1;
 
-  const std::string encoded = c4c::hir::canonical_type_str(ts);
+  const std::string encoded =
+      c4c::hir::format_type_for_specialization_display_key(ts);
 
   expect_true(encoded.find("StaleCanonicalRenderedTag") == std::string::npos,
-              "canonical type strings should not depend on stale rendered TypeSpec tag spelling");
+              "specialization display strings should not depend on stale rendered TypeSpec tag spelling");
   expect_true(encoded.find("struct.record.ctx42.text" +
                            std::to_string(record.unqualified_text_id)) !=
                   std::string::npos,
-              "canonical type strings should expose structured record identity");
+              "specialization display strings should expose structured record identity");
   expect_true(encoded.find("*") != std::string::npos,
-              "canonical type strings should retain declarator shape");
+              "specialization display strings should retain declarator shape");
 }
 
-void test_canonical_type_str_no_metadata_uses_explicit_unknown_name() {
+void test_specialization_display_type_no_metadata_uses_explicit_unknown_name() {
   c4c::TypeSpec ts{};
   ts.array_size = -1;
   ts.inner_rank = -1;
   ts.base = c4c::TB_STRUCT;
   set_legacy_tag_if_present(ts, "LegacyOnlyCanonicalTag", 0);
 
-  const std::string encoded = c4c::hir::canonical_type_str(ts);
+  const std::string encoded =
+      c4c::hir::format_type_for_specialization_display_key(ts);
 
   expect_true(encoded == "struct.?",
-              "canonical type strings without structured name metadata should use explicit unknown spelling");
+              "specialization display strings without structured name metadata should use explicit unknown spelling");
 }
 
 void test_type_suffix_for_mangling_uses_record_def_not_stale_tag() {
@@ -3838,8 +3840,8 @@ int main() {
   test_signature_parameter_type_no_complete_metadata_keeps_rendered_type_fallback();
   test_pending_type_ref_uses_structured_debug_payload_not_tag();
   test_pending_type_ref_no_metadata_keeps_shape_payload();
-  test_canonical_type_str_uses_structured_record_key_not_tag();
-  test_canonical_type_str_no_metadata_uses_explicit_unknown_name();
+  test_specialization_display_type_uses_structured_record_key_not_tag();
+  test_specialization_display_type_no_metadata_uses_explicit_unknown_name();
   test_type_suffix_for_mangling_uses_record_def_not_stale_tag();
   test_type_suffix_for_mangling_no_metadata_is_explicit_unknown();
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();

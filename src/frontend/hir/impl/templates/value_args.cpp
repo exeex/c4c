@@ -1204,8 +1204,8 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
   if (member == "value" && actual_args.size() == 2 &&
       !actual_args[0].is_value && !actual_args[1].is_value) {
     if (matches_trait_family(tpl_name, "is_same")) {
-      return canonical_type_str(actual_args[0].type) ==
-                     canonical_type_str(actual_args[1].type)
+      return specialization_type_identity_equal(actual_args[0].type,
+                                                actual_args[1].type)
                  ? 1LL
                  : 0LL;
     }
@@ -1271,8 +1271,8 @@ std::optional<long long> Lowerer::try_eval_instantiated_struct_static_member_con
   if (member == "value" && actual_args.size() == 2 &&
       !actual_args[0].is_value && !actual_args[1].is_value &&
       matches_trait_family(tpl_name, "is_same")) {
-    return canonical_type_str(actual_args[0].type) ==
-                   canonical_type_str(actual_args[1].type)
+    return specialization_type_identity_equal(actual_args[0].type,
+                                              actual_args[1].type)
                ? 1LL
                : 0LL;
   }

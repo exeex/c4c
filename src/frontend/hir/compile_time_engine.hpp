@@ -665,6 +665,10 @@ inline const char* pending_template_type_kind_name(PendingTemplateTypeKind kind)
   return "unknown";
 }
 
+/// Render a pending template type for diagnostics and legacy tests only.
+///
+/// Pending-template dedup/progress identity is PendingTemplateTypeKey, which
+/// carries structured TypeSpec, owner, binding, context, and span data.
 inline std::string format_pending_type_ref_for_display(const TypeSpec& ts) {
   auto has_structured_type_payload = [](const TypeSpec& type) {
     return type.tpl_struct_origin || type.base != TB_VOID || type.ptr_level > 0 ||
@@ -784,6 +788,9 @@ inline PendingTemplateTypeKey make_pending_template_type_key(
   return key;
 }
 
+/// Render the structured pending-template identity for diagnostics only.
+/// `PendingTemplateTypeWorkItem::display_key` must not participate in dedup or
+/// resolved-progress checks.
 inline std::string format_pending_template_type_key_for_display(
     PendingTemplateTypeKind kind, const TypeSpec& pending_type,
     const Node* owner_primary_def,
