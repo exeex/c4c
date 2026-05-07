@@ -503,11 +503,31 @@ void Lowerer::lower_function(const Node* fn_node,
 
 TypeSpec Lowerer::substitute_signature_template_type(
     TypeSpec ts, const TypeBindings* tpl_bindings) {
+  auto refresh_template_origin_from_structured_key = [&](TypeSpec& target) {
+    if (target.tpl_struct_origin_key.base_text_id == kInvalidText) return;
+    const Node* primary = canonical_template_struct_primary(target, nullptr);
+    if (!primary) {
+      const std::string origin_name = text_id_spelling(
+          target.tpl_struct_origin_key.base_text_id,
+          module_ ? module_->link_name_texts.get() : nullptr);
+      if (!origin_name.empty()) {
+        primary = find_template_struct_primary(origin_name);
+      }
+    }
+    if (!primary) return;
+    if (primary->template_origin_name && primary->template_origin_name[0]) {
+      target.tpl_struct_origin = primary->template_origin_name;
+    } else if (primary->name && primary->name[0]) {
+      target.tpl_struct_origin = primary->name;
+    } else if (primary->unqualified_name && primary->unqualified_name[0]) {
+      target.tpl_struct_origin = primary->unqualified_name;
+    }
+  };
+
   auto substitute_template_owner_params = [&](TypeSpec& target,
                                               const Node* owner_tpl,
                                               const auto& self) -> void {
-    if (!owner_tpl || !tpl_bindings) return;
-    if (target.base == TB_TYPEDEF) {
+    if (owner_tpl && tpl_bindings && target.base == TB_TYPEDEF) {
       TextId carrier_text_id = target.template_param_text_id;
       if (carrier_text_id == kInvalidText) carrier_text_id = target.tag_text_id;
       int param_index = -1;
@@ -541,6 +561,7 @@ TypeSpec Lowerer::substitute_signature_template_type(
         }
       }
     }
+    refresh_template_origin_from_structured_key(target);
   };
 
   auto substitute_bound_params = [&](TypeSpec& target, const auto& self) -> void {
@@ -608,6 +629,7 @@ TypeSpec Lowerer::substitute_signature_template_type(
         target.tpl_struct_args.size = static_cast<int>(rebound.size());
       }
     }
+    refresh_template_origin_from_structured_key(target);
   };
 
   substitute_bound_params(ts, substitute_bound_params);
@@ -730,7 +752,9 @@ void Lowerer::resolve_signature_template_type_if_needed(
     const std::string* current_struct_tag,
     const Node* span_node,
     const std::string& context_name) {
-  if (!tpl_bindings) return;
+  TypeBindings empty_tpl_bindings;
+  const TypeBindings& effective_tpl_bindings =
+      tpl_bindings ? *tpl_bindings : empty_tpl_bindings;
   if (!ts.tpl_struct_origin &&
       ts.tpl_struct_origin_key.base_text_id == kInvalidText &&
       ts.tpl_struct_args.size <= 0 &&
@@ -744,7 +768,7 @@ void Lowerer::resolve_signature_template_type_if_needed(
   if (!ts.tpl_struct_origin) return;
   NttpBindings nttp_empty;
   seed_and_resolve_pending_template_type_if_needed(
-      ts, *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty,
+      ts, effective_tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty,
       span_node, PendingTemplateTypeKind::DeclarationType, context_name);
 }
 

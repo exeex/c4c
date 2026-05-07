@@ -943,11 +943,32 @@ void Lowerer::realize_template_struct(
 
   ResolvedTemplateArgs resolved =
       materialize_template_args(primary_tpl, ts, tpl_bindings, nttp_bindings);
-  for (auto& arg : resolved.concrete_args) {
+  for (size_t arg_index = 0; arg_index < resolved.concrete_args.size();
+       ++arg_index) {
+    HirTemplateArg& arg = resolved.concrete_args[arg_index];
     if (arg.is_value) continue;
     if (arg.type.tpl_struct_origin ||
         arg.type.tpl_struct_origin_key.base_text_id != kInvalidText) {
       realize_template_struct_if_needed(arg.type, tpl_bindings, nttp_bindings);
+      if (primary_tpl->template_param_names &&
+          arg_index < static_cast<size_t>(primary_tpl->n_template_params) &&
+          !(primary_tpl->template_param_is_nttp &&
+            primary_tpl->template_param_is_nttp[arg_index])) {
+        const char* param_name = primary_tpl->template_param_names[arg_index];
+        if (param_name) {
+          bool updated_binding = false;
+          for (auto& [name, type] : resolved.type_bindings) {
+            if (name == param_name) {
+              type = arg.type;
+              updated_binding = true;
+              break;
+            }
+          }
+          if (!updated_binding) {
+            resolved.type_bindings.push_back({param_name, arg.type});
+          }
+        }
+      }
     }
   }
   bool has_generic_type_arg = false;

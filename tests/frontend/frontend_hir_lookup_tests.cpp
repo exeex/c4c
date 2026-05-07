@@ -1539,6 +1539,106 @@ void test_template_materialization_substitutes_foreign_pack_ref_in_nested_owner(
               "template materialization should substitute foreign Args1#0=int instead of preserving the Args1 carrier");
 }
 
+void test_signature_substitution_preserves_nested_template_owner_identity() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId wrap_text = texts.intern("Wrap");
+  const c4c::TextId t_text = texts.intern("T");
+
+  const char* wrap_param_names[] = {"T"};
+  c4c::TextId wrap_param_text_ids[] = {t_text};
+  bool wrap_param_is_pack[] = {false};
+  bool wrap_param_is_nttp[] = {false};
+  bool wrap_param_has_default[] = {false};
+  c4c::TypeSpec wrap_param_default_types[1]{};
+  long long wrap_param_default_values[] = {LLONG_MIN};
+
+  c4c::Node wrap_primary{};
+  wrap_primary.kind = c4c::NK_STRUCT_DEF;
+  wrap_primary.name = "canonical::Wrap";
+  wrap_primary.unqualified_name = "Wrap";
+  wrap_primary.unqualified_text_id = wrap_text;
+  wrap_primary.namespace_context_id = 17;
+  wrap_primary.template_param_names = wrap_param_names;
+  wrap_primary.template_param_name_text_ids = wrap_param_text_ids;
+  wrap_primary.template_param_is_pack = wrap_param_is_pack;
+  wrap_primary.template_param_is_nttp = wrap_param_is_nttp;
+  wrap_primary.template_param_has_default = wrap_param_has_default;
+  wrap_primary.template_param_default_types = wrap_param_default_types;
+  wrap_primary.template_param_default_values = wrap_param_default_values;
+  wrap_primary.n_template_params = 1;
+  lowerer.register_template_struct_primary("StaleRenderedWrap", &wrap_primary);
+
+  c4c::TypeSpec t_ref{};
+  t_ref.array_size = -1;
+  t_ref.inner_rank = -1;
+  t_ref.base = c4c::TB_TYPEDEF;
+  set_legacy_tag_if_present(t_ref, "StaleRenderedT", 0);
+  t_ref.tag_text_id = t_text;
+  t_ref.template_param_text_id = t_text;
+
+  c4c::TemplateArgRef inner_arg{};
+  inner_arg.kind = c4c::TemplateArgKind::Type;
+  inner_arg.type = t_ref;
+  c4c::TemplateArgRef inner_args[] = {inner_arg};
+
+  c4c::TypeSpec inner_wrap{};
+  inner_wrap.array_size = -1;
+  inner_wrap.inner_rank = -1;
+  inner_wrap.base = c4c::TB_STRUCT;
+  inner_wrap.tpl_struct_origin = "StaleRenderedWrap_T0";
+  inner_wrap.tpl_struct_origin_key.context_id = 17;
+  inner_wrap.tpl_struct_origin_key.base_text_id = wrap_text;
+  inner_wrap.tpl_struct_args = c4c::TemplateArgRefList{inner_args, 1};
+
+  c4c::TemplateArgRef outer_arg{};
+  outer_arg.kind = c4c::TemplateArgKind::Type;
+  outer_arg.type = inner_wrap;
+  c4c::TemplateArgRef outer_args[] = {outer_arg};
+
+  c4c::TypeSpec outer_wrap{};
+  outer_wrap.array_size = -1;
+  outer_wrap.inner_rank = -1;
+  outer_wrap.base = c4c::TB_STRUCT;
+  outer_wrap.tpl_struct_origin = "StaleRenderedWrap_T1";
+  outer_wrap.tpl_struct_origin_key.context_id = 17;
+  outer_wrap.tpl_struct_origin_key.base_text_id = wrap_text;
+  outer_wrap.tpl_struct_args = c4c::TemplateArgRefList{outer_args, 1};
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+  c4c::hir::TypeBindings bindings;
+  bindings["T"] = int_ts;
+
+  const c4c::TypeSpec resolved =
+      lowerer.substitute_signature_template_type(outer_wrap, &bindings);
+
+  expect_true(resolved.tpl_struct_origin &&
+                  std::strcmp(resolved.tpl_struct_origin,
+                              "canonical::Wrap") == 0,
+              "signature substitution should replace stale outer rendered origin with structured owner primary");
+  expect_true(resolved.tpl_struct_args.size == 1 &&
+                  resolved.tpl_struct_args.data[0].kind ==
+                      c4c::TemplateArgKind::Type,
+              "signature substitution should preserve the nested template owner arg");
+  const c4c::TypeSpec& nested = resolved.tpl_struct_args.data[0].type;
+  expect_true(nested.tpl_struct_origin &&
+                  std::strcmp(nested.tpl_struct_origin,
+                              "canonical::Wrap") == 0,
+              "signature substitution should replace stale nested rendered origin with structured owner primary");
+  expect_true(nested.tpl_struct_args.size == 1 &&
+                  nested.tpl_struct_args.data[0].kind ==
+                      c4c::TemplateArgKind::Type &&
+                  nested.tpl_struct_args.data[0].type.base == c4c::TB_INT,
+              "signature substitution should substitute nested template owner args before template realization");
+}
+
 void test_pending_type_ref_uses_structured_debug_payload_not_tag() {
   c4c::TextTable texts;
 
@@ -3303,6 +3403,7 @@ int main() {
   test_template_deduction_repeated_type_param_record_def_mismatch_rejects_tag();
   test_template_deduction_structured_pack_matches_instantiated_record_origin();
   test_template_materialization_substitutes_foreign_pack_ref_in_nested_owner();
+  test_signature_substitution_preserves_nested_template_owner_identity();
   test_pending_type_ref_uses_structured_debug_payload_not_tag();
   test_pending_type_ref_no_metadata_keeps_shape_payload();
   test_canonical_type_str_uses_structured_record_key_not_tag();
