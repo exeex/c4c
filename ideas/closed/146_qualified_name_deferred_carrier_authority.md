@@ -1,7 +1,8 @@
 # Qualified Name Deferred Carrier Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-07
+Closed: 2026-05-07
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
@@ -161,6 +162,20 @@ and later recover structure by string splitting. That violates the policy from
   as explicitly bounded compatibility/display helpers.
 - Tests prove at least one collision or stale-route case where rendered
   splitting would be wrong.
+
+## Closure Notes
+
+The active runbook completed Steps 1-8 and fenced the remaining rendered
+qualified-name helpers as compatibility/display boundaries rather than primary
+semantic lookup authority. `find_compatibility_key_from_rendered_qualified_spelling()`
+is retained only for legacy rendered qualified `TextId` carriers after
+structured metadata has been tried, and `split_qualified_name_scope()` is
+documented as a legacy rendered-spelling helper.
+
+Full deletion of those compatibility bridges is intentionally split to
+`ideas/open/147_rendered_qualified_compatibility_bridge_removal.md`, because
+removal currently regresses still-migrating qualified template/HIR paths and
+needs its own structured-carrier migration packet.
 
 ## Reviewer Reject Signals
 
