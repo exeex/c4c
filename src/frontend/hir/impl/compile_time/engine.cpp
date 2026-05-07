@@ -116,19 +116,19 @@ struct PendingTemplateTypeStep {
     for (size_t i = 0; i < n; ++i) {
       PendingTemplateTypeWorkItem work_item =
           ct_state->pending_template_types()[i];
-      if (ct_state->is_pending_template_type_resolved(work_item.dedup_key))
+      if (ct_state->is_pending_template_type_resolved(work_item.identity_key))
         continue;
       DeferredTemplateTypeResult result =
           instantiate_type_fn
               ? instantiate_type_fn(work_item)
               : DeferredTemplateTypeResult::blocked();
       if (result.kind == DeferredTemplateTypeResultKind::Resolved) {
-        ct_state->mark_pending_template_type_resolved(work_item.dedup_key);
+        ct_state->mark_pending_template_type_resolved(work_item.identity_key);
         ++resolved;
       } else if (result.kind == DeferredTemplateTypeResultKind::Terminal) {
         // Terminal items are done — mark resolved so they won't be retried,
         // but record the diagnostic.
-        ct_state->mark_pending_template_type_resolved(work_item.dedup_key);
+        ct_state->mark_pending_template_type_resolved(work_item.identity_key);
         ++terminal;
         std::string label = result.diagnostic;
         if (label.empty()) {

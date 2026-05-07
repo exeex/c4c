@@ -8,25 +8,18 @@ Current Step Title: Migrate HIR Late Instantiation Consumers
 
 ## Just Finished
 
-Completed the Step 5 HIR specialization-key packet. The latest accepted slice
-made `SpecializationOwnerIdentity::display_name` display/compatibility data for
-structured owners, with equality, ordering, and hashing consulting it only for
-ownerless fallback keys.
+Completed the Step 5 pending-template-type identity packet. The latest slice
+changed `make_pending_template_type_key` to build a structured
+`PendingTemplateTypeKey` over pending kind, structured `TypeSpec`, owner
+identity, ordered type/NTTP bindings, context, and span. Pending-template-type
+dedup and resolved tracking now use structured key sets; the retained rendered
+pending-type string is display/compatibility-only.
 
 ## Suggested Next
 
-Next coherent packet under Step 5: migrate `make_pending_template_type_key` and
-its pending-template-type dedup users to a structured key over pending type
-kind, owner identity, structured `TypeSpec`, ordered type/NTTP bindings,
-context, and span.
-
-Acceptance focus for the packet:
-
-- Rendered/canonical type text must remain diagnostics/display data only.
-- Pending-template-type dedup must compare structured pending-type payloads, not
-  formatted `TypeSpec` text.
-- HIR late instantiation should consume the structured key without reparsing a
-  display string.
+Next coherent packet: Step 6 cleanup for string helpers and compatibility
+tests that are now display-only, without changing pending-template-type
+semantic identity.
 
 ## Watchouts
 
@@ -34,19 +27,22 @@ Acceptance focus for the packet:
   `spec_key.canonical` as a metadata bridge; later packets should replace that
   bridge only when record-owner template identity can carry the structured key
   without widening this slice.
-- `canonical_type_str` remains in use for display/compatibility and non-template
-  type-trait evaluation. This packet did not attempt to redefine general HIR
-  type equality outside specialization-key identity.
-- Avoid widening this packet into Step 6 cleanup. Remove or relabel only the
-  string mirrors that become directly non-semantic while migrating
-  `make_pending_template_type_key`.
+- `encode_pending_type_ref` is retained as a compatibility wrapper over
+  `format_pending_type_ref_for_display` because existing frontend lookup tests
+  still call it directly; it is no longer part of pending-type dedup/resolved
+  identity.
+- The structured pending key reuses `specialization_type_identity_*` for
+  `TypeSpec` equality/hashing; future cleanup should avoid reintroducing
+  formatted type strings as semantic keys.
 
 ## Proof
-
-Previous completed-packet proof:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_lookup_tests|cpp_hir_)'`
 
 Result: 109/109 tests passed. Proof log: `test_after.log`.
 
-No proof has been run for the next packet yet.
+Supervisor regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: pass; 109 passed before and after, with no new failing tests.

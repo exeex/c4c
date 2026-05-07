@@ -312,6 +312,52 @@ enum class PendingTemplateTypeKind {
   CastTarget,
 };
 
+struct PendingTemplateTypeKey {
+  PendingTemplateTypeKind kind = PendingTemplateTypeKind::DeclarationType;
+  TypeSpec pending_type{};
+  SpecializationOwnerIdentity owner;
+  std::vector<SpecializationArgumentIdentity> type_bindings;
+  std::vector<SpecializationArgumentIdentity> nttp_bindings;
+  std::string context_name;
+  SourceSpan span{};
+
+  [[nodiscard]] bool operator==(const PendingTemplateTypeKey& other) const {
+    return kind == other.kind &&
+           specialization_type_identity_equal(pending_type,
+                                              other.pending_type) &&
+           owner == other.owner &&
+           type_bindings == other.type_bindings &&
+           nttp_bindings == other.nttp_bindings &&
+           context_name == other.context_name &&
+           span.begin.line == other.span.begin.line &&
+           span.end.line == other.span.end.line;
+  }
+};
+
+struct PendingTemplateTypeKeyHash {
+  [[nodiscard]] std::size_t operator()(
+      const PendingTemplateTypeKey& key) const noexcept {
+    std::size_t h =
+        std::hash<uint8_t>{}(static_cast<uint8_t>(key.kind));
+    h = specialization_key_hash_mix(
+        h, specialization_type_identity_hash(key.pending_type));
+    h = specialization_key_hash_mix(
+        h, specialization_owner_identity_hash(key.owner));
+    for (const auto& binding : key.type_bindings) {
+      h = specialization_key_hash_mix(
+          h, specialization_argument_identity_hash(binding));
+    }
+    for (const auto& binding : key.nttp_bindings) {
+      h = specialization_key_hash_mix(
+          h, specialization_argument_identity_hash(binding));
+    }
+    h = specialization_key_hash_mix(h, std::hash<std::string>{}(key.context_name));
+    h = specialization_key_hash_mix(h, std::hash<int>{}(key.span.begin.line));
+    h = specialization_key_hash_mix(h, std::hash<int>{}(key.span.end.line));
+    return h;
+  }
+};
+
 struct PendingTemplateTypeWorkItem {
   PendingTemplateTypeKind kind = PendingTemplateTypeKind::DeclarationType;
   TypeSpec pending_type{};
@@ -320,7 +366,9 @@ struct PendingTemplateTypeWorkItem {
   NttpBindings nttp_bindings;
   SourceSpan span{};
   std::string context_name;
-  std::string dedup_key;
+  PendingTemplateTypeKey identity_key;
+  // Display/compatibility mirror only; dedup/progress uses identity_key.
+  std::string display_key;
 };
 
 enum class DeferredTemplateTypeResultKind {
@@ -617,7 +665,7 @@ inline const char* pending_template_type_kind_name(PendingTemplateTypeKind kind)
   return "unknown";
 }
 
-inline std::string encode_pending_type_ref(const TypeSpec& ts) {
+inline std::string format_pending_type_ref_for_display(const TypeSpec& ts) {
   auto has_structured_type_payload = [](const TypeSpec& type) {
     return type.tpl_struct_origin || type.base != TB_VOID || type.ptr_level > 0 ||
            type.array_rank > 0 || type.is_fn_ptr || type.is_vector;
@@ -633,7 +681,7 @@ inline std::string encode_pending_type_ref(const TypeSpec& ts) {
     }
     if (arg.kind == TemplateArgKind::Type &&
         has_structured_type_payload(arg.type)) {
-      return std::string("t:{") + encode_pending_type_ref(arg.type) + "}";
+      return std::string("t:{") + format_pending_type_ref_for_display(arg.type) + "}";
     }
     if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
     return "t:?";
@@ -664,7 +712,79 @@ inline std::string encode_pending_type_ref(const TypeSpec& ts) {
   return out;
 }
 
-inline std::string make_pending_template_type_key(
+// Compatibility/display wrapper; pending-type identity uses
+// PendingTemplateTypeKey, not this rendered string.
+inline std::string encode_pending_type_ref(const TypeSpec& ts) {
+  return format_pending_type_ref_for_display(ts);
+}
+
+inline std::vector<SpecializationArgumentIdentity>
+make_pending_template_type_binding_identities(
+    const TypeBindings& type_bindings) {
+  std::vector<std::string> names;
+  names.reserve(type_bindings.size());
+  for (const auto& [name, _] : type_bindings) names.push_back(name);
+  std::sort(names.begin(), names.end());
+
+  std::vector<SpecializationArgumentIdentity> bindings;
+  bindings.reserve(names.size());
+  for (const auto& name : names) {
+    SpecializationArgumentIdentity binding;
+    binding.parameter_name = name;
+    binding.kind = SpecializationArgumentKind::Type;
+    binding.type = type_bindings.at(name);
+    bindings.push_back(std::move(binding));
+  }
+  return bindings;
+}
+
+inline std::vector<SpecializationArgumentIdentity>
+make_pending_template_nttp_binding_identities(
+    const NttpBindings& nttp_bindings) {
+  std::vector<std::string> names;
+  names.reserve(nttp_bindings.size());
+  for (const auto& [name, _] : nttp_bindings) names.push_back(name);
+  std::sort(names.begin(), names.end());
+
+  std::vector<SpecializationArgumentIdentity> bindings;
+  bindings.reserve(names.size());
+  for (const auto& name : names) {
+    SpecializationArgumentIdentity binding;
+    binding.parameter_name = name;
+    binding.kind = SpecializationArgumentKind::NttpValue;
+    binding.nttp_value = nttp_bindings.at(name);
+    bindings.push_back(std::move(binding));
+  }
+  return bindings;
+}
+
+inline SpecializationOwnerIdentity make_pending_template_type_owner_identity(
+    const Node* owner_primary_def) {
+  if (!owner_primary_def) return {};
+  return make_specialization_owner_identity(
+      owner_primary_def->name ? owner_primary_def->name : "",
+      owner_primary_def);
+}
+
+inline PendingTemplateTypeKey make_pending_template_type_key(
+    PendingTemplateTypeKind kind, const TypeSpec& pending_type,
+    const Node* owner_primary_def,
+    const TypeBindings& type_bindings, const NttpBindings& nttp_bindings,
+    const std::string& context_name, const SourceSpan& span) {
+  PendingTemplateTypeKey key;
+  key.kind = kind;
+  key.pending_type = pending_type;
+  key.owner = make_pending_template_type_owner_identity(owner_primary_def);
+  key.type_bindings =
+      make_pending_template_type_binding_identities(type_bindings);
+  key.nttp_bindings =
+      make_pending_template_nttp_binding_identities(nttp_bindings);
+  key.context_name = context_name;
+  key.span = span;
+  return key;
+}
+
+inline std::string format_pending_template_type_key_for_display(
     PendingTemplateTypeKind kind, const TypeSpec& pending_type,
     const Node* owner_primary_def,
     const TypeBindings& type_bindings, const NttpBindings& nttp_bindings,
@@ -675,7 +795,7 @@ inline std::string make_pending_template_type_key(
          std::to_string(span.end.line);
   key += "|owner=";
   if (owner_primary_def && owner_primary_def->name) key += owner_primary_def->name;
-  key += "|type=" + encode_pending_type_ref(pending_type);
+  key += "|type=" + format_pending_type_ref_for_display(pending_type);
 
   std::vector<std::string> tb_names;
   tb_names.reserve(type_bindings.size());
@@ -1529,12 +1649,16 @@ struct CompileTimeState {
     item.nttp_bindings = nttp_bindings;
     item.span = span;
     item.context_name = context_name;
-    item.dedup_key = make_pending_template_type_key(
+    item.identity_key = make_pending_template_type_key(
         kind, canonical_pending_type, canonical_owner_primary_def,
         type_bindings, nttp_bindings,
         context_name, span);
-    if (pending_template_type_keys_.count(item.dedup_key) > 0) return false;
-    pending_template_type_keys_.insert(item.dedup_key);
+    item.display_key = format_pending_template_type_key_for_display(
+        kind, canonical_pending_type, canonical_owner_primary_def,
+        type_bindings, nttp_bindings,
+        context_name, span);
+    if (pending_template_type_keys_.count(item.identity_key) > 0) return false;
+    pending_template_type_keys_.insert(item.identity_key);
     pending_template_types_.push_back(std::move(item));
     return true;
   }
@@ -1543,12 +1667,13 @@ struct CompileTimeState {
     return pending_template_types_;
   }
 
-  bool is_pending_template_type_resolved(const std::string& key) const {
+  bool is_pending_template_type_resolved(
+      const PendingTemplateTypeKey& key) const {
     return resolved_pending_template_type_keys_.count(key) > 0;
   }
 
-  void mark_pending_template_type_resolved(const std::string& key) {
-    if (!key.empty()) resolved_pending_template_type_keys_.insert(key);
+  void mark_pending_template_type_resolved(const PendingTemplateTypeKey& key) {
+    resolved_pending_template_type_keys_.insert(key);
   }
 
   size_t pending_template_type_count() const {
@@ -1654,11 +1779,12 @@ struct CompileTimeState {
       const_int_bindings_by_key_;
   std::vector<const Node*> static_assert_nodes_;
   // Pending type-driven template work discovered during AST-to-HIR lowering.
-  // String keys here are unresolved-boundary dedup/progress tokens rather than
-  // final semantic lookup authority.
+  // Dedup/progress state is keyed by structured pending-type identity.
   std::vector<PendingTemplateTypeWorkItem> pending_template_types_;
-  std::unordered_set<std::string> pending_template_type_keys_;
-  std::unordered_set<std::string> resolved_pending_template_type_keys_;
+  std::unordered_set<PendingTemplateTypeKey, PendingTemplateTypeKeyHash>
+      pending_template_type_keys_;
+  std::unordered_set<PendingTemplateTypeKey, PendingTemplateTypeKeyHash>
+      resolved_pending_template_type_keys_;
 };
 
 /// A diagnostic for a single irreducible compile-time node.
