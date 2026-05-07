@@ -161,6 +161,8 @@ struct HirTemplateArgMaterializer {
   bool has_type_binding(const char* param_name) const;
   bool has_nttp_binding(const char* param_name) const;
   bool template_param_owner_matches_primary(const TypeSpec& ts) const;
+  bool has_structured_type_param_carrier(const TypeSpec& ts) const;
+  const char* type_param_name_for_ref(const TypeSpec& ts) const;
   std::vector<std::string> type_binding_name_candidates(
       const TypeSpec& ts,
       const char* debug_name) const;
@@ -249,6 +251,53 @@ bool HirTemplateArgMaterializer::template_param_owner_matches_primary(
              primary_tpl->namespace_context_id;
 }
 
+bool HirTemplateArgMaterializer::has_structured_type_param_carrier(
+    const TypeSpec& ts) const {
+  return ts.template_param_index >= 0 ||
+         ts.template_param_text_id != kInvalidText ||
+         ts.tag_text_id != kInvalidText ||
+         ts.template_param_owner_text_id != kInvalidText;
+}
+
+const char* HirTemplateArgMaterializer::type_param_name_for_ref(
+    const TypeSpec& ts) const {
+  if (ts.base != TB_TYPEDEF || !primary_tpl ||
+      !primary_tpl->template_param_names ||
+      !template_param_owner_matches_primary(ts)) {
+    return nullptr;
+  }
+
+  auto name_for_param_index = [&](int param_index) -> const char* {
+    if (param_index < 0 || param_index >= primary_tpl->n_template_params) {
+      return nullptr;
+    }
+    if (primary_tpl->template_param_is_nttp &&
+        primary_tpl->template_param_is_nttp[param_index]) {
+      return nullptr;
+    }
+    return primary_tpl->template_param_names[param_index];
+  };
+
+  if (const char* param_name = name_for_param_index(ts.template_param_index)) {
+    return param_name;
+  }
+
+  const TextId carrier_text_id =
+      ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
+                                                : ts.tag_text_id;
+  if (carrier_text_id == kInvalidText ||
+      !primary_tpl->template_param_name_text_ids) {
+    return nullptr;
+  }
+  for (int i = 0; i < primary_tpl->n_template_params; ++i) {
+    if (primary_tpl->template_param_name_text_ids[i] != carrier_text_id) {
+      continue;
+    }
+    if (const char* param_name = name_for_param_index(i)) return param_name;
+  }
+  return nullptr;
+}
+
 std::vector<std::string>
 HirTemplateArgMaterializer::type_binding_name_candidates(
     const TypeSpec& ts,
@@ -276,50 +325,24 @@ const TypeSpec* HirTemplateArgMaterializer::find_bound_type_for_param_ref(
     return nullptr;
   }
 
-  auto binding_for_param_index = [&](int param_index) -> const TypeSpec* {
-    if (param_index < 0 || param_index >= primary_tpl->n_template_params) {
-      return nullptr;
-    }
-    if (primary_tpl->template_param_is_nttp &&
-        primary_tpl->template_param_is_nttp[param_index]) {
-      return nullptr;
-    }
-    const char* param_name = primary_tpl->template_param_names[param_index];
+  auto binding_for_param_name = [&](const char* param_name) -> const TypeSpec* {
     if (!param_name) return nullptr;
     auto it = tpl_bindings.find(param_name);
     return it == tpl_bindings.end() ? nullptr : &it->second;
   };
 
-  const bool owner_matches = template_param_owner_matches_primary(ts);
-  if (owner_matches) {
-    if (const TypeSpec* bound = binding_for_param_index(ts.template_param_index)) {
-      return bound;
-    }
-
-    const TextId carrier_text_id =
-        ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
-                                                  : ts.tag_text_id;
-    if (carrier_text_id != kInvalidText && primary_tpl->template_param_name_text_ids) {
-      for (int i = 0; i < primary_tpl->n_template_params; ++i) {
-        if (primary_tpl->template_param_name_text_ids[i] != carrier_text_id) {
-          continue;
-        }
-        if (const TypeSpec* bound = binding_for_param_index(i)) return bound;
-      }
-    }
+  if (const TypeSpec* bound =
+          binding_for_param_name(type_param_name_for_ref(ts))) {
+    return bound;
   }
 
-  const bool has_structured_param_carrier =
-      ts.template_param_index >= 0 ||
-      ts.template_param_text_id != kInvalidText ||
-      ts.tag_text_id != kInvalidText ||
-      ts.template_param_owner_text_id != kInvalidText;
+  if (has_structured_type_param_carrier(ts)) return nullptr;
+
   for (const std::string& name : type_binding_name_candidates(ts, debug_name)) {
     auto it = tpl_bindings.find(name);
     if (it != tpl_bindings.end()) return &it->second;
   }
 
-  if (has_structured_param_carrier) return nullptr;
   const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
   if (!legacy_tag) return nullptr;
 
@@ -333,6 +356,22 @@ HirTemplateArgMaterializer::find_bound_type_pack_for_param_ref(
     const char* debug_name) const {
   std::vector<std::pair<int, TypeSpec>> pack_entries;
   if (ts.base != TB_TYPEDEF) return pack_entries;
+
+  if (const char* param_name = type_param_name_for_ref(ts)) {
+    for (const auto& [binding_name, bound_type] : tpl_bindings) {
+      int pack_index = 0;
+      if (parse_pack_binding_name_hir(binding_name, param_name, &pack_index)) {
+        pack_entries.push_back({pack_index, bound_type});
+      }
+    }
+    std::sort(pack_entries.begin(), pack_entries.end(),
+              [](const auto& lhs, const auto& rhs) {
+                return lhs.first < rhs.first;
+              });
+    return pack_entries;
+  }
+
+  if (has_structured_type_param_carrier(ts)) return pack_entries;
 
   for (const std::string& name : type_binding_name_candidates(ts, debug_name)) {
     for (const auto& [binding_name, bound_type] : tpl_bindings) {

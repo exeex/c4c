@@ -10,19 +10,19 @@ Current Step Title: Migrate HIR Late Substitution
 
 Completed `plan.md` Step 4, "Migrate HIR Late Substitution", for HIR member-typedef/type-resolution template argument rebinding.
 
-- Added structured carrier checks for HIR `TemplateArgRef` rebinding so TypeSpec and NTTP TextId metadata are authoritative before any string fallback.
-- Reworked late member-typedef substitution to resolve forwarded NTTP values only when structured `nttp_text_id` matches the current template owner's NTTP parameter table, and to gate `debug_text` binding lookups behind legacy-unstructured checks.
-- Kept generated `debug_text` assignment as display text while preventing structured template args from using `debug_text` as binding authority.
+- Added a structured TypeSpec carrier lookup in HIR template argument materialization that resolves owner/index/TextId metadata through the current primary template parameter table.
+- Changed `find_bound_type_for_param_ref` so structured carriers bind only through that primary-template domain lookup, then fail without consulting debug-name or legacy tag strings.
+- Changed type-pack lookup to expand structured pack parameter refs through the same primary-template parameter name and reserve debug-name/string candidates for unstructured legacy TypeSpec inputs.
 
 ## Suggested Next
 
-Next coherent packet: audit adjacent HIR template materialization/struct-instantiation paths for remaining `TemplateArgRef::debug_text` authority and migrate any structured-carrier cases with the same compatibility boundary.
+Next coherent packet: supervisor review of the Step 4 materialization/type-resolution slices together, with attention to whether any remaining HIR late-substitution debug-text authority is outside the already migrated paths.
 
 ## Watchouts
 
-- The retained `debug_text` binding lookups in `type_resolution.cpp` are now compatibility fallbacks for unstructured legacy `TemplateArgRef` inputs.
-- TextId-only NTTP args are spelling identity, not semantic binding authority; NTTP rebinding uses the existing `NttpBindings` name map only after the current template owner table matches the TextId to an NTTP parameter name.
-- `clang-format` was not available in this environment, so formatting was kept manually aligned with the surrounding file.
+- `type_param_name_for_ref` intentionally rejects NTTP parameters for type binding and treats owner mismatch as structured lookup failure, not as permission to try debug text.
+- `tag_text_id` is treated as structured carrier metadata only for `TB_TYPEDEF` parameter refs in these helpers; unstructured legacy fallbacks remain available only when no structured carrier fields are present.
+- No focused test was added because the delegated `cpp_hir_` subset already covers the materialization regressions hit by this slice without expectation downgrades.
 
 ## Proof
 
