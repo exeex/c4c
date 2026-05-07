@@ -43,6 +43,13 @@ void expect_true(bool cond, const std::string& msg) {
   if (!cond) fail(msg);
 }
 
+void expect_eq_int(int actual, int expected, const std::string& msg) {
+  if (actual != expected) {
+    fail(msg + "\nExpected: " + std::to_string(expected) +
+         "\nActual: " + std::to_string(actual));
+  }
+}
+
 template <typename T>
 auto set_legacy_tag_if_present(T& ts, const char* tag, int)
     -> decltype(ts.tag = tag, void()) {
@@ -3808,6 +3815,133 @@ void test_pending_deferred_member_typedef_preserves_owner_qualifier_segments() {
               "pending deferred member typedef should copy qualifier TextIds into the owner key");
 }
 
+void test_hir_template_arg_materialization_uses_nttp_domain_carrier() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->unqualified_text_id = texts.intern("Box");
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("N");
+  primary->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  primary->template_param_name_text_ids[0] = texts.intern("N");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = true;
+
+  c4c::TypeSpec owner{};
+  owner.array_size = -1;
+  owner.inner_rank = -1;
+  owner.base = c4c::TB_STRUCT;
+  owner.tpl_struct_origin = arena.strdup("Box");
+  owner.tpl_struct_args.size = 1;
+  owner.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  owner.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+  owner.tpl_struct_args.data[0].value = 0;
+  owner.tpl_struct_args.data[0].nttp_text_id = texts.intern("N");
+  owner.tpl_struct_args.data[0].nttp_owner_text_id =
+      primary->unqualified_text_id;
+  owner.tpl_struct_args.data[0].nttp_owner_namespace_context_id =
+      primary->namespace_context_id;
+  owner.tpl_struct_args.data[0].nttp_param_index = 0;
+  owner.tpl_struct_args.data[0].nttp_param_kind =
+      c4c::TemplateParamDomainKind::NonType;
+  owner.tpl_struct_args.data[0].debug_text = arena.strdup("RenderedN");
+
+  c4c::hir::Lowerer lowerer;
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  nttp_bindings["N"] = 13;
+  nttp_bindings["RenderedN"] = 101;
+
+  const c4c::hir::ResolvedTemplateArgs resolved =
+      lowerer.materialize_template_args(primary, owner, type_bindings,
+                                        nttp_bindings);
+
+  expect_true(resolved.concrete_args.size() == 1 &&
+                  resolved.concrete_args[0].is_value,
+              "HIR NTTP materialization should accept a complete owner/index/kind carrier");
+  expect_eq_int(static_cast<int>(resolved.concrete_args[0].value), 13,
+                "HIR NTTP materialization should bind through the carrier's "
+                "parameter domain instead of stale debug/rendered text");
+  expect_true(resolved.nttp_bindings.size() == 1 &&
+                  resolved.nttp_bindings[0].first == "N",
+              "HIR NTTP materialization should write the primary parameter binding");
+  expect_eq_int(static_cast<int>(resolved.nttp_bindings[0].second), 13,
+                "HIR NTTP materialization should preserve the carrier-selected value");
+}
+
+void test_hir_template_arg_materialization_rejects_foreign_nttp_domain_carrier() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* inner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  inner->name = arena.strdup("Inner");
+  inner->unqualified_name = arena.strdup("Inner");
+  inner->unqualified_text_id = texts.intern("Inner");
+  inner->namespace_context_id = parser.current_namespace_context_id();
+  inner->n_template_params = 1;
+  inner->template_param_names = arena.alloc_array<const char*>(1);
+  inner->template_param_names[0] = arena.strdup("N");
+  inner->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  inner->template_param_name_text_ids[0] = texts.intern("N");
+  inner->template_param_is_nttp = arena.alloc_array<bool>(1);
+  inner->template_param_is_nttp[0] = true;
+
+  c4c::Node* outer = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  outer->name = arena.strdup("Outer");
+  outer->unqualified_name = arena.strdup("Outer");
+  outer->unqualified_text_id = texts.intern("Outer");
+  outer->namespace_context_id = parser.current_namespace_context_id();
+  outer->n_template_params = 1;
+  outer->template_param_names = arena.alloc_array<const char*>(1);
+  outer->template_param_names[0] = arena.strdup("N");
+  outer->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  outer->template_param_name_text_ids[0] = texts.intern("N");
+  outer->template_param_is_nttp = arena.alloc_array<bool>(1);
+  outer->template_param_is_nttp[0] = true;
+
+  c4c::TypeSpec owner{};
+  owner.array_size = -1;
+  owner.inner_rank = -1;
+  owner.base = c4c::TB_STRUCT;
+  owner.tpl_struct_origin = arena.strdup("Inner");
+  owner.tpl_struct_args.size = 1;
+  owner.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  owner.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
+  owner.tpl_struct_args.data[0].value = 0;
+  owner.tpl_struct_args.data[0].nttp_text_id = texts.intern("N");
+  owner.tpl_struct_args.data[0].nttp_owner_text_id =
+      outer->unqualified_text_id;
+  owner.tpl_struct_args.data[0].nttp_owner_namespace_context_id =
+      outer->namespace_context_id;
+  owner.tpl_struct_args.data[0].nttp_param_index = 0;
+  owner.tpl_struct_args.data[0].nttp_param_kind =
+      c4c::TemplateParamDomainKind::NonType;
+  owner.tpl_struct_args.data[0].debug_text = arena.strdup("N");
+
+  c4c::hir::Lowerer lowerer;
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  nttp_bindings["N"] = 99;
+
+  const c4c::hir::ResolvedTemplateArgs resolved =
+      lowerer.materialize_template_args(inner, owner, type_bindings,
+                                        nttp_bindings);
+
+  expect_true(resolved.concrete_args.empty() && resolved.nttp_bindings.empty(),
+              "equal-spelling NTTP parameters in different owners must not "
+              "bind through TemplateArgRef::nttp_text_id, debug_text, or the "
+              "current primary's rendered parameter name");
+}
+
 }  // namespace
 
 int main() {
@@ -3879,6 +4013,8 @@ int main() {
   test_deferred_member_typedef_uses_owner_key_and_member_text_id();
   test_deferred_member_typedef_owner_key_beats_suffix_split_collision();
   test_pending_deferred_member_typedef_preserves_owner_qualifier_segments();
+  test_hir_template_arg_materialization_uses_nttp_domain_carrier();
+  test_hir_template_arg_materialization_rejects_foreign_nttp_domain_carrier();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

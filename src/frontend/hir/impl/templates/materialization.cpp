@@ -925,6 +925,9 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
   for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
     const char* param_name = primary_tpl->template_param_names[pi];
     if (!param_name) continue;
+    const bool is_nttp =
+        primary_tpl->template_param_is_nttp &&
+        primary_tpl->template_param_is_nttp[pi];
     const bool is_pack =
         primary_tpl->template_param_is_pack &&
         primary_tpl->template_param_is_pack[pi];
@@ -965,13 +968,19 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
     }
 
     if (ai < owner_ts.tpl_struct_args.size) {
+      const TemplateArgRef& typed_ref = owner_ts.tpl_struct_args.data[ai];
       HirTemplateArg arg{};
-      if (resolve_explicit_typed_arg(pi, owner_ts.tpl_struct_args.data[ai], &arg)) {
+      if (resolve_explicit_typed_arg(pi, typed_ref, &arg)) {
         ++ai;
         result.concrete_args.push_back(arg);
         if (arg.is_value) result.nttp_bindings.push_back({param_name, arg.value});
         else result.type_bindings.push_back({param_name, arg.type});
         continue;
+      }
+      if (is_nttp && typed_ref.kind == TemplateArgKind::Value &&
+          (typed_ref.nttp_param_kind == TemplateParamDomainKind::NonType ||
+           typed_ref.nttp_text_id != kInvalidText)) {
+        return result;
       }
       return materialize_from_strings(fallback_refs());
     }
