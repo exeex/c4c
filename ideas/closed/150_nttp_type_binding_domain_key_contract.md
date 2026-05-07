@@ -1,7 +1,8 @@
 # NTTP Type Binding Domain Key Contract
 
-Status: Open
+Status: Closed
 Created: 2026-05-07
+Closed: 2026-05-07
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
@@ -10,6 +11,24 @@ Parent Ideas:
 - `ideas/closed/147_rendered_qualified_compatibility_bridge_removal.md`
 - `ideas/closed/148_hir_static_member_carrier_authority_decomposition.md`
 - `ideas/closed/149_template_instantiation_structured_argument_key.md`
+
+## Completion Note
+
+Closed after the active runbook completed Steps 1-6. The implementation route
+introduced structured parser/HIR type and NTTP binding carriers, repaired HIR
+late-substitution authority so structured owner/index/kind metadata gates
+semantic lookup, added same-spelling domain-identity probes, and classified the
+remaining string-pair, string-map, token-spelling, pack-series, and debug-text
+surfaces as compatibility/display/syntax behavior with removal conditions in
+the final `todo.md` packet.
+
+Close validation used the parser/HIR subset:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|frontend_hir_lookup_tests|cpp_hir_.*)$'`
+
+`test_before.log` and `test_after.log` both recorded 111/111 passing tests, and
+the regression guard passed with non-decreasing pass-count semantics because
+the close operation itself is lifecycle-only.
 
 ## Goal
 
