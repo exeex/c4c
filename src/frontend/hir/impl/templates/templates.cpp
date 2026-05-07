@@ -103,6 +103,10 @@ std::optional<HirRecordOwnerKey> template_origin_owner_key_hir(
   return key;
 }
 
+bool has_template_origin_metadata_hir(const TypeSpec& ts) {
+  return ts.tpl_struct_origin_key.base_text_id != kInvalidText;
+}
+
 std::optional<std::string> typespec_tag_text_spelling_hir(
     const TypeSpec& ts,
     const TextTable* texts) {
@@ -791,6 +795,8 @@ const Node* Lowerer::canonical_template_struct_primary(
     const TypeSpec& ts,
     const Node* primary_tpl) const {
   if (primary_tpl) return primary_tpl;
+  const bool has_structured_origin_metadata =
+      has_template_origin_metadata_hir(ts);
   if (auto origin_key = template_origin_owner_key_hir(ts)) {
     auto origin_it = template_struct_defs_by_owner_.find(*origin_key);
     if (origin_it != template_struct_defs_by_owner_.end()) {
@@ -814,6 +820,7 @@ const Node* Lowerer::canonical_template_struct_primary(
   if (const Node* primary = find_template_struct_primary(ts.tpl_struct_origin)) {
     return primary;
   }
+  if (has_structured_origin_metadata) return nullptr;
   auto try_family_root = [&](const std::string& raw_name) -> const Node* {
     const size_t scope_sep = raw_name.rfind("::");
     const size_t search_from = (scope_sep == std::string::npos) ? 0 : (scope_sep + 2);

@@ -8,26 +8,26 @@ Current Step Title: Migrate Qualified Template and HIR Compatibility Paths
 
 ## Just Finished
 
-Step 3 migrated the first HIR template primary/specialization authority path.
-`collect_initial_type_definitions()` now forms a structured owner key for
-specialization registration from the specialization node namespace plus
-unqualified `template_origin_name`, consults `template_struct_defs_by_owner_`,
-and only falls back to rendered primary lookup when that structured key is not
-available. The old recovery path that rebuilt `ns::Wrapper` by splitting
-rendered `ns::Wrapper_T...` spelling is gone from this registration path.
+Step 3 migrated the remaining HIR canonical template primary family-root
+fallback in `canonical_template_struct_primary()`. Structured
+`tpl_struct_origin_key` metadata now blocks the rendered `_T` family-root
+recovery after an origin-key miss, while complete `record_def` owner metadata
+continues to block rendered recovery after a record-owner miss. The legacy
+qualified `_T` family-root split remains available only for no-metadata
+compatibility.
 
-Added a focused stale-qualified-origin test in
-`cpp_hir_template_canonical_primary_origin_metadata_test.cpp`: a rendered-only
-`ns::Wrapper` primary with no owner key must not receive a specialization whose
-structured owner key points at namespace-context `Wrapper`.
+Added focused stale-rendered tests in
+`cpp_hir_template_canonical_primary_origin_metadata_test.cpp` for origin
+metadata, record-owner metadata, and the retained no-metadata compatibility
+path.
 
 ## Suggested Next
 
-Next Step 3 packet: migrate the remaining `canonical_template_struct_primary()`
-rendered family-root fallback in `src/frontend/hir/impl/templates/templates.cpp`
-so `_T` suffix and qualified-scope splitting are only legacy no-metadata
-compatibility behavior, not semantic authority when structured origin or
-record-def owner metadata is present.
+Next Step 3 packet: inspect remaining HIR compatibility paths that still call
+template primary lookup from rendered strings, especially
+`instantiate_template_struct()` and nearby nested-template origin preservation,
+and migrate any reachable stale-rendered authority to structured owner/name
+metadata without deleting Step 4 bridge maps yet.
 
 ## Watchouts
 
@@ -36,9 +36,9 @@ record-def owner metadata is present.
 - `hir_functions.cpp` contains multiple member-typedef compatibility fallbacks;
   keep them for a later packet after template primary/specialization owner-key
   routing is proven.
-- This slice intentionally leaves string-key template primary maps and parity
-  probes in place; Step 4 owns deletion/isolation after remaining HIR callers
-  are migrated.
+- This slice intentionally leaves exact rendered template primary lookup,
+  string-key template primary maps, and parity probes in place; Step 4 owns
+  deletion/isolation after remaining HIR callers are migrated.
 - Avoid any fix that rewrites expectations or strips qualified strings to an
   unqualified suffix. The point of Step 3 is structured owner/name metadata, not
   a new rendered-spelling path.

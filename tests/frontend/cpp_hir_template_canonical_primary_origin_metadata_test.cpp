@@ -120,6 +120,95 @@ void test_canonical_primary_origin_key_miss_rejects_stale_rendered_text() {
               "complete structured template origin key miss must not recover through stale rendered origin/tag fallback");
 }
 
+void test_canonical_primary_partial_origin_metadata_rejects_qualified_family_root() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text = texts.intern("StaleQualifiedFamily");
+  const c4c::TextId stale_instance_text =
+      texts.intern("StaleQualifiedFamily_T0");
+  const c4c::TextId structured_text =
+      texts.intern("StructuredQualifiedFamily");
+
+  c4c::Node stale_primary =
+      make_primary("StaleQualifiedFamily", stale_text, 0);
+  lowerer.register_template_struct_primary("StaleQualifiedFamily",
+                                           &stale_primary);
+
+  c4c::TypeSpec ts =
+      make_origin_type("ns::StaleQualifiedFamily_T0",
+                       "StaleQualifiedFamily_T0",
+                       structured_text, stale_instance_text, -1);
+
+  expect_true(
+      lowerer.canonical_template_struct_primary(ts) == nullptr,
+      "structured template origin metadata must block qualified _T family-root recovery after owner-key miss");
+}
+
+void test_canonical_primary_no_metadata_keeps_qualified_family_root_compatibility() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId legacy_text = texts.intern("LegacyQualifiedFamily");
+  const c4c::TextId legacy_instance_text =
+      texts.intern("LegacyQualifiedFamily_T0");
+
+  c4c::Node legacy_primary =
+      make_primary("LegacyQualifiedFamily", legacy_text, 0);
+  lowerer.register_template_struct_primary("LegacyQualifiedFamily",
+                                           &legacy_primary);
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tpl_struct_origin = "ns::LegacyQualifiedFamily_T0";
+  set_legacy_tag_if_present(ts, "LegacyQualifiedFamily_T0", 0);
+  ts.tag_text_id = legacy_instance_text;
+
+  expect_true(
+      lowerer.canonical_template_struct_primary(ts) == &legacy_primary,
+      "no-metadata template origin should keep legacy qualified _T family-root compatibility");
+}
+
+void test_canonical_primary_record_owner_miss_rejects_qualified_family_root() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text = texts.intern("StaleRecordFamily");
+  const c4c::TextId stale_instance_text = texts.intern("StaleRecordFamily_T0");
+  const c4c::TextId missing_text = texts.intern("MissingRecordFamily");
+
+  c4c::Node stale_primary =
+      make_primary("StaleRecordFamily", stale_text, 0);
+  lowerer.register_template_struct_primary("StaleRecordFamily", &stale_primary);
+
+  c4c::Node missing_record =
+      make_primary("MissingRecordFamily", missing_text, 3);
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tpl_struct_origin = "ns::StaleRecordFamily_T0";
+  set_legacy_tag_if_present(ts, "StaleRecordFamily_T0", 0);
+  ts.tag_text_id = stale_instance_text;
+  ts.record_def = &missing_record;
+
+  expect_true(
+      lowerer.canonical_template_struct_primary(ts) == nullptr,
+      "structured record-def owner metadata must block qualified _T family-root recovery after owner-key miss");
+}
+
 void test_collect_initial_type_definitions_rejects_stale_qualified_origin_recovery() {
   c4c::hir::Module module;
   module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
@@ -159,6 +248,9 @@ void test_collect_initial_type_definitions_rejects_stale_qualified_origin_recove
 int main() {
   test_canonical_primary_origin_key_wins_over_stale_rendered_text();
   test_canonical_primary_origin_key_miss_rejects_stale_rendered_text();
+  test_canonical_primary_partial_origin_metadata_rejects_qualified_family_root();
+  test_canonical_primary_no_metadata_keeps_qualified_family_root_compatibility();
+  test_canonical_primary_record_owner_miss_rejects_qualified_family_root();
   test_collect_initial_type_definitions_rejects_stale_qualified_origin_recovery();
   std::cout << "PASS: cpp_hir_template_canonical_primary_origin_metadata_test\n";
   return 0;
