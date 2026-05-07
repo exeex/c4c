@@ -1679,42 +1679,109 @@ TypeSpec Parser::parse_base_type() {
                     [&](const Node* owner,
                         TextId alias_text_id) -> QualifiedNameKey {
                         if (!owner || alias_text_id == kInvalidText) return {};
-                        const int context_id =
-                            owner->namespace_context_id >= 0
-                                ? owner->namespace_context_id
-                                : current_namespace_context_id();
-                        TextId record_text_id = kInvalidText;
-                        if (owner->template_origin_name &&
-                            owner->template_origin_name[0]) {
-                            record_text_id = parser_text_id_for_token(
-                                kInvalidText, owner->template_origin_name);
+                        auto owner_base_text_id =
+                            [&](std::string* base_name) -> TextId {
+                            auto unqualified_base_from_spelling =
+                                [&](const char* spelling) -> TextId {
+                                if (!spelling || !spelling[0]) return kInvalidText;
+                                std::string_view text(spelling);
+                                if (text.find("::") != std::string_view::npos)
+                                    return kInvalidText;
+                                if (text.empty()) return kInvalidText;
+                                if (base_name) *base_name = std::string(text);
+                                return parser_text_id_for_token(kInvalidText, text);
+                            };
+                            if (owner->template_origin_name &&
+                                owner->template_origin_name[0]) {
+                                return unqualified_base_from_spelling(
+                                    owner->template_origin_name);
+                            }
+                            if (owner->unqualified_text_id != kInvalidText) {
+                                const std::string_view text = parser_text(
+                                    owner->unqualified_text_id, {});
+                                if (text.empty() ||
+                                    text.find("::") != std::string_view::npos) {
+                                    return kInvalidText;
+                                }
+                                if (base_name) {
+                                    *base_name = std::string(text);
+                                }
+                                return owner->unqualified_text_id;
+                            }
+                            if (owner->unqualified_name &&
+                                owner->unqualified_name[0]) {
+                                return unqualified_base_from_spelling(
+                                    owner->unqualified_name);
+                            }
+                            return unqualified_base_from_spelling(owner->name);
+                        };
+
+                        std::string owner_base_name;
+                        const TextId record_text_id =
+                            owner_base_text_id(&owner_base_name);
+                        if (owner_base_name.empty() &&
+                            owner->unqualified_name &&
+                            owner->unqualified_name[0]) {
+                            if (std::string_view(owner->unqualified_name)
+                                    .find("::") != std::string_view::npos) {
+                                return {};
+                            }
+                            owner_base_name = owner->unqualified_name;
                         }
-                        if (record_text_id == kInvalidText)
-                            record_text_id = owner->unqualified_text_id;
-                        if (record_text_id == kInvalidText &&
-                            owner->unqualified_name) {
-                            record_text_id = parser_text_id_for_token(
-                                kInvalidText, owner->unqualified_name);
+                        if (record_text_id == kInvalidText ||
+                            owner_base_name.empty()) {
+                            return {};
                         }
-                        if (record_text_id == kInvalidText && owner->name) {
-                            record_text_id = parser_text_id_for_token(
-                                kInvalidText, owner->name);
+
+                        QualifiedNameKey owner_key;
+                        if (owner->is_global_qualified ||
+                            owner->n_qualifier_segments > 0) {
+                            QualifiedNameRef qn;
+                            qn.base_text_id = record_text_id;
+                            qn.base_name = owner_base_name;
+                            qn.is_global_qualified =
+                                owner->is_global_qualified;
+                            for (int qi = 0;
+                                 qi < owner->n_qualifier_segments; ++qi) {
+                                const char* segment =
+                                    owner->qualifier_segments
+                                        ? owner->qualifier_segments[qi]
+                                        : nullptr;
+                                qn.qualifier_segments.emplace_back(
+                                    segment ? segment : "");
+                                qn.qualifier_text_ids.push_back(
+                                    owner->qualifier_text_ids
+                                        ? owner->qualifier_text_ids[qi]
+                                        : kInvalidText);
+                            }
+                            owner_key = qualified_name_key(qn);
+                        } else {
+                            const int context_id =
+                                owner->namespace_context_id >= 0
+                                    ? owner->namespace_context_id
+                                    : current_namespace_context_id();
+                            owner_key = alias_template_key_in_context(
+                                context_id, record_text_id);
                         }
-                        if (record_text_id == kInvalidText) return {};
-                        return record_member_typedef_key_in_context(
-                            context_id, record_text_id, alias_text_id);
+                        return record_member_typedef_key_from_owner_key(
+                            owner_key, alias_text_id);
                     };
                 auto template_primary_for_record =
                     [&](const Node* owner) -> const Node* {
                         if (!owner) return nullptr;
                         if (owner->template_origin_name &&
                             owner->template_origin_name[0]) {
+                            std::string_view origin(owner->template_origin_name);
+                            if (origin.empty() ||
+                                origin.find("::") != std::string_view::npos) {
+                                return nullptr;
+                            }
                             return find_template_struct_primary(
                                 owner->namespace_context_id >= 0
                                     ? owner->namespace_context_id
                                     : current_namespace_context_id(),
                                 parser_text_id_for_token(
-                                    kInvalidText, owner->template_origin_name));
+                                    kInvalidText, origin));
                         }
                         if (is_primary_template_struct_def(owner)) return owner;
                         return nullptr;

@@ -8,29 +8,24 @@ Current Step Title: Replace Parser Rendered Qualified `TextId` Handoffs
 
 ## Just Finished
 
-Completed Step 2 migration for the declarator qualified-typename
-record-member typedef fallback in
-`src/frontend/parser/impl/types/declarator.cpp`. The fallback now projects the
-record-member typedef key from the parsed owner `QualifiedNameRef` via
-`qualified_name_key(owner_qn)` and the new
-`record_member_typedef_key_from_owner_key()` helper, instead of resolving an
-owner namespace context and calling `record_member_typedef_key_in_context()`
-with `owner_qn.base_text_id`.
+Corrected the Step 2 `types/base.cpp` sidecar migration so
+`record_member_key_for_node()` rejects qualified rendered spelling instead of
+recovering a semantic owner base by splitting on `::`. It now projects member
+typedef keys only from unqualified owner metadata or an already-structured
+qualified owner key.
 
-Added
-`test_parser_record_member_typedef_key_uses_structured_owner_metadata` to prove
-member typedef key construction resolves `ns::Owner::Member` from structured
-owner metadata even when the owner `base_text_id` renders as the colliding
-`other::Owner`, and that the stale rendered owner key does not recover the
-binding.
+Adjusted
+`test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name` so
+the sidecar fixture keeps stale rendered text in the display `name` field while
+using the unqualified `template_origin_name` metadata that the sidecar is
+allowed to trust.
 
 ## Suggested Next
 
-Migrate the `types/base.cpp` record-member typedef sidecar family:
-`record_member_key_for_node()` still derives a context and record `TextId` from
-`Node` fields before calling `record_member_typedef_key_in_context()`. Thread or
-construct a structured owner `QualifiedNameKey` there and use
-`record_member_typedef_key_from_owner_key()` or equivalent direct metadata.
+Continue Step 2 by auditing the remaining parser production caller in
+`src/frontend/parser/impl/types/struct.cpp`, then migrate or classify that path
+before Step 3 removes the rendered-qualified compatibility branch from
+`qualified_key_in_context()`.
 
 ## Watchouts
 
@@ -41,8 +36,11 @@ construct a structured owner `QualifiedNameKey` there and use
 - The new helper is a projection from an already structured owner key; do not
   use it to paper over missing owner metadata by first reconstructing the owner
   from rendered spelling.
-- The direct `record_member_typedef_key_in_context()` production caller left in
-  owned scope is now the `types/base.cpp` sidecar path.
+- Do not reintroduce suffix splitting of `template_origin_name`, `name`, or
+  other rendered record spellings; qualified rendered origins without structured
+  owner metadata should fail to form a sidecar key.
+- The direct `record_member_typedef_key_in_context()` production caller left by
+  `rg` is now in `types/struct.cpp`; `types/base.cpp` no longer calls it.
 - `qualified_key_in_context()` still contains the rendered compatibility branch
   for remaining callers.
 

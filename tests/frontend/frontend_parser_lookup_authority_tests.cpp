@@ -3928,7 +3928,7 @@ void test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name() 
       owner_3_key, type_text, owner_member);
 
   c4c::Node* wrapper_inst = parser.make_node(c4c::NK_STRUCT_DEF, 1);
-  wrapper_inst->name = arena.strdup("Wrapper_3_9");
+  wrapper_inst->name = arena.strdup("other::Wrapper_3_9");
   wrapper_inst->unqualified_name = arena.strdup("Wrapper_3_9");
   wrapper_inst->unqualified_text_id = lexer.text_table().intern("Wrapper_3_9");
   wrapper_inst->namespace_context_id = parser.current_namespace_context_id();
@@ -4013,8 +4013,9 @@ void test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name() 
     detail += std::to_string(resolved.record_def->template_arg_values[0]);
   }
   expect_true(resolved.record_def == carrier_3,
-              "record member typedef NTTP substitution should use the carried "
-              "TextId, not the stale rendered nttp_name" +
+              "record member typedef NTTP substitution should use structured "
+              "owner metadata and the carried TextId, not stale rendered "
+              "spellings" +
                   detail);
 }
 
