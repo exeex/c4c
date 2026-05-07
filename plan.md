@@ -106,9 +106,9 @@ Completion check:
 - Parser paths compile and no longer bind semantic NTTP values primarily through `token_spelling(tok) == parameter_name`.
 - Compatibility wrappers, if retained, feed structured bindings before evaluation.
 
-## Step 4: Migrate HIR Late Substitution
+## Step 4: Repair HIR Late Substitution Domain Carriers
 
-Goal: make HIR late type and NTTP substitution consume structured binding carriers instead of rendered string keys.
+Goal: make HIR late type and NTTP substitution require a real parameter-domain carrier before further cleanup, especially for NTTP values forwarded through `TemplateArgRef` or an adjacent HIR binding carrier.
 
 Primary targets:
 - `src/frontend/hir/impl/templates/type_resolution.cpp`
@@ -117,27 +117,34 @@ Primary targets:
 - `src/frontend/hir/compile_time_engine.hpp`
 
 Actions:
+- Add or route a structured NTTP binding carrier that includes owner template context/key, parameter index, parameter kind, spelling `TextId`, and structured value/deferred payload for HIR late substitution.
+- Do not treat `TemplateArgRef::nttp_text_id`, `template_param_text_id`, or `tag_text_id` alone as authority when owner/index/kind metadata is absent.
 - Replace authoritative `type_bindings.find(string)` and `nttp_bindings.find(string)` lookups with parameter-domain binding lookup.
-- Remove semantic dependence on `TemplateArgRef::debug_text`.
-- Preserve string rendering only for diagnostics, dump output, syntax compatibility, or transitional adapters.
+- Remove semantic dependence on `TemplateArgRef::debug_text`; debug text may feed only diagnostics, dumps, syntax compatibility, or explicitly bounded legacy adapters.
+- Classify the existing `Args1#0` / `Base#N` pack bridge as temporary compatibility for legacy explicit pack-series binding maps. It may remain only with a removal condition and must not be counted as final domain-key authority.
+- Inventory `find_template_typedef_binding` and any remaining `type_bindings.find(key)`, `nttp_bindings.find(key)`, `TextId`-only, or debug-text lookup in the touched HIR paths as compatibility or remove it in this step.
 - Keep type and NTTP binding domains separate through substitution.
 
 Completion check:
-- HIR late substitution compiles and uses structured binding metadata as its primary route.
-- Any remaining string maps are compatibility-only and have a clear removal condition.
+- HIR late substitution compiles and refuses to use spelling-only `TextId` or `TemplateArgRef::debug_text` as semantic NTTP authority.
+- NTTP late substitution has a real domain carrier through `TemplateArgRef` or an adjacent HIR binding carrier before any further cleanup-only work proceeds.
+- Any remaining string maps, `Args1#0` / `Base#N` bridges, and debug-text/TextId-only lookups are explicitly compatibility-only with a clear removal condition.
 
-## Step 5: Add Identity-Focused Tests Or Probes
+## Step 5: Add Domain-Identity Tests Or Probes
 
-Goal: prove the new authority handles a case where spelling-only matching is wrong or insufficient.
+Goal: prove the new HIR authority handles cases where spelling-only matching is wrong or insufficient.
 
 Actions:
-- Add or update focused tests for equal parameter spelling in different template contexts, captured argument expressions, formatting differences, or another nearby case that would fail under string-pair authority.
+- Add or update focused tests for equal NTTP parameter spelling in different template owners or nested instantiation contexts.
+- Include a case that would bind the wrong value if `TemplateArgRef::nttp_text_id`, rendered parameter name, or `debug_text` were the authority.
+- Add nearby type-parameter coverage only if Step 4 leaves a missing-owner `TextId` acceptance path for type substitution.
 - Avoid expectation downgrades and unsupported conversions.
-- Include at least one negative reject signal in review notes if a known stringly route remains intentionally temporary.
+- Include review notes classifying any surviving `Args1#0` / `Base#N` pack bridge and debug-text/TextId-only lookup as temporary compatibility, not capability progress.
 
 Completion check:
-- The targeted test or probe fails under the old spelling-only authority and passes through structured binding lookup.
+- The targeted test or probe would fail under old spelling-only authority and passes through structured domain-key lookup.
 - Nearby same-feature cases are considered enough to avoid a named-case-only fix.
+- Review notes identify any remaining compatibility route and its removal condition.
 
 ## Step 6: Validate And Clean Compatibility Boundaries
 
