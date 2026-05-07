@@ -4187,8 +4187,8 @@ void test_alias_member_typedef_type_substitution_uses_text_id_without_tag() {
   owner_int_key.template_key = parser.alias_template_key_in_context(
       owner_primary->namespace_context_id, owner_text);
   owner_int_key.arguments.push_back(
-      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::type(
-          "int"));
+      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::type_base(
+          c4c::TB_INT));
   parser.register_template_instantiation_member_typedef_binding(
       owner_int_key, type_text, owner_int_type);
 
@@ -4427,8 +4427,8 @@ void test_alias_template_member_typedef_type_arg_uses_text_id_without_tag() {
   owner_int_key.template_key = parser.alias_template_key_in_context(
       owner_primary->namespace_context_id, owner_text);
   owner_int_key.arguments.push_back(
-      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::type(
-          "int"));
+      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::type_base(
+          c4c::TB_INT));
   parser.register_template_instantiation_member_typedef_binding(
       owner_int_key, type_text, owner_int_type);
 

@@ -1441,6 +1441,155 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
 }
 
 using TemplateArgumentKey = ParserTemplateState::TemplateInstantiationKey::Argument;
+using TemplateTypeKeyComponent = TemplateArgumentKey::TypeComponent;
+
+TemplateTypeKeyComponent qualified_name_type_component(
+    TemplateTypeKeyComponent::Kind kind, const QualifiedNameKey& key) {
+    TemplateTypeKeyComponent component;
+    component.kind = kind;
+    component.namespace_context_id = key.context_id;
+    component.qualifier_path_id = key.qualifier_path_id;
+    component.text_id = key.base_text_id;
+    component.is_global_qualified = key.is_global_qualified;
+    return component;
+}
+
+void append_template_type_key_components(
+    const TypeSpec& ts, std::vector<TemplateTypeKeyComponent>& out) {
+    TemplateTypeKeyComponent base;
+    base.kind = TemplateTypeKeyComponent::Kind::Base;
+    base.base = static_cast<int>(ts.base);
+    base.enum_underlying_base = static_cast<int>(ts.enum_underlying_base);
+    out.push_back(base);
+
+    TemplateTypeKeyComponent name;
+    name.kind = TemplateTypeKeyComponent::Kind::NameIdentity;
+    name.text_id = ts.template_param_text_id != kInvalidText
+                       ? ts.template_param_text_id
+                       : ts.tag_text_id;
+    name.owner_text_id = ts.template_param_owner_text_id;
+    name.owner_namespace_context_id =
+        ts.template_param_owner_namespace_context_id;
+    name.template_param_index = ts.template_param_index;
+    name.namespace_context_id = ts.namespace_context_id;
+    name.is_global_qualified = ts.is_global_qualified;
+    name.record_identity = reinterpret_cast<std::uintptr_t>(ts.record_def);
+    out.push_back(name);
+
+    for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+        TemplateTypeKeyComponent qualifier;
+        qualifier.kind = TemplateTypeKeyComponent::Kind::Qualifier;
+        qualifier.index = i;
+        qualifier.text_id =
+            ts.qualifier_text_ids ? ts.qualifier_text_ids[i] : kInvalidText;
+        if (qualifier.text_id == kInvalidText && ts.qualifier_segments &&
+            ts.qualifier_segments[i]) {
+            qualifier.compatibility_text = ts.qualifier_segments[i];
+        }
+        out.push_back(std::move(qualifier));
+    }
+
+    TemplateTypeKeyComponent declarator;
+    declarator.kind = TemplateTypeKeyComponent::Kind::Declarator;
+    declarator.ptr_level = ts.ptr_level;
+    declarator.is_lvalue_ref = ts.is_lvalue_ref;
+    declarator.is_rvalue_ref = ts.is_rvalue_ref;
+    declarator.is_const = ts.is_const;
+    declarator.is_volatile = ts.is_volatile;
+    declarator.is_fn_ptr = ts.is_fn_ptr;
+    declarator.is_packed = ts.is_packed;
+    declarator.is_noinline = ts.is_noinline;
+    declarator.is_always_inline = ts.is_always_inline;
+    declarator.align_bytes = ts.align_bytes;
+    out.push_back(declarator);
+
+    TemplateTypeKeyComponent array_shape;
+    array_shape.kind = TemplateTypeKeyComponent::Kind::ArrayDim;
+    array_shape.index = -1;
+    array_shape.array_rank = ts.array_rank;
+    array_shape.value = ts.array_size;
+    array_shape.value2 = ts.inner_rank;
+    array_shape.value3 = ts.is_ptr_to_array ? 1 : 0;
+    out.push_back(array_shape);
+    for (int i = 0; i < ts.array_rank && i < 8; ++i) {
+        TemplateTypeKeyComponent dim;
+        dim.kind = TemplateTypeKeyComponent::Kind::ArrayDim;
+        dim.index = i;
+        dim.value = ts.array_dims[i];
+        out.push_back(dim);
+    }
+
+    if (ts.is_vector) {
+        TemplateTypeKeyComponent vector_shape;
+        vector_shape.kind = TemplateTypeKeyComponent::Kind::Vector;
+        vector_shape.value = ts.vector_lanes;
+        vector_shape.value2 = ts.vector_bytes;
+        out.push_back(vector_shape);
+    }
+
+    if (ts.tpl_struct_origin_key.base_text_id != kInvalidText) {
+        out.push_back(qualified_name_type_component(
+            TemplateTypeKeyComponent::Kind::TemplateOrigin,
+            ts.tpl_struct_origin_key));
+    } else if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
+        TemplateTypeKeyComponent origin;
+        origin.kind = TemplateTypeKeyComponent::Kind::CompatibilityText;
+        origin.compatibility_text = ts.tpl_struct_origin;
+        out.push_back(std::move(origin));
+    }
+
+    if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
+        for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+            const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
+            if (arg.kind == TemplateArgKind::Value) {
+                TemplateTypeKeyComponent value;
+                value.kind = TemplateTypeKeyComponent::Kind::TemplateArgValue;
+                value.index = i;
+                value.value = arg.value;
+                value.text_id = arg.nttp_text_id;
+                out.push_back(value);
+                continue;
+            }
+            TemplateTypeKeyComponent begin;
+            begin.kind = TemplateTypeKeyComponent::Kind::TemplateArgTypeBegin;
+            begin.index = i;
+            out.push_back(begin);
+            append_template_type_key_components(arg.type, out);
+            TemplateTypeKeyComponent end;
+            end.kind = TemplateTypeKeyComponent::Kind::TemplateArgEnd;
+            end.index = i;
+            out.push_back(end);
+        }
+    }
+
+    if (ts.deferred_member_type_owner_key.base_text_id != kInvalidText ||
+        ts.deferred_member_type_text_id != kInvalidText) {
+        TemplateTypeKeyComponent member = qualified_name_type_component(
+            TemplateTypeKeyComponent::Kind::DeferredMemberType,
+            ts.deferred_member_type_owner_key);
+        member.member_text_id = ts.deferred_member_type_text_id;
+        out.push_back(member);
+    }
+
+    if (name.text_id == kInvalidText && !ts.record_def &&
+        ts.template_param_text_id == kInvalidText) {
+        if (const char* legacy_tag =
+                typespec_legacy_display_tag_if_present(ts, 0);
+            legacy_tag && legacy_tag[0]) {
+            TemplateTypeKeyComponent fallback;
+            fallback.kind = TemplateTypeKeyComponent::Kind::CompatibilityText;
+            fallback.compatibility_text = legacy_tag;
+            out.push_back(std::move(fallback));
+        }
+    }
+}
+
+std::vector<TemplateTypeKeyComponent> make_template_type_key_components(
+    const TypeSpec& ts) {
+    std::vector<TemplateTypeKeyComponent> components;
+    append_template_type_key_components(ts, components);
+    return components;
+}
 
 void append_template_nttp_expr_key_nodes(
     const Node* expr,
@@ -1518,7 +1667,8 @@ make_template_instantiation_argument_key(const ParsedTemplateArg& arg) {
             return TemplateArgumentKey::numeric(arg.value);
         }
     } else {
-        return TemplateArgumentKey::type(canonical_template_struct_type_key(arg.type));
+        return TemplateArgumentKey::type(
+            make_template_type_key_components(arg.type));
     }
 }
 

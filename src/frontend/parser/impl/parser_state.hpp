@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -116,10 +117,86 @@ struct ParserTemplateState {
     struct Argument {
       enum class PayloadKind {
         Type,
+        TypeCompatibilityText,
         ValueExpression,
         ValueTokens,
         LegacyExpressionText,
         NumericValue,
+      };
+
+      struct TypeComponent {
+        enum class Kind {
+          Base,
+          NameIdentity,
+          Qualifier,
+          Declarator,
+          ArrayDim,
+          Vector,
+          TemplateOrigin,
+          TemplateArgTypeBegin,
+          TemplateArgEnd,
+          TemplateArgValue,
+          DeferredMemberType,
+          CompatibilityText,
+        };
+
+        Kind kind = Kind::Base;
+        int index = -1;
+        int base = 0;
+        int enum_underlying_base = 0;
+        TextId text_id = kInvalidText;
+        TextId owner_text_id = kInvalidText;
+        TextId member_text_id = kInvalidText;
+        int namespace_context_id = -1;
+        int owner_namespace_context_id = -1;
+        int template_param_index = -1;
+        bool is_global_qualified = false;
+        int qualifier_path_id = -1;
+        std::uintptr_t record_identity = 0;
+        int ptr_level = 0;
+        bool is_lvalue_ref = false;
+        bool is_rvalue_ref = false;
+        bool is_const = false;
+        bool is_volatile = false;
+        bool is_fn_ptr = false;
+        bool is_packed = false;
+        bool is_noinline = false;
+        bool is_always_inline = false;
+        int align_bytes = 0;
+        int array_rank = 0;
+        long long value = 0;
+        long long value2 = 0;
+        long long value3 = 0;
+        std::string compatibility_text;
+
+        [[nodiscard]] bool operator==(const TypeComponent& other) const {
+          return kind == other.kind && index == other.index &&
+                 base == other.base &&
+                 enum_underlying_base == other.enum_underlying_base &&
+                 text_id == other.text_id &&
+                 owner_text_id == other.owner_text_id &&
+                 member_text_id == other.member_text_id &&
+                 namespace_context_id == other.namespace_context_id &&
+                 owner_namespace_context_id ==
+                     other.owner_namespace_context_id &&
+                 template_param_index == other.template_param_index &&
+                 is_global_qualified == other.is_global_qualified &&
+                 qualifier_path_id == other.qualifier_path_id &&
+                 record_identity == other.record_identity &&
+                 ptr_level == other.ptr_level &&
+                 is_lvalue_ref == other.is_lvalue_ref &&
+                 is_rvalue_ref == other.is_rvalue_ref &&
+                 is_const == other.is_const &&
+                 is_volatile == other.is_volatile &&
+                 is_fn_ptr == other.is_fn_ptr &&
+                 is_packed == other.is_packed &&
+                 is_noinline == other.is_noinline &&
+                 is_always_inline == other.is_always_inline &&
+                 align_bytes == other.align_bytes &&
+                 array_rank == other.array_rank && value == other.value &&
+                 value2 == other.value2 && value3 == other.value3 &&
+                 compatibility_text == other.compatibility_text;
+        }
       };
 
       struct ValueExpressionNode {
@@ -165,17 +242,43 @@ struct ParserTemplateState {
 
       bool is_value = false;
       PayloadKind payload_kind = PayloadKind::Type;
-      std::string type_key;
+      std::vector<TypeComponent> type_components;
+      std::string compatibility_type_text;
       std::vector<ValueExpressionNode> value_expression_nodes;
       std::vector<CapturedToken> captured_tokens;
       std::string legacy_expression_text;
       long long numeric_value = 0;
 
-      [[nodiscard]] static Argument type(std::string key) {
+      [[nodiscard]] static Argument type(std::vector<TypeComponent> components) {
         Argument arg;
         arg.is_value = false;
         arg.payload_kind = PayloadKind::Type;
-        arg.type_key = std::move(key);
+        arg.type_components = std::move(components);
+        return arg;
+      }
+
+      [[nodiscard]] static Argument type_base(TypeBase base_value) {
+        TypeComponent base;
+        base.kind = TypeComponent::Kind::Base;
+        base.base = static_cast<int>(base_value);
+        TypeComponent name;
+        name.kind = TypeComponent::Kind::NameIdentity;
+        TypeComponent declarator;
+        declarator.kind = TypeComponent::Kind::Declarator;
+        TypeComponent array_shape;
+        array_shape.kind = TypeComponent::Kind::ArrayDim;
+        array_shape.index = -1;
+        array_shape.value = -1;
+        array_shape.value2 = -1;
+        return type({base, name, declarator, array_shape});
+      }
+
+      [[nodiscard]] static Argument type_compatibility_text(
+          std::string text) {
+        Argument arg;
+        arg.is_value = false;
+        arg.payload_kind = PayloadKind::TypeCompatibilityText;
+        arg.compatibility_type_text = std::move(text);
         return arg;
       }
 
@@ -220,7 +323,9 @@ struct ParserTemplateState {
         }
         switch (payload_kind) {
           case PayloadKind::Type:
-            return type_key == other.type_key;
+            return type_components == other.type_components;
+          case PayloadKind::TypeCompatibilityText:
+            return compatibility_type_text == other.compatibility_type_text;
           case PayloadKind::ValueExpression:
             return value_expression_nodes == other.value_expression_nodes;
           case PayloadKind::ValueTokens:
@@ -283,6 +388,40 @@ struct ParserTemplateState {
       return out;
     }
 
+    [[nodiscard]] static size_t hash_type_component(
+        const TemplateInstantiationKey::Argument::TypeComponent& component) {
+      size_t out = std::hash<int>{}(static_cast<int>(component.kind));
+      out = mix(out, std::hash<int>{}(component.index));
+      out = mix(out, std::hash<int>{}(component.base));
+      out = mix(out, std::hash<int>{}(component.enum_underlying_base));
+      out = mix(out, std::hash<int>{}(component.text_id));
+      out = mix(out, std::hash<int>{}(component.owner_text_id));
+      out = mix(out, std::hash<int>{}(component.member_text_id));
+      out = mix(out, std::hash<int>{}(component.namespace_context_id));
+      out = mix(out,
+                std::hash<int>{}(component.owner_namespace_context_id));
+      out = mix(out, std::hash<int>{}(component.template_param_index));
+      out = mix(out, std::hash<bool>{}(component.is_global_qualified));
+      out = mix(out, std::hash<int>{}(component.qualifier_path_id));
+      out = mix(out, std::hash<std::uintptr_t>{}(component.record_identity));
+      out = mix(out, std::hash<int>{}(component.ptr_level));
+      out = mix(out, std::hash<bool>{}(component.is_lvalue_ref));
+      out = mix(out, std::hash<bool>{}(component.is_rvalue_ref));
+      out = mix(out, std::hash<bool>{}(component.is_const));
+      out = mix(out, std::hash<bool>{}(component.is_volatile));
+      out = mix(out, std::hash<bool>{}(component.is_fn_ptr));
+      out = mix(out, std::hash<bool>{}(component.is_packed));
+      out = mix(out, std::hash<bool>{}(component.is_noinline));
+      out = mix(out, std::hash<bool>{}(component.is_always_inline));
+      out = mix(out, std::hash<int>{}(component.align_bytes));
+      out = mix(out, std::hash<int>{}(component.array_rank));
+      out = mix(out, std::hash<long long>{}(component.value));
+      out = mix(out, std::hash<long long>{}(component.value2));
+      out = mix(out, std::hash<long long>{}(component.value3));
+      out = mix(out, std::hash<std::string>{}(component.compatibility_text));
+      return out;
+    }
+
     [[nodiscard]] static size_t hash_argument(
         const TemplateInstantiationKey::Argument& arg) {
       using Argument = TemplateInstantiationKey::Argument;
@@ -290,7 +429,13 @@ struct ParserTemplateState {
       out = mix(out, std::hash<int>{}(static_cast<int>(arg.payload_kind)));
       switch (arg.payload_kind) {
         case Argument::PayloadKind::Type:
-          return mix(out, std::hash<std::string>{}(arg.type_key));
+          for (const auto& component : arg.type_components) {
+            out = mix(out, hash_type_component(component));
+          }
+          return out;
+        case Argument::PayloadKind::TypeCompatibilityText:
+          return mix(out, std::hash<std::string>{}(
+                              arg.compatibility_type_text));
         case Argument::PayloadKind::ValueExpression:
           for (const auto& node : arg.value_expression_nodes) {
             out = mix(out, hash_expr_node(node));

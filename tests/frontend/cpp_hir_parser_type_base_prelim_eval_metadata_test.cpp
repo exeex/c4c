@@ -83,8 +83,8 @@ void test_preliminary_functional_cast_uses_template_param_text_id() {
   c4c::ParserTemplateState::TemplateInstantiationKey expected_key{};
   expected_key.template_key = box_key;
   expected_key.arguments.push_back(
-      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::type(
-          "uint"));
+      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::type_base(
+          c4c::TB_UINT));
   expected_key.arguments.push_back(
       c4c::ParserTemplateState::TemplateInstantiationKey::Argument::numeric(
           7));

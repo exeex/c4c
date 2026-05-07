@@ -3156,12 +3156,14 @@ void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
   payload->name = arena.strdup("Payload");
   payload->unqualified_name = arena.strdup("Payload");
   payload->unqualified_text_id = payload_text;
+  payload->namespace_context_id = parser.current_namespace_context_id();
   parser.register_struct_definition_for_testing("Payload", payload);
   c4c::TypeSpec payload_alias{};
   payload_alias.array_size = -1;
   payload_alias.inner_rank = -1;
   payload_alias.base = c4c::TB_STRUCT;
   payload_alias.tag_text_id = payload_text;
+  payload_alias.namespace_context_id = payload->namespace_context_id;
   payload_alias.record_def = payload;
   parser.register_typedef_binding(payload_alias_token.text_id, payload_alias,
                                   true);
@@ -8638,6 +8640,41 @@ void test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_t
               "canonical template struct type key should include the structured value argument");
 }
 
+void test_template_instantiation_type_payload_ignores_template_arg_debug_text() {
+  c4c::Arena arena;
+
+  auto make_arg = [&](const char* debug_text) {
+    c4c::Parser::TemplateArgParseResult arg{};
+    arg.is_value = false;
+    arg.type.array_size = -1;
+    arg.type.inner_rank = -1;
+    arg.type.base = c4c::TB_TYPEDEF;
+    arg.type.tpl_struct_origin_key.base_text_id = 42;
+    arg.type.tpl_struct_args.size = 1;
+    arg.type.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+    arg.type.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
+    arg.type.tpl_struct_args.data[0].type.array_size = -1;
+    arg.type.tpl_struct_args.data[0].type.inner_rank = -1;
+    arg.type.tpl_struct_args.data[0].type.base = c4c::TB_TYPEDEF;
+    arg.type.tpl_struct_args.data[0].type.template_param_text_id = 77;
+    arg.type.tpl_struct_args.data[0].debug_text = arena.strdup(debug_text);
+    return c4c::make_template_instantiation_argument_key(arg);
+  };
+
+  const auto lhs = make_arg("RenderedT");
+  const auto rhs = make_arg("DifferentRenderedT");
+
+  expect_true(lhs == rhs,
+              "template instantiation type payload should ignore nested TemplateArgRef debug_text when structured type payload matches");
+  expect_true(
+      lhs.payload_kind ==
+          c4c::ParserTemplateState::TemplateInstantiationKey::Argument::
+              PayloadKind::Type,
+      "template instantiation type arguments should use the structured Type payload");
+  expect_true(!lhs.type_components.empty(),
+              "structured Type payload should expose TypeSpec-derived components");
+}
+
 void test_template_instantiation_key_prefers_expr_carrier_over_expr_text() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -10057,6 +10094,7 @@ int main() {
   test_type_binding_equivalence_preserves_no_metadata_rendered_qualified_compatibility();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
+  test_template_instantiation_type_payload_ignores_template_arg_debug_text();
   test_template_instantiation_key_prefers_expr_carrier_over_expr_text();
   test_template_instantiation_key_expression_payload_preserves_tree_shape();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
