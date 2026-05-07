@@ -1440,70 +1440,86 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
     return out;
 }
 
-std::string canonical_template_nttp_expr_key(const Node* expr) {
-    if (!expr) return {};
-    std::string out = "expr:";
-    out += std::to_string(static_cast<int>(expr->kind));
+using TemplateArgumentKey = ParserTemplateState::TemplateInstantiationKey::Argument;
+
+void append_template_nttp_expr_key_nodes(
+    const Node* expr,
+    TemplateArgumentKey::ValueExpressionNode::Role role,
+    int depth,
+    int parent_index,
+    std::vector<TemplateArgumentKey::ValueExpressionNode>& out) {
+    if (!expr) return;
+    TemplateArgumentKey::ValueExpressionNode node;
+    node.role = role;
+    node.depth = depth;
+    node.parent_index = parent_index;
+    node.node_kind = static_cast<int>(expr->kind);
     if (expr->op && expr->op[0]) {
-        out += ":op=";
-        out += expr->op;
+        node.op = expr->op;
     }
     switch (expr->kind) {
         case NK_INT_LIT:
         case NK_CHAR_LIT:
-            out += ":ival=";
-            out += std::to_string(expr->ival);
+            node.int_value = expr->ival;
             break;
         case NK_VAR:
-            out += ":var=";
-            out += std::to_string(expr->unqualified_text_id);
-            if (expr->is_global_qualified) out += ":global";
+            node.variable_text_id = expr->unqualified_text_id;
+            node.is_global_qualified = expr->is_global_qualified;
             if (expr->qualifier_text_ids && expr->n_qualifier_segments > 0) {
-                out += ":q=";
+                node.qualifier_text_ids.reserve(
+                    static_cast<size_t>(expr->n_qualifier_segments));
                 for (int i = 0; i < expr->n_qualifier_segments; ++i) {
-                    if (i > 0) out += ".";
-                    out += std::to_string(expr->qualifier_text_ids[i]);
+                    node.qualifier_text_ids.push_back(
+                        expr->qualifier_text_ids[i]);
                 }
             }
             break;
         default:
             break;
     }
-    if (expr->left) out += ":l{" + canonical_template_nttp_expr_key(expr->left) + "}";
-    if (expr->right) out += ":r{" + canonical_template_nttp_expr_key(expr->right) + "}";
-    if (expr->cond) out += ":c{" + canonical_template_nttp_expr_key(expr->cond) + "}";
-    if (expr->then_) out += ":t{" + canonical_template_nttp_expr_key(expr->then_) + "}";
-    if (expr->else_) out += ":e{" + canonical_template_nttp_expr_key(expr->else_) + "}";
-    return out;
+    const int node_index = static_cast<int>(out.size());
+    out.push_back(std::move(node));
+    using Role = TemplateArgumentKey::ValueExpressionNode::Role;
+    append_template_nttp_expr_key_nodes(
+        expr->left, Role::Left, depth + 1, node_index, out);
+    append_template_nttp_expr_key_nodes(
+        expr->right, Role::Right, depth + 1, node_index, out);
+    append_template_nttp_expr_key_nodes(
+        expr->cond, Role::Cond, depth + 1, node_index, out);
+    append_template_nttp_expr_key_nodes(
+        expr->then_, Role::Then, depth + 1, node_index, out);
+    append_template_nttp_expr_key_nodes(
+        expr->else_, Role::Else, depth + 1, node_index, out);
 }
 
 ParserTemplateState::TemplateInstantiationKey::Argument
 make_template_instantiation_argument_key(const ParsedTemplateArg& arg) {
-    ParserTemplateState::TemplateInstantiationKey::Argument key;
-    key.is_value = arg.is_value;
     if (arg.is_value) {
         const Node* structured_expr =
             arg.expr ? arg.expr : arg.type.array_size_expr;
         if (structured_expr) {
-            key.canonical_key = canonical_template_nttp_expr_key(structured_expr);
+            std::vector<TemplateArgumentKey::ValueExpressionNode> nodes;
+            append_template_nttp_expr_key_nodes(
+                structured_expr,
+                TemplateArgumentKey::ValueExpressionNode::Role::Root, 0, -1,
+                nodes);
+            return TemplateArgumentKey::value_expression(std::move(nodes));
         } else if (!arg.captured_expr_tokens.empty()) {
-            key.canonical_key = "$tokens:";
+            std::vector<TemplateArgumentKey::CapturedToken> tokens;
+            tokens.reserve(arg.captured_expr_tokens.size());
             for (const Token& tok : arg.captured_expr_tokens) {
-                key.canonical_key += std::to_string(static_cast<int>(tok.kind));
-                key.canonical_key += "#";
-                key.canonical_key += std::to_string(tok.text_id);
-                key.canonical_key += ";";
+                tokens.push_back({static_cast<int>(tok.kind), tok.text_id});
             }
+            return TemplateArgumentKey::value_tokens(std::move(tokens));
         } else if (arg.nttp_name && arg.nttp_name[0] &&
             std::strncmp(arg.nttp_name, "$expr:", 6) == 0) {
-            key.canonical_key = arg.nttp_name;
+            return TemplateArgumentKey::legacy_expression(arg.nttp_name);
         } else {
-            key.canonical_key = std::to_string(arg.value);
+            return TemplateArgumentKey::numeric(arg.value);
         }
     } else {
-        key.canonical_key = canonical_template_struct_type_key(arg.type);
+        return TemplateArgumentKey::type(canonical_template_struct_type_key(arg.type));
     }
-    return key;
 }
 
 ParsedTemplateArg parsed_template_arg_from_node_slot(const Node* owner, int index) {

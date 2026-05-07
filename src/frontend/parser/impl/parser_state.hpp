@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "../parser_types.hpp"
@@ -113,12 +114,123 @@ struct ParserTemplateState {
 
   struct TemplateInstantiationKey {
     struct Argument {
+      enum class PayloadKind {
+        Type,
+        ValueExpression,
+        ValueTokens,
+        LegacyExpressionText,
+        NumericValue,
+      };
+
+      struct ValueExpressionNode {
+        enum class Role {
+          Root,
+          Left,
+          Right,
+          Cond,
+          Then,
+          Else,
+        };
+
+        Role role = Role::Root;
+        int depth = 0;
+        int parent_index = -1;
+        int node_kind = 0;
+        std::string op;
+        long long int_value = 0;
+        TextId variable_text_id = kInvalidText;
+        bool is_global_qualified = false;
+        std::vector<TextId> qualifier_text_ids;
+
+        [[nodiscard]] bool operator==(
+            const ValueExpressionNode& other) const {
+          return role == other.role && depth == other.depth &&
+                 parent_index == other.parent_index &&
+                 node_kind == other.node_kind && op == other.op &&
+                 int_value == other.int_value &&
+                 variable_text_id == other.variable_text_id &&
+                 is_global_qualified == other.is_global_qualified &&
+                 qualifier_text_ids == other.qualifier_text_ids;
+        }
+      };
+
+      struct CapturedToken {
+        int kind = 0;
+        TextId text_id = kInvalidText;
+
+        [[nodiscard]] bool operator==(const CapturedToken& other) const {
+          return kind == other.kind && text_id == other.text_id;
+        }
+      };
+
       bool is_value = false;
-      std::string canonical_key;
+      PayloadKind payload_kind = PayloadKind::Type;
+      std::string type_key;
+      std::vector<ValueExpressionNode> value_expression_nodes;
+      std::vector<CapturedToken> captured_tokens;
+      std::string legacy_expression_text;
+      long long numeric_value = 0;
+
+      [[nodiscard]] static Argument type(std::string key) {
+        Argument arg;
+        arg.is_value = false;
+        arg.payload_kind = PayloadKind::Type;
+        arg.type_key = std::move(key);
+        return arg;
+      }
+
+      [[nodiscard]] static Argument value_expression(
+          std::vector<ValueExpressionNode> nodes) {
+        Argument arg;
+        arg.is_value = true;
+        arg.payload_kind = PayloadKind::ValueExpression;
+        arg.value_expression_nodes = std::move(nodes);
+        return arg;
+      }
+
+      [[nodiscard]] static Argument value_tokens(
+          std::vector<CapturedToken> tokens) {
+        Argument arg;
+        arg.is_value = true;
+        arg.payload_kind = PayloadKind::ValueTokens;
+        arg.captured_tokens = std::move(tokens);
+        return arg;
+      }
+
+      [[nodiscard]] static Argument legacy_expression(std::string text) {
+        Argument arg;
+        arg.is_value = true;
+        arg.payload_kind = PayloadKind::LegacyExpressionText;
+        arg.legacy_expression_text = std::move(text);
+        return arg;
+      }
+
+      [[nodiscard]] static Argument numeric(long long value) {
+        Argument arg;
+        arg.is_value = true;
+        arg.payload_kind = PayloadKind::NumericValue;
+        arg.numeric_value = value;
+        return arg;
+      }
 
       [[nodiscard]] bool operator==(const Argument& other) const {
-        return is_value == other.is_value &&
-               canonical_key == other.canonical_key;
+        if (is_value != other.is_value ||
+            payload_kind != other.payload_kind) {
+          return false;
+        }
+        switch (payload_kind) {
+          case PayloadKind::Type:
+            return type_key == other.type_key;
+          case PayloadKind::ValueExpression:
+            return value_expression_nodes == other.value_expression_nodes;
+          case PayloadKind::ValueTokens:
+            return captured_tokens == other.captured_tokens;
+          case PayloadKind::LegacyExpressionText:
+            return legacy_expression_text == other.legacy_expression_text;
+          case PayloadKind::NumericValue:
+            return numeric_value == other.numeric_value;
+        }
+        return false;
       }
     };
 
@@ -141,16 +253,62 @@ struct ParserTemplateState {
           static_cast<uint32_t>(key.template_key.is_global_qualified));
       size_t args_hash = 0;
       for (const auto& arg : key.arguments) {
-        const size_t arg_hash =
-            std::hash<std::string>{}(arg.canonical_key) ^
-            (static_cast<size_t>(arg.is_value) + 0x9e3779b9U +
-             (args_hash << 6U) + (args_hash >> 2U));
+        const size_t arg_hash = hash_argument(arg);
         args_hash ^= arg_hash + 0x9e3779b9U + (args_hash << 6U) +
                      (args_hash >> 2U);
       }
       return static_cast<size_t>(name_hash) ^ (args_hash + 0x9e3779b9U +
                                                (static_cast<size_t>(name_hash) << 6U) +
                                                (static_cast<size_t>(name_hash) >> 2U));
+    }
+
+   private:
+    [[nodiscard]] static size_t mix(size_t seed, size_t value) {
+      return seed ^ (value + 0x9e3779b9U + (seed << 6U) + (seed >> 2U));
+    }
+
+    [[nodiscard]] static size_t hash_expr_node(
+        const TemplateInstantiationKey::Argument::ValueExpressionNode& node) {
+      size_t out = std::hash<int>{}(static_cast<int>(node.role));
+      out = mix(out, std::hash<int>{}(node.depth));
+      out = mix(out, std::hash<int>{}(node.parent_index));
+      out = mix(out, std::hash<int>{}(node.node_kind));
+      out = mix(out, std::hash<std::string>{}(node.op));
+      out = mix(out, std::hash<long long>{}(node.int_value));
+      out = mix(out, std::hash<int>{}(node.variable_text_id));
+      out = mix(out, std::hash<bool>{}(node.is_global_qualified));
+      for (const TextId text_id : node.qualifier_text_ids) {
+        out = mix(out, std::hash<int>{}(text_id));
+      }
+      return out;
+    }
+
+    [[nodiscard]] static size_t hash_argument(
+        const TemplateInstantiationKey::Argument& arg) {
+      using Argument = TemplateInstantiationKey::Argument;
+      size_t out = std::hash<bool>{}(arg.is_value);
+      out = mix(out, std::hash<int>{}(static_cast<int>(arg.payload_kind)));
+      switch (arg.payload_kind) {
+        case Argument::PayloadKind::Type:
+          return mix(out, std::hash<std::string>{}(arg.type_key));
+        case Argument::PayloadKind::ValueExpression:
+          for (const auto& node : arg.value_expression_nodes) {
+            out = mix(out, hash_expr_node(node));
+          }
+          return out;
+        case Argument::PayloadKind::ValueTokens:
+          for (const auto& token : arg.captured_tokens) {
+            out = mix(out, std::hash<int>{}(token.kind));
+            out = mix(out, std::hash<int>{}(token.text_id));
+          }
+          return out;
+        case Argument::PayloadKind::LegacyExpressionText:
+          return mix(out,
+                     std::hash<std::string>{}(arg.legacy_expression_text));
+        case Argument::PayloadKind::NumericValue:
+          return mix(out, std::hash<long long>{}(arg.numeric_value));
+      }
+      return out;
     }
   };
 

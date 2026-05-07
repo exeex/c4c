@@ -8669,11 +8669,70 @@ void test_template_instantiation_key_prefers_expr_carrier_over_expr_text() {
   const auto first_key = c4c::make_template_instantiation_argument_key(first);
   const auto second_key = c4c::make_template_instantiation_argument_key(second);
 
-  expect_eq(first_key.canonical_key, second_key.canonical_key,
+  expect_true(first_key == second_key,
             "template instantiation keys should use structured expression "
             "metadata instead of stale `$expr:` text");
-  expect_true(first_key.canonical_key.find("$expr:") == std::string::npos,
-              "structured expression keys should not retain `$expr:` text");
+  expect_true(
+      first_key.payload_kind ==
+          c4c::ParserTemplateState::TemplateInstantiationKey::Argument::
+              PayloadKind::ValueExpression,
+      "structured expression keys should use the value-expression payload");
+}
+
+void test_template_instantiation_key_expression_payload_preserves_tree_shape() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId value_text = texts.intern("Value");
+
+  c4c::Node* shape_a_left = parser.make_node(c4c::NK_BINOP, 1);
+  shape_a_left->kind = c4c::NK_BINOP;
+  shape_a_left->op = arena.strdup("*");
+  c4c::Node* shape_a_right = parser.make_node(c4c::NK_VAR, 1);
+  shape_a_right->kind = c4c::NK_VAR;
+  shape_a_right->unqualified_text_id = value_text;
+  c4c::Node* shape_a = parser.make_node(c4c::NK_BINOP, 1);
+  shape_a->kind = c4c::NK_BINOP;
+  shape_a->op = arena.strdup("+");
+  shape_a->left = shape_a_left;
+  shape_a->right = shape_a_right;
+
+  c4c::Node* shape_b_left = parser.make_node(c4c::NK_BINOP, 1);
+  shape_b_left->kind = c4c::NK_BINOP;
+  shape_b_left->op = arena.strdup("*");
+  c4c::Node* shape_b_nested_right = parser.make_node(c4c::NK_VAR, 1);
+  shape_b_nested_right->kind = c4c::NK_VAR;
+  shape_b_nested_right->unqualified_text_id = value_text;
+  shape_b_left->right = shape_b_nested_right;
+  c4c::Node* shape_b = parser.make_node(c4c::NK_BINOP, 1);
+  shape_b->kind = c4c::NK_BINOP;
+  shape_b->op = arena.strdup("+");
+  shape_b->left = shape_b_left;
+
+  c4c::Parser::TemplateArgParseResult arg_a{};
+  arg_a.is_value = true;
+  arg_a.expr = shape_a;
+  c4c::Parser::TemplateArgParseResult arg_b{};
+  arg_b.is_value = true;
+  arg_b.expr = shape_b;
+
+  const auto key_a = c4c::make_template_instantiation_argument_key(arg_a);
+  const auto key_b = c4c::make_template_instantiation_argument_key(arg_b);
+
+  expect_true(
+      key_a.payload_kind ==
+              c4c::ParserTemplateState::TemplateInstantiationKey::Argument::
+                  PayloadKind::ValueExpression &&
+          key_b.payload_kind ==
+              c4c::ParserTemplateState::TemplateInstantiationKey::Argument::
+                  PayloadKind::ValueExpression,
+      "test expressions should use structured value-expression payloads");
+  expect_true(!(key_a == key_b),
+              "expression payload identity should preserve tree shape, not "
+              "only preorder child-role sequences");
 }
 
 void test_parser_template_arg_ref_rendering_prefers_structured_nested_arg() {
@@ -9999,6 +10058,7 @@ int main() {
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_template_instantiation_key_prefers_expr_carrier_over_expr_text();
+  test_template_instantiation_key_expression_payload_preserves_tree_shape();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
   test_consteval_template_arg_expr_payload_ignores_stale_rendered_name();
   test_parser_consteval_parameter_preserves_unqualified_text_metadata();

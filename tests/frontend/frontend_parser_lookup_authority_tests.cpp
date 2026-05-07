@@ -4040,10 +4040,9 @@ void test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name() 
   c4c::ParserTemplateState::TemplateInstantiationKey owner_3_key;
   owner_3_key.template_key = parser.alias_template_key_in_context(
       owner_primary->namespace_context_id, owner_text);
-  c4c::ParserTemplateState::TemplateInstantiationKey::Argument owner_3_arg;
-  owner_3_arg.is_value = true;
-  owner_3_arg.canonical_key = "3";
-  owner_3_key.arguments.push_back(owner_3_arg);
+  owner_3_key.arguments.push_back(
+      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::numeric(
+          3));
   parser.register_template_instantiation_member_typedef_binding(
       owner_3_key, type_text, owner_member);
 
@@ -4187,10 +4186,9 @@ void test_alias_member_typedef_type_substitution_uses_text_id_without_tag() {
   c4c::ParserTemplateState::TemplateInstantiationKey owner_int_key;
   owner_int_key.template_key = parser.alias_template_key_in_context(
       owner_primary->namespace_context_id, owner_text);
-  c4c::ParserTemplateState::TemplateInstantiationKey::Argument owner_int_arg;
-  owner_int_arg.is_value = false;
-  owner_int_arg.canonical_key = "int";
-  owner_int_key.arguments.push_back(owner_int_arg);
+  owner_int_key.arguments.push_back(
+      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::type(
+          "int"));
   parser.register_template_instantiation_member_typedef_binding(
       owner_int_key, type_text, owner_int_type);
 
@@ -4318,10 +4316,9 @@ void test_alias_template_member_typedef_arg_uses_text_id_over_stale_name() {
   c4c::ParserTemplateState::TemplateInstantiationKey owner_3_key;
   owner_3_key.template_key = parser.alias_template_key_in_context(
       owner_primary->namespace_context_id, owner_text);
-  c4c::ParserTemplateState::TemplateInstantiationKey::Argument owner_3_arg;
-  owner_3_arg.is_value = true;
-  owner_3_arg.canonical_key = "3";
-  owner_3_key.arguments.push_back(owner_3_arg);
+  owner_3_key.arguments.push_back(
+      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::numeric(
+          3));
   parser.register_template_instantiation_member_typedef_binding(
       owner_3_key, type_text, owner_3_type);
 
@@ -4429,10 +4426,9 @@ void test_alias_template_member_typedef_type_arg_uses_text_id_without_tag() {
   c4c::ParserTemplateState::TemplateInstantiationKey owner_int_key;
   owner_int_key.template_key = parser.alias_template_key_in_context(
       owner_primary->namespace_context_id, owner_text);
-  c4c::ParserTemplateState::TemplateInstantiationKey::Argument owner_int_arg;
-  owner_int_arg.is_value = false;
-  owner_int_arg.canonical_key = "int";
-  owner_int_key.arguments.push_back(owner_int_arg);
+  owner_int_key.arguments.push_back(
+      c4c::ParserTemplateState::TemplateInstantiationKey::Argument::type(
+          "int"));
   parser.register_template_instantiation_member_typedef_binding(
       owner_int_key, type_text, owner_int_type);
 
@@ -5602,10 +5598,13 @@ void test_node_template_arg_reconstruction_preserves_expr_carrier() {
   expect_true(arg.expr == expr,
               "node template-arg reconstruction should preserve the parsed "
               "NTTP expression carrier");
-  expect_true(key.canonical_key.find("$expr:") == std::string::npos,
-              "reconstructed template-arg keys should not consume stale "
-              "`$expr:` text when a Node::template_arg_exprs carrier exists");
-  expect_true(key.canonical_key == variant_key.canonical_key,
+  expect_true(
+      key.payload_kind ==
+          c4c::ParserTemplateState::TemplateInstantiationKey::Argument::
+              PayloadKind::ValueExpression,
+      "reconstructed template-arg keys should use the structured expression "
+      "payload when a Node::template_arg_exprs carrier exists");
+  expect_true(key == variant_key,
               "reconstructed template-arg keys should be stable across stale "
               "rendered NTTP expression text when the structured carrier is "
               "present");
