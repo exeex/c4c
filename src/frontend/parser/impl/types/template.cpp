@@ -306,9 +306,6 @@ ParserTemplateBindingSet parser_template_binding_set_from_legacy(
             parser, owner_template_key, ParserTemplateParameterKind::Type,
             name.c_str(), kInvalidText, -1);
         binding.type = type;
-        bindings.has_structured_type_metadata =
-            bindings.has_structured_type_metadata ||
-            parser_template_binding_key_has_domain_metadata(binding.key);
         bindings.type_bindings.push_back(binding);
     }
 
@@ -962,8 +959,13 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                                             TypeSpec* out_type) -> bool {
         for (const ParserTemplateTypeBinding& binding :
              bindings.type_bindings) {
-            if (!parser_template_binding_key_has_domain_metadata(binding.key) &&
-                binding.key.spelling_text_id == kInvalidText) {
+            const bool authoritative =
+                parser_template_binding_key_has_authoritative_metadata(
+                    binding.key);
+            if (bindings.has_structured_type_metadata && !authoritative) {
+                continue;
+            }
+            if (!authoritative && binding.key.spelling_text_id == kInvalidText) {
                 continue;
             }
             if (parser_template_binding_matches_token(

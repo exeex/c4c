@@ -8,21 +8,22 @@ Current Step Title: Define Structured Binding Carriers
 
 ## Just Finished
 
-Completed `plan.md` Step 2, "Define Structured Binding Carriers", for parser deferred NTTP evaluation call sites with owner/index metadata.
+Completed `plan.md` Step 2, "Define Structured Binding Carriers", for parser type-binding call sites with owner/index metadata.
 
-- Added structured overloads for deferred NTTP defaults and captured template-argument token evaluation.
-- Added a parser-side `ParserTemplateBindingSet` builder for metadata-aware NTTP bindings in `src/frontend/parser/impl/types/base.cpp`.
-- Migrated metadata-aware deferred NTTP evaluation call sites in template argument and base-instantiation paths to pass `ParserTemplateBindingSet` directly instead of using legacy string-pair wrapper conversion.
+- Added `ParserTypeBindingMetadata` as the parser/Sema-owned structured carrier for template type bindings.
+- Updated the parser-side `ParserTemplateBindingSet` builder to overlay authoritative owner/index type metadata while leaving spelling-pair type bindings as compatibility entries.
+- Migrated preliminary template-argument and base-instantiation default-evaluation paths to pass structured type metadata into `ParserTemplateBindingSet` where the owner template and parameter index are known.
+- Kept legacy type-pair conversion compatibility-only in `template.cpp`; structured type matching now prefers authoritative metadata when a binding set contains it.
 
 ## Suggested Next
 
-Next coherent packet: migrate type-binding call sites that already have template owner/parameter metadata to structured `ParserTemplateBindingSet` carriers instead of spelling-only compatibility bindings.
+Next coherent packet: audit remaining parser template-binding consumers outside deferred NTTP evaluation and decide whether they should stay compatibility-only or get structured owner/index carriers in a separate bounded slice.
 
 ## Watchouts
 
-- Legacy parser wrapper conversion still keeps NTTP string-pair entries for no-metadata compatibility fallback, but those entries must not set structured authority.
-- The new `base.cpp` builder marks only `ParserNttpBindingMetadata` entries as authoritative structured NTTP metadata; string-pair entries remain compatibility bindings.
-- Type bindings in this packet still carry owner metadata but not parameter index metadata where the call site has only legacy type-pair data.
+- Legacy parser wrapper conversion still keeps string-pair type and NTTP entries for no-metadata compatibility fallback, but those entries must not set structured authority.
+- `ParserTemplateBindingSet::has_structured_type_metadata` is now driven by authoritative type metadata, not by the presence of an owner key on legacy spelling pairs.
+- The migrated paths only mark type bindings authoritative where the call site has owner template plus parameter index metadata.
 - HIR string maps and `TemplateArgRef::debug_text` authority remain untouched by this packet.
 
 ## Proof
@@ -41,4 +42,4 @@ Supervisor-side supplemental validation after this slice:
 ctest --test-dir build -j --output-on-failure -R '^cpp_'
 ```
 
-Result: passed 1147/1147. The focused regression checker found 0 new failures; it exited nonzero only because the pass count did not strictly increase.
+Result: passed 1147/1147.

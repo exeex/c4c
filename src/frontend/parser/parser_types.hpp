@@ -161,6 +161,16 @@ struct ParserNttpBindingMetadata {
   long long value = 0;
 };
 
+// Boundary role: parser/Sema-owned identity for template type bindings.
+struct ParserTypeBindingMetadata {
+  const char* name = nullptr;
+  TextId name_text_id = kInvalidText;
+  QualifiedNameKey name_key;
+  QualifiedNameKey owner_template_key;
+  int parameter_index = -1;
+  TypeSpec type{};
+};
+
 enum class ParserTemplateParameterKind {
   Type,
   NttpValue,

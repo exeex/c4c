@@ -314,6 +314,80 @@ nttp_binding_metadata_for_template_params(
     return bindings;
 }
 
+static ParserTypeBindingMetadata type_binding_metadata_for_template_param(
+    Parser& parser,
+    const Node* primary_tpl,
+    int param_idx,
+    const char* param_name,
+    const TypeSpec& type) {
+    ParserTypeBindingMetadata binding{};
+    binding.name = param_name;
+    binding.name_text_id =
+        primary_tpl && primary_tpl->template_param_name_text_ids &&
+                param_idx >= 0 && param_idx < primary_tpl->n_template_params
+            ? primary_tpl->template_param_name_text_ids[param_idx]
+            : kInvalidText;
+    if (binding.name_text_id == kInvalidText && param_name && param_name[0]) {
+        binding.name_text_id =
+            parser.parser_text_id_for_token(kInvalidText, param_name);
+    }
+    binding.name_key = binding.name_text_id != kInvalidText
+                           ? parser.alias_template_key_in_context(
+                                 primary_tpl &&
+                                         primary_tpl->namespace_context_id >= 0
+                                     ? primary_tpl->namespace_context_id
+                                     : parser.current_namespace_context_id(),
+                                 binding.name_text_id)
+                           : QualifiedNameKey{};
+    const int context_id =
+        primary_tpl && primary_tpl->namespace_context_id >= 0
+            ? primary_tpl->namespace_context_id
+            : parser.current_namespace_context_id();
+    const TextId owner_text_id =
+        primary_tpl && primary_tpl->unqualified_text_id != kInvalidText
+            ? primary_tpl->unqualified_text_id
+        : primary_tpl
+            ? parser.parser_text_id_for_token(
+                  kInvalidText,
+                  primary_tpl->unqualified_name &&
+                          primary_tpl->unqualified_name[0]
+                      ? primary_tpl->unqualified_name
+                      : primary_tpl->name ? primary_tpl->name : "")
+            : kInvalidText;
+    binding.owner_template_key =
+        parser.alias_template_key_in_context(context_id, owner_text_id);
+    binding.parameter_index = param_idx;
+    binding.type = type;
+    return binding;
+}
+
+static std::vector<ParserTypeBindingMetadata> type_binding_metadata_for_template_params(
+    Parser& parser,
+    const Node* primary_tpl,
+    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings) {
+    std::vector<ParserTypeBindingMetadata> bindings;
+    if (!primary_tpl) return bindings;
+    bindings.reserve(type_bindings.size());
+    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+        if (primary_tpl->template_param_is_nttp &&
+            primary_tpl->template_param_is_nttp[pi]) {
+            continue;
+        }
+        const char* name = primary_tpl->template_param_names
+                               ? primary_tpl->template_param_names[pi]
+                               : nullptr;
+        if (!name || !name[0]) continue;
+        for (const auto& [binding_name, binding_type] : type_bindings) {
+            if (binding_name == name) {
+                bindings.push_back(type_binding_metadata_for_template_param(
+                    parser, primary_tpl, pi, name, binding_type));
+                break;
+            }
+        }
+    }
+    return bindings;
+}
+
 static ParserTemplateParameterBindingKey parser_binding_key_for_template_param(
     Parser& parser,
     const QualifiedNameKey& owner_template_key,
@@ -358,19 +432,48 @@ static ParserTemplateBindingSet parser_binding_set_from_metadata(
     const QualifiedNameKey& owner_template_key,
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+    const std::vector<ParserTypeBindingMetadata>& type_binding_metadata,
     const std::vector<ParserNttpBindingMetadata>& nttp_binding_metadata) {
     ParserTemplateBindingSet bindings;
-    bindings.type_bindings.reserve(type_bindings.size());
+    bindings.type_bindings.reserve(type_bindings.size() +
+                                   type_binding_metadata.size());
     for (const auto& [name, type] : type_bindings) {
         ParserTemplateTypeBinding binding{};
         binding.key = parser_binding_key_for_template_param(
             parser, owner_template_key, ParserTemplateParameterKind::Type,
             name.c_str(), kInvalidText, -1, false);
         binding.type = type;
+        bindings.type_bindings.push_back(binding);
+    }
+    for (const ParserTypeBindingMetadata& meta : type_binding_metadata) {
+        ParserTemplateTypeBinding binding{};
+        const QualifiedNameKey binding_owner_key =
+            meta.owner_template_key.base_text_id != kInvalidText
+                ? meta.owner_template_key
+                : owner_template_key;
+        binding.key = parser_binding_key_for_template_param(
+            parser, binding_owner_key, ParserTemplateParameterKind::Type,
+            meta.name, meta.name_text_id, meta.parameter_index, true);
+        binding.type = meta.type;
+
+        bool replaced = false;
+        for (ParserTemplateTypeBinding& existing : bindings.type_bindings) {
+            const bool same_text =
+                binding.key.spelling_text_id != kInvalidText &&
+                existing.key.spelling_text_id == binding.key.spelling_text_id;
+            const bool same_index =
+                binding.key.parameter_index >= 0 &&
+                existing.key.parameter_index == binding.key.parameter_index;
+            if (same_text || same_index) {
+                existing = binding;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) bindings.type_bindings.push_back(binding);
         bindings.has_structured_type_metadata =
             bindings.has_structured_type_metadata ||
-            parser_binding_key_has_domain_metadata(binding.key);
-        bindings.type_bindings.push_back(binding);
+            parser_binding_key_has_authoritative_metadata(binding.key);
     }
 
     bindings.nttp_bindings.reserve(nttp_bindings.size() +
@@ -4516,24 +4619,15 @@ TypeSpec Parser::parse_base_type() {
                                 *this, primary_tpl, tpl_name);
                         // Build preliminary type bindings from explicit args
                         std::vector<std::pair<std::string, TypeSpec>> prelim_tb;
-                        struct PrelimTypeBindingMetadata {
-                            std::string name;
-                            TextId name_text_id = kInvalidText;
-                            int owner_namespace_context_id = -1;
-                            TextId owner_text_id = kInvalidText;
-                            int param_index = -1;
-                            TypeSpec type{};
-                        };
-                        std::vector<PrelimTypeBindingMetadata> prelim_tb_meta;
+                        std::vector<ParserTypeBindingMetadata> prelim_tb_meta;
                         std::vector<std::pair<std::string, long long>> prelim_nb;
                         std::vector<ParserNttpBindingMetadata> prelim_nb_meta;
                         auto prelim_type_binding_metadata =
                             [&](int param_idx, const char* fallback_name,
                                 const TypeSpec& bound_type)
-                            -> PrelimTypeBindingMetadata {
-                            PrelimTypeBindingMetadata binding{};
-                            binding.name =
-                                fallback_name ? fallback_name : std::string{};
+                            -> ParserTypeBindingMetadata {
+                            ParserTypeBindingMetadata binding{};
+                            binding.name = fallback_name;
                             binding.type = bound_type;
                             if (primary_tpl->template_param_names &&
                                 param_idx >= 0 &&
@@ -4550,15 +4644,14 @@ TypeSpec Parser::parse_base_type() {
                                         ->template_param_name_text_ids[param_idx];
                             }
                             if (binding.name_text_id == kInvalidText &&
-                                !binding.name.empty()) {
+                                binding.name && binding.name[0]) {
                                 binding.name_text_id =
                                     parser_text_id_for_token(kInvalidText,
                                                              binding.name);
                             }
-                            binding.owner_namespace_context_id =
-                                primary_tpl->namespace_context_id;
-                            binding.owner_text_id =
-                                primary_tpl->unqualified_text_id != kInvalidText
+                            const TextId owner_text_id =
+                                primary_tpl->unqualified_text_id !=
+                                        kInvalidText
                                     ? primary_tpl->unqualified_text_id
                                     : parser_text_id_for_token(
                                           kInvalidText,
@@ -4569,11 +4662,15 @@ TypeSpec Parser::parse_base_type() {
                                               : primary_tpl->name
                                                     ? primary_tpl->name
                                                     : "");
-                            binding.param_index = param_idx;
+                            binding.owner_template_key =
+                                alias_template_key_in_context(
+                                    primary_tpl->namespace_context_id,
+                                    owner_text_id);
+                            binding.parameter_index = param_idx;
                             return binding;
                         };
                         auto prelim_binding_matches_type =
-                            [&](const PrelimTypeBindingMetadata& binding,
+                            [&](const ParserTypeBindingMetadata& binding,
                                 const TypeSpec& type,
                                 TextId type_text_id) -> bool {
                             const bool type_has_owner =
@@ -4581,28 +4678,31 @@ TypeSpec Parser::parse_base_type() {
                                     kInvalidText ||
                                 type.template_param_index >= 0;
                             if (type_has_owner) {
-                                if (binding.owner_text_id == kInvalidText) {
+                                if (binding.owner_template_key.base_text_id ==
+                                    kInvalidText) {
                                     return false;
                                 }
                                 if (type.template_param_owner_text_id !=
                                         kInvalidText &&
                                     type.template_param_owner_text_id !=
-                                        binding.owner_text_id) {
+                                        binding.owner_template_key
+                                            .base_text_id) {
                                     return false;
                                 }
                                 if (type
                                             .template_param_owner_namespace_context_id >=
                                         0 &&
-                                    binding.owner_namespace_context_id >= 0 &&
+                                    binding.owner_template_key.context_id >= 0 &&
                                     type
                                             .template_param_owner_namespace_context_id !=
-                                        binding.owner_namespace_context_id) {
+                                        binding.owner_template_key
+                                            .context_id) {
                                     return false;
                                 }
                                 if (type.template_param_index >= 0 &&
-                                    binding.param_index >= 0 &&
+                                    binding.parameter_index >= 0 &&
                                     type.template_param_index !=
-                                        binding.param_index) {
+                                        binding.parameter_index) {
                                     return false;
                                 }
                                 return type_text_id == kInvalidText ||
@@ -4623,7 +4723,7 @@ TypeSpec Parser::parse_base_type() {
                                         : type.tag_text_id;
                                 bool has_structured_binding = false;
                                 if (type_text_id != kInvalidText) {
-                                    for (const PrelimTypeBindingMetadata&
+                                    for (const ParserTypeBindingMetadata&
                                              binding : prelim_tb_meta) {
                                         if (binding.name_text_id ==
                                             kInvalidText) {
@@ -4899,38 +4999,10 @@ TypeSpec Parser::parse_base_type() {
                                                 args[pi].value));
                                     } else if (!args[pi].is_value) {
                                         prelim_tb.push_back({pn, args[pi].type});
-                                        PrelimTypeBindingMetadata meta{};
-                                        meta.name = pn;
-                                        meta.type = args[pi].type;
-                                        meta.owner_namespace_context_id =
-                                            owner->namespace_context_id;
-                                        meta.owner_text_id =
-                                            owner->unqualified_text_id !=
-                                                    kInvalidText
-                                                ? owner->unqualified_text_id
-                                                : parser_text_id_for_token(
-                                                      kInvalidText,
-                                                      owner->unqualified_name &&
-                                                              owner
-                                                                  ->unqualified_name
-                                                                      [0]
-                                                          ? owner
-                                                                ->unqualified_name
-                                                          : owner->name
-                                                                ? owner->name
-                                                                : "");
-                                        meta.param_index = pi;
-                                        if (owner->template_param_name_text_ids) {
-                                            meta.name_text_id =
-                                                owner
-                                                    ->template_param_name_text_ids
-                                                        [pi];
-                                        }
-                                        if (meta.name_text_id == kInvalidText) {
-                                            meta.name_text_id =
-                                                parser_text_id_for_token(
-                                                    kInvalidText, pn);
-                                        }
+                                        ParserTypeBindingMetadata meta =
+                                            type_binding_metadata_for_template_param(
+                                                *this, owner, pi, pn,
+                                                args[pi].type);
                                         prelim_tb_meta.push_back(meta);
                                     }
                                 }
@@ -5427,7 +5499,7 @@ TypeSpec Parser::parse_base_type() {
                                                 prelim_nb_meta.push_back(meta);
                                             } else if (!actual_args[prior]
                                                             .is_value) {
-                                                PrelimTypeBindingMetadata meta =
+                                                ParserTypeBindingMetadata meta =
                                                     prelim_type_binding_metadata(
                                                         prior, prior_name,
                                                         actual_args[prior]
@@ -5483,6 +5555,7 @@ TypeSpec Parser::parse_base_type() {
                                                     *this,
                                                     primary_template_key,
                                                     prelim_tb, prelim_nb,
+                                                    prelim_tb_meta,
                                                     prelim_nb_meta);
                                         if (eval_captured_template_arg_expr_tokens(
                                                 tpl_name, actual_args[pi],
@@ -5508,6 +5581,7 @@ TypeSpec Parser::parse_base_type() {
                                                     *this,
                                                     primary_template_key,
                                                     prelim_tb, prelim_nb,
+                                                    prelim_tb_meta,
                                                     prelim_nb_meta);
                                         if (eval_deferred_nttp_expr_tokens(
                                                 tpl_name, expr_toks,
@@ -5548,7 +5622,8 @@ TypeSpec Parser::parse_base_type() {
                                 const ParserTemplateBindingSet prelim_bindings =
                                     parser_binding_set_from_metadata(
                                         *this, primary_template_key, prelim_tb,
-                                        prelim_nb, prelim_nb_meta);
+                                        prelim_nb, prelim_tb_meta,
+                                        prelim_nb_meta);
                                 if (eval_deferred_nttp_default(
                                         primary_template_key, sz,
                                         prelim_bindings, &ev)) {
@@ -5597,6 +5672,9 @@ TypeSpec Parser::parse_base_type() {
                         actual_args, primary_tpl, specialization_patterns,
                         &type_bindings, &nttp_bindings);
                     if (!tpl_def) return ts;
+                    std::vector<ParserTypeBindingMetadata> type_binding_metadata =
+                        type_binding_metadata_for_template_params(
+                            *this, primary_tpl, type_bindings);
                     std::vector<ParserNttpBindingMetadata> nttp_binding_meta =
                         nttp_binding_metadata_for_template_params(
                             *this, primary_tpl, nttp_bindings);
@@ -5617,6 +5695,7 @@ TypeSpec Parser::parse_base_type() {
                                     parser_binding_set_from_metadata(
                                         *this, primary_template_key,
                                         type_bindings, nttp_bindings,
+                                        type_binding_metadata,
                                         nttp_binding_meta);
                                 if (eval_deferred_nttp_default(
                                         primary_template_key, i, bindings,
@@ -5648,6 +5727,11 @@ TypeSpec Parser::parse_base_type() {
                             type_bindings.push_back(
                                 {primary_tpl->template_param_names[i],
                                  arg.type});
+                            type_binding_metadata.push_back(
+                                type_binding_metadata_for_template_param(
+                                    *this, primary_tpl, i,
+                                    primary_tpl->template_param_names[i],
+                                    arg.type));
                         }
                     }
                     const ParserTemplateState::TemplateInstantiationKey
@@ -7268,6 +7352,8 @@ TypeSpec Parser::parse_base_type() {
                                                 base_prelim_tb;
                                             std::vector<std::pair<std::string, long long>>
                                                 base_prelim_nb;
+                                            std::vector<ParserTypeBindingMetadata>
+                                                base_prelim_tb_meta;
                                             std::vector<ParserNttpBindingMetadata>
                                                 base_prelim_nb_meta;
                                             for (int pi = 0;
@@ -7297,6 +7383,7 @@ TypeSpec Parser::parse_base_type() {
                                                                         base_template_key,
                                                                         base_prelim_tb,
                                                                         base_prelim_nb,
+                                                                        base_prelim_tb_meta,
                                                                         base_prelim_nb_meta);
                                                             bool evaluated_default =
                                                                 eval_deferred_nttp_default(
@@ -7322,6 +7409,11 @@ TypeSpec Parser::parse_base_type() {
                                                 } else if (!base_args[pi].is_value) {
                                                     base_prelim_tb.push_back(
                                                         {pn, base_args[pi].type});
+                                                    base_prelim_tb_meta.push_back(
+                                                        type_binding_metadata_for_template_param(
+                                                            *this, base_primary,
+                                                            pi, pn,
+                                                            base_args[pi].type));
                                                 }
                                             }
                                             int bsz = static_cast<int>(base_args.size());
@@ -7349,6 +7441,7 @@ TypeSpec Parser::parse_base_type() {
                                                                 base_template_key,
                                                                 base_prelim_tb,
                                                                 base_prelim_nb,
+                                                                base_prelim_tb_meta,
                                                                 base_prelim_nb_meta);
                                                     if (eval_deferred_nttp_default(
                                                             base_template_key,
@@ -7382,6 +7475,13 @@ TypeSpec Parser::parse_base_type() {
                                                     base_prelim_tb.push_back(
                                                         {base_primary->template_param_names[bsz],
                                                          da.type});
+                                                    base_prelim_tb_meta.push_back(
+                                                        type_binding_metadata_for_template_param(
+                                                            *this, base_primary,
+                                                            bsz,
+                                                            base_primary
+                                                                ->template_param_names[bsz],
+                                                            da.type));
                                                 }
                                                 ++bsz;
                                             }
@@ -7455,6 +7555,8 @@ TypeSpec Parser::parse_base_type() {
                                             base_prelim_tb;
                                         std::vector<std::pair<std::string, long long>>
                                             base_prelim_nb;
+                                        std::vector<ParserTypeBindingMetadata>
+                                            base_prelim_tb_meta;
                                         std::vector<ParserNttpBindingMetadata>
                                             base_prelim_nb_meta;
                                         bool can_use_default_only_args = true;
@@ -7482,6 +7584,7 @@ TypeSpec Parser::parse_base_type() {
                                                             base_template_key,
                                                             base_prelim_tb,
                                                             base_prelim_nb,
+                                                            base_prelim_tb_meta,
                                                             base_prelim_nb_meta);
                                                 if (!eval_deferred_nttp_default(
                                                         base_template_key, bsz,
@@ -7517,6 +7620,12 @@ TypeSpec Parser::parse_base_type() {
                                                     {base_primary
                                                          ->template_param_names[bsz],
                                                      da.type});
+                                                base_prelim_tb_meta.push_back(
+                                                    type_binding_metadata_for_template_param(
+                                                        *this, base_primary, bsz,
+                                                        base_primary
+                                                            ->template_param_names[bsz],
+                                                        da.type));
                                             }
                                             ++bsz;
                                         }
