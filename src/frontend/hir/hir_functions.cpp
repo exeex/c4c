@@ -83,6 +83,37 @@ bool has_member_typedef_owner_metadata_or_legacy_name(const TypeSpec& ts) {
          ts.tag_text_id != kInvalidText;
 }
 
+std::optional<HirRecordOwnerKey> complete_signature_type_member_lookup_key(
+    const TypeSpec& owner) {
+  if (owner.deferred_member_type_text_id == kInvalidText ||
+      owner.deferred_member_type_owner_key.base_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+  if (owner.tpl_struct_origin_key.base_text_id == kInvalidText &&
+      owner.namespace_context_id < 0 && !owner.is_global_qualified &&
+      (!owner.qualifier_text_ids || owner.n_qualifier_segments <= 0)) {
+    return std::nullopt;
+  }
+  NamespaceQualifier owner_ns;
+  owner_ns.context_id = owner.deferred_member_type_owner_key.context_id;
+  owner_ns.is_global_qualified =
+      owner.deferred_member_type_owner_key.is_global_qualified;
+  if (owner.qualifier_text_ids && owner.n_qualifier_segments > 0) {
+    owner_ns.segment_text_ids.assign(
+        owner.qualifier_text_ids,
+        owner.qualifier_text_ids + owner.n_qualifier_segments);
+  } else if (owner.deferred_member_type_owner_key.qualifier_path_id !=
+             kInvalidNamePath) {
+    return std::nullopt;
+  }
+  HirRecordOwnerKey owner_key = make_hir_record_owner_key(
+      owner_ns, owner.deferred_member_type_owner_key.base_text_id);
+  if (!hir_record_owner_key_has_complete_metadata(owner_key)) {
+    return std::nullopt;
+  }
+  return owner_key;
+}
+
 void apply_signature_template_concrete(TypeSpec& target,
                                        const TypeSpec& concrete) {
   const int outer_ptr_level = target.ptr_level;
@@ -834,6 +865,11 @@ TypeSpec Lowerer::prepare_callable_return_type(
       resolved_type_member =
           resolve_struct_member_typedef_if_ready(&owner_ts);
       if (resolved_type_member) resolved_member = owner_ts;
+    } else if (auto owner_key =
+                   complete_signature_type_member_lookup_key(owner_ts)) {
+      resolved_type_member = resolve_struct_member_typedef_type(
+          *owner_key, std::string{},
+          owner_ts.deferred_member_type_text_id, &resolved_member);
     } else {
       const std::string owner_name = member_typedef_compatibility_name(
           owner_ts, module_ ? module_->link_name_texts.get() : nullptr);
@@ -914,6 +950,11 @@ void Lowerer::append_explicit_callable_param(
       resolved_type_member =
           resolve_struct_member_typedef_if_ready(&owner_ts);
       if (resolved_type_member) resolved_member = owner_ts;
+    } else if (auto owner_key =
+                   complete_signature_type_member_lookup_key(owner_ts)) {
+      resolved_type_member = resolve_struct_member_typedef_type(
+          *owner_key, std::string{},
+          owner_ts.deferred_member_type_text_id, &resolved_member);
     } else {
       const std::string owner_name = member_typedef_compatibility_name(
           owner_ts, module_ ? module_->link_name_texts.get() : nullptr);

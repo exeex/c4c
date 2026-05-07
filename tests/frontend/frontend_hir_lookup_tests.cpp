@@ -1711,6 +1711,149 @@ void test_signature_member_typedef_no_complete_metadata_keeps_rendered_split() {
               "signature member typedef without complete owner/member metadata should keep rendered split compatibility");
 }
 
+void fill_type_member_typedef_record(c4c::Arena& arena,
+                                     c4c::Node& record,
+                                     c4c::TextId member_text,
+                                     c4c::TypeBase result_base) {
+  record.kind = c4c::NK_STRUCT_DEF;
+  record.n_member_typedefs = 1;
+  record.member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
+  record.member_typedef_text_ids[0] = member_text;
+  record.member_typedef_names = arena.alloc_array<const char*>(1);
+  record.member_typedef_names[0] = arena.strdup("type");
+  record.member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  record.member_typedef_types[0].array_size = -1;
+  record.member_typedef_types[0].inner_rank = -1;
+  record.member_typedef_types[0].base = result_base;
+}
+
+c4c::TypeSpec make_signature_owner_type(c4c::TextId owner_text,
+                                        c4c::TextId* qualifier_text_ids,
+                                        int n_qualifier_segments,
+                                        int namespace_context_id) {
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tag_text_id = owner_text;
+  ts.qualifier_text_ids = qualifier_text_ids;
+  ts.n_qualifier_segments = n_qualifier_segments;
+  ts.namespace_context_id = namespace_context_id;
+  return ts;
+}
+
+void test_signature_return_type_complete_owner_miss_rejects_rendered_type_fallback() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  const c4c::TextId ns_text = texts.intern("real_ns");
+  const c4c::TextId owner_text = texts.intern("MissingOwner");
+  const c4c::TextId type_text = texts.intern("type");
+
+  c4c::Node stale_record{};
+  fill_type_member_typedef_record(arena, stale_record, type_text, c4c::TB_LONG);
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_def_nodes_["real_ns::MissingOwner"] = &stale_record;
+
+  c4c::TextId qualifier_text_ids[] = {ns_text};
+  c4c::TypeSpec ret_ts =
+      make_signature_owner_type(owner_text, qualifier_text_ids, 1, 7);
+
+  const c4c::TypeSpec resolved =
+      lowerer.prepare_callable_return_type(ret_ts, nullptr, nullptr, nullptr,
+                                           "return-type-complete-miss", false);
+  expect_true(resolved.base == c4c::TB_STRUCT &&
+                  resolved.tag_text_id == owner_text,
+              "signature return ::type complete owner/member miss must not use rendered owner compatibility");
+}
+
+void test_signature_return_type_no_complete_metadata_keeps_rendered_type_fallback() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  const c4c::TextId owner_text = texts.intern("LegacyOwner");
+  const c4c::TextId type_text = texts.intern("type");
+
+  c4c::Node legacy_record{};
+  fill_type_member_typedef_record(arena, legacy_record, type_text, c4c::TB_LONG);
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_def_nodes_["LegacyOwner"] = &legacy_record;
+
+  c4c::TypeSpec ret_ts =
+      make_signature_owner_type(owner_text, nullptr, 0, -1);
+
+  const c4c::TypeSpec resolved =
+      lowerer.prepare_callable_return_type(ret_ts, nullptr, nullptr, nullptr,
+                                           "return-type-legacy", false);
+  expect_true(resolved.base == c4c::TB_LONG,
+              "signature return ::type without complete owner metadata should keep rendered owner compatibility");
+}
+
+void test_signature_parameter_type_complete_owner_miss_rejects_rendered_type_fallback() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  const c4c::TextId ns_text = texts.intern("real_ns");
+  const c4c::TextId owner_text = texts.intern("MissingParamOwner");
+  const c4c::TextId type_text = texts.intern("type");
+
+  c4c::Node stale_record{};
+  fill_type_member_typedef_record(arena, stale_record, type_text, c4c::TB_LONG);
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_def_nodes_["real_ns::MissingParamOwner"] = &stale_record;
+
+  c4c::TextId qualifier_text_ids[] = {ns_text};
+  c4c::TypeSpec param_ts =
+      make_signature_owner_type(owner_text, qualifier_text_ids, 1, 7);
+  c4c::hir::Function fn{};
+  c4c::hir::Lowerer::FunctionCtx ctx;
+
+  lowerer.append_explicit_callable_param(
+      fn, ctx, nullptr, "value", param_ts, nullptr, nullptr,
+      "parameter-type-complete-miss", false);
+  expect_true(fn.params.size() == 1 &&
+                  fn.params[0].type.spec.base == c4c::TB_STRUCT &&
+                  fn.params[0].type.spec.tag_text_id == owner_text,
+              "signature parameter ::type complete owner/member miss must not use rendered owner compatibility");
+}
+
+void test_signature_parameter_type_no_complete_metadata_keeps_rendered_type_fallback() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  const c4c::TextId owner_text = texts.intern("LegacyParamOwner");
+  const c4c::TextId type_text = texts.intern("type");
+
+  c4c::Node legacy_record{};
+  fill_type_member_typedef_record(arena, legacy_record, type_text, c4c::TB_LONG);
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_def_nodes_["LegacyParamOwner"] = &legacy_record;
+
+  c4c::TypeSpec param_ts =
+      make_signature_owner_type(owner_text, nullptr, 0, -1);
+  c4c::hir::Function fn{};
+  c4c::hir::Lowerer::FunctionCtx ctx;
+
+  lowerer.append_explicit_callable_param(
+      fn, ctx, nullptr, "value", param_ts, nullptr, nullptr,
+      "parameter-type-legacy", false);
+  expect_true(fn.params.size() == 1 &&
+                  fn.params[0].type.spec.base == c4c::TB_LONG,
+              "signature parameter ::type without complete owner metadata should keep rendered owner compatibility");
+}
+
 void test_pending_type_ref_uses_structured_debug_payload_not_tag() {
   c4c::TextTable texts;
 
@@ -3478,6 +3621,10 @@ int main() {
   test_signature_substitution_preserves_nested_template_owner_identity();
   test_signature_member_typedef_complete_owner_miss_rejects_rendered_split();
   test_signature_member_typedef_no_complete_metadata_keeps_rendered_split();
+  test_signature_return_type_complete_owner_miss_rejects_rendered_type_fallback();
+  test_signature_return_type_no_complete_metadata_keeps_rendered_type_fallback();
+  test_signature_parameter_type_complete_owner_miss_rejects_rendered_type_fallback();
+  test_signature_parameter_type_no_complete_metadata_keeps_rendered_type_fallback();
   test_pending_type_ref_uses_structured_debug_payload_not_tag();
   test_pending_type_ref_no_metadata_keeps_shape_payload();
   test_canonical_type_str_uses_structured_record_key_not_tag();

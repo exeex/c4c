@@ -8,32 +8,33 @@ Current Step Title: Migrate Qualified Template and HIR Compatibility Paths
 
 ## Just Finished
 
-Step 3 fenced `substitute_signature_template_type()` qualified member-typedef
-compatibility. Complete structured owner/member metadata now resolves through
-the owner-key path and, when that lookup misses, returns the unresolved
-`TypeSpec` instead of recovering by splitting rendered `Owner::member` text.
+Step 3 fenced the remaining signature return/parameter `::type`
+member-typedef compatibility blocks below `substitute_signature_template_type()`.
+Complete structured owner/member metadata now attempts HIR owner-key lookup and,
+when that lookup misses, avoids the rendered `Owner::type` compatibility
+fallback.
 
-Added focused `frontend_hir_lookup_tests` coverage for complete owner/member
-metadata miss rejection against a stale rendered member-typedef entry and for
-retained no-complete-metadata rendered split compatibility.
+Added focused `frontend_hir_lookup_tests` coverage for return and parameter
+complete owner/member metadata miss rejection against stale rendered
+member-typedef entries, plus retained no-complete-metadata rendered owner
+compatibility for both paths.
 
 ## Suggested Next
 
-Next Step 3 packet: migrate the remaining signature return/parameter
-member-typedef compatibility blocks in `resolve_signature_*_type_if_needed()`
-so complete structured owner/member metadata misses fail closed before the
-`member_typedef_compatibility_name(..., "type")` rendered fallback.
+Next packet: have the supervisor decide whether Step 3 is complete enough for
+review or whether another narrow HIR signature compatibility path remains
+before moving to Step 4.
 
 ## Watchouts
 
 - Do not remove `qualified_key_in_context()` bridges before the reachable HIR
   semantic fallbacks are migrated; that is Step 4 work.
-- `hir_functions.cpp` still has return/parameter member-typedef compatibility
-  fallbacks below `substitute_signature_template_type()`; this packet only
-  fences the direct qualified typedef substitution path.
 - The retained rendered split is intentionally limited to no-complete-metadata
   compatibility, such as a single rendered `LegacyOwner::value_type` TextId
   without separate qualifier/member metadata.
+- The retained return/parameter rendered owner fallback is intentionally limited
+  to owner TypeSpecs without complete structured owner metadata, such as a
+  tag-only legacy owner TextId.
 - Avoid any fix that rewrites expectations or strips qualified strings to an
   unqualified suffix. The point of Step 3 is structured owner/name metadata, not
   a new rendered-spelling path.
