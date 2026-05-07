@@ -2852,6 +2852,49 @@ void test_consteval_nttp_rejects_rendered_after_structured_or_text_miss() {
               "lookup after authoritative structured metadata misses");
 }
 
+void test_consteval_value_lookup_rejects_rendered_nttp_after_qualified_key_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId owner_a_text = texts.intern("OwnerA");
+  const c4c::TextId owner_b_text = texts.intern("OwnerB");
+  const c4c::TextId value_text = texts.intern("value");
+  const int namespace_context = parser.current_namespace_context_id();
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 1);
+  ref->name = arena.strdup("OwnerA::value");
+  ref->unqualified_name = arena.strdup("value");
+  ref->unqualified_text_id = value_text;
+  ref->namespace_context_id = namespace_context;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("OwnerB");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = owner_b_text;
+
+  c4c::hir::ConstEvalStructuredNameKey owner_a_key;
+  owner_a_key.namespace_context_id = namespace_context;
+  owner_a_key.base_text_id = value_text;
+  owner_a_key.qualifier_text_ids.push_back(owner_a_text);
+
+  c4c::hir::ConstStructuredMap named_by_key;
+  named_by_key[owner_a_key] = 7;
+
+  std::unordered_map<std::string, long long> rendered_nttp;
+  rendered_nttp["OwnerA::value"] = 42;
+
+  c4c::hir::ConstEvalEnv env;
+  env.named_consts_by_key = &named_by_key;
+  env.nttp_bindings = &rendered_nttp;
+
+  expect_true(!env.lookup(ref).has_value(),
+              "consteval value lookup should reject rendered NTTP fallback "
+              "after a qualified structured value-domain key misses");
+}
+
 void test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrier() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6371,6 +6414,7 @@ int main() {
   test_sema_consteval_lookup_uses_qualified_key_not_rendered_spelling();
   test_consteval_forwarded_nttp_uses_text_id_not_rendered_name();
   test_consteval_nttp_rejects_rendered_after_structured_or_text_miss();
+  test_consteval_value_lookup_rejects_rendered_nttp_after_qualified_key_miss();
   test_consteval_type_binding_resolve_rejects_rendered_after_intrinsic_carrier();
   test_consteval_type_binding_resolve_uses_tag_text_id_without_tag();
   test_nested_consteval_call_preserves_structured_template_bindings();

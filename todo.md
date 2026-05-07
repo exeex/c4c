@@ -8,18 +8,18 @@ Current Step Title: Route Eager Sema Qualified Lookup Through Domain Tables
 
 ## Just Finished
 
-Step 4: Route Eager Sema Qualified Lookup Through Domain Tables resolved the two parser-debug baseline failures by aligning the diagnostic-format expectations to the preserved qualified-spelling wrapper frames now emitted before the nested qualified probe, keeping the committed parse failure and stack depth checks intact.
+Step 4: Route Eager Sema Qualified Lookup Through Domain Tables closed the consteval value/NTTP lookup escape hatch that reopened rendered NTTP names after structured key or TextId domain metadata authoritatively missed, and added a qualified stale-rendered collision test for that value-domain behavior.
 
 ## Suggested Next
 
-Supervisor can review and commit this expectation-alignment slice with the green delegated parser-debug/parser-authority proof.
+Supervisor can review and commit this consteval lookup-authority slice, then choose the next Step 4 value-domain lookup packet.
 
 ## Watchouts
 
-This is diagnostic-format alignment, not a parser weakening: the actual stacks retain the same `parse_top_level_parameter_list` committed failure leaf while preserving additional leading `consume_qualified_type_spelling_with_typename` / `consume_qualified_type_spelling` context from the eager qualified-spelling probe.
+Rendered `ConstMap` compatibility still remains for true no-metadata environments; the new guard only blocks fallback after a populated structured/TextId lookup domain has missed.
 
 ## Proof
 
-`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_parser_debug_qualified_type_template_arg_stack|cpp_parser_debug_qualified_type_spelling_stack|cpp_parser_debug_tentative_template_arg_lifecycle|frontend_parser_tests|frontend_parser_lookup_authority_tests)$'; } > test_after.log 2>&1`
+`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_positive_sema_cpp20_if_constexpr_concept_id_frontend_cpp|cpp_positive_sema_template_constexpr_member_runtime_cpp|cpp_positive_sema_template_type_traits_builtin_cpp)$'; } > test_after.log 2>&1`
 
-Proof passed. `test_after.log` is the canonical executor proof log: both parser-debug qualified stack tests, the tentative template-arg lifecycle test, `frontend_parser_tests`, and `frontend_parser_lookup_authority_tests` passed.
+Proof passed. `test_after.log` is the canonical executor proof log: `frontend_parser_lookup_authority_tests`, `cpp_hir_sema_consteval_type_utils_structured_metadata`, `cpp_positive_sema_cpp20_if_constexpr_concept_id_frontend_cpp`, `cpp_positive_sema_template_constexpr_member_runtime_cpp`, and `cpp_positive_sema_template_type_traits_builtin_cpp` passed.
