@@ -422,6 +422,29 @@ bool Parser::can_start_parameter_type() const {
     if (is_type_start()) return true;
     if (!is_cpp_mode()) return false;
 
+    if (check(TokenKind::ColonColon) ||
+        (check(TokenKind::Identifier) &&
+         core_input_state_.pos + 1 <
+             static_cast<int>(core_input_state_.tokens.size()) &&
+         core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+             TokenKind::ColonColon)) {
+        QualifiedNameRef qn;
+        if (peek_qualified_name(&qn, true) &&
+            (qn.is_global_qualified || !qn.qualifier_segments.empty())) {
+            const int after_pos =
+                core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
+                2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
+            const TokenKind trailing_kind =
+                after_pos < static_cast<int>(core_input_state_.tokens.size())
+                    ? core_input_state_.tokens[after_pos].kind
+                    : TokenKind::EndOfFile;
+            if (looks_like_unresolved_qualified_type_declaration(
+                    *this, after_pos, trailing_kind)) {
+                return true;
+            }
+        }
+    }
+
     if (looks_like_unresolved_identifier_type_head(core_input_state_.pos)) return true;
     if (looks_like_unresolved_parenthesized_parameter_type_head(
             core_input_state_.pos)) {
@@ -7601,10 +7624,55 @@ TypeSpec Parser::parse_base_type() {
         // In C++ mode, skip unresolved template arguments (e.g. reverse_iterator<Iterator1>)
         if (is_cpp_mode() && check(TokenKind::Less)) {
             int depth = 1;
+            int paren_depth = 0;
+            int bracket_depth = 0;
+            int brace_depth = 0;
+            auto less_starts_relational_operand = [&]() -> bool {
+                const int pos = core_input_state_.pos;
+                if (pos + 2 >=
+                    static_cast<int>(core_input_state_.tokens.size())) {
+                    return false;
+                }
+                return core_input_state_.tokens[pos + 1].kind ==
+                           TokenKind::Identifier &&
+                       core_input_state_.tokens[pos + 2].kind ==
+                           TokenKind::LParen;
+            };
             consume();  // <
             while (!at_end() && depth > 0) {
-                if (check(TokenKind::Less)) ++depth;
-                else if (check_template_close()) {
+                if (check(TokenKind::LParen)) {
+                    ++paren_depth;
+                    consume();
+                    continue;
+                }
+                if (check(TokenKind::RParen)) {
+                    if (paren_depth > 0) --paren_depth;
+                    consume();
+                    continue;
+                }
+                if (check(TokenKind::LBracket)) {
+                    ++bracket_depth;
+                    consume();
+                    continue;
+                }
+                if (check(TokenKind::RBracket)) {
+                    if (bracket_depth > 0) --bracket_depth;
+                    consume();
+                    continue;
+                }
+                if (check(TokenKind::LBrace)) break;
+                if (check(TokenKind::RBrace)) {
+                    if (brace_depth > 0) --brace_depth;
+                    consume();
+                    continue;
+                }
+                const bool nested_template_context =
+                    paren_depth == 0 && bracket_depth == 0 &&
+                    brace_depth == 0;
+                if (nested_template_context && check(TokenKind::Less) &&
+                    !less_starts_relational_operand()) {
+                    ++depth;
+                } else if (nested_template_context && check_template_close()) {
                     --depth;
                     if (depth > 0) { match_template_close(); continue; }
                     break;

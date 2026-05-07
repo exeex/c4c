@@ -1972,12 +1972,52 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
             const TextId member_text_id =
                 parser.parser_text_id_for_token(
                     member_tok.text_id, parser.token_spelling(member_tok));
+            const std::string member_name(
+                parser.token_spelling(member_tok));
             parser.consume();
             if (!try_resolve_template_owner_member_typedef_type(
                     parser, primary_tpl, parsed_args, member_text_id,
                     out_ts)) {
-                return false;
+                if (!declarator_template_args_are_dependent(parsed_args) &&
+                    !declarator_has_active_template_type_scope(parser)) {
+                    return false;
+                }
+                out_ts->base = TB_STRUCT;
+                out_ts->tag_text_id = qn.base_text_id;
+                out_ts->tpl_struct_origin =
+                    parser.arena_.strdup(qualified_name.c_str());
+                out_ts->tpl_struct_origin_key = parser.qualified_name_key(qn);
+                out_ts->tpl_struct_args.data = nullptr;
+                out_ts->tpl_struct_args.size = 0;
+                if (!parsed_args.empty()) {
+                    out_ts->tpl_struct_args.data =
+                        parser.arena_.alloc_array<TemplateArgRef>(
+                            parsed_args.size());
+                    out_ts->tpl_struct_args.size =
+                        static_cast<int>(parsed_args.size());
+                    for (int i = 0; i < out_ts->tpl_struct_args.size; ++i) {
+                        const Parser::TemplateArgParseResult& arg =
+                            parsed_args[i];
+                        TemplateArgRef& ref = out_ts->tpl_struct_args.data[i];
+                        ref.kind = arg.is_value ? TemplateArgKind::Value
+                                                : TemplateArgKind::Type;
+                        ref.type = arg.is_value ? TypeSpec{} : arg.type;
+                        ref.value = arg.is_value ? arg.value : 0;
+                        ref.nttp_text_id =
+                            arg.is_value ? arg.nttp_text_id : kInvalidText;
+                        ref.debug_text = nullptr;
+                        if (arg.is_value) {
+                            ref.type.array_size = -1;
+                            ref.type.inner_rank = -1;
+                            ref.type.array_size_expr = arg.expr;
+                        }
+                    }
+                }
+                out_ts->deferred_member_type_name =
+                    parser.arena_.strdup(member_name.c_str());
+                out_ts->deferred_member_type_text_id = member_text_id;
             }
+            attach_qualified_typespec_metadata();
             template_guard.commit();
             return true;
         }
@@ -2066,6 +2106,23 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
             out_ts->base = probe.record_def->is_union ? TB_UNION : TB_STRUCT;
             out_ts->record_def = probe.record_def;
         }
+        attach_qualified_typespec_metadata();
+        parser.consume_qualified_type_spelling_with_typename(
+            /*require_typename=*/false,
+            /*allow_global=*/true,
+            /*consume_final_template_args=*/false,
+            nullptr, nullptr);
+        return true;
+    }
+
+    const TokenKind trailing_kind =
+        after_pos < static_cast<int>(parser.core_input_state_.tokens.size())
+            ? parser.core_input_state_.tokens[after_pos].kind
+            : TokenKind::EndOfFile;
+    if (is_qualified &&
+        looks_like_unresolved_qualified_type_declaration(parser, after_pos,
+                                                         trailing_kind)) {
+        out_ts->base = TB_TYPEDEF;
         attach_qualified_typespec_metadata();
         parser.consume_qualified_type_spelling_with_typename(
             /*require_typename=*/false,

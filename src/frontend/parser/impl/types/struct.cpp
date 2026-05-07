@@ -801,20 +801,31 @@ void parse_decl_attrs_for_record(Parser& parser, int line, TypeSpec* attr_ts) {
 }
 
 void skip_record_base_specifier_tail(Parser& parser) {
+    auto less_starts_relational_operand = [&]() -> bool {
+        const int pos = parser.core_input_state_.pos;
+        if (pos + 2 >=
+            static_cast<int>(parser.core_input_state_.tokens.size())) {
+            return false;
+        }
+        return parser.core_input_state_.tokens[pos + 1].kind ==
+                   TokenKind::Identifier &&
+               parser.core_input_state_.tokens[pos + 2].kind ==
+                   TokenKind::LParen;
+    };
     while (!parser.check(TokenKind::LBrace) && !parser.check(TokenKind::Comma) &&
            !parser.check(TokenKind::RBrace) && !parser.at_end()) {
         int angle_depth = 0;
         int paren_depth = 0;
         while (!parser.at_end()) {
-            if (parser.check(TokenKind::LBrace) && angle_depth == 0 &&
-                paren_depth == 0) {
+            if (parser.check(TokenKind::LBrace)) {
                 break;
             }
             if (parser.check(TokenKind::Comma) && angle_depth == 0 &&
                 paren_depth == 0) {
                 break;
             }
-            if (parser.check(TokenKind::Less) && paren_depth == 0)
+            if (parser.check(TokenKind::Less) && paren_depth == 0 &&
+                !less_starts_relational_operand())
                 ++angle_depth;
             else if (parser.check(TokenKind::Greater) &&
                      paren_depth == 0 && angle_depth > 0)

@@ -1056,6 +1056,32 @@ bool starts_parenthesized_member_pointer_declarator(const Parser& parser,
            parser.token_kind_at(probe + 1, TokenKind::Star);
 }
 
+bool looks_like_unresolved_qualified_type_declaration(
+    const Parser& parser,
+    int after_pos,
+    TokenKind trailing_kind) {
+    if (!parser.is_cpp_mode()) return false;
+
+    switch (trailing_kind) {
+        case TokenKind::Identifier:
+        case TokenKind::Amp:
+        case TokenKind::AmpAmp:
+        case TokenKind::Star:
+        case TokenKind::Comma:
+        case TokenKind::RParen:
+        case TokenKind::Ellipsis:
+        case TokenKind::Less:
+            return true;
+        case TokenKind::LParen:
+            return starts_parenthesized_member_pointer_declarator(parser,
+                                                                  after_pos);
+        default:
+            break;
+    }
+
+    return is_qualifier(trailing_kind);
+}
+
 bool starts_qualified_member_pointer_type_id(const Parser& parser,
                                              int start_pos) {
     if (start_pos < 0 || start_pos >= parser.token_count()) {
