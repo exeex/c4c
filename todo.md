@@ -8,32 +8,35 @@ Current Step Title: Delete or Isolate Compatibility Bridge Helpers
 
 ## Just Finished
 
-Step 4 deleted the parser rendered-qualified compatibility key reconstruction
-helpers. `qualified_key_in_context()` now fails closed for any single rendered
-compound `TextId` such as `A::B::C`, so semantic parser lookup helpers cannot
-split the rendered spelling into structured key authority.
+Step 4 audited the remaining rendered-qualified parser core/test references and
+removed one leftover parser-core semantic reconstruction path:
+`current_record_member_name_key()` no longer splits a rendered current-record
+fallback such as `A::B` into structured member-key authority. It now accepts
+only unqualified current-record TextId/name metadata.
 
-Added focused parser lookup-authority coverage proving rendered qualified
-`TextId` registration/interner paths fail closed while unqualified
-context-plus-name structured keys still register and resolve.
+Removed the dead rendered-qualified concept re-entry branch from
+`is_concept_name()`. Added lookup-authority coverage proving rendered current
+record spelling fails closed while unqualified current-record TextId metadata
+still produces the structured member key.
 
 ## Suggested Next
 
-Next packet: continue Step 4 by auditing any remaining rendered qualified
-spelling uses in parser core/tests and documenting or isolating them as
-display-only/no-semantic-authority paths.
+Next packet: continue Step 4 by auditing parser type/declaration owner-scope
+fallbacks that still derive current-record owner spelling from rendered names,
+especially the `current_struct_tag` restoration and member-typedef lookup
+callers outside parser core.
 
 ## Watchouts
 
-- `find_compatibility_key_from_rendered_qualified_spelling()` and
-  `intern_compatibility_key_from_rendered_qualified_spelling()` are gone from
-  `src/frontend/parser/impl/core.cpp`; `rg` finds no remaining references in the
-  scoped parser/test files.
-- `qualified_key_in_context()` still builds structured keys from namespace
-  context plus unqualified `TextId`; do not weaken that route while auditing
-  display rendering.
-- Any retained rendered spelling use should stay display-only or no-metadata
-  compatibility outside semantic parser key construction.
+- In the scoped parser core/test audit, remaining rendered-spelling references
+  are display rendering (`render_*`, `visible_name_spelling()`,
+  `compatibility_spelling`) or fail-closed authority tests.
+- `qualified_key_in_context()`, known-function/context registration,
+  alias-template key interning, concept registration, and current-record member
+  key construction now reject single rendered compound `TextId`/fallback inputs.
+- `src/frontend/parser/impl/types/base.cpp` still has non-owned
+  `current_struct_tag_text()` fallback splitting near member typedef lookup; do
+  not treat this packet as clearing that adjacent caller family.
 
 ## Proof
 

@@ -297,6 +297,55 @@ void test_rendered_qualified_text_ids_fail_closed_at_parser_key_helpers() {
               "unqualified TextId plus namespace context");
 }
 
+void test_rendered_current_record_tag_fails_closed_for_member_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId outer_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "A");
+  const c4c::TextId inner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "B");
+  const c4c::TextId member_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "C");
+  const int outer_context = parser.ensure_named_namespace_context(0, outer_text);
+  const int inner_context =
+      parser.ensure_named_namespace_context(outer_context, inner_text);
+  expect_true(inner_context > 0, "test namespace context should be created");
+
+  c4c::Parser::QualifiedNameRef rendered_qn;
+  rendered_qn.qualifier_segments = {"A", "B"};
+  rendered_qn.qualifier_text_ids = {outer_text, inner_text};
+  rendered_qn.base_name = "C";
+  rendered_qn.base_text_id = member_text;
+  const c4c::QualifiedNameKey rendered_split_key =
+      parser.qualified_name_key(rendered_qn);
+  parser.register_known_fn_name(rendered_split_key);
+
+  c4c::Parser::QualifiedNameRef structured_qn;
+  structured_qn.qualifier_segments = {"B"};
+  structured_qn.qualifier_text_ids = {inner_text};
+  structured_qn.base_name = "C";
+  structured_qn.base_text_id = member_text;
+  const c4c::QualifiedNameKey structured_key =
+      parser.qualified_name_key(structured_qn);
+  parser.register_known_fn_name(structured_key);
+
+  parser.set_current_struct_tag(c4c::kInvalidText, "A::B");
+  expect_true(parser.current_record_member_name_key(member_text).base_text_id ==
+                  c4c::kInvalidText,
+              "rendered current-record spelling should not be split into "
+              "structured member authority");
+
+  parser.set_current_struct_tag(inner_text, "B");
+  expect_true(parser.current_record_member_name_key(member_text) ==
+                  structured_key,
+              "unqualified current-record TextId should still produce the "
+              "structured member key");
+}
+
 void test_sema_global_lookup_uses_using_value_alias_target_key() {
   c4c::Arena arena;
   c4c::Lexer lexer(
@@ -6545,6 +6594,7 @@ int main() {
   test_global_qualified_lookup_rejects_rendered_fallback_authority();
   test_rendered_qualified_text_ids_do_not_reenter_concept_lookup();
   test_rendered_qualified_text_ids_fail_closed_at_parser_key_helpers();
+  test_rendered_current_record_tag_fails_closed_for_member_key();
   test_sema_global_lookup_uses_using_value_alias_target_key();
   test_sema_function_call_uses_using_value_alias_target_key();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();

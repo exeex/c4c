@@ -1376,30 +1376,15 @@ QualifiedNameKey Parser::current_record_member_name_key(
 
     const std::string_view record_name = current_struct_tag_text();
     if (record_name.empty()) return key;
+    if (record_name.find("::") != std::string_view::npos) return key;
 
     std::vector<TextId> qualifier_text_ids;
-    size_t segment_start = 0;
-    while (segment_start < record_name.size()) {
-        const size_t sep = record_name.find("::", segment_start);
-        const std::string_view segment =
-            sep == std::string_view::npos
-                ? record_name.substr(segment_start)
-                : record_name.substr(segment_start, sep - segment_start);
-        if (segment.empty()) return {};
-        TextId segment_text_id = kInvalidText;
-        if (sep == std::string_view::npos &&
-            segment_start == 0 &&
-            active_context_state_.current_struct_tag_text_id !=
-                kInvalidText) {
-            segment_text_id = active_context_state_.current_struct_tag_text_id;
-        } else {
-            segment_text_id = find_parser_text_id(segment);
-        }
-        if (segment_text_id == kInvalidText) return {};
-        qualifier_text_ids.push_back(segment_text_id);
-        if (sep == std::string_view::npos) break;
-        segment_start = sep + 2;
+    TextId record_text_id = active_context_state_.current_struct_tag_text_id;
+    if (record_text_id == kInvalidText) {
+        record_text_id = find_parser_text_id(record_name);
     }
+    if (record_text_id == kInvalidText) return {};
+    qualifier_text_ids.push_back(record_text_id);
     if (qualifier_text_ids.empty()) return key;
 
     key.qualifier_path_id =
@@ -2780,10 +2765,6 @@ std::string Parser::resolve_visible_concept_name(TextId name_text_id) const {
 bool Parser::is_concept_name(TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
     if (name.empty()) return false;
-    if (name.find("::") != std::string::npos &&
-        has_structured_concept_name(known_fn_name_key(0, name_text_id))) {
-        return true;
-    }
     if (name_text_id != kInvalidText && is_unqualified_lookup_name(name) &&
         binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
         return true;
