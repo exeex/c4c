@@ -8,33 +8,18 @@ Current Step Title: Remove Parser Reliance On Rendered Qualified-Name Compatibil
 
 ## Just Finished
 
-Step 3: Remove Parser Reliance On Rendered Qualified-Name Compatibility
-bounded parser core rendered-qualified spelling compatibility as
-compatibility/display support rather than primary semantic authority. Concept
-registration now rejects rendered compound `TextId` inputs and continues to
-require an unqualified `TextId` plus context or an explicit structured key.
-
-Focused parser coverage now checks that rendered qualified `TextId` inputs do
-not re-enter structured concept lookup authority.
+Step 3: Remove Parser Reliance On Rendered Qualified-Name Compatibility repaired the EASTL `Template<..., false>::type` regression without restoring rendered compound `TextId` semantic authority. Qualified template member typedef parsing now handles structured qualified template owners in `base.cpp`, preserves full primary-family concrete args for partial-specialization instance metadata, and keeps member typedef lookup from falling back to an incomplete rendered owner.
 
 ## Suggested Next
 
-Review and commit this Step 3 parser-core compatibility demotion slice, then
-choose the next bounded qualified-name authority packet.
+Supervisor review and commit this Step 3 repair slice, then choose the next bounded qualified-name authority packet.
 
 ## Watchouts
 
-Qualified value/type/function authority should continue to enter through
-structured `QualifiedNameKey` or context-plus-unqualified-`TextId` APIs. The
-remaining rendered-qualified compatibility helper path is still needed by
-qualified template parser support and should stay bounded away from primary
-semantic registration paths.
+The rendered compound `TextId` concept-registration guard in `register_concept_name_in_context` remains unchanged and covered by `frontend_parser_lookup_authority_tests`. The new qualified-template member path should stay structured-key/metadata based; do not reintroduce rendered qualified spellings as primary lookup authority.
 
 ## Proof
 
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_positive_sema_namespace_using_decl_typedef_and_value_frontend_cpp|cpp_positive_sema_qualified_namespaced_out_of_class_method_context_frontend_cpp)$'; } > test_after.log 2>&1`
+`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_positive_sema_namespace_using_decl_typedef_and_value_frontend_cpp|cpp_positive_sema_qualified_namespaced_out_of_class_method_context_frontend_cpp|cpp_positive_sema_eastl_slice4_typename_and_specialization_parse_cpp)$'; } > test_after.log 2>&1`
 
-Proof passed. `test_after.log` contains the canonical executor proof log:
-4/4 selected tests passed, including `frontend_parser_lookup_authority_tests`,
-`frontend_parser_tests`, the namespace using-declaration frontend case, and the
-qualified namespaced out-of-class method context frontend case.
+Proof passed. `test_after.log` is the canonical executor proof log: all five delegated tests passed, including the EASTL partial-specialization member typedef case and `frontend_parser_lookup_authority_tests` rendered-name authority coverage.

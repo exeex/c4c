@@ -5125,6 +5125,85 @@ void test_template_specialization_param_lookup_rejects_rendered_fallback() {
               "bindings");
 }
 
+void test_qualified_partial_specialization_member_typedef_resolves_concrete_type() {
+  const char* source =
+      "namespace eastl {\n"
+      "template <typename T, bool B>\n"
+      "struct make_signed_helper {\n"
+      "  struct no_type_helper {};\n"
+      "  typedef no_type_helper type;\n"
+      "};\n"
+      "template <typename T>\n"
+      "struct make_signed_helper<T, false> {\n"
+      "  struct no_type_helper {};\n"
+      "  typedef no_type_helper type;\n"
+      "};\n"
+      "}\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+  c4c::Parser::QualifiedNameRef eastl_name;
+  eastl_name.base_name = "eastl";
+  eastl_name.base_text_id = lexer.text_table().intern("eastl");
+  const int eastl_context = parser.resolve_namespace_name(eastl_name);
+  const c4c::TextId helper_text = lexer.text_table().intern("make_signed_helper");
+  c4c::Node* helper_primary =
+      parser.find_template_struct_primary(eastl_context, helper_text);
+  const std::vector<c4c::Node*>* specializations =
+      parser.find_template_struct_specializations(helper_primary);
+  expect_true(helper_primary && helper_primary->n_member_typedefs == 1,
+              "make_signed_helper primary should keep member typedef");
+  expect_true(specializations && !specializations->empty(),
+              "make_signed_helper partial specialization should be registered");
+  expect_true((*specializations)[0]->n_member_typedefs == 1,
+              "make_signed_helper partial specialization should keep member typedef");
+  expect_true((*specializations)[0]->n_fields == 1 &&
+                  (*specializations)[0]->fields &&
+                  (*specializations)[0]->fields[0]->type.record_def,
+              "make_signed_helper partial specialization should keep nested "
+              "record field metadata");
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "eastl"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier,
+                                 "make_signed_helper"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Comma, ","),
+      parser.make_injected_token(seed, c4c::TokenKind::KwFalse, "false"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  expect_true(resolved.deferred_member_type_text_id == c4c::kInvalidText,
+              "partial-specialization member typedef should resolve before "
+              "leaving parse_base_type");
+  std::string detail = "partial-specialization member typedef should not leave an incomplete owner";
+  detail += " base=" + std::to_string(static_cast<int>(resolved.base));
+  detail += " tag=";
+  detail += legacy_typespec_tag_or_null(resolved)
+                ? legacy_typespec_tag_or_null(resolved)
+                : "<null>";
+  detail += " record=";
+  detail += resolved.record_def ? (resolved.record_def->name ? resolved.record_def->name : "<unnamed>") : "<null>";
+  detail += " fields=";
+  detail += resolved.record_def ? std::to_string(resolved.record_def->n_fields) : "<null>";
+  expect_true(resolved.base != c4c::TB_STRUCT ||
+                  (resolved.record_def && resolved.record_def->n_fields >= 0),
+              detail);
+}
+
 void test_nested_template_static_member_value_arg_carries_expr_node() {
   const char* source =
       "template <typename T, int N = 7>\n"
@@ -6301,6 +6380,7 @@ int main() {
   test_dependent_member_typedef_base_carries_structured_record_def();
   test_default_only_template_base_uses_cached_default_metadata();
   test_direct_template_explicit_nttp_expr_ignores_stale_display_text();
+  test_qualified_partial_specialization_member_typedef_resolves_concrete_type();
   test_pending_template_nttp_carriers_suppress_rendered_debug_text();
   test_template_specialization_param_lookup_rejects_rendered_fallback();
   test_nested_template_static_member_value_arg_carries_expr_node();

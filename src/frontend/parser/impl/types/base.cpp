@@ -1461,6 +1461,55 @@ TypeSpec Parser::parse_base_type() {
                 };
                 std::function<bool(const Node*, TextId, TypeSpec*)>
                     resolve_record_member_typedef_sidecar;
+                auto complete_member_typedef_type_from_owner_fields =
+                    [&](const Node* sdef, TypeSpec* member_ts) {
+                    if (!sdef || !member_ts ||
+                        (member_ts->base != TB_STRUCT &&
+                         member_ts->base != TB_UNION &&
+                         member_ts->base != TB_TYPEDEF) ||
+                        member_ts->record_def) {
+                        return;
+                    }
+                    TextId member_type_text_id = type_spec_base_text_id(*member_ts);
+                    const Node* sole_nested_record = nullptr;
+                    int nested_record_count = 0;
+                    for (int fi = 0; fi < sdef->n_fields; ++fi) {
+                        const Node* field = sdef->fields ? sdef->fields[fi] : nullptr;
+                        if (!field || !field->is_anon_field ||
+                            !field->type.record_def) {
+                            continue;
+                        }
+                        TextId field_text_id =
+                            field->unqualified_text_id != kInvalidText
+                                ? field->unqualified_text_id
+                                : field->type.tag_text_id;
+                        if (field_text_id == kInvalidText && field->name) {
+                            field_text_id =
+                                parser_text_id_for_token(kInvalidText,
+                                                         field->name);
+                        }
+                        if (member_type_text_id == kInvalidText) {
+                            sole_nested_record = field;
+                            ++nested_record_count;
+                            continue;
+                        }
+                        if (field_text_id != member_type_text_id) continue;
+                        member_ts->record_def = field->type.record_def;
+                        member_ts->namespace_context_id =
+                            field->type.namespace_context_id;
+                        break;
+                    }
+                    if (member_type_text_id == kInvalidText &&
+                        nested_record_count == 1 && sole_nested_record) {
+                        member_ts->base = sole_nested_record->type.base;
+                        member_ts->record_def =
+                            sole_nested_record->type.record_def;
+                        member_ts->tag_text_id =
+                            sole_nested_record->type.tag_text_id;
+                        member_ts->namespace_context_id =
+                            sole_nested_record->type.namespace_context_id;
+                    }
+                };
                 auto try_node_member_typedefs = [&](const Node* sdef) -> bool {
                     if (!sdef || sdef->n_member_typedefs <= 0) return false;
                     for (int i = 0; i < sdef->n_member_typedefs; ++i) {
@@ -1479,7 +1528,10 @@ TypeSpec Parser::parse_base_type() {
                                     sdef, alias_text_id, out)) {
                                 return true;
                             }
-                            *out = sdef->member_typedef_types[i];
+                            TypeSpec member_ts = sdef->member_typedef_types[i];
+                            complete_member_typedef_type_from_owner_fields(
+                                sdef, &member_ts);
+                            *out = member_ts;
                             return true;
                         }
                     }
@@ -1959,17 +2011,24 @@ TypeSpec Parser::parse_base_type() {
                             TypeSpec selected_member_ts =
                                 selected->member_typedef_types[i];
                             bool substituted_type = false;
-                            *out = apply_template_bindings(
+                            TypeSpec member_ts = apply_template_bindings(
                                 selected_member_ts,
                                 type_bindings, nttp_bindings, &substituted_type);
+                            complete_member_typedef_type_from_owner_fields(
+                                owner, &member_ts);
+                            if (!member_ts.record_def) {
+                                complete_member_typedef_type_from_owner_fields(
+                                    selected, &member_ts);
+                            }
                             const bool is_type_member =
                                 member_text_id != kInvalidText
                                     ? find_parser_text_id("type") == member_text_id
                                     : member == "type";
                             if (!substituted_type && is_type_member &&
                                 type_bindings.size() == 1) {
-                                *out = type_bindings.front().second;
+                                member_ts = type_bindings.front().second;
                             }
+                            *out = member_ts;
                             return true;
                         }
                         return false;
@@ -2005,7 +2064,10 @@ TypeSpec Parser::parse_base_type() {
                         if (const TypeSpec* structured_member =
                                 find_template_instantiation_member_typedef_type(
                                     concrete_owner, member_text_id)) {
-                            *out = *structured_member;
+                            TypeSpec member_ts = *structured_member;
+                            complete_member_typedef_type_from_owner_fields(
+                                owner, &member_ts);
+                            *out = member_ts;
                             return true;
                         }
                         return false;
@@ -2400,6 +2462,180 @@ TypeSpec Parser::parse_base_type() {
                             is_known_simple_visible_type_head(*this,
                                                               name_text_id,
                                                               name);
+                        if (!simple_unqualified_known_type_head && !already_have_base) {
+                            QualifiedNameRef qn;
+                            if (peek_qualified_name(&qn, true)) {
+                                const int after_pos =
+                                    core_input_state_.pos +
+                                    (qn.is_global_qualified ? 1 : 0) +
+                                    2 * static_cast<int>(
+                                            qn.qualifier_segments.size()) +
+                                    1;
+                                if ((qn.is_global_qualified ||
+                                     !qn.qualifier_segments.empty()) &&
+                                    after_pos <
+                                        static_cast<int>(
+                                            core_input_state_.tokens.size()) &&
+                                    core_input_state_.tokens[after_pos].kind ==
+                                        TokenKind::Less) {
+                                    if (Node* primary_tpl =
+                                            find_template_struct_primary(qn)) {
+                                        TentativeParseGuardLite template_guard(
+                                            *this);
+                                        std::string qualified_name;
+                                        if (consume_qualified_type_spelling_with_typename(
+                                                /*require_typename=*/false,
+                                                /*allow_global=*/true,
+                                                /*consume_final_template_args=*/
+                                                false,
+                                                &qualified_name, nullptr)) {
+                                            std::vector<ParsedTemplateArg>
+                                                parsed_args;
+                                            if (parse_template_argument_list(
+                                                    &parsed_args,
+                                                    primary_tpl) &&
+                                                check(TokenKind::ColonColon)) {
+                                                consume();
+                                                if (check(TokenKind::KwTemplate))
+                                                    consume();
+                                                if (check(TokenKind::Identifier)) {
+                                                    const Token member_tok = cur();
+                                                    const TextId member_text_id =
+                                                        parser_text_id_for_token(
+                                                            member_tok.text_id,
+                                                            token_spelling(
+                                                                member_tok));
+                                                    const std::string member_name(
+                                                        token_spelling(
+                                                            member_tok));
+                                                    consume();
+                                                    const char* origin =
+                                                        primary_tpl->name &&
+                                                                primary_tpl
+                                                                    ->name[0]
+                                                            ? primary_tpl->name
+                                                        : primary_tpl
+                                                                  ->template_origin_name &&
+                                                                  primary_tpl
+                                                                      ->template_origin_name
+                                                                          [0]
+                                                            ? primary_tpl
+                                                                  ->template_origin_name
+                                                        : primary_tpl
+                                                                  ->unqualified_name &&
+                                                                  primary_tpl
+                                                                      ->unqualified_name
+                                                                          [0]
+                                                            ? primary_tpl
+                                                                  ->unqualified_name
+                                                            : qualified_name
+                                                                  .c_str();
+                                                    TypeSpec owner_ts{};
+                                                    owner_ts.base = TB_STRUCT;
+                                                    owner_ts.tag_text_id =
+                                                        qn.base_text_id;
+                                                    owner_ts.tpl_struct_origin =
+                                                        arena_.strdup(
+                                                            qualified_name
+                                                                .c_str());
+                                                    owner_ts
+                                                        .tpl_struct_origin_key =
+                                                        qualified_name_key(qn);
+                                                    owner_ts.is_global_qualified =
+                                                        qn.is_global_qualified;
+                                                    owner_ts.namespace_context_id =
+                                                        resolve_namespace_context(
+                                                            qn);
+                                                    owner_ts
+                                                        .n_qualifier_segments =
+                                                        static_cast<int>(
+                                                            qn.qualifier_segments
+                                                                .size());
+                                                    if (owner_ts
+                                                            .n_qualifier_segments >
+                                                        0) {
+                                                        owner_ts
+                                                            .qualifier_segments =
+                                                            arena_.alloc_array<
+                                                                const char*>(
+                                                                owner_ts
+                                                                    .n_qualifier_segments);
+                                                        owner_ts
+                                                            .qualifier_text_ids =
+                                                            arena_.alloc_array<
+                                                                TextId>(
+                                                                owner_ts
+                                                                    .n_qualifier_segments);
+                                                        for (int qi = 0;
+                                                             qi < owner_ts
+                                                                      .n_qualifier_segments;
+                                                             ++qi) {
+                                                            owner_ts
+                                                                .qualifier_segments
+                                                                    [qi] =
+                                                                arena_.strdup(
+                                                                    qn.qualifier_segments
+                                                                        [qi]
+                                                                            .c_str());
+                                                            owner_ts
+                                                                .qualifier_text_ids
+                                                                    [qi] =
+                                                                qi < static_cast<int>(
+                                                                         qn.qualifier_text_ids
+                                                                             .size())
+                                                                    ? qn.qualifier_text_ids
+                                                                          [qi]
+                                                                    : kInvalidText;
+                                                        }
+                                                    }
+                                                    std::string mangled;
+                                                    TypeSpec resolved_owner =
+                                                        owner_ts;
+                                                    if (origin && origin[0]) {
+                                                        (void)ensure_template_struct_instantiated_from_args(
+                                                            origin,
+                                                            primary_tpl,
+                                                            parsed_args,
+                                                            primary_tpl->line,
+                                                            &mangled,
+                                                            "qualified_template_member_typedef_base",
+                                                            &resolved_owner);
+                                                    }
+                                                    if (resolved_owner.record_def) {
+                                                        owner_ts = resolved_owner;
+                                                    } else if (!mangled.empty()) {
+                                                        auto inst_it =
+                                                            definition_state_
+                                                                .struct_tag_def_map
+                                                                .find(mangled);
+                                                        if (inst_it !=
+                                                            definition_state_
+                                                                .struct_tag_def_map
+                                                                .end()) {
+                                                            owner_ts.record_def =
+                                                                inst_it->second;
+                                                        }
+                                                    }
+                                                    TypeSpec member_ts{};
+                                                    if (lookup_struct_member_typedef_recursive_for_type(
+                                                            owner_ts,
+                                                            member_name,
+                                                            member_text_id,
+                                                            &member_ts)) {
+                                                        ts = member_ts;
+                                                        has_typedef = false;
+                                                        base_set = true;
+                                                        template_guard.commit();
+                                                        done = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         if (!simple_unqualified_known_type_head &&
                             try_parse_cpp_scoped_base_type(*this,
                                                            already_have_base,
@@ -3895,6 +4131,56 @@ TypeSpec Parser::parse_base_type() {
                     consume();  // ::
                     consume();  // member
                     bool save_const = ts.is_const, save_vol = ts.is_volatile;
+                    if (resolved.base == TB_STRUCT && !resolved.record_def) {
+                        Node* inst_def = resolve_record_type_spec(ts, nullptr);
+                        const TextId resolved_text_id =
+                            resolved.tag_text_id != kInvalidText
+                                ? resolved.tag_text_id
+                                : resolved.template_param_text_id;
+                        const Node* sole_nested_record = nullptr;
+                        int nested_record_count = 0;
+                        if (inst_def) {
+                            for (int fi = 0; fi < inst_def->n_fields; ++fi) {
+                                const Node* field =
+                                    inst_def->fields ? inst_def->fields[fi]
+                                                     : nullptr;
+                                if (!field || !field->is_anon_field ||
+                                    !field->type.record_def) {
+                                    continue;
+                                }
+                                TextId field_text_id =
+                                    field->unqualified_text_id != kInvalidText
+                                        ? field->unqualified_text_id
+                                        : field->type.tag_text_id;
+                                if (field_text_id == kInvalidText && field->name) {
+                                    field_text_id =
+                                        parser_text_id_for_token(kInvalidText,
+                                                                 field->name);
+                                }
+                                if (resolved_text_id == kInvalidText) {
+                                    sole_nested_record = field;
+                                    ++nested_record_count;
+                                    continue;
+                                }
+                                if (field_text_id != resolved_text_id) continue;
+                                resolved.record_def = field->type.record_def;
+                                resolved.tag_text_id = field->type.tag_text_id;
+                                resolved.namespace_context_id =
+                                    field->type.namespace_context_id;
+                                break;
+                            }
+                        }
+                        if (!resolved.record_def &&
+                            resolved_text_id == kInvalidText &&
+                            nested_record_count == 1 && sole_nested_record) {
+                            resolved.record_def =
+                                sole_nested_record->type.record_def;
+                            resolved.tag_text_id =
+                                sole_nested_record->type.tag_text_id;
+                            resolved.namespace_context_id =
+                                sole_nested_record->type.namespace_context_id;
+                        }
+                    }
                     ts = resolved;
                     ts.is_const |= save_const;
                     ts.is_volatile |= save_vol;
@@ -7105,15 +7391,32 @@ TypeSpec Parser::parse_base_type() {
                                 }
                             }
                         }
-                        // Store template bindings so HIR can resolve pending types
-                        // in method bodies and signatures.
+                        // Store concrete primary-family arguments so member
+                        // typedef lookup keys stay aligned for partial
+                        // specializations such as Template<T, false>::type.
                         {
-                            int n = tpl_def->n_template_params;
+                            int n = static_cast<int>(concrete_args.size());
+                            if (primary_tpl &&
+                                primary_tpl->n_template_params > n) {
+                                n = primary_tpl->n_template_params;
+                            } else if (!primary_tpl &&
+                                       tpl_def->n_template_params > n) {
+                                n = tpl_def->n_template_params;
+                            }
                             inst->n_template_params = n;
-                            inst->template_param_names = tpl_def->template_param_names;
+                            inst->template_param_names =
+                                primary_tpl && primary_tpl->template_param_names
+                                    ? primary_tpl->template_param_names
+                                    : tpl_def->template_param_names;
                             inst->template_param_name_text_ids =
-                                tpl_def->template_param_name_text_ids;
-                            inst->template_param_is_nttp = tpl_def->template_param_is_nttp;
+                                primary_tpl &&
+                                        primary_tpl->template_param_name_text_ids
+                                    ? primary_tpl->template_param_name_text_ids
+                                    : tpl_def->template_param_name_text_ids;
+                            inst->template_param_is_nttp =
+                                primary_tpl && primary_tpl->template_param_is_nttp
+                                    ? primary_tpl->template_param_is_nttp
+                                    : tpl_def->template_param_is_nttp;
                             inst->n_template_args = n;
                             inst->template_arg_types = arena_.alloc_array<TypeSpec>(n);
                             inst->template_arg_is_value = arena_.alloc_array<bool>(n);
@@ -7121,20 +7424,35 @@ TypeSpec Parser::parse_base_type() {
                             inst->template_arg_nttp_names = arena_.alloc_array<const char*>(n);
                             inst->template_arg_nttp_text_ids = arena_.alloc_array<TextId>(n);
                             inst->template_arg_exprs = arena_.alloc_array<Node*>(n);
-                            int tti = 0, nni = 0;
                             for (int pi = 0; pi < n; ++pi) {
-                                if (tpl_def->template_param_is_nttp[pi]) {
+                                const bool param_is_nttp =
+                                    inst->template_param_is_nttp &&
+                                    pi < inst->n_template_params &&
+                                    inst->template_param_is_nttp[pi];
+                                const bool have_concrete_arg =
+                                    pi < static_cast<int>(concrete_args.size());
+                                if (param_is_nttp) {
                                     inst->template_arg_is_value[pi] = true;
                                     inst->template_arg_values[pi] =
-                                        nni < (int)nttp_bindings.size() ? nttp_bindings[nni++].second : 0;
+                                        have_concrete_arg &&
+                                                concrete_args[pi].is_value
+                                            ? concrete_args[pi].value
+                                            : 0;
                                     inst->template_arg_nttp_names[pi] = nullptr;
-                                    inst->template_arg_nttp_text_ids[pi] = kInvalidText;
+                                    inst->template_arg_nttp_text_ids[pi] =
+                                        have_concrete_arg &&
+                                                concrete_args[pi].is_value
+                                            ? concrete_args[pi].nttp_text_id
+                                            : kInvalidText;
                                     inst->template_arg_exprs[pi] = nullptr;
                                     inst->template_arg_types[pi] = {};
                                 } else {
                                     inst->template_arg_is_value[pi] = false;
                                     inst->template_arg_types[pi] =
-                                        tti < (int)type_bindings.size() ? type_bindings[tti++].second : TypeSpec{};
+                                        have_concrete_arg &&
+                                                !concrete_args[pi].is_value
+                                            ? concrete_args[pi].type
+                                            : TypeSpec{};
                                     inst->template_arg_values[pi] = 0;
                                     inst->template_arg_nttp_names[pi] = nullptr;
                                     inst->template_arg_nttp_text_ids[pi] = kInvalidText;
@@ -7584,6 +7902,59 @@ TypeSpec Parser::parse_base_type() {
                                     }
                                     return false;
                                 };
+                            if (inst_def && !resolved.record_def) {
+                                const TextId resolved_text_id =
+                                    resolved.tag_text_id != kInvalidText
+                                        ? resolved.tag_text_id
+                                        : resolved.template_param_text_id;
+                                const Node* sole_nested_record = nullptr;
+                                int nested_record_count = 0;
+                                for (int fi = 0; fi < inst_def->n_fields; ++fi) {
+                                    const Node* field =
+                                        inst_def->fields ? inst_def->fields[fi]
+                                                         : nullptr;
+                                    if (!field || !field->is_anon_field ||
+                                        !field->type.record_def) {
+                                        continue;
+                                    }
+                                    TextId field_text_id =
+                                        field->unqualified_text_id != kInvalidText
+                                            ? field->unqualified_text_id
+                                            : field->type.tag_text_id;
+                                    if (field_text_id == kInvalidText &&
+                                        field->name) {
+                                        field_text_id =
+                                            parser_text_id_for_token(
+                                                kInvalidText, field->name);
+                                    }
+                                    if (resolved_text_id == kInvalidText) {
+                                        sole_nested_record = field;
+                                        ++nested_record_count;
+                                        continue;
+                                    }
+                                    if (field_text_id == resolved_text_id) {
+                                        resolved.record_def =
+                                            field->type.record_def;
+                                        resolved.tag_text_id =
+                                            field->type.tag_text_id;
+                                        resolved.namespace_context_id =
+                                            field->type.namespace_context_id;
+                                        break;
+                                    }
+                                }
+                                if (!resolved.record_def &&
+                                    resolved_text_id == kInvalidText &&
+                                    nested_record_count == 1 &&
+                                    sole_nested_record) {
+                                    resolved.record_def =
+                                        sole_nested_record->type.record_def;
+                                    resolved.tag_text_id =
+                                        sole_nested_record->type.tag_text_id;
+                                    resolved.namespace_context_id =
+                                        sole_nested_record->type
+                                            .namespace_context_id;
+                                }
+                            }
                             if (inst_def &&
                                 resolved_matches_template_origin(resolved,
                                                                  inst_def)) {
