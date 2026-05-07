@@ -171,6 +171,35 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
       }
     }
   }
+  if (work_item.pending_type.deferred_member_type_owner_key.base_text_id !=
+      kInvalidText) {
+    NamespaceQualifier owner_ns;
+    owner_ns.context_id =
+        work_item.pending_type.deferred_member_type_owner_key.context_id;
+    owner_ns.is_global_qualified =
+        work_item.pending_type.deferred_member_type_owner_key.is_global_qualified;
+    if (work_item.pending_type.qualifier_text_ids &&
+        work_item.pending_type.n_qualifier_segments > 0) {
+      owner_ns.segment_text_ids.assign(
+          work_item.pending_type.qualifier_text_ids,
+          work_item.pending_type.qualifier_text_ids +
+              work_item.pending_type.n_qualifier_segments);
+    } else if (work_item.pending_type.deferred_member_type_owner_key.qualifier_path_id !=
+               kInvalidNamePath) {
+      return blocked_deferred_template_type(
+          work_item, "owner qualifier segment metadata unavailable");
+    }
+    const HirRecordOwnerKey owner_key = make_hir_record_owner_key(
+        owner_ns, work_item.pending_type.deferred_member_type_owner_key.base_text_id);
+    if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+      has_structured_owner = true;
+      if (resolve_struct_member_typedef_type(
+              owner_key, member_name ? member_name : "", member_text_id,
+              &resolved_member)) {
+        return DeferredTemplateTypeResult::resolved();
+      }
+    }
+  }
   if (!has_structured_owner) {
     return blocked_deferred_template_type(
         work_item, "owner structured identity unavailable");

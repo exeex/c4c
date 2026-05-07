@@ -133,7 +133,8 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
             if (const SymbolName* owner_tag =
                     module_->find_struct_def_tag_by_owner(*owner_key)) {
               resolved = resolve_struct_member_typedef_type(
-                  *owner_tag, ts.deferred_member_type_name, &resolved_member);
+                  *owner_tag, ts.deferred_member_type_name,
+                  ts.deferred_member_type_text_id, &resolved_member);
             }
           }
         }
@@ -166,6 +167,7 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
             if (!structured_owner_tag.empty()) {
               resolved = resolve_struct_member_typedef_type(
                   structured_owner_tag, ts.deferred_member_type_name,
+                  ts.deferred_member_type_text_id,
                   &resolved_member);
             }
           }

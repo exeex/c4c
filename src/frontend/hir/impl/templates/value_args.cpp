@@ -690,7 +690,8 @@ void Lowerer::assign_template_arg_refs_from_ast_args(
         }
         if (owner_tag &&
             resolve_struct_member_typedef_type(
-                *owner_tag, arg_ts.deferred_member_type_name, &resolved_member)) {
+                *owner_tag, arg_ts.deferred_member_type_name,
+                arg_ts.deferred_member_type_text_id, &resolved_member)) {
           arg_ts = resolved_member;
         }
       }
@@ -1007,8 +1008,9 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
           owner_tag = legacy_owner_tag_from_type_if_no_metadata(ts, module_);
         }
         if (owner_tag &&
-            resolve_struct_member_typedef_type(*owner_tag, ts.deferred_member_type_name,
-                                               &resolved_member)) {
+            resolve_struct_member_typedef_type(
+                *owner_tag, ts.deferred_member_type_name,
+                ts.deferred_member_type_text_id, &resolved_member)) {
           ts = resolved_member;
         }
       }

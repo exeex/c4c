@@ -494,6 +494,33 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
   return false;
 }
 
+bool Lowerer::resolve_struct_member_typedef_type(
+    const HirRecordOwnerKey& owner_key,
+    const std::string& member,
+    TextId member_text_id,
+    TypeSpec* out) {
+  if (!hir_record_owner_key_has_complete_metadata(owner_key) || !out ||
+      (member.empty() && member_text_id == kInvalidText)) {
+    return false;
+  }
+
+  if (const auto node_it = struct_def_nodes_by_owner_.find(owner_key);
+      node_it != struct_def_nodes_by_owner_.end() && node_it->second) {
+    if (resolve_record_def_member_typedef_type(
+            node_it->second, member, member_text_id, out)) {
+      return true;
+    }
+  }
+
+  if (!module_) return false;
+  const SymbolName* owner_tag = module_->find_struct_def_tag_by_owner(owner_key);
+  if (!owner_tag || owner_tag->empty()) return false;
+
+  // Compatibility bridge: the module still stores the realized struct and base
+  // walk by rendered tag, but the owner was selected by HirRecordOwnerKey.
+  return resolve_struct_member_typedef_type(*owner_tag, member, member_text_id, out);
+}
+
 bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   auto owner_key_from_type = [](const TypeSpec& owner)
       -> std::optional<HirRecordOwnerKey> {
@@ -598,9 +625,11 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   };
   const bool has_origin = ts && ts->tpl_struct_origin && ts->tpl_struct_origin[0];
   const bool has_record_def = ts && ts->record_def;
+  const std::optional<HirRecordOwnerKey> structured_owner_key =
+      ts ? owner_key_from_type(*ts) : std::nullopt;
   const std::optional<std::string> owner_tag = owner_tag_from_metadata();
   if (!ts || !ts->deferred_member_type_name ||
-      (!has_record_def && !owner_tag && !has_origin)) {
+      (!has_record_def && !structured_owner_key && !owner_tag && !has_origin)) {
     return false;
   }
   TypeSpec structured_member{};
@@ -805,6 +834,15 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   };
 
   if (try_resolve_from_origin()) return true;
+  if (structured_owner_key) {
+    TypeSpec resolved_member{};
+    if (resolve_struct_member_typedef_type(
+            *structured_owner_key, ts->deferred_member_type_name,
+            ts->deferred_member_type_text_id, &resolved_member)) {
+      *ts = resolved_member;
+      return true;
+    }
+  }
   if (has_record_def) return false;
   if (!owner_tag || owner_tag->empty()) return false;
   TypeSpec resolved_member{};

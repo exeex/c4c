@@ -3100,6 +3100,114 @@ void test_deferred_member_typedef_record_def_miss_rejects_stale_tag() {
               "failed structured member typedef lookup should leave the pending owner type intact");
 }
 
+void test_deferred_member_typedef_uses_owner_key_and_member_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  const c4c::TextId ns_text = texts.intern("real_ns");
+  const c4c::TextId owner_text = texts.intern("Box");
+  const c4c::TextId member_text = texts.intern("value_type");
+
+  c4c::Node real_record{};
+  real_record.kind = c4c::NK_STRUCT_DEF;
+  real_record.n_member_typedefs = 1;
+  real_record.member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
+  real_record.member_typedef_text_ids[0] = member_text;
+  real_record.member_typedef_names = arena.alloc_array<const char*>(1);
+  real_record.member_typedef_names[0] = arena.strdup("stale_name");
+  real_record.member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  real_record.member_typedef_types[0].array_size = -1;
+  real_record.member_typedef_types[0].inner_rank = -1;
+  real_record.member_typedef_types[0].base = c4c::TB_LONG;
+
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 7;
+  owner_ns.segment_text_ids.push_back(ns_text);
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.struct_def_nodes_by_owner_[owner_key] = &real_record;
+
+  c4c::TextId* qualifier_segments = arena.alloc_array<c4c::TextId>(1);
+  qualifier_segments[0] = ns_text;
+  c4c::TypeSpec pending{};
+  pending.array_size = -1;
+  pending.inner_rank = -1;
+  pending.base = c4c::TB_STRUCT;
+  pending.namespace_context_id = 7;
+  pending.qualifier_text_ids = qualifier_segments;
+  pending.n_qualifier_segments = 1;
+  pending.deferred_member_type_owner_key =
+      c4c::QualifiedNameKey{7, false, c4c::kInvalidNamePath, owner_text};
+  pending.deferred_member_type_text_id = member_text;
+  pending.deferred_member_type_name = arena.strdup("wrong_rendered_member");
+  set_legacy_tag_if_present(pending, arena.strdup("stale_ns::Box"), 0);
+
+  const bool resolved = lowerer.resolve_struct_member_typedef_if_ready(&pending);
+  expect_true(resolved,
+              "deferred member typedef should resolve through owner key and member TextId");
+  expect_true(pending.base == c4c::TB_LONG,
+              "stale rendered member spelling must not override member TextId");
+}
+
+void test_pending_deferred_member_typedef_preserves_owner_qualifier_segments() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  const c4c::TextId ns_text = texts.intern("real_ns");
+  const c4c::TextId owner_text = texts.intern("Box");
+  const c4c::TextId member_text = texts.intern("value_type");
+
+  c4c::Node real_record{};
+  real_record.kind = c4c::NK_STRUCT_DEF;
+  real_record.n_member_typedefs = 1;
+  real_record.member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
+  real_record.member_typedef_text_ids[0] = member_text;
+  real_record.member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  real_record.member_typedef_types[0].array_size = -1;
+  real_record.member_typedef_types[0].inner_rank = -1;
+  real_record.member_typedef_types[0].base = c4c::TB_LONG;
+
+  c4c::hir::NamespaceQualifier qualified_owner_ns;
+  qualified_owner_ns.context_id = 7;
+  qualified_owner_ns.segment_text_ids.push_back(ns_text);
+  const c4c::hir::HirRecordOwnerKey qualified_owner_key =
+      c4c::hir::make_hir_record_owner_key(qualified_owner_ns, owner_text);
+
+  c4c::hir::NamespaceQualifier segmentless_owner_ns;
+  segmentless_owner_ns.context_id = 7;
+  const c4c::hir::HirRecordOwnerKey segmentless_owner_key =
+      c4c::hir::make_hir_record_owner_key(segmentless_owner_ns, owner_text);
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.struct_def_nodes_by_owner_[qualified_owner_key] = &real_record;
+  expect_true(lowerer.struct_def_nodes_by_owner_.count(segmentless_owner_key) == 0,
+              "fixture should only register the qualified owner key");
+
+  c4c::TextId* qualifier_segments = arena.alloc_array<c4c::TextId>(1);
+  qualifier_segments[0] = ns_text;
+  c4c::TypeSpec pending{};
+  pending.array_size = -1;
+  pending.inner_rank = -1;
+  pending.base = c4c::TB_STRUCT;
+  pending.namespace_context_id = 7;
+  pending.qualifier_text_ids = qualifier_segments;
+  pending.n_qualifier_segments = 1;
+  pending.deferred_member_type_owner_key =
+      c4c::QualifiedNameKey{7, false, c4c::kInvalidNamePath, owner_text};
+  pending.deferred_member_type_text_id = member_text;
+  pending.deferred_member_type_name = arena.strdup("wrong_rendered_member");
+
+  c4c::hir::PendingTemplateTypeWorkItem work_item;
+  work_item.kind = c4c::hir::PendingTemplateTypeKind::MemberTypedef;
+  work_item.pending_type = pending;
+  work_item.context_name = "qualified-owner-segment-test";
+
+  const c4c::hir::DeferredTemplateTypeResult result =
+      lowerer.resolve_deferred_member_typedef_type(work_item);
+  expect_true(result.kind == c4c::hir::DeferredTemplateTypeResultKind::Resolved,
+              "pending deferred member typedef should copy qualifier TextIds into the owner key");
+}
+
 }  // namespace
 
 int main() {
@@ -3156,6 +3264,8 @@ int main() {
   test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag();
   test_local_anonymous_aggregate_init_uses_record_owner_key();
   test_deferred_member_typedef_record_def_miss_rejects_stale_tag();
+  test_deferred_member_typedef_uses_owner_key_and_member_text_id();
+  test_pending_deferred_member_typedef_preserves_owner_qualifier_segments();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

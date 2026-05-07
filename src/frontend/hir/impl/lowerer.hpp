@@ -517,6 +517,10 @@ class Lowerer {
                                           const std::string& member,
                                           TextId member_text_id,
                                           TypeSpec* out);
+  bool resolve_struct_member_typedef_type(const HirRecordOwnerKey& owner_key,
+                                          const std::string& member,
+                                          TextId member_text_id,
+                                          TypeSpec* out);
   bool resolve_struct_member_typedef_type(const std::string& tag,
                                           const std::string& member,
                                           TypeSpec* out) {

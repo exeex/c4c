@@ -657,6 +657,35 @@ TypeSpec Lowerer::substitute_signature_template_type(
     return resolved;
   };
 
+  auto resolve_qualified_member_typedef_by_owner_key =
+      [&]() -> std::optional<TypeSpec> {
+    if (!ts.qualifier_text_ids || ts.n_qualifier_segments <= 0 ||
+        ts.tag_text_id == kInvalidText) {
+      return std::nullopt;
+    }
+    const TextId owner_text_id =
+        ts.qualifier_text_ids[ts.n_qualifier_segments - 1];
+    if (owner_text_id == kInvalidText) return std::nullopt;
+    NamespaceQualifier owner_ns;
+    owner_ns.context_id = ts.namespace_context_id;
+    owner_ns.is_global_qualified = ts.is_global_qualified;
+    owner_ns.segment_text_ids.assign(
+        ts.qualifier_text_ids,
+        ts.qualifier_text_ids + ts.n_qualifier_segments - 1);
+    const HirRecordOwnerKey owner_key =
+        make_hir_record_owner_key(owner_ns, owner_text_id);
+    TypeSpec resolved{};
+    if (!resolve_struct_member_typedef_type(
+            owner_key, std::string{}, ts.tag_text_id, &resolved)) {
+      return std::nullopt;
+    }
+    apply_signature_template_concrete(ts, resolved);
+    if (tpl_bindings && ts.base == TB_TYPEDEF) {
+      return substitute_signature_template_type(ts, tpl_bindings);
+    }
+    return ts;
+  };
+
   if (ts.template_param_text_id != kInvalidText) {
     if (apply_signature_template_binding_by_text_spelling(
             ts, tpl_bindings, module_ ? module_->link_name_texts.get() : nullptr)) {
@@ -670,6 +699,9 @@ TypeSpec Lowerer::substitute_signature_template_type(
   }
 
   if (auto resolved_member = resolve_qualified_member_typedef_by_text_id()) {
+    return *resolved_member;
+  }
+  if (auto resolved_member = resolve_qualified_member_typedef_by_owner_key()) {
     return *resolved_member;
   }
 

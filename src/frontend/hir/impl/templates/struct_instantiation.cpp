@@ -198,7 +198,8 @@ void Lowerer::append_instantiated_template_struct_bases(
     if (base_ts.deferred_member_type_name && base_tag && !base_tag->empty()) {
       TypeSpec resolved_member{};
       if (resolve_struct_member_typedef_type(
-              *base_tag, base_ts.deferred_member_type_name, &resolved_member)) {
+              *base_tag, base_ts.deferred_member_type_name,
+              base_ts.deferred_member_type_text_id, &resolved_member)) {
         base_ts = resolved_member;
         while (resolve_struct_member_typedef_if_ready(&base_ts)) {
         }
