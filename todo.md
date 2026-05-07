@@ -3,38 +3,28 @@
 Status: Active
 Source Idea Path: ideas/open/149_template_instantiation_structured_argument_key.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Structured Argument Key Representation
+Current Step ID: 3
+Current Step Title: Migrate Parser and Type-Helper Construction Sites
 
 ## Just Finished
 
-Completed the second Step 2 implementation slice at the parser key/helper
-boundary:
+Completed the Step 3 parser/type-helper cleanup slice:
 
-- Replaced `TemplateInstantiationKey::Argument::Type`'s string mirror with a
-  recursive `TypeComponent` payload derived from `TypeSpec` fields.
-- Type components now cover base kind, enum underlying kind, qualified/source
-  TextIds, template parameter owner/index metadata, parser record identity,
-  qualifiers, declarator shape, arrays, vectors, template origins, deferred
-  member typedef owner/member keys, and nested `TemplateArgRef` type/value
-  cases.
-- `make_template_instantiation_argument_key` now builds type payloads through
-  `make_template_type_key_components(arg.type)` instead of
-  `canonical_template_struct_type_key(arg.type)`.
-- `TemplateInstantiationKeyHash` hashes the structured type component stream
-  instead of a rendered type string.
-- Direct expected-key tests now use the structured scalar type factory rather
-  than old `"int"`/`"uint"` type-key strings.
-- Added a focused parser test proving nested `TemplateArgRef::debug_text`
-  differences do not affect the new type payload when the structured nested
-  type payload matches.
+- Removed the obsolete parser-side rendered template-struct key helper.
+- Retired the direct rendered-key test in `frontend_parser_tests`; structured
+  template argument identity coverage remains on the recursive type payload.
+- Replaced the residual metadata direct-key assertion with structured
+  `TypeComponent` coverage that checks tag `TextId` identity wins over stale
+  rendered tag text.
+- Verified no remaining production or focused-test references to the retired
+  helper name remain.
 
 ## Suggested Next
 
-Next coherent packet: audit and remove or retire parser-side direct callers of
-`canonical_template_struct_type_key` that are now only display/debug or legacy
-test coverage, then decide whether the helper should remain as a compatibility
-API or be replaced by structured dump utilities.
+Next coherent packet: advance the runbook past Step 3 by auditing the remaining
+compatibility-text fallback notes in parser template-instantiation key payloads
+and either narrow the fallback criteria or hand the lifecycle state to the plan
+owner if Step 3 is exhausted.
 
 ## Watchouts
 
@@ -54,16 +44,12 @@ API or be replaced by structured dump utilities.
   structured argument identity.
 - Keep HIR/Sema/backend specialization keys out of this parser-key packet
   unless the supervisor delegates that boundary explicitly.
+- The retired rendered-key helper was test-only at the start of this packet; no
+  production display/debug caller needed to keep it.
 
 ## Proof
 
-Supervisor escalated final validation to the broader structured parser subset.
-
-Before command:
-
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_.*structured_metadata)$') > test_before.log 2>&1`
-
-After command for this slice:
+Supervisor-selected proof for this slice:
 
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_.*structured_metadata)$') > test_after.log 2>&1`
 

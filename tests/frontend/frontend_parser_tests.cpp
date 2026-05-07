@@ -8612,34 +8612,6 @@ void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payloa
               "template argument equivalence should prefer structured kind/value payload over debug_text");
 }
 
-void test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text() {
-  c4c::Arena arena;
-
-  auto make_box = [&](const char* debug_text) {
-    c4c::TypeSpec ts{};
-    ts.array_size = -1;
-    ts.inner_rank = -1;
-    ts.base = c4c::TB_TYPEDEF;
-    ts.tpl_struct_origin = arena.strdup("Box");
-    ts.tpl_struct_args.size = 1;
-    ts.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
-    ts.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
-    ts.tpl_struct_args.data[0].value = 7;
-    ts.tpl_struct_args.data[0].debug_text = arena.strdup(debug_text);
-    return ts;
-  };
-
-  const std::string lhs_key =
-      c4c::canonical_template_struct_type_key(make_box("N"));
-  const std::string rhs_key =
-      c4c::canonical_template_struct_type_key(make_box("DifferentRenderedName"));
-
-  expect_eq(lhs_key, rhs_key,
-            "canonical template struct type keys should prefer structured template arg value over debug_text");
-  expect_true(lhs_key.find("v:7") != std::string::npos,
-              "canonical template struct type key should include the structured value argument");
-}
-
 void test_template_instantiation_type_payload_ignores_template_arg_debug_text() {
   c4c::Arena arena;
 
@@ -10093,7 +10065,6 @@ int main() {
   test_type_binding_equivalence_rejects_stale_rendered_name_when_structured_identity_exists();
   test_type_binding_equivalence_preserves_no_metadata_rendered_qualified_compatibility();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
-  test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_template_instantiation_type_payload_ignores_template_arg_debug_text();
   test_template_instantiation_key_prefers_expr_carrier_over_expr_text();
   test_template_instantiation_key_expression_payload_preserves_tree_shape();

@@ -95,13 +95,31 @@ void test_specialization_score_uses_template_param_text_identity() {
               "specialization scoring should penalize missing structured template param identity");
 }
 
-void test_canonical_key_uses_text_identity_before_rendered_tag() {
+void test_template_type_components_use_text_identity_before_rendered_tag() {
   c4c::TypeSpec ts = make_struct(77, "StaleRecord");
-  const std::string key = c4c::canonical_template_struct_type_key(ts);
-  expect_true(key.find("text#77") != std::string::npos,
-              "canonical key should encode structured tag TextId");
-  expect_true(key.find("StaleRecord") == std::string::npos,
-              "canonical key should not prefer stale rendered tag");
+  const auto components = c4c::make_template_type_key_components(ts);
+
+  bool found_text_identity = false;
+  bool found_stale_compatibility_text = false;
+  for (const auto& component : components) {
+    if (component.kind ==
+            c4c::ParserTemplateState::TemplateInstantiationKey::Argument::
+                TypeComponent::Kind::NameIdentity &&
+        component.text_id == 77) {
+      found_text_identity = true;
+    }
+    if (component.kind ==
+            c4c::ParserTemplateState::TemplateInstantiationKey::Argument::
+                TypeComponent::Kind::CompatibilityText &&
+        component.compatibility_text == "StaleRecord") {
+      found_stale_compatibility_text = true;
+    }
+  }
+
+  expect_true(found_text_identity,
+              "structured type components should encode structured tag TextId");
+  expect_true(!found_stale_compatibility_text,
+              "structured type components should not prefer stale rendered tag");
 }
 
 void test_mangling_uses_record_metadata_before_rendered_tag() {
@@ -131,7 +149,7 @@ void test_mangling_uses_record_metadata_before_rendered_tag() {
 int main() {
   test_reparse_tokens_use_text_identity_before_rendered_tag();
   test_specialization_score_uses_template_param_text_identity();
-  test_canonical_key_uses_text_identity_before_rendered_tag();
+  test_template_type_components_use_text_identity_before_rendered_tag();
   test_mangling_uses_record_metadata_before_rendered_tag();
   std::cout << "PASS: cpp_hir_parser_type_helper_residual_metadata_test\n";
   return 0;
