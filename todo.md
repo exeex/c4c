@@ -1,27 +1,26 @@
 # Current Packet
 
-Status: Complete
+Status: Active
 Source Idea Path: ideas/open/149_template_instantiation_structured_argument_key.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Remove or Label Remaining String Mirrors
+Current Step ID: 7
+Current Step Title: Prove Structured Argument Identity
 
 ## Just Finished
 
-Completed the final Step 6 string-mirror cleanup. The remaining semantic
-`canonical_type_str` callers in template value-argument `is_same` handling now
-use `specialization_type_identity_equal` on structured `TypeSpec` values.
-`canonical_type_str` remains only as an explicit compatibility wrapper over
-`format_type_for_specialization_display_key`; `make_specialization_key` builds
-`SpecializationKey::canonical` through the display-named helper while
-structured owner/argument identity remains authoritative. Pending-template
-display renderers and the HIR record-owner serialized specialization bridge are
-commented as display/compatibility-only mirrors with removal criteria.
+Step 6 complete: remaining string mirrors are deleted, display-named, or
+explicitly labeled as compatibility-only. `canonical_type_str` survives only as
+a compatibility wrapper over `format_type_for_specialization_display_key`, and
+semantic value-argument `is_same` handling now compares structured `TypeSpec`
+identity through `specialization_type_identity_equal`.
 
 ## Suggested Next
 
-Next coherent packet: supervisor lifecycle review for Step 6 completion and
-commit readiness.
+Next coherent packet: execute Step 7 proof of structured argument identity.
+Use the supervisor-chosen focused parser/Sema/HIR template argument tests, add
+or confirm probes for formatting-stable and ambiguous rendered argument
+identity, then run the broader parser/Sema/HIR validation checkpoint required
+by `plan.md`.
 
 ## Watchouts
 
@@ -38,6 +37,8 @@ commit readiness.
   formatted type strings as semantic keys.
 
 ## Proof
+
+Previous Step 6 proof:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_lookup_tests|cpp_hir_)'`
 
