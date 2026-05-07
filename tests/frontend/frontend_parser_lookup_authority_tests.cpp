@@ -1631,8 +1631,8 @@ void test_parser_template_static_member_base_lookup_rejects_stale_map_after_stru
         parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
     };
     long long out = 0;
-    return parser.eval_deferred_nttp_expr_tokens("Derived", expr_tokens, {},
-                                                {}, &out);
+    return parser.eval_deferred_nttp_expr_tokens(
+        "Derived", expr_tokens, c4c::ParserTemplateBindingSet{}, &out);
   };
 
   base_ts = make_ts(c4c::TB_STRUCT);
@@ -1814,8 +1814,8 @@ void test_parser_template_static_member_initializer_rejects_stale_map_after_stru
         parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
         parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
     };
-    return parser.eval_deferred_nttp_expr_tokens("Trait", expr_tokens, {}, {},
-                                                out);
+    return parser.eval_deferred_nttp_expr_tokens(
+        "Trait", expr_tokens, c4c::ParserTemplateBindingSet{}, out);
   };
 
   long long out = 0;
@@ -3440,22 +3440,29 @@ void test_parser_deferred_nttp_default_uses_structured_binding_metadata() {
       {parser.make_injected_token(seed, c4c::TokenKind::Identifier,
                                   "StructuredN")});
 
-  std::vector<std::pair<std::string, long long>> rendered_bindings;
-  rendered_bindings.push_back({"StructuredN", 100});
-
-  std::vector<c4c::ParserNttpBindingMetadata> structured_bindings;
-  c4c::ParserNttpBindingMetadata binding{};
-  binding.name = "RenderedN";
-  binding.name_text_id = structured_text;
-  binding.name_key = parser.alias_template_key_in_context(
-      parser.current_namespace_context_id(), structured_text);
+  c4c::ParserTemplateBindingSet bindings;
+  bindings.has_structured_nttp_metadata = true;
+  c4c::ParserTemplateNttpBinding rendered_binding{};
+  rendered_binding.key.spelling = "StructuredN";
+  rendered_binding.key.parameter_kind =
+      c4c::ParserTemplateParameterKind::NttpValue;
+  rendered_binding.value = 100;
+  bindings.nttp_bindings.push_back(rendered_binding);
+  c4c::ParserTemplateNttpBinding binding{};
+  binding.key.spelling = "RenderedN";
+  binding.key.spelling_text_id = structured_text;
+  binding.key.owner_template_key = trait_key;
+  binding.key.owner_namespace_context_id = trait_key.context_id;
+  binding.key.owner_template_text_id = trait_key.base_text_id;
+  binding.key.parameter_index = 1;
+  binding.key.parameter_kind = c4c::ParserTemplateParameterKind::NttpValue;
+  binding.key.authoritative_structured_metadata = true;
   binding.value = 6;
-  structured_bindings.push_back(binding);
+  bindings.nttp_bindings.push_back(binding);
 
   long long value = 0;
-  expect_true(parser.eval_deferred_nttp_default(
-                  trait_key, 1, {}, rendered_bindings, &value,
-                  &structured_bindings),
+  expect_true(parser.eval_deferred_nttp_default(trait_key, 1, bindings,
+                                                &value),
               "deferred NTTP defaults should use structured TextId binding "
               "metadata before rendered binding names");
   expect_true(value == 6,
@@ -3466,15 +3473,16 @@ void test_parser_deferred_nttp_default_uses_structured_binding_metadata() {
       trait_key, 2,
       {parser.make_injected_token(seed, c4c::TokenKind::Identifier,
                                   "RenderedN")});
-  rendered_bindings.clear();
-  rendered_bindings.push_back({"RenderedN", 100});
-  structured_bindings[0].name_text_id = other_text;
-  structured_bindings[0].name_key = parser.alias_template_key_in_context(
-      parser.current_namespace_context_id(), other_text);
+  bindings.nttp_bindings.clear();
+  rendered_binding.key.spelling = "RenderedN";
+  rendered_binding.value = 100;
+  bindings.nttp_bindings.push_back(rendered_binding);
+  binding.key.spelling_text_id = other_text;
+  binding.key.parameter_index = 2;
+  bindings.nttp_bindings.push_back(binding);
   value = 0;
-  expect_true(!parser.eval_deferred_nttp_default(
-                  trait_key, 2, {}, rendered_bindings, &value,
-                  &structured_bindings),
+  expect_true(!parser.eval_deferred_nttp_default(trait_key, 2, bindings,
+                                                 &value),
               "deferred NTTP defaults should not reopen rendered-name binding "
               "lookup after authoritative structured metadata misses");
 }

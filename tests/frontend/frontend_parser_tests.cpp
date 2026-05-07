@@ -60,6 +60,22 @@ c4c::QualifiedNameKey parser_test_qualified_name_key(
   return parser.qualified_name_key(qn);
 }
 
+c4c::ParserTemplateBindingSet parser_test_template_nttp_bindings(
+    c4c::Parser& parser,
+    std::initializer_list<std::pair<const char*, long long>> bindings) {
+  c4c::ParserTemplateBindingSet out;
+  for (const auto& [name, value] : bindings) {
+    c4c::ParserTemplateNttpBinding binding{};
+    binding.key.spelling = name;
+    binding.key.spelling_text_id =
+        parser.parser_text_id_for_token(c4c::kInvalidText, name);
+    binding.key.parameter_kind = c4c::ParserTemplateParameterKind::NttpValue;
+    binding.value = value;
+    out.nttp_bindings.push_back(binding);
+  }
+  return out;
+}
+
 template <typename T>
 auto set_legacy_tag_if_present(T& ts, const char* tag, int)
     -> decltype(ts.tag = tag, void()) {
@@ -869,7 +885,9 @@ void test_parser_captured_template_arg_expr_tokens_ignore_stale_debug_text() {
 
   long long value = 0;
   expect_true(parser.eval_captured_template_arg_expr_tokens(
-                  "CarrierDebugDrift", arg, {}, {{"Value", 6}}, &value),
+                  "CarrierDebugDrift", arg,
+                  parser_test_template_nttp_bindings(parser, {{"Value", 6}}),
+                  &value),
               "captured template arg evaluation should consume token metadata");
   expect_eq_int(static_cast<int>(value), 7,
                 "stale $expr debug spelling must not override captured tokens");
@@ -881,11 +899,36 @@ void test_parser_captured_template_arg_expr_tokens_ignore_stale_debug_text() {
   };
   value = 0;
   expect_true(parser.eval_deferred_nttp_expr_tokens(
-                  "CarrierDebugDrift", stale_debug_tokens, {},
-                  {{"Value", 6}}, &value),
+                  "CarrierDebugDrift", stale_debug_tokens,
+                  parser_test_template_nttp_bindings(parser, {{"Value", 6}}),
+                  &value),
               "test fixture should demonstrate the stale debug spelling is different");
   expect_eq_int(static_cast<int>(value), 106,
                 "stale debug spelling fixture should disagree with the carrier");
+}
+
+void test_parser_deferred_nttp_legacy_string_pair_overloads_are_compatibility() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  const std::vector<c4c::Token> expr_tokens = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
+      parser.make_injected_token(seed, c4c::TokenKind::Plus, "+"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "1"),
+  };
+
+  long long value = 0;
+  expect_true(parser.eval_deferred_nttp_expr_tokens(
+                  "LegacyCompatibility", expr_tokens, {}, {{"Value", 6}},
+                  &value),
+              "legacy string-pair deferred NTTP overload should remain as "
+              "compatibility coverage");
+  expect_eq_int(static_cast<int>(value), 7,
+                "legacy compatibility overload should evaluate rendered "
+                "string-pair NTTP bindings");
 }
 
 void test_parser_type_start_probes_use_token_spelling() {
@@ -4870,7 +4913,8 @@ void test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias() {
   };
 
   long long value = 0;
-  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+  expect_true(parser.eval_deferred_nttp_expr_tokens(
+                  "Trait", toks, c4c::ParserTemplateBindingSet{}, &value),
               "deferred NTTP builtin traits should resolve scope-local aliases through token TextId lookup");
   expect_eq_int(value, 1,
                 "deferred NTTP builtin traits should treat the scope-local alias as the bound type");
@@ -4925,7 +4969,8 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
   };
 
   long long value = 0;
-  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+  expect_true(parser.eval_deferred_nttp_expr_tokens(
+                  "Trait", toks, c4c::ParserTemplateBindingSet{}, &value),
               "deferred NTTP member lookup should resolve scope-local template aliases and template arguments through token TextId lookup");
   expect_eq_int(value, 7,
                 "deferred NTTP member lookup should preserve the instantiated static member value");
@@ -5136,7 +5181,8 @@ void test_parser_nttp_default_cache_uses_structured_key_only() {
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "3"),
   };
   long long value = 0;
-  expect_true(parser.eval_deferred_nttp_default(trait_key, 0, {}, {}, &value),
+  expect_true(parser.eval_deferred_nttp_default(
+                  trait_key, 0, c4c::ParserTemplateBindingSet{}, &value),
               "keyed NTTP default cache lookup should use the structured result");
   expect_eq_int(value, 2,
                 "mismatched NTTP default cache entries should not let the rendered-name mirror override structured data");
@@ -5157,14 +5203,16 @@ void test_parser_nttp_default_cache_uses_structured_key_only() {
   parser.template_state_.nttp_default_expr_tokens["Trait:0"] = {
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "11"),
   };
-  expect_true(parser.eval_deferred_nttp_default(other_trait_key, 0, {}, {},
-                                                &value),
+  expect_true(parser.eval_deferred_nttp_default(
+                  other_trait_key, 0, c4c::ParserTemplateBindingSet{},
+                  &value),
               "keyed NTTP default lookup should not reconstruct identity from the rendered name");
   expect_eq_int(value, 7,
                 "ambiguous rendered-name NTTP defaults should follow the supplied primary template key");
 
   parser.template_state_.nttp_default_expr_tokens_by_key.erase(cache_key);
-  expect_true(!parser.eval_deferred_nttp_default(trait_key, 0, {}, {}, &value),
+  expect_true(!parser.eval_deferred_nttp_default(
+                  trait_key, 0, c4c::ParserTemplateBindingSet{}, &value),
               "valid-TextId NTTP default cache lookup should not promote a legacy-only rendered mirror");
 
   parser.template_state_.nttp_default_expr_tokens["LegacyTrait:0"] = {
@@ -5245,7 +5293,8 @@ void test_parser_template_instantiation_dedup_keys_structure_specialization_reus
   };
 
   long long value = 0;
-  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+  expect_true(parser.eval_deferred_nttp_expr_tokens(
+                  "Trait", toks, c4c::ParserTemplateBindingSet{}, &value),
               "template instantiation reuse should resolve explicit specialization members");
   expect_eq_int(value, 19,
                 "explicit specialization reuse should preserve the specialized static member value");
@@ -5257,7 +5306,8 @@ void test_parser_template_instantiation_dedup_keys_structure_specialization_reus
 
   parser.template_state_.instantiated_template_struct_keys_by_key.clear();
   value = 0;
-  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+  expect_true(parser.eval_deferred_nttp_expr_tokens(
+                  "Trait", toks, c4c::ParserTemplateBindingSet{}, &value),
               "template instantiation reuse should rebuild structured de-dup state from typed metadata");
   expect_eq_int(value, 19,
                 "structured template instantiation reuse should preserve the specialized static member value");
@@ -5395,8 +5445,8 @@ void test_parser_template_static_member_lookup_prefers_record_definition() {
   };
 
   long long value = 0;
-  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {},
-                                                    &value),
+  expect_true(parser.eval_deferred_nttp_expr_tokens(
+                  "Trait", toks, c4c::ParserTemplateBindingSet{}, &value),
               "template static member lookup should traverse typed records");
   expect_eq_int(value, 17,
                 "template static member lookup should prefer record_def over stale rendered tag maps");
@@ -10002,6 +10052,7 @@ int main() {
   test_parser_stmt_disambiguates_qualified_visible_value_member_access_assignment_as_expr();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
+  test_parser_deferred_nttp_legacy_string_pair_overloads_are_compatibility();
   test_parser_template_scope_type_param_prefers_text_id_over_spelling();
   test_parser_template_specialization_binding_prefers_param_text_id();
   test_parser_template_type_arg_uses_visible_scope_local_alias();

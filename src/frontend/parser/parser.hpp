@@ -492,6 +492,8 @@ class Parser {
   // ── lookup / binding helpers: template arguments and instantiation ───────
   // Evaluate a deferred NTTP default expression for a template parameter.
   // Returns true if evaluation succeeded and writes the result to *out.
+  // Compatibility wrappers for legacy string-pair callers remain for explicit
+  // compatibility coverage. New parser paths should pass ParserTemplateBindingSet.
   bool eval_deferred_nttp_default(
       const QualifiedNameKey& template_key,
       int param_idx,

@@ -297,6 +297,8 @@ ParserTemplateBindingSet parser_template_binding_set_from_legacy(
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
     const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata) {
+    // Compatibility bridge for legacy string-pair overloads. Structured parser
+    // callers should build ParserTemplateBindingSet directly.
     ParserTemplateBindingSet bindings;
     bindings.type_bindings.reserve(type_bindings.size());
     for (size_t i = 0; i < type_bindings.size(); ++i) {

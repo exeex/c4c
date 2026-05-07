@@ -1,45 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/150_nttp_type_binding_domain_key_contract.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Structured Binding Carriers
+Current Step ID: 3
+Current Step Title: Migrate Parser Deferred Evaluation APIs
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2, "Define Structured Binding Carriers", for parser type-binding call sites with owner/index metadata.
+Completed `plan.md` Step 3, "Migrate Parser Deferred Evaluation APIs", for parser deferred NTTP evaluation tests and compatibility wrappers.
 
-- Added `ParserTypeBindingMetadata` as the parser/Sema-owned structured carrier for template type bindings.
-- Updated the parser-side `ParserTemplateBindingSet` builder to overlay authoritative owner/index type metadata while leaving spelling-pair type bindings as compatibility entries.
-- Migrated preliminary template-argument and base-instantiation default-evaluation paths to pass structured type metadata into `ParserTemplateBindingSet` where the owner template and parameter index are known.
-- Kept legacy type-pair conversion compatibility-only in `template.cpp`; structured type matching now prefers authoritative metadata when a binding set contains it.
+- Migrated non-compatibility deferred NTTP parser tests to call the structured `ParserTemplateBindingSet` overloads directly.
+- Added explicit legacy string-pair compatibility coverage in `test_parser_deferred_nttp_legacy_string_pair_overloads_are_compatibility`.
+- Marked the parser legacy string-pair overload bridge as compatibility-only in the API/implementation comments.
 
 ## Suggested Next
 
-Next coherent packet: audit remaining parser template-binding consumers outside deferred NTTP evaluation and decide whether they should stay compatibility-only or get structured owner/index carriers in a separate bounded slice.
+Next coherent packet: audit whether any remaining parser template-binding wrappers outside deferred NTTP evaluation still need compatibility-only tests or can be retired in a separate bounded slice.
 
 ## Watchouts
 
-- Legacy parser wrapper conversion still keeps string-pair type and NTTP entries for no-metadata compatibility fallback, but those entries must not set structured authority.
-- `ParserTemplateBindingSet::has_structured_type_metadata` is now driven by authoritative type metadata, not by the presence of an owner key on legacy spelling pairs.
-- The migrated paths only mark type bindings authoritative where the call site has owner template plus parameter index metadata.
-- HIR string maps and `TemplateArgRef::debug_text` authority remain untouched by this packet.
+- The retained legacy string-pair overload use is intentional compatibility coverage only; ordinary parser tests now pass structured binding sets.
+- TextId-only test helper bindings are structured-overload inputs but remain compatibility/non-authoritative entries; tests needing semantic authority must build owner/index metadata locally.
+- Empty binding cases use `ParserTemplateBindingSet{}` to avoid exercising the legacy overloads accidentally.
+- HIR files and production parser paths already using `ParserTemplateBindingSet` were not touched.
 
 ## Proof
 
 Ran the delegated proof exactly:
 
 ```bash
-(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_lookup_authority_tests$') > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests)$') > test_after.log 2>&1
 ```
 
-Result: passed. The build completed and `frontend_parser_lookup_authority_tests` passed. Proof log: `test_after.log`.
-
-Supervisor-side supplemental validation after this slice:
-
-```bash
-ctest --test-dir build -j --output-on-failure -R '^cpp_'
-```
-
-Result: passed 1147/1147.
+Result: passed. The build completed and both delegated parser test binaries passed. Proof log: `test_after.log`.
