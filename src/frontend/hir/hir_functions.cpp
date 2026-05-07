@@ -748,6 +748,13 @@ TypeSpec Lowerer::prepare_callable_return_type(
     owner_ts.deferred_member_type_name = "type";
     owner_ts.deferred_member_type_text_id = make_text_id(
         "type", module_ ? module_->link_name_texts.get() : nullptr);
+    owner_ts.deferred_member_type_owner_key =
+        owner_ts.tpl_struct_origin_key.base_text_id != kInvalidText
+            ? owner_ts.tpl_struct_origin_key
+            : QualifiedNameKey{owner_ts.namespace_context_id,
+                               owner_ts.is_global_qualified,
+                               kInvalidNamePath,
+                               owner_ts.tag_text_id};
     bool resolved_type_member = false;
     if (owner_ts.record_def ||
         (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0])) {
@@ -821,6 +828,13 @@ void Lowerer::append_explicit_callable_param(
     owner_ts.deferred_member_type_name = "type";
     owner_ts.deferred_member_type_text_id = make_text_id(
         "type", module_ ? module_->link_name_texts.get() : nullptr);
+    owner_ts.deferred_member_type_owner_key =
+        owner_ts.tpl_struct_origin_key.base_text_id != kInvalidText
+            ? owner_ts.tpl_struct_origin_key
+            : QualifiedNameKey{owner_ts.namespace_context_id,
+                               owner_ts.is_global_qualified,
+                               kInvalidNamePath,
+                               owner_ts.tag_text_id};
     bool resolved_type_member = false;
     if (owner_ts.record_def ||
         (owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0])) {

@@ -333,6 +333,8 @@ static bool project_alias_template_member_typedef_type(
     if (member_name.empty()) return false;
     ts.deferred_member_type_name = parser.arena_.strdup(member_name.c_str());
     ts.deferred_member_type_text_id = info.member_typedef.member_text_id;
+    ts.deferred_member_type_owner_key =
+        parser.deferred_member_owner_key_from_type(ts);
     *out_ts = ts;
     return true;
 }
@@ -1488,6 +1490,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                                       .c_str());
                 owner_ts.deferred_member_type_text_id =
                     core_input_state_.tokens[final_scope_pos + 1].text_id;
+                owner_ts.deferred_member_type_owner_key =
+                    deferred_member_owner_key_from_type(owner_ts);
                 *out_owner_ts = owner_ts;
                 return true;
             };
@@ -1607,6 +1611,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                                               .c_str());
                         owner_ts.deferred_member_type_text_id =
                             core_input_state_.tokens[final_scope_pos + 1].text_id;
+                        owner_ts.deferred_member_type_owner_key =
+                            deferred_member_owner_key_from_type(owner_ts);
                         if (structured_typedef_key.base_text_id != kInvalidText) {
                             register_structured_typedef_binding(
                                 structured_typedef_key, owner_ts);
@@ -2016,6 +2022,8 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
                 out_ts->deferred_member_type_name =
                     parser.arena_.strdup(member_name.c_str());
                 out_ts->deferred_member_type_text_id = member_text_id;
+                out_ts->deferred_member_type_owner_key =
+                    parser.deferred_member_owner_key_from_type(*out_ts);
             }
             attach_qualified_typespec_metadata();
             template_guard.commit();

@@ -140,14 +140,23 @@ bool matches_trait_family(const std::string& name, const char* suffix) {
 
 bool resolve_record_def_member_typedef_type(const Node* record_def,
                                             const std::string& member,
+                                            TextId member_text_id,
                                             TypeSpec* out) {
-  if (!record_def || record_def->kind != NK_STRUCT_DEF || member.empty() || !out) {
+  if (!record_def || record_def->kind != NK_STRUCT_DEF || !out) {
     return false;
   }
-  if (!record_def->member_typedef_names || !record_def->member_typedef_types) {
+  if (!record_def->member_typedef_types ||
+      (member_text_id == kInvalidText &&
+       (member.empty() || !record_def->member_typedef_names))) {
     return false;
   }
   for (int i = 0; i < record_def->n_member_typedefs; ++i) {
+    if (member_text_id != kInvalidText && record_def->member_typedef_text_ids &&
+        record_def->member_typedef_text_ids[i] == member_text_id) {
+      *out = record_def->member_typedef_types[i];
+      return true;
+    }
+    if (member.empty() || !record_def->member_typedef_names) continue;
     const char* alias_name = record_def->member_typedef_names[i];
     if (!alias_name || member != alias_name) continue;
     *out = record_def->member_typedef_types[i];
@@ -190,8 +199,11 @@ std::optional<TypeSpec> try_resolve_unary_type_transform_trait(
 
 bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
                                                  const std::string& member,
+                                                 TextId member_text_id,
                                                  TypeSpec* out) {
-  if (tag.empty() || member.empty() || !out) return false;
+  if (tag.empty() || (member.empty() && member_text_id == kInvalidText) || !out) {
+    return false;
+  }
 
   std::function<TypeSpec(TypeSpec,
                          const TypeBindings&,
@@ -352,6 +364,28 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
               const NttpBindings& nttp_bindings, TypeSpec* resolved) -> bool {
             if (!sdef || !resolved) return false;
             for (int i = 0; i < sdef->n_member_typedefs; ++i) {
+              if (member_text_id != kInvalidText &&
+                  sdef->member_typedef_text_ids &&
+                  sdef->member_typedef_text_ids[i] == member_text_id) {
+                bool substituted_type = false;
+                *resolved = apply_bindings(sdef->member_typedef_types[i],
+                                           type_bindings,
+                                           nttp_bindings,
+                                           sdef,
+                                           &substituted_type);
+                if (!substituted_type && member == "type" &&
+                    type_bindings.size() == 1) {
+                  *resolved = type_bindings.begin()->second;
+                }
+                if (resolved->deferred_member_type_name) {
+                  TypeSpec nested = *resolved;
+                  if (resolve_struct_member_typedef_if_ready(&nested)) {
+                    *resolved = nested;
+                  }
+                }
+                return true;
+              }
+              if (member.empty() || !sdef->member_typedef_names) continue;
               const char* alias_name = sdef->member_typedef_names[i];
               if (!alias_name || member != alias_name) continue;
               bool substituted_type = false;
@@ -463,16 +497,26 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
 bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   auto owner_key_from_type = [](const TypeSpec& owner)
       -> std::optional<HirRecordOwnerKey> {
-    if (owner.tag_text_id == kInvalidText) return std::nullopt;
+    const TextId owner_text_id =
+        owner.deferred_member_type_owner_key.base_text_id != kInvalidText
+            ? owner.deferred_member_type_owner_key.base_text_id
+            : owner.tag_text_id;
+    if (owner_text_id == kInvalidText) return std::nullopt;
     NamespaceQualifier ns_qual;
-    ns_qual.context_id = owner.namespace_context_id;
-    ns_qual.is_global_qualified = owner.is_global_qualified;
+    ns_qual.context_id =
+        owner.deferred_member_type_owner_key.base_text_id != kInvalidText
+            ? owner.deferred_member_type_owner_key.context_id
+            : owner.namespace_context_id;
+    ns_qual.is_global_qualified =
+        owner.deferred_member_type_owner_key.base_text_id != kInvalidText
+            ? owner.deferred_member_type_owner_key.is_global_qualified
+            : owner.is_global_qualified;
     if (owner.qualifier_text_ids && owner.n_qualifier_segments > 0) {
       ns_qual.segment_text_ids.assign(
           owner.qualifier_text_ids,
           owner.qualifier_text_ids + owner.n_qualifier_segments);
     }
-    HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, owner.tag_text_id);
+    HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, owner_text_id);
     if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
     return key;
   };
@@ -480,6 +524,7 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     return (owner.record_def && owner.record_def->kind == NK_STRUCT_DEF) ||
            owner.tag_text_id != kInvalidText ||
            owner.tpl_struct_origin_key.base_text_id != kInvalidText ||
+           owner.deferred_member_type_owner_key.base_text_id != kInvalidText ||
            (owner.tpl_struct_origin && owner.tpl_struct_origin[0] &&
             owner.tpl_struct_args.data && owner.tpl_struct_args.size > 0);
   };
@@ -560,7 +605,8 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   }
   TypeSpec structured_member{};
   if (resolve_record_def_member_typedef_type(
-          ts->record_def, ts->deferred_member_type_name, &structured_member)) {
+          ts->record_def, ts->deferred_member_type_name,
+          ts->deferred_member_type_text_id, &structured_member)) {
     *ts = structured_member;
     return true;
   }
@@ -685,6 +731,8 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     // base-tag chain instead of giving up while we still only have origin args.
     TypeSpec owner_ts = *ts;
     owner_ts.deferred_member_type_name = nullptr;
+    owner_ts.deferred_member_type_text_id = kInvalidText;
+    owner_ts.deferred_member_type_owner_key = {};
     realize_template_struct_if_needed(owner_ts, empty_tb, empty_nb, primary_tpl);
     const Node* structured_owner =
         selected.selected_pattern ? selected.selected_pattern : primary_tpl;
@@ -702,7 +750,8 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     if (!structured_owner_tag.empty()) {
       TypeSpec resolved_member{};
       if (resolve_struct_member_typedef_type(
-              structured_owner_tag, deferred_member_name, &resolved_member)) {
+              structured_owner_tag, deferred_member_name,
+              ts->deferred_member_type_text_id, &resolved_member)) {
         *ts = resolved_member;
         return true;
       }
@@ -720,7 +769,8 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
                   module_->find_struct_def_tag_by_owner(*owner_key)) {
             TypeSpec resolved_member{};
             if (resolve_struct_member_typedef_type(
-                    *owner_tag, deferred_member_name, &resolved_member)) {
+                    *owner_tag, deferred_member_name,
+                    ts->deferred_member_type_text_id, &resolved_member)) {
               *ts = resolved_member;
               return true;
             }
@@ -732,7 +782,8 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
             owner_tag_from_type_metadata(owner_ts)) {
       TypeSpec resolved_member{};
       if (resolve_struct_member_typedef_type(
-              *owner_tag, deferred_member_name, &resolved_member)) {
+              *owner_tag, deferred_member_name,
+              ts->deferred_member_type_text_id, &resolved_member)) {
         *ts = resolved_member;
         return true;
       }
@@ -743,7 +794,8 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
       if (legacy_tag && legacy_tag[0]) {
         TypeSpec resolved_member{};
         if (resolve_struct_member_typedef_type(
-                legacy_tag, deferred_member_name, &resolved_member)) {
+                legacy_tag, deferred_member_name,
+                ts->deferred_member_type_text_id, &resolved_member)) {
           *ts = resolved_member;
           return true;
         }
@@ -757,7 +809,8 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   if (!owner_tag || owner_tag->empty()) return false;
   TypeSpec resolved_member{};
   if (!resolve_struct_member_typedef_type(
-          *owner_tag, ts->deferred_member_type_name, &resolved_member)) {
+          *owner_tag, ts->deferred_member_type_name,
+          ts->deferred_member_type_text_id, &resolved_member)) {
     return false;
   }
   *ts = resolved_member;

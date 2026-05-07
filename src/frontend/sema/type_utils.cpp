@@ -651,6 +651,13 @@ bool type_binding_values_equivalent(const TypeSpec& lhs, const TypeSpec& rhs) {
   if (lhs.is_always_inline != rhs.is_always_inline) return false;
   if (!same_template_origin(lhs, rhs)) return false;
   if (!same_template_arg_ref_list(lhs.tpl_struct_args, rhs.tpl_struct_args)) return false;
+  if (lhs.deferred_member_type_owner_key.base_text_id != kInvalidText ||
+      rhs.deferred_member_type_owner_key.base_text_id != kInvalidText) {
+    if (!(lhs.deferred_member_type_owner_key ==
+          rhs.deferred_member_type_owner_key)) {
+      return false;
+    }
+  }
   if (lhs.deferred_member_type_text_id != kInvalidText ||
       rhs.deferred_member_type_text_id != kInvalidText) {
     if (lhs.deferred_member_type_text_id != rhs.deferred_member_type_text_id) {

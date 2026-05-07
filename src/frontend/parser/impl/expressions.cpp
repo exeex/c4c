@@ -160,6 +160,8 @@ static void attach_alias_template_member_typedef_expr_type(
     if (member_name.empty()) return;
     ts.deferred_member_type_name = parser.arena_.strdup(member_name.c_str());
     ts.deferred_member_type_text_id = info->member_typedef.member_text_id;
+    ts.deferred_member_type_owner_key =
+        parser.deferred_member_owner_key_from_type(ts);
     ident->type = ts;
 }
 

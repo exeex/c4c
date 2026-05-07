@@ -104,6 +104,9 @@ void test_deferred_template_owner_prefers_structured_identity_over_stale_tag() {
   expect_true(has_type, "deferred template owner should produce a TypeSpec");
   expect_true(resolved_type.deferred_member_type_text_id == member_text,
               "deferred owner handoff should preserve member TextId metadata");
+  expect_true(resolved_type.deferred_member_type_owner_key.base_text_id ==
+                  owner_text,
+              "deferred owner handoff should preserve structured owner carrier");
   expect_true(resolved_type.tpl_struct_origin_key.base_text_id == owner_text ||
                   resolved_type.record_def == owner ||
                   resolved_type.tag_text_id == owner_text,
@@ -197,6 +200,8 @@ void test_type_name_preserves_deferred_owner_through_function_ref_declarator() {
                   ts.tpl_struct_origin_key.base_text_id == owner_text ||
                   ts.record_def != nullptr,
               "function-reference type-id should preserve structured owner identity");
+  expect_true(ts.deferred_member_type_owner_key.base_text_id == owner_text,
+              "function-reference type-id should preserve deferred owner key");
 
   c4c::Parser template_member_parser(
       tokens, arena, &lexer.text_table(), &lexer.file_table(),
@@ -239,6 +244,9 @@ void test_type_name_preserves_deferred_owner_through_function_ref_declarator() {
   expect_true(template_member_ts.deferred_member_type_text_id == type_text,
               "template-member function-reference type-id should preserve "
               "deferred member TextId");
+  expect_true(template_member_ts.deferred_member_type_owner_key.base_text_id !=
+                  c4c::kInvalidText,
+              "template-member type-id should preserve deferred owner key");
   expect_true(template_member_ts.tag_text_id != c4c::kInvalidText ||
                   template_member_ts.tpl_struct_origin_key.base_text_id !=
                       c4c::kInvalidText ||

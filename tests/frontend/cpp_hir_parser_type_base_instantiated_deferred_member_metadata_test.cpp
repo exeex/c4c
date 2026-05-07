@@ -65,6 +65,13 @@ void test_instantiated_base_resolves_deferred_member_without_rendered_tag() {
                   base_owner.tpl_struct_origin_key.base_text_id == owner_text,
               "deferred member base should carry structured owner metadata");
   base_owner.deferred_member_type_text_id = member_text;
+  base_owner.deferred_member_type_owner_key =
+      base_owner.tpl_struct_origin_key.base_text_id != c4c::kInvalidText
+          ? base_owner.tpl_struct_origin_key
+          : c4c::QualifiedNameKey{base_owner.namespace_context_id,
+                                  base_owner.is_global_qualified,
+                                  c4c::kInvalidNamePath,
+                                  owner_text};
   clear_legacy_tag_if_present(base_owner, 0);
   base_owner.deferred_member_type_name = arena.strdup("stale_type");
 

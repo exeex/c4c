@@ -6,15 +6,23 @@ namespace {
 
 bool resolve_member_typedef_from_record_def(const Node* record_def,
                                             const char* member,
+                                            TextId member_text_id,
                                             TypeSpec* out) {
-  if (!record_def || record_def->kind != NK_STRUCT_DEF || !member ||
-      !member[0] || !out) {
+  if (!record_def || record_def->kind != NK_STRUCT_DEF || !out) {
     return false;
   }
-  if (!record_def->member_typedef_names || !record_def->member_typedef_types) {
+  if (!record_def->member_typedef_types ||
+      (member_text_id == kInvalidText &&
+       (!member || !member[0] || !record_def->member_typedef_names))) {
     return false;
   }
   for (int i = 0; i < record_def->n_member_typedefs; ++i) {
+    if (member_text_id != kInvalidText && record_def->member_typedef_text_ids &&
+        record_def->member_typedef_text_ids[i] == member_text_id) {
+      *out = record_def->member_typedef_types[i];
+      return true;
+    }
+    if (!member || !member[0] || !record_def->member_typedef_names) continue;
     const char* alias_name = record_def->member_typedef_names[i];
     if (!alias_name || std::string(alias_name) != member) continue;
     *out = record_def->member_typedef_types[i];
@@ -100,7 +108,10 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
     const PendingTemplateTypeWorkItem& work_item) {
   TypeSpec owner_ts = work_item.pending_type;
   owner_ts.deferred_member_type_name = nullptr;
+  owner_ts.deferred_member_type_text_id = kInvalidText;
+  owner_ts.deferred_member_type_owner_key = {};
   const char* member_name = work_item.pending_type.deferred_member_type_name;
+  const TextId member_text_id = work_item.pending_type.deferred_member_type_text_id;
   DeferredTemplateTypeResult result;
   if (!ensure_pending_template_owner_ready(
           owner_ts, work_item, true,
@@ -113,7 +124,8 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
   if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
     has_structured_owner = true;
     if (resolve_member_typedef_from_record_def(
-            owner_ts.record_def, member_name, &resolved_member)) {
+            owner_ts.record_def, member_name, member_text_id,
+            &resolved_member)) {
       return DeferredTemplateTypeResult::resolved();
     }
     const std::optional<HirRecordOwnerKey> owner_key =
@@ -122,7 +134,7 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
       if (const SymbolName* owner_tag =
               module_->find_struct_def_tag_by_owner(*owner_key)) {
         if (resolve_struct_member_typedef_type(
-                *owner_tag, member_name, &resolved_member)) {
+                *owner_tag, member_name, member_text_id, &resolved_member)) {
           return DeferredTemplateTypeResult::resolved();
         }
       }
@@ -154,7 +166,7 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
     if (!structured_owner_tag.empty()) {
       if (resolve_struct_member_typedef_type(
               structured_owner_tag,
-              member_name, &resolved_member)) {
+              member_name, member_text_id, &resolved_member)) {
         return DeferredTemplateTypeResult::resolved();
       }
     }

@@ -172,8 +172,10 @@ struct TypeSpec {
     TemplateArgRefList tpl_struct_args; // structured template arg payload
 
     // Legacy bridge spelling for dependent member typedefs; this is a pending
-    // `StructLike::type`-style name until a structured member-type reference
-    // replaces the string handoff.
+    // `StructLike::type`-style name. deferred_member_type_owner_key plus
+    // deferred_member_type_text_id is the structured semantic carrier; the
+    // string is display/diagnostic compatibility only.
+    QualifiedNameKey deferred_member_type_owner_key;
     const char* deferred_member_type_name; // pending `StructLike::type`-style member typedef
     TextId deferred_member_type_text_id =
         kInvalidText; // parser-owned identity for deferred_member_type_name
@@ -657,6 +659,7 @@ inline bool typespec_has_template_param_dependency_carrier(const TypeSpec& ts) {
     return ts.tag_text_id != kInvalidText ||
            ts.template_param_text_id != kInvalidText ||
            ts.deferred_member_type_text_id != kInvalidText ||
+           ts.deferred_member_type_owner_key.base_text_id != kInvalidText ||
            template_arg_list_has_template_param_dependency_carrier(
                ts.tpl_struct_args);
 }
@@ -696,6 +699,8 @@ inline std::string encode_template_arg_debug_ref(const TypeSpec& ts) {
            std::to_string(ts.template_param_text_id);
     out += ",deferred_member_type_text_id=" +
            std::to_string(ts.deferred_member_type_text_id);
+    out += ",deferred_member_type_owner_base_text_id=" +
+           std::to_string(ts.deferred_member_type_owner_key.base_text_id);
     out += ",ptr=" + std::to_string(ts.ptr_level);
     out += ",arr=" + std::to_string(ts.array_rank);
     return out;

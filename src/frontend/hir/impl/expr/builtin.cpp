@@ -164,6 +164,8 @@ TypeSpec apply_builtin_query_template_binding(TypeSpec target,
   target.namespace_context_id = concrete.namespace_context_id;
   target.deferred_member_type_name = concrete.deferred_member_type_name;
   target.deferred_member_type_text_id = concrete.deferred_member_type_text_id;
+  target.deferred_member_type_owner_key =
+      concrete.deferred_member_type_owner_key;
   target.tpl_struct_origin = concrete.tpl_struct_origin;
   target.tpl_struct_origin_key = concrete.tpl_struct_origin_key;
   target.tpl_struct_args = concrete.tpl_struct_args;

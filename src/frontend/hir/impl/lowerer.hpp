@@ -515,7 +515,13 @@ class Lowerer {
 
   bool resolve_struct_member_typedef_type(const std::string& tag,
                                           const std::string& member,
+                                          TextId member_text_id,
                                           TypeSpec* out);
+  bool resolve_struct_member_typedef_type(const std::string& tag,
+                                          const std::string& member,
+                                          TypeSpec* out) {
+    return resolve_struct_member_typedef_type(tag, member, kInvalidText, out);
+  }
 
   PreparedTemplateStructInstance prepare_template_struct_instance(
       const Node* primary_tpl,

@@ -710,6 +710,9 @@ bool same_type_spec_for_struct_method_lookup_parity(
       a.tpl_struct_origin != b.tpl_struct_origin ||
       a.tpl_struct_args.data != b.tpl_struct_args.data ||
       a.tpl_struct_args.size != b.tpl_struct_args.size ||
+      !(a.deferred_member_type_owner_key ==
+        b.deferred_member_type_owner_key) ||
+      a.deferred_member_type_text_id != b.deferred_member_type_text_id ||
       a.deferred_member_type_name != b.deferred_member_type_name ||
       a.n_qualifier_segments != b.n_qualifier_segments ||
       a.is_global_qualified != b.is_global_qualified) {

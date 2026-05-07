@@ -287,6 +287,7 @@ bool resolve_record_member_typedef_type_for_consteval(
   member = resolve_type(member, member_env);
   member.deferred_member_type_name = nullptr;
   member.deferred_member_type_text_id = kInvalidText;
+  member.deferred_member_type_owner_key = {};
   *out = member;
   return true;
 }

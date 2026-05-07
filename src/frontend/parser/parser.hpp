@@ -440,6 +440,7 @@ class Parser {
   const ParserAliasTemplateInfo* find_alias_template_info_in_context(
       int context_id, TextId name_text_id) const;
   QualifiedNameKey qualified_name_key(const QualifiedNameRef& name);
+  QualifiedNameKey deferred_member_owner_key_from_type(const TypeSpec& ts);
   std::string render_name_in_context(int context_id, TextId name_text_id) const;
   std::string qualified_name_text(const QualifiedNameRef& name,
                                   bool include_global_prefix = true) const;

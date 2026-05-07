@@ -1610,6 +1610,32 @@ QualifiedNameKey Parser::qualified_name_key(const QualifiedNameRef& name) {
     return key;
 }
 
+QualifiedNameKey Parser::deferred_member_owner_key_from_type(const TypeSpec& ts) {
+    if (ts.tpl_struct_origin_key.base_text_id != kInvalidText) {
+        return ts.tpl_struct_origin_key;
+    }
+
+    QualifiedNameKey key;
+    key.context_id = ts.namespace_context_id;
+    key.is_global_qualified = ts.is_global_qualified;
+    key.base_text_id = ts.tag_text_id != kInvalidText ? ts.tag_text_id
+                       : ts.record_def &&
+                               ts.record_def->unqualified_text_id != kInvalidText
+                           ? ts.record_def->unqualified_text_id
+                           : ts.template_param_text_id;
+    if (ts.record_def && ts.record_def->namespace_context_id >= 0) {
+        key.context_id = ts.record_def->namespace_context_id;
+    }
+    if (key.base_text_id == kInvalidText) return key;
+
+    if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+        key.qualifier_path_id = shared_lookup_state_.parser_name_paths.intern(
+            ts.qualifier_text_ids,
+            static_cast<size_t>(ts.n_qualifier_segments));
+    }
+    return key;
+}
+
 bool Parser::has_known_fn_name(const QualifiedNameKey& key) const {
     return binding_state_.known_fn_names.count(key) > 0;
 }

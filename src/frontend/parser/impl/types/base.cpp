@@ -4192,6 +4192,8 @@ TypeSpec Parser::parse_base_type() {
                     consume();  // member
                     ts.deferred_member_type_name = arena_.strdup(member.c_str());
                     ts.deferred_member_type_text_id = member_text_id;
+                    ts.deferred_member_type_owner_key =
+                        deferred_member_owner_key_from_type(ts);
                     return ts;
                 }
             }
@@ -4299,6 +4301,7 @@ TypeSpec Parser::parse_base_type() {
                         }
                         resolved_member.deferred_member_type_name = nullptr;
                         resolved_member.deferred_member_type_text_id = kInvalidText;
+                        resolved_member.deferred_member_type_owner_key = {};
                         arg_ts = resolved_member;
                     }
                     bool has_pack_param = false;
@@ -4577,6 +4580,8 @@ TypeSpec Parser::parse_base_type() {
                                     resolved_member
                                         .deferred_member_type_text_id =
                                         kInvalidText;
+                                    resolved_member
+                                        .deferred_member_type_owner_key = {};
                                     return prelim_type_for_type(
                                         resolved_member);
                                 }
@@ -6050,6 +6055,8 @@ TypeSpec Parser::parse_base_type() {
                                                 resolved_member
                                                     .deferred_member_type_text_id =
                                                     kInvalidText;
+                                                resolved_member
+                                                    .deferred_member_type_owner_key = {};
                                                 return substitute_bound_type_arg(
                                                     resolved_member);
                                             }
@@ -6710,6 +6717,8 @@ TypeSpec Parser::parse_base_type() {
                                             nullptr;
                                         resolved_member.deferred_member_type_text_id =
                                             kInvalidText;
+                                        resolved_member
+                                            .deferred_member_type_owner_key = {};
                                         if (resolved_member.tpl_struct_origin &&
                                             !resolved_member.record_def &&
                                             resolved_member.tpl_struct_args.data &&
@@ -7386,6 +7395,8 @@ TypeSpec Parser::parse_base_type() {
                                         resolved_member.deferred_member_type_name = nullptr;
                                         resolved_member.deferred_member_type_text_id =
                                             kInvalidText;
+                                        resolved_member
+                                            .deferred_member_type_owner_key = {};
                                         inst->base_types[bi] = resolved_member;
                                     }
                                 }
@@ -7825,6 +7836,8 @@ TypeSpec Parser::parse_base_type() {
                         consume(); // member
                         ts.deferred_member_type_name = arena_.strdup(member.c_str());
                         ts.deferred_member_type_text_id = member_text_id;
+                        ts.deferred_member_type_owner_key =
+                            deferred_member_owner_key_from_type(ts);
                         return ts;
                     }
                     TypeSpec resolved{};
@@ -7981,6 +7994,8 @@ TypeSpec Parser::parse_base_type() {
                         consume(); // member
                         ts.deferred_member_type_name = arena_.strdup(member.c_str());
                         ts.deferred_member_type_text_id = member_text_id;
+                        ts.deferred_member_type_owner_key =
+                            deferred_member_owner_key_from_type(ts);
                     }
                 }
                 return ts;
