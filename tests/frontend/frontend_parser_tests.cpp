@@ -461,14 +461,24 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
                   ns_context,
                   parser_test_text_id(parser, "wrong_qualified_fn_fallback"))),
               "ID-first qualified known-function registration should not promote rendered fallback spelling");
-  parser.register_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "stringBridgeNs::stringBridgeFn")));
-  expect_true(parser.has_known_fn_name(parser.intern_semantic_name_key(parser_test_text_id(parser, "stringBridgeNs::stringBridgeFn"))),
-              "public string known-function lookup should preserve rendered bridge compatibility");
-  parser.register_known_fn_name_in_context(
-      0, parser_test_text_id(parser, "legacyKnownBridgeNs::legacyKnownBridgeFn"));
+  const c4c::TextId rendered_fn_text =
+      parser_test_text_id(parser, "stringBridgeNs::stringBridgeFn");
+  expect_true(parser.intern_semantic_name_key(rendered_fn_text).base_text_id ==
+                  c4c::kInvalidText,
+              "single-TextId function key interning should reject compound rendered names");
+  parser.register_known_fn_name(
+      parser_test_qualified_name_key(parser, {"stringBridgeNs"}, "stringBridgeFn"));
   expect_true(parser.has_known_fn_name(parser_test_qualified_name_key(
+                  parser, {"stringBridgeNs"}, "stringBridgeFn")),
+              "structured known-function registration should preserve qualified function authority");
+  expect_true(!parser.register_known_fn_name_in_context(
+                  0,
+                  parser_test_text_id(
+                      parser, "legacyKnownBridgeNs::legacyKnownBridgeFn")),
+              "context known-function registration should reject rendered compound TextIds");
+  expect_true(!parser.has_known_fn_name(parser_test_qualified_name_key(
                   parser, {"legacyKnownBridgeNs"}, "legacyKnownBridgeFn")),
-              "context known-function registration should keep a compatibility-only rendered qualified bridge when no segment carrier exists");
+              "context known-function registration should not create compatibility-only rendered qualified bridges");
 }
 
 void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
@@ -516,7 +526,7 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
 #endif
 }
 
-void test_parser_keeps_qualified_bindings_string_keyed() {
+void test_parser_rejects_compound_text_id_value_authority() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -569,17 +579,21 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
               "structured qualified typedef lookup should recover the stored TypeSpec");
   const c4c::QualifiedNameKey value_key =
       parser_test_qualified_name_key(parser, {"ns"}, "value");
+  expect_true(!parser.has_structured_var_type(value_key),
+              "single-TextId qualified value registration should not populate structured storage");
+  expect_true(parser.find_structured_var_type(value_key) == nullptr,
+              "single-TextId qualified value registration should not split compound names");
+  expect_true(parser.find_var_type(parser_test_text_id(parser, "ns::value")) == nullptr,
+              "single-TextId qualified value lookup should reject compound names");
+  expect_true(parser.find_visible_var_type(parser_test_text_id(parser, "ns::value")) == nullptr,
+              "single-TextId visible value lookup should reject compound names");
+  parser.register_structured_var_type_binding(value_key, var_ts);
   expect_true(parser.has_structured_var_type(value_key),
-              "qualified value bindings should populate structured storage");
+              "structured qualified value registration should populate structured storage");
   expect_true(parser.find_structured_var_type(value_key) != nullptr &&
                   parser.find_structured_var_type(value_key)->base ==
                       c4c::TB_DOUBLE,
-              "qualified structured value lookup should recover the stored TypeSpec");
-  expect_true(parser.find_var_type(parser_test_text_id(parser, "ns::value")) != nullptr,
-              "qualified value bindings should remain string-lookupable");
-  expect_true(parser.find_var_type(parser_test_text_id(parser, "ns::value")) != nullptr &&
-                  parser.find_var_type(parser_test_text_id(parser, "ns::value"))->base == c4c::TB_DOUBLE,
-              "qualified value lookup should recover the stored TypeSpec");
+              "structured qualified value lookup should recover the stored TypeSpec");
   expect_true(parser.parser_symbol_tables().find_identifier(
                   qualified_type_text_id) ==
                   c4c::Parser::kInvalidSymbol,
@@ -1891,7 +1905,8 @@ void test_parser_using_value_import_keeps_structured_target_key() {
   target_ts.array_size = -1;
   target_ts.inner_rank = -1;
   target_ts.base = c4c::TB_INT;
-  parser.register_var_type_binding(parser_test_text_id(parser, "ns::Target"), target_ts);
+  parser.register_structured_var_type_binding(
+      parser_test_qualified_name_key(parser, {"ns"}, "Target"), target_ts);
 
   (void)parse_top_level(parser);
 
@@ -9231,7 +9246,7 @@ int main() {
   test_parser_string_wrappers_use_symbol_id_keyed_name_tables();
   test_parser_id_first_binding_helpers_prefer_text_ids();
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
-  test_parser_keeps_qualified_bindings_string_keyed();
+  test_parser_rejects_compound_text_id_value_authority();
   test_parser_structured_value_registration_avoids_string_bridge_and_legacy_mirror();
   test_parser_last_using_alias_name_prefers_text_id_storage();
   test_parser_parse_qualified_name_populates_atom_symbol_ids();

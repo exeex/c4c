@@ -352,6 +352,12 @@ bool is_unqualified_lookup_name(std::string_view name) {
     return !name.empty() && name.find("::") == std::string_view::npos;
 }
 
+bool is_unqualified_text_id_lookup_name(TextId name_text_id,
+                                        std::string_view name) {
+    return name_text_id != kInvalidText &&
+           name.find("::") == std::string_view::npos;
+}
+
 QualifiedNameKey find_compatibility_key_from_rendered_qualified_spelling(
     const Parser& parser, TextId name_text_id, std::string_view name);
 QualifiedNameKey intern_compatibility_key_from_rendered_qualified_spelling(
@@ -1315,6 +1321,8 @@ void Parser::register_structured_typedef_binding_in_context(
 
 const TypeSpec* Parser::find_var_type(TextId name_text_id) const {
     if (name_text_id == kInvalidText) return nullptr;
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return nullptr;
     const auto text_it = binding_state_.var_types_by_text_id.find(name_text_id);
     if (text_it != binding_state_.var_types_by_text_id.end()) {
         return &text_it->second;
@@ -1347,6 +1355,7 @@ const TypeSpec* Parser::find_structured_var_type(
 
 const TypeSpec* Parser::find_visible_var_type(TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return nullptr;
     if (can_probe_local_binding(name_text_id, name)) {
         if (const TypeSpec* type = find_local_visible_var_type(name_text_id)) {
             return type;
@@ -1375,16 +1384,15 @@ const TypeSpec* Parser::find_visible_var_type(TextId name_text_id) const {
 void Parser::register_var_type_binding(TextId name_text_id,
                                        const TypeSpec& type) {
     const std::string_view resolved_name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, resolved_name)) return;
     const TextId local_name_id = name_text_id;
     if (should_track_local_binding(*this, local_name_id, resolved_name)) {
         bind_local_value(local_name_id, type);
         return;
     }
     const QualifiedNameKey key =
-        resolved_name.find("::") == std::string_view::npos
-            ? qualified_key_in_context(*this, 0, local_name_id, true)
-            : intern_compatibility_key_from_rendered_qualified_spelling(
-                  *this, local_name_id, resolved_name);
+        qualified_key_in_context(
+            *this, current_namespace_context_id(), local_name_id, true);
     if (key.base_text_id != kInvalidText) {
         binding_state_.value_bindings[key] = type;
     }
@@ -1401,6 +1409,8 @@ void Parser::register_structured_var_type_binding(const QualifiedNameKey& key,
 
 void Parser::register_structured_var_type_binding_in_context(
     int context_id, TextId name_text_id, const TypeSpec& type) {
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return;
     const QualifiedNameKey key = qualified_key_in_context(
         *this, context_id, name_text_id, true);
     register_structured_var_type_binding(key, type);
@@ -1408,15 +1418,21 @@ void Parser::register_structured_var_type_binding_in_context(
 
 QualifiedNameKey Parser::known_fn_name_key(int context_id,
                                            TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return {};
     return qualified_key_in_context(*this, context_id, name_text_id, false);
 }
 
 QualifiedNameKey Parser::intern_semantic_name_key(TextId name_text_id) {
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return {};
     return qualified_key_in_context(*this, 0, name_text_id, true);
 }
 
 QualifiedNameKey Parser::known_fn_name_key_in_context(
     int context_id, TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return {};
     return qualified_key_in_context(*this, context_id, name_text_id, false);
 }
 
@@ -1604,29 +1620,11 @@ bool Parser::register_known_fn_name_in_context(int context_id,
                                                TextId name_text_id) {
     const std::string_view text_name =
         name_text_id != kInvalidText ? parser_text(name_text_id, {}) : "";
-    if (!text_name.empty() &&
-        text_name.find("::") == std::string_view::npos) {
-        const QualifiedNameKey key = qualified_key_in_context(
-            *this, context_id, name_text_id, true);
-        if (key.base_text_id != kInvalidText) {
-            register_known_fn_name(key);
-            return true;
-        }
-    }
-
-    const QualifiedNameKey structured_key = qualified_key_in_context(
+    if (!is_unqualified_text_id_lookup_name(name_text_id, text_name)) return false;
+    const QualifiedNameKey key = qualified_key_in_context(
         *this, context_id, name_text_id, true);
-    if (structured_key.base_text_id != kInvalidText) {
-        register_known_fn_name(structured_key);
-        if (!text_name.empty() &&
-            text_name.find("::") != std::string_view::npos) {
-            const QualifiedNameKey compatibility_key =
-                intern_compatibility_key_from_rendered_qualified_spelling(
-                    *this, name_text_id, text_name);
-            if (compatibility_key.base_text_id != kInvalidText) {
-                register_known_fn_name(compatibility_key);
-            }
-        }
+    if (key.base_text_id != kInvalidText) {
+        register_known_fn_name(key);
         return true;
     }
     return false;
@@ -2579,6 +2577,7 @@ const char* Parser::qualify_name_arena(TextId name_text_id) {
 Parser::VisibleNameResult Parser::resolve_visible_value(
     TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return {};
     if (can_probe_local_binding(name_text_id, name) &&
         find_local_visible_var_type(name_text_id)) {
         VisibleNameResult result;
@@ -3022,6 +3021,8 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
                                      VisibleNameResult* resolved) const {
     if (!resolved) return false;
     if (name_text_id == kInvalidText) return false;
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return false;
     const QualifiedNameKey candidate_key =
         known_fn_name_key_in_context(context_id, name_text_id);
     if (has_known_fn_name(candidate_key)) {

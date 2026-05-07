@@ -4122,9 +4122,9 @@ top_level_base_ready:
                 gv->fn_ptr_variadic = info->variadic;
             }
         }
-        if (source_name && gname && std::strcmp(gname, source_name) == 0) {
+        if (source_name_text_id != kInvalidText) {
             parser.register_var_type_binding(source_name_text_id, gts);
-        } else if (gname) {
+        } else if (gname && std::strstr(gname, "::") == nullptr) {
             parser.register_var_type_binding(
                 parser.parser_text_id_for_token(kInvalidText, gname), gts);
         }
