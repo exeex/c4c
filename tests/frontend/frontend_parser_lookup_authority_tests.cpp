@@ -6248,6 +6248,62 @@ void test_parser_record_projection_rejects_stale_struct_tag_map_identity() {
               "is missing");
 }
 
+void test_parser_visible_type_rejects_rendered_current_record_owner() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const c4c::TextId owner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Owner");
+  const c4c::TextId sibling_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Sibling");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  expect_true(ns_context > 0, "test namespace context should be created");
+  parser.push_namespace_context(ns_context);
+
+  c4c::TypeSpec sibling_type{};
+  sibling_type.array_size = -1;
+  sibling_type.inner_rank = -1;
+  sibling_type.base = c4c::TB_STRUCT;
+  sibling_type.tag_text_id = sibling_text;
+  sibling_type.namespace_context_id = parser.current_namespace_context_id();
+  parser.register_structured_typedef_binding_in_context(
+      parser.current_namespace_context_id(), sibling_text, sibling_type);
+
+  parser.set_current_struct_tag(c4c::kInvalidText, "ns::Owner");
+  expect_true(!parser.resolve_visible_type(owner_text),
+              "visible type lookup should not treat a rendered qualified "
+              "current owner spelling as current-record authority");
+  const c4c::Parser::VisibleNameResult rendered_sibling =
+      parser.resolve_visible_type(sibling_text);
+  expect_true(!rendered_sibling ||
+                  rendered_sibling.source !=
+                      c4c::Parser::VisibleNameSource::Fallback,
+              "visible type lookup should not derive namespace-sibling "
+              "authority from a rendered qualified current owner spelling");
+
+  parser.set_current_struct_tag(owner_text, "Owner");
+  const c4c::Parser::VisibleNameResult current =
+      parser.resolve_visible_type(owner_text);
+  expect_true(current &&
+                  current.source == c4c::Parser::VisibleNameSource::Local &&
+                  current.base_text_id == owner_text,
+              "visible type lookup should preserve structured unqualified "
+              "current-record TextId authority");
+  const c4c::Parser::VisibleNameResult sibling =
+      parser.resolve_visible_type(sibling_text);
+  expect_true(sibling &&
+                  sibling.source == c4c::Parser::VisibleNameSource::Fallback,
+              "visible type lookup should still allow namespace-sibling "
+              "fallback from a structured current-record owner");
+
+  parser.pop_namespace_context();
+}
+
 void test_parser_support_types_compatible_uses_structured_nominal_identity() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6681,6 +6737,7 @@ int main() {
   test_parser_type_compatibility_uses_structured_nominal_identity();
   test_parser_record_ctor_classification_uses_structured_metadata();
   test_parser_record_projection_rejects_stale_struct_tag_map_identity();
+  test_parser_visible_type_rejects_rendered_current_record_owner();
   test_parser_support_types_compatible_uses_structured_nominal_identity();
   test_sema_this_lookup_rejects_rendered_after_metadata_miss();
   test_sema_global_lookup_rejects_rendered_after_metadata_miss();

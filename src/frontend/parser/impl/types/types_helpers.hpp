@@ -342,8 +342,12 @@ Node* qualified_type_record_definition_from_structured_authority(
             TextId current_record_text_id =
                 parser.active_context_state_.current_struct_tag_text_id;
             if (current_record_text_id == kInvalidText) {
-                current_record_text_id =
-                    parser.find_parser_text_id(parser.current_struct_tag_text());
+                const std::string_view current_record =
+                    parser.current_struct_tag_text();
+                if (current_record.find("::") == std::string_view::npos) {
+                    current_record_text_id =
+                        parser.find_parser_text_id(current_record);
+                }
             }
             if (Node* current_record = record_definition_in_context_by_text_id(
                     parser, parser.current_namespace_context_id(),

@@ -2619,45 +2619,45 @@ Parser::VisibleNameResult Parser::resolve_visible_type(
     if (!is_unqualified_lookup_name(name)) return {};
     if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
         const std::string_view current_record = current_struct_tag_text();
-        const std::string qualified_current =
-            current_record.find("::") != std::string_view::npos
-                ? std::string(current_record)
-                : render_name_in_context(
-                      current_namespace_context_id(),
-                      active_context_state_.current_struct_tag_text_id);
-        if (spelling_matches_current_record(name, current_record,
-                                            qualified_current)) {
-            VisibleNameResult result;
-            result.found = true;
-            result.kind = VisibleNameKind::Type;
-            result.base_text_id =
-                active_context_state_.current_struct_tag_text_id;
-            result.context_id = current_namespace_context_id();
-            result.source = VisibleNameSource::Local;
-            result.compatibility_spelling = qualified_current;
-            return result;
-        }
-        const std::string sibling =
-            current_record_namespace_sibling(qualified_current, name);
-        if (!sibling.empty()) {
-            const QualifiedNameKey sibling_key =
-                struct_typedef_key_in_context(current_namespace_context_id(),
-                                              name_text_id);
-            if (const TypeSpec* sibling_type =
-                    find_typedef_type(sibling_key);
-                sibling_type &&
-                (sibling_type->base == TB_STRUCT ||
-                 sibling_type->base == TB_UNION) &&
-                !is_record_projection_type(*this, *sibling_type)) {
+        const TextId current_record_text_id =
+            active_context_state_.current_struct_tag_text_id;
+        if (current_record_text_id != kInvalidText &&
+            current_record.find("::") == std::string_view::npos) {
+            const std::string qualified_current = render_name_in_context(
+                current_namespace_context_id(), current_record_text_id);
+            if (spelling_matches_current_record(name, current_record,
+                                                qualified_current)) {
                 VisibleNameResult result;
                 result.found = true;
                 result.kind = VisibleNameKind::Type;
-                result.key = sibling_key;
-                result.base_text_id = name_text_id;
+                result.base_text_id = current_record_text_id;
                 result.context_id = current_namespace_context_id();
-                result.source = VisibleNameSource::Fallback;
-                result.compatibility_spelling = sibling;
+                result.source = VisibleNameSource::Local;
+                result.compatibility_spelling = qualified_current;
                 return result;
+            }
+            const std::string sibling =
+                current_record_namespace_sibling(qualified_current, name);
+            if (!sibling.empty()) {
+                const QualifiedNameKey sibling_key =
+                    struct_typedef_key_in_context(current_namespace_context_id(),
+                                                  name_text_id);
+                if (const TypeSpec* sibling_type =
+                        find_typedef_type(sibling_key);
+                    sibling_type &&
+                    (sibling_type->base == TB_STRUCT ||
+                     sibling_type->base == TB_UNION) &&
+                    !is_record_projection_type(*this, *sibling_type)) {
+                    VisibleNameResult result;
+                    result.found = true;
+                    result.kind = VisibleNameKind::Type;
+                    result.key = sibling_key;
+                    result.base_text_id = name_text_id;
+                    result.context_id = current_namespace_context_id();
+                    result.source = VisibleNameSource::Fallback;
+                    result.compatibility_spelling = sibling;
+                    return result;
+                }
             }
         }
     }

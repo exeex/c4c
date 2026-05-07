@@ -8,26 +8,28 @@ Current Step Title: Delete or Isolate Compatibility Bridge Helpers
 
 ## Just Finished
 
-Step 4 audited and fenced declaration/type-struct owner-scope
-`current_struct_tag` restoration paths. The local restore helpers in
-`declarations.cpp` and `types/struct.cpp` no longer restore an invalid-TextId
-rendered qualified fallback such as `ns::Owner` as active current-record owner
-state, while structured unqualified owner TextIds are still restored.
+Step 4 audited the remaining parser `current_struct_tag_text()` consumers in
+core visible-type resolution, expression operator-call owner collapse,
+current-record member-typedef lookup, and record special-member matching.
+Rendered qualified current-owner fallback strings such as `ns::Owner` no
+longer authorize current-record visible-type matches, namespace-sibling type
+fallback, expression owner collapse, or member-typedef record lookup; structured
+unqualified current-owner TextIds still authorize the existing local current
+record and sibling paths.
 
-Out-of-class operator/constructor/declarator owner-scope entry now installs
-only a single unqualified structured owner TextId as `current_struct_tag`; a
-multi-segment rendered owner spelling is cleared instead of becoming semantic
-current-owner authority. Added parser tests for declaration owner-scope restore
-and record-body context restore fail-closed behavior, plus structured restore
-preservation.
+Added a lookup-authority regression for visible type resolution to document
+that rendered qualified current-owner spelling fails closed while structured
+unqualified owner TextId behavior remains intact. Record constructor/destructor
+special-member matching was audited and did not require a code change because
+identifier tokens cannot match a rendered qualified `current_struct_tag_text()`
+such as `ns::Owner`.
 
 ## Suggested Next
 
-Next packet: continue Step 4 by auditing the remaining parser
-`current_struct_tag_text()` semantic consumers outside the now-fenced
-declaration/type-struct restore paths, especially `typespec_matches_current_struct_local()`,
-record special-member matching, and the type-helper current-record fallback
-references.
+Next packet: fence the out-of-owned `declarations.cpp`
+`typespec_matches_current_struct_local()` direct rendered-string comparison
+(`lhs == rhs`) so a rendered qualified current-owner fallback cannot match a
+legacy rendered `TypeSpec` tag before structured visible-type resolution.
 
 ## Watchouts
 
@@ -40,10 +42,15 @@ references.
 - `src/frontend/parser/impl/types/base.cpp` still has display/debug rendering
   fallback helpers, but the audited current-record member-typedef owner lookup
   no longer derives semantic owner identity from rendered spelling.
-- `current_struct_tag_text()` remains in parser core/declarations/type-struct
-  flows; the declaration/type-struct restoration paths are fenced, but
-  same-spelling semantic consumers still need separate review before treating
-  Step 4 as exhausted.
+- The remaining direct `current_struct_tag_text()` references in owned files are
+  fenced for rendered qualified owner spelling or are special-member token
+  comparisons that fail closed for qualified display strings. `declarations.cpp`
+  and `types/base.cpp` still contain out-of-packet references noted by earlier
+  Step 4 work.
+- Exact remaining blocker outside this packet's owned files:
+  `src/frontend/parser/impl/declarations.cpp`
+  `typespec_matches_current_struct_local()` still has a direct rendered
+  `lhs == rhs` comparison before structured lookup authority.
 
 ## Proof
 

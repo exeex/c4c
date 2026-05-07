@@ -1173,6 +1173,10 @@ Node* parse_primary(Parser& parser) {
             !parser.active_context_state_.current_struct_tag.empty() &&
             parser.check(TokenKind::LParen)) {
             const std::string current_tag(parser.current_struct_tag_text());
+            const bool current_tag_is_structured_unqualified =
+                parser.active_context_state_.current_struct_tag_text_id !=
+                    kInvalidText &&
+                current_tag.find("::") == std::string::npos;
             const std::string resolved_owner =
                 visible_type_head_name(
                     parser, qualifier_owner_text_id,
@@ -1180,8 +1184,9 @@ Node* parse_primary(Parser& parser) {
             if (parser.has_visible_typedef_type(qualifier_owner_text_id) ||
                 (!resolved_owner.empty() &&
                  (parser.has_visible_typedef_type(parser.find_parser_text_id(resolved_owner)) ||
-                  resolved_owner == current_tag ||
-                  qualifier_owner == current_tag))) {
+                  (current_tag_is_structured_unqualified &&
+                   (resolved_owner == current_tag ||
+                    qualifier_owner == current_tag))))) {
                 // Inside a method body, `BaseAlias::operator...(args)` names a
                 // qualified member call on the current object rather than a
                 // free function symbol. Collapse the owner spelling here so
