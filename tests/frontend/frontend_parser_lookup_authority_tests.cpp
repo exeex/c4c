@@ -5553,6 +5553,86 @@ void test_nested_pending_template_arg_rendering_suppresses_expr_debug_text() {
   }
 }
 
+void test_template_instantiation_type_key_uses_structured_identity_before_rendering() {
+  c4c::Arena arena;
+
+  auto make_type_arg = [&](c4c::TextId text_id, const char* rendered_tag) {
+    c4c::Parser::TemplateArgParseResult arg{};
+    arg.is_value = false;
+    arg.type.array_size = -1;
+    arg.type.inner_rank = -1;
+    arg.type.base = c4c::TB_STRUCT;
+    arg.type.tag_text_id = text_id;
+    set_legacy_typespec_tag(arg.type, arena.strdup(rendered_tag));
+    return c4c::make_template_instantiation_argument_key(arg);
+  };
+
+  const auto stable_a = make_type_arg(101, "RenderedAliasA");
+  const auto stable_b = make_type_arg(101, "RenderedAliasB");
+  expect_true(stable_a == stable_b,
+              "template type argument keys should be stable across rendered "
+              "tag formatting drift when structured TextId identity matches");
+
+  const auto ambiguous_a = make_type_arg(201, "SameRenderedAlias");
+  const auto ambiguous_b = make_type_arg(202, "SameRenderedAlias");
+  expect_true(!(ambiguous_a == ambiguous_b),
+              "template type argument keys should not collide when ambiguous "
+              "rendered tags share spelling but structured TextIds differ");
+}
+
+void test_template_instantiation_value_key_rejects_same_rendered_expr_text_collision() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId value_text = texts.intern("N");
+
+  auto make_expr = [&](const char* op) {
+    c4c::Node* lhs = parser.make_node(c4c::NK_VAR, 1);
+    lhs->kind = c4c::NK_VAR;
+    lhs->name = arena.strdup("N");
+    lhs->unqualified_text_id = value_text;
+    c4c::Node* rhs = parser.make_node(c4c::NK_INT_LIT, 1);
+    rhs->kind = c4c::NK_INT_LIT;
+    rhs->ival = 1;
+    c4c::Node* expr = parser.make_node(c4c::NK_BINOP, 1);
+    expr->kind = c4c::NK_BINOP;
+    expr->op = arena.strdup(op);
+    expr->left = lhs;
+    expr->right = rhs;
+    return expr;
+  };
+
+  c4c::Parser::TemplateArgParseResult add_arg{};
+  add_arg.is_value = true;
+  add_arg.expr = make_expr("+");
+  add_arg.nttp_name = arena.strdup("$expr:SameRenderedFallback");
+
+  c4c::Parser::TemplateArgParseResult multiply_arg{};
+  multiply_arg.is_value = true;
+  multiply_arg.expr = make_expr("*");
+  multiply_arg.nttp_name = arena.strdup("$expr:SameRenderedFallback");
+
+  const auto add_key = c4c::make_template_instantiation_argument_key(add_arg);
+  const auto multiply_key =
+      c4c::make_template_instantiation_argument_key(multiply_arg);
+
+  expect_true(
+      add_key.payload_kind ==
+              c4c::ParserTemplateState::TemplateInstantiationKey::Argument::
+                  PayloadKind::ValueExpression &&
+          multiply_key.payload_kind ==
+              c4c::ParserTemplateState::TemplateInstantiationKey::Argument::
+                  PayloadKind::ValueExpression,
+      "template value argument keys should use structured expression payloads");
+  expect_true(!(add_key == multiply_key),
+              "template value argument keys should not collide when ambiguous "
+              "rendered expression text is shared by different expression "
+              "trees");
+}
+
 void test_node_template_arg_reconstruction_preserves_expr_carrier() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6724,6 +6804,8 @@ int main() {
   test_template_specialization_param_lookup_rejects_rendered_fallback();
   test_nested_template_static_member_value_arg_carries_expr_node();
   test_nested_pending_template_arg_rendering_suppresses_expr_debug_text();
+  test_template_instantiation_type_key_uses_structured_identity_before_rendering();
+  test_template_instantiation_value_key_rejects_same_rendered_expr_text_collision();
   test_node_template_arg_reconstruction_preserves_expr_carrier();
   test_dependent_template_specialization_uses_expr_carrier_before_nttp_text();
   test_dependent_template_specialization_uses_nttp_text_id();
