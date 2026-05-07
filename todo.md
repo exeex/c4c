@@ -1,25 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/146_qualified_name_deferred_carrier_authority.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Add Collision And Stale-Route Proof
+Current Step ID: 8
+Current Step Title: Final Compatibility Boundary Review
 
 # Current Packet
 
 ## Just Finished
 
-Step 7: Add Collision And Stale-Route Proof added focused eager and deferred proof cases. `frontend_parser_lookup_authority_tests` now covers a same-suffix global collision where the rendered spelling names the wrong owner but qualifier/base TextId metadata selects the intended global. `frontend_hir_lookup_tests` now covers deferred member typedef resolution where the stale rendered owner tag has the same suffix and member name but the HIR owner-key/member-TextId carrier selects the correct typedef.
+Step 8: Final Compatibility Boundary Review re-scanned the parser/shared/Sema/HIR surfaces for rendered qualified-name authority. `find_compatibility_key_from_rendered_qualified_spelling()` remains only as an explicitly labeled compatibility bridge for legacy rendered qualified `TextId` carriers after structured metadata paths, and `split_qualified_name_scope()` is fenced in `src/shared/qualified_name_table.hpp` as a legacy rendered-spelling helper rather than semantic lookup authority. The one-`TextId` lookup APIs inspected in parser core still reject qualified spellings at their public lookup boundaries.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 7 proof slice, then decide whether Step 8 helper-audit work should remove or further fence any remaining rendered qualified-name compatibility bridges.
+Supervisor can review this Step 8 audit slice and decide whether the active runbook is ready for plan-owner close/deactivation review.
 
 ## Watchouts
 
-No implementation change was needed. The new cases are intentionally collision-shaped rather than fixture-shaped shortcuts: the stale rendered routes would select a wrong complete entity, while the structured eager and deferred paths keep selecting the intended owner/member identity.
+Attempting to remove the rendered qualified-name compatibility bridge from the central parser key builder caused qualified template/HIR compatibility regressions in the delegated subset, so this slice kept the bridge and fenced it explicitly instead. Further removal needs a separate migration packet that replaces the remaining still-migrating template paths with fully structured carriers before deleting the bridge.
 
 ## Proof
 
-`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'frontend_parser_lookup_authority_tests|frontend_hir_lookup_tests|cpp_hir_'; } > test_after.log 2>&1`
+`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'frontend_parser_tests|frontend_parser_lookup_authority_tests|frontend_hir_lookup_tests|cpp_hir_|cpp_positive_sema_'; } > test_after.log 2>&1`
 
-Passed. `test_after.log` is the canonical executor proof log. The corrected supervisor proof matched and ran 110 parser/HIR tests; all passed after the build completed.
+Passed. `test_after.log` is the canonical executor proof log. The supervisor-selected subset ran 995 tests; all passed after the build completed.

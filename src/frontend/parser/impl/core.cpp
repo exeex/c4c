@@ -360,6 +360,8 @@ bool is_unqualified_text_id_lookup_name(TextId name_text_id,
 
 // Compatibility/display support for legacy rendered qualified TextIds; primary
 // semantic APIs must pass unqualified TextIds with context or a structured key.
+// Remaining callers must enter only after structured metadata has been tried or
+// when reconstructing a legacy parser key for still-migrating template paths.
 QualifiedNameKey find_compatibility_key_from_rendered_qualified_spelling(
     const Parser& parser, TextId name_text_id, std::string_view name);
 QualifiedNameKey intern_compatibility_key_from_rendered_qualified_spelling(

@@ -216,6 +216,9 @@ struct QualifiedNameScopeInfo {
   TextId base_text_id = kInvalidText;
 };
 
+// Legacy rendered-spelling helpers. These may inspect display/compatibility
+// TextIds, but semantic lookup authority must use QualifiedNameKey/NamePathId
+// carriers instead of a single TextId containing "::".
 [[nodiscard]] inline bool has_qualified_name_scope(
     TextId qualified_name_id,
     const TextTable& texts) {
