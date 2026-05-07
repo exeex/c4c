@@ -689,6 +689,7 @@ void Parser::populate_qualified_name_symbol_ids(QualifiedNameRef* name) {
 
 bool Parser::has_typedef_name(TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
+    if (name.find("::") != std::string_view::npos) return false;
     if (!uses_symbol_identity(name)) {
         return name_text_id != kInvalidText &&
                binding_state_.non_atom_typedefs.count(name_text_id) > 0;
@@ -699,12 +700,7 @@ bool Parser::has_typedef_name(TextId name_text_id) const {
 
 bool Parser::has_typedef_type(TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
-    if (name.find("::") != std::string_view::npos) {
-        const QualifiedNameKey key =
-            find_compatibility_key_from_rendered_qualified_spelling(
-                *this, name_text_id, name);
-        if (find_typedef_type(key)) return true;
-    }
+    if (name.find("::") != std::string_view::npos) return false;
     if (!uses_symbol_identity(name)) {
         return name_text_id != kInvalidText &&
                binding_state_.non_atom_typedef_types.count(name_text_id) > 0;
@@ -716,14 +712,7 @@ bool Parser::has_typedef_type(TextId name_text_id) const {
 const TypeSpec* Parser::find_typedef_type(TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
     if (name.empty()) return nullptr;
-    if (name.find("::") != std::string_view::npos) {
-        const QualifiedNameKey key =
-            find_compatibility_key_from_rendered_qualified_spelling(
-                *this, name_text_id, name);
-        if (const TypeSpec* structured = find_typedef_type(key)) {
-            return structured;
-        }
-    }
+    if (name.find("::") != std::string_view::npos) return nullptr;
     if (!uses_symbol_identity(name)) {
         if (name_text_id == kInvalidText) return nullptr;
         const auto it = binding_state_.non_atom_typedef_types.find(name_text_id);
@@ -1577,6 +1566,8 @@ const TypeSpec* Parser::find_template_instantiation_member_typedef_type(
 
 QualifiedNameKey Parser::struct_typedef_key_in_context(
     int context_id, TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_lookup_name(name)) return {};
     return qualified_key_in_context(*this, context_id, name_text_id, false);
 }
 
@@ -2627,6 +2618,7 @@ std::string Parser::resolve_visible_value_name(TextId name_text_id) const {
 Parser::VisibleNameResult Parser::resolve_visible_type(
     TextId name_text_id) const {
     const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_lookup_name(name)) return {};
     if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
         const std::string_view current_record = current_struct_tag_text();
         const std::string qualified_current =
@@ -2650,12 +2642,11 @@ Parser::VisibleNameResult Parser::resolve_visible_type(
         const std::string sibling =
             current_record_namespace_sibling(qualified_current, name);
         if (!sibling.empty()) {
-            const TextId sibling_text_id =
-                parser_text_id_for_token(kInvalidText, sibling);
             const QualifiedNameKey sibling_key =
-                struct_typedef_key_in_context(0, sibling_text_id);
+                struct_typedef_key_in_context(current_namespace_context_id(),
+                                              name_text_id);
             if (const TypeSpec* sibling_type =
-                    find_typedef_type(sibling_text_id);
+                    find_typedef_type(sibling_key);
                 sibling_type &&
                 (sibling_type->base == TB_STRUCT ||
                  sibling_type->base == TB_UNION) &&
@@ -3125,6 +3116,8 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
                                     VisibleNameResult* resolved) const {
     if (!resolved) return false;
     if (name_text_id == kInvalidText) return false;
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_lookup_name(name)) return false;
     const QualifiedNameKey candidate_key =
         struct_typedef_key_in_context(context_id, name_text_id);
     if (find_typedef_type(candidate_key)) {
@@ -3141,7 +3134,6 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
         }
         return true;
     }
-    const std::string_view name = parser_text(name_text_id, {});
     if (context_id == 0 && !name.empty() &&
         name.find("::") == std::string_view::npos) {
         if (find_local_visible_typedef_type(name_text_id)) {

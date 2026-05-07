@@ -58,11 +58,8 @@ void test_parser_core_producers_store_structured_type_identity() {
               "builtin __false_type should carry TextId identity");
 
   const c4c::TextId qualified_true_text_id = texts.intern("std::__true_type");
-  const c4c::TypeSpec* qualified_true_type =
-      parser.find_typedef_type(qualified_true_text_id);
-  expect_true(qualified_true_type != nullptr &&
-                  qualified_true_type->tag_text_id == true_text_id,
-              "qualified builtin true typedef should keep unqualified semantic tag identity");
+  expect_true(parser.find_typedef_type(qualified_true_text_id) == nullptr,
+              "single-TextId typedef lookup should not split qualified builtins");
 }
 
 }  // namespace

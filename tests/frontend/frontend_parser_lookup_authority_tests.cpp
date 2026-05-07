@@ -584,8 +584,9 @@ void test_dependent_typename_rejects_visible_type_rendered_reentry() {
   const std::string rendered = parser.visible_name_spelling(visible_type);
   expect_true(rendered == "StructuredNs::Target",
               "test visible type should render a qualified target spelling");
-  expect_true(parser.has_typedef_type(parser.find_parser_text_id(rendered)),
-              "test should seed the old full-rendered typedef bridge");
+  expect_true(!parser.has_typedef_type(parser.find_parser_text_id(rendered)),
+              "single-TextId typedef probes should not re-enter through "
+              "the old full-rendered typedef bridge");
   expect_true(parser.find_visible_typedef_type(alias_text) == nullptr,
               "test should not provide direct visible typedef authority for "
               "the alias name");

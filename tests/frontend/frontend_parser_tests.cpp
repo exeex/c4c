@@ -555,13 +555,18 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
   parser.register_typedef_binding(qualified_type_text_id, typedef_ts, true);
   parser.register_var_type_binding(qualified_value_text_id, var_ts);
 
-  expect_true(parser.has_typedef_name(parser_test_text_id(parser, "ns::Type")),
-              "qualified typedef membership should remain lookupable");
-  expect_true(parser.has_typedef_type(parser_test_text_id(parser, "ns::Type")),
-              "qualified typedef types should remain lookupable");
-  expect_true(parser.find_typedef_type(parser_test_text_id(parser, "ns::Type")) != nullptr &&
-                  parser.find_typedef_type(parser_test_text_id(parser, "ns::Type"))->base == c4c::TB_INT,
-              "qualified typedef type lookup should recover the stored TypeSpec");
+  expect_true(!parser.has_typedef_name(parser_test_text_id(parser, "ns::Type")),
+              "single-TextId typedef membership should reject compound names");
+  expect_true(!parser.has_typedef_type(parser_test_text_id(parser, "ns::Type")),
+              "single-TextId typedef type probes should reject compound names");
+  expect_true(parser.find_typedef_type(parser_test_text_id(parser, "ns::Type")) == nullptr,
+              "single-TextId typedef type lookup should not split compound names");
+  const c4c::QualifiedNameKey type_key =
+      parser_test_qualified_name_key(parser, {"ns"}, "Type");
+  parser.register_structured_typedef_binding(type_key, typedef_ts);
+  expect_true(parser.find_typedef_type(type_key) != nullptr &&
+                  parser.find_typedef_type(type_key)->base == c4c::TB_INT,
+              "structured qualified typedef lookup should recover the stored TypeSpec");
   const c4c::QualifiedNameKey value_key =
       parser_test_qualified_name_key(parser, {"ns"}, "value");
   expect_true(parser.has_structured_var_type(value_key),
@@ -601,8 +606,9 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
   parser.register_var_type_binding(parser_test_text_id(parser, "ns::scratch"), temp_ts);
   parser.restore_state(snapshot);
 
-  expect_true(!parser.has_typedef_type(parser_test_text_id(parser, "ns::Temp")),
-              "restore_state should roll back qualified typedefs from fallback storage");
+  expect_true(parser.binding_state_.non_atom_typedef_types.count(
+                  parser_test_text_id(parser, "ns::Temp")) == 0,
+              "restore_state should roll back rendered typedef storage");
   expect_true(parser.find_var_type(parser_test_text_id(parser, "ns::scratch")) == nullptr,
               "restore_state should roll back qualified values from fallback storage");
   expect_true(!parser.has_structured_var_type(scratch_key),
