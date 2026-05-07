@@ -513,6 +513,22 @@ bool same_text_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
   return true;
 }
 
+bool same_available_text_name_metadata(const TypeSpec& lhs,
+                                       const TypeSpec& rhs) {
+  if (lhs.namespace_context_id != rhs.namespace_context_id ||
+      lhs.tag_text_id != rhs.tag_text_id ||
+      lhs.is_global_qualified != rhs.is_global_qualified ||
+      lhs.n_qualifier_segments != rhs.n_qualifier_segments) {
+    return false;
+  }
+  if (lhs.n_qualifier_segments <= 0) return true;
+  if (!lhs.qualifier_text_ids || !rhs.qualifier_text_ids) return false;
+  for (int i = 0; i < lhs.n_qualifier_segments; ++i) {
+    if (lhs.qualifier_text_ids[i] != rhs.qualifier_text_ids[i]) return false;
+  }
+  return true;
+}
+
 bool same_rendered_type_name_compatibility(const TypeSpec& lhs,
                                            const TypeSpec& rhs) {
   // Rendered-name equality is the last compatibility path for carriers without
@@ -557,7 +573,8 @@ bool same_type_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
   const bool lhs_has_any_text_name = has_any_text_name_metadata(lhs);
   const bool rhs_has_any_text_name = has_any_text_name_metadata(rhs);
   if (lhs_has_any_text_name || rhs_has_any_text_name) {
-    return false;
+    return lhs_has_any_text_name && rhs_has_any_text_name &&
+           same_available_text_name_metadata(lhs, rhs);
   }
 
   return same_rendered_type_name_compatibility(lhs, rhs);
