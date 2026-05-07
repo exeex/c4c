@@ -2358,6 +2358,63 @@ void test_scalar_static_member_uses_member_text_after_structured_owner() {
               "scalar static-member lowering should use member TextId only after structured owner authority exists");
 }
 
+void test_scalar_static_member_non_template_uses_owner_key_without_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  const c4c::TextId left_text = module.link_name_texts->intern("left");
+  const c4c::TextId right_text = module.link_name_texts->intern("right");
+  const c4c::TextId box_text = module.link_name_texts->intern("Box");
+  const c4c::TextId value_text = module.link_name_texts->intern("value");
+
+  c4c::hir::NamespaceQualifier left_ns;
+  left_ns.context_id = 1;
+  left_ns.segment_text_ids.push_back(left_text);
+  c4c::hir::NamespaceQualifier right_ns;
+  right_ns.context_id = 2;
+  right_ns.segment_text_ids.push_back(right_text);
+  const c4c::hir::HirRecordOwnerKey left_key =
+      c4c::hir::make_hir_record_owner_key(left_ns, box_text);
+  const c4c::hir::HirRecordOwnerKey right_key =
+      c4c::hir::make_hir_record_owner_key(right_ns, box_text);
+
+  const std::optional<c4c::hir::HirStructMemberLookupKey> left_member =
+      lowerer.make_struct_member_lookup_key(left_key, value_text);
+  const std::optional<c4c::hir::HirStructMemberLookupKey> right_member =
+      lowerer.make_struct_member_lookup_key(right_key, value_text);
+  expect_true(left_member.has_value() && right_member.has_value(),
+              "fixture should build namespace-distinct static-member keys");
+  lowerer.struct_static_member_const_values_by_owner_[*left_member] = 11;
+  lowerer.struct_static_member_const_values_by_owner_[*right_member] = 23;
+
+  const c4c::TextId stale_function_text = module.link_name_texts->intern("main");
+  c4c::TextId qualifier_text_ids[] = {right_text, stale_function_text};
+  const char* qualifier_segments[] = {"right", "Box"};
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "right::Box::value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id = value_text;
+  ref.qualifier_text_ids = qualifier_text_ids;
+  ref.qualifier_segments = qualifier_segments;
+  ref.n_qualifier_segments = 2;
+  ref.namespace_context_id = right_ns.context_id;
+  ref.type = int_ts;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(nullptr, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* literal =
+      expr ? std::get_if<c4c::hir::IntLiteral>(&expr->payload) : nullptr;
+  expect_true(literal && literal->value == 23,
+              "non-template scalar static-member lookup should fall back from stale qualifier TextIds to structured qualifier segments without rendered owner recovery");
+}
+
 void test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::Arena arena;
@@ -3793,6 +3850,7 @@ int main() {
   test_template_value_arg_static_member_uses_structured_owner_key();
   test_scalar_static_member_rejects_rendered_owner_split();
   test_scalar_static_member_uses_member_text_after_structured_owner();
+  test_scalar_static_member_non_template_uses_owner_key_without_tag();
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_layout_type_lookup_prefers_structured_owner_over_stale_tag();
   test_layout_type_lookup_structured_owner_miss_rejects_stale_tag();

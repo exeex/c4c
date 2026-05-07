@@ -58,6 +58,40 @@ std::optional<HirRecordOwnerKey> structured_owner_key_from_qualified_ref(
   return owner_key;
 }
 
+std::optional<HirRecordOwnerKey> structured_owner_key_from_qualified_segments(
+    const Node* n,
+    TextTable* texts) {
+  if (!n || !texts || n->n_qualifier_segments <= 0 || !n->qualifier_segments) {
+    return std::nullopt;
+  }
+  auto segment_text_id = [&](int index) -> TextId {
+    if (n->qualifier_segments[index] && n->qualifier_segments[index][0]) {
+      return texts->intern(n->qualifier_segments[index]);
+    }
+    return kInvalidText;
+  };
+
+  const TextId owner_text_id = segment_text_id(n->n_qualifier_segments - 1);
+  if (owner_text_id == kInvalidText) return std::nullopt;
+
+  NamespaceQualifier owner_ns;
+  owner_ns.context_id = n->namespace_context_id;
+  owner_ns.is_global_qualified = n->is_global_qualified;
+  owner_ns.segment_text_ids.reserve(n->n_qualifier_segments - 1);
+  for (int i = 0; i + 1 < n->n_qualifier_segments; ++i) {
+    const TextId text_id = segment_text_id(i);
+    if (text_id == kInvalidText) return std::nullopt;
+    owner_ns.segment_text_ids.push_back(text_id);
+  }
+
+  HirRecordOwnerKey owner_key =
+      make_hir_record_owner_key(owner_ns, owner_text_id);
+  if (!hir_record_owner_key_has_complete_metadata(owner_key)) {
+    return std::nullopt;
+  }
+  return owner_key;
+}
+
 std::string structured_owner_name_from_qualified_ref(const Node* n,
                                                      TextTable* texts) {
   if (!n || n->n_qualifier_segments <= 0) return {};
@@ -155,6 +189,15 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
     if (const std::optional<HirRecordOwnerKey> owner_key =
             structured_owner_key_from_qualified_ref(
                 n, module_ ? module_->link_name_texts.get() : nullptr)) {
+      std::vector<HirRecordOwnerKey> owner_lookup_keys;
+      owner_lookup_keys.push_back(*owner_key);
+      if (const std::optional<HirRecordOwnerKey> segment_owner_key =
+              structured_owner_key_from_qualified_segments(
+                  n, module_ ? module_->link_name_texts.get() : nullptr)) {
+        if (*segment_owner_key != *owner_key) {
+          owner_lookup_keys.push_back(*segment_owner_key);
+        }
+      }
       const std::string* owner_tag =
           module_ ? module_->find_struct_def_tag_by_owner(*owner_key) : nullptr;
       if (!owner_tag && module_) {
@@ -287,11 +330,11 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
         if (owner_tag) capture_generated_member_payload(*owner_tag);
         capture_generated_member_payload(owner_template_origin_name);
       }
+      const bool has_template_args =
+          n->has_template_args || n->n_template_args > 0;
       if (member_text_id != kInvalidText && !member_name.empty() &&
-          (!generated_member_name.empty() || owner_tag ||
+          (!has_template_args || !generated_member_name.empty() || owner_tag ||
            !owner_template_origin_name.empty())) {
-        const bool has_template_args =
-            n->has_template_args || n->n_template_args > 0;
         std::optional<std::string> realized_owner_tag;
         if (has_template_args) {
           const std::string& owner_identity =
@@ -391,12 +434,14 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
                                  : (owner_tag ? *owner_tag : owner_name);
           for (const MemberCandidate& candidate : member_candidates) {
             if (candidate.text_id != kInvalidText) {
-              if (const std::optional<HirStructMemberLookupKey> key =
-                      make_struct_member_lookup_key(*owner_key,
-                                                    candidate.text_id)) {
-                if (const Node* decl =
-                        find_struct_static_member_decl(*key, nullptr, nullptr)) {
-                  return decl;
+              for (const HirRecordOwnerKey& lookup_key : owner_lookup_keys) {
+                if (const std::optional<HirStructMemberLookupKey> key =
+                        make_struct_member_lookup_key(lookup_key,
+                                                      candidate.text_id)) {
+                  if (const Node* decl =
+                          find_struct_static_member_decl(*key, nullptr, nullptr)) {
+                    return decl;
+                  }
                 }
               }
             }
@@ -415,12 +460,14 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
                                  : (owner_tag ? *owner_tag : owner_name);
           for (const MemberCandidate& candidate : member_candidates) {
             if (candidate.text_id != kInvalidText) {
-              if (const std::optional<HirStructMemberLookupKey> key =
-                      make_struct_member_lookup_key(*owner_key,
-                                                    candidate.text_id)) {
-                if (auto value = find_struct_static_member_const_value(
-                        *key, nullptr, nullptr)) {
-                  return value;
+              for (const HirRecordOwnerKey& lookup_key : owner_lookup_keys) {
+                if (const std::optional<HirStructMemberLookupKey> key =
+                        make_struct_member_lookup_key(lookup_key,
+                                                      candidate.text_id)) {
+                  if (auto value = find_struct_static_member_const_value(
+                          *key, nullptr, nullptr)) {
+                    return value;
+                  }
                 }
               }
             }
