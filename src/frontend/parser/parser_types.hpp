@@ -178,6 +178,7 @@ struct ParserTemplateParameterBindingKey {
   int parameter_index = -1;
   ParserTemplateParameterKind parameter_kind =
       ParserTemplateParameterKind::Type;
+  bool authoritative_structured_metadata = false;
 };
 
 struct ParserTemplateTypeBinding {

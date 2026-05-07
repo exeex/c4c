@@ -284,6 +284,13 @@ bool parser_template_binding_key_has_domain_metadata(
            key.parameter_index >= 0;
 }
 
+bool parser_template_binding_key_has_authoritative_metadata(
+    const ParserTemplateParameterBindingKey& key) {
+    return key.authoritative_structured_metadata &&
+           (parser_template_binding_key_has_domain_metadata(key) ||
+            key.spelling_text_id != kInvalidText);
+}
+
 ParserTemplateBindingSet parser_template_binding_set_from_legacy(
     Parser& parser,
     const QualifiedNameKey& owner_template_key,
@@ -313,9 +320,6 @@ ParserTemplateBindingSet parser_template_binding_set_from_legacy(
             parser, owner_template_key, ParserTemplateParameterKind::NttpValue,
             name.c_str(), kInvalidText, -1);
         binding.value = value;
-        bindings.has_structured_nttp_metadata =
-            bindings.has_structured_nttp_metadata ||
-            parser_template_binding_key_has_domain_metadata(binding.key);
         bindings.nttp_bindings.push_back(binding);
     }
 
@@ -330,6 +334,7 @@ ParserTemplateBindingSet parser_template_binding_set_from_legacy(
                 parser, binding_owner_key,
                 ParserTemplateParameterKind::NttpValue, meta.name,
                 meta.name_text_id, meta.parameter_index);
+            binding.key.authoritative_structured_metadata = true;
             binding.value = meta.value;
 
             bool replaced = false;
@@ -351,8 +356,8 @@ ParserTemplateBindingSet parser_template_binding_set_from_legacy(
             if (!replaced) bindings.nttp_bindings.push_back(binding);
             bindings.has_structured_nttp_metadata =
                 bindings.has_structured_nttp_metadata ||
-                parser_template_binding_key_has_domain_metadata(binding.key) ||
-                binding.key.spelling_text_id != kInvalidText;
+                parser_template_binding_key_has_authoritative_metadata(
+                    binding.key);
         }
     }
 
@@ -928,17 +933,24 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         }
         for (const ParserTemplateNttpBinding& binding :
              bindings.nttp_bindings) {
-            if (!parser_template_binding_key_has_domain_metadata(binding.key) &&
-                binding.key.spelling_text_id == kInvalidText) {
+            if (!parser_template_binding_key_has_authoritative_metadata(
+                    binding.key)) {
                 continue;
             }
             if (has_authoritative_metadata) {
                 *has_authoritative_metadata =
                     bindings.has_structured_nttp_metadata;
             }
-            if (parser_template_binding_matches_token(
+            bool matches = false;
+            if (binding.key.spelling_text_id != kInvalidText) {
+                matches = tok.text_id != kInvalidText &&
+                          tok.text_id == binding.key.spelling_text_id;
+            } else {
+                matches = parser_template_binding_matches_token(
                     *this, binding.key,
-                    ParserTemplateParameterKind::NttpValue, tok)) {
+                    ParserTemplateParameterKind::NttpValue, tok);
+            }
+            if (matches) {
                 if (val) *val = binding.value;
                 return true;
             }
