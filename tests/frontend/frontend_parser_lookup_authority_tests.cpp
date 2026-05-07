@@ -203,6 +203,29 @@ void test_global_qualified_lookup_rejects_rendered_fallback_authority() {
               "rendered fallback storage");
 }
 
+void test_rendered_qualified_text_ids_do_not_reenter_concept_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "CompatNs");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  expect_true(ns_context > 0, "test namespace context should be created");
+
+  const c4c::TextId concept_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Concept");
+  const c4c::TextId rendered_concept_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "CompatNs::Concept");
+  parser.register_concept_name_in_context(ns_context, rendered_concept_text);
+  expect_true(!parser.has_structured_concept_name(
+                  parser.known_fn_name_key_in_context(ns_context, concept_text)),
+              "rendered qualified TextIds should not re-enter concept lookup "
+              "as structured namespace authority");
+}
+
 void test_sema_global_lookup_uses_using_value_alias_target_key() {
   c4c::Arena arena;
   c4c::Lexer lexer(
@@ -6210,6 +6233,7 @@ void test_sema_enum_lookup_rejects_same_member_wrong_owner_reentry() {
 
 int main() {
   test_global_qualified_lookup_rejects_rendered_fallback_authority();
+  test_rendered_qualified_text_ids_do_not_reenter_concept_lookup();
   test_sema_global_lookup_uses_using_value_alias_target_key();
   test_sema_function_call_uses_using_value_alias_target_key();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();

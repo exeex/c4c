@@ -358,6 +358,8 @@ bool is_unqualified_text_id_lookup_name(TextId name_text_id,
            name.find("::") == std::string_view::npos;
 }
 
+// Compatibility/display support for legacy rendered qualified TextIds; primary
+// semantic APIs must pass unqualified TextIds with context or a structured key.
 QualifiedNameKey find_compatibility_key_from_rendered_qualified_spelling(
     const Parser& parser, TextId name_text_id, std::string_view name);
 QualifiedNameKey intern_compatibility_key_from_rendered_qualified_spelling(
@@ -1650,6 +1652,8 @@ const ParserAliasTemplateInfo* Parser::find_alias_template_info_in_context(
 
 void Parser::register_concept_name_in_context(int context_id,
                                               TextId name_text_id) {
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return;
     const QualifiedNameKey key = qualified_key_in_context(
         *this, context_id, name_text_id, true);
     if (key.base_text_id == kInvalidText) return;
