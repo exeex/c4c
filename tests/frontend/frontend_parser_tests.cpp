@@ -8138,6 +8138,51 @@ void test_type_binding_equivalence_uses_deferred_member_text_id_authority() {
               "deferred owner-member TypeSpec equivalence should keep rendered compatibility when both sides lack member TextId metadata");
 }
 
+void test_type_binding_equivalence_rejects_stale_rendered_name_when_structured_identity_exists() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+
+  c4c::TypeSpec lhs{};
+  lhs.base = c4c::TB_STRUCT;
+  lhs.namespace_context_id = 3;
+  lhs.tag_text_id = texts.intern("Actual");
+  lhs.qualifier_segments = arena.alloc_array<const char*>(1);
+  lhs.qualifier_segments[0] = arena.strdup("stale_rendered_ns");
+  lhs.qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  lhs.qualifier_text_ids[0] = texts.intern("ActualNs");
+  lhs.n_qualifier_segments = 1;
+
+  c4c::TypeSpec rhs = lhs;
+  rhs.tag_text_id = texts.intern("Other");
+  rhs.qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  rhs.qualifier_text_ids[0] = texts.intern("OtherNs");
+
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "type equivalence should reject same rendered TypeSpec names when structured TextId identity differs");
+}
+
+void test_type_binding_equivalence_preserves_no_metadata_rendered_qualified_compatibility() {
+  c4c::Arena arena;
+
+  c4c::TypeSpec lhs{};
+  lhs.base = c4c::TB_STRUCT;
+  lhs.qualifier_segments = arena.alloc_array<const char*>(1);
+  lhs.qualifier_segments[0] = arena.strdup("legacy_ns");
+  lhs.n_qualifier_segments = 1;
+  lhs.is_global_qualified = true;
+
+  c4c::TypeSpec rhs = lhs;
+  rhs.qualifier_segments = arena.alloc_array<const char*>(1);
+  rhs.qualifier_segments[0] = arena.strdup("legacy_ns");
+
+  expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
+              "type equivalence should keep rendered qualified-name compatibility when structured metadata is unavailable");
+
+  rhs.qualifier_segments[0] = arena.strdup("other_legacy_ns");
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "no-metadata rendered qualified-name compatibility should still compare rendered qualifier spelling");
+}
+
 void test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches() {
   c4c::Arena arena;
 
@@ -9539,6 +9584,8 @@ int main() {
   test_typespec_mentions_template_param_rejects_structured_miss_despite_tag();
   test_template_arg_debug_ref_uses_structured_debug_payload_not_tag();
   test_type_binding_equivalence_uses_deferred_member_text_id_authority();
+  test_type_binding_equivalence_rejects_stale_rendered_name_when_structured_identity_exists();
+  test_type_binding_equivalence_preserves_no_metadata_rendered_qualified_compatibility();
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_template_instantiation_key_prefers_expr_carrier_over_expr_text();

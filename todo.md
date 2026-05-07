@@ -8,18 +8,18 @@ Current Step Title: Route Eager Sema Qualified Lookup Through Domain Tables
 
 ## Just Finished
 
-Step 4: Route Eager Sema Qualified Lookup Through Domain Tables repaired the direct HIR consteval value/NTTP rendered compatibility blocker by distinguishing NTTP-domain metadata misses from unrelated value-domain misses, kept qualified structured value misses authoritative, and preserved the qualified consteval function miss test from the prior slice.
+Step 4: Route Eager Sema Qualified Lookup Through Domain Tables tightened Sema TypeSpec equivalence so rendered qualified-name compatibility is gated behind the absence of structured TextId/namespace metadata, while preserving explicit no-metadata rendered qualified compatibility. Added focused frontend parser tests that reject stale rendered TypeSpec names when structured identity differs and keep legacy rendered qualifier comparison when no structured metadata is available.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 4 consteval lookup-authority slice, then choose the next qualified lookup authority packet.
+Supervisor can review and commit this Step 4 Sema TypeSpec equivalence slice, then choose the next qualified lookup authority packet.
 
 ## Watchouts
 
-Rendered NTTP compatibility is retained only for unqualified HIR-owned no-context lookups when NTTP TextId/structured metadata has not missed. Qualified value-domain structured misses still block rendered NTTP fallback, and consteval function rendered fallback remains blocked after populated structured/text function-domain misses.
+`has_any_text_name_metadata` now means actual structured identity metadata: namespace context, base TextId, or usable qualifier TextIds. Raw rendered qualifier spelling and the global-qualified bit still participate in the rendered compatibility path when no structured metadata exists, but they no longer block that path by themselves.
 
 ## Proof
 
-`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_positive_sema_cpp20_if_constexpr_concept_id_frontend_cpp|cpp_positive_sema_template_constexpr_member_runtime_cpp|cpp_positive_sema_template_type_traits_builtin_cpp)$'; } > test_after.log 2>&1`
+`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_hir_sema_canonical_symbol_structured_metadata|cpp_hir_parser_support_residual_structured_metadata|cpp_hir_member_typedef_origin_binding_structured_metadata)$'; } > test_after.log 2>&1`
 
-Proof passed. `test_after.log` is the canonical executor proof log: `frontend_parser_lookup_authority_tests`, `frontend_parser_tests`, `cpp_hir_sema_consteval_type_utils_structured_metadata`, `cpp_positive_sema_cpp20_if_constexpr_concept_id_frontend_cpp`, `cpp_positive_sema_template_constexpr_member_runtime_cpp`, and `cpp_positive_sema_template_type_traits_builtin_cpp` passed.
+Corrected proof passed. `test_after.log` is the canonical executor proof log. CTest matched and ran `frontend_parser_lookup_authority_tests`, `frontend_parser_tests`, `cpp_hir_sema_canonical_symbol_structured_metadata`, `cpp_hir_parser_support_residual_structured_metadata`, and `cpp_hir_member_typedef_origin_binding_structured_metadata`; all passed after the build completed.

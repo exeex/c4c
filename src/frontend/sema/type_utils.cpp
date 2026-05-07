@@ -491,10 +491,17 @@ bool has_complete_text_name_identity(const TypeSpec& ts) {
   return true;
 }
 
+bool has_any_qualifier_text_name_metadata(const TypeSpec& ts) {
+  if (!ts.qualifier_text_ids || ts.n_qualifier_segments <= 0) return false;
+  for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+    if (ts.qualifier_text_ids[i] != kInvalidText) return true;
+  }
+  return false;
+}
+
 bool has_any_text_name_metadata(const TypeSpec& ts) {
   return ts.namespace_context_id >= 0 || ts.tag_text_id != kInvalidText ||
-         ts.qualifier_text_ids != nullptr || ts.n_qualifier_segments > 0 ||
-         ts.is_global_qualified;
+         has_any_qualifier_text_name_metadata(ts);
 }
 
 bool same_text_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
