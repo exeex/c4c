@@ -2272,6 +2272,92 @@ void test_template_value_arg_static_member_uses_structured_owner_key() {
               "template value-arg const eval should use structured owner/member metadata");
 }
 
+void test_scalar_static_member_rejects_rendered_owner_split() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  c4c::Node rendered_decl{};
+  rendered_decl.kind = c4c::NK_DECL;
+  rendered_decl.name = "value";
+  rendered_decl.unqualified_name = "value";
+  rendered_decl.unqualified_text_id = module.link_name_texts->intern("value");
+  rendered_decl.type = int_ts;
+  lowerer.struct_static_member_decls_["StaleRenderedOwner"]["value"] =
+      &rendered_decl;
+  lowerer.struct_static_member_const_values_["StaleRenderedOwner"]["value"] =
+      77;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "StaleRenderedOwner::value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id = rendered_decl.unqualified_text_id;
+  ref.type = int_ts;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(nullptr, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* literal =
+      expr ? std::get_if<c4c::hir::IntLiteral>(&expr->payload) : nullptr;
+  expect_true(!(literal && literal->value == 77),
+              "scalar static-member lowering must not split rendered owner/member spelling");
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref != nullptr,
+              "rendered-only scalar static-member spelling should fall through as a normal reference");
+}
+
+void test_scalar_static_member_uses_member_text_after_structured_owner() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  const c4c::TextId ns_text = module.link_name_texts->intern("RealNs");
+  const c4c::TextId owner_text = module.link_name_texts->intern("RealOwner");
+  const c4c::TextId member_text = module.link_name_texts->intern("value");
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 91;
+  owner_ns.segment_text_ids.push_back(ns_text);
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+  module.index_struct_def_owner(owner_key, "RealOwner", true);
+  const std::optional<c4c::hir::HirStructMemberLookupKey> member_key =
+      lowerer.make_struct_member_lookup_key(owner_key, member_text);
+  expect_true(member_key.has_value(),
+              "fixture should build a scalar static-member owner/member key");
+  lowerer.struct_static_member_const_values_by_owner_[*member_key] = 123;
+
+  c4c::TextId qualifier_text_ids[] = {ns_text, owner_text};
+  const char* qualifier_segments[] = {"StaleRenderedNs", "StaleRenderedOwner"};
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "StaleRenderedOwner::wrong";
+  ref.unqualified_name = "stale_rendered_member";
+  ref.unqualified_text_id = member_text;
+  ref.qualifier_text_ids = qualifier_text_ids;
+  ref.qualifier_segments = qualifier_segments;
+  ref.n_qualifier_segments = 2;
+  ref.namespace_context_id = owner_ns.context_id;
+  ref.type = int_ts;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(nullptr, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* literal =
+      expr ? std::get_if<c4c::hir::IntLiteral>(&expr->payload) : nullptr;
+  expect_true(literal && literal->value == 123,
+              "scalar static-member lowering should use member TextId only after structured owner authority exists");
+}
+
 void test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::Arena arena;
@@ -3705,6 +3791,8 @@ int main() {
   test_static_member_nttp_const_eval_prefers_text_id_binding();
   test_template_value_arg_static_member_rejects_rendered_owner_split();
   test_template_value_arg_static_member_uses_structured_owner_key();
+  test_scalar_static_member_rejects_rendered_owner_split();
+  test_scalar_static_member_uses_member_text_after_structured_owner();
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_layout_type_lookup_prefers_structured_owner_over_stale_tag();
   test_layout_type_lookup_structured_owner_miss_rejects_stale_tag();

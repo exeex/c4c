@@ -81,6 +81,137 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
 
   std::vector<HirTemplateArg> actual_args;
   actual_args.reserve(ref->n_template_args);
+  auto recover_unique_realized_template_arg_carrier = [&](TypeSpec* ts) {
+    if (!ts || ts->tag_text_id == kInvalidText ||
+        (ts->tpl_struct_origin && ts->tpl_struct_origin[0]) ||
+        (ts->record_def && ts->record_def->kind == NK_STRUCT_DEF)) {
+      return;
+    }
+    const Node* unique_instance = nullptr;
+    for (const auto& [_, candidate] : struct_def_nodes_) {
+      if (!candidate || candidate->kind != NK_STRUCT_DEF ||
+          !candidate->template_origin_name ||
+          !candidate->template_origin_name[0] ||
+          candidate->n_template_args <= 0) {
+        continue;
+      }
+      const Node* primary_tpl =
+          find_template_struct_primary(candidate->template_origin_name);
+      if (!primary_tpl ||
+          primary_tpl->unqualified_text_id != ts->tag_text_id) {
+        continue;
+      }
+      if (ts->namespace_context_id >= 0 &&
+          primary_tpl->namespace_context_id != ts->namespace_context_id) {
+        continue;
+      }
+      if (unique_instance && unique_instance != candidate) {
+        unique_instance = nullptr;
+        break;
+      }
+      unique_instance = candidate;
+    }
+    if (!unique_instance) return;
+    ts->base = TB_STRUCT;
+    ts->record_def = const_cast<Node*>(unique_instance);
+    ts->tag_text_id = unique_instance->unqualified_text_id;
+    ts->namespace_context_id = unique_instance->namespace_context_id;
+    ts->is_global_qualified = false;
+  };
+  auto recover_unique_derived_template_arg_carrier = [&](TypeSpec* ts) {
+    if (!ts || !module_) return;
+    std::string base_tag;
+    if (ts->record_def && ts->record_def->name && ts->record_def->name[0]) {
+      base_tag = ts->record_def->name;
+    } else if (ts->tag_text_id != kInvalidText) {
+      NamespaceQualifier ns_qual;
+      ns_qual.context_id = ts->namespace_context_id;
+      ns_qual.is_global_qualified = ts->is_global_qualified;
+      if (const SymbolName* tag = module_->find_struct_def_tag_by_owner(
+              make_hir_record_owner_key(ns_qual, ts->tag_text_id))) {
+        base_tag = *tag;
+      }
+    }
+    if (base_tag.empty()) return;
+    const Node* unique_derived = nullptr;
+    for (const auto& [derived_tag, def] : module_->struct_defs) {
+      if (std::find(def.base_tags.begin(), def.base_tags.end(), base_tag) ==
+          def.base_tags.end()) {
+        continue;
+      }
+      auto node_it = struct_def_nodes_.find(derived_tag);
+      if (node_it == struct_def_nodes_.end() || !node_it->second ||
+          !node_it->second->template_origin_name ||
+          !node_it->second->template_origin_name[0] ||
+          node_it->second->n_template_args <= 0) {
+        continue;
+      }
+      if (unique_derived && unique_derived != node_it->second) {
+        unique_derived = nullptr;
+        break;
+      }
+      unique_derived = node_it->second;
+    }
+    if (!unique_derived) return;
+    ts->base = TB_STRUCT;
+    ts->record_def = const_cast<Node*>(unique_derived);
+    ts->tag_text_id = unique_derived->unqualified_text_id;
+    ts->namespace_context_id = unique_derived->namespace_context_id;
+    ts->is_global_qualified = false;
+  };
+  auto hydrate_template_origin_from_structured_key = [&](TypeSpec* ts) {
+    if (!ts || (ts->tpl_struct_origin && ts->tpl_struct_origin[0]) ||
+        ts->tpl_struct_origin_key.base_text_id == kInvalidText) {
+      return;
+    }
+    const Node* primary_tpl = nullptr;
+    for (const auto& [owner_key, candidate] : template_struct_defs_by_owner_) {
+      if (!candidate ||
+          owner_key.kind != HirRecordOwnerKeyKind::Declaration ||
+          owner_key.namespace_context_id !=
+              ts->tpl_struct_origin_key.context_id ||
+          owner_key.is_global_qualified !=
+              ts->tpl_struct_origin_key.is_global_qualified ||
+          owner_key.declaration_text_id !=
+              ts->tpl_struct_origin_key.base_text_id) {
+        continue;
+      }
+      if (primary_tpl && primary_tpl != candidate) {
+        primary_tpl = nullptr;
+        break;
+      }
+      primary_tpl = candidate;
+    }
+    if (!primary_tpl) {
+      for (const auto& [_, candidate] : template_struct_defs_) {
+        if (!candidate ||
+            candidate->unqualified_text_id !=
+                ts->tpl_struct_origin_key.base_text_id) {
+          continue;
+        }
+        if (ts->tpl_struct_origin_key.context_id >= 0 &&
+            candidate->namespace_context_id !=
+                ts->tpl_struct_origin_key.context_id) {
+          continue;
+        }
+        if (primary_tpl && primary_tpl != candidate) {
+          primary_tpl = nullptr;
+          break;
+        }
+        primary_tpl = candidate;
+      }
+    }
+    if (!primary_tpl) return;
+    if (primary_tpl->name && primary_tpl->name[0]) {
+      ts->tpl_struct_origin = primary_tpl->name;
+    } else if (primary_tpl->template_origin_name &&
+               primary_tpl->template_origin_name[0]) {
+      ts->tpl_struct_origin = primary_tpl->template_origin_name;
+    } else if (primary_tpl->unqualified_name &&
+               primary_tpl->unqualified_name[0]) {
+      ts->tpl_struct_origin = primary_tpl->unqualified_name;
+    }
+  };
   for (int i = 0; i < ref->n_template_args; ++i) {
     HirTemplateArg arg{};
     arg.is_value = ref->template_arg_is_value && ref->template_arg_is_value[i];
@@ -90,8 +221,7 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
         primary && i < primary->n_template_params &&
         !(primary->template_param_is_nttp && primary->template_param_is_nttp[i]);
     const TypeSpec* projected_value_type = nullptr;
-    if (arg.is_value && expects_type_arg && value_expr &&
-        value_expr->type.tpl_struct_origin) {
+    if (expects_type_arg && value_expr && value_expr->type.tpl_struct_origin) {
       projected_value_type = &value_expr->type;
       arg.is_value = false;
     }
@@ -100,6 +230,18 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
     } else if (projected_value_type || ref->template_arg_types) {
       TypeSpec ts =
           projected_value_type ? *projected_value_type : ref->template_arg_types[i];
+      hydrate_template_origin_from_structured_key(&ts);
+      TypeSpec member_typedef_carrier = ts;
+      const bool preserve_member_typedef_carrier =
+          ts.tpl_struct_origin && ts.tpl_struct_origin[0] &&
+          ts.deferred_member_type_name && ts.deferred_member_type_name[0] &&
+          ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0;
+      const bool had_structured_member_typedef_payload =
+          ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+          (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) ||
+          ts.deferred_member_type_owner_key.base_text_id != kInvalidText ||
+          ts.deferred_member_type_text_id != kInvalidText ||
+          (ts.deferred_member_type_name && ts.deferred_member_type_name[0]);
       if (ctx && ts.base == TB_TYPEDEF) {
         if (ts.template_param_text_id != kInvalidText) {
           auto it = ctx->tpl_bindings_by_text.find(ts.template_param_text_id);
@@ -177,7 +319,11 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
         }
       }
       resolve_typedef_to_struct(ts);
-      arg.type = ts;
+      recover_unique_realized_template_arg_carrier(&ts);
+      if (had_structured_member_typedef_payload) {
+        recover_unique_derived_template_arg_carrier(&ts);
+      }
+      arg.type = preserve_member_typedef_carrier ? member_typedef_carrier : ts;
     }
     actual_args.push_back(arg);
   }
@@ -224,7 +370,45 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
   }
 
   const Node* chosen = selected.selected_pattern;
-  const TypeBindings* tpl_ptr = selected.type_bindings.empty() ? nullptr : &selected.type_bindings;
+  TypeBindings lowered_type_bindings = selected.type_bindings;
+  for (auto& [_, bound_ts] : lowered_type_bindings) {
+    const bool had_structured_member_typedef_payload =
+        bound_ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+        (bound_ts.tpl_struct_origin && bound_ts.tpl_struct_origin[0]) ||
+        bound_ts.deferred_member_type_owner_key.base_text_id != kInvalidText ||
+        bound_ts.deferred_member_type_text_id != kInvalidText ||
+        (bound_ts.deferred_member_type_name &&
+         bound_ts.deferred_member_type_name[0]);
+    if (!had_structured_member_typedef_payload) continue;
+    TypeBindings tpl_empty;
+    NttpBindings nttp_empty;
+    if (bound_ts.tpl_struct_origin && bound_ts.tpl_struct_origin[0] &&
+        bound_ts.deferred_member_type_name &&
+        bound_ts.deferred_member_type_name[0]) {
+      TypeSpec owner_ts = bound_ts;
+      owner_ts.deferred_member_type_name = nullptr;
+      owner_ts.deferred_member_type_text_id = kInvalidText;
+      owner_ts.deferred_member_type_owner_key = {};
+      const Node* primary_tpl = find_template_struct_primary(bound_ts.tpl_struct_origin);
+      realize_template_struct_if_needed(owner_ts, tpl_empty, nttp_empty, primary_tpl);
+      recover_unique_realized_template_arg_carrier(&owner_ts);
+      if (owner_ts.record_def || owner_ts.tag_text_id != kInvalidText) {
+        bound_ts = owner_ts;
+        continue;
+      }
+    }
+    seed_and_resolve_pending_template_type_if_needed(
+        bound_ts, tpl_empty, nttp_empty, ref,
+        PendingTemplateTypeKind::DeclarationType,
+        "template-global-lowered-binding");
+    while (resolve_struct_member_typedef_if_ready(&bound_ts)) {
+    }
+    resolve_typedef_to_struct(bound_ts);
+    recover_unique_realized_template_arg_carrier(&bound_ts);
+    recover_unique_derived_template_arg_carrier(&bound_ts);
+  }
+  const TypeBindings* tpl_ptr =
+      lowered_type_bindings.empty() ? nullptr : &lowered_type_bindings;
   const NttpBindings* nttp_ptr =
       selected.nttp_bindings.empty() ? nullptr : &selected.nttp_bindings;
   NttpTextBindings nttp_by_text =

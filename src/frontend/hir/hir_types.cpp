@@ -131,6 +131,60 @@ auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
 template <typename T>
 void set_typespec_final_spelling_tag_if_present(T&, const char*, long) {}
 
+std::optional<HirRecordOwnerKey> structured_owner_key_from_qualified_ref(
+    const Node* n,
+    TextTable* texts) {
+  if (!n || n->n_qualifier_segments <= 0) return std::nullopt;
+  auto segment_text_id = [&](int index) -> TextId {
+    if (n->qualifier_text_ids) {
+      const TextId text_id = n->qualifier_text_ids[index];
+      if (text_id != kInvalidText) return text_id;
+    }
+    if (texts && n->qualifier_segments && n->qualifier_segments[index] &&
+        n->qualifier_segments[index][0]) {
+      return texts->intern(n->qualifier_segments[index]);
+    }
+    return kInvalidText;
+  };
+
+  const TextId owner_text_id = segment_text_id(n->n_qualifier_segments - 1);
+  if (owner_text_id == kInvalidText) return std::nullopt;
+
+  NamespaceQualifier owner_ns;
+  owner_ns.context_id = n->namespace_context_id;
+  owner_ns.is_global_qualified = n->is_global_qualified;
+  owner_ns.segment_text_ids.reserve(n->n_qualifier_segments - 1);
+  for (int i = 0; i + 1 < n->n_qualifier_segments; ++i) {
+    const TextId text_id = segment_text_id(i);
+    if (text_id == kInvalidText) return std::nullopt;
+    owner_ns.segment_text_ids.push_back(text_id);
+  }
+
+  HirRecordOwnerKey owner_key =
+      make_hir_record_owner_key(owner_ns, owner_text_id);
+  if (!hir_record_owner_key_has_complete_metadata(owner_key)) {
+    return std::nullopt;
+  }
+  return owner_key;
+}
+
+std::string structured_owner_name_from_qualified_ref(const Node* n,
+                                                     TextTable* texts) {
+  if (!n || n->n_qualifier_segments <= 0) return {};
+  const int owner_index = n->n_qualifier_segments - 1;
+  TextId owner_text_id = kInvalidText;
+  if (n->qualifier_text_ids) owner_text_id = n->qualifier_text_ids[owner_index];
+  if (owner_text_id != kInvalidText && texts) {
+    const std::string_view owner_text = texts->lookup(owner_text_id);
+    if (!owner_text.empty()) return std::string(owner_text);
+  }
+  if (n->qualifier_segments && n->qualifier_segments[owner_index] &&
+      n->qualifier_segments[owner_index][0]) {
+    return n->qualifier_segments[owner_index];
+  }
+  return {};
+}
+
 template <typename T>
 auto typespec_legacy_tag_if_present(const T& ts, int)
     -> decltype(ts.tag, std::string_view{}) {
@@ -2051,16 +2105,226 @@ GlobalInit Lowerer::lower_global_init(const Node* n,
   }
   if (ctx && allow_named_const_fold && n->kind == NK_VAR && n->name &&
       n->name[0] && (n->has_template_args || n->n_template_args > 0)) {
-    const std::string qname = n->name;
-    const size_t scope_pos = qname.rfind("::");
-    if (scope_pos != std::string::npos) {
-      const std::string owner_name = qname.substr(0, scope_pos);
-      const std::string member_name = qname.substr(scope_pos + 2);
-      if (auto v = try_eval_template_static_member_const(
-              ctx, owner_name, n, member_name)) {
+    if (const std::optional<HirRecordOwnerKey> owner_key =
+            structured_owner_key_from_qualified_ref(
+                n, module_ ? module_->link_name_texts.get() : nullptr)) {
+      const std::string* owner_tag =
+          module_ ? module_->find_struct_def_tag_by_owner(*owner_key) : nullptr;
+      if (!owner_tag && module_) {
+        const std::string* unique_owner_tag = nullptr;
+        for (const auto& [candidate_key, rendered_tag] :
+             module_->struct_def_owner_index) {
+          if (candidate_key.kind != owner_key->kind ||
+              candidate_key.namespace_context_id !=
+                  owner_key->namespace_context_id ||
+              candidate_key.is_global_qualified != owner_key->is_global_qualified ||
+              candidate_key.declaration_text_id !=
+                  owner_key->declaration_text_id) {
+            continue;
+          }
+          if (unique_owner_tag && unique_owner_tag != &rendered_tag) {
+            unique_owner_tag = nullptr;
+            break;
+          }
+          unique_owner_tag = &rendered_tag;
+        }
+        owner_tag = unique_owner_tag;
+      }
+      std::string owner_name = structured_owner_name_from_qualified_ref(
+          n, module_ ? module_->link_name_texts.get() : nullptr);
+      std::string owner_template_origin_name;
+      auto recover_owner_template_origin = [&](const std::string& tag) {
+        if (tag.empty() || !owner_template_origin_name.empty()) return;
+        auto it = struct_def_nodes_.find(tag);
+        if (it == struct_def_nodes_.end() || !it->second) return;
+        const Node* owner_def = it->second;
+        if (owner_def->template_origin_name &&
+            owner_def->template_origin_name[0]) {
+          owner_template_origin_name = owner_def->template_origin_name;
+        }
+      };
+      if (owner_tag) recover_owner_template_origin(*owner_tag);
+      recover_owner_template_origin(owner_name);
+      if (owner_template_origin_name.empty() &&
+          (n->has_template_args || n->n_template_args > 0) &&
+          n->qualifier_segments && n->n_qualifier_segments > 0 &&
+          n->qualifier_segments[n->n_qualifier_segments - 1] &&
+          n->qualifier_segments[n->n_qualifier_segments - 1][0]) {
+        const std::string segment_owner =
+            n->qualifier_segments[n->n_qualifier_segments - 1];
+        if (segment_owner != owner_name &&
+            find_template_struct_primary(segment_owner)) {
+          owner_template_origin_name = segment_owner;
+        }
+      }
+
+      TextId member_text_id = n->unqualified_text_id;
+      std::string member_name;
+      if (member_text_id != kInvalidText && module_ && module_->link_name_texts) {
+        const std::string_view text =
+            module_->link_name_texts->lookup(member_text_id);
+        if (!text.empty()) member_name = std::string(text);
+      }
+      TextId unqualified_member_text_id = kInvalidText;
+      std::string unqualified_member_name;
+      if (n->unqualified_name && n->unqualified_name[0]) {
+        unqualified_member_name = n->unqualified_name;
+        if (module_ && module_->link_name_texts) {
+          unqualified_member_text_id =
+              module_->link_name_texts->intern(unqualified_member_name);
+        }
+        if (member_name.empty()) {
+          member_name = unqualified_member_name;
+          member_text_id = unqualified_member_text_id;
+        }
+      }
+      if (member_name.empty() && n->name && n->name[0]) {
+        const std::string_view rendered_name(n->name);
+        auto try_generated_member_payload = [&](const std::string& owner_prefix) {
+          if (owner_prefix.empty() || !member_name.empty()) return;
+          const std::string prefix = owner_prefix + "::";
+          if (rendered_name.rfind(prefix, 0) == 0) {
+            member_name = std::string(rendered_name.substr(prefix.size()));
+            if (member_text_id == kInvalidText && module_ &&
+                module_->link_name_texts) {
+              member_text_id = module_->link_name_texts->intern(member_name);
+            }
+          }
+        };
+        try_generated_member_payload(owner_name);
+        if (owner_tag) try_generated_member_payload(*owner_tag);
+      }
+
+      const std::string& primitive_trait_owner =
+          !owner_name.empty() ? owner_name : (owner_tag ? *owner_tag : owner_name);
+      std::optional<long long> primitive_trait_value;
+      if (!primitive_trait_owner.empty() && !member_name.empty()) {
+        if (auto v = try_eval_template_static_member_const(
+                ctx, primitive_trait_owner, n, member_name)) {
+          if (*v != 0) {
+            TypeSpec ts = n->type;
+            if (ts.base == TB_VOID) ts.base = TB_INT;
+            s.expr = append_expr(n, IntLiteral{*v, false}, ts);
+            return s;
+          }
+          primitive_trait_value = *v;
+        }
+      }
+      if (!primitive_trait_owner.empty() && !unqualified_member_name.empty() &&
+          unqualified_member_name != member_name) {
+        if (auto v = try_eval_template_static_member_const(
+                ctx, primitive_trait_owner, n, unqualified_member_name)) {
+          if (*v != 0) {
+            TypeSpec ts = n->type;
+            if (ts.base == TB_VOID) ts.base = TB_INT;
+            s.expr = append_expr(n, IntLiteral{*v, false}, ts);
+            return s;
+          }
+          primitive_trait_value = *v;
+        }
+      }
+
+      std::optional<std::string> realized_owner_tag;
+      const std::string& owner_identity =
+          !owner_template_origin_name.empty()
+              ? owner_template_origin_name
+              : (owner_tag ? *owner_tag : owner_name);
+      const Node* primary_tpl = nullptr;
+      auto owner_primary_it = template_struct_defs_by_owner_.find(*owner_key);
+      if (owner_primary_it != template_struct_defs_by_owner_.end()) {
+        primary_tpl = owner_primary_it->second;
+      }
+      if (!primary_tpl) {
+        const Node* unique_primary = nullptr;
+        for (const auto& [candidate_key, candidate_primary] :
+             template_struct_defs_by_owner_) {
+          if (candidate_key.kind != owner_key->kind ||
+              candidate_key.namespace_context_id !=
+                  owner_key->namespace_context_id ||
+              candidate_key.is_global_qualified != owner_key->is_global_qualified ||
+              candidate_key.declaration_text_id !=
+                  owner_key->declaration_text_id) {
+            continue;
+          }
+          if (unique_primary && unique_primary != candidate_primary) {
+            unique_primary = nullptr;
+            break;
+          }
+          unique_primary = candidate_primary;
+        }
+        primary_tpl = unique_primary;
+      }
+      if (!primary_tpl && !owner_identity.empty()) {
+        primary_tpl = find_template_struct_primary(owner_identity);
+      }
+      if (!primary_tpl && !owner_name.empty() &&
+          owner_name != owner_identity) {
+        primary_tpl = find_template_struct_primary(owner_name);
+      }
+      if (primary_tpl) {
+        std::vector<TextId> owner_qualifiers =
+            owner_key->qualifier_segment_text_ids;
+        TypeSpec pending_ts{};
+        pending_ts.base = TB_STRUCT;
+        pending_ts.array_size = -1;
+        pending_ts.inner_rank = -1;
+        pending_ts.namespace_context_id = owner_key->namespace_context_id;
+        pending_ts.is_global_qualified = owner_key->is_global_qualified;
+        pending_ts.tag_text_id = owner_key->declaration_text_id;
+        pending_ts.qualifier_text_ids = owner_qualifiers.data();
+        pending_ts.n_qualifier_segments =
+            static_cast<int>(owner_qualifiers.size());
+        if (!owner_identity.empty()) {
+          set_typespec_final_spelling_tag_if_present(
+              pending_ts, owner_identity.c_str(), 0);
+          pending_ts.tpl_struct_origin = owner_identity.c_str();
+        }
+        assign_template_arg_refs_from_ast_args(
+            &pending_ts, n, primary_tpl, ctx, n,
+            PendingTemplateTypeKind::OwnerStruct,
+            "global-init-static-owner-structured-arg");
+        TypeBindings tpl_empty;
+        NttpBindings nttp_empty;
+        seed_and_resolve_pending_template_type_if_needed(
+            pending_ts, ctx ? ctx->tpl_bindings : tpl_empty,
+            ctx ? ctx->nttp_bindings : nttp_empty, n,
+            PendingTemplateTypeKind::OwnerStruct,
+            "global-init-static-owner-structured", primary_tpl);
+        realized_owner_tag = resolve_member_lookup_owner_tag(
+            pending_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
+            ctx ? &ctx->nttp_bindings : nullptr, nullptr, n,
+            "global-init-static-owner-structured");
+      }
+
+      std::string template_owner = owner_template_origin_name;
+      if (template_owner.empty()) template_owner = owner_name;
+      if (template_owner.empty() && realized_owner_tag) {
+        template_owner = *realized_owner_tag;
+      }
+      if (template_owner.empty() && owner_tag) template_owner = *owner_tag;
+      if (!template_owner.empty() && !member_name.empty()) {
+        if (auto v = try_eval_template_static_member_const(
+                ctx, template_owner, n, member_name)) {
+          TypeSpec ts = n->type;
+          if (ts.base == TB_VOID) ts.base = TB_INT;
+          s.expr = append_expr(n, IntLiteral{*v, false}, ts);
+          return s;
+        }
+      }
+      if (!template_owner.empty() && !unqualified_member_name.empty() &&
+          unqualified_member_name != member_name) {
+        if (auto v = try_eval_template_static_member_const(
+                ctx, template_owner, n, unqualified_member_name)) {
+          TypeSpec ts = n->type;
+          if (ts.base == TB_VOID) ts.base = TB_INT;
+          s.expr = append_expr(n, IntLiteral{*v, false}, ts);
+          return s;
+        }
+      }
+      if (primitive_trait_value) {
         TypeSpec ts = n->type;
         if (ts.base == TB_VOID) ts.base = TB_INT;
-        s.expr = append_expr(n, IntLiteral{*v, false}, ts);
+        s.expr = append_expr(n, IntLiteral{*primitive_trait_value, false}, ts);
         return s;
       }
     }
