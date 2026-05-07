@@ -2699,6 +2699,48 @@ void test_parser_record_body_member_typedef_writers_register_direct_keys() {
               "qualified member typedef reader should use the direct record/member key before stale rendered storage");
 }
 
+void test_parser_record_member_typedef_key_uses_structured_owner_metadata() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId ns_text = parser_test_text_id(parser, "ns");
+  const c4c::TextId owner_text = parser_test_text_id(parser, "Owner");
+  const c4c::TextId stale_rendered_owner_text =
+      parser_test_text_id(parser, "other::Owner");
+  const c4c::TextId member_text = parser_test_text_id(parser, "Member");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  parser.ensure_named_namespace_context(
+      0, parser_test_text_id(parser, "other"));
+
+  c4c::TypeSpec member_ts{};
+  member_ts.array_size = -1;
+  member_ts.inner_rank = -1;
+  member_ts.base = c4c::TB_INT;
+  parser.register_structured_typedef_binding(
+      parser_test_qualified_name_key(parser, {"ns", "Owner"}, "Member"),
+      member_ts);
+
+  c4c::Parser::QualifiedNameRef owner_qn;
+  owner_qn.qualifier_segments = {"ns"};
+  owner_qn.qualifier_text_ids = {ns_text};
+  owner_qn.base_name = "Owner";
+  owner_qn.base_text_id = stale_rendered_owner_text;
+  const c4c::QualifiedNameKey owner_key = parser.qualified_name_key(owner_qn);
+  const c4c::QualifiedNameKey member_key =
+      parser.record_member_typedef_key_from_owner_key(owner_key, member_text);
+  const c4c::TypeSpec* member_type = parser.find_typedef_type(member_key);
+  expect_true(member_type != nullptr && member_type->base == c4c::TB_INT,
+              "record-member typedef key construction should use structured owner metadata before stale rendered owner TextIds");
+
+  const c4c::QualifiedNameKey rendered_member_key =
+      parser.record_member_typedef_key_in_context(
+          ns_context, stale_rendered_owner_text, member_text);
+  expect_true(parser.find_typedef_type(rendered_member_key) == nullptr,
+              "record-member typedef lookup should not recover through a stale rendered owner TextId collision");
+}
+
 void test_parser_template_record_member_typedef_writer_registers_dependent_key() {
   c4c::Lexer lexer("namespace ns {\n"
                    "template <typename T>\n"
@@ -9577,6 +9619,7 @@ int main() {
   test_parser_qualified_functional_cast_owner_requires_structured_authority();
   test_parser_qualified_member_typedef_lookup_requires_structured_metadata();
   test_parser_record_body_member_typedef_writers_register_direct_keys();
+  test_parser_record_member_typedef_key_uses_structured_owner_metadata();
   test_parser_template_record_member_typedef_writer_registers_dependent_key();
   test_parser_c_style_cast_member_typedef_uses_structured_metadata();
   test_parser_template_instantiation_member_typedef_uses_concrete_key();

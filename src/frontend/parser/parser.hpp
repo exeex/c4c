@@ -422,6 +422,8 @@ class Parser {
       TextId member_text_id) const;
   QualifiedNameKey record_member_typedef_key_in_context(
       int context_id, TextId record_text_id, TextId member_text_id);
+  QualifiedNameKey record_member_typedef_key_from_owner_key(
+      const QualifiedNameKey& owner_key, TextId member_text_id);
   QualifiedNameKey record_member_typedef_owner_key_from_member_key(
       const QualifiedNameKey& key) const;
   const TypeSpec* find_dependent_record_member_typedef_type(

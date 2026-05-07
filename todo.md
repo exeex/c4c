@@ -8,38 +8,29 @@ Current Step Title: Replace Parser Rendered Qualified `TextId` Handoffs
 
 ## Just Finished
 
-Completed Step 2 first parser migration for the qualified template lookup
-overload family in `src/frontend/parser/impl/types/template.cpp`:
-`find_template_struct_primary(const QualifiedNameRef&)`,
-`find_template_struct_specializations(const QualifiedNameRef&, ...)`, and
-`find_template_global_primary(const QualifiedNameRef&)` now use the carried
-`QualifiedNameRef` metadata for qualified names, including text-id-only
-qualification in `qualifier_text_ids`, instead of resolving a context and
-feeding a possibly rendered qualified `base_text_id` through
-`alias_template_key_in_context()`. `Parser::qualified_name_key()` now sanitizes
-stale rendered qualified base/qualifier `TextId`s back to the structured
-`base_name` and qualifier segments when projecting a structured key.
+Completed Step 2 migration for the declarator qualified-typename
+record-member typedef fallback in
+`src/frontend/parser/impl/types/declarator.cpp`. The fallback now projects the
+record-member typedef key from the parsed owner `QualifiedNameRef` via
+`qualified_name_key(owner_qn)` and the new
+`record_member_typedef_key_from_owner_key()` helper, instead of resolving an
+owner namespace context and calling `record_member_typedef_key_in_context()`
+with `owner_qn.base_text_id`.
 
 Added
-`test_parser_qualified_template_lookup_uses_qn_metadata_over_rendered_text_id`
-to prove qualified template primary/specialization/global lookups choose
-`ns::Alias` from `QualifiedNameRef` metadata even when `base_text_id` renders
-as the colliding `other::Alias`, including the case where
-`qualifier_segments` is empty and `qualifier_text_ids` carries the owner.
-Regression fix: global-qualified structured owners such as `::api::holder`
-first try the exact structured key, then fall back to the same absolute owner
-path with `is_global_qualified` cleared when matching namespace-context
-template registrations. This preserves structured owner/base authority without
-returning to rendered qualified `TextId` lookup.
+`test_parser_record_member_typedef_key_uses_structured_owner_metadata` to prove
+member typedef key construction resolves `ns::Owner::Member` from structured
+owner metadata even when the owner `base_text_id` renders as the colliding
+`other::Owner`, and that the stale rendered owner key does not recover the
+binding.
 
 ## Suggested Next
 
-Migrate the next parser alias/member caller family that still constructs a
-record-member typedef key from owner context plus record `TextId`, likely the
-`record_member_typedef_key_in_context()` owner paths in
-`src/frontend/parser/impl/types/declarator.cpp` or
-`src/frontend/parser/impl/types/base.cpp`, so they can consume a
-`QualifiedNameRef`/`QualifiedNameKey` owner directly.
+Migrate the `types/base.cpp` record-member typedef sidecar family:
+`record_member_key_for_node()` still derives a context and record `TextId` from
+`Node` fields before calling `record_member_typedef_key_in_context()`. Thread or
+construct a structured owner `QualifiedNameKey` there and use
+`record_member_typedef_key_from_owner_key()` or equivalent direct metadata.
 
 ## Watchouts
 
@@ -47,17 +38,18 @@ record-member typedef key from owner context plus record `TextId`, likely the
   progress.
 - Do not weaken qualified template or HIR tests to make the bridge deletion
   pass.
-- The unqualified `QualifiedNameRef` template overload path still delegates to
-  `alias_template_key_in_context()` because current-scope and visible lookup
-  behavior is intentional there; this packet only migrated qualified-name
-  carriers.
+- The new helper is a projection from an already structured owner key; do not
+  use it to paper over missing owner metadata by first reconstructing the owner
+  from rendered spelling.
+- The direct `record_member_typedef_key_in_context()` production caller left in
+  owned scope is now the `types/base.cpp` sidecar path.
 - `qualified_key_in_context()` still contains the rendered compatibility branch
   for remaining callers.
 
 ## Proof
 
-`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_|cpp_positive_sema_.*(template|alias)|cpp_positive_sema_qualified_dependent_typename_global_parse_cpp'; } > test_after.log 2>&1`
+`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_member_typedef|cpp_hir_parser_type_base_|cpp_positive_sema_.*member_typedef|cpp_positive_sema_.*dependent_typename|cpp_positive_sema_.*typedef.*alias'; } > test_after.log 2>&1`
 
 Passed. `test_after.log` is the canonical executor proof log. CTest matched
-and ran 254 delegated parser/template/regression tests; all passed after the
-build completed.
+and ran 106 delegated parser/member-typedef/dependent-typename tests; all
+passed after the build completed.

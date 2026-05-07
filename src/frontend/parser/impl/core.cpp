@@ -1508,6 +1508,22 @@ QualifiedNameKey Parser::record_member_typedef_key_in_context(
     return key;
 }
 
+QualifiedNameKey Parser::record_member_typedef_key_from_owner_key(
+    const QualifiedNameKey& owner_key, TextId member_text_id) {
+    QualifiedNameKey key;
+    if (owner_key.base_text_id == kInvalidText ||
+        member_text_id == kInvalidText) {
+        return key;
+    }
+
+    key.context_id = 0;
+    key.is_global_qualified = owner_key.is_global_qualified;
+    key.qualifier_path_id = shared_lookup_state_.parser_name_paths.append(
+        owner_key.qualifier_path_id, owner_key.base_text_id);
+    key.base_text_id = member_text_id;
+    return key;
+}
+
 QualifiedNameKey Parser::record_member_typedef_owner_key_from_member_key(
     const QualifiedNameKey& key) const {
     QualifiedNameKey owner_key;

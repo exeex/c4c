@@ -1540,11 +1540,11 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
             }
             const QualifiedNameRef owner_qn = qualified_owner_name(*this, qn);
             if (owner_qn.base_text_id == kInvalidText) return nullptr;
-            const int owner_context = resolve_namespace_context(owner_qn);
-            if (owner_context < 0) return nullptr;
+            const QualifiedNameKey owner_key = qualified_name_key(owner_qn);
+            if (owner_key.base_text_id == kInvalidText) return nullptr;
             const QualifiedNameKey member_key =
-                record_member_typedef_key_in_context(
-                    owner_context, owner_qn.base_text_id, qn.base_text_id);
+                record_member_typedef_key_from_owner_key(owner_key,
+                                                         qn.base_text_id);
             return find_typedef_type(member_key);
         };
         const TypeSpec* structured_typedef = find_structured_typedef();
