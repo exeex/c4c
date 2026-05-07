@@ -2737,6 +2737,8 @@ void test_parser_record_member_typedef_key_uses_structured_owner_metadata() {
   const c4c::QualifiedNameKey rendered_member_key =
       parser.record_member_typedef_key_in_context(
           ns_context, stale_rendered_owner_text, member_text);
+  expect_true(rendered_member_key.base_text_id == c4c::kInvalidText,
+              "record-member typedef key helper should reject rendered qualified owner TextIds as semantic lookup authority");
   expect_true(parser.find_typedef_type(rendered_member_key) == nullptr,
               "record-member typedef lookup should not recover through a stale rendered owner TextId collision");
 }
@@ -4764,6 +4766,13 @@ void test_parser_qualified_template_lookup_uses_qn_metadata_over_rendered_text_i
   other_global->n_template_params = 1;
   parser.register_template_global_primary(ns_key, ns_global);
   parser.register_template_global_primary(other_key, other_global);
+
+  const c4c::QualifiedNameKey rendered_alias_key =
+      parser.alias_template_key_in_context(ns_context, stale_rendered_text);
+  expect_true(rendered_alias_key.base_text_id == c4c::kInvalidText,
+              "alias-template key helper should reject rendered qualified TextIds as semantic lookup authority");
+  expect_true(parser.find_template_struct_primary(rendered_alias_key) == nullptr,
+              "alias-template helper boundary should not recover a stale rendered qualified TextId through the compatibility bridge");
 
   c4c::Parser::QualifiedNameRef qn;
   qn.qualifier_segments = {"ns"};
@@ -7820,9 +7829,7 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   resolved_parser.register_using_value_alias_for_testing(
       0, alias_text, resolved_alias_key);
   resolved_parser.register_alias_template_info_for_testing(
-      resolved_parser.alias_template_key_in_context(
-          resolved_parser.current_namespace_context_id(),
-          resolved_parser.find_parser_text_id("ns::Alias")),
+      resolved_alias_key,
       {});
   resolved_parser.replace_token_stream_for_testing({
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),

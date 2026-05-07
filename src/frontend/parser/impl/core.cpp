@@ -1496,6 +1496,15 @@ QualifiedNameKey Parser::record_member_typedef_key_in_context(
     if (record_text_id == kInvalidText || member_text_id == kInvalidText)
         return key;
 
+    const std::string_view record_name = parser_text(record_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(record_text_id, record_name)) {
+        return key;
+    }
+    const std::string_view member_name = parser_text(member_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(member_text_id, member_name)) {
+        return key;
+    }
+
     const QualifiedNameKey record_key =
         qualified_key_in_context(*this, context_id, record_text_id, true);
     if (record_key.base_text_id == kInvalidText) return key;
@@ -1613,6 +1622,8 @@ QualifiedNameKey Parser::struct_typedef_key_in_context(
 
 QualifiedNameKey Parser::alias_template_key_in_context(
     int context_id, TextId name_text_id) const {
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return {};
     return qualified_key_in_context(*this, context_id, name_text_id, true);
 }
 

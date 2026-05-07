@@ -255,6 +255,95 @@ void mark_template_instantiation_dedup_keys(
     }
 }
 
+QualifiedNameKey resolved_template_lookup_key(
+    const Parser& parser,
+    const Parser::VisibleNameResult& resolved,
+    TextId fallback_name_text_id) {
+    if (!resolved) return {};
+    if (resolved.key.base_text_id != kInvalidText) return resolved.key;
+    if (resolved.context_id < 0 || resolved.base_text_id == kInvalidText) {
+        return {};
+    }
+    const TextId name_text_id = resolved.base_text_id != kInvalidText
+                                    ? resolved.base_text_id
+                                    : fallback_name_text_id;
+    return parser.alias_template_key_in_context(resolved.context_id,
+                                                name_text_id);
+}
+
+int resolve_template_qualifier_context(
+    const Parser& parser,
+    const Parser::QualifiedNameRef& name) {
+    if (name.qualifier_text_ids.empty() && name.qualifier_segments.empty()) {
+        return name.is_global_qualified ? 0
+                                        : parser.current_namespace_context_id();
+    }
+    if (!name.qualifier_segments.empty()) {
+        return parser.resolve_namespace_context(name);
+    }
+
+    auto follow_path = [&](int start_id) -> int {
+        int context_id = start_id;
+        for (TextId segment_text_id : name.qualifier_text_ids) {
+            if (segment_text_id == kInvalidText) return -1;
+            context_id = parser.find_named_namespace_child(context_id,
+                                                           segment_text_id);
+            if (context_id < 0) return -1;
+        }
+        return context_id;
+    };
+
+    if (name.is_global_qualified) return follow_path(0);
+    for (int i =
+             static_cast<int>(parser.namespace_state_.namespace_stack.size()) - 1;
+         i >= 0; --i) {
+        const int resolved =
+            follow_path(parser.namespace_state_.namespace_stack[i]);
+        if (resolved >= 0) return resolved;
+    }
+    return -1;
+}
+
+QualifiedNameKey template_context_key_for_qualified_ref(
+    const Parser& parser,
+    const Parser::QualifiedNameRef& name,
+    const QualifiedNameKey& structured_key) {
+    const int context_id = resolve_template_qualifier_context(parser, name);
+    if (context_id < 0) return {};
+    TextId base_text_id = structured_key.base_text_id;
+    if (base_text_id == kInvalidText && !name.base_name.empty()) {
+        base_text_id = parser.parser_text_id_for_token(kInvalidText,
+                                                       name.base_name);
+    }
+    return parser.alias_template_key_in_context(context_id, base_text_id);
+}
+
+TextId template_registration_name_text_id(const Parser& parser,
+                                          const Node* node,
+                                          TextId fallback_name_text_id) {
+    const std::string_view fallback =
+        parser.parser_text(fallback_name_text_id, {});
+    if (fallback_name_text_id != kInvalidText &&
+        fallback.find("::") == std::string_view::npos) {
+        return fallback_name_text_id;
+    }
+    if (node) {
+        if (node->unqualified_text_id != kInvalidText) {
+            const std::string_view text =
+                parser.parser_text(node->unqualified_text_id, {});
+            if (text.find("::") == std::string_view::npos) {
+                return node->unqualified_text_id;
+            }
+        }
+        if (node->unqualified_name && node->unqualified_name[0] &&
+            std::strstr(node->unqualified_name, "::") == nullptr) {
+            return parser.parser_text_id_for_token(kInvalidText,
+                                                   node->unqualified_name);
+        }
+    }
+    return kInvalidText;
+}
+
 }  // namespace
 
 bool Parser::has_template_struct_primary(const QualifiedNameKey& key) const {
@@ -263,8 +352,7 @@ bool Parser::has_template_struct_primary(const QualifiedNameKey& key) const {
 
 bool Parser::has_template_struct_primary(int context_id,
                                          TextId name_text_id) const {
-    return has_template_struct_primary(
-        alias_template_key_in_context(context_id, name_text_id));
+    return find_template_struct_primary(context_id, name_text_id) != nullptr;
 }
 
 bool Parser::has_template_struct_primary(const QualifiedNameRef& name) const {
@@ -288,8 +376,8 @@ Node* Parser::find_template_struct_primary(int context_id,
     const VisibleNameResult resolved_type =
         resolve_visible_type(name_text_id);
     if (!resolved_type) return nullptr;
-    return find_template_struct_primary(alias_template_key_in_context(
-        resolved_type.context_id, resolved_type.base_text_id));
+    return find_template_struct_primary(
+        resolved_template_lookup_key(*this, resolved_type, name_text_id));
 }
 
 Node* Parser::find_template_struct_primary(const QualifiedNameRef& name) const {
@@ -300,9 +388,12 @@ Node* Parser::find_template_struct_primary(const QualifiedNameRef& name) const {
             key.qualifier_path_id != kInvalidNamePath) {
             QualifiedNameKey absolute_key = key;
             absolute_key.is_global_qualified = false;
-            return find_template_struct_primary(absolute_key);
+            if (Node* absolute = find_template_struct_primary(absolute_key)) {
+                return absolute;
+            }
         }
-        return nullptr;
+        return find_template_struct_primary(
+            template_context_key_for_qualified_ref(*this, name, key));
     }
     const int context_id =
         name.is_global_qualified ? 0 : current_namespace_context_id();
@@ -328,8 +419,8 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
     const VisibleNameResult resolved_type =
         resolve_visible_type(name_text_id);
     if (!resolved_type) return nullptr;
-    return find_template_struct_specializations(alias_template_key_in_context(
-        resolved_type.context_id, resolved_type.base_text_id));
+    return find_template_struct_specializations(
+        resolved_template_lookup_key(*this, resolved_type, name_text_id));
 }
 
 const std::vector<Node*>* Parser::find_template_struct_specializations(
@@ -363,9 +454,13 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
             key.qualifier_path_id != kInvalidNamePath) {
             QualifiedNameKey absolute_key = key;
             absolute_key.is_global_qualified = false;
-            return find_template_struct_specializations(absolute_key);
+            if (const auto* absolute =
+                    find_template_struct_specializations(absolute_key)) {
+                return absolute;
+            }
         }
-        return nullptr;
+        return find_template_struct_specializations(
+            template_context_key_for_qualified_ref(*this, name, key));
     }
     const int context_id =
         name.is_global_qualified ? 0 : current_namespace_context_id();
@@ -391,8 +486,8 @@ const Node* Parser::find_template_global_primary(
     const VisibleNameResult resolved_value =
         resolve_visible_value(name_text_id);
     if (!resolved_value) return nullptr;
-    return find_template_global_primary(alias_template_key_in_context(
-        resolved_value.context_id, resolved_value.base_text_id));
+    return find_template_global_primary(
+        resolved_template_lookup_key(*this, resolved_value, name_text_id));
 }
 
 const Node* Parser::find_template_global_primary(
@@ -404,9 +499,12 @@ const Node* Parser::find_template_global_primary(
             key.qualifier_path_id != kInvalidNamePath) {
             QualifiedNameKey absolute_key = key;
             absolute_key.is_global_qualified = false;
-            return find_template_global_primary(absolute_key);
+            if (const Node* absolute = find_template_global_primary(absolute_key)) {
+                return absolute;
+            }
         }
-        return nullptr;
+        return find_template_global_primary(
+            template_context_key_for_qualified_ref(*this, name, key));
     }
     const int context_id =
         name.is_global_qualified ? 0 : current_namespace_context_id();
@@ -438,6 +536,8 @@ void Parser::register_template_struct_primary(const QualifiedNameKey& key,
 void Parser::register_template_struct_primary(int context_id,
                                               TextId name_text_id,
                                               Node* node) {
+    name_text_id = template_registration_name_text_id(*this, node,
+                                                      name_text_id);
     register_template_struct_primary(
         alias_template_key_in_context(context_id, name_text_id), node);
 }
@@ -453,6 +553,8 @@ void Parser::register_template_struct_specialization(const QualifiedNameKey& key
 
 void Parser::register_template_struct_specialization(
     int context_id, TextId primary_name_text_id, Node* node) {
+    primary_name_text_id = template_registration_name_text_id(
+        *this, node, primary_name_text_id);
     register_template_struct_specialization(
         alias_template_key_in_context(context_id, primary_name_text_id), node);
 }
@@ -469,6 +571,8 @@ void Parser::register_template_global_primary(
 void Parser::register_template_global_primary(int context_id,
                                               TextId name_text_id,
                                               Node* node) {
+    name_text_id = template_registration_name_text_id(*this, node,
+                                                      name_text_id);
     register_template_global_primary(
         alias_template_key_in_context(context_id, name_text_id), node);
 }

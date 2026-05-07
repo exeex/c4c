@@ -8,19 +8,22 @@ Current Step Title: Replace Parser Rendered Qualified `TextId` Handoffs
 
 ## Just Finished
 
-Completed Step 2 classification/migration for the remaining
-`types/struct.cpp` production caller of
-`record_member_typedef_key_in_context()`. The record member typedef registration
-path now derives its owner `TextId` only from unqualified record metadata and
-rejects `::`-bearing `unqualified_text_id`, `unqualified_name`, or
-`template_origin_name` spellings instead of passing them into the rendered
-qualified compatibility bridge.
+Completed Step 2 helper-boundary fencing for
+`Parser::alias_template_key_in_context()` and
+`Parser::record_member_typedef_key_in_context()`. The alias-template lookup and
+registration caller family in `types/template.cpp` now preserves structured
+`QualifiedNameRef`/`QualifiedNameKey` authority: resolved visible names continue
+through `VisibleNameResult::key`, qualified-name lookups try the structured
+namespace-context registration key, and template registration overloads use
+node-owned unqualified metadata only when their delegated `TextId` is rendered
+qualified.
 
 ## Suggested Next
 
 Have the supervisor run the matching regression guard for this Step 2 slice,
-then commit the bounded `types/struct.cpp` and `todo.md` update if the before
-and after logs are monotonic.
+then commit the bounded helper-fence, template lookup/registration migration,
+focused parser tests, and `todo.md` update if the before and after logs are
+monotonic.
 
 ## Watchouts
 
@@ -34,17 +37,19 @@ and after logs are monotonic.
 - Do not reintroduce suffix splitting of `template_origin_name`, `name`, or
   other rendered record spellings; qualified rendered origins without structured
   owner metadata should fail to form a sidecar key.
-- The direct `record_member_typedef_key_in_context()` production caller still
-  exists in `types/struct.cpp`, but it is now classified as a safe unqualified
-  registration path because its `record_text_id` source is filtered before the
-  call.
+- The direct `record_member_typedef_key_in_context()` production caller in
+  `types/struct.cpp` is classified as a safe unqualified registration path
+  because its `record_text_id` source is filtered before the call.
+- Template specialization registration must keep an already-unqualified primary
+  name authoritative; node-owned unqualified metadata is only a fallback for
+  rendered or invalid delegated names.
 - `qualified_key_in_context()` still contains the rendered compatibility branch
-  for remaining callers.
+  for caller families outside this helper-fence slice.
 
 ## Proof
 
-`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_member_typedef|cpp_hir_parser_type_base_|cpp_positive_sema_.*member_typedef|cpp_positive_sema_.*dependent_typename|cpp_positive_sema_.*typedef.*alias'; } > test_after.log 2>&1`
+`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_|cpp_positive_sema_.*(template|alias|member_typedef|dependent_typename)'; } > test_after.log 2>&1`
 
 Passed. `test_after.log` is the canonical executor proof log. CTest matched
-and ran 106 delegated parser/member-typedef/dependent-typename tests; all
-passed after the build completed.
+and ran 328 delegated parser/HIR/template/member-typedef/dependent-typename
+tests; all passed after the build completed.
