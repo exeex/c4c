@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/149_template_instantiation_structured_argument_key.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Migrate HIR Late Instantiation Consumers
+Current Step ID: 6
+Current Step Title: Remove or Label Remaining String Mirrors
 
 ## Just Finished
 
@@ -17,9 +17,13 @@ pending-type string is display/compatibility-only.
 
 ## Suggested Next
 
-Next coherent packet: Step 6 cleanup for string helpers and compatibility
-tests that are now display-only, without changing pending-template-type
-semantic identity.
+Execute Step 6: Remove or Label Remaining String Mirrors.
+
+Next coherent packet: clean up string helpers and compatibility tests that are
+now display-only, without changing pending-template-type semantic identity.
+Delete obsolete string-key helpers where semantic callers are gone, or rename
+and label surviving rendered fields as display-only or compatibility mirrors
+with concrete removal criteria recorded here.
 
 ## Watchouts
 
