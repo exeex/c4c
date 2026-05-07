@@ -4751,6 +4751,19 @@ void test_parser_qualified_template_lookup_uses_qn_metadata_over_rendered_text_i
               "qualified template specialization lookup should treat qualifier TextIds as structured qualification without rendered segments");
   expect_true(parser.find_template_global_primary(text_id_only_qn) == ns_global,
               "qualified template global lookup should treat qualifier TextIds as structured qualification without rendered segments");
+
+  c4c::Parser::QualifiedNameRef global_qn = qn;
+  global_qn.is_global_qualified = true;
+  expect_true(parser.find_template_struct_primary(global_qn) == ns_primary,
+              "global-qualified template primary lookup should use the structured absolute owner path before rendered fallback");
+  const std::vector<c4c::Node*>* global_specializations =
+      parser.find_template_struct_specializations(global_qn);
+  expect_true(global_specializations != nullptr &&
+                  global_specializations->size() == 1 &&
+                  (*global_specializations)[0] == ns_specialization,
+              "global-qualified template specialization lookup should use the structured absolute owner path before rendered fallback");
+  expect_true(parser.find_template_global_primary(global_qn) == ns_global,
+              "global-qualified template global lookup should use the structured absolute owner path before rendered fallback");
 }
 
 void test_parser_nttp_default_cache_uses_structured_key_only() {

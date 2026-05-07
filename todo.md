@@ -26,6 +26,11 @@ to prove qualified template primary/specialization/global lookups choose
 `ns::Alias` from `QualifiedNameRef` metadata even when `base_text_id` renders
 as the colliding `other::Alias`, including the case where
 `qualifier_segments` is empty and `qualifier_text_ids` carries the owner.
+Regression fix: global-qualified structured owners such as `::api::holder`
+first try the exact structured key, then fall back to the same absolute owner
+path with `is_global_qualified` cleared when matching namespace-context
+template registrations. This preserves structured owner/base authority without
+returning to rendered qualified `TextId` lookup.
 
 ## Suggested Next
 
@@ -51,8 +56,8 @@ record-member typedef key from owner context plus record `TextId`, likely the
 
 ## Proof
 
-`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_|cpp_positive_sema_.*(template|alias)'; } > test_after.log 2>&1`
+`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_|cpp_positive_sema_.*(template|alias)|cpp_positive_sema_qualified_dependent_typename_global_parse_cpp'; } > test_after.log 2>&1`
 
 Passed. `test_after.log` is the canonical executor proof log. CTest matched
-and ran 253 delegated parser/template tests; all passed after the build
-completed.
+and ran 254 delegated parser/template/regression tests; all passed after the
+build completed.
