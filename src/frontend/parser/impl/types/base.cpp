@@ -314,6 +314,111 @@ nttp_binding_metadata_for_template_params(
     return bindings;
 }
 
+static ParserTemplateParameterBindingKey parser_binding_key_for_template_param(
+    Parser& parser,
+    const QualifiedNameKey& owner_template_key,
+    ParserTemplateParameterKind kind,
+    const char* spelling,
+    TextId spelling_text_id,
+    int parameter_index,
+    bool authoritative_structured_metadata) {
+    ParserTemplateParameterBindingKey key{};
+    key.spelling = spelling;
+    key.spelling_text_id = spelling_text_id;
+    if (key.spelling_text_id == kInvalidText && spelling && spelling[0]) {
+        key.spelling_text_id =
+            parser.parser_text_id_for_token(kInvalidText, spelling);
+    }
+    key.owner_template_key = owner_template_key;
+    key.owner_namespace_context_id = owner_template_key.context_id;
+    key.owner_template_text_id = owner_template_key.base_text_id;
+    key.parameter_index = parameter_index;
+    key.parameter_kind = kind;
+    key.authoritative_structured_metadata =
+        authoritative_structured_metadata;
+    return key;
+}
+
+static bool parser_binding_key_has_domain_metadata(
+    const ParserTemplateParameterBindingKey& key) {
+    return key.owner_template_key.base_text_id != kInvalidText ||
+           key.owner_template_text_id != kInvalidText ||
+           key.parameter_index >= 0;
+}
+
+static bool parser_binding_key_has_authoritative_metadata(
+    const ParserTemplateParameterBindingKey& key) {
+    return key.authoritative_structured_metadata &&
+           (parser_binding_key_has_domain_metadata(key) ||
+            key.spelling_text_id != kInvalidText);
+}
+
+static ParserTemplateBindingSet parser_binding_set_from_metadata(
+    Parser& parser,
+    const QualifiedNameKey& owner_template_key,
+    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+    const std::vector<ParserNttpBindingMetadata>& nttp_binding_metadata) {
+    ParserTemplateBindingSet bindings;
+    bindings.type_bindings.reserve(type_bindings.size());
+    for (const auto& [name, type] : type_bindings) {
+        ParserTemplateTypeBinding binding{};
+        binding.key = parser_binding_key_for_template_param(
+            parser, owner_template_key, ParserTemplateParameterKind::Type,
+            name.c_str(), kInvalidText, -1, false);
+        binding.type = type;
+        bindings.has_structured_type_metadata =
+            bindings.has_structured_type_metadata ||
+            parser_binding_key_has_domain_metadata(binding.key);
+        bindings.type_bindings.push_back(binding);
+    }
+
+    bindings.nttp_bindings.reserve(nttp_bindings.size() +
+                                   nttp_binding_metadata.size());
+    for (const auto& [name, value] : nttp_bindings) {
+        ParserTemplateNttpBinding binding{};
+        binding.key = parser_binding_key_for_template_param(
+            parser, owner_template_key,
+            ParserTemplateParameterKind::NttpValue, name.c_str(),
+            kInvalidText, -1, false);
+        binding.value = value;
+        bindings.nttp_bindings.push_back(binding);
+    }
+
+    for (const ParserNttpBindingMetadata& meta : nttp_binding_metadata) {
+        ParserTemplateNttpBinding binding{};
+        const QualifiedNameKey binding_owner_key =
+            meta.owner_template_key.base_text_id != kInvalidText
+                ? meta.owner_template_key
+                : owner_template_key;
+        binding.key = parser_binding_key_for_template_param(
+            parser, binding_owner_key,
+            ParserTemplateParameterKind::NttpValue, meta.name,
+            meta.name_text_id, meta.parameter_index, true);
+        binding.value = meta.value;
+
+        bool replaced = false;
+        for (ParserTemplateNttpBinding& existing : bindings.nttp_bindings) {
+            const bool same_text =
+                binding.key.spelling_text_id != kInvalidText &&
+                existing.key.spelling_text_id == binding.key.spelling_text_id;
+            const bool same_index =
+                binding.key.parameter_index >= 0 &&
+                existing.key.parameter_index == binding.key.parameter_index;
+            if (same_text || same_index) {
+                existing = binding;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) bindings.nttp_bindings.push_back(binding);
+        bindings.has_structured_nttp_metadata =
+            bindings.has_structured_nttp_metadata ||
+            parser_binding_key_has_authoritative_metadata(binding.key);
+    }
+    return bindings;
+}
+
 static bool has_template_instantiation_dedup_key_for_direct_emit(
     Parser& parser,
     const ParserTemplateState::TemplateInstantiationKey& structured_key) {
@@ -5372,10 +5477,16 @@ TypeSpec Parser::parse_base_type() {
                                     } else if (!actual_args[pi]
                                                     .captured_expr_tokens
                                                     .empty()) {
+                                        const ParserTemplateBindingSet
+                                            prelim_bindings =
+                                                parser_binding_set_from_metadata(
+                                                    *this,
+                                                    primary_template_key,
+                                                    prelim_tb, prelim_nb,
+                                                    prelim_nb_meta);
                                         if (eval_captured_template_arg_expr_tokens(
                                                 tpl_name, actual_args[pi],
-                                                prelim_tb, prelim_nb, &ev,
-                                                &prelim_nb_meta)) {
+                                                prelim_bindings, &ev)) {
                                             actual_args[pi].value = ev;
                                             actual_args[pi].nttp_name =
                                                 nullptr;
@@ -5391,10 +5502,16 @@ TypeSpec Parser::parse_base_type() {
                                         std::vector<Token> expr_toks = lex_template_expr_text(
                                             actual_args[pi].nttp_name + 6,
                                             core_input_state_.source_profile);
+                                        const ParserTemplateBindingSet
+                                            prelim_bindings =
+                                                parser_binding_set_from_metadata(
+                                                    *this,
+                                                    primary_template_key,
+                                                    prelim_tb, prelim_nb,
+                                                    prelim_nb_meta);
                                         if (eval_deferred_nttp_expr_tokens(
                                                 tpl_name, expr_toks,
-                                                prelim_tb, prelim_nb, &ev,
-                                                &prelim_nb_meta)) {
+                                                prelim_bindings, &ev)) {
                                             actual_args[pi].value = ev;
                                             actual_args[pi].nttp_name =
                                                 nullptr;
@@ -5428,10 +5545,13 @@ TypeSpec Parser::parse_base_type() {
                             da.is_value = primary_tpl->template_param_is_nttp[sz];
                             if (da.is_value && primary_tpl->template_param_default_values[sz] == LLONG_MIN) {
                                 long long ev = 0;
+                                const ParserTemplateBindingSet prelim_bindings =
+                                    parser_binding_set_from_metadata(
+                                        *this, primary_template_key, prelim_tb,
+                                        prelim_nb, prelim_nb_meta);
                                 if (eval_deferred_nttp_default(
                                         primary_template_key, sz,
-                                        prelim_tb, prelim_nb, &ev,
-                                        &prelim_nb_meta)) {
+                                        prelim_bindings, &ev)) {
                                     da.value = ev;
                                     actual_args.push_back(da);
                                 } else {
@@ -5493,10 +5613,14 @@ TypeSpec Parser::parse_base_type() {
                                 const QualifiedNameKey primary_template_key =
                                     template_instantiation_name_key_for_direct_emit(
                                         *this, primary_tpl, tpl_name);
-                                if (eval_deferred_nttp_default(
-                                        primary_template_key, i,
+                                const ParserTemplateBindingSet bindings =
+                                    parser_binding_set_from_metadata(
+                                        *this, primary_template_key,
                                         type_bindings, nttp_bindings,
-                                        &eval_val, &nttp_binding_meta)) {
+                                        nttp_binding_meta);
+                                if (eval_deferred_nttp_default(
+                                        primary_template_key, i, bindings,
+                                        &eval_val)) {
                                     arg.value = eval_val;
                                 } else {
                                     // Missing structured default tokens leave
@@ -7166,14 +7290,20 @@ TypeSpec Parser::parse_base_type() {
                                                                         *this,
                                                                         base_primary,
                                                                         origin);
+                                                            const ParserTemplateBindingSet
+                                                                base_prelim_bindings =
+                                                                    parser_binding_set_from_metadata(
+                                                                        *this,
+                                                                        base_template_key,
+                                                                        base_prelim_tb,
+                                                                        base_prelim_nb,
+                                                                        base_prelim_nb_meta);
                                                             bool evaluated_default =
                                                                 eval_deferred_nttp_default(
                                                                     base_template_key,
                                                                     pi,
-                                                                    base_prelim_tb,
-                                                                    base_prelim_nb,
-                                                                    &ev,
-                                                                    &base_prelim_nb_meta);
+                                                                    base_prelim_bindings,
+                                                                    &ev);
                                                             if (!evaluated_default) {
                                                                 can_use_typed_args =
                                                                     false;
@@ -7212,12 +7342,19 @@ TypeSpec Parser::parse_base_type() {
                                                             template_instantiation_name_key_for_direct_emit(
                                                                 *this, base_primary,
                                                                 origin);
+                                                    const ParserTemplateBindingSet
+                                                        base_prelim_bindings =
+                                                            parser_binding_set_from_metadata(
+                                                                *this,
+                                                                base_template_key,
+                                                                base_prelim_tb,
+                                                                base_prelim_nb,
+                                                                base_prelim_nb_meta);
                                                     if (eval_deferred_nttp_default(
                                                             base_template_key,
                                                             bsz,
-                                                            base_prelim_tb, base_prelim_nb,
-                                                            &ev,
-                                                            &base_prelim_nb_meta)) {
+                                                            base_prelim_bindings,
+                                                            &ev)) {
                                                         da.value = ev;
                                                     } else {
                                                         can_use_typed_args = false;
@@ -7338,10 +7475,18 @@ TypeSpec Parser::parse_base_type() {
                                                 const QualifiedNameKey base_template_key =
                                                     template_instantiation_name_key_for_direct_emit(
                                                         *this, base_primary, origin);
+                                                const ParserTemplateBindingSet
+                                                    base_prelim_bindings =
+                                                        parser_binding_set_from_metadata(
+                                                            *this,
+                                                            base_template_key,
+                                                            base_prelim_tb,
+                                                            base_prelim_nb,
+                                                            base_prelim_nb_meta);
                                                 if (!eval_deferred_nttp_default(
                                                         base_template_key, bsz,
-                                                        base_prelim_tb, base_prelim_nb,
-                                                        &ev, &base_prelim_nb_meta)) {
+                                                        base_prelim_bindings,
+                                                        &ev)) {
                                                     can_use_default_only_args = false;
                                                     break;
                                                 }

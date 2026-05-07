@@ -1608,6 +1608,16 @@ bool Parser::eval_captured_template_arg_expr_tokens(
                                           nttp_binding_metadata);
 }
 
+bool Parser::eval_captured_template_arg_expr_tokens(
+    const std::string& tpl_name,
+    const TemplateArgParseResult& arg,
+    const ParserTemplateBindingSet& bindings,
+    long long* out) {
+    if (arg.captured_expr_tokens.empty()) return false;
+    return eval_deferred_nttp_expr_tokens(tpl_name, arg.captured_expr_tokens,
+                                          bindings, out);
+}
+
 bool Parser::eval_deferred_nttp_default(
     const QualifiedNameKey& template_key,
     int param_idx,
@@ -1631,6 +1641,27 @@ bool Parser::eval_deferred_nttp_default(
         parser_template_binding_set_from_legacy(
             *this, template_key, type_bindings, nttp_bindings,
             nttp_binding_metadata);
+    return eval_deferred_nttp_expr_tokens(template_name, structured_it->second,
+                                          bindings, out);
+}
+
+bool Parser::eval_deferred_nttp_default(
+    const QualifiedNameKey& template_key,
+    int param_idx,
+    const ParserTemplateBindingSet& bindings,
+    long long* out) {
+    if (template_key.base_text_id == kInvalidText || param_idx < 0) {
+        return false;
+    }
+    const ParserTemplateState::NttpDefaultExprKey key{template_key, param_idx};
+    auto structured_it =
+        template_state_.nttp_default_expr_tokens_by_key.find(key);
+    if (structured_it == template_state_.nttp_default_expr_tokens_by_key.end()) {
+        return false;
+    }
+
+    const std::string template_name = render_name_in_context(
+        template_key.context_id, template_key.base_text_id);
     return eval_deferred_nttp_expr_tokens(template_name, structured_it->second,
                                           bindings, out);
 }
