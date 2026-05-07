@@ -8,22 +8,26 @@ Current Step Title: Delete or Isolate Compatibility Bridge Helpers
 
 ## Just Finished
 
-Step 4 fenced the parser type/base current-record member-typedef fallback:
-`parse_base_type()` no longer splits `current_struct_tag_text()` spellings such
-as `ns::Owner` to synthesize dependent member-typedef owner authority. The
-fallback now requires an unqualified `current_struct_tag_text_id`; rendered
-owner spelling remains display/no-complete-metadata compatibility only.
+Step 4 audited and fenced declaration/type-struct owner-scope
+`current_struct_tag` restoration paths. The local restore helpers in
+`declarations.cpp` and `types/struct.cpp` no longer restore an invalid-TextId
+rendered qualified fallback such as `ns::Owner` as active current-record owner
+state, while structured unqualified owner TextIds are still restored.
 
-Added parser coverage proving a rendered-qualified current-record owner fails
-closed for unqualified member typedef lookup while the structured owner TextId
-path still resolves the dependent member typedef.
+Out-of-class operator/constructor/declarator owner-scope entry now installs
+only a single unqualified structured owner TextId as `current_struct_tag`; a
+multi-segment rendered owner spelling is cleared instead of becoming semantic
+current-owner authority. Added parser tests for declaration owner-scope restore
+and record-body context restore fail-closed behavior, plus structured restore
+preservation.
 
 ## Suggested Next
 
 Next packet: continue Step 4 by auditing the remaining parser
-type/declaration current-owner fallback references outside this
-`parse_base_type()` member-typedef path, especially `current_struct_tag`
-restoration in declaration/type-struct owner scopes.
+`current_struct_tag_text()` semantic consumers outside the now-fenced
+declaration/type-struct restore paths, especially `typespec_matches_current_struct_local()`,
+record special-member matching, and the type-helper current-record fallback
+references.
 
 ## Watchouts
 
@@ -37,8 +41,9 @@ restoration in declaration/type-struct owner scopes.
   fallback helpers, but the audited current-record member-typedef owner lookup
   no longer derives semantic owner identity from rendered spelling.
 - `current_struct_tag_text()` remains in parser core/declarations/type-struct
-  flows; review those owner-scope paths separately before treating Step 4 as
-  exhausted.
+  flows; the declaration/type-struct restoration paths are fenced, but
+  same-spelling semantic consumers still need separate review before treating
+  Step 4 as exhausted.
 
 ## Proof
 

@@ -167,12 +167,29 @@ struct ParserFunctionParamScopeGuard {
 
 static void restore_current_struct_tag(Parser& parser, TextId text_id,
                                        const std::string& fallback) {
-    const std::string_view tag = parser.parser_text(text_id, fallback);
+    const std::string_view tag =
+        text_id != kInvalidText ? parser.parser_text(text_id, {}) : fallback;
     if (tag.empty()) {
         parser.clear_current_struct_tag();
         return;
     }
+    if (text_id == kInvalidText &&
+        tag.find("::") != std::string_view::npos) {
+        parser.clear_current_struct_tag();
+        return;
+    }
     parser.set_current_struct_tag(text_id, tag);
+}
+
+static bool set_current_struct_tag_from_unqualified_owner(
+    Parser& parser, const std::vector<TextId>& owner_text_ids,
+    const std::vector<std::string>& owner_segments) {
+    if (owner_text_ids.size() != 1 || owner_text_ids.front() == kInvalidText)
+        return false;
+    const std::string fallback =
+        !owner_segments.empty() ? owner_segments.front() : std::string{};
+    parser.set_current_struct_tag(owner_text_ids.front(), fallback);
+    return true;
 }
 
 static void attach_out_of_class_method_owner(
@@ -2773,12 +2790,11 @@ Node* parse_top_level(Parser& parser) {
                 parser.active_context_state_.current_struct_tag_text_id;
             const std::string saved_tag_op_fallback =
                 parser.active_context_state_.current_struct_tag;
-            const TextId qualified_owner_text_id =
-                qualified_owner_text_ids.size() == 1
-                    ? qualified_owner_text_ids.front()
-                    : kInvalidText;
-            parser.set_current_struct_tag(qualified_owner_text_id,
-                                          qualified_owner);
+            if (!set_current_struct_tag_from_unqualified_owner(
+                    parser, qualified_owner_text_ids,
+                    qualified_owner_segments)) {
+                parser.clear_current_struct_tag();
+            }
             if (!parser.template_state_.template_scope_stack.empty() &&
                 parser.template_state_.template_scope_stack.back().kind ==
                     Parser::TemplateScopeKind::FreeFunctionTemplate &&
@@ -2958,12 +2974,11 @@ Node* parse_top_level(Parser& parser) {
                     parser.active_context_state_.current_struct_tag_text_id;
                 const std::string saved_tag_ctor_fallback =
                     parser.active_context_state_.current_struct_tag;
-                const TextId qualified_owner_text_id =
-                    qualified_owner_text_ids.size() == 1
-                        ? qualified_owner_text_ids.front()
-                        : kInvalidText;
-                parser.set_current_struct_tag(qualified_owner_text_id,
-                                              qualified_owner);
+                if (!set_current_struct_tag_from_unqualified_owner(
+                        parser, qualified_owner_text_ids,
+                        qualified_owner_segments)) {
+                    parser.clear_current_struct_tag();
+                }
                 if (!parser.template_state_.template_scope_stack.empty() &&
                     parser.template_state_.template_scope_stack.back().kind ==
                         Parser::TemplateScopeKind::FreeFunctionTemplate &&
@@ -3531,8 +3546,8 @@ top_level_base_ready:
     // Owner-aware scope: if the declarator produced a qualified name like
     // "vector::set_capacity", detect the owner struct and re-enter its scope
     // so member typedefs are visible during parameter/body parsing.
-    // We save/restore current_struct_tag via TextId plus fallback spelling so
-    // all exit paths keep structured context metadata intact.
+    // Save/restore keeps structured current-owner metadata intact without
+    // re-entering rendered qualified spelling as lookup authority.
     std::string qualified_owner_tag;
     auto enter_owner_scope = [&]() {
         if (!parser.is_cpp_mode() || !decl_name) return;
@@ -3540,7 +3555,11 @@ top_level_base_ready:
         auto sep = dn.rfind("::");
         if (sep == std::string::npos || sep == 0) return;
         qualified_owner_tag = dn.substr(0, sep);
-        parser.set_current_struct_tag(kInvalidText, qualified_owner_tag);
+        if (!set_current_struct_tag_from_unqualified_owner(
+                parser, decl_qn.qualifier_text_ids,
+                decl_qn.qualifier_segments)) {
+            parser.clear_current_struct_tag();
+        }
         // If the owner is a known template struct and we have an active
         // FreeFunctionTemplate scope, relabel it as EnclosingClass.
         if (!parser.template_state_.template_scope_stack.empty() &&

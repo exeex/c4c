@@ -311,8 +311,14 @@ struct ParserFunctionParamScopeGuard {
 
 static void restore_current_struct_tag(Parser& parser, TextId text_id,
                                        const std::string& fallback) {
-    const std::string_view tag = parser.parser_text(text_id, fallback);
+    const std::string_view tag =
+        text_id != kInvalidText ? parser.parser_text(text_id, {}) : fallback;
     if (tag.empty()) {
+        parser.clear_current_struct_tag();
+        return;
+    }
+    if (text_id == kInvalidText &&
+        is_rendered_qualified_spelling(tag)) {
         parser.clear_current_struct_tag();
         return;
     }

@@ -1810,6 +1810,39 @@ void test_parser_record_body_context_keeps_visible_template_origin_lookup_local(
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_record_body_context_drops_rendered_current_owner_restore() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  parser.set_current_struct_tag(c4c::kInvalidText, "ns::RenderedOwner");
+  const c4c::TextId inner_text = parser_test_text_id(parser, "Inner");
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::RBrace, "}"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+  c4c::Parser::RecordBodyState body_state;
+  c4c::parse_record_body_with_context(parser, "Inner", inner_text, nullptr,
+                                      nullptr, &body_state);
+  expect_true(parser.current_struct_tag_text().empty(),
+              "record body restore should drop rendered qualified fallback "
+              "current-owner spelling");
+
+  const c4c::TextId owner_text = parser_test_text_id(parser, "Owner");
+  parser.set_current_struct_tag(owner_text, "Owner");
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::RBrace, "}"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+  c4c::parse_record_body_with_context(parser, "Inner", inner_text, nullptr,
+                                      nullptr, &body_state);
+  expect_true(parser.current_struct_tag_text() == "Owner",
+              "record body restore should preserve structured current-owner "
+              "TextId metadata");
+}
+
 void test_parser_visible_type_alias_uses_scope_local_typedef_facade() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2239,6 +2272,62 @@ void test_parser_out_of_class_constructor_registers_structured_global_key() {
   ctor_qn.is_global_qualified = false;
   expect_true(!parser.has_known_fn_name(parser.qualified_name_key(ctor_qn)),
               "out-of-class constructor registration should not fall back to stale non-global rendered spelling when structure is available");
+}
+
+void test_parser_out_of_class_owner_scope_drops_rendered_restore() {
+  c4c::Token seed{};
+
+  {
+    c4c::Arena arena;
+    c4c::TextTable texts;
+    c4c::FileTable files;
+    c4c::Parser parser({}, arena, &texts, &files,
+                       c4c::SourceProfile::CppSubset);
+    parser.set_current_struct_tag(c4c::kInvalidText, "ns::RenderedOwner");
+    parser.replace_token_stream_for_testing({
+        parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Owner"),
+        parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Owner"),
+        parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+        parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+        parser.make_injected_token(seed, c4c::TokenKind::Semi, ";"),
+        parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+    });
+    c4c::Node* fn = parse_top_level(parser);
+    expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION,
+                "out-of-class constructor declaration should parse");
+    expect_true(parser.current_struct_tag_text().empty(),
+                "declaration owner-scope restore should drop rendered "
+                "qualified fallback current-owner spelling");
+  }
+
+  {
+    c4c::Arena arena;
+    c4c::TextTable texts;
+    c4c::FileTable files;
+    c4c::Parser parser({}, arena, &texts, &files,
+                       c4c::SourceProfile::CppSubset);
+    const c4c::TextId owner_text = parser_test_text_id(parser, "SavedOwner");
+    parser.set_current_struct_tag(owner_text, "SavedOwner");
+    parser.replace_token_stream_for_testing({
+        parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Owner"),
+        parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Owner"),
+        parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+        parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+        parser.make_injected_token(seed, c4c::TokenKind::Semi, ";"),
+        parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+    });
+    c4c::Node* fn = parse_top_level(parser);
+    expect_true(fn != nullptr && fn->kind == c4c::NK_FUNCTION,
+                "out-of-class constructor declaration should parse with a "
+                "saved structured current owner");
+    expect_true(parser.current_struct_tag_text() == "SavedOwner",
+                "declaration owner-scope restore should preserve structured "
+                "current-owner TextId metadata");
+  }
 }
 
 void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_value_bridges() {
@@ -9721,6 +9810,7 @@ int main() {
   test_parser_is_typedef_name_uses_local_visible_scope_lookup();
   test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_lookup();
   test_parser_record_body_context_keeps_visible_template_origin_lookup_local();
+  test_parser_record_body_context_drops_rendered_current_owner_restore();
   test_parser_visible_type_alias_uses_scope_local_typedef_facade();
   test_parser_visible_type_alias_resolves_scope_local_target_type();
   test_parser_visible_type_alias_uses_token_text_id_scope_lookup();
@@ -9735,6 +9825,7 @@ int main() {
   test_parser_namespace_using_typedef_import_registers_context_key();
   test_parser_out_of_class_operator_registers_structured_global_key();
   test_parser_out_of_class_constructor_registers_structured_global_key();
+  test_parser_out_of_class_owner_scope_drops_rendered_restore();
   test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_value_bridges();
   test_parser_qualified_type_parse_fallback_requires_structured_type();
   test_parser_qualified_functional_cast_owner_requires_structured_authority();
