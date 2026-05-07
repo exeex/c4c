@@ -317,12 +317,16 @@ struct TemplateInstantiationStep {
             if (module.functions.size() > fn_count_before) {
               auto& new_fn = module.functions.back();
               new_fn.template_origin = tci.source_template;
+              const Node* primary_def =
+                  ct_state ? ct_state->find_template_def(tci.source_template)
+                           : nullptr;
               new_fn.spec_key = nttp_bindings.empty()
                   ? make_specialization_key(
-                      tci.source_template, tdef.template_params, bindings)
+                      tci.source_template, tdef.template_params, bindings,
+                      primary_def)
                   : make_specialization_key(
                       tci.source_template, tdef.template_params, bindings,
-                      nttp_bindings);
+                      nttp_bindings, primary_def);
             }
             // Record in engine-owned state and update module metadata.
             if (ct_state) {

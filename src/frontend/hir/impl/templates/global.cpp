@@ -339,9 +339,10 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
       get_template_param_order(primary, &selected.type_bindings, &selected.nttp_bindings);
   const SpecializationKey spec_key =
       selected.nttp_bindings.empty()
-          ? make_specialization_key(primary->name, param_order, selected.type_bindings)
+          ? make_specialization_key(primary->name, param_order,
+                                    selected.type_bindings, primary)
           : make_specialization_key(primary->name, param_order, selected.type_bindings,
-                                    selected.nttp_bindings);
+                                    selected.nttp_bindings, primary);
 
   TemplateStructInstanceKey instance_key{primary, spec_key};
   auto existing = instantiated_template_globals_.find(instance_key);

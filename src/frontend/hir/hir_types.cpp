@@ -1148,9 +1148,10 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
       const auto param_order =
           get_template_param_order(tpl_fn, &bindings, &nttp_bindings);
       const SpecializationKey spec_key = nttp_bindings.empty()
-          ? make_specialization_key(call->left->name, param_order, bindings)
+          ? make_specialization_key(call->left->name, param_order, bindings,
+                                    tpl_fn)
           : make_specialization_key(call->left->name, param_order, bindings,
-                                    nttp_bindings);
+                                    nttp_bindings, tpl_fn);
       if (const auto* inst_list = registry_.find_instances(call->left->name)) {
         for (const auto& inst : *inst_list) {
           if (inst.spec_key == spec_key) {

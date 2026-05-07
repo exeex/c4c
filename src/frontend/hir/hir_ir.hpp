@@ -739,25 +739,515 @@ struct Block {
   }
 };
 
-/// A stable specialization key for template instantiation identity.
-/// Encodes template name + canonicalized argument types in a deterministic,
-/// serializable format suitable for cross-TU dedup and future JIT caching.
-///
-/// Format: "template_name<param1=type1,param2=type2,...>"
-/// Parameters are sorted alphabetically for determinism.
-struct SpecializationKey {
-  std::string canonical;  // serialized canonical form
+inline size_t specialization_key_hash_mix(size_t h, size_t v) noexcept {
+  return h ^ (v + 0x9e3779b9u + (h << 6) + (h >> 2));
+}
 
-  bool operator==(const SpecializationKey& other) const { return canonical == other.canonical; }
-  bool operator!=(const SpecializationKey& other) const { return canonical != other.canonical; }
-  bool operator<(const SpecializationKey& other) const { return canonical < other.canonical; }
-  bool empty() const { return canonical.empty(); }
+inline size_t specialization_key_text_id_sequence_hash(
+    const TextId* ids, int count) noexcept {
+  size_t h = 0;
+  for (int i = 0; ids && i < count; ++i) {
+    h = specialization_key_hash_mix(h, std::hash<TextId>{}(ids[i]));
+  }
+  return h;
+}
+
+inline bool specialization_key_text_id_sequence_equal(
+    const TextId* a, int a_count, const TextId* b, int b_count) {
+  if (a_count != b_count) return false;
+  for (int i = 0; i < a_count; ++i) {
+    const TextId av = a ? a[i] : kInvalidText;
+    const TextId bv = b ? b[i] : kInvalidText;
+    if (av != bv) return false;
+  }
+  return true;
+}
+
+inline bool specialization_key_text_id_sequence_less(
+    const TextId* a, int a_count, const TextId* b, int b_count) {
+  const int n = std::min(a_count, b_count);
+  for (int i = 0; i < n; ++i) {
+    const TextId av = a ? a[i] : kInvalidText;
+    const TextId bv = b ? b[i] : kInvalidText;
+    if (av != bv) return av < bv;
+  }
+  return a_count < b_count;
+}
+
+inline bool specialization_key_qualified_name_less(
+    const QualifiedNameKey& a, const QualifiedNameKey& b) {
+  if (a.context_id != b.context_id) return a.context_id < b.context_id;
+  if (a.is_global_qualified != b.is_global_qualified) {
+    return a.is_global_qualified < b.is_global_qualified;
+  }
+  if (a.qualifier_path_id != b.qualifier_path_id) {
+    return a.qualifier_path_id < b.qualifier_path_id;
+  }
+  return a.base_text_id < b.base_text_id;
+}
+
+inline size_t specialization_key_qualified_name_hash(
+    const QualifiedNameKey& key) noexcept {
+  size_t h = std::hash<int>{}(key.context_id);
+  h = specialization_key_hash_mix(
+      h, std::hash<bool>{}(key.is_global_qualified));
+  h = specialization_key_hash_mix(
+      h, std::hash<NamePathId>{}(key.qualifier_path_id));
+  h = specialization_key_hash_mix(h, std::hash<TextId>{}(key.base_text_id));
+  return h;
+}
+
+inline bool specialization_key_record_def_equal(const Node* a, const Node* b) {
+  if (a == b) return true;
+  if (!a || !b) return false;
+  if (a->unqualified_text_id != kInvalidText &&
+      b->unqualified_text_id != kInvalidText) {
+    return a->namespace_context_id == b->namespace_context_id &&
+           a->is_global_qualified == b->is_global_qualified &&
+           a->unqualified_text_id == b->unqualified_text_id &&
+           specialization_key_text_id_sequence_equal(
+               a->qualifier_text_ids, a->n_qualifier_segments,
+               b->qualifier_text_ids, b->n_qualifier_segments);
+  }
+  return false;
+}
+
+inline bool specialization_key_record_def_less(const Node* a, const Node* b) {
+  if (a == b) return false;
+  if (!a || !b) return a < b;
+  if (a->unqualified_text_id != kInvalidText &&
+      b->unqualified_text_id != kInvalidText) {
+    if (a->namespace_context_id != b->namespace_context_id) {
+      return a->namespace_context_id < b->namespace_context_id;
+    }
+    if (a->is_global_qualified != b->is_global_qualified) {
+      return a->is_global_qualified < b->is_global_qualified;
+    }
+    if (!specialization_key_text_id_sequence_equal(
+            a->qualifier_text_ids, a->n_qualifier_segments,
+            b->qualifier_text_ids, b->n_qualifier_segments)) {
+      return specialization_key_text_id_sequence_less(
+          a->qualifier_text_ids, a->n_qualifier_segments,
+          b->qualifier_text_ids, b->n_qualifier_segments);
+    }
+    return a->unqualified_text_id < b->unqualified_text_id;
+  }
+  return std::less<const Node*>{}(a, b);
+}
+
+inline size_t specialization_key_record_def_hash(const Node* n) noexcept {
+  if (!n) return 0;
+  if (n->unqualified_text_id != kInvalidText) {
+    size_t h = std::hash<int>{}(n->namespace_context_id);
+    h = specialization_key_hash_mix(h, std::hash<bool>{}(n->is_global_qualified));
+    h = specialization_key_hash_mix(
+        h, specialization_key_text_id_sequence_hash(
+               n->qualifier_text_ids, n->n_qualifier_segments));
+    h = specialization_key_hash_mix(
+        h, std::hash<TextId>{}(n->unqualified_text_id));
+    return h;
+  }
+  return std::hash<const Node*>{}(n);
+}
+
+inline bool specialization_type_identity_equal(
+    const TypeSpec& a, const TypeSpec& b);
+inline bool specialization_type_identity_less(
+    const TypeSpec& a, const TypeSpec& b);
+inline size_t specialization_type_identity_hash(const TypeSpec& ts) noexcept;
+
+inline bool specialization_template_arg_identity_equal(
+    const TemplateArgRef& a, const TemplateArgRef& b) {
+  return a.kind == b.kind &&
+         a.value == b.value &&
+         a.nttp_text_id == b.nttp_text_id &&
+         specialization_type_identity_equal(a.type, b.type);
+}
+
+inline bool specialization_template_arg_identity_less(
+    const TemplateArgRef& a, const TemplateArgRef& b) {
+  if (a.kind != b.kind) return a.kind < b.kind;
+  if (specialization_type_identity_less(a.type, b.type)) return true;
+  if (specialization_type_identity_less(b.type, a.type)) return false;
+  if (a.value != b.value) return a.value < b.value;
+  return a.nttp_text_id < b.nttp_text_id;
+}
+
+inline size_t specialization_template_arg_identity_hash(
+    const TemplateArgRef& arg) noexcept {
+  size_t h = std::hash<uint8_t>{}(static_cast<uint8_t>(arg.kind));
+  h = specialization_key_hash_mix(h, specialization_type_identity_hash(arg.type));
+  h = specialization_key_hash_mix(h, std::hash<long long>{}(arg.value));
+  h = specialization_key_hash_mix(h, std::hash<TextId>{}(arg.nttp_text_id));
+  return h;
+}
+
+inline bool specialization_template_arg_list_equal(
+    const TemplateArgRefList& a, const TemplateArgRefList& b) {
+  if (a.size != b.size) return false;
+  for (int i = 0; i < a.size; ++i) {
+    if (!a.data || !b.data) return a.data == b.data;
+    if (!specialization_template_arg_identity_equal(a.data[i], b.data[i]))
+      return false;
+  }
+  return true;
+}
+
+inline bool specialization_template_arg_list_less(
+    const TemplateArgRefList& a, const TemplateArgRefList& b) {
+  const int n = std::min(a.size, b.size);
+  for (int i = 0; i < n; ++i) {
+    if (!a.data || !b.data) return a.data < b.data;
+    if (specialization_template_arg_identity_less(a.data[i], b.data[i]))
+      return true;
+    if (specialization_template_arg_identity_less(b.data[i], a.data[i]))
+      return false;
+  }
+  return a.size < b.size;
+}
+
+inline size_t specialization_template_arg_list_hash(
+    const TemplateArgRefList& args) noexcept {
+  size_t h = std::hash<int>{}(args.size);
+  for (int i = 0; args.data && i < args.size; ++i) {
+    h = specialization_key_hash_mix(
+        h, specialization_template_arg_identity_hash(args.data[i]));
+  }
+  return h;
+}
+
+inline bool specialization_type_identity_equal(
+    const TypeSpec& a, const TypeSpec& b) {
+  if (a.base != b.base ||
+      a.enum_underlying_base != b.enum_underlying_base ||
+      a.tag_text_id != b.tag_text_id ||
+      a.template_param_owner_namespace_context_id !=
+          b.template_param_owner_namespace_context_id ||
+      a.template_param_owner_text_id != b.template_param_owner_text_id ||
+      a.template_param_index != b.template_param_index ||
+      a.template_param_text_id != b.template_param_text_id ||
+      !specialization_key_record_def_equal(a.record_def, b.record_def) ||
+      !specialization_key_text_id_sequence_equal(
+          a.qualifier_text_ids, a.n_qualifier_segments,
+          b.qualifier_text_ids, b.n_qualifier_segments) ||
+      a.is_global_qualified != b.is_global_qualified ||
+      a.namespace_context_id != b.namespace_context_id ||
+      a.ptr_level != b.ptr_level ||
+      a.is_lvalue_ref != b.is_lvalue_ref ||
+      a.is_rvalue_ref != b.is_rvalue_ref ||
+      a.align_bytes != b.align_bytes ||
+      a.array_size != b.array_size ||
+      a.array_rank != b.array_rank ||
+      a.is_ptr_to_array != b.is_ptr_to_array ||
+      a.inner_rank != b.inner_rank ||
+      a.is_vector != b.is_vector ||
+      a.vector_lanes != b.vector_lanes ||
+      a.vector_bytes != b.vector_bytes ||
+      a.array_size_expr != b.array_size_expr ||
+      a.is_const != b.is_const ||
+      a.is_volatile != b.is_volatile ||
+      a.is_fn_ptr != b.is_fn_ptr ||
+      a.is_packed != b.is_packed ||
+      a.is_noinline != b.is_noinline ||
+      a.is_always_inline != b.is_always_inline ||
+      !(a.tpl_struct_origin_key == b.tpl_struct_origin_key) ||
+      !specialization_template_arg_list_equal(
+          a.tpl_struct_args, b.tpl_struct_args) ||
+      !(a.deferred_member_type_owner_key ==
+        b.deferred_member_type_owner_key) ||
+      a.deferred_member_type_text_id != b.deferred_member_type_text_id) {
+    return false;
+  }
+  for (int i = 0; i < 8; ++i) {
+    if (a.array_dims[i] != b.array_dims[i]) return false;
+  }
+  return true;
+}
+
+inline bool specialization_type_identity_less(
+    const TypeSpec& a, const TypeSpec& b) {
+#define C4C_HIR_SPEC_LESS_FIELD(field) \
+  if (a.field != b.field) return a.field < b.field
+  C4C_HIR_SPEC_LESS_FIELD(base);
+  C4C_HIR_SPEC_LESS_FIELD(enum_underlying_base);
+  C4C_HIR_SPEC_LESS_FIELD(tag_text_id);
+  C4C_HIR_SPEC_LESS_FIELD(template_param_owner_namespace_context_id);
+  C4C_HIR_SPEC_LESS_FIELD(template_param_owner_text_id);
+  C4C_HIR_SPEC_LESS_FIELD(template_param_index);
+  C4C_HIR_SPEC_LESS_FIELD(template_param_text_id);
+#undef C4C_HIR_SPEC_LESS_FIELD
+  if (specialization_key_record_def_less(a.record_def, b.record_def)) return true;
+  if (specialization_key_record_def_less(b.record_def, a.record_def)) return false;
+  if (!specialization_key_text_id_sequence_equal(
+          a.qualifier_text_ids, a.n_qualifier_segments,
+          b.qualifier_text_ids, b.n_qualifier_segments)) {
+    return specialization_key_text_id_sequence_less(
+        a.qualifier_text_ids, a.n_qualifier_segments,
+        b.qualifier_text_ids, b.n_qualifier_segments);
+  }
+#define C4C_HIR_SPEC_LESS_FIELD(field) \
+  if (a.field != b.field) return a.field < b.field
+  C4C_HIR_SPEC_LESS_FIELD(is_global_qualified);
+  C4C_HIR_SPEC_LESS_FIELD(namespace_context_id);
+  C4C_HIR_SPEC_LESS_FIELD(ptr_level);
+  C4C_HIR_SPEC_LESS_FIELD(is_lvalue_ref);
+  C4C_HIR_SPEC_LESS_FIELD(is_rvalue_ref);
+  C4C_HIR_SPEC_LESS_FIELD(align_bytes);
+  C4C_HIR_SPEC_LESS_FIELD(array_size);
+  C4C_HIR_SPEC_LESS_FIELD(array_rank);
+  for (int i = 0; i < 8; ++i) {
+    if (a.array_dims[i] != b.array_dims[i]) return a.array_dims[i] < b.array_dims[i];
+  }
+  C4C_HIR_SPEC_LESS_FIELD(is_ptr_to_array);
+  C4C_HIR_SPEC_LESS_FIELD(inner_rank);
+  C4C_HIR_SPEC_LESS_FIELD(is_vector);
+  C4C_HIR_SPEC_LESS_FIELD(vector_lanes);
+  C4C_HIR_SPEC_LESS_FIELD(vector_bytes);
+  if (a.array_size_expr != b.array_size_expr) {
+    return std::less<Node*>{}(a.array_size_expr, b.array_size_expr);
+  }
+  C4C_HIR_SPEC_LESS_FIELD(is_const);
+  C4C_HIR_SPEC_LESS_FIELD(is_volatile);
+  C4C_HIR_SPEC_LESS_FIELD(is_fn_ptr);
+  C4C_HIR_SPEC_LESS_FIELD(is_packed);
+  C4C_HIR_SPEC_LESS_FIELD(is_noinline);
+  C4C_HIR_SPEC_LESS_FIELD(is_always_inline);
+#undef C4C_HIR_SPEC_LESS_FIELD
+  if (!(a.tpl_struct_origin_key == b.tpl_struct_origin_key)) {
+    return specialization_key_qualified_name_less(
+        a.tpl_struct_origin_key, b.tpl_struct_origin_key);
+  }
+  if (specialization_template_arg_list_less(a.tpl_struct_args, b.tpl_struct_args)) {
+    return true;
+  }
+  if (specialization_template_arg_list_less(b.tpl_struct_args, a.tpl_struct_args)) {
+    return false;
+  }
+  if (!(a.deferred_member_type_owner_key == b.deferred_member_type_owner_key)) {
+    return specialization_key_qualified_name_less(
+        a.deferred_member_type_owner_key, b.deferred_member_type_owner_key);
+  }
+  return a.deferred_member_type_text_id < b.deferred_member_type_text_id;
+}
+
+inline size_t specialization_type_identity_hash(const TypeSpec& ts) noexcept {
+  size_t h = std::hash<uint8_t>{}(static_cast<uint8_t>(ts.base));
+  h = specialization_key_hash_mix(
+      h, std::hash<uint8_t>{}(static_cast<uint8_t>(ts.enum_underlying_base)));
+  h = specialization_key_hash_mix(h, std::hash<TextId>{}(ts.tag_text_id));
+  h = specialization_key_hash_mix(
+      h, std::hash<int>{}(ts.template_param_owner_namespace_context_id));
+  h = specialization_key_hash_mix(
+      h, std::hash<TextId>{}(ts.template_param_owner_text_id));
+  h = specialization_key_hash_mix(
+      h, std::hash<int>{}(ts.template_param_index));
+  h = specialization_key_hash_mix(
+      h, std::hash<TextId>{}(ts.template_param_text_id));
+  h = specialization_key_hash_mix(h, specialization_key_record_def_hash(ts.record_def));
+  h = specialization_key_hash_mix(
+      h, specialization_key_text_id_sequence_hash(
+             ts.qualifier_text_ids, ts.n_qualifier_segments));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_global_qualified));
+  h = specialization_key_hash_mix(h, std::hash<int>{}(ts.namespace_context_id));
+  h = specialization_key_hash_mix(h, std::hash<int>{}(ts.ptr_level));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_lvalue_ref));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_rvalue_ref));
+  h = specialization_key_hash_mix(h, std::hash<int>{}(ts.align_bytes));
+  h = specialization_key_hash_mix(h, std::hash<long long>{}(ts.array_size));
+  h = specialization_key_hash_mix(h, std::hash<int>{}(ts.array_rank));
+  for (int i = 0; i < 8; ++i) {
+    h = specialization_key_hash_mix(h, std::hash<long long>{}(ts.array_dims[i]));
+  }
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_ptr_to_array));
+  h = specialization_key_hash_mix(h, std::hash<int>{}(ts.inner_rank));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_vector));
+  h = specialization_key_hash_mix(h, std::hash<long long>{}(ts.vector_lanes));
+  h = specialization_key_hash_mix(h, std::hash<long long>{}(ts.vector_bytes));
+  h = specialization_key_hash_mix(h, std::hash<Node*>{}(ts.array_size_expr));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_const));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_volatile));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_fn_ptr));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_packed));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_noinline));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_always_inline));
+  h = specialization_key_hash_mix(
+      h, specialization_key_qualified_name_hash(ts.tpl_struct_origin_key));
+  h = specialization_key_hash_mix(
+      h, specialization_template_arg_list_hash(ts.tpl_struct_args));
+  h = specialization_key_hash_mix(
+      h, specialization_key_qualified_name_hash(ts.deferred_member_type_owner_key));
+  h = specialization_key_hash_mix(
+      h, std::hash<TextId>{}(ts.deferred_member_type_text_id));
+  return h;
+}
+
+struct SpecializationOwnerIdentity {
+  const Node* primary_def = nullptr;
+  int namespace_context_id = -1;
+  bool is_global_qualified = false;
+  std::vector<TextId> qualifier_segment_text_ids;
+  TextId declaration_text_id = kInvalidText;
+  std::string display_name;  // display/compatibility; identity only for ownerless fallback keys
+
+  [[nodiscard]] bool has_structured_identity() const {
+    return primary_def || declaration_text_id != kInvalidText ||
+           namespace_context_id >= 0 || !qualifier_segment_text_ids.empty();
+  }
+
+  [[nodiscard]] bool is_ownerless_fallback() const {
+    return !has_structured_identity();
+  }
+
+  [[nodiscard]] bool operator==(const SpecializationOwnerIdentity& other) const {
+    const bool lhs_fallback = is_ownerless_fallback();
+    const bool rhs_fallback = other.is_ownerless_fallback();
+    if (lhs_fallback || rhs_fallback) {
+      return lhs_fallback == rhs_fallback && display_name == other.display_name;
+    }
+    return primary_def == other.primary_def &&
+           namespace_context_id == other.namespace_context_id &&
+           is_global_qualified == other.is_global_qualified &&
+           qualifier_segment_text_ids == other.qualifier_segment_text_ids &&
+           declaration_text_id == other.declaration_text_id;
+  }
+
+  [[nodiscard]] bool operator<(const SpecializationOwnerIdentity& other) const {
+    const bool lhs_fallback = is_ownerless_fallback();
+    const bool rhs_fallback = other.is_ownerless_fallback();
+    if (lhs_fallback || rhs_fallback) {
+      if (lhs_fallback != rhs_fallback) return lhs_fallback < rhs_fallback;
+      return display_name < other.display_name;
+    }
+    if (primary_def != other.primary_def) {
+      return std::less<const Node*>{}(primary_def, other.primary_def);
+    }
+    if (namespace_context_id != other.namespace_context_id) {
+      return namespace_context_id < other.namespace_context_id;
+    }
+    if (is_global_qualified != other.is_global_qualified) {
+      return is_global_qualified < other.is_global_qualified;
+    }
+    if (qualifier_segment_text_ids != other.qualifier_segment_text_ids) {
+      return qualifier_segment_text_ids < other.qualifier_segment_text_ids;
+    }
+    if (declaration_text_id != other.declaration_text_id) {
+      return declaration_text_id < other.declaration_text_id;
+    }
+    return false;
+  }
+};
+
+inline SpecializationOwnerIdentity make_specialization_owner_identity(
+    const std::string& template_name, const Node* primary_def = nullptr) {
+  SpecializationOwnerIdentity owner;
+  owner.primary_def = primary_def;
+  owner.display_name = template_name;
+  if (primary_def) {
+    owner.namespace_context_id = primary_def->namespace_context_id;
+    owner.is_global_qualified = primary_def->is_global_qualified;
+    owner.declaration_text_id = primary_def->unqualified_text_id;
+    if (primary_def->qualifier_text_ids &&
+        primary_def->n_qualifier_segments > 0) {
+      owner.qualifier_segment_text_ids.assign(
+          primary_def->qualifier_text_ids,
+          primary_def->qualifier_text_ids +
+              primary_def->n_qualifier_segments);
+    }
+  }
+  return owner;
+}
+
+enum class SpecializationArgumentKind : uint8_t {
+  Missing,
+  Type,
+  NttpValue,
+};
+
+struct SpecializationArgumentIdentity {
+  std::string parameter_name;
+  SpecializationArgumentKind kind = SpecializationArgumentKind::Missing;
+  TypeSpec type{};
+  long long nttp_value = 0;
+
+  [[nodiscard]] bool operator==(
+      const SpecializationArgumentIdentity& other) const {
+    return parameter_name == other.parameter_name &&
+           kind == other.kind &&
+           nttp_value == other.nttp_value &&
+           specialization_type_identity_equal(type, other.type);
+  }
+
+  [[nodiscard]] bool operator<(
+      const SpecializationArgumentIdentity& other) const {
+    if (parameter_name != other.parameter_name) {
+      return parameter_name < other.parameter_name;
+    }
+    if (kind != other.kind) return kind < other.kind;
+    if (specialization_type_identity_less(type, other.type)) return true;
+    if (specialization_type_identity_less(other.type, type)) return false;
+    return nttp_value < other.nttp_value;
+  }
+};
+
+inline size_t specialization_owner_identity_hash(
+    const SpecializationOwnerIdentity& owner) noexcept {
+  if (owner.is_ownerless_fallback()) {
+    return std::hash<std::string>{}(owner.display_name);
+  }
+  size_t h = std::hash<const Node*>{}(owner.primary_def);
+  h = specialization_key_hash_mix(h, std::hash<int>{}(owner.namespace_context_id));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(owner.is_global_qualified));
+  for (TextId id : owner.qualifier_segment_text_ids) {
+    h = specialization_key_hash_mix(h, std::hash<TextId>{}(id));
+  }
+  h = specialization_key_hash_mix(h, std::hash<TextId>{}(owner.declaration_text_id));
+  return h;
+}
+
+inline size_t specialization_argument_identity_hash(
+    const SpecializationArgumentIdentity& arg) noexcept {
+  size_t h = std::hash<std::string>{}(arg.parameter_name);
+  h = specialization_key_hash_mix(
+      h, std::hash<uint8_t>{}(static_cast<uint8_t>(arg.kind)));
+  h = specialization_key_hash_mix(h, specialization_type_identity_hash(arg.type));
+  h = specialization_key_hash_mix(h, std::hash<long long>{}(arg.nttp_value));
+  return h;
+}
+
+/// A stable specialization key for template instantiation identity.
+///
+/// Equality, ordering, and hashing use the structured owner plus ordered
+/// argument identities. `canonical` is retained as display/compatibility data
+/// for dumps, metadata bridges, and legacy consumers.
+struct SpecializationKey {
+  SpecializationOwnerIdentity owner;
+  std::vector<SpecializationArgumentIdentity> arguments;
+  std::string canonical;  // display/compatibility mirror
+
+  bool operator==(const SpecializationKey& other) const {
+    return owner == other.owner && arguments == other.arguments;
+  }
+  bool operator!=(const SpecializationKey& other) const { return !(*this == other); }
+  bool operator<(const SpecializationKey& other) const {
+    if (owner < other.owner) return true;
+    if (other.owner < owner) return false;
+    return arguments < other.arguments;
+  }
+  bool empty() const {
+    return canonical.empty() && arguments.empty() &&
+           !owner.has_structured_identity();
+  }
 };
 
 /// Hash support for SpecializationKey — enables use in unordered containers.
 struct SpecializationKeyHash {
   std::size_t operator()(const SpecializationKey& k) const noexcept {
-    return std::hash<std::string>{}(k.canonical);
+    size_t h = specialization_owner_identity_hash(k.owner);
+    for (const auto& arg : k.arguments) {
+      h = specialization_key_hash_mix(
+          h, specialization_argument_identity_hash(arg));
+    }
+    return h;
   }
 };
 
@@ -1190,22 +1680,42 @@ inline std::string canonical_type_str(const TypeSpec& ts) {
 inline SpecializationKey make_specialization_key(
     const std::string& template_name,
     const std::vector<std::string>& param_order,
-    const TypeBindings& bindings) {
+    const TypeBindings& bindings,
+    const Node* primary_def) {
   std::string key = template_name + "<";
+  std::vector<SpecializationArgumentIdentity> args;
+  args.reserve(param_order.size());
   bool first = true;
   for (const auto& param : param_order) {
     if (!first) key += ",";
     first = false;
     key += param + "=";
+    SpecializationArgumentIdentity arg;
+    arg.parameter_name = param;
     auto it = bindings.find(param);
     if (it != bindings.end()) {
+      arg.kind = SpecializationArgumentKind::Type;
+      arg.type = it->second;
       key += canonical_type_str(it->second);
     } else {
+      arg.kind = SpecializationArgumentKind::Missing;
       key += "?";
     }
+    args.push_back(std::move(arg));
   }
   key += ">";
-  return SpecializationKey{std::move(key)};
+  SpecializationKey out;
+  out.owner = make_specialization_owner_identity(template_name, primary_def);
+  out.arguments = std::move(args);
+  out.canonical = std::move(key);
+  return out;
+}
+
+inline SpecializationKey make_specialization_key(
+    const std::string& template_name,
+    const std::vector<std::string>& param_order,
+    const TypeBindings& bindings) {
+  return make_specialization_key(template_name, param_order, bindings, nullptr);
 }
 
 /// Overload that includes non-type template parameter values.
@@ -1213,27 +1723,51 @@ inline SpecializationKey make_specialization_key(
     const std::string& template_name,
     const std::vector<std::string>& param_order,
     const TypeBindings& bindings,
-    const NttpBindings& nttp_bindings) {
+    const NttpBindings& nttp_bindings,
+    const Node* primary_def) {
   std::string key = template_name + "<";
+  std::vector<SpecializationArgumentIdentity> args;
+  args.reserve(param_order.size());
   bool first = true;
   for (const auto& param : param_order) {
     if (!first) key += ",";
     first = false;
     key += param + "=";
+    SpecializationArgumentIdentity arg;
+    arg.parameter_name = param;
     auto nttp_it = nttp_bindings.find(param);
     if (nttp_it != nttp_bindings.end()) {
+      arg.kind = SpecializationArgumentKind::NttpValue;
+      arg.nttp_value = nttp_it->second;
       key += std::to_string(nttp_it->second);
     } else {
       auto it = bindings.find(param);
       if (it != bindings.end()) {
+        arg.kind = SpecializationArgumentKind::Type;
+        arg.type = it->second;
         key += canonical_type_str(it->second);
       } else {
+        arg.kind = SpecializationArgumentKind::Missing;
         key += "?";
       }
     }
+    args.push_back(std::move(arg));
   }
   key += ">";
-  return SpecializationKey{std::move(key)};
+  SpecializationKey out;
+  out.owner = make_specialization_owner_identity(template_name, primary_def);
+  out.arguments = std::move(args);
+  out.canonical = std::move(key);
+  return out;
+}
+
+inline SpecializationKey make_specialization_key(
+    const std::string& template_name,
+    const std::vector<std::string>& param_order,
+    const TypeBindings& bindings,
+    const NttpBindings& nttp_bindings) {
+  return make_specialization_key(
+      template_name, param_order, bindings, nttp_bindings, nullptr);
 }
 
 /// A single template instantiation produced during lowering.

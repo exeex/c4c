@@ -881,9 +881,9 @@ class InstantiationRegistry {
     std::string mangled = mangle_template_name(fn_name, bindings,
                                                 nttp_bindings);
     SpecializationKey sk = nttp_bindings.empty()
-        ? make_specialization_key(fn_name, param_order, bindings)
+        ? make_specialization_key(fn_name, param_order, bindings, primary_def)
         : make_specialization_key(fn_name, param_order, bindings,
-                                  nttp_bindings);
+                                  nttp_bindings, primary_def);
     // Semantic dedup uses owner identity when available.
     if (primary_def) {
       FunctionTemplateInstanceKey fk{primary_def, sk};
@@ -1010,18 +1010,39 @@ class InstantiationRegistry {
   }
 
  private:
-  using SemanticKey = std::string;
+  struct SemanticKey {
+    const Node* primary_def = nullptr;
+    SpecializationKey spec_key;
+    std::string fallback;
+
+    bool operator==(const SemanticKey& other) const {
+      if (primary_def || other.primary_def) {
+        return primary_def == other.primary_def && spec_key == other.spec_key;
+      }
+      return fallback == other.fallback;
+    }
+  };
+
+  struct SemanticKeyHash {
+    std::size_t operator()(const SemanticKey& key) const noexcept {
+      if (key.primary_def) {
+        std::size_t h1 = std::hash<const Node*>{}(key.primary_def);
+        std::size_t h2 = SpecializationKeyHash{}(key.spec_key);
+        return h1 ^ (h2 + 0x9e3779b9u + (h1 << 6) + (h1 >> 2));
+      }
+      return std::hash<std::string>{}(key.fallback);
+    }
+  };
 
   static SemanticKey make_semantic_key(
       const std::string& fn_name,
       const std::string& mangled_name,
       const FunctionTemplateInstanceKey* structured_key) {
     if (structured_key && structured_key->primary_def) {
-      return std::to_string(reinterpret_cast<std::uintptr_t>(
-                 structured_key->primary_def)) +
-             "::" + structured_key->spec_key.canonical;
+      return SemanticKey{structured_key->primary_def, structured_key->spec_key,
+                         {}};
     }
-    return fn_name + "::" + mangled_name;
+    return SemanticKey{nullptr, {}, fn_name + "::" + mangled_name};
   }
 
   static bool has_legacy_mangled_entry(
@@ -1039,8 +1060,8 @@ class InstantiationRegistry {
     return false;
   }
 
-  std::unordered_set<SemanticKey> build_semantic_seed_keys() const {
-    std::unordered_set<SemanticKey> keys;
+  std::unordered_set<SemanticKey, SemanticKeyHash> build_semantic_seed_keys() const {
+    std::unordered_set<SemanticKey, SemanticKeyHash> keys;
     for (const auto& [fn_name, seeds] : seed_work_) {
       for (const auto& seed : seeds) {
         const FunctionTemplateInstanceKey fk{seed.primary_def, seed.spec_key};
@@ -1051,8 +1072,8 @@ class InstantiationRegistry {
     return keys;
   }
 
-  std::unordered_set<SemanticKey> build_semantic_instance_keys() const {
-    std::unordered_set<SemanticKey> keys;
+  std::unordered_set<SemanticKey, SemanticKeyHash> build_semantic_instance_keys() const {
+    std::unordered_set<SemanticKey, SemanticKeyHash> keys;
     for (const auto& [fn_name, insts] : instances_) {
       for (const auto& inst : insts) {
         const FunctionTemplateInstanceKey fk{inst.primary_def, inst.spec_key};
@@ -1396,9 +1417,10 @@ struct CompileTimeState {
     hi.nttp_bindings = nttp_bindings;
     hi.nttp_bindings_by_text = nttp_bindings_by_text;
     hi.spec_key = nttp_bindings.empty()
-        ? make_specialization_key(source_template, template_params, bindings)
+        ? make_specialization_key(source_template, template_params, bindings,
+                                  primary_def)
         : make_specialization_key(source_template, template_params, bindings,
-                                  nttp_bindings);
+                                  nttp_bindings, primary_def);
     return hi;
   }
 
@@ -1419,9 +1441,10 @@ struct CompileTimeState {
       hi.nttp_bindings = inst.nttp_bindings;
       hi.nttp_bindings_by_text = inst.nttp_bindings_by_text;
       hi.spec_key = inst.nttp_bindings.empty()
-          ? make_specialization_key(fn_name, template_params, inst.bindings)
+          ? make_specialization_key(fn_name, template_params, inst.bindings,
+                                    inst.primary_def)
           : make_specialization_key(fn_name, template_params, inst.bindings,
-                                    inst.nttp_bindings);
+                                    inst.nttp_bindings, inst.primary_def);
       result.push_back(std::move(hi));
     }
     return result;

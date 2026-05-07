@@ -980,10 +980,10 @@ PreparedTemplateStructInstance Lowerer::prepare_template_struct_instance(
                         : std::string(origin ? origin : "");
   SpecializationKey instance_spec_key = prepared.nttp_bindings.empty()
       ? make_specialization_key(primary_name, primary_param_order,
-                                prepared.type_bindings)
+                                prepared.type_bindings, primary_tpl)
       : make_specialization_key(primary_name, primary_param_order,
                                 prepared.type_bindings,
-                                prepared.nttp_bindings);
+                                prepared.nttp_bindings, primary_tpl);
   prepared.instance_key = TemplateStructInstanceKey{primary_tpl, instance_spec_key};
   return prepared;
 }
