@@ -184,11 +184,13 @@ static void restore_current_struct_tag(Parser& parser, TextId text_id,
 static bool set_current_struct_tag_from_unqualified_owner(
     Parser& parser, const std::vector<TextId>& owner_text_ids,
     const std::vector<std::string>& owner_segments) {
-    if (owner_text_ids.size() != 1 || owner_text_ids.front() == kInvalidText)
+    if (owner_text_ids.empty() || owner_text_ids.back() == kInvalidText)
         return false;
     const std::string fallback =
-        !owner_segments.empty() ? owner_segments.front() : std::string{};
-    parser.set_current_struct_tag(owner_text_ids.front(), fallback);
+        owner_segments.size() == owner_text_ids.size()
+            ? owner_segments.back()
+            : std::string{};
+    parser.set_current_struct_tag(owner_text_ids.back(), fallback);
     return true;
 }
 
@@ -448,7 +450,13 @@ static bool typespec_matches_current_struct_local(Parser& parser,
     const std::string_view rhs = legacy_tag ? std::string_view(legacy_tag)
                                             : std::string_view{};
     if (lhs.empty() || (ts_text_id == kInvalidText && rhs.empty())) return false;
-    if (!rhs.empty() && lhs == rhs) return true;
+    if (!rhs.empty() &&
+        parser.active_context_state_.current_struct_tag_text_id !=
+            kInvalidText &&
+        lhs.find("::") == std::string_view::npos &&
+        rhs.find("::") == std::string_view::npos && lhs == rhs) {
+        return true;
+    }
 
     const Parser::VisibleNameResult lhs_type =
         parser.resolve_visible_type(
@@ -470,6 +478,36 @@ static bool typespec_matches_current_struct_local(Parser& parser,
 static bool typespec_has_structured_record_carrier_local(const TypeSpec& ts) {
     return ts.tag_text_id != kInvalidText || ts.namespace_context_id >= 0 ||
            ts.is_global_qualified || ts.n_qualifier_segments > 0;
+}
+
+static void preserve_current_owner_type_metadata(Parser& parser,
+                                                 TypeSpec& type) {
+    if (!parser.is_cpp_mode()) return;
+    const TextId owner_text_id =
+        parser.active_context_state_.current_struct_tag_text_id;
+    if (owner_text_id == kInvalidText || type.tag_text_id != owner_text_id) {
+        return;
+    }
+    const std::string_view owner = parser.current_struct_tag_text();
+    if (owner.empty() || owner.find("::") != std::string_view::npos) return;
+    if (type.n_qualifier_segments > 0 || type.is_global_qualified) return;
+
+    const int owner_context_id = parser.current_namespace_context_id();
+    if (type.namespace_context_id < 0) {
+        type.namespace_context_id = owner_context_id;
+    }
+    if (!type.record_def) {
+        type.record_def = record_definition_in_context_by_text_id(
+            parser, owner_context_id, owner_text_id);
+    }
+}
+
+static void preserve_current_owner_param_metadata(
+    Parser& parser, std::vector<Node*>& params) {
+    for (Node* param : params) {
+        if (!param) continue;
+        preserve_current_owner_type_metadata(parser, param->type);
+    }
 }
 
 static Node* declaration_record_def_for_c_typedef_target(Parser& parser,
@@ -2850,6 +2888,8 @@ Node* parse_top_level(Parser& parser) {
                 }
             }
             parser.expect(TokenKind::RParen);
+            preserve_current_owner_type_metadata(parser, conv_ts);
+            preserve_current_owner_param_metadata(parser, params);
 
             bool is_const_method = false;
             bool is_lvalue_ref_method = false;
@@ -3007,6 +3047,7 @@ Node* parse_top_level(Parser& parser) {
                     }
                 }
                 parser.expect(TokenKind::RParen);
+                preserve_current_owner_param_metadata(parser, params);
                 parser.skip_exception_spec();
                 parse_optional_cpp20_trailing_requires_clause(parser);
 
@@ -3983,6 +4024,8 @@ top_level_base_ready:
                 parser.skip_until(TokenKind::Semi);
             }
         }
+        preserve_current_owner_type_metadata(parser, ts);
+        preserve_current_owner_param_metadata(parser, params);
 
         // Helper: attach explicit specialization args to NK_FUNCTION.
         auto attach_spec_args = [&](Node* fn) {

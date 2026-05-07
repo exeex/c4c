@@ -2330,6 +2330,69 @@ void test_parser_out_of_class_owner_scope_drops_rendered_restore() {
   }
 }
 
+void test_parser_namespaced_out_of_class_method_preserves_final_owner_text_id() {
+  const char* source =
+      "namespace other {\n"
+      "struct allocator {};\n"
+      "}\n"
+      "namespace eastl {\n"
+      "struct allocator {\n"
+      "  int value;\n"
+      "  allocator& operator=(const allocator& other);\n"
+      "};\n"
+      "allocator& allocator::operator=(const allocator& other) {\n"
+      "  value = other.value;\n"
+      "  return *this;\n"
+      "}\n"
+      "}\n";
+  c4c::Lexer lexer(source, c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* root = parser.parse();
+  expect_true(root && root->kind == c4c::NK_PROGRAM,
+              "namespaced out-of-class method context test should parse");
+
+  c4c::Node* owner = nullptr;
+  c4c::Node* method = nullptr;
+  std::function<void(c4c::Node*)> find_nodes = [&](c4c::Node* node) {
+    if (!node) return;
+    if (node->kind == c4c::NK_STRUCT_DEF && node->name &&
+        std::string_view(node->name) == "eastl::allocator") {
+      owner = node;
+    }
+    if (node->kind == c4c::NK_FUNCTION && node->name &&
+        std::string_view(node->name) == "allocator::operator_assign") {
+      method = node;
+    }
+    for (int i = 0; i < node->n_children; ++i) find_nodes(node->children[i]);
+  };
+  find_nodes(root);
+
+  expect_true(owner != nullptr, "eastl::allocator record should be present");
+  expect_true(method != nullptr,
+              "namespaced out-of-class operator method should be present");
+  expect_true(method->n_params == 1 && method->params && method->params[0],
+              "out-of-class operator method should keep its parameter");
+  expect_true(method->params[0]->type.tag_text_id == owner->unqualified_text_id,
+              "out-of-class owner scope should preserve the final owner TextId "
+              "for unqualified parameter types");
+  expect_true(method->params[0]->type.namespace_context_id ==
+                  owner->namespace_context_id,
+              "out-of-class owner scope should preserve the owner namespace "
+              "context for unqualified parameter types");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "namespaced out-of-class method context should validate using "
+              "structured current-owner metadata" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_value_bridges() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -9826,6 +9889,7 @@ int main() {
   test_parser_out_of_class_operator_registers_structured_global_key();
   test_parser_out_of_class_constructor_registers_structured_global_key();
   test_parser_out_of_class_owner_scope_drops_rendered_restore();
+  test_parser_namespaced_out_of_class_method_preserves_final_owner_text_id();
   test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_value_bridges();
   test_parser_qualified_type_parse_fallback_requires_structured_type();
   test_parser_qualified_functional_cast_owner_requires_structured_authority();
