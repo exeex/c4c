@@ -1,29 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/150_nttp_type_binding_domain_key_contract.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Domain-Identity Tests Or Probes
+Current Step ID: 6
+Current Step Title: Validate And Clean Compatibility Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 5, "Add Domain-Identity Tests Or Probes", added focused HIR NTTP materialization probes for the structured owner/index/kind carrier.
+Step 6, "Validate And Clean Compatibility Boundaries", inventoried the remaining parser/HIR NTTP and type binding compatibility surfaces and made this a todo-only cleanup packet.
 
-- Added a same-owner NTTP carrier probe where `TemplateArgRef::debug_text` and rendered NTTP storage point at a stale value, proving owner/index/kind carrier lookup selects the parameter-domain binding instead.
-- Added an equal-spelling foreign-owner NTTP probe where `Inner<N>` and `Outer<N>` share the same spelling/TextId/debug text; it fails if `TemplateArgRef::nttp_text_id`, `debug_text`, or current-primary rendered-name lookup can recover after the owner/index/kind carrier rejects the ref.
-- The new probe exposed a real Step 5 blocker: typed NTTP materialization rejected the structured foreign-owner carrier, then fell back to string materialization. Tightened that fallback so structured NTTP carrier misses do not reopen rendered/debug/current-primary binding authority.
+- No code cleanup was safe in this packet: the remaining string-pair overloads, HIR string maps, token-spelling comparisons, TextId-only checks, and `debug_text` routes still have active compatibility, display, syntax, or legacy-storage roles.
+- Remaining parser `vector<pair<string, TypeSpec>>` and `vector<pair<string, long long>>` APIs are compatibility overloads for tests and legacy callers. Active parser instantiation paths build `ParserTemplateBindingSet` with owner/index/TextId metadata before deferred NTTP evaluation.
+- Parser token-spelling comparisons remain syntax/compatibility fallback only when authoritative structured metadata is absent; structured NTTP metadata gates the old spelling fallback in deferred expression and captured-argument evaluation.
+- HIR `TypeBindings` and `NttpBindings` remain string-keyed storage. The touched late-substitution paths now enter those maps only after a structured owner/index/kind carrier selects the parameter name, or through explicitly no-carrier legacy compatibility.
+- Remaining `TemplateArgRef::debug_text` uses in touched HIR paths are display rendering, deferred-expression syntax, numeric/bool literal parsing, no-carrier legacy type-argument compatibility, or the bounded foreign-owner pack bridge; Step 5 probes guard against using debug/rendered spelling after a structured NTTP carrier miss.
 
 ## Suggested Next
 
-Next coherent packet: Step 6 should validate remaining compatibility boundaries and decide whether any string-keyed HIR binding adapters can be retired now or must stay as documented compatibility.
+Next coherent packet: supervisor should decide whether to request reviewer acceptance for the completed Step 4-6 route or route plan-owner lifecycle handling for any remaining source-idea follow-up.
 
 ## Watchouts
 
-- Remaining `find_template_typedef_binding` string-map reads are compatibility over legacy `TypeBindings` storage after owner/index matching, or legacy no-structured-carrier fallback; removal condition is migrating `TypeBindings` itself to domain-keyed storage.
-- Remaining `nttp_bindings.find(param_name)` reads in HIR typed NTTP substitution are storage lookups only after owner/index/kind carrier validation; removal condition is migrating `NttpBindings` itself to structured parameter-domain storage.
-- `Args1#0` / `Base#N` pack-series parsing remains compatibility-only for legacy explicit pack maps when no structured carrier exists or when a complete foreign owner/index carrier carries an outer pack binding through nested materialization; removal condition is replacing pack binding storage with structured parameter-domain pack entries.
-- Remaining `debug_text` routes in touched HIR paths are display, deferred-expression syntax, numeric/bool literal parsing, no-carrier legacy type-argument compatibility, or the complete-foreign-carrier pack bridge above; Step 5 coverage now guards against using debug/text/current-primary lookup after a structured NTTP carrier miss.
+- Removal condition for parser string-pair overloads: migrate the remaining direct compatibility tests and any legacy external helper callers to `ParserTemplateBindingSet`, then delete the overloads and the legacy conversion bridge.
+- Removal condition for HIR `TypeBindings` / `NttpBindings` string-map reads: migrate binding storage itself to domain-keyed type and NTTP maps; current structured carriers still project to parameter names because those maps remain the storage contract.
+- Removal condition for `Args1#0` / `Base#N` pack-series parsing: replace pack binding storage with structured parameter-domain pack entries.
+- Removal condition for `debug_text` in HIR materialization/type resolution: keep only diagnostics/display and deferred-expression syntax after structured pack and deferred NTTP expression carriers no longer need string syntax transport.
+- `test_baseline.log` and `test_before.log` existed at the root alongside the required `test_after.log`; this packet did not touch or create them.
 
 ## Proof
 
