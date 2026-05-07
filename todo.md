@@ -8,21 +8,21 @@ Current Step Title: Migrate HIR Late Substitution
 
 ## Just Finished
 
-Completed `plan.md` Step 4, "Migrate HIR Late Substitution", for HIR member-typedef/type-resolution template argument rebinding.
+Completed `plan.md` Step 4, "Migrate HIR Late Substitution", for HIR typed NTTP argument materialization.
 
-- Added a structured TypeSpec carrier lookup in HIR template argument materialization that resolves owner/index/TextId metadata through the current primary template parameter table.
-- Changed `find_bound_type_for_param_ref` so structured carriers bind only through that primary-template domain lookup, then fail without consulting debug-name or legacy tag strings.
-- Changed type-pack lookup to expand structured pack parameter refs through the same primary-template parameter name and reserve debug-name/string candidates for unstructured legacy TypeSpec inputs.
+- Added a structured `nttp_text_id` lookup in `HirTemplateArgMaterializer::resolve_explicit_typed_arg` that maps TextId carriers only through the current primary template parameter table before consulting NTTP bindings.
+- Kept `debug_text` lookup in `nttp_bindings` available only for unstructured legacy value refs with no `nttp_text_id`.
+- Made structured TextId misses avoid string binding lookup and either use literal value handling or fail closed.
 
 ## Suggested Next
 
-Next coherent packet: supervisor review of the Step 4 materialization/type-resolution slices together, with attention to whether any remaining HIR late-substitution debug-text authority is outside the already migrated paths.
+Next coherent packet: supervisor review of the completed Step 4 late-substitution materialization/type-resolution slices, with attention to whether any remaining HIR NTTP debug-text authority is outside the migrated paths.
 
 ## Watchouts
 
-- `type_param_name_for_ref` intentionally rejects NTTP parameters for type binding and treats owner mismatch as structured lookup failure, not as permission to try debug text.
-- `tag_text_id` is treated as structured carrier metadata only for `TB_TYPEDEF` parameter refs in these helpers; unstructured legacy fallbacks remain available only when no structured carrier fields are present.
-- No focused test was added because the delegated `cpp_hir_` subset already covers the materialization regressions hit by this slice without expectation downgrades.
+- `find_bound_nttp_for_text_id` resolves only current-primary NTTP parameters; non-NTTP TextId matches, missing parameter-table entries, and missing bindings do not fall through to rendered spelling lookup.
+- The legacy `debug_text` path still exists for older unstructured `TemplateArgRef` producers where `nttp_text_id == kInvalidText`.
+- No focused test was added because the delegated `cpp_hir_` subset passed against the semantic materialization change without expectation downgrades.
 
 ## Proof
 

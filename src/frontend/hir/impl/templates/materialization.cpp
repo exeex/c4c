@@ -160,6 +160,7 @@ struct HirTemplateArgMaterializer {
   std::vector<std::pair<std::string, long long>> merged_nttp_bindings() const;
   bool has_type_binding(const char* param_name) const;
   bool has_nttp_binding(const char* param_name) const;
+  bool find_bound_nttp_for_text_id(TextId text_id, long long* out_value) const;
   bool template_param_owner_matches_primary(const TypeSpec& ts) const;
   bool has_structured_type_param_carrier(const TypeSpec& ts) const;
   const char* type_param_name_for_ref(const TypeSpec& ts) const;
@@ -232,6 +233,35 @@ bool HirTemplateArgMaterializer::has_type_binding(const char* param_name) const 
 bool HirTemplateArgMaterializer::has_nttp_binding(const char* param_name) const {
   for (const auto& [name, _] : result.nttp_bindings) {
     if (name == param_name) return true;
+  }
+  return false;
+}
+
+bool HirTemplateArgMaterializer::find_bound_nttp_for_text_id(
+    TextId text_id, long long* out_value) const {
+  if (text_id == kInvalidText || !out_value || !primary_tpl ||
+      !primary_tpl->template_param_name_text_ids ||
+      !primary_tpl->template_param_names) {
+    return false;
+  }
+  for (int i = 0; i < primary_tpl->n_template_params; ++i) {
+    if (primary_tpl->template_param_name_text_ids[i] != text_id) continue;
+    if (!primary_tpl->template_param_is_nttp ||
+        !primary_tpl->template_param_is_nttp[i]) {
+      return false;
+    }
+    const char* param_name = primary_tpl->template_param_names[i];
+    if (!param_name) return false;
+    for (const auto& [name, value] : result.nttp_bindings) {
+      if (name == param_name) {
+        *out_value = value;
+        return true;
+      }
+    }
+    auto it = nttp_bindings.find(param_name);
+    if (it == nttp_bindings.end()) return false;
+    *out_value = it->second;
+    return true;
   }
   return false;
 }
@@ -698,6 +728,27 @@ bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
       }
       out_arg->value = eval_val;
       return true;
+    }
+    if (ref.nttp_text_id != kInvalidText) {
+      long long bound_val = 0;
+      if (find_bound_nttp_for_text_id(ref.nttp_text_id, &bound_val)) {
+        out_arg->value = bound_val;
+        return true;
+      }
+      if (ref.value != 0 || debug_text.empty()) {
+        out_arg->value = ref.value;
+        return true;
+      }
+      if (debug_text == "true" || debug_text == "false") {
+        out_arg->value = (debug_text == "true") ? 1 : 0;
+        return true;
+      }
+      try {
+        out_arg->value = std::stoll(debug_text);
+        return true;
+      } catch (...) {
+        return false;
+      }
     }
     if (ref.value != 0 || debug_text.empty()) {
       out_arg->value = ref.value;
