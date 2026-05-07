@@ -19,6 +19,31 @@ const char* typespec_legacy_tag_if_present(const TypeSpec&, long) {
   return nullptr;
 }
 
+bool typespec_has_structured_template_arg_carrier(const TypeSpec& ts) {
+  return ts.base == TB_TYPEDEF ||
+         has_concrete_type(ts) ||
+         ts.record_def ||
+         ts.tag_text_id != kInvalidText ||
+         ts.template_param_text_id != kInvalidText ||
+         ts.template_param_index >= 0 ||
+         ts.template_param_owner_text_id != kInvalidText ||
+         ts.template_param_owner_namespace_context_id >= 0 ||
+         ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+         (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) ||
+         ts.deferred_member_type_text_id != kInvalidText ||
+         ts.deferred_member_type_owner_key.base_text_id != kInvalidText;
+}
+
+bool template_arg_has_structured_binding_carrier(const TemplateArgRef& arg) {
+  if (arg.kind == TemplateArgKind::Value) {
+    return arg.nttp_text_id != kInvalidText;
+  }
+  if (arg.kind == TemplateArgKind::Type) {
+    return typespec_has_structured_template_arg_carrier(arg.type);
+  }
+  return false;
+}
+
 bool template_param_owner_matches(const TypeSpec& ts, const Node* template_owner) {
   if (!template_owner || ts.template_param_owner_text_id == kInvalidText ||
       template_owner->unqualified_text_id == kInvalidText) {
@@ -102,6 +127,49 @@ const TypeSpec* find_template_typedef_binding(
   return it == type_bindings.end() ? nullptr : &it->second;
 }
 
+std::optional<long long> find_template_nttp_binding(
+    const TemplateArgRef& arg,
+    const NttpBindings& nttp_bindings,
+    const Node* template_owner) {
+  if (arg.kind != TemplateArgKind::Value) return std::nullopt;
+
+  auto binding_for_param_text = [&](TextId text_id) -> std::optional<long long> {
+    if (text_id == kInvalidText || !template_owner ||
+        !template_owner->template_param_name_text_ids ||
+        !template_owner->template_param_names) {
+      return std::nullopt;
+    }
+    for (int i = 0; i < template_owner->n_template_params; ++i) {
+      if (template_owner->template_param_name_text_ids[i] != text_id) continue;
+      if (!template_owner->template_param_is_nttp ||
+          !template_owner->template_param_is_nttp[i]) {
+        return std::nullopt;
+      }
+      const char* param_name = template_owner->template_param_names[i];
+      if (!param_name) return std::nullopt;
+      auto it = nttp_bindings.find(param_name);
+      if (it != nttp_bindings.end()) return it->second;
+    }
+    return std::nullopt;
+  };
+
+  if (std::optional<long long> bound =
+          binding_for_param_text(arg.nttp_text_id)) {
+    return bound;
+  }
+  if (arg.nttp_text_id != kInvalidText) {
+    return std::nullopt;
+  }
+
+  // Compatibility fallback for legacy TemplateArgRef producers that only
+  // carried the forwarded NTTP parameter spelling in debug_text.
+  if (arg.value == 0 && arg.debug_text && arg.debug_text[0]) {
+    auto it = nttp_bindings.find(arg.debug_text);
+    if (it != nttp_bindings.end()) return it->second;
+  }
+  return std::nullopt;
+}
+
 void apply_template_typedef_binding(TypeSpec& target, const TypeSpec& concrete) {
   const int outer_ptr_level = target.ptr_level;
   const bool outer_lref = target.is_lvalue_ref;
@@ -118,16 +186,19 @@ void apply_template_typedef_binding(TypeSpec& target, const TypeSpec& concrete) 
 }
 
 std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
-  if (arg.kind == TemplateArgKind::Value && arg.value == 0 &&
-      arg.debug_text && arg.debug_text[0]) {
-    return arg.debug_text;
+  if (arg.kind == TemplateArgKind::Value) {
+    if (arg.value != 0 || arg.nttp_text_id != kInvalidText) {
+      return std::to_string(arg.value);
+    }
+    if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
+    return std::to_string(arg.value);
   }
-  if (arg.kind == TemplateArgKind::Value) return std::to_string(arg.value);
-  if (arg.kind == TemplateArgKind::Type &&
-      (has_concrete_type(arg.type) || arg.type.tpl_struct_origin)) {
-    return encode_template_type_arg_ref_hir(arg.type);
+  if (arg.kind == TemplateArgKind::Type) {
+    if (typespec_has_structured_template_arg_carrier(arg.type)) {
+      return encode_template_type_arg_ref_hir(arg.type);
+    }
+    if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
   }
-  if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
   return {};
 }
 
@@ -239,7 +310,10 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
             dst_arg.type = apply_bindings(
                 src_arg.type, type_bindings, nttp_bindings, binding_owner,
                 &nested_substituted);
-          } else if (src_arg.debug_text && src_arg.debug_text[0]) {
+          } else if (!template_arg_has_structured_binding_carrier(src_arg) &&
+                     src_arg.debug_text && src_arg.debug_text[0]) {
+            // Compatibility fallback for legacy TemplateArgRef type args that
+            // predate TypeSpec template-param carriers.
             auto tit = type_bindings.find(src_arg.debug_text);
             if (tit != type_bindings.end()) {
               dst_arg.type = tit->second;
@@ -255,16 +329,15 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
               debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
         } else {
           bool rebound_value = false;
-          if (src_arg.value == 0 && src_arg.debug_text && src_arg.debug_text[0]) {
-            auto nit = nttp_bindings.find(src_arg.debug_text);
-            if (nit != nttp_bindings.end()) {
-              dst_arg.value = nit->second;
-              rebound_value = true;
-            }
+          if (std::optional<long long> bound_value =
+                  find_template_nttp_binding(
+                      src_arg, nttp_bindings, binding_owner)) {
+            dst_arg.value = *bound_value;
+            rebound_value = true;
           }
           const std::string debug_text =
-              (!rebound_value && src_arg.value == 0 && src_arg.debug_text &&
-               src_arg.debug_text[0])
+              (!rebound_value && !template_arg_has_structured_binding_carrier(src_arg) &&
+               src_arg.value == 0 && src_arg.debug_text && src_arg.debug_text[0])
                   ? std::string(src_arg.debug_text)
                   : std::to_string(dst_arg.value);
           dst_arg.debug_text =
@@ -283,55 +356,75 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
       std::vector<std::string> updated_refs;
       updated_refs.reserve(ts.tpl_struct_args.size);
       for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
-        std::string part = encode_template_arg_ref_hir(ts.tpl_struct_args.data[i]);
-        auto tit = type_bindings.find(part);
-        if (tit != type_bindings.end()) {
-          part = encode_template_type_arg_ref_hir(tit->second);
-        } else {
-          std::string base_part = part;
-          TypeSpec suffix_ts{};
-          suffix_ts.array_size = -1;
-          suffix_ts.inner_rank = -1;
-          while (base_part.size() >= 4 &&
-                 base_part.compare(base_part.size() - 4, 4, "_ptr") == 0) {
-            suffix_ts.ptr_level++;
-            base_part.resize(base_part.size() - 4);
+        const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
+        std::string part = encode_template_arg_ref_hir(arg);
+        if (arg.kind == TemplateArgKind::Type) {
+          bool nested_substituted = false;
+          if (arg.type.base == TB_TYPEDEF || has_concrete_type(arg.type) ||
+              arg.type.tpl_struct_origin) {
+            TypeSpec rebound = apply_bindings(
+                arg.type, type_bindings, nttp_bindings, binding_owner,
+                &nested_substituted);
+            if (nested_substituted || has_concrete_type(rebound) ||
+                rebound.tpl_struct_origin) {
+              part = encode_template_type_arg_ref_hir(rebound);
+            }
           }
-          if (base_part.size() >= 5 &&
-              base_part.compare(base_part.size() - 5, 5, "_rref") == 0) {
-            suffix_ts.is_rvalue_ref = true;
-            base_part.resize(base_part.size() - 5);
-          } else if (base_part.size() >= 4 &&
-                     base_part.compare(base_part.size() - 4, 4, "_ref") == 0) {
-            suffix_ts.is_lvalue_ref = true;
-            base_part.resize(base_part.size() - 4);
-          }
-          if (base_part.size() >= 6 &&
-              base_part.compare(0, 6, "const_") == 0) {
-            suffix_ts.is_const = true;
-            base_part.erase(0, 6);
-          }
-          if (base_part.size() >= 9 &&
-              base_part.compare(0, 9, "volatile_") == 0) {
-            suffix_ts.is_volatile = true;
-            base_part.erase(0, 9);
-          }
-          auto nested_tit = type_bindings.find(base_part);
-          if (nested_tit != type_bindings.end()) {
-            TypeSpec rebound = nested_tit->second;
-            rebound.ptr_level += suffix_ts.ptr_level;
-            rebound.is_lvalue_ref =
-                rebound.is_lvalue_ref || suffix_ts.is_lvalue_ref;
-            rebound.is_rvalue_ref =
-                !rebound.is_lvalue_ref &&
-                (rebound.is_rvalue_ref || suffix_ts.is_rvalue_ref);
-            rebound.is_const = rebound.is_const || suffix_ts.is_const;
-            rebound.is_volatile =
-                rebound.is_volatile || suffix_ts.is_volatile;
-            part = encode_template_type_arg_ref_hir(rebound);
+        } else if (std::optional<long long> bound_value =
+                       find_template_nttp_binding(
+                           arg, nttp_bindings, binding_owner)) {
+          part = std::to_string(*bound_value);
+        }
+        if (!template_arg_has_structured_binding_carrier(arg)) {
+          auto tit = type_bindings.find(part);
+          if (tit != type_bindings.end()) {
+            part = encode_template_type_arg_ref_hir(tit->second);
           } else {
-            auto nit = nttp_bindings.find(part);
-            if (nit != nttp_bindings.end()) part = std::to_string(nit->second);
+            std::string base_part = part;
+            TypeSpec suffix_ts{};
+            suffix_ts.array_size = -1;
+            suffix_ts.inner_rank = -1;
+            while (base_part.size() >= 4 &&
+                   base_part.compare(base_part.size() - 4, 4, "_ptr") == 0) {
+              suffix_ts.ptr_level++;
+              base_part.resize(base_part.size() - 4);
+            }
+            if (base_part.size() >= 5 &&
+                base_part.compare(base_part.size() - 5, 5, "_rref") == 0) {
+              suffix_ts.is_rvalue_ref = true;
+              base_part.resize(base_part.size() - 5);
+            } else if (base_part.size() >= 4 &&
+                       base_part.compare(base_part.size() - 4, 4, "_ref") == 0) {
+              suffix_ts.is_lvalue_ref = true;
+              base_part.resize(base_part.size() - 4);
+            }
+            if (base_part.size() >= 6 &&
+                base_part.compare(0, 6, "const_") == 0) {
+              suffix_ts.is_const = true;
+              base_part.erase(0, 6);
+            }
+            if (base_part.size() >= 9 &&
+                base_part.compare(0, 9, "volatile_") == 0) {
+              suffix_ts.is_volatile = true;
+              base_part.erase(0, 9);
+            }
+            auto nested_tit = type_bindings.find(base_part);
+            if (nested_tit != type_bindings.end()) {
+              TypeSpec rebound = nested_tit->second;
+              rebound.ptr_level += suffix_ts.ptr_level;
+              rebound.is_lvalue_ref =
+                  rebound.is_lvalue_ref || suffix_ts.is_lvalue_ref;
+              rebound.is_rvalue_ref =
+                  !rebound.is_lvalue_ref &&
+                  (rebound.is_rvalue_ref || suffix_ts.is_rvalue_ref);
+              rebound.is_const = rebound.is_const || suffix_ts.is_const;
+              rebound.is_volatile =
+                  rebound.is_volatile || suffix_ts.is_volatile;
+              part = encode_template_type_arg_ref_hir(rebound);
+            } else {
+              auto nit = nttp_bindings.find(part);
+              if (nit != nttp_bindings.end()) part = std::to_string(nit->second);
+            }
           }
         }
         updated_refs.push_back(part);

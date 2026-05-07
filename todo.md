@@ -1,36 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/150_nttp_type_binding_domain_key_contract.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate Parser Deferred Evaluation APIs
+Current Step ID: 4
+Current Step Title: Migrate HIR Late Substitution
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3, "Migrate Parser Deferred Evaluation APIs", for parser deferred NTTP evaluation tests and compatibility wrappers.
+Completed `plan.md` Step 4, "Migrate HIR Late Substitution", for HIR member-typedef/type-resolution template argument rebinding.
 
-- Migrated non-compatibility deferred NTTP parser tests to call the structured `ParserTemplateBindingSet` overloads directly.
-- Added explicit legacy string-pair compatibility coverage in `test_parser_deferred_nttp_legacy_string_pair_overloads_are_compatibility`.
-- Marked the parser legacy string-pair overload bridge as compatibility-only in the API/implementation comments.
+- Added structured carrier checks for HIR `TemplateArgRef` rebinding so TypeSpec and NTTP TextId metadata are authoritative before any string fallback.
+- Reworked late member-typedef substitution to resolve forwarded NTTP values only when structured `nttp_text_id` matches the current template owner's NTTP parameter table, and to gate `debug_text` binding lookups behind legacy-unstructured checks.
+- Kept generated `debug_text` assignment as display text while preventing structured template args from using `debug_text` as binding authority.
 
 ## Suggested Next
 
-Next coherent packet: audit whether any remaining parser template-binding wrappers outside deferred NTTP evaluation still need compatibility-only tests or can be retired in a separate bounded slice.
+Next coherent packet: audit adjacent HIR template materialization/struct-instantiation paths for remaining `TemplateArgRef::debug_text` authority and migrate any structured-carrier cases with the same compatibility boundary.
 
 ## Watchouts
 
-- The retained legacy string-pair overload use is intentional compatibility coverage only; ordinary parser tests now pass structured binding sets.
-- TextId-only test helper bindings are structured-overload inputs but remain compatibility/non-authoritative entries; tests needing semantic authority must build owner/index metadata locally.
-- Empty binding cases use `ParserTemplateBindingSet{}` to avoid exercising the legacy overloads accidentally.
-- HIR files and production parser paths already using `ParserTemplateBindingSet` were not touched.
+- The retained `debug_text` binding lookups in `type_resolution.cpp` are now compatibility fallbacks for unstructured legacy `TemplateArgRef` inputs.
+- TextId-only NTTP args are spelling identity, not semantic binding authority; NTTP rebinding uses the existing `NttpBindings` name map only after the current template owner table matches the TextId to an NTTP parameter name.
+- `clang-format` was not available in this environment, so formatting was kept manually aligned with the surrounding file.
 
 ## Proof
 
 Ran the delegated proof exactly:
 
 ```bash
-(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests)$') > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_') > test_after.log 2>&1
 ```
 
-Result: passed. The build completed and both delegated parser test binaries passed. Proof log: `test_after.log`.
+Result: passed. The build completed and all 108 matching `cpp_hir_` tests passed. Proof log: `test_after.log`.
