@@ -908,25 +908,38 @@ void Lowerer::realize_template_struct(
       ts.tpl_struct_origin_key.base_text_id == kInvalidText) {
     return;
   }
+  primary_tpl = canonical_template_struct_primary(ts, primary_tpl);
   const char* origin = ts.tpl_struct_origin;
   if (!primary_tpl) {
     if (origin) {
       const Node* rendered_primary = find_template_struct_primary(origin);
       bool reject_rendered_primary = false;
-      if (rendered_primary &&
-          (!ts.tpl_struct_args.data || ts.tpl_struct_args.size <= 0)) {
+      if (rendered_primary) {
         const std::optional<HirRecordOwnerKey> rendered_key =
             make_struct_def_node_owner_key(rendered_primary);
+        const bool has_template_args =
+            ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0;
+        const bool record_owner_is_template_instance =
+            ts.record_def && ts.record_def->template_origin_name &&
+            ts.record_def->template_origin_name[0];
         if (rendered_key) {
           if (auto origin_key = template_origin_owner_key_hir(ts);
               origin_key && *rendered_key != *origin_key) {
-            reject_rendered_primary = true;
+            const bool stale_arg_origin =
+                has_template_args &&
+                rendered_primary->unqualified_text_id !=
+                    ts.tpl_struct_origin_key.base_text_id;
+            if (!has_template_args || stale_arg_origin) {
+              reject_rendered_primary = true;
+            }
           }
           if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF &&
               ts.record_def->n_template_params > 0) {
-            if (auto record_key = make_struct_def_node_owner_key(ts.record_def);
-                record_key && *rendered_key != *record_key) {
-              reject_rendered_primary = true;
+            if (!has_template_args || !record_owner_is_template_instance) {
+              if (auto record_key = make_struct_def_node_owner_key(ts.record_def);
+                  record_key && *rendered_key != *record_key) {
+                reject_rendered_primary = true;
+              }
             }
           }
         }

@@ -300,6 +300,52 @@ void test_realize_template_struct_origin_key_miss_rejects_stale_rendered_primary
               "blocked realization should leave the unresolved rendered origin intact");
 }
 
+void test_realize_template_struct_origin_key_miss_rejects_stale_rendered_primary_with_args() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text =
+      texts.intern("StaleRealizePrimaryWithArgs");
+  const c4c::TextId missing_text =
+      texts.intern("MissingRealizePrimaryWithArgs");
+
+  c4c::Node stale_primary =
+      make_primary("StaleRealizePrimaryWithArgs", stale_text, 0);
+  configure_one_type_param(stale_primary);
+  lowerer.register_template_struct_primary("StaleRealizePrimaryWithArgs",
+                                           &stale_primary);
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+
+  c4c::TemplateArgRef arg{};
+  arg.kind = c4c::TemplateArgKind::Type;
+  arg.type = int_ts;
+  c4c::TemplateArgRef args[] = {arg};
+
+  c4c::TypeSpec ts =
+      make_origin_type("StaleRealizePrimaryWithArgs",
+                       "StaleRealizePrimaryWithArgs",
+                       missing_text, stale_text, 0);
+  ts.tpl_struct_args = c4c::TemplateArgRefList{args, 1};
+
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  lowerer.realize_template_struct(ts, nullptr, type_bindings, nttp_bindings);
+
+  expect_true(module.struct_defs.empty(),
+              "realize_template_struct must not instantiate a stale rendered primary with args after complete origin-key miss");
+  expect_true(ts.tpl_struct_origin &&
+                  std::string(ts.tpl_struct_origin) ==
+                      "StaleRealizePrimaryWithArgs",
+              "blocked argument realization should leave the unresolved rendered origin intact");
+}
+
 void test_realize_template_struct_record_owner_miss_rejects_stale_rendered_primary() {
   c4c::hir::Module module;
   module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
@@ -338,6 +384,60 @@ void test_realize_template_struct_record_owner_miss_rejects_stale_rendered_prima
                   std::string(ts.tpl_struct_origin) ==
                       "StaleRecordRealizePrimary",
               "blocked record-owner realization should leave the unresolved rendered origin intact");
+}
+
+void test_realize_template_struct_record_owner_miss_rejects_stale_rendered_primary_with_args() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId stale_text =
+      texts.intern("StaleRecordRealizePrimaryWithArgs");
+  const c4c::TextId missing_text =
+      texts.intern("MissingRecordRealizePrimaryWithArgs");
+
+  c4c::Node stale_primary =
+      make_primary("StaleRecordRealizePrimaryWithArgs", stale_text, 0);
+  configure_one_type_param(stale_primary);
+  lowerer.register_template_struct_primary(
+      "StaleRecordRealizePrimaryWithArgs", &stale_primary);
+
+  c4c::Node missing_record =
+      make_primary("MissingRecordRealizePrimaryWithArgs", missing_text, 11);
+  configure_one_type_param(missing_record);
+
+  c4c::TypeSpec int_ts{};
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  int_ts.base = c4c::TB_INT;
+
+  c4c::TemplateArgRef arg{};
+  arg.kind = c4c::TemplateArgKind::Type;
+  arg.type = int_ts;
+  c4c::TemplateArgRef args[] = {arg};
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  ts.base = c4c::TB_STRUCT;
+  ts.tpl_struct_origin = "StaleRecordRealizePrimaryWithArgs";
+  ts.tpl_struct_args = c4c::TemplateArgRefList{args, 1};
+  set_legacy_tag_if_present(ts, "StaleRecordRealizePrimaryWithArgs", 0);
+  ts.tag_text_id = stale_text;
+  ts.record_def = &missing_record;
+
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  lowerer.realize_template_struct(ts, nullptr, type_bindings, nttp_bindings);
+
+  expect_true(module.struct_defs.empty(),
+              "realize_template_struct must not instantiate a stale rendered primary with args after record-owner miss");
+  expect_true(ts.tpl_struct_origin &&
+                  std::string(ts.tpl_struct_origin) ==
+                      "StaleRecordRealizePrimaryWithArgs",
+              "blocked record-owner argument realization should leave the unresolved rendered origin intact");
 }
 
 void test_realize_template_struct_no_metadata_keeps_exact_rendered_compatibility() {
@@ -391,7 +491,9 @@ int main() {
   test_canonical_primary_record_owner_miss_rejects_qualified_family_root();
   test_collect_initial_type_definitions_rejects_stale_qualified_origin_recovery();
   test_realize_template_struct_origin_key_miss_rejects_stale_rendered_primary();
+  test_realize_template_struct_origin_key_miss_rejects_stale_rendered_primary_with_args();
   test_realize_template_struct_record_owner_miss_rejects_stale_rendered_primary();
+  test_realize_template_struct_record_owner_miss_rejects_stale_rendered_primary_with_args();
   test_realize_template_struct_no_metadata_keeps_exact_rendered_compatibility();
   std::cout << "PASS: cpp_hir_template_canonical_primary_origin_metadata_test\n";
   return 0;
