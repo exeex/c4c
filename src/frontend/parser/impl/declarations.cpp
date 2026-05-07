@@ -1932,8 +1932,6 @@ Node* parse_top_level(Parser& parser) {
         }
 
         const QualifiedNameKey imported_value_key = parser.qualified_name_key(target_name);
-        const std::string imported_key = parser.render_name_in_context(
-            using_context_id, target_name.base_text_id);
         const TypeSpec* imported_var =
             parser.find_var_type(imported_value_key);
         QualifiedNameKey imported_alias_key = imported_value_key;
@@ -1959,9 +1957,8 @@ Node* parse_top_level(Parser& parser) {
         }
         {
             if (imported_var) {
-                parser.register_var_type_binding(
-                    parser.parser_text_id_for_token(kInvalidText, imported_key),
-                    *imported_var);
+                parser.register_structured_var_type_binding_in_context(
+                    using_context_id, target_name.base_text_id, *imported_var);
             }
             if (imported_known_fn) {
                 parser.register_known_fn_name_in_context(

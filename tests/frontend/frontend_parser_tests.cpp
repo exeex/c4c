@@ -2000,6 +2000,71 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
             "global using-import lookup should render from the structured global target key");
 }
 
+void test_parser_namespace_using_value_import_registers_context_key() {
+  c4c::Lexer lexer("namespace wrap { using ns::Target; }\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+  parser.register_structured_var_type_binding(
+      parser_test_qualified_name_key(parser, {"ns"}, "Target"), target_ts);
+
+  (void)parse_top_level(parser);
+
+  const c4c::TextId wrap_text = parser.find_parser_text_id("wrap");
+  const c4c::TextId target_text = parser.find_parser_text_id("Target");
+  expect_true(wrap_text != c4c::kInvalidText &&
+                  target_text != c4c::kInvalidText,
+              "namespace using-import fixture should intern context and alias text");
+  const int wrap_context = parser.find_named_namespace_child(0, wrap_text);
+  expect_true(wrap_context >= 0,
+              "namespace using-import fixture should create the importing namespace context");
+
+  const c4c::QualifiedNameKey imported_key =
+      parser_test_qualified_name_key(parser, {"wrap"}, "Target");
+  const c4c::TypeSpec* imported_type =
+      parser.find_structured_var_type(imported_key);
+  expect_true(imported_type != nullptr && imported_type->base == c4c::TB_INT,
+              "namespace using value imports should register the imported name through a structured context key");
+
+  c4c::Parser::VisibleNameResult direct_lookup;
+  expect_true(parser.lookup_value_in_context(wrap_context, target_text,
+                                             &direct_lookup),
+              "namespace using value imports should be visible through context-plus-unqualified lookup");
+}
+
+void test_parser_namespace_using_function_import_registers_context_key() {
+  c4c::Lexer lexer("namespace wrap { using ns::call; }\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  parser.register_known_fn_name(
+      parser_test_qualified_name_key(parser, {"ns"}, "call"));
+
+  (void)parse_top_level(parser);
+
+  const c4c::TextId wrap_text = parser.find_parser_text_id("wrap");
+  const c4c::TextId call_text = parser.find_parser_text_id("call");
+  expect_true(wrap_text != c4c::kInvalidText && call_text != c4c::kInvalidText,
+              "namespace function using-import fixture should intern context and alias text");
+  const int wrap_context = parser.find_named_namespace_child(0, wrap_text);
+  expect_true(wrap_context >= 0,
+              "namespace function using-import fixture should create the importing namespace context");
+
+  expect_true(parser.has_known_fn_name(
+                  parser.known_fn_name_key_in_context(wrap_context, call_text)),
+              "namespace using function imports should register through a context-plus-unqualified key");
+}
+
 void test_parser_out_of_class_operator_registers_structured_global_key() {
   c4c::Lexer lexer("::Owner::operator bool();\n", c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -9282,6 +9347,8 @@ int main() {
   test_parser_using_value_import_prefers_structured_type_over_corrupt_rendered_name();
   test_parser_using_value_import_rejects_legacy_rendered_target_lookup();
   test_parser_global_using_value_import_keeps_global_target_resolution();
+  test_parser_namespace_using_value_import_registers_context_key();
+  test_parser_namespace_using_function_import_registers_context_key();
   test_parser_out_of_class_operator_registers_structured_global_key();
   test_parser_out_of_class_constructor_registers_structured_global_key();
   test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_value_bridges();
