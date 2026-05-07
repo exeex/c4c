@@ -8,24 +8,19 @@ Current Step Title: Replace Parser Rendered Qualified `TextId` Handoffs
 
 ## Just Finished
 
-Corrected the Step 2 `types/base.cpp` sidecar migration so
-`record_member_key_for_node()` rejects qualified rendered spelling instead of
-recovering a semantic owner base by splitting on `::`. It now projects member
-typedef keys only from unqualified owner metadata or an already-structured
-qualified owner key.
-
-Adjusted
-`test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name` so
-the sidecar fixture keeps stale rendered text in the display `name` field while
-using the unqualified `template_origin_name` metadata that the sidecar is
-allowed to trust.
+Completed Step 2 classification/migration for the remaining
+`types/struct.cpp` production caller of
+`record_member_typedef_key_in_context()`. The record member typedef registration
+path now derives its owner `TextId` only from unqualified record metadata and
+rejects `::`-bearing `unqualified_text_id`, `unqualified_name`, or
+`template_origin_name` spellings instead of passing them into the rendered
+qualified compatibility bridge.
 
 ## Suggested Next
 
-Continue Step 2 by auditing the remaining parser production caller in
-`src/frontend/parser/impl/types/struct.cpp`, then migrate or classify that path
-before Step 3 removes the rendered-qualified compatibility branch from
-`qualified_key_in_context()`.
+Have the supervisor run the matching regression guard for this Step 2 slice,
+then commit the bounded `types/struct.cpp` and `todo.md` update if the before
+and after logs are monotonic.
 
 ## Watchouts
 
@@ -39,8 +34,10 @@ before Step 3 removes the rendered-qualified compatibility branch from
 - Do not reintroduce suffix splitting of `template_origin_name`, `name`, or
   other rendered record spellings; qualified rendered origins without structured
   owner metadata should fail to form a sidecar key.
-- The direct `record_member_typedef_key_in_context()` production caller left by
-  `rg` is now in `types/struct.cpp`; `types/base.cpp` no longer calls it.
+- The direct `record_member_typedef_key_in_context()` production caller still
+  exists in `types/struct.cpp`, but it is now classified as a safe unqualified
+  registration path because its `record_text_id` source is filtered before the
+  call.
 - `qualified_key_in_context()` still contains the rendered compatibility branch
   for remaining callers.
 

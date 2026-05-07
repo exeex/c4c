@@ -7,6 +7,7 @@
 #include <functional>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_set>
 
 #include "types_helpers.hpp"
@@ -30,6 +31,32 @@ static TextId record_member_type_text_id(Parser& parser, const Node* record) {
                                                record->unqualified_name);
     if (record->name && record->name[0])
         return parser.parser_text_id_for_token(kInvalidText, record->name);
+    return kInvalidText;
+}
+
+static bool is_rendered_qualified_spelling(std::string_view text) {
+    return text.find("::") != std::string_view::npos;
+}
+
+static TextId record_member_typedef_owner_text_id(Parser& parser,
+                                                  const Node* record) {
+    if (!record) return kInvalidText;
+    if (record->unqualified_text_id != kInvalidText) {
+        const std::string_view text =
+            parser.parser_text(record->unqualified_text_id, {});
+        if (!is_rendered_qualified_spelling(text))
+            return record->unqualified_text_id;
+    }
+    if (record->unqualified_name && record->unqualified_name[0] &&
+        !is_rendered_qualified_spelling(record->unqualified_name)) {
+        return parser.parser_text_id_for_token(kInvalidText,
+                                               record->unqualified_name);
+    }
+    if (record->template_origin_name && record->template_origin_name[0] &&
+        !is_rendered_qualified_spelling(record->template_origin_name)) {
+        return parser.parser_text_id_for_token(kInvalidText,
+                                               record->template_origin_name);
+    }
     return kInvalidText;
 }
 
@@ -2764,16 +2791,8 @@ void register_record_member_typedef_bindings(
     const int context_id =
         sd->namespace_context_id >= 0 ? sd->namespace_context_id
                                       : parser.current_namespace_context_id();
-    TextId record_text_id = kInvalidText;
-    if (sd->template_origin_name && sd->template_origin_name[0]) {
-        record_text_id = parser.parser_text_id_for_token(
-            kInvalidText, sd->template_origin_name);
-    }
-    if (record_text_id == kInvalidText) record_text_id = sd->unqualified_text_id;
-    if (record_text_id == kInvalidText && sd->unqualified_name) {
-        record_text_id = parser.parser_text_id_for_token(
-            kInvalidText, sd->unqualified_name);
-    }
+    const TextId record_text_id =
+        record_member_typedef_owner_text_id(parser, sd);
     const QualifiedNameKey owner_key =
         record_text_id != kInvalidText
             ? parser.alias_template_key_in_context(context_id, record_text_id)
