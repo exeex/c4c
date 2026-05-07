@@ -1,42 +1,39 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/147_rendered_qualified_compatibility_bridge_removal.md
+Source Idea Path: ideas/open/148_hir_static_member_carrier_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Delete or Isolate Compatibility Bridge Helpers
+Current Step ID: 1
+Current Step Title: Establish The Blocked HIR Static-Member Baseline
 
 ## Just Finished
 
-Step 4 fixed the blocking `review/147_step4_route_review.md` HIR finding in
-template value-arg constant evaluation. `try_eval_template_value_arg_expr()` no
-longer splits rendered qualified `NK_VAR::name` spelling into owner/member
-authority before static-member lookup; member lookup now comes from
-`unqualified_*` metadata or an unqualified spelling, and owner authority comes
-from structured `Node` qualifier metadata before static-member const lookup is
-allowed.
-
-Focused HIR lookup tests now cover rendered-only stale owner/member rejection
-and retained structured owner/member static-const evaluation.
+Lifecycle switch completed from the blocked idea 147 Step 4 runbook to the new
+HIR static-member carrier authority decomposition idea.
 
 ## Suggested Next
 
-Next packet: supervisor should decide whether Step 4 needs another route review
-or can proceed toward Step 5 closure validation.
+Next packet: execute Step 1 by inventorying the rejected Step 4 HIR failure
+family, confirming the five known failing tests from `test_after.log`, and
+recording the first focused HIR probe target for member identity versus owner
+authority.
 
 ## Watchouts
 
-- Structured instantiated owners such as generated `Count_N_3` still evaluate
-  through the `Node` qualifier carrier; rendered-only `StaleOwner::value`
-  without qualifier metadata now fails closed.
-- Member suffix fallback from rendered spelling is only used after a structured
-  owner carrier exists, so it does not reauthorize rendered owner splitting.
-- `test_after.log` is the canonical proof log for this packet.
+- The failed proof log is preserved in `test_after.log`; do not overwrite it
+  unless the supervisor delegates new proof output.
+- The blocked idea 147 remains open. This plan exists only to define the HIR
+  static-member carrier policy needed before returning to idea 147 Step 4.
+- Known regressions to keep visible during Step 1:
+  `cpp_positive_sema_template_variable_alias_inherited_member_typedef_runtime_cpp`,
+  `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`,
+  `cpp_positive_sema_template_variable_member_typedef_normalization_runtime_cpp`,
+  `cpp_positive_sema_template_variable_trait_runtime_cpp`,
+  and `cpp_hir_template_inherited_member_typedef_trait` failing.
+- Rendered `expr->name` must not provide owner authority. Member identity may
+  use `unqualified_text_id`, `unqualified_name`, or generated payload metadata
+  only after structured owner authority exists.
 
 ## Proof
 
-Delegated proof command ran exactly:
-
-`cd /workspaces/c4c && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'cpp_positive_sema_namespaced_out_of_class_method_context_frontend_cpp|frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_.*template|cpp_hir_.*qualified|cpp_hir_.*member_typedef|frontend_hir_tests|cpp_positive_sema_.*(template|alias|dependent_typename)'; } > test_after.log 2>&1`
-
-Result: passed. `test_after.log` records 357/357 tests passing.
+Lifecycle-only route reset. No code proof run for this plan-owner packet.
