@@ -5,7 +5,8 @@ Created: 2026-05-06
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
-- `ideas/open/145_move_record_tag_authority_from_parser_to_sema.md`
+- `ideas/closed/145_move_record_tag_authority_from_parser_to_sema.md`
+- `ideas/open/146_qualified_name_deferred_carrier_authority.md`
 
 ## Goal
 
@@ -17,6 +18,11 @@ String pair forms such as `vector<pair<string, TypeSpec>>` and
 `vector<pair<string, long long>>` may remain only as compatibility adapters
 while call sites migrate. They should not be the authoritative contract for
 binding template parameter names to type or NTTP values.
+
+Deferred binding is expected here. Parser and Sema do not have to fully resolve
+every NTTP default, captured expression, or type binding before HIR. They do
+have to preserve structured binding carriers so HIR can perform late
+substitution without matching by rendered parameter-name strings.
 
 ## Why This Idea Exists
 
@@ -40,7 +46,57 @@ is:
 
 This idea exists to define the boundary between spelling tokens and semantic
 template parameter bindings for deferred NTTP and captured template argument
-evaluation.
+evaluation. HIR may perform late binding substitution, but it must not do
+string-based Sema by comparing `std::string` parameter names or token spelling
+as the authoritative lookup route.
+
+## Working Responsibility Split
+
+### Parser
+
+Parser owns template parameter and argument syntax carriers.
+
+Parser should:
+
+- preserve parameter-name spelling as `TextId`
+- preserve parameter order, kind, and owner template context when known
+- preserve type/value binding payloads in structured metadata
+- keep legacy string-pair vectors only as adapters while callers migrate
+
+Parser should not:
+
+- make `std::string` parameter names the semantic binding key
+- bind NTTP values primarily by `token_spelling(tok) == parameter_name`
+- treat parameter-name `TextId` alone as semantic identity across template
+  owners
+
+### Sema
+
+Sema owns eager binding interpretation where possible.
+
+Sema should:
+
+- assign parameter-domain identity using owner template key, parameter index,
+  parameter kind, and spelling `TextId`
+- resolve non-dependent type/value bindings when available
+- produce structured deferred binding carriers for dependent defaults and
+  captured expressions
+
+### HIR
+
+HIR may perform late binding substitution.
+
+HIR should:
+
+- consume structured binding carriers from Parser/Sema
+- resolve deferred NTTP/type bindings under the current instantiation context
+- preserve parameter-domain identity through substitution
+
+HIR should not:
+
+- match bindings by `std::string` parameter name
+- compare token spelling as the main binding mechanism
+- collapse type-parameter and NTTP-value binding into one stringly map
 
 ## In Scope
 
@@ -53,14 +109,16 @@ evaluation.
   `eval_deferred_nttp_expr_tokens` and any token-spelling comparison used to
   bind parameter values.
 - Define binding metadata for type parameters that carries parameter spelling
-  `TextId`, parameter-domain identity where available, and the structured
-  type binding payload.
+  `TextId`, owner template key / parameter index / parameter kind where
+  available, and the structured type binding payload.
 - Define binding metadata for NTTP parameters that carries parameter spelling
-  `TextId`, parameter-domain identity where available, and the structured
-  constant/value payload.
+  `TextId`, owner template key / parameter index / parameter kind where
+  available, and the structured constant/value or deferred expression payload.
 - Keep legacy `vector<pair<string, TypeSpec>>` and
   `vector<pair<string, long long>>` forms only as compatibility adapters with
   explicit conversion into the structured binding contract.
+- Ensure HIR late substitution paths consume the structured binding contract
+  instead of matching string-pair names.
 - Add tests or probes where parameter names with equal spelling in different
   template contexts, captured argument expressions, or formatting differences
   would fail under string-pair authority.
@@ -71,6 +129,7 @@ evaluation.
 
 - Full constant evaluator redesign beyond the binding key contract needed by
   deferred NTTP evaluation.
+- Forcing all NTTP/type binding resolution to finish in Sema before HIR.
 - Treating `TextId` alone as semantic template parameter identity. `TextId`
   is spelling identity; parameter-domain metadata provides semantic identity.
 - Replacing diagnostics, dump output, or source spelling renderers.
@@ -85,6 +144,8 @@ evaluation.
 - Semantic binding lookup no longer depends on `vector<pair<string,
   TypeSpec>>`, `vector<pair<string, long long>>`, or token-spelling comparison
   as the authoritative path.
+- HIR late binding substitution, where required, consumes structured binding
+  carriers and does not use rendered parameter-name strings as authority.
 - Legacy string-pair APIs, if retained, are compatibility wrappers that convert
   into `TextId` plus domain-key binding metadata.
 - Tests or focused probes cover at least one scenario where spelling-only
@@ -100,6 +161,8 @@ evaluation.
   new type without changing semantic lookup authority.
 - Token spelling comparisons remain the main binding mechanism after the
   slice claims structured binding metadata exists.
+- HIR late substitution matches `std::string` parameter names instead of
+  parameter-domain binding metadata.
 - The implementation treats parameter-name `TextId` alone as semantic
   parameter identity across template contexts.
 - Type parameter and NTTP value parameter bindings remain mixed in an

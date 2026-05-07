@@ -5,7 +5,8 @@ Created: 2026-05-06
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
-- `ideas/open/145_move_record_tag_authority_from_parser_to_sema.md`
+- `ideas/closed/145_move_record_tag_authority_from_parser_to_sema.md`
+- `ideas/open/146_qualified_name_deferred_carrier_authority.md`
 
 ## Goal
 
@@ -17,6 +18,12 @@ structured qualified-owner keys before deciding whether a declaration denotes
 an out-of-class member, constructor, destructor, conversion, or operator
 definition. A rendered owner string may remain for diagnostics and display,
 but should not be the decision key.
+
+Parser may classify special-member syntax from token shape, but owner identity
+must remain structured. Sema should resolve the owner eagerly when possible.
+HIR may consume resolved or deferred owner carriers later, but no layer should
+decide owner identity by formatting and comparing a rendered `qualified_owner`
+string.
 
 ## Why This Idea Exists
 
@@ -37,7 +44,62 @@ part of the parser. The intended policy is:
 
 This idea exists to make owner probing preserve lexical structure directly
 from source tokens, so operator and constructor classification does not depend
-on formatting a qualified owner and then interpreting that text.
+on formatting a qualified owner and then interpreting that text. The parser's
+job is declaration-shape classification and structured owner carrier
+production; semantic owner truth belongs to Sema or, for deferred/template
+cases, late HIR resolution through structured carriers.
+
+## Working Responsibility Split
+
+### Parser
+
+Parser owns grammar-sensitive owner probing.
+
+Parser should:
+
+- recognize out-of-class declaration shape from token sequence
+- classify constructor, destructor, conversion, operator, and member syntax
+  using structured name components
+- produce a structured owner-probe carrier with owner qualifier `TextId`
+  sequence, base/member `TextId`, global qualifier, source span where possible,
+  and a qualified-owner key when available
+- preserve rendered owner spelling only for diagnostics/debug output
+
+Parser should not:
+
+- decide final class/namespace/member owner identity from a rendered owner
+  string
+- treat a single `TextId` containing `A::B` as semantic owner identity
+- use formatted `qualified_owner` text as the authoritative constructor or
+  operator classification key
+
+### Sema
+
+Sema owns semantic owner resolution when enough information is available.
+
+Sema should:
+
+- verify whether the structured owner denotes a class, namespace, or other
+  valid declaration owner
+- resolve non-dependent owner identities through domain tables
+- produce a structured deferred owner carrier for dependent/template owner
+  cases
+
+### HIR
+
+HIR may complete late owner resolution for deferred/template-dependent cases.
+
+HIR should:
+
+- consume resolved owner identity or structured deferred owner carriers
+- finish owner lookup under template substitution when required
+- lower the result into HIR/module-domain function/member/record keys
+
+HIR should not:
+
+- split rendered owner strings
+- rediscover owner identity from display spelling
+- treat parser owner-probe compatibility strings as late semantic authority
 
 ## In Scope
 
@@ -53,6 +115,8 @@ on formatting a qualified owner and then interpreting that text.
 - Ensure lexical detection for constructors, destructors, conversion
   functions, and operators compares structured name components rather than
   rendered owner strings.
+- Ensure Sema/HIR consumers can receive resolved owner identity or a structured
+  deferred owner carrier without falling back to rendered owner spelling.
 - Preserve rendered owner spelling for diagnostics, debug dumps, and
   compatibility mirrors only.
 - Add tests or focused probes where nested owners, same-spelling local names,
@@ -65,6 +129,7 @@ on formatting a qualified owner and then interpreting that text.
 
 - Full C++ member lookup or overload resolution redesign.
 - Moving all declaration semantic authority from parser to Sema in this idea.
+- Forcing all owner resolution to finish in Sema before HIR.
 - Treating one `TextId` for a rendered owner spelling as semantic owner
   identity.
 - Removing diagnostic or dump output for owner names.
@@ -80,6 +145,9 @@ on formatting a qualified owner and then interpreting that text.
 - Constructor, destructor, conversion, operator, and member-owner decisions no
   longer depend on rendered `qualified_owner` string comparison as their
   authoritative route.
+- Sema/HIR owner resolution, where required beyond parser shape
+  classification, consumes structured owner identity or deferred owner
+  carriers rather than rendered owner strings.
 - Rendered owner spelling, if retained, is display-only or temporary
   compatibility with a documented removal condition.
 - Tests or focused probes cover a case where flattened owner spelling would
@@ -96,6 +164,8 @@ on formatting a qualified owner and then interpreting that text.
   semantic owner key.
 - Operator or constructor handling gains named-case shortcuts instead of a
   general token-sequence owner probe.
+- HIR late owner resolution splits or compares rendered owner strings instead
+  of consuming structured owner carriers.
 - Tests are weakened, marked unsupported, or narrowed to avoid nested owners,
   operators, constructors, or same-spelling owner ambiguity.
 - Broad declaration or backend rewrites are mixed into this idea while the
