@@ -265,10 +265,14 @@ QualifiedNameKey find_qualified_name_key(const Parser& parser,
     QualifiedNameKey key;
     key.context_id = 0;
     key.is_global_qualified = name.is_global_qualified;
-    key.base_text_id =
-        name.base_text_id != kInvalidText
-            ? name.base_text_id
-            : parser.find_parser_text_id(name.base_name);
+    key.base_text_id = name.base_text_id;
+    const std::string_view base_text = parser.parser_text(key.base_text_id, {});
+    if (key.base_text_id == kInvalidText ||
+        base_text.find("::") != std::string_view::npos) {
+        key.base_text_id = !name.base_name.empty()
+                               ? parser.find_parser_text_id(name.base_name)
+                               : kInvalidText;
+    }
     if (key.base_text_id == kInvalidText) return key;
 
     if (name.qualifier_segments.empty() && name.qualifier_text_ids.empty()) {
@@ -1596,18 +1600,50 @@ QualifiedNameKey Parser::alias_template_key_in_context(
     return qualified_key_in_context(*this, context_id, name_text_id, true);
 }
 
-QualifiedNameKey Parser::qualified_name_key(const QualifiedNameRef& name) {
+QualifiedNameKey Parser::qualified_name_key(const QualifiedNameRef& name) const {
     QualifiedNameKey key;
     key.context_id = 0;
     key.is_global_qualified = name.is_global_qualified;
-    key.base_text_id = name.base_text_id != kInvalidText
-                           ? name.base_text_id
-                           : parser_text_id_for_token(kInvalidText, name.base_name);
+    key.base_text_id = name.base_text_id;
+    const std::string_view base_text = parser_text(key.base_text_id, {});
+    if (key.base_text_id == kInvalidText ||
+        base_text.find("::") != std::string_view::npos) {
+        key.base_text_id =
+            !name.base_name.empty()
+                ? parser_text_id_for_token(kInvalidText, name.base_name)
+                : kInvalidText;
+    }
     if (key.base_text_id == kInvalidText) return key;
 
     if (!name.qualifier_text_ids.empty()) {
-        key.qualifier_path_id =
-            shared_lookup_state_.parser_name_paths.intern(name.qualifier_text_ids);
+        std::vector<TextId> qualifier_text_ids;
+        qualifier_text_ids.reserve(name.qualifier_text_ids.size());
+        for (size_t i = 0; i < name.qualifier_text_ids.size(); ++i) {
+            TextId text_id = name.qualifier_text_ids[i];
+            const std::string_view text = parser_text(text_id, {});
+            if ((text_id == kInvalidText ||
+                 text.find("::") != std::string_view::npos) &&
+                i < name.qualifier_segments.size()) {
+                text_id = parser_text_id_for_token(kInvalidText,
+                                                   name.qualifier_segments[i]);
+            }
+            if (text_id == kInvalidText) return {};
+            qualifier_text_ids.push_back(text_id);
+        }
+        key.qualifier_path_id = const_cast<NamePathTable&>(
+                                    shared_lookup_state_.parser_name_paths)
+                                    .intern(qualifier_text_ids);
+    } else if (!name.qualifier_segments.empty()) {
+        std::vector<TextId> qualifier_text_ids;
+        qualifier_text_ids.reserve(name.qualifier_segments.size());
+        for (const std::string& segment : name.qualifier_segments) {
+            TextId text_id = parser_text_id_for_token(kInvalidText, segment);
+            if (text_id == kInvalidText) return {};
+            qualifier_text_ids.push_back(text_id);
+        }
+        key.qualifier_path_id = const_cast<NamePathTable&>(
+                                    shared_lookup_state_.parser_name_paths)
+                                    .intern(qualifier_text_ids);
     }
     return key;
 }

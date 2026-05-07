@@ -4677,6 +4677,82 @@ void test_parser_template_lookup_uses_structured_template_keys() {
               "structured template specialization lookup should use QualifiedNameKey state");
 }
 
+void test_parser_qualified_template_lookup_uses_qn_metadata_over_rendered_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId ns_text = texts.intern("ns");
+  const c4c::TextId other_text = texts.intern("other");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  const c4c::TextId stale_rendered_text = texts.intern("other::Alias");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  const int other_context = parser.ensure_named_namespace_context(0, other_text);
+
+  c4c::Node* ns_primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  ns_primary->name = arena.strdup("ns::Alias");
+  ns_primary->unqualified_name = arena.strdup("Alias");
+  ns_primary->unqualified_text_id = alias_text;
+  ns_primary->namespace_context_id = ns_context;
+  ns_primary->n_template_params = 1;
+
+  c4c::Node* other_primary = parser.make_node(c4c::NK_STRUCT_DEF, 2);
+  other_primary->name = arena.strdup("other::Alias");
+  other_primary->unqualified_name = arena.strdup("Alias");
+  other_primary->unqualified_text_id = alias_text;
+  other_primary->namespace_context_id = other_context;
+  other_primary->n_template_params = 1;
+
+  const c4c::QualifiedNameKey ns_key =
+      parser.alias_template_key_in_context(ns_context, alias_text);
+  const c4c::QualifiedNameKey other_key =
+      parser.alias_template_key_in_context(other_context, alias_text);
+  parser.register_template_struct_primary(ns_key, ns_primary);
+  parser.register_template_struct_primary(other_key, other_primary);
+
+  c4c::Node* ns_specialization = parser.make_node(c4c::NK_STRUCT_DEF, 3);
+  c4c::Node* other_specialization = parser.make_node(c4c::NK_STRUCT_DEF, 4);
+  parser.register_template_struct_specialization(ns_key, ns_specialization);
+  parser.register_template_struct_specialization(other_key, other_specialization);
+
+  c4c::Node* ns_global = parser.make_node(c4c::NK_GLOBAL_VAR, 5);
+  ns_global->n_template_params = 1;
+  c4c::Node* other_global = parser.make_node(c4c::NK_GLOBAL_VAR, 6);
+  other_global->n_template_params = 1;
+  parser.register_template_global_primary(ns_key, ns_global);
+  parser.register_template_global_primary(other_key, other_global);
+
+  c4c::Parser::QualifiedNameRef qn;
+  qn.qualifier_segments = {"ns"};
+  qn.qualifier_text_ids = {ns_text};
+  qn.base_name = "Alias";
+  qn.base_text_id = stale_rendered_text;
+
+  expect_true(parser.find_template_struct_primary(qn) == ns_primary,
+              "qualified template primary lookup should use QualifiedNameRef owner/base metadata over a stale rendered base TextId");
+  const std::vector<c4c::Node*>* specializations =
+      parser.find_template_struct_specializations(qn);
+  expect_true(specializations != nullptr && specializations->size() == 1 &&
+                  (*specializations)[0] == ns_specialization,
+              "qualified template specialization lookup should use QualifiedNameRef owner/base metadata over a stale rendered base TextId");
+  expect_true(parser.find_template_global_primary(qn) == ns_global,
+              "qualified template global lookup should use QualifiedNameRef owner/base metadata over a stale rendered base TextId");
+
+  c4c::Parser::QualifiedNameRef text_id_only_qn = qn;
+  text_id_only_qn.qualifier_segments.clear();
+  expect_true(parser.find_template_struct_primary(text_id_only_qn) == ns_primary,
+              "qualified template primary lookup should treat qualifier TextIds as structured qualification without rendered segments");
+  const std::vector<c4c::Node*>* text_id_only_specializations =
+      parser.find_template_struct_specializations(text_id_only_qn);
+  expect_true(text_id_only_specializations != nullptr &&
+                  text_id_only_specializations->size() == 1 &&
+                  (*text_id_only_specializations)[0] == ns_specialization,
+              "qualified template specialization lookup should treat qualifier TextIds as structured qualification without rendered segments");
+  expect_true(parser.find_template_global_primary(text_id_only_qn) == ns_global,
+              "qualified template global lookup should treat qualifier TextIds as structured qualification without rendered segments");
+}
+
 void test_parser_nttp_default_cache_uses_structured_key_only() {
   c4c::Lexer lexer("template<int N = M + 1>\nstruct ParsedTrait {};\n",
                    c4c::LexProfile::CppSubset);
@@ -9533,6 +9609,7 @@ int main() {
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
   test_parser_template_lookup_uses_structured_template_keys();
+  test_parser_qualified_template_lookup_uses_qn_metadata_over_rendered_text_id();
   test_parser_nttp_default_cache_uses_structured_key_only();
   test_parser_template_instantiation_dedup_keys_structure_specialization_reuse();
   test_parser_template_static_member_lookup_prefers_record_definition();

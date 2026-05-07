@@ -293,10 +293,11 @@ Node* Parser::find_template_struct_primary(int context_id,
 }
 
 Node* Parser::find_template_struct_primary(const QualifiedNameRef& name) const {
+    if (!name.qualifier_segments.empty() || !name.qualifier_text_ids.empty()) {
+        return find_template_struct_primary(qualified_name_key(name));
+    }
     const int context_id =
-        name.qualifier_segments.empty()
-            ? (name.is_global_qualified ? 0 : current_namespace_context_id())
-            : resolve_namespace_context(name);
+        name.is_global_qualified ? 0 : current_namespace_context_id();
     return find_template_struct_primary(context_id, name.base_text_id);
 }
 
@@ -345,10 +346,11 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
 const std::vector<Node*>* Parser::find_template_struct_specializations(
     const QualifiedNameRef& name, const Node* primary_tpl) const {
     (void)primary_tpl;
+    if (!name.qualifier_segments.empty() || !name.qualifier_text_ids.empty()) {
+        return find_template_struct_specializations(qualified_name_key(name));
+    }
     const int context_id =
-        name.qualifier_segments.empty()
-            ? (name.is_global_qualified ? 0 : current_namespace_context_id())
-            : resolve_namespace_context(name);
+        name.is_global_qualified ? 0 : current_namespace_context_id();
     return find_template_struct_specializations(context_id, name.base_text_id);
 }
 
@@ -377,10 +379,11 @@ const Node* Parser::find_template_global_primary(
 
 const Node* Parser::find_template_global_primary(
     const QualifiedNameRef& name) const {
+    if (!name.qualifier_segments.empty() || !name.qualifier_text_ids.empty()) {
+        return find_template_global_primary(qualified_name_key(name));
+    }
     const int context_id =
-        name.qualifier_segments.empty()
-            ? (name.is_global_qualified ? 0 : current_namespace_context_id())
-            : resolve_namespace_context(name);
+        name.is_global_qualified ? 0 : current_namespace_context_id();
     return find_template_global_primary(context_id, name.base_text_id);
 }
 
