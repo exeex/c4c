@@ -861,6 +861,11 @@ inline bool specialization_template_arg_identity_equal(
   return a.kind == b.kind &&
          a.value == b.value &&
          a.nttp_text_id == b.nttp_text_id &&
+         a.nttp_owner_text_id == b.nttp_owner_text_id &&
+         a.nttp_owner_namespace_context_id ==
+             b.nttp_owner_namespace_context_id &&
+         a.nttp_param_index == b.nttp_param_index &&
+         a.nttp_param_kind == b.nttp_param_kind &&
          specialization_type_identity_equal(a.type, b.type);
 }
 
@@ -870,7 +875,19 @@ inline bool specialization_template_arg_identity_less(
   if (specialization_type_identity_less(a.type, b.type)) return true;
   if (specialization_type_identity_less(b.type, a.type)) return false;
   if (a.value != b.value) return a.value < b.value;
-  return a.nttp_text_id < b.nttp_text_id;
+  if (a.nttp_text_id != b.nttp_text_id) return a.nttp_text_id < b.nttp_text_id;
+  if (a.nttp_owner_text_id != b.nttp_owner_text_id) {
+    return a.nttp_owner_text_id < b.nttp_owner_text_id;
+  }
+  if (a.nttp_owner_namespace_context_id !=
+      b.nttp_owner_namespace_context_id) {
+    return a.nttp_owner_namespace_context_id <
+           b.nttp_owner_namespace_context_id;
+  }
+  if (a.nttp_param_index != b.nttp_param_index) {
+    return a.nttp_param_index < b.nttp_param_index;
+  }
+  return a.nttp_param_kind < b.nttp_param_kind;
 }
 
 inline size_t specialization_template_arg_identity_hash(
@@ -879,6 +896,14 @@ inline size_t specialization_template_arg_identity_hash(
   h = specialization_key_hash_mix(h, specialization_type_identity_hash(arg.type));
   h = specialization_key_hash_mix(h, std::hash<long long>{}(arg.value));
   h = specialization_key_hash_mix(h, std::hash<TextId>{}(arg.nttp_text_id));
+  h = specialization_key_hash_mix(
+      h, std::hash<TextId>{}(arg.nttp_owner_text_id));
+  h = specialization_key_hash_mix(
+      h, std::hash<int>{}(arg.nttp_owner_namespace_context_id));
+  h = specialization_key_hash_mix(
+      h, std::hash<int>{}(arg.nttp_param_index));
+  h = specialization_key_hash_mix(
+      h, std::hash<uint8_t>{}(static_cast<uint8_t>(arg.nttp_param_kind)));
   return h;
 }
 

@@ -36,12 +36,31 @@ bool typespec_has_structured_template_arg_carrier(const TypeSpec& ts) {
 
 bool template_arg_has_structured_binding_carrier(const TemplateArgRef& arg) {
   if (arg.kind == TemplateArgKind::Value) {
-    return arg.nttp_text_id != kInvalidText;
+    return arg.nttp_param_kind == TemplateParamDomainKind::NonType &&
+           arg.nttp_owner_text_id != kInvalidText &&
+           arg.nttp_param_index >= 0 &&
+           arg.nttp_text_id != kInvalidText;
   }
   if (arg.kind == TemplateArgKind::Type) {
     return typespec_has_structured_template_arg_carrier(arg.type);
   }
   return false;
+}
+
+bool template_nttp_owner_matches(const TemplateArgRef& arg,
+                                 const Node* template_owner) {
+  if (!template_owner ||
+      arg.nttp_param_kind != TemplateParamDomainKind::NonType ||
+      arg.nttp_owner_text_id == kInvalidText ||
+      template_owner->unqualified_text_id == kInvalidText) {
+    return false;
+  }
+  if (arg.nttp_owner_text_id != template_owner->unqualified_text_id) {
+    return false;
+  }
+  return arg.nttp_owner_namespace_context_id < 0 ||
+         arg.nttp_owner_namespace_context_id ==
+             template_owner->namespace_context_id;
 }
 
 bool template_param_owner_matches(const TypeSpec& ts, const Node* template_owner) {
@@ -57,6 +76,14 @@ bool template_param_owner_matches(const TypeSpec& ts, const Node* template_owner
              template_owner->namespace_context_id;
 }
 
+bool has_structured_type_param_carrier(const TypeSpec& ts) {
+  return ts.template_param_text_id != kInvalidText ||
+         ts.tag_text_id != kInvalidText ||
+         ts.template_param_index >= 0 ||
+         ts.template_param_owner_text_id != kInvalidText ||
+         ts.template_param_owner_namespace_context_id >= 0;
+}
+
 const TypeSpec* find_template_typedef_binding(
     const TypeSpec& ts,
     const TypeBindings& type_bindings,
@@ -65,7 +92,6 @@ const TypeSpec* find_template_typedef_binding(
   if (ts.base != TB_TYPEDEF) {
     return nullptr;
   }
-  if (!template_param_owner_matches(ts, template_owner)) return nullptr;
 
   auto binding_for_param_index = [&](int index) -> const TypeSpec* {
     if (!template_owner || !template_owner->template_param_names ||
@@ -82,44 +108,34 @@ const TypeSpec* find_template_typedef_binding(
     return it == type_bindings.end() ? nullptr : &it->second;
   };
 
-  auto binding_for_param_text = [&](TextId text_id) -> const TypeSpec* {
-    if (text_id == kInvalidText || !template_owner ||
-        !template_owner->template_param_name_text_ids) {
+  auto binding_for_structured_param = [&]() -> const TypeSpec* {
+    if (!template_owner || ts.template_param_owner_text_id == kInvalidText ||
+        template_owner->unqualified_text_id == kInvalidText ||
+        ts.template_param_index < 0 ||
+        !template_param_owner_matches(ts, template_owner)) {
       return nullptr;
     }
-    for (int i = 0; i < template_owner->n_template_params; ++i) {
-      if (template_owner->template_param_name_text_ids[i] != text_id) continue;
-      if (const TypeSpec* bound = binding_for_param_index(i)) return bound;
+    if (ts.template_param_text_id != kInvalidText &&
+        template_owner->template_param_name_text_ids &&
+        ts.template_param_index < template_owner->n_template_params &&
+        template_owner->template_param_name_text_ids[ts.template_param_index] !=
+            ts.template_param_text_id) {
+      return nullptr;
     }
-    return nullptr;
+    if (ts.tag_text_id != kInvalidText &&
+        template_owner->template_param_name_text_ids &&
+        ts.template_param_index < template_owner->n_template_params &&
+        template_owner->template_param_name_text_ids[ts.template_param_index] !=
+            ts.tag_text_id) {
+      return nullptr;
+    }
+    return binding_for_param_index(ts.template_param_index);
   };
 
-  if (const TypeSpec* bound = binding_for_param_text(ts.template_param_text_id)) {
+  if (const TypeSpec* bound = binding_for_structured_param()) {
     return bound;
   }
-  if (const TypeSpec* bound = binding_for_param_text(ts.tag_text_id)) {
-    return bound;
-  }
-  if (const TypeSpec* bound = binding_for_param_index(ts.template_param_index)) {
-    return bound;
-  }
-  const TextId carrier_text_id =
-      ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
-                                                : ts.tag_text_id;
-  if (carrier_text_id != kInvalidText && texts) {
-    const std::string key(texts->lookup(carrier_text_id));
-    if (!key.empty()) {
-      auto it = type_bindings.find(key);
-      if (it != type_bindings.end()) return &it->second;
-    }
-  }
-  const bool has_structured_param_carrier =
-      ts.template_param_text_id != kInvalidText ||
-      ts.tag_text_id != kInvalidText ||
-      ts.template_param_index >= 0 ||
-      ts.template_param_owner_text_id != kInvalidText ||
-      ts.template_param_owner_namespace_context_id >= 0;
-  if (has_structured_param_carrier) return nullptr;
+  if (has_structured_type_param_carrier(ts)) return nullptr;
 
   const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
   if (!legacy_tag || !legacy_tag[0]) return nullptr;
@@ -133,41 +149,20 @@ std::optional<long long> find_template_nttp_binding(
     const Node* template_owner) {
   if (arg.kind != TemplateArgKind::Value) return std::nullopt;
 
-  auto binding_for_param_text = [&](TextId text_id) -> std::optional<long long> {
-    if (text_id == kInvalidText || !template_owner ||
-        !template_owner->template_param_name_text_ids ||
-        !template_owner->template_param_names) {
-      return std::nullopt;
-    }
-    for (int i = 0; i < template_owner->n_template_params; ++i) {
-      if (template_owner->template_param_name_text_ids[i] != text_id) continue;
-      if (!template_owner->template_param_is_nttp ||
-          !template_owner->template_param_is_nttp[i]) {
-        return std::nullopt;
-      }
-      const char* param_name = template_owner->template_param_names[i];
-      if (!param_name) return std::nullopt;
-      auto it = nttp_bindings.find(param_name);
-      if (it != nttp_bindings.end()) return it->second;
-    }
-    return std::nullopt;
-  };
-
-  if (std::optional<long long> bound =
-          binding_for_param_text(arg.nttp_text_id)) {
-    return bound;
-  }
-  if (arg.nttp_text_id != kInvalidText) {
+  if (!template_arg_has_structured_binding_carrier(arg) ||
+      !template_nttp_owner_matches(arg, template_owner) ||
+      !template_owner->template_param_names ||
+      !template_owner->template_param_is_nttp ||
+      arg.nttp_param_index >= template_owner->n_template_params ||
+      !template_owner->template_param_is_nttp[arg.nttp_param_index]) {
     return std::nullopt;
   }
-
-  // Compatibility fallback for legacy TemplateArgRef producers that only
-  // carried the forwarded NTTP parameter spelling in debug_text.
-  if (arg.value == 0 && arg.debug_text && arg.debug_text[0]) {
-    auto it = nttp_bindings.find(arg.debug_text);
-    if (it != nttp_bindings.end()) return it->second;
-  }
-  return std::nullopt;
+  const char* param_name =
+      template_owner->template_param_names[arg.nttp_param_index];
+  if (!param_name) return std::nullopt;
+  auto it = nttp_bindings.find(param_name);
+  return it == nttp_bindings.end() ? std::nullopt
+                                   : std::optional<long long>(it->second);
 }
 
 void apply_template_typedef_binding(TypeSpec& target, const TypeSpec& concrete) {

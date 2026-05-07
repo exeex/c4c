@@ -160,7 +160,8 @@ struct HirTemplateArgMaterializer {
   std::vector<std::pair<std::string, long long>> merged_nttp_bindings() const;
   bool has_type_binding(const char* param_name) const;
   bool has_nttp_binding(const char* param_name) const;
-  bool find_bound_nttp_for_text_id(TextId text_id, long long* out_value) const;
+  bool find_bound_nttp_for_param_ref(const TemplateArgRef& ref,
+                                     long long* out_value) const;
   bool template_param_owner_matches_primary(const TypeSpec& ts) const;
   bool has_structured_type_param_carrier(const TypeSpec& ts) const;
   const char* type_param_name_for_ref(const TypeSpec& ts) const;
@@ -237,40 +238,48 @@ bool HirTemplateArgMaterializer::has_nttp_binding(const char* param_name) const 
   return false;
 }
 
-bool HirTemplateArgMaterializer::find_bound_nttp_for_text_id(
-    TextId text_id, long long* out_value) const {
-  if (text_id == kInvalidText || !out_value || !primary_tpl ||
-      !primary_tpl->template_param_name_text_ids ||
-      !primary_tpl->template_param_names) {
+bool HirTemplateArgMaterializer::find_bound_nttp_for_param_ref(
+    const TemplateArgRef& ref, long long* out_value) const {
+  if (!out_value || ref.kind != TemplateArgKind::Value ||
+      ref.nttp_param_kind != TemplateParamDomainKind::NonType ||
+      ref.nttp_owner_text_id == kInvalidText ||
+      ref.nttp_param_index < 0 || !primary_tpl ||
+      primary_tpl->unqualified_text_id == kInvalidText ||
+      !primary_tpl->template_param_names ||
+      !primary_tpl->template_param_is_nttp) {
     return false;
   }
-  for (int i = 0; i < primary_tpl->n_template_params; ++i) {
-    if (primary_tpl->template_param_name_text_ids[i] != text_id) continue;
-    if (!primary_tpl->template_param_is_nttp ||
-        !primary_tpl->template_param_is_nttp[i]) {
-      return false;
-    }
-    const char* param_name = primary_tpl->template_param_names[i];
-    if (!param_name) return false;
-    for (const auto& [name, value] : result.nttp_bindings) {
-      if (name == param_name) {
-        *out_value = value;
-        return true;
-      }
-    }
-    auto it = nttp_bindings.find(param_name);
-    if (it == nttp_bindings.end()) return false;
-    *out_value = it->second;
-    return true;
+  if (ref.nttp_owner_text_id != primary_tpl->unqualified_text_id) {
+    return false;
   }
-  return false;
+  if (ref.nttp_owner_namespace_context_id >= 0 &&
+      primary_tpl->namespace_context_id >= 0 &&
+      ref.nttp_owner_namespace_context_id != primary_tpl->namespace_context_id) {
+    return false;
+  }
+  if (ref.nttp_param_index >= primary_tpl->n_template_params ||
+      !primary_tpl->template_param_is_nttp[ref.nttp_param_index]) {
+    return false;
+  }
+  const char* param_name = primary_tpl->template_param_names[ref.nttp_param_index];
+  if (!param_name) return false;
+  for (const auto& [name, value] : result.nttp_bindings) {
+    if (name == param_name) {
+      *out_value = value;
+      return true;
+    }
+  }
+  auto it = nttp_bindings.find(param_name);
+  if (it == nttp_bindings.end()) return false;
+  *out_value = it->second;
+  return true;
 }
 
 bool HirTemplateArgMaterializer::template_param_owner_matches_primary(
     const TypeSpec& ts) const {
   if (!primary_tpl || ts.template_param_owner_text_id == kInvalidText ||
       primary_tpl->unqualified_text_id == kInvalidText) {
-    return true;
+    return false;
   }
   if (ts.template_param_owner_text_id != primary_tpl->unqualified_text_id) {
     return false;
@@ -286,7 +295,8 @@ bool HirTemplateArgMaterializer::has_structured_type_param_carrier(
   return ts.template_param_index >= 0 ||
          ts.template_param_text_id != kInvalidText ||
          ts.tag_text_id != kInvalidText ||
-         ts.template_param_owner_text_id != kInvalidText;
+         ts.template_param_owner_text_id != kInvalidText ||
+         ts.template_param_owner_namespace_context_id >= 0;
 }
 
 const char* HirTemplateArgMaterializer::type_param_name_for_ref(
@@ -308,24 +318,25 @@ const char* HirTemplateArgMaterializer::type_param_name_for_ref(
     return primary_tpl->template_param_names[param_index];
   };
 
-  if (const char* param_name = name_for_param_index(ts.template_param_index)) {
-    return param_name;
-  }
-
-  const TextId carrier_text_id =
-      ts.template_param_text_id != kInvalidText ? ts.template_param_text_id
-                                                : ts.tag_text_id;
-  if (carrier_text_id == kInvalidText ||
-      !primary_tpl->template_param_name_text_ids) {
+  if (ts.template_param_owner_text_id == kInvalidText ||
+      ts.template_param_index < 0) {
     return nullptr;
   }
-  for (int i = 0; i < primary_tpl->n_template_params; ++i) {
-    if (primary_tpl->template_param_name_text_ids[i] != carrier_text_id) {
-      continue;
-    }
-    if (const char* param_name = name_for_param_index(i)) return param_name;
+  if (ts.template_param_text_id != kInvalidText &&
+      primary_tpl->template_param_name_text_ids &&
+      ts.template_param_index < primary_tpl->n_template_params &&
+      primary_tpl->template_param_name_text_ids[ts.template_param_index] !=
+          ts.template_param_text_id) {
+    return nullptr;
   }
-  return nullptr;
+  if (ts.tag_text_id != kInvalidText &&
+      primary_tpl->template_param_name_text_ids &&
+      ts.template_param_index < primary_tpl->n_template_params &&
+      primary_tpl->template_param_name_text_ids[ts.template_param_index] !=
+          ts.tag_text_id) {
+    return nullptr;
+  }
+  return name_for_param_index(ts.template_param_index);
 }
 
 std::vector<std::string>
@@ -402,6 +413,13 @@ HirTemplateArgMaterializer::find_bound_type_pack_for_param_ref(
   }
 
   if (has_structured_type_param_carrier(ts)) {
+    const bool has_foreign_owner_index_carrier =
+        primary_tpl && ts.template_param_owner_text_id != kInvalidText &&
+        primary_tpl->unqualified_text_id != kInvalidText &&
+        ts.template_param_owner_text_id != primary_tpl->unqualified_text_id &&
+        ts.template_param_index >= 0;
+    if (!has_foreign_owner_index_carrier) return pack_entries;
+
     for (const std::string& name : type_binding_name_candidates(ts, debug_name)) {
       for (const auto& [binding_name, bound_type] : tpl_bindings) {
         int pack_index = 0;
@@ -745,37 +763,20 @@ bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
       out_arg->value = eval_val;
       return true;
     }
-    if (ref.nttp_text_id != kInvalidText) {
+    if (ref.nttp_param_kind == TemplateParamDomainKind::NonType ||
+        ref.nttp_text_id != kInvalidText) {
       long long bound_val = 0;
-      if (find_bound_nttp_for_text_id(ref.nttp_text_id, &bound_val)) {
+      if (find_bound_nttp_for_param_ref(ref, &bound_val)) {
         out_arg->value = bound_val;
         return true;
       }
-      if (ref.value != 0 || debug_text.empty()) {
-        out_arg->value = ref.value;
-        return true;
-      }
-      if (debug_text == "true" || debug_text == "false") {
-        out_arg->value = (debug_text == "true") ? 1 : 0;
-        return true;
-      }
-      try {
-        out_arg->value = std::stoll(debug_text);
-        return true;
-      } catch (...) {
-        return false;
-      }
+      return false;
     }
     if (ref.value != 0 || debug_text.empty()) {
       out_arg->value = ref.value;
       return true;
     }
     if (!debug_text.empty()) {
-      auto nit = nttp_bindings.find(debug_text);
-      if (nit != nttp_bindings.end()) {
-        out_arg->value = nit->second;
-        return true;
-      }
       if (debug_text == "true" || debug_text == "false") {
         out_arg->value = (debug_text == "true") ? 1 : 0;
         return true;

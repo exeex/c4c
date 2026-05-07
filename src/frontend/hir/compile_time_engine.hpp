@@ -419,6 +419,10 @@ inline std::string nominal_type_suffix_for_mangling(const TypeSpec& ts) {
         arg.tpl_struct_args.data && arg.tpl_struct_args.size > 0) {
       for (int i = 0; i < arg.tpl_struct_args.size; ++i) {
         const TemplateArgRef& nested = arg.tpl_struct_args.data[i];
+        if (nested.kind == TemplateArgKind::Value &&
+            nested.nttp_param_kind == TemplateParamDomainKind::NonType) {
+          return true;
+        }
         if (nested.kind == TemplateArgKind::Type &&
             has_unresolved_template_param_arg(nested.type)) {
           return true;
@@ -483,6 +487,14 @@ inline std::string nominal_type_suffix_for_mangling(const TypeSpec& ts) {
       const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
       out += "_";
       if (arg.kind == TemplateArgKind::Value) {
+        if (arg.nttp_param_kind == TemplateParamDomainKind::NonType) {
+          out += "N_owner_ctx" +
+                 std::to_string(arg.nttp_owner_namespace_context_id) +
+                 "_owner" + std::to_string(arg.nttp_owner_text_id) +
+                 "_index" + std::to_string(arg.nttp_param_index) +
+                 "_text" + std::to_string(arg.nttp_text_id);
+          continue;
+        }
         out += std::to_string(arg.value);
       } else {
         out += "T_";
@@ -681,6 +693,14 @@ inline std::string format_pending_type_ref_for_display(const TypeSpec& ts) {
       return arg.debug_text;
     }
     if (arg.kind == TemplateArgKind::Value) {
+      if (arg.nttp_param_kind == TemplateParamDomainKind::NonType) {
+        return std::string("v:{owner_ctx=") +
+               std::to_string(arg.nttp_owner_namespace_context_id) +
+               ",owner=" + std::to_string(arg.nttp_owner_text_id) +
+               ",index=" + std::to_string(arg.nttp_param_index) +
+               ",text=" + std::to_string(arg.nttp_text_id) +
+               ",value=" + std::to_string(arg.value) + "}";
+      }
       return std::string("v:") + std::to_string(arg.value);
     }
     if (arg.kind == TemplateArgKind::Type &&

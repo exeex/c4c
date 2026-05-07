@@ -1449,6 +1449,10 @@ void append_template_type_key_components(
                 value.index = i;
                 value.value = arg.value;
                 value.text_id = arg.nttp_text_id;
+                value.owner_text_id = arg.nttp_owner_text_id;
+                value.owner_namespace_context_id =
+                    arg.nttp_owner_namespace_context_id;
+                value.template_param_index = arg.nttp_param_index;
                 out.push_back(value);
                 continue;
             }

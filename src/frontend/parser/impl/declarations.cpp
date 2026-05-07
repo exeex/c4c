@@ -45,6 +45,28 @@ static void annotate_template_param_typespec(TypeSpec* ts, const Node* owner) {
     }
 }
 
+static void annotate_template_param_nttp_arg(TemplateArgRef* arg,
+                                             const Node* owner) {
+    if (!arg || !owner || arg->kind != TemplateArgKind::Value ||
+        arg->nttp_text_id == kInvalidText ||
+        owner->unqualified_text_id == kInvalidText ||
+        owner->n_template_params <= 0 || !owner->template_param_name_text_ids ||
+        !owner->template_param_is_nttp) {
+        return;
+    }
+    for (int i = 0; i < owner->n_template_params; ++i) {
+        if (!owner->template_param_is_nttp[i]) continue;
+        if (owner->template_param_name_text_ids[i] != arg->nttp_text_id) {
+            continue;
+        }
+        arg->nttp_owner_namespace_context_id = owner->namespace_context_id;
+        arg->nttp_owner_text_id = owner->unqualified_text_id;
+        arg->nttp_param_index = i;
+        arg->nttp_param_kind = TemplateParamDomainKind::NonType;
+        return;
+    }
+}
+
 static void annotate_template_param_type_refs(TypeSpec* ts, const Node* owner);
 static void annotate_template_param_type_refs(Node* node, const Node* owner);
 
@@ -65,6 +87,7 @@ static void annotate_template_arg_refs(
             annotate_template_param_type_refs_impl(
                 &refs->data[i].type, owner, visiting_arg_lists, depth + 1);
         } else if (refs->data[i].kind == TemplateArgKind::Value) {
+            annotate_template_param_nttp_arg(&refs->data[i], owner);
             annotate_template_param_type_refs(refs->data[i].type.array_size_expr,
                                               owner);
         }

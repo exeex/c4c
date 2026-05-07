@@ -91,6 +91,12 @@ enum class TemplateArgKind : uint8_t {
     Value = 1,
 };
 
+enum class TemplateParamDomainKind : uint8_t {
+    Unknown = 0,
+    Type = 1,
+    NonType = 2,
+};
+
 struct TemplateArgRef;
 
 struct TemplateArgRefList {
@@ -187,7 +193,12 @@ struct TemplateArgRef {
     TypeSpec type;
     long long value;
     TextId nttp_text_id =
-        kInvalidText; // parser-owned identity for forwarded NTTP value refs
+        kInvalidText; // spelling identity for forwarded NTTP value refs
+    TextId nttp_owner_text_id =
+        kInvalidText; // owning template/function TextId for NTTP params
+    int nttp_owner_namespace_context_id = -1; // owning template namespace
+    int nttp_param_index = -1; // owning template parameter index
+    TemplateParamDomainKind nttp_param_kind = TemplateParamDomainKind::Unknown;
 
     // Debug/recovery/display spelling. Helpers may use this to preserve or
     // search original argument text, but structured fields above remain the
