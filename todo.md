@@ -8,56 +8,56 @@ Current Step Title: Migrate Sema and Deferred Argument Handling
 
 ## Just Finished
 
-Completed the Step 3 parser/type-helper cleanup slice:
+Completed the Step 4 Sema audit slice:
 
-- Removed the obsolete parser-side rendered template-struct key helper.
-- Retired the direct rendered-key test in `frontend_parser_tests`; structured
-  template argument identity coverage remains on the recursive type payload.
-- Replaced the residual metadata direct-key assertion with structured
-  `TypeComponent` coverage that checks tag `TextId` identity wins over stale
-  rendered tag text.
-- Verified no remaining production or focused-test references to the retired
-  helper name remain.
+- Audited `src/frontend/sema/type_utils.cpp` template argument comparison.
+  `same_template_arg_ref` compares value arguments by numeric value and type
+  arguments through `type_binding_values_equivalent`; it does not read
+  `TemplateArgRef::debug_text`.
+- Classified `type_binding_values_equivalent` as the structured/domain identity
+  route: it checks `TypeSpec` base/qualifier shape, template-param identity,
+  record-def identity, complete or partial text-name metadata, template origin
+  keys, recursive template args, and deferred-member owner/member metadata.
+  Its rendered-tag path is explicitly a last compatibility fallback only when
+  neither side carries structured text metadata.
+- Audited Sema canonical/template-arg formatting declarations and definitions.
+  `CanonicalTemplateArg`, `format_template_arg`, `format_canonical_type`, and
+  `format_canonical_result` are display/debug APIs; no Sema comparison or key
+  route depends on their rendered output.
+- Audited Sema deferred/NTTP handling in `consteval.cpp`. It first evaluates
+  expression carriers and then uses `template_arg_nttp_text_ids` only to forward
+  existing NTTP bindings by parameter text; it is not a template-instantiation
+  argument equality key.
+- Searched Sema for `debug_text`, canonical rendered formatting, raw
+  template-arg `TextId`, and `type_binding_values_equivalent` consumers. No
+  Sema-side implementation packet is required for Step 4.
 
 ## Suggested Next
 
-Next coherent packet: advance the runbook past Step 3 by auditing the remaining
-compatibility-text fallback notes in parser template-instantiation key payloads
-and either narrow the fallback criteria or hand the lifecycle state to the plan
-owner if Step 3 is exhausted.
+Next coherent packet: Step 5 HIR late-instantiation audit/migration of
+template argument consumers that still read `TemplateArgRef::debug_text`,
+including `src/frontend/hir/impl/templates/*`, `hir_types.cpp`,
+`hir_functions.cpp`, and related deferred NTTP/value-argument routes.
 
 ## Watchouts
 
-- Type payload compatibility text is now isolated as explicit
-  `CompatibilityText`/`TypeCompatibilityText` fallback metadata. Removal
-  criteria: all parser TypeSpecs that can enter template-instantiation keys
-  must carry structured TextIds, qualified-name keys, template parameter
-  metadata, record identity, or deferred-member keys for names and origins; no
-  no-metadata legacy tag/origin spelling should be needed for key equality.
-- The explicit legacy `$expr:` payload remains compatibility-only. Removal
-  criteria: all parser NTTP carriers that can produce expression identity
-  should provide either structured expression nodes, captured token payloads,
-  or numeric values before lookup/dedup insertion.
-- Keep expression payload shape metadata in equality and hash together; dropping
-  either `depth` or `parent_index` can recreate flattened-preorder ambiguity.
-- Do not weaken tests or mark supported cases unsupported as a shortcut around
-  structured argument identity.
-- Keep HIR/Sema/backend specialization keys out of this parser-key packet
-  unless the supervisor delegates that boundary explicitly.
-- The retired rendered-key helper was test-only at the start of this packet; no
-  production display/debug caller needed to keep it.
+- `type_binding_values_equivalent` still retains
+  `same_rendered_type_name_compatibility` for TypeSpecs with no structured name
+  metadata. This is compatibility-only, not an observed Step 4 implementation
+  blocker; final cleanup should happen in the Step 6 string-mirror pass after
+  HIR consumers are isolated.
+- `validate.cpp::same_type_name_for_validation` has a similar no-metadata
+  rendered-tag compatibility fallback for function/type compatibility, not
+  template-instantiation key equality.
+- `consteval.cpp::lookup_record_layout` may canonicalize a rendered mirror
+  through `link_name_texts->find()` and has a bare rendered fallback only when
+  no owner index is available. This is record-layout compatibility, not
+  template argument identity.
+- HIR remains the high-risk boundary: repo-wide search shows many
+  `TemplateArgRef::debug_text` reads in HIR template materialization,
+  deduction, type resolution, and value-argument code.
 
 ## Proof
 
-Supervisor-selected proof for this slice:
-
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_.*structured_metadata)$') > test_after.log 2>&1`
-
-Result: PASS. Build succeeded and 23/23 selected tests passed. Proof log:
-`test_after.log`.
-
-Regression guard:
-
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-
-Result: PASS. Before 23/23, after 23/23, no new failures.
+Audit-only scratchpad update. No implementation files changed, no build/test
+command was required, and `test_after.log` was intentionally not touched.
