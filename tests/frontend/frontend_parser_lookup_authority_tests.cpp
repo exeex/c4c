@@ -2032,6 +2032,108 @@ void test_sema_global_lookup_rejects_same_member_wrong_owner_reentry() {
               "when structured owner metadata names a different owner");
 }
 
+void test_sema_global_lookup_prefers_structured_owner_over_suffix_collision() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const c4c::TextId owner_a_text = texts.intern("OwnerA");
+  const c4c::TextId owner_b_text = texts.intern("OwnerB");
+  const c4c::TextId member_text = texts.intern("same_suffix");
+  const c4c::TextId struct_text = texts.intern("WrongRenderedType");
+  const int namespace_context = parser.current_namespace_context_id();
+
+  c4c::Node* wrong_type = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  wrong_type->name = arena.strdup("WrongRenderedType");
+  wrong_type->unqualified_name = arena.strdup("WrongRenderedType");
+  wrong_type->unqualified_text_id = struct_text;
+  wrong_type->namespace_context_id = namespace_context;
+  wrong_type->n_fields = 0;
+
+  c4c::TypeSpec wrong_struct = make_ts(c4c::TB_STRUCT);
+  set_legacy_typespec_tag(wrong_struct, arena.strdup("WrongRenderedType"));
+  wrong_struct.tag_text_id = struct_text;
+  wrong_struct.namespace_context_id = namespace_context;
+  wrong_struct.record_def = wrong_type;
+
+  c4c::Node* wrong_rendered_global = parser.make_node(c4c::NK_GLOBAL_VAR, 1);
+  wrong_rendered_global->name = arena.strdup("OwnerA::same_suffix");
+  wrong_rendered_global->unqualified_name = arena.strdup("same_suffix");
+  wrong_rendered_global->unqualified_text_id = member_text;
+  wrong_rendered_global->namespace_context_id = namespace_context;
+  wrong_rendered_global->n_qualifier_segments = 1;
+  wrong_rendered_global->qualifier_segments = arena.alloc_array<const char*>(1);
+  wrong_rendered_global->qualifier_segments[0] = arena.strdup("OwnerA");
+  wrong_rendered_global->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  wrong_rendered_global->qualifier_text_ids[0] = owner_a_text;
+  wrong_rendered_global->type = wrong_struct;
+
+  c4c::Node* structured_global = parser.make_node(c4c::NK_GLOBAL_VAR, 1);
+  structured_global->name = arena.strdup("OwnerB::same_suffix");
+  structured_global->unqualified_name = arena.strdup("same_suffix");
+  structured_global->unqualified_text_id = member_text;
+  structured_global->namespace_context_id = namespace_context;
+  structured_global->n_qualifier_segments = 1;
+  structured_global->qualifier_segments = arena.alloc_array<const char*>(1);
+  structured_global->qualifier_segments[0] = arena.strdup("OwnerB");
+  structured_global->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  structured_global->qualifier_text_ids[0] = owner_b_text;
+  structured_global->type = make_ts(c4c::TB_LONG);
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("OwnerA::same_suffix");
+  ref->unqualified_name = arena.strdup("same_suffix");
+  ref->unqualified_text_id = member_text;
+  ref->namespace_context_id = namespace_context;
+  ref->n_qualifier_segments = 1;
+  ref->qualifier_segments = arena.alloc_array<const char*>(1);
+  ref->qualifier_segments[0] = arena.strdup("OwnerB");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->qualifier_text_ids[0] = owner_b_text;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("returns_structured_suffix");
+  fn->unqualified_name = arena.strdup("returns_structured_suffix");
+  fn->unqualified_text_id = texts.intern("returns_structured_suffix");
+  fn->namespace_context_id = namespace_context;
+  fn->type = make_ts(c4c::TB_LONG);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 4;
+  program->children = arena.alloc_array<c4c::Node*>(4);
+  program->children[0] = wrong_type;
+  program->children[1] = wrong_rendered_global;
+  program->children[2] = structured_global;
+  program->children[3] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(result.ok,
+              "Sema global lookup should use qualifier/base TextId authority "
+              "instead of the stale rendered owner with the same suffix" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_sema_global_lookup_rejects_unqualified_rendered_same_member_reentry() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6398,6 +6500,7 @@ int main() {
   test_parsed_nested_record_fields_carry_member_text_ids();
   test_sema_global_lookup_rejects_stale_qualified_rendered_reentry();
   test_sema_global_lookup_rejects_same_member_wrong_owner_reentry();
+  test_sema_global_lookup_prefers_structured_owner_over_suffix_collision();
   test_sema_global_lookup_rejects_unqualified_rendered_same_member_reentry();
   test_sema_function_lookup_rejects_same_member_wrong_owner_reentry();
   test_sema_ref_overload_lookup_rejects_same_member_wrong_owner_reentry();

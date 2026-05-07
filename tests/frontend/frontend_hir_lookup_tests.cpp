@@ -3150,6 +3150,78 @@ void test_deferred_member_typedef_uses_owner_key_and_member_text_id() {
               "stale rendered member spelling must not override member TextId");
 }
 
+void test_deferred_member_typedef_owner_key_beats_suffix_split_collision() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  const c4c::TextId real_ns_text = texts.intern("real_ns");
+  const c4c::TextId owner_text = texts.intern("Box");
+  const c4c::TextId member_text = texts.intern("value_type");
+
+  c4c::Node real_record{};
+  real_record.kind = c4c::NK_STRUCT_DEF;
+  real_record.name = "real_ns::Box";
+  real_record.unqualified_name = "Box";
+  real_record.unqualified_text_id = owner_text;
+  real_record.namespace_context_id = 7;
+  real_record.n_member_typedefs = 1;
+  real_record.member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
+  real_record.member_typedef_text_ids[0] = member_text;
+  real_record.member_typedef_names = arena.alloc_array<const char*>(1);
+  real_record.member_typedef_names[0] = arena.strdup("value_type");
+  real_record.member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  real_record.member_typedef_types[0].array_size = -1;
+  real_record.member_typedef_types[0].inner_rank = -1;
+  real_record.member_typedef_types[0].base = c4c::TB_LONG;
+
+  c4c::Node stale_record{};
+  stale_record.kind = c4c::NK_STRUCT_DEF;
+  stale_record.name = "stale_ns::Box";
+  stale_record.unqualified_name = "Box";
+  stale_record.unqualified_text_id = owner_text;
+  stale_record.namespace_context_id = 9;
+  stale_record.n_member_typedefs = 1;
+  stale_record.member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
+  stale_record.member_typedef_text_ids[0] = member_text;
+  stale_record.member_typedef_names = arena.alloc_array<const char*>(1);
+  stale_record.member_typedef_names[0] = arena.strdup("value_type");
+  stale_record.member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  stale_record.member_typedef_types[0].array_size = -1;
+  stale_record.member_typedef_types[0].inner_rank = -1;
+  stale_record.member_typedef_types[0].base = c4c::TB_INT;
+
+  c4c::hir::NamespaceQualifier real_owner_ns;
+  real_owner_ns.context_id = 7;
+  real_owner_ns.segment_text_ids.push_back(real_ns_text);
+  const c4c::hir::HirRecordOwnerKey real_owner_key =
+      c4c::hir::make_hir_record_owner_key(real_owner_ns, owner_text);
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.struct_def_nodes_by_owner_[real_owner_key] = &real_record;
+  lowerer.struct_def_nodes_["stale_ns::Box"] = &stale_record;
+
+  c4c::TextId* qualifier_segments = arena.alloc_array<c4c::TextId>(1);
+  qualifier_segments[0] = real_ns_text;
+  c4c::TypeSpec pending{};
+  pending.array_size = -1;
+  pending.inner_rank = -1;
+  pending.base = c4c::TB_STRUCT;
+  pending.namespace_context_id = 7;
+  pending.qualifier_text_ids = qualifier_segments;
+  pending.n_qualifier_segments = 1;
+  pending.deferred_member_type_owner_key =
+      c4c::QualifiedNameKey{7, false, c4c::kInvalidNamePath, owner_text};
+  pending.deferred_member_type_text_id = member_text;
+  pending.deferred_member_type_name = arena.strdup("value_type");
+  set_legacy_tag_if_present(pending, arena.strdup("stale_ns::Box"), 0);
+  pending.tag_text_id = owner_text;
+
+  const bool resolved = lowerer.resolve_struct_member_typedef_if_ready(&pending);
+  expect_true(resolved,
+              "deferred member typedef should resolve despite a same-suffix stale rendered owner");
+  expect_true(pending.base == c4c::TB_LONG,
+              "deferred member typedef should use structured owner key before suffix-split rendered tag");
+}
+
 void test_pending_deferred_member_typedef_preserves_owner_qualifier_segments() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3265,6 +3337,7 @@ int main() {
   test_local_anonymous_aggregate_init_uses_record_owner_key();
   test_deferred_member_typedef_record_def_miss_rejects_stale_tag();
   test_deferred_member_typedef_uses_owner_key_and_member_text_id();
+  test_deferred_member_typedef_owner_key_beats_suffix_split_collision();
   test_pending_deferred_member_typedef_preserves_owner_qualifier_segments();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
