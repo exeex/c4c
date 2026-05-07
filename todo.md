@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/149_template_instantiation_structured_argument_key.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate Sema and Deferred Argument Handling
+Current Step ID: 5
+Current Step Title: Migrate HIR Late Instantiation Consumers
 
 ## Just Finished
 
