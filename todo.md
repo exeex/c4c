@@ -8,35 +8,32 @@ Current Step Title: Delete or Isolate Compatibility Bridge Helpers
 
 ## Just Finished
 
-Step 4 repaired the namespaced out-of-class method regression introduced by
-fencing current-owner semantic consumers. Owner-scope entry now keeps the final
-structured owner `TextId` for qualified owners instead of clearing multi-segment
-owners or restoring rendered qualified spelling as current-owner authority.
+Step 4 audited the remaining parser display fallback helpers and compatibility
+spelling consumers without code churn. The remaining `compatibility_spelling`
+and `visible_name_spelling()` paths are display/handoff materialization from
+structured lookup results; tests cover fail-closed behavior for rendered
+qualified TextIds, stale rendered owners, qualified typedef re-entry, and
+current-record/member-key authority.
 
-Added a parser regression for a namespaced out-of-class `operator=` method with
-an ambiguous sibling `allocator` name in another namespace. The test verifies
-that the parameter type keeps the final owner `TextId` plus namespace context
-and that Sema validation succeeds using structured metadata.
-
-Also fenced the remaining direct `typespec_matches_current_struct_local()`
-string equality so it only applies when the current owner is backed by a
-structured unqualified `TextId`; rendered qualified fallback spelling still
-fails closed as semantic current-owner authority.
+The remaining parser support compatibility bridges are isolated to
+TextId-less/final-spelling compatibility outside qualified-name semantic
+authority: constant-evaluation legacy/HIR callers, parser-local no-carrier
+record layout probes, and no-metadata template/base/member fallback comments.
+Current-owner consumers are already fenced to structured unqualified
+`current_struct_tag_text_id` authority before string equality or owner lookup is
+allowed.
 
 ## Suggested Next
 
-Next packet: continue Step 4 by auditing any remaining parser display fallback
-helpers outside the out-of-class owner-scope path, with special attention to
-places that still consume compatibility spelling before structured lookup.
+Next packet: supervisor should decide whether Step 4 is acceptance-ready or
+needs independent route review before lifecycle closure.
 
 ## Watchouts
 
-- The repair intentionally preserves only the final owner segment as
-  `current_struct_tag_text_id`; it does not reintroduce `ns::Owner` as a
-  rendered current-owner fallback.
-- `preserve_current_owner_type_metadata()` is limited to unqualified types whose
-  `tag_text_id` equals the structured current owner and whose type metadata is
-  not already qualified/global.
+- No remaining audited parser reference uses rendered qualified spelling as
+  qualified-name semantic authority.
+- Display spelling remains expected for AST names, typedef/cast handoff text,
+  diagnostics, and legacy compatibility surfaces that do not carry metadata.
 - `test_after.log` is the canonical proof log for this packet.
 
 ## Proof
