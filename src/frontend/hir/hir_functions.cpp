@@ -679,8 +679,8 @@ TypeSpec Lowerer::substitute_signature_template_type(
     return resolved;
   };
 
-  auto resolve_qualified_member_typedef_by_owner_key =
-      [&]() -> std::optional<TypeSpec> {
+  auto complete_qualified_member_typedef_owner_key =
+      [&]() -> std::optional<HirRecordOwnerKey> {
     if (!ts.qualifier_text_ids || ts.n_qualifier_segments <= 0 ||
         ts.tag_text_id == kInvalidText) {
       return std::nullopt;
@@ -694,11 +694,24 @@ TypeSpec Lowerer::substitute_signature_template_type(
     owner_ns.segment_text_ids.assign(
         ts.qualifier_text_ids,
         ts.qualifier_text_ids + ts.n_qualifier_segments - 1);
-    const HirRecordOwnerKey owner_key =
+    HirRecordOwnerKey owner_key =
         make_hir_record_owner_key(owner_ns, owner_text_id);
+    if (!hir_record_owner_key_has_complete_metadata(owner_key)) {
+      return std::nullopt;
+    }
+    return owner_key;
+  };
+
+  auto resolve_qualified_member_typedef_by_owner_key =
+      [&]() -> std::optional<TypeSpec> {
+    std::optional<HirRecordOwnerKey> owner_key =
+        complete_qualified_member_typedef_owner_key();
+    if (!owner_key) {
+      return std::nullopt;
+    }
     TypeSpec resolved{};
     if (!resolve_struct_member_typedef_type(
-            owner_key, std::string{}, ts.tag_text_id, &resolved)) {
+            *owner_key, std::string{}, ts.tag_text_id, &resolved)) {
       return std::nullopt;
     }
     apply_signature_template_concrete(ts, resolved);
@@ -725,6 +738,10 @@ TypeSpec Lowerer::substitute_signature_template_type(
   }
   if (auto resolved_member = resolve_qualified_member_typedef_by_owner_key()) {
     return *resolved_member;
+  }
+
+  if (complete_qualified_member_typedef_owner_key()) {
+    return ts;
   }
 
   const std::string qualified_name = member_typedef_compatibility_name(

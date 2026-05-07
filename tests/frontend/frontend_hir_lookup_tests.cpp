@@ -1639,6 +1639,78 @@ void test_signature_substitution_preserves_nested_template_owner_identity() {
               "signature substitution should substitute nested template owner args before template realization");
 }
 
+void test_signature_member_typedef_complete_owner_miss_rejects_rendered_split() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  const c4c::TextId ns_text = texts.intern("real_ns");
+  const c4c::TextId owner_text = texts.intern("MissingOwner");
+  const c4c::TextId member_text = texts.intern("value_type");
+
+  c4c::Node stale_record{};
+  stale_record.kind = c4c::NK_STRUCT_DEF;
+  stale_record.n_member_typedefs = 1;
+  stale_record.member_typedef_names = arena.alloc_array<const char*>(1);
+  stale_record.member_typedef_names[0] = arena.strdup("value_type");
+  stale_record.member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  stale_record.member_typedef_types[0].array_size = -1;
+  stale_record.member_typedef_types[0].inner_rank = -1;
+  stale_record.member_typedef_types[0].base = c4c::TB_LONG;
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_def_nodes_["real_ns::MissingOwner"] = &stale_record;
+
+  c4c::TextId qualifier_text_ids[] = {ns_text, owner_text};
+  c4c::TypeSpec pending{};
+  pending.array_size = -1;
+  pending.inner_rank = -1;
+  pending.base = c4c::TB_TYPEDEF;
+  pending.namespace_context_id = 7;
+  pending.qualifier_text_ids = qualifier_text_ids;
+  pending.n_qualifier_segments = 2;
+  pending.tag_text_id = member_text;
+
+  const c4c::TypeSpec resolved =
+      lowerer.substitute_signature_template_type(pending, nullptr);
+  expect_true(resolved.base == c4c::TB_TYPEDEF &&
+                  resolved.tag_text_id == member_text,
+              "signature member typedef complete owner/member miss must not split rendered Owner::member text");
+}
+
+void test_signature_member_typedef_no_complete_metadata_keeps_rendered_split() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  c4c::Node legacy_record{};
+  legacy_record.kind = c4c::NK_STRUCT_DEF;
+  legacy_record.n_member_typedefs = 1;
+  legacy_record.member_typedef_names = arena.alloc_array<const char*>(1);
+  legacy_record.member_typedef_names[0] = arena.strdup("value_type");
+  legacy_record.member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  legacy_record.member_typedef_types[0].array_size = -1;
+  legacy_record.member_typedef_types[0].inner_rank = -1;
+  legacy_record.member_typedef_types[0].base = c4c::TB_LONG;
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_def_nodes_["LegacyOwner"] = &legacy_record;
+
+  c4c::TypeSpec pending{};
+  pending.array_size = -1;
+  pending.inner_rank = -1;
+  pending.base = c4c::TB_TYPEDEF;
+  pending.tag_text_id = texts.intern("LegacyOwner::value_type");
+
+  const c4c::TypeSpec resolved =
+      lowerer.substitute_signature_template_type(pending, nullptr);
+  expect_true(resolved.base == c4c::TB_LONG,
+              "signature member typedef without complete owner/member metadata should keep rendered split compatibility");
+}
+
 void test_pending_type_ref_uses_structured_debug_payload_not_tag() {
   c4c::TextTable texts;
 
@@ -3404,6 +3476,8 @@ int main() {
   test_template_deduction_structured_pack_matches_instantiated_record_origin();
   test_template_materialization_substitutes_foreign_pack_ref_in_nested_owner();
   test_signature_substitution_preserves_nested_template_owner_identity();
+  test_signature_member_typedef_complete_owner_miss_rejects_rendered_split();
+  test_signature_member_typedef_no_complete_metadata_keeps_rendered_split();
   test_pending_type_ref_uses_structured_debug_payload_not_tag();
   test_pending_type_ref_no_metadata_keeps_shape_payload();
   test_canonical_type_str_uses_structured_record_key_not_tag();

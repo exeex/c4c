@@ -8,38 +8,32 @@ Current Step Title: Migrate Qualified Template and HIR Compatibility Paths
 
 ## Just Finished
 
-Step 3 retried the `realize_template_struct()` stale rendered primary block.
-The no-primary path now rejects a rendered primary candidate when the candidate's
-complete owner key conflicts with complete structured origin-key metadata or a
-template-primary record owner, limited to primary-shaped `TypeSpec`s without
-pending template args so concrete realization compatibility stays intact.
+Step 3 fenced `substitute_signature_template_type()` qualified member-typedef
+compatibility. Complete structured owner/member metadata now resolves through
+the owner-key path and, when that lookup misses, returns the unresolved
+`TypeSpec` instead of recovering by splitting rendered `Owner::member` text.
 
-Added focused HIR coverage in
-`cpp_hir_template_canonical_primary_origin_metadata_test.cpp` for complete
-origin-key miss rejection, record-owner miss rejection, and retained
-no-metadata exact rendered realization compatibility.
+Added focused `frontend_hir_lookup_tests` coverage for complete owner/member
+metadata miss rejection against a stale rendered member-typedef entry and for
+retained no-complete-metadata rendered split compatibility.
 
 ## Suggested Next
 
-Next Step 3 packet: inspect the remaining HIR compatibility callers that still
-use rendered template primary or member-typedef fallbacks, and choose the next
-narrow migration point that can be guarded by structured owner metadata without
-touching Step 4 bridge removal.
+Next Step 3 packet: migrate the remaining signature return/parameter
+member-typedef compatibility blocks in `resolve_signature_*_type_if_needed()`
+so complete structured owner/member metadata misses fail closed before the
+`member_typedef_compatibility_name(..., "type")` rendered fallback.
 
 ## Watchouts
 
 - Do not remove `qualified_key_in_context()` bridges before the reachable HIR
   semantic fallbacks are migrated; that is Step 4 work.
-- A broad direct `tpl_struct_origin` fallback block in `realize_template_struct()`
-  still regresses local-declaration owner realization; this packet only blocks
-  primary-shaped no-arg stale candidates whose rendered owner key conflicts with
-  complete structured metadata.
-- `hir_functions.cpp` contains multiple member-typedef compatibility fallbacks;
-  keep them for a later packet after template primary/specialization owner-key
-  routing is proven.
-- This slice intentionally leaves exact rendered template primary lookup,
-  string-key template primary maps, and parity probes in place; Step 4 owns
-  deletion/isolation after remaining HIR callers are migrated.
+- `hir_functions.cpp` still has return/parameter member-typedef compatibility
+  fallbacks below `substitute_signature_template_type()`; this packet only
+  fences the direct qualified typedef substitution path.
+- The retained rendered split is intentionally limited to no-complete-metadata
+  compatibility, such as a single rendered `LegacyOwner::value_type` TextId
+  without separate qualifier/member metadata.
 - Avoid any fix that rewrites expectations or strips qualified strings to an
   unqualified suffix. The point of Step 3 is structured owner/name metadata, not
   a new rendered-spelling path.
