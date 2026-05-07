@@ -115,10 +115,13 @@ void test_record_layout_resolution_uses_record_definition_before_stale_tag() {
   incomplete_record.kind = c4c::NK_STRUCT_DEF;
   incomplete_record.name = "RealRecord";
   incomplete_record.unqualified_text_id = real_record.unqualified_text_id;
+  incomplete_record.namespace_context_id = 7;
   incomplete_record.n_fields = -1;
   query.record_def = &incomplete_record;
-  expect_true(c4c::resolve_record_type_spec(query, &records) == &real_record,
-              "public parser support keeps bounded incomplete-record completion compatibility");
+  query.tag_text_id = real_record.unqualified_text_id;
+  query.namespace_context_id = incomplete_record.namespace_context_id;
+  expect_true(c4c::resolve_record_type_spec(query, &records) == &incomplete_record,
+              "structured incomplete record_def should not complete through parser rendered-tag map");
 }
 
 }  // namespace

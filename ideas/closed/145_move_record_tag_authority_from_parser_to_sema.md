@@ -2,7 +2,8 @@
 
 Status: Closed
 Created: 2026-05-06
-Closed: 2026-05-06
+Reopened: 2026-05-07
+Closed: 2026-05-07
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
@@ -119,22 +120,35 @@ parser string-table cleanups are attempted.
 - HIR handoff either consumes sema-confirmed record identity or has a separate
   open follow-up idea documenting the missing module-domain carrier.
 
-## Closure Note
+## Reopen Note
 
-Closed after `review/step8_final_boundary_review.md` found no implementation
-closure blocker. The final reviewer noted only regression-log scope hygiene;
-canonical `test_before.log` and `test_after.log` were normalized to matching
-full-suite scope, each reporting 3023/3023 passing tests.
+Reopened on 2026-05-07 for a narrow cleanup after closure review found one
+remaining parser compatibility path: incomplete `TypeSpec::record_def` can still
+be completed through `struct_tag_def_map` by unqualified `TextId` or rendered
+name. Finish this before moving to the qualified-name token sequence work.
 
-Close-time regression guard:
+## Final Closure Note
+
+Closed after `review/145_reopen_cleanup_boundary_review.md` found no remaining
+closure blocker for the reopened scope.
+
+The repair removed the incomplete `TypeSpec::record_def` to
+`struct_tag_def_map` completion branch from `resolve_record_type_spec()`.
+Structured incomplete record carriers are now preserved as parser provisional
+metadata instead of being completed by unqualified `TextId`, `name`, or
+`unqualified_name` matches in the parser rendered-tag map.
+
+Close-time proof:
 
 ```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_parser_support_residual_metadata_test|frontend_parser_tests|frontend_parser_lookup_authority_tests)$'
+./build/tests/frontend/cpp_hir_parser_support_residual_metadata_test
+ctest --test-dir build -j --output-on-failure > test_after.log
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
 ```
 
-Result: PASS. The non-decreasing mode is used because closure is a lifecycle
-transition against an accepted full-suite baseline, with no implementation
-delta expected to increase the pass count.
+Result: focused proof passed, full suite passed 3023/3023, regression guard
+PASS.
 
 ## Reviewer Reject Signals
 
