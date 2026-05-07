@@ -362,26 +362,14 @@ bool is_unqualified_text_id_lookup_name(TextId name_text_id,
            name.find("::") == std::string_view::npos;
 }
 
-// Compatibility/display support for legacy rendered qualified TextIds; primary
-// semantic APIs must pass unqualified TextIds with context or a structured key.
-// Remaining callers must enter only after structured metadata has been tried or
-// when reconstructing a legacy parser key for still-migrating template paths.
-QualifiedNameKey find_compatibility_key_from_rendered_qualified_spelling(
-    const Parser& parser, TextId name_text_id, std::string_view name);
-QualifiedNameKey intern_compatibility_key_from_rendered_qualified_spelling(
-    Parser& parser, TextId name_text_id, std::string_view name);
-
 QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
                                           TextId name_text_id,
                                           bool create_missing_path) {
+    (void)create_missing_path;
     QualifiedNameKey key;
     const std::string_view name = parser.parser_text(name_text_id, {});
     if (name.find("::") != std::string_view::npos) {
-        return create_missing_path
-                   ? intern_compatibility_key_from_rendered_qualified_spelling(
-                         const_cast<Parser&>(parser), name_text_id, name)
-                   : find_compatibility_key_from_rendered_qualified_spelling(
-                         parser, name_text_id, name);
+        return key;
     }
 
     key.context_id = 0;
@@ -432,77 +420,6 @@ QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
                   qualifier_text_ids);
     if (key.qualifier_path_id != kInvalidNamePath) return key;
 
-    return key;
-}
-
-QualifiedNameKey find_compatibility_key_from_rendered_qualified_spelling(
-    const Parser& parser, TextId name_text_id, std::string_view name) {
-    QualifiedNameKey key;
-    key.context_id = 0;
-    if (name.empty()) return key;
-
-    size_t start = 0;
-    if (name.rfind("::", 0) == 0) {
-        key.is_global_qualified = true;
-        start = 2;
-    }
-
-    std::vector<TextId> qualifier_text_ids;
-    size_t segment_start = start;
-    while (segment_start < name.size()) {
-        const size_t sep = name.find("::", segment_start);
-        if (sep == std::string_view::npos) break;
-        const std::string_view segment = name.substr(segment_start, sep - segment_start);
-        if (!segment.empty()) {
-            qualifier_text_ids.push_back(
-                parser.parser_text_id_for_token(kInvalidText, segment));
-        }
-        segment_start = sep + 2;
-    }
-
-    const std::string_view base = name.substr(segment_start);
-    key.base_text_id = name_text_id != kInvalidText &&
-                               !name.empty() &&
-                               name.find("::") == std::string_view::npos
-                           ? name_text_id
-                           : parser.parser_text_id_for_token(kInvalidText, base);
-    if (key.base_text_id == kInvalidText && !base.empty()) {
-        key.base_text_id = parser.find_parser_text_id(base);
-    }
-
-    if (!qualifier_text_ids.empty()) {
-        key.qualifier_path_id =
-            parser.shared_lookup_state_.parser_name_paths.find(
-                qualifier_text_ids);
-    }
-    return key;
-}
-
-QualifiedNameKey intern_compatibility_key_from_rendered_qualified_spelling(
-    Parser& parser, TextId name_text_id, std::string_view name) {
-    QualifiedNameKey key =
-        find_compatibility_key_from_rendered_qualified_spelling(
-            parser, name_text_id, name);
-    if (key.qualifier_path_id != kInvalidNamePath) return key;
-
-    std::vector<TextId> qualifier_text_ids;
-    size_t segment_start = name.rfind("::", 0) == 0 ? 2 : 0;
-    while (segment_start < name.size()) {
-        const size_t sep = name.find("::", segment_start);
-        if (sep == std::string_view::npos) break;
-        const std::string_view segment =
-            name.substr(segment_start, sep - segment_start);
-        if (!segment.empty()) {
-            qualifier_text_ids.push_back(
-                parser.parser_text_id_for_token(kInvalidText, segment));
-        }
-        segment_start = sep + 2;
-    }
-    if (!qualifier_text_ids.empty()) {
-        key.qualifier_path_id =
-            parser.shared_lookup_state_.parser_name_paths.intern(
-                qualifier_text_ids);
-    }
     return key;
 }
 

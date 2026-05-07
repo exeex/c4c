@@ -226,6 +226,77 @@ void test_rendered_qualified_text_ids_do_not_reenter_concept_lookup() {
               "as structured namespace authority");
 }
 
+void test_rendered_qualified_text_ids_fail_closed_at_parser_key_helpers() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId outer_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "A");
+  const c4c::TextId inner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "B");
+  const c4c::TextId base_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "C");
+  const c4c::TextId rendered_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "A::B::C");
+
+  const int outer_context = parser.ensure_named_namespace_context(0, outer_text);
+  const int inner_context =
+      parser.ensure_named_namespace_context(outer_context, inner_text);
+  expect_true(inner_context > 0, "test namespace context should be created");
+
+  c4c::TypeSpec stale_type{};
+  stale_type.array_size = -1;
+  stale_type.inner_rank = -1;
+  stale_type.base = c4c::TB_DOUBLE;
+  parser.register_structured_typedef_binding_in_context(inner_context,
+                                                        rendered_text,
+                                                        stale_type);
+  expect_true(!parser.register_known_fn_name_in_context(inner_context,
+                                                        rendered_text),
+              "known-function context registration should reject rendered "
+              "qualified TextIds before key reconstruction");
+  expect_true(parser.alias_template_key_in_context(inner_context, rendered_text)
+                      .base_text_id == c4c::kInvalidText,
+              "alias-template context key helper should fail closed for one "
+              "rendered qualified TextId");
+  expect_true(parser.intern_semantic_name_key(rendered_text).base_text_id ==
+                  c4c::kInvalidText,
+              "global semantic key interning should fail closed for one "
+              "rendered qualified TextId");
+
+  c4c::Parser::QualifiedNameRef qn;
+  qn.qualifier_segments = {"A", "B"};
+  qn.qualifier_text_ids = {outer_text, inner_text};
+  qn.base_name = "C";
+  qn.base_text_id = base_text;
+  expect_true(parser.find_typedef_type(parser.qualified_name_key(qn)) ==
+                  nullptr,
+              "rendered qualified TextId registration should not split into "
+              "structured parser authority");
+
+  c4c::TypeSpec real_type{};
+  real_type.array_size = -1;
+  real_type.inner_rank = -1;
+  real_type.base = c4c::TB_INT;
+  parser.register_structured_typedef_binding_in_context(inner_context,
+                                                        base_text, real_type);
+  const c4c::QualifiedNameKey structured_key = parser.qualified_name_key(qn);
+  expect_true(parser.register_known_fn_name_in_context(inner_context,
+                                                       base_text),
+              "unqualified context-plus-name registration should still create "
+              "structured parser authority");
+  const c4c::TypeSpec* registered = parser.find_typedef_type(structured_key);
+  expect_true(registered != nullptr && registered->base == c4c::TB_INT,
+              "structured parser key lookup should still resolve from "
+              "unqualified TextId plus namespace context");
+  expect_true(parser.has_known_fn_name(structured_key),
+              "structured known-function lookup should still resolve from "
+              "unqualified TextId plus namespace context");
+}
+
 void test_sema_global_lookup_uses_using_value_alias_target_key() {
   c4c::Arena arena;
   c4c::Lexer lexer(
@@ -6473,6 +6544,7 @@ void test_sema_enum_lookup_rejects_same_member_wrong_owner_reentry() {
 int main() {
   test_global_qualified_lookup_rejects_rendered_fallback_authority();
   test_rendered_qualified_text_ids_do_not_reenter_concept_lookup();
+  test_rendered_qualified_text_ids_fail_closed_at_parser_key_helpers();
   test_sema_global_lookup_uses_using_value_alias_target_key();
   test_sema_function_call_uses_using_value_alias_target_key();
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
