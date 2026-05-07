@@ -156,7 +156,45 @@ struct ParserNttpBindingMetadata {
   const char* name = nullptr;
   TextId name_text_id = kInvalidText;
   QualifiedNameKey name_key;
+  QualifiedNameKey owner_template_key;
+  int parameter_index = -1;
   long long value = 0;
+};
+
+enum class ParserTemplateParameterKind {
+  Type,
+  NttpValue,
+};
+
+// Boundary role: parser-owned structured identity for a template parameter
+// binding. Legacy spelling is retained as compatibility metadata; lookup should
+// prefer owner/index/kind when those fields are available.
+struct ParserTemplateParameterBindingKey {
+  const char* spelling = nullptr;
+  TextId spelling_text_id = kInvalidText;
+  QualifiedNameKey owner_template_key;
+  int owner_namespace_context_id = -1;
+  TextId owner_template_text_id = kInvalidText;
+  int parameter_index = -1;
+  ParserTemplateParameterKind parameter_kind =
+      ParserTemplateParameterKind::Type;
+};
+
+struct ParserTemplateTypeBinding {
+  ParserTemplateParameterBindingKey key;
+  TypeSpec type{};
+};
+
+struct ParserTemplateNttpBinding {
+  ParserTemplateParameterBindingKey key;
+  long long value = 0;
+};
+
+struct ParserTemplateBindingSet {
+  std::vector<ParserTemplateTypeBinding> type_bindings;
+  std::vector<ParserTemplateNttpBinding> nttp_bindings;
+  bool has_structured_type_metadata = false;
+  bool has_structured_nttp_metadata = false;
 };
 
 // Boundary role: parser-owned structured source for alias-template RHS forms

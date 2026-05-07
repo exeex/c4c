@@ -512,6 +512,11 @@ class Parser {
       long long* out,
       const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata =
           nullptr);
+  bool eval_deferred_nttp_expr_tokens(
+      const std::string& tpl_name,
+      const std::vector<Token>& toks,
+      const ParserTemplateBindingSet& bindings,
+      long long* out);
   bool eval_captured_template_arg_expr_tokens(
       const std::string& tpl_name,
       const TemplateArgParseResult& arg,

@@ -275,6 +275,17 @@ static ParserNttpBindingMetadata nttp_binding_metadata_for_template_param(
                                : parser.current_namespace_context_id();
     binding.name_key =
         parser.alias_template_key_in_context(context_id, binding.name_text_id);
+    const TextId owner_text_id =
+        primary_tpl->unqualified_text_id != kInvalidText
+            ? primary_tpl->unqualified_text_id
+            : parser.parser_text_id_for_token(
+                  kInvalidText,
+                  primary_tpl->unqualified_name && primary_tpl->unqualified_name[0]
+                      ? primary_tpl->unqualified_name
+                      : primary_tpl->name ? primary_tpl->name : "");
+    binding.owner_template_key =
+        parser.alias_template_key_in_context(context_id, owner_text_id);
+    binding.parameter_index = param_idx;
     return binding;
 }
 

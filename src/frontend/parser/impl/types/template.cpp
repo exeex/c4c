@@ -255,6 +255,128 @@ void mark_template_instantiation_dedup_keys(
     }
 }
 
+ParserTemplateParameterBindingKey parser_template_binding_key(
+    Parser& parser,
+    const QualifiedNameKey& owner_template_key,
+    ParserTemplateParameterKind kind,
+    const char* spelling,
+    TextId spelling_text_id,
+    int parameter_index) {
+    ParserTemplateParameterBindingKey key{};
+    key.spelling = spelling;
+    key.spelling_text_id = spelling_text_id;
+    if (key.spelling_text_id == kInvalidText && spelling && spelling[0]) {
+        key.spelling_text_id =
+            parser.parser_text_id_for_token(kInvalidText, spelling);
+    }
+    key.owner_template_key = owner_template_key;
+    key.owner_namespace_context_id = owner_template_key.context_id;
+    key.owner_template_text_id = owner_template_key.base_text_id;
+    key.parameter_index = parameter_index;
+    key.parameter_kind = kind;
+    return key;
+}
+
+bool parser_template_binding_key_has_domain_metadata(
+    const ParserTemplateParameterBindingKey& key) {
+    return key.owner_template_key.base_text_id != kInvalidText ||
+           key.owner_template_text_id != kInvalidText ||
+           key.parameter_index >= 0;
+}
+
+ParserTemplateBindingSet parser_template_binding_set_from_legacy(
+    Parser& parser,
+    const QualifiedNameKey& owner_template_key,
+    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+    const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata) {
+    ParserTemplateBindingSet bindings;
+    bindings.type_bindings.reserve(type_bindings.size());
+    for (size_t i = 0; i < type_bindings.size(); ++i) {
+        const auto& [name, type] = type_bindings[i];
+        ParserTemplateTypeBinding binding{};
+        binding.key = parser_template_binding_key(
+            parser, owner_template_key, ParserTemplateParameterKind::Type,
+            name.c_str(), kInvalidText, -1);
+        binding.type = type;
+        bindings.has_structured_type_metadata =
+            bindings.has_structured_type_metadata ||
+            parser_template_binding_key_has_domain_metadata(binding.key);
+        bindings.type_bindings.push_back(binding);
+    }
+
+    bindings.nttp_bindings.reserve(nttp_bindings.size());
+    for (size_t i = 0; i < nttp_bindings.size(); ++i) {
+        const auto& [name, value] = nttp_bindings[i];
+        ParserTemplateNttpBinding binding{};
+        binding.key = parser_template_binding_key(
+            parser, owner_template_key, ParserTemplateParameterKind::NttpValue,
+            name.c_str(), kInvalidText, -1);
+        binding.value = value;
+        bindings.has_structured_nttp_metadata =
+            bindings.has_structured_nttp_metadata ||
+            parser_template_binding_key_has_domain_metadata(binding.key);
+        bindings.nttp_bindings.push_back(binding);
+    }
+
+    if (nttp_binding_metadata) {
+        for (const ParserNttpBindingMetadata& meta : *nttp_binding_metadata) {
+            ParserTemplateNttpBinding binding{};
+            const QualifiedNameKey binding_owner_key =
+                meta.owner_template_key.base_text_id != kInvalidText
+                    ? meta.owner_template_key
+                    : owner_template_key;
+            binding.key = parser_template_binding_key(
+                parser, binding_owner_key,
+                ParserTemplateParameterKind::NttpValue, meta.name,
+                meta.name_text_id, meta.parameter_index);
+            binding.value = meta.value;
+
+            bool replaced = false;
+            for (ParserTemplateNttpBinding& existing :
+                 bindings.nttp_bindings) {
+                const bool same_text =
+                    binding.key.spelling_text_id != kInvalidText &&
+                    existing.key.spelling_text_id ==
+                        binding.key.spelling_text_id;
+                const bool same_index =
+                    binding.key.parameter_index >= 0 &&
+                    existing.key.parameter_index == binding.key.parameter_index;
+                if (same_text || same_index) {
+                    existing = binding;
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) bindings.nttp_bindings.push_back(binding);
+            bindings.has_structured_nttp_metadata =
+                bindings.has_structured_nttp_metadata ||
+                parser_template_binding_key_has_domain_metadata(binding.key) ||
+                binding.key.spelling_text_id != kInvalidText;
+        }
+    }
+
+    return bindings;
+}
+
+bool parser_template_binding_matches_token(
+    const Parser& parser,
+    const ParserTemplateParameterBindingKey& key,
+    ParserTemplateParameterKind kind,
+    const Token& tok) {
+    if (key.parameter_kind != kind) return false;
+    if (tok.text_id != kInvalidText &&
+        key.spelling_text_id != kInvalidText &&
+        tok.text_id == key.spelling_text_id) {
+        return true;
+    }
+    if (key.spelling && key.spelling[0] &&
+        parser.token_spelling(tok) == key.spelling) {
+        return true;
+    }
+    return false;
+}
+
 QualifiedNameKey resolved_template_lookup_key(
     const Parser& parser,
     const Parser::VisibleNameResult& resolved,
@@ -769,6 +891,17 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
     long long* out,
     const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata) {
+    ParserTemplateBindingSet bindings =
+        parser_template_binding_set_from_legacy(
+            *this, {}, type_bindings, nttp_bindings, nttp_binding_metadata);
+    return eval_deferred_nttp_expr_tokens(tpl_name, toks, bindings, out);
+}
+
+bool Parser::eval_deferred_nttp_expr_tokens(
+    const std::string& tpl_name,
+    const std::vector<Token>& toks,
+    const ParserTemplateBindingSet& bindings,
+    long long* out) {
     if (toks.empty() || !out) return false;
 
     // Token-based mini expression evaluator for deferred NTTP defaults.
@@ -790,19 +923,41 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         [&](const Token& tok, long long* val,
             bool* has_authoritative_metadata) -> bool {
         if (has_authoritative_metadata) *has_authoritative_metadata = false;
-        if (!nttp_binding_metadata || nttp_binding_metadata->empty()) {
+        if (bindings.nttp_bindings.empty()) {
             return false;
         }
-        for (const ParserNttpBindingMetadata& binding :
-             *nttp_binding_metadata) {
-            const bool has_text = binding.name_text_id != kInvalidText;
-            const bool has_key = binding.name_key.base_text_id != kInvalidText;
-            if (!has_text && !has_key) continue;
-            if (has_authoritative_metadata) *has_authoritative_metadata = true;
-            if (tok.text_id != kInvalidText &&
-                (tok.text_id == binding.name_text_id ||
-                 tok.text_id == binding.name_key.base_text_id)) {
+        for (const ParserTemplateNttpBinding& binding :
+             bindings.nttp_bindings) {
+            if (!parser_template_binding_key_has_domain_metadata(binding.key) &&
+                binding.key.spelling_text_id == kInvalidText) {
+                continue;
+            }
+            if (has_authoritative_metadata) {
+                *has_authoritative_metadata =
+                    bindings.has_structured_nttp_metadata;
+            }
+            if (parser_template_binding_matches_token(
+                    *this, binding.key,
+                    ParserTemplateParameterKind::NttpValue, tok)) {
                 if (val) *val = binding.value;
+                return true;
+            }
+        }
+        return false;
+    };
+
+    auto find_structured_type_binding = [&](const Token& tok,
+                                            TypeSpec* out_type) -> bool {
+        for (const ParserTemplateTypeBinding& binding :
+             bindings.type_bindings) {
+            if (!parser_template_binding_key_has_domain_metadata(binding.key) &&
+                binding.key.spelling_text_id == kInvalidText) {
+                continue;
+            }
+            if (parser_template_binding_matches_token(
+                    *this, binding.key, ParserTemplateParameterKind::Type,
+                    tok)) {
+                if (out_type) *out_type = binding.type;
                 return true;
             }
         }
@@ -814,11 +969,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         if (end - start == 1) {
             const Token& tok = toks[start];
             if (tok.kind == TokenKind::Identifier) {
-                for (const auto& [pn, pts] : type_bindings) {
-                    if (token_spelling(tok) == pn) {
-                        *out = pts;
-                        return true;
-                    }
+                if (find_structured_type_binding(tok, out)) {
+                    return true;
                 }
                 if (const TypeSpec* type =
                         find_visible_typedef_type(tok.text_id)) {
@@ -1011,11 +1163,10 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         if (toks[ti].kind == TokenKind::Identifier) {
             const Token& tok = toks[ti];
             bool found = false;
-            for (const auto& [pn, pts] : type_bindings) {
-                if (token_spelling(tok) == pn) {
-                    ParsedTemplateArg a; a.is_value = false; a.type = pts;
-                    ref_args.push_back(a); found = true; break;
-                }
+            TypeSpec structured_type{};
+            if (find_structured_type_binding(tok, &structured_type)) {
+                ParsedTemplateArg a; a.is_value = false; a.type = structured_type;
+                ref_args.push_back(a); found = true;
             }
             if (!found) {
                 long long structured_value = 0;
@@ -1028,9 +1179,12 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     ref_args.push_back(a); found = true;
                 }
                 if (!found && !has_structured_nttp_metadata) {
-                    for (const auto& [pn, pv] : nttp_bindings) {
-                        if (token_spelling(tok) == pn) {
-                            ParsedTemplateArg a; a.is_value = true; a.value = pv;
+                    for (const ParserTemplateNttpBinding& binding :
+                         bindings.nttp_bindings) {
+                        if (binding.key.spelling &&
+                            token_spelling(tok) == binding.key.spelling) {
+                            ParsedTemplateArg a; a.is_value = true;
+                            a.value = binding.value;
                             ref_args.push_back(a); found = true; break;
                         }
                     }
@@ -1278,8 +1432,12 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 return true;
             }
             if (!has_structured_nttp_metadata) {
-                for (const auto& [pn, pv] : nttp_bindings) {
-                    if (token_spelling(toks[ti]) == pn) { *val = pv; ++ti; return true; }
+                for (const ParserTemplateNttpBinding& binding :
+                     bindings.nttp_bindings) {
+                    if (binding.key.spelling &&
+                        token_spelling(toks[ti]) == binding.key.spelling) {
+                        *val = binding.value; ++ti; return true;
+                    }
                 }
             }
         }
@@ -1457,9 +1615,12 @@ bool Parser::eval_deferred_nttp_default(
 
     const std::string template_name = render_name_in_context(
         template_key.context_id, template_key.base_text_id);
+    ParserTemplateBindingSet bindings =
+        parser_template_binding_set_from_legacy(
+            *this, template_key, type_bindings, nttp_bindings,
+            nttp_binding_metadata);
     return eval_deferred_nttp_expr_tokens(template_name, structured_it->second,
-                                          type_bindings, nttp_bindings, out,
-                                          nttp_binding_metadata);
+                                          bindings, out);
 }
 
 void Parser::cache_nttp_default_expr_tokens(
