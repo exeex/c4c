@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <functional>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -73,6 +74,23 @@ void collect_late_static_asserts_recursive(
   if (n->body) collect_late_static_asserts_recursive(n->body, ct_state, child_template_owner);
   if (n->init) collect_late_static_asserts_recursive(n->init, ct_state, child_template_owner);
   if (n->update) collect_late_static_asserts_recursive(n->update, ct_state, child_template_owner);
+}
+
+std::optional<HirRecordOwnerKey> make_template_origin_owner_key_from_specialization(
+    const Node* specialization,
+    TextTable* texts) {
+  if (!specialization || !specialization->template_origin_name ||
+      !specialization->template_origin_name[0]) {
+    return std::nullopt;
+  }
+  const std::string_view origin_name(specialization->template_origin_name);
+  if (origin_name.find("::") != std::string_view::npos) {
+    return std::nullopt;
+  }
+  HirRecordOwnerKey key = make_hir_record_owner_key(
+      make_ns_qual(specialization, texts), make_text_id(origin_name, texts));
+  if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+  return key;
 }
 
 std::optional<HirStructMethodLookupKey> make_out_of_class_struct_method_lookup_key(
@@ -253,18 +271,17 @@ void Lowerer::collect_initial_type_definitions(const std::vector<const Node*>& i
         register_template_struct_primary(item->name, item);
       }
       if (item->template_origin_name && item->template_origin_name[0]) {
-        const Node* primary_tpl =
-            find_template_struct_primary(item->template_origin_name);
-        if (!primary_tpl && item->name) {
-          std::string spelled_name = item->name;
-          const size_t scope_sep = spelled_name.rfind("::");
-          if (scope_sep != std::string::npos &&
-              std::string(item->template_origin_name).find("::") ==
-                  std::string::npos) {
-            std::string qualified_origin =
-                spelled_name.substr(0, scope_sep + 2) + item->template_origin_name;
-            primary_tpl = find_template_struct_primary(qualified_origin);
+        const Node* primary_tpl = nullptr;
+        const auto origin_key = make_template_origin_owner_key_from_specialization(
+            item, module_ ? module_->link_name_texts.get() : nullptr);
+        if (origin_key) {
+          const auto owner_it = template_struct_defs_by_owner_.find(*origin_key);
+          if (owner_it != template_struct_defs_by_owner_.end()) {
+            primary_tpl = owner_it->second;
           }
+        }
+        if (!primary_tpl && !origin_key) {
+          primary_tpl = find_template_struct_primary(item->template_origin_name);
         }
         if (primary_tpl) register_template_struct_specialization(primary_tpl, item);
       }

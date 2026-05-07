@@ -6,6 +6,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #define private public
 #include "hir/impl/lowerer.hpp"
@@ -119,11 +120,46 @@ void test_canonical_primary_origin_key_miss_rejects_stale_rendered_text() {
               "complete structured template origin key miss must not recover through stale rendered origin/tag fallback");
 }
 
+void test_collect_initial_type_definitions_rejects_stale_qualified_origin_recovery() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId rendered_primary_text = texts.intern("Wrapper");
+  const c4c::TextId specialization_text = texts.intern("Wrapper_T_int");
+
+  c4c::Node rendered_only_primary =
+      make_primary("ns::Wrapper", rendered_primary_text, -1);
+  rendered_only_primary.unqualified_name = "Wrapper";
+
+  c4c::Node specialization{};
+  specialization.kind = c4c::NK_STRUCT_DEF;
+  specialization.name = "ns::Wrapper_T_int";
+  specialization.unqualified_name = "Wrapper_T_int";
+  specialization.unqualified_text_id = specialization_text;
+  specialization.namespace_context_id = 7;
+  specialization.template_origin_name = "Wrapper";
+
+  const std::vector<const c4c::Node*> items = {
+      &rendered_only_primary,
+      &specialization,
+  };
+  lowerer.collect_initial_type_definitions(items);
+
+  expect_true(
+      lowerer.find_template_struct_specializations(&rendered_only_primary) ==
+          nullptr,
+      "structured template specialization registration must not recover a rendered-only ns::Wrapper primary by splitting ns::Wrapper_T_int");
+}
+
 }  // namespace
 
 int main() {
   test_canonical_primary_origin_key_wins_over_stale_rendered_text();
   test_canonical_primary_origin_key_miss_rejects_stale_rendered_text();
+  test_collect_initial_type_definitions_rejects_stale_qualified_origin_recovery();
   std::cout << "PASS: cpp_hir_template_canonical_primary_origin_metadata_test\n";
   return 0;
 }
