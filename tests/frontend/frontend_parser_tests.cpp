@@ -3201,6 +3201,49 @@ void test_parser_namespace_typedef_registration_stays_namespace_scoped() {
               "block-local typedefs should not become visible through namespace qualified lookup");
 }
 
+void test_parser_structured_typedef_context_registration_rejects_rendered_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec stale_ts{};
+  stale_ts.array_size = -1;
+  stale_ts.inner_rank = -1;
+  stale_ts.base = c4c::TB_DOUBLE;
+
+  c4c::TypeSpec real_ts{};
+  real_ts.array_size = -1;
+  real_ts.inner_rank = -1;
+  real_ts.base = c4c::TB_INT;
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  const c4c::TextId stale_rendered_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns::Alias");
+
+  parser.register_structured_typedef_binding_in_context(
+      ns_context, stale_rendered_text, stale_ts);
+
+  c4c::Parser::QualifiedNameRef alias_qn;
+  alias_qn.qualifier_segments.push_back("ns");
+  alias_qn.qualifier_text_ids.push_back(ns_text);
+  alias_qn.base_name = "Alias";
+  alias_qn.base_text_id = alias_text;
+  const c4c::QualifiedNameKey alias_key = parser.qualified_name_key(alias_qn);
+  expect_true(parser.find_typedef_type(alias_key) == nullptr,
+              "structured typedef context registration should reject rendered qualified TextIds before compatibility-key creation");
+
+  parser.register_structured_typedef_binding_in_context(ns_context, alias_text,
+                                                        real_ts);
+  const c4c::TypeSpec* registered = parser.find_typedef_type(alias_key);
+  expect_true(registered != nullptr && registered->base == c4c::TB_INT,
+              "structured typedef context registration should keep unqualified context-plus-name storage");
+}
+
 void test_parser_using_value_alias_rejects_missing_structured_target_bridge() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -9633,6 +9676,7 @@ int main() {
   test_parser_deferred_member_typedef_lookup_uses_member_text_id();
   test_parser_template_base_deferred_member_typedef_uses_member_text_id();
   test_parser_namespace_typedef_registration_stays_namespace_scoped();
+  test_parser_structured_typedef_context_registration_rejects_rendered_text_id();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();
   test_parser_using_value_alias_prefers_structured_target_type();
   test_parser_using_value_alias_respects_local_shadowing();

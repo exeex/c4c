@@ -9,21 +9,17 @@ Current Step Title: Replace Parser Rendered Qualified `TextId` Handoffs
 ## Just Finished
 
 Completed Step 2 helper-boundary fencing for
-`Parser::alias_template_key_in_context()` and
-`Parser::record_member_typedef_key_in_context()`. The alias-template lookup and
-registration caller family in `types/template.cpp` now preserves structured
-`QualifiedNameRef`/`QualifiedNameKey` authority: resolved visible names continue
-through `VisibleNameResult::key`, qualified-name lookups try the structured
-namespace-context registration key, and template registration overloads use
-node-owned unqualified metadata only when their delegated `TextId` is rendered
-qualified.
+`Parser::register_structured_typedef_binding_in_context()`. The helper now
+rejects invalid or rendered qualified `TextId` spellings before calling
+`qualified_key_in_context()`, so a stale `ns::Alias` typedef registration cannot
+intern or populate the compatibility bridge key while normal unqualified
+context-plus-name registration still works.
 
 ## Suggested Next
 
 Have the supervisor run the matching regression guard for this Step 2 slice,
-then commit the bounded helper-fence, template lookup/registration migration,
-focused parser tests, and `todo.md` update if the before and after logs are
-monotonic.
+then commit the bounded core helper fence, focused parser test, and `todo.md`
+update if the before and after logs are monotonic.
 
 ## Watchouts
 
@@ -45,6 +41,9 @@ monotonic.
   rendered or invalid delegated names.
 - `qualified_key_in_context()` still contains the rendered compatibility branch
   for caller families outside this helper-fence slice.
+- The new typedef context-registration test uses an explicit structured
+  `QualifiedNameRef` key so it proves the stale rendered `TextId` cannot create
+  the namespace-qualified bridge key.
 
 ## Proof
 

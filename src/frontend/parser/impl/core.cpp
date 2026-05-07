@@ -1322,6 +1322,8 @@ void Parser::register_structured_typedef_binding(
 
 void Parser::register_structured_typedef_binding_in_context(
     int context_id, TextId name_text_id, const TypeSpec& type) {
+    const std::string_view name = parser_text(name_text_id, {});
+    if (!is_unqualified_text_id_lookup_name(name_text_id, name)) return;
     const QualifiedNameKey key = qualified_key_in_context(
         *this, context_id, name_text_id, true);
     register_structured_typedef_binding(key, type);
