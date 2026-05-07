@@ -8,32 +8,29 @@ Current Step Title: Delete or Isolate Compatibility Bridge Helpers
 
 ## Just Finished
 
-Step 4 audited the remaining parser display fallback helpers and compatibility
-spelling consumers without code churn. The remaining `compatibility_spelling`
-and `visible_name_spelling()` paths are display/handoff materialization from
-structured lookup results; tests cover fail-closed behavior for rendered
-qualified TextIds, stale rendered owners, qualified typedef re-entry, and
-current-record/member-key authority.
-
-The remaining parser support compatibility bridges are isolated to
-TextId-less/final-spelling compatibility outside qualified-name semantic
-authority: constant-evaluation legacy/HIR callers, parser-local no-carrier
-record layout probes, and no-metadata template/base/member fallback comments.
-Current-owner consumers are already fenced to structured unqualified
-`current_struct_tag_text_id` authority before string equality or owner lookup is
+Step 4 fixed the blocking `review/147_step4_route_review.md` HIR finding in
+template value-arg constant evaluation. `try_eval_template_value_arg_expr()` no
+longer splits rendered qualified `NK_VAR::name` spelling into owner/member
+authority before static-member lookup; member lookup now comes from
+`unqualified_*` metadata or an unqualified spelling, and owner authority comes
+from structured `Node` qualifier metadata before static-member const lookup is
 allowed.
+
+Focused HIR lookup tests now cover rendered-only stale owner/member rejection
+and retained structured owner/member static-const evaluation.
 
 ## Suggested Next
 
-Next packet: supervisor should decide whether Step 4 is acceptance-ready or
-needs independent route review before lifecycle closure.
+Next packet: supervisor should decide whether Step 4 needs another route review
+or can proceed toward Step 5 closure validation.
 
 ## Watchouts
 
-- No remaining audited parser reference uses rendered qualified spelling as
-  qualified-name semantic authority.
-- Display spelling remains expected for AST names, typedef/cast handoff text,
-  diagnostics, and legacy compatibility surfaces that do not carry metadata.
+- Structured instantiated owners such as generated `Count_N_3` still evaluate
+  through the `Node` qualifier carrier; rendered-only `StaleOwner::value`
+  without qualifier metadata now fails closed.
+- Member suffix fallback from rendered spelling is only used after a structured
+  owner carrier exists, so it does not reauthorize rendered owner splitting.
 - `test_after.log` is the canonical proof log for this packet.
 
 ## Proof

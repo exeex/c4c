@@ -874,18 +874,92 @@ bool Lowerer::try_eval_template_value_arg_expr(
         *out_value = *nttp_value;
         return true;
       }
-      const std::string qname = expr->name;
-      const std::string member = unqualified_name(qname);
-      const std::string owner = qualified_owner_name(qname);
-      if (owner.empty() || member.empty()) return false;
-      if (auto value = try_eval_instantiated_struct_static_member_const(
-              owner, member)) {
-        *out_value = *value;
-        return true;
+
+      std::string member;
+      if (module_ && module_->link_name_texts &&
+          expr->unqualified_text_id != kInvalidText) {
+        const std::string_view member_text =
+            module_->link_name_texts->lookup(expr->unqualified_text_id);
+        if (!member_text.empty()) member = std::string(member_text);
+      }
+      if (member.empty() && expr->unqualified_name && expr->unqualified_name[0]) {
+        member = expr->unqualified_name;
+      }
+      if (member.empty() && std::strstr(expr->name, "::") == nullptr) {
+        member = expr->name;
+      }
+
+      std::optional<HirRecordOwnerKey> structured_owner_key;
+      std::string structured_owner_name;
+      if (expr->qualifier_text_ids && expr->n_qualifier_segments > 0) {
+        const TextId owner_text_id =
+            expr->qualifier_text_ids[expr->n_qualifier_segments - 1];
+        if (owner_text_id != kInvalidText) {
+          NamespaceQualifier owner_ns;
+          owner_ns.context_id = expr->namespace_context_id;
+          owner_ns.is_global_qualified = expr->is_global_qualified;
+          owner_ns.segment_text_ids.reserve(expr->n_qualifier_segments - 1);
+          for (int i = 0; i + 1 < expr->n_qualifier_segments; ++i) {
+            if (expr->qualifier_text_ids[i] == kInvalidText) {
+              owner_ns.segment_text_ids.clear();
+              break;
+            }
+            owner_ns.segment_text_ids.push_back(expr->qualifier_text_ids[i]);
+          }
+          HirRecordOwnerKey owner_key =
+              make_hir_record_owner_key(owner_ns, owner_text_id);
+          if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+            structured_owner_key = owner_key;
+            if (module_ && module_->link_name_texts) {
+              const std::string_view owner_text =
+                  module_->link_name_texts->lookup(owner_text_id);
+              if (!owner_text.empty()) structured_owner_name = std::string(owner_text);
+            }
+          }
+        }
+      }
+      if (structured_owner_name.empty() && expr->qualifier_segments &&
+          expr->n_qualifier_segments > 0 &&
+          expr->qualifier_segments[expr->n_qualifier_segments - 1]) {
+        structured_owner_name =
+            expr->qualifier_segments[expr->n_qualifier_segments - 1];
+      }
+      if (member.empty() && !structured_owner_name.empty()) {
+        member = unqualified_name(expr->name);
+      }
+      if (member.empty()) return false;
+      if (structured_owner_key && expr->unqualified_text_id != kInvalidText) {
+        if (auto member_key = make_struct_member_lookup_key(
+                *structured_owner_key, expr->unqualified_text_id)) {
+          auto value_it = struct_static_member_const_values_by_owner_.find(
+              *member_key);
+          if (value_it != struct_static_member_const_values_by_owner_.end()) {
+            *out_value = value_it->second;
+            return true;
+          }
+        }
+        if (module_) {
+          if (const std::string* owner_tag =
+                  module_->find_struct_def_tag_by_owner(*structured_owner_key)) {
+            if (auto value = try_eval_instantiated_struct_static_member_const(
+                    *owner_tag, member)) {
+              *out_value = *value;
+              return true;
+            }
+          }
+        }
+      }
+      if (!structured_owner_name.empty()) {
+        if (auto value = try_eval_instantiated_struct_static_member_const(
+                structured_owner_name, member)) {
+          *out_value = *value;
+          return true;
+        }
       }
       if (!(expr->has_template_args || expr->n_template_args > 0)) return false;
+      if (structured_owner_name.empty()) return false;
       if (auto value = try_eval_template_static_member_const(
-              const_cast<FunctionCtx*>(ctx), owner, expr, member)) {
+              const_cast<FunctionCtx*>(ctx), structured_owner_name, expr, member)) {
         *out_value = *value;
         return true;
       }

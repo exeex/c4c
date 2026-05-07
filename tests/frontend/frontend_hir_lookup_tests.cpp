@@ -2204,6 +2204,74 @@ void test_static_member_nttp_const_eval_prefers_text_id_binding() {
               "static-member NTTP const eval should prefer TextId bindings over stale rendered names");
 }
 
+void test_template_value_arg_static_member_rejects_rendered_owner_split() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node owner{};
+  owner.kind = c4c::NK_STRUCT_DEF;
+  owner.name = "StaleRenderedOwner";
+  owner.template_origin_name = "is_signed";
+  owner.n_template_args = 1;
+  c4c::TypeSpec arg_type{};
+  arg_type.base = c4c::TB_INT;
+  arg_type.array_size = -1;
+  arg_type.inner_rank = -1;
+  owner.template_arg_types = &arg_type;
+  bool arg_is_value = false;
+  owner.template_arg_is_value = &arg_is_value;
+  lowerer.struct_def_nodes_["StaleRenderedOwner"] = &owner;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "StaleRenderedOwner::value";
+
+  long long value = 0;
+  const bool evaluated =
+      lowerer.try_eval_template_value_arg_expr(&ref, nullptr, &value);
+  expect_true(!evaluated,
+              "template value-arg const eval must not split rendered owner/member spelling");
+}
+
+void test_template_value_arg_static_member_uses_structured_owner_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId ns_text = module.link_name_texts->intern("RealNs");
+  const c4c::TextId owner_text = module.link_name_texts->intern("RealOwner");
+  const c4c::TextId member_text = module.link_name_texts->intern("value");
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 73;
+  owner_ns.segment_text_ids.push_back(ns_text);
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+  const std::optional<c4c::hir::HirStructMemberLookupKey> member_key =
+      lowerer.make_struct_member_lookup_key(owner_key, member_text);
+  expect_true(member_key.has_value(),
+              "fixture should build a structured static member lookup key");
+  lowerer.struct_static_member_const_values_by_owner_[*member_key] = 123;
+
+  c4c::TextId qualifier_text_ids[] = {ns_text, owner_text};
+  const char* qualifier_segments[] = {"StaleRenderedNs", "StaleRenderedOwner"};
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "StaleRenderedOwner::wrong";
+  ref.unqualified_name = "stale_rendered_member";
+  ref.unqualified_text_id = member_text;
+  ref.qualifier_text_ids = qualifier_text_ids;
+  ref.qualifier_segments = qualifier_segments;
+  ref.n_qualifier_segments = 2;
+  ref.namespace_context_id = owner_ns.context_id;
+
+  long long value = 0;
+  const bool evaluated =
+      lowerer.try_eval_template_value_arg_expr(&ref, nullptr, &value);
+  expect_true(evaluated && value == 123,
+              "template value-arg const eval should use structured owner/member metadata");
+}
+
 void test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::Arena arena;
@@ -3635,6 +3703,8 @@ int main() {
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();
   test_static_member_nttp_const_eval_prefers_text_id_binding();
+  test_template_value_arg_static_member_rejects_rendered_owner_split();
+  test_template_value_arg_static_member_uses_structured_owner_key();
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_layout_type_lookup_prefers_structured_owner_over_stale_tag();
   test_layout_type_lookup_structured_owner_miss_rejects_stale_tag();
