@@ -2926,27 +2926,23 @@ TypeSpec Parser::parse_base_type() {
                     typedef_type = find_typedef_type(current_member_key);
                 }
                 if (!typedef_type &&
-                    !active_context_state_.current_struct_tag.empty()) {
-                    TextId current_record_text_id =
+                    active_context_state_.current_struct_tag_text_id !=
+                        kInvalidText) {
+                    const TextId current_record_text_id =
                         active_context_state_.current_struct_tag_text_id;
-                    if (current_record_text_id == kInvalidText) {
-                        std::string current_record(
-                            current_struct_tag_text());
-                        const size_t sep = current_record.rfind("::");
-                        if (sep != std::string::npos) {
-                            current_record = current_record.substr(sep + 2);
-                        }
-                        current_record_text_id =
-                            parser_text_id_for_token(kInvalidText,
-                                                     current_record);
+                    const std::string_view current_record_name =
+                        parser_text(current_record_text_id, {});
+                    if (!current_record_name.empty() &&
+                        current_record_name.find("::") ==
+                            std::string_view::npos) {
+                        const QualifiedNameKey owner_key =
+                            alias_template_key_in_context(
+                                current_namespace_context_id(),
+                                current_record_text_id);
+                        typedef_type =
+                            find_dependent_record_member_typedef_type(
+                                owner_key, tname_text_id);
                     }
-                    const QualifiedNameKey owner_key =
-                        alias_template_key_in_context(
-                            current_namespace_context_id(),
-                            current_record_text_id);
-                    typedef_type =
-                        find_dependent_record_member_typedef_type(owner_key,
-                                                                  tname_text_id);
                 }
             }
             if (!typedef_type) {

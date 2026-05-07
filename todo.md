@@ -8,23 +8,22 @@ Current Step Title: Delete or Isolate Compatibility Bridge Helpers
 
 ## Just Finished
 
-Step 4 audited the remaining rendered-qualified parser core/test references and
-removed one leftover parser-core semantic reconstruction path:
-`current_record_member_name_key()` no longer splits a rendered current-record
-fallback such as `A::B` into structured member-key authority. It now accepts
-only unqualified current-record TextId/name metadata.
+Step 4 fenced the parser type/base current-record member-typedef fallback:
+`parse_base_type()` no longer splits `current_struct_tag_text()` spellings such
+as `ns::Owner` to synthesize dependent member-typedef owner authority. The
+fallback now requires an unqualified `current_struct_tag_text_id`; rendered
+owner spelling remains display/no-complete-metadata compatibility only.
 
-Removed the dead rendered-qualified concept re-entry branch from
-`is_concept_name()`. Added lookup-authority coverage proving rendered current
-record spelling fails closed while unqualified current-record TextId metadata
-still produces the structured member key.
+Added parser coverage proving a rendered-qualified current-record owner fails
+closed for unqualified member typedef lookup while the structured owner TextId
+path still resolves the dependent member typedef.
 
 ## Suggested Next
 
-Next packet: continue Step 4 by auditing parser type/declaration owner-scope
-fallbacks that still derive current-record owner spelling from rendered names,
-especially the `current_struct_tag` restoration and member-typedef lookup
-callers outside parser core.
+Next packet: continue Step 4 by auditing the remaining parser
+type/declaration current-owner fallback references outside this
+`parse_base_type()` member-typedef path, especially `current_struct_tag`
+restoration in declaration/type-struct owner scopes.
 
 ## Watchouts
 
@@ -34,9 +33,12 @@ callers outside parser core.
 - `qualified_key_in_context()`, known-function/context registration,
   alias-template key interning, concept registration, and current-record member
   key construction now reject single rendered compound `TextId`/fallback inputs.
-- `src/frontend/parser/impl/types/base.cpp` still has non-owned
-  `current_struct_tag_text()` fallback splitting near member typedef lookup; do
-  not treat this packet as clearing that adjacent caller family.
+- `src/frontend/parser/impl/types/base.cpp` still has display/debug rendering
+  fallback helpers, but the audited current-record member-typedef owner lookup
+  no longer derives semantic owner identity from rendered spelling.
+- `current_struct_tag_text()` remains in parser core/declarations/type-struct
+  flows; review those owner-scope paths separately before treating Step 4 as
+  exhausted.
 
 ## Proof
 

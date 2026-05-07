@@ -1492,6 +1492,76 @@ void test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks() {
   }
 }
 
+void test_parser_current_record_member_typedef_requires_structured_owner() {
+  c4c::Token seed{};
+
+  {
+    c4c::Arena arena;
+    c4c::TextTable texts;
+    c4c::FileTable files;
+    c4c::Parser parser({}, arena, &texts, &files,
+                       c4c::SourceProfile::CppSubset);
+    const c4c::TextId ns_text = parser_test_text_id(parser, "ns");
+    const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+    parser.push_namespace_context(ns_context);
+    const c4c::TextId owner_text = parser_test_text_id(parser, "Owner");
+    const c4c::TextId alias_text = parser_test_text_id(parser, "Alias");
+
+    c4c::TypeSpec member_ts{};
+    member_ts.array_size = -1;
+    member_ts.inner_rank = -1;
+    member_ts.base = c4c::TB_LONG;
+    parser.register_dependent_record_member_typedef_binding(
+        parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                             owner_text),
+        alias_text, member_ts);
+    parser.register_typedef_name(alias_text, false);
+    parser.set_current_struct_tag(c4c::kInvalidText, "ns::Owner");
+    parser.replace_token_stream_for_testing({
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+    });
+
+    const c4c::TypeSpec parsed = parser.parse_base_type();
+    expect_true(parsed.base != c4c::TB_LONG,
+                "current-record member typedef lookup should fail closed when "
+                "owner metadata is only rendered qualified spelling");
+    parser.pop_namespace_context();
+  }
+
+  {
+    c4c::Arena arena;
+    c4c::TextTable texts;
+    c4c::FileTable files;
+    c4c::Parser parser({}, arena, &texts, &files,
+                       c4c::SourceProfile::CppSubset);
+    const c4c::TextId ns_text = parser_test_text_id(parser, "ns");
+    const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+    parser.push_namespace_context(ns_context);
+    const c4c::TextId owner_text = parser_test_text_id(parser, "Owner");
+    const c4c::TextId alias_text = parser_test_text_id(parser, "Alias");
+
+    c4c::TypeSpec member_ts{};
+    member_ts.array_size = -1;
+    member_ts.inner_rank = -1;
+    member_ts.base = c4c::TB_LONG;
+    parser.register_dependent_record_member_typedef_binding(
+        parser.alias_template_key_in_context(parser.current_namespace_context_id(),
+                                             owner_text),
+        alias_text, member_ts);
+    parser.register_typedef_name(alias_text, false);
+    parser.set_current_struct_tag(owner_text, "Owner");
+    parser.replace_token_stream_for_testing({
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+    });
+
+    const c4c::TypeSpec parsed = parser.parse_base_type();
+    expect_true(parsed.base == c4c::TB_LONG,
+                "current-record member typedef lookup should still use the "
+                "structured current-record owner TextId");
+    parser.pop_namespace_context();
+  }
+}
+
 void test_parser_nested_dependent_typename_prefers_record_definition() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -9644,6 +9714,7 @@ int main() {
   test_parser_member_typedef_suffix_prefers_record_definition();
   test_parser_member_typedef_suffix_uses_tagless_record_definition();
   test_parser_member_typedef_suffix_rejects_rendered_owner_fallbacks();
+  test_parser_current_record_member_typedef_requires_structured_owner();
   test_parser_nested_dependent_typename_prefers_record_definition();
   test_parser_nested_dependent_typename_uses_tagless_record_definition();
   test_parser_record_ctor_probe_prefers_record_definition();
