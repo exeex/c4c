@@ -1911,18 +1911,11 @@ Node* parse_top_level(Parser& parser) {
         const Parser::VisibleNameResult imported_type =
             parser.resolve_qualified_type(target_name);
         if (imported_type) {
-            const std::string imported_type_name =
-                parser.visible_name_spelling(imported_type);
             const TypeSpec* imported_typedef =
                 parser.find_typedef_type(imported_type.key);
             if (imported_typedef) {
-                const std::string imported_key = parser.render_name_in_context(
-                    using_context_id, target_name.base_text_id);
                 parser.register_structured_typedef_binding_in_context(
                     using_context_id, target_name.base_text_id, *imported_typedef);
-                parser.register_typedef_binding(
-                    parser.parser_text_id_for_token(kInvalidText, imported_key),
-                    *imported_typedef, true);
                 if (using_context_id == 0) {
                     parser.register_typedef_binding(target_name.base_text_id, *imported_typedef, true);
                 }

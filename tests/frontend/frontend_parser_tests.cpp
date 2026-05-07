@@ -2065,6 +2065,50 @@ void test_parser_namespace_using_function_import_registers_context_key() {
               "namespace using function imports should register through a context-plus-unqualified key");
 }
 
+void test_parser_namespace_using_typedef_import_registers_context_key() {
+  c4c::Lexer lexer("namespace wrap { using ns::Alias; }\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  parser.register_structured_typedef_binding_in_context(
+      ns_context, alias_text, target_ts);
+
+  (void)parse_top_level(parser);
+
+  const c4c::TextId wrap_text = parser.find_parser_text_id("wrap");
+  expect_true(wrap_text != c4c::kInvalidText && alias_text != c4c::kInvalidText,
+              "namespace typedef using-import fixture should intern context and alias text");
+  const int wrap_context = parser.find_named_namespace_child(0, wrap_text);
+  expect_true(wrap_context >= 0,
+              "namespace typedef using-import fixture should create the importing namespace context");
+
+  const c4c::QualifiedNameKey imported_key =
+      parser_test_qualified_name_key(parser, {"wrap"}, "Alias");
+  const c4c::TypeSpec* imported_type = parser.find_typedef_type(imported_key);
+  expect_true(imported_type != nullptr && imported_type->base == c4c::TB_INT,
+              "namespace using typedef imports should register the imported name through a structured context key");
+
+  c4c::Parser::VisibleNameResult direct_lookup;
+  expect_true(parser.lookup_type_in_context(wrap_context, alias_text,
+                                            &direct_lookup),
+              "namespace using typedef imports should be visible through context-plus-unqualified lookup");
+  expect_true(parser.find_parser_text_id("wrap::Alias") == c4c::kInvalidText,
+              "namespace using typedef imports should not create a rendered compound TextId mirror");
+}
+
 void test_parser_out_of_class_operator_registers_structured_global_key() {
   c4c::Lexer lexer("::Owner::operator bool();\n", c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -9349,6 +9393,7 @@ int main() {
   test_parser_global_using_value_import_keeps_global_target_resolution();
   test_parser_namespace_using_value_import_registers_context_key();
   test_parser_namespace_using_function_import_registers_context_key();
+  test_parser_namespace_using_typedef_import_registers_context_key();
   test_parser_out_of_class_operator_registers_structured_global_key();
   test_parser_out_of_class_constructor_registers_structured_global_key();
   test_parser_namespace_lookup_rejects_type_projection_bridges_and_demotes_value_bridges();

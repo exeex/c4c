@@ -9,22 +9,21 @@ Current Step Title: Separate Unqualified `TextId` APIs From Structured Qualified
 ## Just Finished
 
 Step 2: Separate Unqualified `TextId` APIs From Structured Qualified APIs
-completed the parser `using` value/function import registration repair.
-Namespace-scope `using ns::Target;` value imports now register the imported
-name through `register_structured_var_type_binding_in_context()` using the
-importing context plus the unqualified `TextId`, instead of rendering
-`wrap::Target` into a compound `TextId` and sending it through
-`register_var_type_binding()`.
+completed the parser `using` typedef import registration repair.
+Namespace-scope `using ns::Alias;` typedef imports now register the imported
+name through `register_structured_typedef_binding_in_context()` using the
+importing namespace context plus the unqualified `TextId`. The old rendered
+`wrap::Alias` mirror registration was removed from this path after the
+structured binding had already proven sufficient authority.
 
-The nearby function import path was checked and remains on
-`register_known_fn_name_in_context()`, which already uses the
-context-plus-unqualified API and rejects compound rendered `TextId` authority.
-Focused parser tests now cover both namespace value and function using imports.
+Focused parser coverage now checks that namespace typedef using imports are
+available through structured/context-plus-unqualified lookup and do not create a
+rendered compound `TextId` mirror.
 
 ## Suggested Next
 
-Review and commit this Step 2 using-alias authority slice, then choose the next
-bounded qualified-name authority packet.
+Review and commit this Step 2 typedef using-import authority slice, then choose
+the next bounded qualified-name authority packet.
 
 ## Watchouts
 
@@ -33,9 +32,10 @@ Do not reintroduce rendered compound splitting in
 value/function authority should continue to enter through structured
 `QualifiedNameKey` or context-plus-unqualified-`TextId` APIs.
 
-The using-declaration typedef import path still has its older rendered
-compatibility mirror, but this packet only owned the value/function alias
-registration path named by the supervisor.
+The using-alias form `using Alias = ...` still has a separate rendered typedef
+compatibility mirror in the nearby alias-definition branch; this packet only
+owned the using-declaration typedef import branch around
+`resolve_qualified_type(target_name)`.
 
 ## Proof
 
