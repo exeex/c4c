@@ -1,22 +1,24 @@
-# Parser Template Instantiation Structured Argument Key
+# Template Instantiation Structured Argument Key
 
-Status: Draft
-Created: 2026-05-06
+Status: Open
+Created: 2026-05-07
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
 - `ideas/closed/145_move_record_tag_authority_from_parser_to_sema.md`
-- `ideas/open/146_qualified_name_deferred_carrier_authority.md`
+- `ideas/closed/146_qualified_name_deferred_carrier_authority.md`
+- `ideas/closed/147_rendered_qualified_compatibility_bridge_removal.md`
+- `ideas/closed/148_hir_static_member_carrier_authority_decomposition.md`
 
 ## Goal
 
-Replace rendered-string template argument keys in parser template
-instantiation metadata with structured type and value argument keys.
+Replace rendered-string template argument keys in template instantiation
+metadata with structured type and value argument keys.
 
-`TemplateInstantiationKey::Argument` should represent type arguments and
-value arguments through domain-specific structured variants. No semantic key
-for a template instantiation should be a canonical rendered spelling, debug
-string, or reparsed text fragment.
+`TemplateInstantiationKey::Argument` should represent type arguments and value
+arguments through domain-specific structured variants. No semantic key for a
+template instantiation should be a canonical rendered spelling, debug string, or
+reparsed text fragment.
 
 Template instantiation identity may include either resolved domain identity or
 deferred structured argument identity. The key point is not that Parser or Sema
@@ -39,9 +41,9 @@ and helper construction around
 `make_template_instantiation_argument_key` can turn type or value arguments
 into canonical rendered/debug strings.
 
-That undermines the parser string-authority cleanup because template identity
-can still depend on text formatting choices rather than domain identity. The
-intended policy is:
+That undermines the parser/Sema/HIR string-authority cleanup because template
+identity can still depend on text formatting choices rather than domain
+identity. The intended policy is:
 
 - Lexer interns spelling into `TextId`.
 - `TextId` carries no semantics beyond spelling identity.
@@ -50,10 +52,10 @@ intended policy is:
   type-domain keys, value-domain keys, and template-domain keys, not by
   rendered strings.
 
-This idea exists to give template instantiation arguments a structured
-contract that can distinguish type arguments from value arguments without
-depending on canonical display text, while still allowing dependent arguments
-to be completed later by HIR/template instantiation.
+This idea exists to give template instantiation arguments a structured contract
+that can distinguish type arguments from value arguments without depending on
+canonical display text, while still allowing dependent arguments to be
+completed later by HIR/template instantiation.
 
 ## Working Responsibility Split
 
@@ -88,8 +90,7 @@ Sema should:
 
 ### HIR
 
-HIR may complete late template argument resolution for deferred/dependent
-cases.
+HIR may complete late template argument resolution for deferred/dependent cases.
 
 HIR should:
 
@@ -110,9 +111,9 @@ HIR should not:
   sites that use `canonical_key`.
 - Inventory `make_template_instantiation_argument_key` and related helpers in
   `src/frontend/parser/impl/types/types_helpers.hpp`.
-- Define a structured argument representation that distinguishes type
-  arguments from value arguments, preferably as an explicit variant with
-  domain-specific payloads.
+- Define a structured argument representation that distinguishes type arguments
+  from value arguments, preferably as an explicit variant with domain-specific
+  payloads.
 - Ensure type arguments are keyed by structured type identity or a provisional
   type-domain/deferred type key, not by rendered `TypeSpec` text.
 - Ensure value arguments are keyed by structured expression / constant /
@@ -141,8 +142,8 @@ HIR should not:
 
 - `TemplateInstantiationKey::Argument` no longer uses `std::string
   canonical_key` as semantic identity for template arguments.
-- Type arguments and value arguments have explicit structured key variants or
-  an equivalent domain-specific representation.
+- Type arguments and value arguments have explicit structured key variants or an
+  equivalent domain-specific representation.
 - `make_template_instantiation_argument_key` and its callers no longer derive
   semantic identity primarily from rendered or debug strings.
 - Deferred/dependent arguments remain structured and can be completed later by
@@ -158,8 +159,8 @@ HIR should not:
 
 ## Reviewer Reject Signals
 
-- A slice claims progress by renaming `canonical_key` while preserving a
-  string as the semantic template argument identity.
+- A slice claims progress by renaming `canonical_key` while preserving a string
+  as the semantic template argument identity.
 - Type and value arguments remain collapsed into one rendered/debug string
   comparison path.
 - HIR late instantiation compares template arguments through canonical strings
