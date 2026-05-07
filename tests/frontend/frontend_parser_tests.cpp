@@ -9257,6 +9257,48 @@ void test_sema_consteval_function_lookup_rejects_stale_rendered_name_after_struc
                   diag);
 }
 
+void test_sema_consteval_function_lookup_rejects_stale_rendered_name_after_qualified_structured_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId stale_text = texts.intern("stale_consteval");
+  const c4c::TextId missing_ns_text = texts.intern("MissingNs");
+  const c4c::TextId missing_text = texts.intern("missing_consteval");
+  c4c::Node* stale_fn = make_consteval_returning(parser, arena, "stale_consteval",
+                                                 stale_text, 0);
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
+  callee->name = arena.strdup("stale_consteval");
+  callee->unqualified_name = arena.strdup("missing_consteval");
+  callee->unqualified_text_id = missing_text;
+  callee->namespace_context_id = 11;
+  callee->n_qualifier_segments = 1;
+  callee->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  callee->qualifier_text_ids[0] = missing_ns_text;
+
+  c4c::Node* call = parser.make_node(c4c::NK_CALL, 1);
+  call->left = callee;
+
+  c4c::Node* static_assert_node = parser.make_node(c4c::NK_STATIC_ASSERT, 1);
+  static_assert_node->left = call;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = stale_fn;
+  program->children[1] = static_assert_node;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  const std::string diag =
+      result.diagnostics.empty() ? "" : (": " + result.diagnostics.front().message);
+  expect_true(result.ok,
+              "Sema consteval lookup should not use stale rendered fallback "
+              "after qualified structured miss" +
+                  diag);
+}
+
 void test_sema_consteval_function_lookup_keeps_no_metadata_rendered_compatibility() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -9521,6 +9563,7 @@ int main() {
   test_sema_consteval_function_lookup_prefers_structured_metadata_over_stale_rendered_name();
   test_sema_consteval_function_lookup_rejects_stale_rendered_name_after_text_miss();
   test_sema_consteval_function_lookup_rejects_stale_rendered_name_after_structured_miss();
+  test_sema_consteval_function_lookup_rejects_stale_rendered_name_after_qualified_structured_miss();
   test_sema_consteval_function_lookup_keeps_no_metadata_rendered_compatibility();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();

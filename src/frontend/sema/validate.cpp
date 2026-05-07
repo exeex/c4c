@@ -1072,14 +1072,16 @@ class Validator {
       const std::string& name, const Node* reference = nullptr) const {
     if (reference) {
       bool has_authoritative_metadata = false;
-      if (auto key = sema_function_lookup_key(reference); key.has_value()) {
-        has_authoritative_metadata = true;
+      if (auto key = sema_function_lookup_key(reference);
+          key.has_value() && key->valid()) {
+        has_authoritative_metadata = !consteval_funcs_by_key_.empty();
         const Node* structured = lookup_consteval_function_by_key(*key);
         if (structured) return structured;
       }
       if (reference->unqualified_text_id != kInvalidText &&
           !reference->is_global_qualified && reference->n_qualifier_segments == 0) {
-        has_authoritative_metadata = true;
+        has_authoritative_metadata =
+            has_authoritative_metadata || !consteval_funcs_by_text_.empty();
         const Node* text = lookup_consteval_function_by_text(reference);
         if (text) return text;
       }

@@ -132,6 +132,7 @@ struct ConstEvalValueLookupResult {
   ConstEvalValueLookupStatus status = ConstEvalValueLookupStatus::NoMetadata;
   long long value = 0;
   bool local_binding_metadata_miss = false;
+  bool nttp_binding_metadata_miss = false;
 };
 
 struct ConstEvalEnv {
@@ -242,6 +243,15 @@ struct ConstEvalEnv {
         has_authoritative_metadata ||
         text.status == ConstEvalValueLookupStatus::Miss;
     if (has_authoritative_metadata) {
+      const bool nttp_metadata_missed =
+          structured.nttp_binding_metadata_miss ||
+          text.nttp_binding_metadata_miss;
+      if (!nttp_metadata_missed && !n->is_global_qualified &&
+          n->n_qualifier_segments == 0 && n->namespace_context_id < 0) {
+        if (auto nttp = lookup_rendered_nttp(n->name); nttp.has_value()) {
+          return nttp;
+        }
+      }
       return std::nullopt;
     }
 
@@ -295,6 +305,13 @@ struct ConstEvalEnv {
     auto it = map->find(*key);
     if (it == map->end()) return {ConstEvalValueLookupStatus::Miss, 0};
     return {ConstEvalValueLookupStatus::Found, it->second};
+  }
+
+  std::optional<long long> lookup_rendered_nttp(const std::string& name) const {
+    if (!nttp_bindings) return std::nullopt;
+    auto it = nttp_bindings->find(name);
+    return it != nttp_bindings->end() ? std::optional<long long>(it->second)
+                                      : std::nullopt;
   }
 
   ConstEvalValueLookupResult lookup_by_text(const Node* n) const {
@@ -356,6 +373,7 @@ struct ConstEvalEnv {
     } else {
       if (result.status == ConstEvalValueLookupStatus::Miss) {
         saw_metadata = true;
+        return {ConstEvalValueLookupStatus::Miss, 0, false, true};
       }
     }
     if (saw_metadata) {
@@ -418,8 +436,10 @@ struct ConstEvalEnv {
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
-      saw_metadata =
-          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+      if (result.status == ConstEvalValueLookupStatus::Miss) {
+        saw_metadata = true;
+        return {ConstEvalValueLookupStatus::Miss, 0, false, true};
+      }
     }
     if (saw_metadata) {
       return {ConstEvalValueLookupStatus::Miss, 0,
