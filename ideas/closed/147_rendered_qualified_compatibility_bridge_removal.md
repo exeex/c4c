@@ -1,7 +1,8 @@
 # Rendered Qualified Compatibility Bridge Removal
 
-Status: Open
+Status: Closed
 Created: 2026-05-07
+Closed: 2026-05-07
 
 Parent Ideas:
 - `ideas/closed/146_qualified_name_deferred_carrier_authority.md`
@@ -67,6 +68,25 @@ and needs a focused route that first migrates the remaining legacy carriers.
 - Focused tests cover the qualified template/HIR cases that previously
   regressed when the parser compatibility bridge was removed.
 - Broader parser/Sema/HIR validation remains green.
+
+## Completion Notes
+
+Idea 147 closed after Step 5 full-suite validation. The parser rendered
+qualified key bridge was deleted or fenced from semantic callers, qualified
+template and HIR compatibility paths were migrated to structured owner/member
+carriers, and the remaining `split_qualified_name_scope()` helper is isolated
+from parser/Sema/HIR semantic lookup callers.
+
+The HIR static-member carrier blocker was decomposed through
+`ideas/closed/148_hir_static_member_carrier_authority_decomposition.md` and
+handed back to this idea. `review/147_step4_after_hir_carrier_review.md`
+reported no remaining Step 4 blockers and recommended moving to Step 5
+validation.
+
+Final proof: `test_after.log` records full-suite CTest 3023/3023 passing.
+The accepted close baseline in `test_baseline.log` also records 3023/3023
+passing, and `c4c-regression-guard` passed in non-decreasing mode against
+`test_baseline.log` and `test_after.log` with no new failures.
 
 ## Reviewer Reject Signals
 
