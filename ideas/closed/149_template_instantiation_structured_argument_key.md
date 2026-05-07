@@ -1,7 +1,18 @@
 # Template Instantiation Structured Argument Key
 
-Status: Open
+Status: Closed
 Created: 2026-05-07
+Closed: 2026-05-07
+
+Completion Note:
+- `TemplateInstantiationKey::Argument` now uses structured type/value payloads
+  rather than `std::string canonical_key` semantic identity.
+- Type arguments carry structured type components; value arguments carry
+  expression nodes, captured tokens, or numeric payloads before any legacy
+  display text.
+- HIR specialization identity compares structured owner and argument data,
+  while retained canonical strings are display/compatibility mirrors.
+- Focused parser/Sema/HIR probes and the full CTest suite passed at close.
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
