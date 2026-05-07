@@ -493,7 +493,8 @@ bool has_complete_text_name_identity(const TypeSpec& ts) {
 
 bool has_any_text_name_metadata(const TypeSpec& ts) {
   return ts.namespace_context_id >= 0 || ts.tag_text_id != kInvalidText ||
-         ts.qualifier_text_ids != nullptr;
+         ts.qualifier_text_ids != nullptr || ts.n_qualifier_segments > 0 ||
+         ts.is_global_qualified;
 }
 
 bool same_text_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
@@ -539,8 +540,11 @@ bool same_type_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
            same_template_param_identity(lhs, rhs);
   }
 
-  if (has_record_def_identity(lhs) && has_record_def_identity(rhs)) {
-    return same_record_def_identity(lhs, rhs);
+  const bool lhs_has_record_def = has_record_def_identity(lhs);
+  const bool rhs_has_record_def = has_record_def_identity(rhs);
+  if (lhs_has_record_def || rhs_has_record_def) {
+    return lhs_has_record_def && rhs_has_record_def &&
+           same_record_def_identity(lhs, rhs);
   }
 
   const bool lhs_has_text_name = has_complete_text_name_identity(lhs);
@@ -553,11 +557,6 @@ bool same_type_name_identity(const TypeSpec& lhs, const TypeSpec& rhs) {
   const bool lhs_has_any_text_name = has_any_text_name_metadata(lhs);
   const bool rhs_has_any_text_name = has_any_text_name_metadata(rhs);
   if (lhs_has_any_text_name || rhs_has_any_text_name) {
-    return lhs_has_any_text_name && rhs_has_any_text_name &&
-           same_text_name_identity(lhs, rhs);
-  }
-
-  if (has_record_def_identity(lhs) || has_record_def_identity(rhs)) {
     return false;
   }
 

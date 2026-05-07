@@ -5703,6 +5703,14 @@ void test_typespec_equality_uses_structured_type_identity_before_rendered_tag() 
               "TypeSpec equality should use shared record_def identity "
               "instead of stale rendered tag spelling");
 
+  set_legacy_typespec_tag(rhs, legacy_typespec_tag_or_null(lhs));
+  rhs.record_def = nullptr;
+  rhs.namespace_context_id = 3;
+  rhs.tag_text_id = type_text;
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should prefer complete record_def metadata "
+              "over same-spelling structured text metadata");
+
   c4c::TextId lhs_qualifiers[] = {owner_text};
   c4c::TextId rhs_qualifiers[] = {owner_text};
   lhs = make_ts("StaleLeftTag");
@@ -5724,6 +5732,12 @@ void test_typespec_equality_uses_structured_type_identity_before_rendered_tag() 
   expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
               "TypeSpec equality should reject different tag TextIds even "
               "when rendered tag spelling matches");
+
+  rhs = make_ts(legacy_typespec_tag_or_null(lhs));
+  rhs.namespace_context_id = lhs.namespace_context_id;
+  expect_true(!c4c::type_binding_values_equivalent(lhs, rhs),
+              "TypeSpec equality should reject partial structured metadata "
+              "instead of falling back to rendered tag spelling");
 
   lhs = make_ts("StaleLeftTemplateParam");
   lhs.template_param_owner_namespace_context_id = 7;
