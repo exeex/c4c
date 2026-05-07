@@ -33,3 +33,11 @@ Ran the delegated proof exactly:
 ```
 
 Result: passed. The build completed and all 109 matching tests passed, including `frontend_hir_lookup_tests`. Proof log: `test_after.log`.
+
+Supervisor-side full-suite validation after rejecting the failed baseline candidate:
+
+```bash
+ctest --test-dir build -j --output-on-failure
+```
+
+Result: passed 3023/3023.
