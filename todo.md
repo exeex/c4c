@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/149_template_instantiation_structured_argument_key.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate Parser and Type-Helper Construction Sites
+Current Step ID: 4
+Current Step Title: Migrate Sema and Deferred Argument Handling
 
 ## Just Finished
 
