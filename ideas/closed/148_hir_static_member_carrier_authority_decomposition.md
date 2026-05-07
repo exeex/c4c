@@ -1,7 +1,8 @@
 # HIR Static Member Carrier Authority Decomposition
 
-Status: Open
+Status: Closed
 Created: 2026-05-07
+Closed: 2026-05-07
 
 Related Ideas:
 - `ideas/open/147_rendered_qualified_compatibility_bridge_removal.md`
@@ -111,6 +112,20 @@ inherited static-member payload lookup.
   dependent and inherited cases.
 - The route produces a clear handoff back to
   `ideas/open/147_rendered_qualified_compatibility_bridge_removal.md` Step 4.
+
+## Completion Notes
+
+Commit `1a206d419` completed the HIR static-member carrier decomposition. The
+repair removed rendered suffix owner-tag/template-primary recovery, kept
+generated member payload use behind structured owner authority, preserved
+dependent and inherited member-typedef folding, and added the variadic
+`sizeof...(Ts)` carrier repair without named-case overfit.
+
+`review/148_step4_precommit_followup.md` found no blocking drift and accepted
+the route for commit. Matching before/after regression logs recorded 357/357
+passing tests, and the regression guard passed in non-decreasing mode with no
+new failures. The active lifecycle state can return to
+`ideas/open/147_rendered_qualified_compatibility_bridge_removal.md` Step 4.
 
 ## Reviewer Reject Signals
 
