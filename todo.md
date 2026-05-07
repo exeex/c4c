@@ -8,57 +8,52 @@ Current Step Title: Prove Structured Argument Identity
 
 ## Just Finished
 
-Step 7 complete: focused proof now covers structured template argument identity
-inside the delegated parser/Sema/HIR checkpoint. Added
-`frontend_parser_lookup_authority_tests` probes for type arguments that remain
-equal across rendered tag formatting drift when structured `TextId` identity
-matches, type arguments with the same rendered tag that stay distinct when
-structured `TextId` identity differs, and value arguments with the same stale
-rendered `$expr:` text that stay distinct through structured expression-tree
-payloads.
+Step 7 regression fix complete: restored the two full-suite runtime cases
+`cpp_positive_sema_template_alias_member_typedef_qualified_carrier_runtime_cpp`
+and `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`.
+`specialization_type_identity_*` now ignores stale template/deferred carrier
+metadata after aliases or member typedefs resolve to non-nominal concrete
+types, while still using structured nominal metadata for unresolved typedefs,
+template records, structs, unions, and enums.
 
 ## Suggested Next
 
-Next coherent packet: supervisor handoff to plan-owner lifecycle close review
-for `ideas/open/149_template_instantiation_structured_argument_key.md`. The
-Step 7 proof and coverage indicate the source idea appears ready for close
-review, subject to supervisor/reviewer acceptance of the remaining compatibility
-mirrors noted below.
+Next coherent packet: supervisor review/acceptance of the Step 7 regression
+fix, then decide whether to hand off to plan-owner lifecycle close review for
+`ideas/open/149_template_instantiation_structured_argument_key.md`.
 
 ## Watchouts
 
+- The fix deliberately does not weaken tests or add named-case matching. It
+  keeps equality, ordering, and hashing aligned by gating nominal metadata in
+  all three `specialization_type_identity_*` helpers.
+- The regression symptom was stale structured carrier metadata on resolved
+  primitive aliases: generated `is_same_v<same,same>` constants were false even
+  though the displayed concrete types matched.
 - `HirRecordOwnerTemplateIdentity::specialization_key` still stores
   `spec_key.canonical` as a serialized compatibility bridge; remove it only
   after HIR record-owner identity can carry structured specialization owner and
   argument data directly.
-- `encode_pending_type_ref` is retained as a compatibility wrapper over
-  `format_pending_type_ref_for_display` because existing frontend lookup tests
-  still call it directly; it is no longer part of pending-type dedup/resolved
-  identity.
-- The structured pending key reuses `specialization_type_identity_*` for
-  `TypeSpec` equality/hashing; future cleanup should avoid reintroducing
-  formatted type strings as semantic keys.
-- Step 7 did not require implementation edits. The new probes are intentionally
-  equality/inequality assertions against existing structured key construction,
-  not expectation weakening.
 
 ## Proof
 
 Step 7 proof:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_lookup_tests|cpp_hir_|frontend_parser_lookup_authority_tests|positive_sema_|frontend_cxx_)'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_positive_sema_template_alias_member_typedef_qualified_carrier_runtime_cpp|cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp|frontend_hir_lookup_tests|cpp_hir_|frontend_parser_lookup_authority_tests|positive_sema_|frontend_cxx_)'`
 
-Result: build succeeded and 145/145 selected tests passed. Proof log:
+Result: build succeeded and 147/147 selected tests passed. Proof log:
 `test_after.log`.
 
-Coverage rationale: `frontend_parser_lookup_authority_tests` now directly
-proves formatting-stable type identity and ambiguous rendered type/value
-argument separation; the existing HIR and `cpp_hir_` checkpoint covers the
-structured template/HIR consumers after the string-key path was removed or
-isolated.
+Focused repro before the full proof:
+
+`ctest --test-dir build -j --output-on-failure -R '^(cpp_positive_sema_template_alias_member_typedef_qualified_carrier_runtime_cpp|cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp)$'`
+
+Result: 2/2 selected tests passed.
 
 Supervisor regression guard:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
-Result: pass; 145 passed before and after, with no new failing tests.
+Result: pass; before had 145/147 passing with the two runtime regressions
+failing, after has 147/147 passing with both failures resolved and no new
+failures.

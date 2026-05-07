@@ -916,22 +916,38 @@ inline size_t specialization_template_arg_list_hash(
   return h;
 }
 
+inline bool specialization_type_identity_uses_nominal_metadata(
+    const TypeSpec& ts) {
+  switch (ts.base) {
+    case TB_STRUCT:
+    case TB_UNION:
+    case TB_ENUM:
+    case TB_TYPEDEF:
+      return true;
+    case TB_VOID:
+      return ts.tag_text_id != kInvalidText ||
+             ts.template_param_owner_text_id != kInvalidText ||
+             ts.template_param_index >= 0 ||
+             ts.template_param_text_id != kInvalidText || ts.record_def ||
+             ts.n_qualifier_segments > 0 ||
+             ts.tpl_struct_origin_key.base_text_id != kInvalidText ||
+             (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) ||
+             ts.deferred_member_type_owner_key.base_text_id != kInvalidText ||
+             ts.deferred_member_type_text_id != kInvalidText;
+    default:
+      return false;
+  }
+}
+
 inline bool specialization_type_identity_equal(
     const TypeSpec& a, const TypeSpec& b) {
+  const bool a_uses_nominal =
+      specialization_type_identity_uses_nominal_metadata(a);
+  const bool b_uses_nominal =
+      specialization_type_identity_uses_nominal_metadata(b);
   if (a.base != b.base ||
       a.enum_underlying_base != b.enum_underlying_base ||
-      a.tag_text_id != b.tag_text_id ||
-      a.template_param_owner_namespace_context_id !=
-          b.template_param_owner_namespace_context_id ||
-      a.template_param_owner_text_id != b.template_param_owner_text_id ||
-      a.template_param_index != b.template_param_index ||
-      a.template_param_text_id != b.template_param_text_id ||
-      !specialization_key_record_def_equal(a.record_def, b.record_def) ||
-      !specialization_key_text_id_sequence_equal(
-          a.qualifier_text_ids, a.n_qualifier_segments,
-          b.qualifier_text_ids, b.n_qualifier_segments) ||
-      a.is_global_qualified != b.is_global_qualified ||
-      a.namespace_context_id != b.namespace_context_id ||
+      a_uses_nominal != b_uses_nominal ||
       a.ptr_level != b.ptr_level ||
       a.is_lvalue_ref != b.is_lvalue_ref ||
       a.is_rvalue_ref != b.is_rvalue_ref ||
@@ -949,46 +965,75 @@ inline bool specialization_type_identity_equal(
       a.is_fn_ptr != b.is_fn_ptr ||
       a.is_packed != b.is_packed ||
       a.is_noinline != b.is_noinline ||
-      a.is_always_inline != b.is_always_inline ||
-      !(a.tpl_struct_origin_key == b.tpl_struct_origin_key) ||
-      !specialization_template_arg_list_equal(
-          a.tpl_struct_args, b.tpl_struct_args) ||
-      !(a.deferred_member_type_owner_key ==
-        b.deferred_member_type_owner_key) ||
-      a.deferred_member_type_text_id != b.deferred_member_type_text_id) {
+      a.is_always_inline != b.is_always_inline) {
     return false;
   }
   for (int i = 0; i < 8; ++i) {
     if (a.array_dims[i] != b.array_dims[i]) return false;
+  }
+  if (a_uses_nominal) {
+    if (a.tag_text_id != b.tag_text_id ||
+        a.template_param_owner_namespace_context_id !=
+            b.template_param_owner_namespace_context_id ||
+        a.template_param_owner_text_id != b.template_param_owner_text_id ||
+        a.template_param_index != b.template_param_index ||
+        a.template_param_text_id != b.template_param_text_id ||
+        !specialization_key_record_def_equal(a.record_def, b.record_def) ||
+        !specialization_key_text_id_sequence_equal(
+            a.qualifier_text_ids, a.n_qualifier_segments,
+            b.qualifier_text_ids, b.n_qualifier_segments) ||
+        a.is_global_qualified != b.is_global_qualified ||
+        a.namespace_context_id != b.namespace_context_id ||
+        !(a.tpl_struct_origin_key == b.tpl_struct_origin_key) ||
+        !specialization_template_arg_list_equal(
+            a.tpl_struct_args, b.tpl_struct_args) ||
+        !(a.deferred_member_type_owner_key ==
+          b.deferred_member_type_owner_key) ||
+        a.deferred_member_type_text_id != b.deferred_member_type_text_id) {
+      return false;
+    }
   }
   return true;
 }
 
 inline bool specialization_type_identity_less(
     const TypeSpec& a, const TypeSpec& b) {
+  const bool a_uses_nominal =
+      specialization_type_identity_uses_nominal_metadata(a);
+  const bool b_uses_nominal =
+      specialization_type_identity_uses_nominal_metadata(b);
 #define C4C_HIR_SPEC_LESS_FIELD(field) \
   if (a.field != b.field) return a.field < b.field
   C4C_HIR_SPEC_LESS_FIELD(base);
   C4C_HIR_SPEC_LESS_FIELD(enum_underlying_base);
-  C4C_HIR_SPEC_LESS_FIELD(tag_text_id);
-  C4C_HIR_SPEC_LESS_FIELD(template_param_owner_namespace_context_id);
-  C4C_HIR_SPEC_LESS_FIELD(template_param_owner_text_id);
-  C4C_HIR_SPEC_LESS_FIELD(template_param_index);
-  C4C_HIR_SPEC_LESS_FIELD(template_param_text_id);
+  if (a_uses_nominal != b_uses_nominal) {
+    return a_uses_nominal < b_uses_nominal;
+  }
+  if (a_uses_nominal) {
+    C4C_HIR_SPEC_LESS_FIELD(tag_text_id);
+    C4C_HIR_SPEC_LESS_FIELD(template_param_owner_namespace_context_id);
+    C4C_HIR_SPEC_LESS_FIELD(template_param_owner_text_id);
+    C4C_HIR_SPEC_LESS_FIELD(template_param_index);
+    C4C_HIR_SPEC_LESS_FIELD(template_param_text_id);
+  }
 #undef C4C_HIR_SPEC_LESS_FIELD
-  if (specialization_key_record_def_less(a.record_def, b.record_def)) return true;
-  if (specialization_key_record_def_less(b.record_def, a.record_def)) return false;
-  if (!specialization_key_text_id_sequence_equal(
+  if (a_uses_nominal) {
+    if (specialization_key_record_def_less(a.record_def, b.record_def)) return true;
+    if (specialization_key_record_def_less(b.record_def, a.record_def)) return false;
+    if (!specialization_key_text_id_sequence_equal(
+            a.qualifier_text_ids, a.n_qualifier_segments,
+            b.qualifier_text_ids, b.n_qualifier_segments)) {
+      return specialization_key_text_id_sequence_less(
           a.qualifier_text_ids, a.n_qualifier_segments,
-          b.qualifier_text_ids, b.n_qualifier_segments)) {
-    return specialization_key_text_id_sequence_less(
-        a.qualifier_text_ids, a.n_qualifier_segments,
-        b.qualifier_text_ids, b.n_qualifier_segments);
+          b.qualifier_text_ids, b.n_qualifier_segments);
+    }
   }
 #define C4C_HIR_SPEC_LESS_FIELD(field) \
   if (a.field != b.field) return a.field < b.field
-  C4C_HIR_SPEC_LESS_FIELD(is_global_qualified);
-  C4C_HIR_SPEC_LESS_FIELD(namespace_context_id);
+  if (a_uses_nominal) {
+    C4C_HIR_SPEC_LESS_FIELD(is_global_qualified);
+    C4C_HIR_SPEC_LESS_FIELD(namespace_context_id);
+  }
   C4C_HIR_SPEC_LESS_FIELD(ptr_level);
   C4C_HIR_SPEC_LESS_FIELD(is_lvalue_ref);
   C4C_HIR_SPEC_LESS_FIELD(is_rvalue_ref);
@@ -1013,42 +1058,50 @@ inline bool specialization_type_identity_less(
   C4C_HIR_SPEC_LESS_FIELD(is_noinline);
   C4C_HIR_SPEC_LESS_FIELD(is_always_inline);
 #undef C4C_HIR_SPEC_LESS_FIELD
-  if (!(a.tpl_struct_origin_key == b.tpl_struct_origin_key)) {
-    return specialization_key_qualified_name_less(
-        a.tpl_struct_origin_key, b.tpl_struct_origin_key);
+  if (a_uses_nominal) {
+    if (!(a.tpl_struct_origin_key == b.tpl_struct_origin_key)) {
+      return specialization_key_qualified_name_less(
+          a.tpl_struct_origin_key, b.tpl_struct_origin_key);
+    }
+    if (specialization_template_arg_list_less(a.tpl_struct_args, b.tpl_struct_args)) {
+      return true;
+    }
+    if (specialization_template_arg_list_less(b.tpl_struct_args, a.tpl_struct_args)) {
+      return false;
+    }
+    if (!(a.deferred_member_type_owner_key == b.deferred_member_type_owner_key)) {
+      return specialization_key_qualified_name_less(
+          a.deferred_member_type_owner_key, b.deferred_member_type_owner_key);
+    }
+    return a.deferred_member_type_text_id < b.deferred_member_type_text_id;
   }
-  if (specialization_template_arg_list_less(a.tpl_struct_args, b.tpl_struct_args)) {
-    return true;
-  }
-  if (specialization_template_arg_list_less(b.tpl_struct_args, a.tpl_struct_args)) {
-    return false;
-  }
-  if (!(a.deferred_member_type_owner_key == b.deferred_member_type_owner_key)) {
-    return specialization_key_qualified_name_less(
-        a.deferred_member_type_owner_key, b.deferred_member_type_owner_key);
-  }
-  return a.deferred_member_type_text_id < b.deferred_member_type_text_id;
+  return false;
 }
 
 inline size_t specialization_type_identity_hash(const TypeSpec& ts) noexcept {
+  const bool uses_nominal =
+      specialization_type_identity_uses_nominal_metadata(ts);
   size_t h = std::hash<uint8_t>{}(static_cast<uint8_t>(ts.base));
   h = specialization_key_hash_mix(
       h, std::hash<uint8_t>{}(static_cast<uint8_t>(ts.enum_underlying_base)));
-  h = specialization_key_hash_mix(h, std::hash<TextId>{}(ts.tag_text_id));
-  h = specialization_key_hash_mix(
-      h, std::hash<int>{}(ts.template_param_owner_namespace_context_id));
-  h = specialization_key_hash_mix(
-      h, std::hash<TextId>{}(ts.template_param_owner_text_id));
-  h = specialization_key_hash_mix(
-      h, std::hash<int>{}(ts.template_param_index));
-  h = specialization_key_hash_mix(
-      h, std::hash<TextId>{}(ts.template_param_text_id));
-  h = specialization_key_hash_mix(h, specialization_key_record_def_hash(ts.record_def));
-  h = specialization_key_hash_mix(
-      h, specialization_key_text_id_sequence_hash(
-             ts.qualifier_text_ids, ts.n_qualifier_segments));
-  h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_global_qualified));
-  h = specialization_key_hash_mix(h, std::hash<int>{}(ts.namespace_context_id));
+  h = specialization_key_hash_mix(h, std::hash<bool>{}(uses_nominal));
+  if (uses_nominal) {
+    h = specialization_key_hash_mix(h, std::hash<TextId>{}(ts.tag_text_id));
+    h = specialization_key_hash_mix(
+        h, std::hash<int>{}(ts.template_param_owner_namespace_context_id));
+    h = specialization_key_hash_mix(
+        h, std::hash<TextId>{}(ts.template_param_owner_text_id));
+    h = specialization_key_hash_mix(
+        h, std::hash<int>{}(ts.template_param_index));
+    h = specialization_key_hash_mix(
+        h, std::hash<TextId>{}(ts.template_param_text_id));
+    h = specialization_key_hash_mix(h, specialization_key_record_def_hash(ts.record_def));
+    h = specialization_key_hash_mix(
+        h, specialization_key_text_id_sequence_hash(
+               ts.qualifier_text_ids, ts.n_qualifier_segments));
+    h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_global_qualified));
+    h = specialization_key_hash_mix(h, std::hash<int>{}(ts.namespace_context_id));
+  }
   h = specialization_key_hash_mix(h, std::hash<int>{}(ts.ptr_level));
   h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_lvalue_ref));
   h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_rvalue_ref));
@@ -1070,14 +1123,16 @@ inline size_t specialization_type_identity_hash(const TypeSpec& ts) noexcept {
   h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_packed));
   h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_noinline));
   h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_always_inline));
-  h = specialization_key_hash_mix(
-      h, specialization_key_qualified_name_hash(ts.tpl_struct_origin_key));
-  h = specialization_key_hash_mix(
-      h, specialization_template_arg_list_hash(ts.tpl_struct_args));
-  h = specialization_key_hash_mix(
-      h, specialization_key_qualified_name_hash(ts.deferred_member_type_owner_key));
-  h = specialization_key_hash_mix(
-      h, std::hash<TextId>{}(ts.deferred_member_type_text_id));
+  if (uses_nominal) {
+    h = specialization_key_hash_mix(
+        h, specialization_key_qualified_name_hash(ts.tpl_struct_origin_key));
+    h = specialization_key_hash_mix(
+        h, specialization_template_arg_list_hash(ts.tpl_struct_args));
+    h = specialization_key_hash_mix(
+        h, specialization_key_qualified_name_hash(ts.deferred_member_type_owner_key));
+    h = specialization_key_hash_mix(
+        h, std::hash<TextId>{}(ts.deferred_member_type_text_id));
+  }
   return h;
 }
 
