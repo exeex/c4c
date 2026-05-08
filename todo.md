@@ -8,20 +8,18 @@ Current Step Title: Retire LIR Aggregate Helper Compatibility Tags
 
 ## Just Finished
 
-Completed Plan Step 6 by making `lookup_abi_struct_layout` return the structured layout on complete owner-key hits and stop after complete owner-key misses instead of consulting rendered compatibility tags.
+Completed Plan Step 6 member-access slice by making `member_access_owner_tag_from_type` return structured tags on complete owner-key hits and stop after complete owner-key misses instead of falling back to rendered compatibility tags.
 
-Extended `frontend_lir_global_type_ref_test` so the focused aggregate fixture proves ABI helper behavior through `classify_aarch64_hfa`: complete owner-key hits use structured layout metadata, complete owner-key misses reject stale rendered compatibility, and incomplete/no-owner metadata still preserves legacy rendered compatibility.
-
-Continued Step 6 by making `lir_owned_type_spec` skip rendered compatibility re-interning whenever a complete aggregate owner key exists but no structured layout is found. Extended `frontend_lir_function_signature_type_ref_test` to prove function return and parameter LIR-owned TypeSpecs preserve the missing owner key instead of being rewritten to stale rendered compatibility, while still dropping AST owner pointers for LIR storage.
+Extended `frontend_lir_call_type_ref_test` with focused LIR member-GEP coverage for structured owner recovery, complete owner-key miss rejection of stale rendered compatibility, and preserved no-owner rendered compatibility.
 
 ## Suggested Next
 
-Next coherent packet: supervisor review/commit for Step 6, or route the next remaining compatibility-retirement slice if broader review finds another active helper family.
+Next coherent packet: supervisor review/commit for Step 6, or route any remaining compatibility-retirement helper only if broader review finds another active LIR owner-tag family.
 
 ## Watchouts
 
-- `lookup_structured_layout` already had the owner-key miss cutoff; this packet aligned the ABI-only helper used by HFA classification and the `lir_owned_type_spec` storage path used for function return/parameter metadata.
-- The no-owner compatibility path is still intentionally live for incomplete metadata and is covered by the updated LIR-linked fixture.
+- The no-owner compatibility path remains intentionally live for incomplete metadata and is covered through a member-GEP LIR path.
+- The complete-miss test injects a compatibility-only HIR layout without indexing it as a structured owner, matching the stale-rendered compatibility shape this slice is retiring.
 
 ## Proof
 

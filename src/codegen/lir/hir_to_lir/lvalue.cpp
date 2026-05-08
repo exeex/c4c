@@ -40,6 +40,7 @@ std::optional<std::string> member_access_owner_tag_from_type(const c4c::hir::Mod
           typespec_aggregate_owner_key(ts, mod)) {
     const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
     if (structured_tag && !structured_tag->empty()) return *structured_tag;
+    return std::nullopt;
   }
   return typespec_aggregate_compatibility_tag(mod, ts);
 }

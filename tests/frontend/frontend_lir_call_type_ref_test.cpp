@@ -11,8 +11,10 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -77,6 +79,33 @@ c4c::codegen::lir::LirCallOp& require_call_to(
   fail("fixture function should contain call to " + std::string(callee));
 }
 
+c4c::hir::Expr& require_member_expr(c4c::hir::Module& module,
+                                    std::string_view field) {
+  for (c4c::hir::Expr& expr : module.expr_pool) {
+    auto* member = std::get_if<c4c::hir::MemberExpr>(&expr.payload);
+    if (member && member->field == field) return expr;
+  }
+  fail("fixture should contain member expression for field " + std::string(field));
+}
+
+c4c::hir::Expr& require_expr(c4c::hir::Module& module, c4c::hir::ExprId id,
+                             const std::string& msg) {
+  c4c::hir::Expr* expr = module.find_expr(id);
+  expect_true(expr != nullptr, msg);
+  return *expr;
+}
+
+const c4c::codegen::lir::LirGepOp& require_first_gep(
+    const c4c::codegen::lir::LirFunction& fn) {
+  for (const auto& block : fn.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst);
+      if (gep) return *gep;
+    }
+  }
+  fail("fixture function should contain a member GEP");
+}
+
 void expect_struct_type_ref(
     const c4c::codegen::lir::LirModule& module,
     const c4c::codegen::lir::LirTypeRef& type_ref,
@@ -86,6 +115,154 @@ void expect_struct_type_ref(
   expect_true(type_ref.has_struct_name_id(), msg + " should carry a StructNameId");
   expect_eq(module.struct_names.spelling(type_ref.struct_name_id()), expected_text,
             msg + " StructNameId should resolve to mirrored text");
+}
+
+c4c::Node make_record_owner(std::string_view name, c4c::TextId text_id,
+                            int namespace_context_id) {
+  c4c::Node owner{};
+  owner.kind = c4c::NK_STRUCT_DEF;
+  owner.name = name.data();
+  owner.unqualified_name = name.data();
+  owner.unqualified_text_id = text_id;
+  owner.namespace_context_id = namespace_context_id;
+  return owner;
+}
+
+void append_compat_only_stale_member_layout(c4c::hir::Module& module) {
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleMemberOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleMemberOwner");
+  stale_def.ns_qual.context_id = 77;
+  stale_def.size_bytes = 4;
+  stale_def.align_bytes = 4;
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "stale";
+  stale_field.elem_type.base = c4c::TB_INT;
+  stale_field.size_bytes = 4;
+  stale_field.align_bytes = 4;
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+}
+
+void poison_member_base_type(c4c::hir::Module& module, c4c::hir::MemberExpr& member,
+                             const c4c::TypeSpec& replacement) {
+  c4c::hir::Expr& base = require_expr(module, member.base,
+                                      "member base expression should exist");
+  base.type.spec = replacement;
+}
+
+void test_member_access_owner_tag_recovery_uses_structured_owner_key() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct RealMemberOwner {
+  int actual;
+};
+
+int read_actual(struct RealMemberOwner value) {
+  return value.actual;
+}
+)c");
+  append_compat_only_stale_member_layout(hir_module);
+
+  c4c::hir::Expr& member_expr = require_member_expr(hir_module, "actual");
+  auto& member = std::get<c4c::hir::MemberExpr>(member_expr.payload);
+  member.resolved_owner_tag = "StaleMemberOwner";
+  member.member_symbol_id = c4c::kInvalidMemberSymbol;
+
+  c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+  const c4c::codegen::lir::LirFunction& fn = require_function(lir_module, "read_actual");
+  const c4c::codegen::lir::LirGepOp& gep = require_first_gep(fn);
+  expect_eq(gep.element_type.str(), "%struct.RealMemberOwner",
+            "member owner recovery should use the structured owner-key tag");
+  expect_true(gep.element_type.has_struct_name_id(),
+              "member owner recovery GEP should carry structured LIR type identity");
+  expect_eq(lir_module.struct_names.spelling(gep.element_type.struct_name_id()),
+            "%struct.RealMemberOwner",
+            "member owner recovery StructNameId should resolve to the structured tag");
+}
+
+void test_member_access_owner_tag_recovery_rejects_stale_rendered_miss() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct RealMemberOwner {
+  int actual;
+};
+
+int read_actual(struct RealMemberOwner value) {
+  return value.actual;
+}
+)c");
+  append_compat_only_stale_member_layout(hir_module);
+
+  const c4c::TextId missing_owner_text =
+      hir_module.link_name_texts->intern("MissingMemberOwner");
+  c4c::Node missing_owner =
+      make_record_owner("StaleMemberOwner", missing_owner_text, 77);
+
+  c4c::TypeSpec owner_miss_query{};
+  owner_miss_query.base = c4c::TB_STRUCT;
+  owner_miss_query.tag_text_id = missing_owner.unqualified_text_id;
+  owner_miss_query.namespace_context_id = missing_owner.namespace_context_id;
+  owner_miss_query.record_def = &missing_owner;
+  owner_miss_query.array_size = -1;
+  owner_miss_query.inner_rank = -1;
+
+  c4c::hir::Expr& member_expr = require_member_expr(hir_module, "actual");
+  auto& member = std::get<c4c::hir::MemberExpr>(member_expr.payload);
+  member.field = "stale";
+  member.field_text_id = hir_module.link_name_texts->intern("stale");
+  member.resolved_owner_tag.clear();
+  member.member_symbol_id = c4c::kInvalidMemberSymbol;
+  member_expr.type.spec.base = c4c::TB_INT;
+  poison_member_base_type(hir_module, member, owner_miss_query);
+
+  try {
+    (void)c4c::codegen::lir::lower(hir_module);
+    fail("complete owner-key miss must not recover member access through stale rendered compatibility");
+  } catch (const std::runtime_error& err) {
+    expect_true(std::string(err.what()).find("MemberExpr base has no struct tag") !=
+                    std::string::npos,
+                "complete owner-key miss should stop before rendered member fallback");
+  }
+}
+
+void test_member_access_owner_tag_recovery_preserves_no_owner_compatibility() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct RealMemberOwner {
+  int actual;
+};
+
+struct StaleMemberOwner {
+  int stale;
+};
+
+int read_actual(struct RealMemberOwner value) {
+  return value.actual;
+}
+)c");
+
+  c4c::TypeSpec no_owner_query{};
+  no_owner_query.base = c4c::TB_STRUCT;
+  no_owner_query.tag_text_id = hir_module.link_name_texts->intern("StaleMemberOwner");
+  no_owner_query.namespace_context_id = -1;
+  c4c::TextId incomplete_qualifier[] = {c4c::kInvalidText};
+  no_owner_query.qualifier_text_ids = incomplete_qualifier;
+  no_owner_query.n_qualifier_segments = 1;
+  no_owner_query.array_size = -1;
+  no_owner_query.inner_rank = -1;
+
+  c4c::hir::Expr& member_expr = require_member_expr(hir_module, "actual");
+  auto& member = std::get<c4c::hir::MemberExpr>(member_expr.payload);
+  member.field = "stale";
+  member.field_text_id = hir_module.link_name_texts->intern("stale");
+  member.resolved_owner_tag.clear();
+  member.member_symbol_id = c4c::kInvalidMemberSymbol;
+  member_expr.type.spec.base = c4c::TB_INT;
+  poison_member_base_type(hir_module, member, no_owner_query);
+
+  c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+  const c4c::codegen::lir::LirFunction& fn = require_function(lir_module, "read_actual");
+  const c4c::codegen::lir::LirGepOp& gep = require_first_gep(fn);
+  expect_eq(gep.element_type.str(), "%struct.StaleMemberOwner",
+            "no-owner member metadata should preserve rendered compatibility");
 }
 
 }  // namespace
@@ -222,6 +399,10 @@ int call_variadic(struct Pair tail) {
     fail("verifier should reject a known struct call argument without StructNameId");
   } catch (const c4c::codegen::lir::LirVerifyError&) {
   }
+
+  test_member_access_owner_tag_recovery_uses_structured_owner_key();
+  test_member_access_owner_tag_recovery_rejects_stale_rendered_miss();
+  test_member_access_owner_tag_recovery_preserves_no_owner_compatibility();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;
