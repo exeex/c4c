@@ -2,7 +2,6 @@
 #include "call_args_ops.hpp"
 #include "hir_to_lir.hpp"
 #include "ir.hpp"
-#include "llvm_helpers.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema.hpp"
@@ -96,24 +95,6 @@ c4c::hir::Expr& require_expr(c4c::hir::Module& module, c4c::hir::ExprId id,
   return *expr;
 }
 
-c4c::hir::HirStructField& require_anonymous_field(c4c::hir::Module& module,
-                                                  std::string_view owner_tag) {
-  auto owner_it = module.struct_defs.find(std::string(owner_tag));
-  expect_true(owner_it != module.struct_defs.end(),
-              "fixture should contain struct layout " + std::string(owner_tag));
-  for (c4c::hir::HirStructField& field : owner_it->second.fields) {
-    if (field.is_anon_member) return field;
-  }
-  fail("fixture should contain an anonymous nested aggregate field");
-}
-
-void clear_record_rendered_spelling(c4c::TypeSpec& ts) {
-  expect_true(ts.record_def != nullptr,
-              "fixture nested aggregate TypeSpec should carry record_def metadata");
-  ts.record_def->name = nullptr;
-  ts.record_def->unqualified_name = nullptr;
-}
-
 const c4c::codegen::lir::LirGepOp& require_first_gep(
     const c4c::codegen::lir::LirFunction& fn) {
   for (const auto& block : fn.blocks) {
@@ -156,23 +137,6 @@ void append_compat_only_stale_member_layout(c4c::hir::Module& module) {
   stale_def.align_bytes = 4;
   c4c::hir::HirStructField stale_field;
   stale_field.name = "stale";
-  stale_field.elem_type.base = c4c::TB_INT;
-  stale_field.size_bytes = 4;
-  stale_field.align_bytes = 4;
-  stale_def.fields.push_back(stale_field);
-  module.struct_defs[stale_def.tag] = stale_def;
-}
-
-void append_compat_only_stale_nested_layout(c4c::hir::Module& module) {
-  c4c::hir::HirStructDef stale_def;
-  stale_def.tag = "StaleNestedOwner";
-  stale_def.tag_text_id = module.link_name_texts->intern("StaleNestedOwner");
-  stale_def.ns_qual.context_id = 81;
-  stale_def.size_bytes = 4;
-  stale_def.align_bytes = 4;
-  c4c::hir::HirStructField stale_field;
-  stale_field.name = "actual";
-  stale_field.field_text_id = module.link_name_texts->intern("actual");
   stale_field.elem_type.base = c4c::TB_INT;
   stale_field.size_bytes = 4;
   stale_field.align_bytes = 4;
@@ -299,126 +263,6 @@ int read_actual(struct RealMemberOwner value) {
   const c4c::codegen::lir::LirGepOp& gep = require_first_gep(fn);
   expect_eq(gep.element_type.str(), "%struct.StaleMemberOwner",
             "no-owner member metadata should preserve rendered compatibility");
-}
-
-void poison_anonymous_nested_field(c4c::hir::Module& hir_module,
-                                   c4c::TextId owner_text_id) {
-  c4c::hir::HirStructField& anon_field =
-      require_anonymous_field(hir_module, "OuterFieldChain");
-  clear_record_rendered_spelling(anon_field.elem_type);
-  anon_field.elem_type.tag_text_id =
-      hir_module.link_name_texts->intern("StaleNestedOwner");
-  anon_field.elem_type.record_def->unqualified_text_id = owner_text_id;
-}
-
-c4c::hir::Module lower_anonymous_field_chain_fixture() {
-  c4c::hir::Module hir_module = lower_hir_module(R"c(
-struct OuterFieldChain {
-  struct {
-    int actual;
-  };
-};
-
-int read_nested_actual(struct OuterFieldChain value) {
-  return value.actual;
-}
-)c");
-  c4c::hir::Expr& member_expr = require_member_expr(hir_module, "actual");
-  auto& member = std::get<c4c::hir::MemberExpr>(member_expr.payload);
-  member.member_symbol_id = c4c::kInvalidMemberSymbol;
-  return hir_module;
-}
-
-void test_field_chain_nested_tag_uses_structured_owner_key() {
-  c4c::hir::Module hir_module = lower_anonymous_field_chain_fixture();
-  append_compat_only_stale_nested_layout(hir_module);
-  c4c::hir::HirStructField& anon_field =
-      require_anonymous_field(hir_module, "OuterFieldChain");
-  const std::optional<std::string> real_nested_tag =
-      c4c::codegen::llvm_helpers::typespec_aggregate_compatibility_tag(
-          hir_module, anon_field.elem_type);
-  expect_true(real_nested_tag.has_value() && !real_nested_tag->empty(),
-              "fixture should expose the real anonymous nested tag");
-  const c4c::TextId real_owner_text_id =
-      anon_field.elem_type.record_def->unqualified_text_id;
-  poison_anonymous_nested_field(hir_module, real_owner_text_id);
-  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
-      c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(
-          anon_field.elem_type, hir_module);
-  expect_true(owner_key.has_value(),
-              "fixture should carry a complete anonymous nested owner key");
-  hir_module.index_struct_def_owner(*owner_key, *real_nested_tag, false);
-
-  c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
-  const c4c::codegen::lir::LirFunction& fn =
-      require_function(lir_module, "read_nested_actual");
-  const c4c::codegen::lir::LirGepOp& first_gep = require_first_gep(fn);
-  expect_eq(first_gep.element_type.str(), "%struct.OuterFieldChain",
-            "outer GEP should use the structured outer layout");
-
-  bool saw_structured_nested_gep = false;
-  for (const auto& block : fn.blocks) {
-    for (const auto& inst : block.insts) {
-      const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst);
-      if (!gep) continue;
-      if (gep->element_type.str() == "%struct.StaleNestedOwner") {
-        fail("structured nested owner-key hit must not use stale rendered compatibility");
-      }
-      if (gep->element_type.str() != "%struct.OuterFieldChain") {
-        expect_true(gep->element_type.has_struct_name_id(),
-                    "nested anonymous GEP should carry structured LIR type identity");
-        saw_structured_nested_gep = true;
-      }
-    }
-  }
-  expect_true(saw_structured_nested_gep,
-              "field-chain recursion should reach the structured anonymous nested layout");
-}
-
-void test_field_chain_nested_tag_rejects_complete_owner_miss() {
-  c4c::hir::Module hir_module = lower_anonymous_field_chain_fixture();
-  append_compat_only_stale_nested_layout(hir_module);
-  const c4c::TextId missing_owner_text_id =
-      hir_module.link_name_texts->intern("MissingNestedOwner");
-  poison_anonymous_nested_field(hir_module, missing_owner_text_id);
-
-  try {
-    (void)c4c::codegen::lir::lower(hir_module);
-    fail("complete nested owner-key miss must not recover through stale compatibility");
-  } catch (const std::runtime_error& err) {
-    expect_true(std::string(err.what()).find("field 'actual' not found") !=
-                    std::string::npos,
-                "complete nested owner-key miss should stop before rendered fallback");
-  }
-}
-
-void test_field_chain_nested_tag_preserves_no_owner_compatibility() {
-  c4c::hir::Module hir_module = lower_anonymous_field_chain_fixture();
-  append_compat_only_stale_nested_layout(hir_module);
-  c4c::hir::HirStructField& anon_field =
-      require_anonymous_field(hir_module, "OuterFieldChain");
-  anon_field.elem_type.record_def = nullptr;
-  anon_field.elem_type.tag_text_id =
-      hir_module.link_name_texts->intern("StaleNestedOwner");
-  anon_field.elem_type.namespace_context_id = -1;
-  c4c::TextId incomplete_qualifier[] = {c4c::kInvalidText};
-  anon_field.elem_type.qualifier_text_ids = incomplete_qualifier;
-  anon_field.elem_type.n_qualifier_segments = 1;
-
-  c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
-  const c4c::codegen::lir::LirFunction& fn =
-      require_function(lir_module, "read_nested_actual");
-  bool saw_stale_nested_gep = false;
-  for (const auto& block : fn.blocks) {
-    for (const auto& inst : block.insts) {
-      const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst);
-      if (gep && gep->element_type.str() == "%struct.StaleNestedOwner") {
-        saw_stale_nested_gep = true;
-      }
-    }
-  }
-  expect_true(saw_stale_nested_gep,
-              "no-owner nested field metadata should preserve rendered compatibility");
 }
 
 }  // namespace
@@ -559,9 +403,6 @@ int call_variadic(struct Pair tail) {
   test_member_access_owner_tag_recovery_uses_structured_owner_key();
   test_member_access_owner_tag_recovery_rejects_stale_rendered_miss();
   test_member_access_owner_tag_recovery_preserves_no_owner_compatibility();
-  test_field_chain_nested_tag_uses_structured_owner_key();
-  test_field_chain_nested_tag_rejects_complete_owner_miss();
-  test_field_chain_nested_tag_preserves_no_owner_compatibility();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

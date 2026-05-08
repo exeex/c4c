@@ -22,12 +22,6 @@ TypeSpec field_chain_owner_type_spec(const std::string& tag, const HirStructDef&
 
 std::optional<std::string> field_chain_nested_tag(const Module& mod, const HirStructField& field) {
   if (!field.is_anon_member) return std::nullopt;
-  if (const std::optional<HirRecordOwnerKey> owner_key =
-          typespec_aggregate_owner_key(field.elem_type, mod)) {
-    const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
-    if (structured_tag && !structured_tag->empty()) return *structured_tag;
-    return std::nullopt;
-  }
   return typespec_aggregate_compatibility_tag(mod, field.elem_type);
 }
 

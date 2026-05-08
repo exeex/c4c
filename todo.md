@@ -8,9 +8,9 @@ Current Step Title: Retire LIR Aggregate Helper Compatibility Tags
 
 ## Just Finished
 
-Completed Plan Step 6 LIR aggregate helper slice by making `field_chain_nested_tag` prefer structured owner-key identity for anonymous nested aggregate recursion and stop after complete owner-key misses instead of returning rendered compatibility tags.
+Completed Plan Step 6 LIR aggregate helper slice by making `lir_aggregate_structured_name_id` try structured owner-key identity before rendered compatibility/final-spelling paths and stop after complete owner-key misses instead of returning compatibility name ids.
 
-Added focused LIR-linked call/member coverage through public lowering paths: structured owner-key hits recurse through the real anonymous nested aggregate instead of a stale rendered tag, complete owner-key misses reject stale compatibility recovery, and no-owner/incomplete metadata still preserves rendered compatibility.
+Added focused LIR-linked coverage for `lir_aggregate_structured_name_id` through public lowering paths: global type refs prove complete owner-key hits produce verifier-consistent structured owner text/name-id mirrors instead of stale rendered text, and complete misses do not return or intern stale compatibility name ids; signature type refs prove incomplete/no-owner metadata still preserves the compatibility name-id path.
 
 ## Suggested Next
 
@@ -18,8 +18,8 @@ Next coherent packet: supervisor review/commit for Step 6, or route any remainin
 
 ## Watchouts
 
-- The no-owner compatibility path remains intentionally live for anonymous nested aggregate metadata with incomplete owner-key carriers.
-- The structured-hit test explicitly indexes the mutated complete owner key to the real anonymous nested tag so it models the owner-key-exists condition after poisoning rendered compatibility metadata.
+- The no-owner compatibility path remains intentionally live for incomplete metadata.
+- Owner-key hits normalize aggregate-name mirrors to the structured owner tag; ABI fragments such as `ptr byval(%struct.X)` remain raw mirrors.
 
 ## Proof
 
