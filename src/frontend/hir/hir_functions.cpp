@@ -212,11 +212,18 @@ std::optional<HirRecordOwnerKey> record_owner_key_from_type_metadata(
     const TypeSpec& ts,
     const TextTable* texts) {
   if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
-    const TextId record_text_id = make_unqualified_text_id(ts.record_def,
-                                                           const_cast<TextTable*>(texts));
+    TextTable* link_name_texts = const_cast<TextTable*>(texts);
+    const TextId record_text_id =
+        link_name_texts
+            ? make_ast_node_unqualified_text_id_for_owner_key(ts.record_def,
+                                                              link_name_texts)
+            : make_unqualified_text_id(ts.record_def, nullptr);
     if (record_text_id != kInvalidText) {
       return make_hir_record_owner_key(
-          make_ns_qual(ts.record_def, const_cast<TextTable*>(texts)),
+          link_name_texts
+              ? make_ast_node_ns_qual_for_owner_key(ts.record_def,
+                                                    link_name_texts)
+              : make_ns_qual(ts.record_def, nullptr),
           record_text_id);
     }
   }

@@ -12,6 +12,17 @@
 #include "../../frontend/hir/hir_ir.hpp"
 #include "../../target_profile.hpp"
 
+namespace c4c::hir {
+
+NamespaceQualifier make_ast_node_ns_qual_for_owner_key(
+    const Node* n,
+    TextTable* link_name_texts);
+TextId make_ast_node_unqualified_text_id_for_owner_key(
+    const Node* n,
+    TextTable* link_name_texts);
+
+}  // namespace c4c::hir
+
 namespace c4c::codegen::llvm_helpers {
 
 using namespace c4c;
@@ -488,6 +499,25 @@ inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(const TypeS
   return std::nullopt;
 }
 
+inline std::optional<HirRecordOwnerKey> typespec_record_def_owner_key(
+    const TypeSpec& ts,
+    const Module& mod) {
+  if (!ts.record_def || ts.record_def->kind != NK_STRUCT_DEF ||
+      !mod.link_name_texts) {
+    return std::nullopt;
+  }
+  const TextId declaration_text_id =
+      make_ast_node_unqualified_text_id_for_owner_key(
+          ts.record_def, mod.link_name_texts.get());
+  if (declaration_text_id == kInvalidText) return std::nullopt;
+  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(
+      make_ast_node_ns_qual_for_owner_key(ts.record_def,
+                                          mod.link_name_texts.get()),
+      declaration_text_id);
+  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
+  return std::nullopt;
+}
+
 // Cross-table-aware variant of typespec_aggregate_owner_key.
 //
 // `ts.tag_text_id` may have been interned in a TextTable other than
@@ -506,7 +536,9 @@ inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(const TypeS
 // paths instead of silently substituting a different record.
 inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(
     const TypeSpec& ts, const Module& mod) {
-  std::optional<HirRecordOwnerKey> direct = typespec_aggregate_owner_key(ts);
+  std::optional<HirRecordOwnerKey> direct =
+      typespec_record_def_owner_key(ts, mod);
+  if (!direct) direct = typespec_aggregate_owner_key(ts);
   const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
   std::string record_def_tag_storage;
   std::string_view expected_tag = legacy_tag;

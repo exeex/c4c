@@ -76,23 +76,13 @@ std::optional<HirRecordOwnerKey> make_record_owner_key_for_type(
     const TypeSpec& ts,
     TextTable* texts) {
   if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
-    NamespaceQualifier ns_qual;
-    ns_qual.context_id = ts.record_def->namespace_context_id;
-    ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
-    if (ts.record_def->qualifier_text_ids &&
-        ts.record_def->n_qualifier_segments > 0) {
-      ns_qual.segment_text_ids.assign(
-          ts.record_def->qualifier_text_ids,
-          ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
-    } else if (texts && ts.record_def->qualifier_segments &&
-               ts.record_def->n_qualifier_segments > 0) {
-      for (int i = 0; i < ts.record_def->n_qualifier_segments; ++i) {
-        ns_qual.segment_text_ids.push_back(
-            make_text_id(ts.record_def->qualifier_segments[i], texts));
-      }
-    }
+    const NamespaceQualifier ns_qual =
+        texts ? make_ast_node_ns_qual_for_owner_key(ts.record_def, texts)
+              : make_ns_qual(ts.record_def, nullptr);
     const TextId declaration_text_id =
-        make_unqualified_text_id(ts.record_def, texts);
+        texts ? make_ast_node_unqualified_text_id_for_owner_key(
+                    ts.record_def, texts)
+              : make_unqualified_text_id(ts.record_def, nullptr);
     HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, declaration_text_id);
     if (hir_record_owner_key_has_complete_metadata(key)) return key;
   }

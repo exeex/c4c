@@ -8,15 +8,16 @@ Current Step Title: Thread Structured Owner Identity To Consumers
 
 ## Just Finished
 
-Completed Step 4 helper slice: struct-definition owner registration/indexing now uses an AST-node owner-key helper that prefers complete `qualifier_text_ids`, canonicalizes parser-owned ids into `Module::link_name_texts` when a link-table spelling exists, and avoids rendered `qualifier_segments` as owner authority when structured ids are complete.
+Completed Step 4 TypeSpec/HIR owner-key consumer slice: record-def-backed TypeSpec owner-key builders now prefer the AST-node owner-key helper path when a `Module::link_name_texts` table is available, so parser-owned qualifier/base ids canonicalize through spelling carriers before structured lookup.
 
-- Added `make_ast_node_ns_qual_for_owner_key` and `make_ast_node_unqualified_text_id_for_owner_key` in HIR lowering helpers.
-- Updated `Lowerer::make_struct_def_node_owner_key` and `Lowerer::lower_struct_def` so both node-owner registration and `Module::struct_def_owner_index` use the same canonical owner key path.
-- Added active `frontend_hir_lookup_tests` coverage for stale qualifier strings losing to structured TextIds and parser-owned TextId collisions being canonicalized into `link_name_texts`.
+- Updated `make_record_owner_key_for_type` for layout/HIR TypeSpec lookup.
+- Updated `record_owner_key_from_type_metadata` for callable zero-sized return lookup.
+- Updated the `Module`-aware `typespec_aggregate_owner_key` path in the shared LLVM helper while keeping the no-module direct TypeSpec fallback structured and non-rendered.
+- Added focused `frontend_hir_lookup_tests` coverage for parser-owned qualifier/base TextId collisions canonicalizing to link-name TextIds across the touched layout, callable-return, and shared helper consumers.
 
 ## Suggested Next
 
-Next packet: inventory remaining TypeSpec and expression owner-key builders that still copy parser-owned `qualifier_text_ids` directly, then choose one narrow consumer family for the same link-name canonicalization treatment.
+Next packet: inspect the remaining direct TypeSpec qualifier-id consumers in member-typedef/template-owner lookup and choose one narrow path where a spelling carrier exists for the same helper treatment.
 
 ## Watchouts
 
@@ -28,6 +29,7 @@ Next packet: inventory remaining TypeSpec and expression owner-key builders that
 - HIR `try_parse_qualified_struct_method_name` still splits rendered `Node::name`; this slice keeps it only after structured out-of-class metadata is absent or incomplete, not after complete structured misses.
 - `make_ns_qual` still uses `qualifier_segments` strings to populate HIR `segment_text_ids`; this packet did not broaden into that shared helper because it has wider declaration/global/type-definition blast radius.
 - The helper can only repair parser-owned ids when the link-name table already has or can intern the spelling carrier; consumers without a reliable spelling carrier still need a separate route.
+- The no-module `typespec_aggregate_owner_key(TypeSpec)` path remains a structured parser-id fallback because it has no link-name table for cross-table canonicalization.
 - Keep function/global namespace metadata changes out of the next packet unless the owner-key helper naturally supports them without changing lookup behavior.
 
 ## Proof

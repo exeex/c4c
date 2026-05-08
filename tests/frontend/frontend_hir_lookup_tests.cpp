@@ -1,6 +1,7 @@
 #include "hir/hir_ir.hpp"
 #include "hir/compile_time_engine.hpp"
 #include "hir/impl/hir_impl.hpp"
+#include "codegen/shared/llvm_helpers.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema/consteval.hpp"
@@ -3083,6 +3084,234 @@ void test_callable_zero_sized_return_structured_miss_rejects_stale_tag() {
               "callable zero-sized return should preserve structured owner metadata after miss");
 }
 
+void test_layout_type_lookup_canonicalizes_record_def_parser_owner_ids() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId parser_ns_text_id = 1;
+  const c4c::TextId parser_owner_text_id = 2;
+  const c4c::TextId collision_ns_text =
+      module.link_name_texts->intern("CollisionLayoutNs");
+  const c4c::TextId collision_owner_text =
+      module.link_name_texts->intern("CollisionLayoutOwner");
+  expect_true(parser_ns_text_id == collision_ns_text &&
+                  parser_owner_text_id == collision_owner_text,
+              "layout fixture should force parser-owned TextId collisions");
+  const c4c::TextId real_ns_text =
+      module.link_name_texts->intern("RealLayoutNs");
+  const c4c::TextId real_owner_text =
+      module.link_name_texts->intern("RealCanonicalLayoutOwner");
+
+  const char* qualifier_segments[] = {"RealLayoutNs"};
+  c4c::TextId qualifier_text_ids[] = {parser_ns_text_id};
+  c4c::Node record_node{};
+  record_node.kind = c4c::NK_STRUCT_DEF;
+  record_node.name = "RealCanonicalLayoutOwner";
+  record_node.unqualified_name = "RealCanonicalLayoutOwner";
+  record_node.unqualified_text_id = parser_owner_text_id;
+  record_node.namespace_context_id = 71;
+  record_node.qualifier_segments = qualifier_segments;
+  record_node.qualifier_text_ids = qualifier_text_ids;
+  record_node.n_qualifier_segments = 1;
+
+  c4c::hir::NamespaceQualifier real_ns;
+  real_ns.context_id = record_node.namespace_context_id;
+  real_ns.segment_text_ids.push_back(real_ns_text);
+  const c4c::hir::HirRecordOwnerKey real_key =
+      c4c::hir::make_hir_record_owner_key(real_ns, real_owner_text);
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealCanonicalLayoutOwner";
+  real_def.tag_text_id = real_owner_text;
+  real_def.ns_qual = real_ns;
+  real_def.size_bytes = 32;
+  module.index_struct_def_owner(real_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::NamespaceQualifier collision_ns;
+  collision_ns.context_id = record_node.namespace_context_id;
+  collision_ns.segment_text_ids.push_back(collision_ns_text);
+  const c4c::hir::HirRecordOwnerKey collision_key =
+      c4c::hir::make_hir_record_owner_key(collision_ns,
+                                          collision_owner_text);
+  c4c::hir::HirStructDef collision_def;
+  collision_def.tag = "CollisionCanonicalLayoutOwner";
+  collision_def.tag_text_id = collision_owner_text;
+  collision_def.ns_qual = collision_ns;
+  collision_def.size_bytes = 4;
+  module.index_struct_def_owner(collision_key, collision_def.tag, true);
+  module.struct_defs[collision_def.tag] = collision_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  query.tag_text_id = parser_owner_text_id;
+  query.namespace_context_id = record_node.namespace_context_id;
+  query.qualifier_segments = qualifier_segments;
+  query.qualifier_text_ids = qualifier_text_ids;
+  query.n_qualifier_segments = 1;
+  query.record_def = &record_node;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  const c4c::hir::HirStructDef* layout =
+      lowerer.find_struct_def_for_layout_type(query);
+  expect_true(layout && layout->tag == "RealCanonicalLayoutOwner" &&
+                  layout->size_bytes == 32,
+              "layout TypeSpec lookup should canonicalize record_def parser-owned owner ids through link_name_texts");
+}
+
+void test_callable_zero_return_canonicalizes_record_def_parser_owner_ids() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId parser_ns_text_id = 1;
+  const c4c::TextId parser_owner_text_id = 2;
+  const c4c::TextId collision_ns_text =
+      module.link_name_texts->intern("CollisionCallableNs");
+  const c4c::TextId collision_owner_text =
+      module.link_name_texts->intern("CollisionCallableOwner");
+  expect_true(parser_ns_text_id == collision_ns_text &&
+                  parser_owner_text_id == collision_owner_text,
+              "callable fixture should force parser-owned TextId collisions");
+  const c4c::TextId real_ns_text =
+      module.link_name_texts->intern("RealCallableNs");
+  const c4c::TextId real_owner_text =
+      module.link_name_texts->intern("RealCallableReturnOwner");
+
+  const char* qualifier_segments[] = {"RealCallableNs"};
+  c4c::TextId qualifier_text_ids[] = {parser_ns_text_id};
+  c4c::Node record_node{};
+  record_node.kind = c4c::NK_STRUCT_DEF;
+  record_node.name = "RealCallableReturnOwner";
+  record_node.unqualified_name = "RealCallableReturnOwner";
+  record_node.unqualified_text_id = parser_owner_text_id;
+  record_node.namespace_context_id = 72;
+  record_node.qualifier_segments = qualifier_segments;
+  record_node.qualifier_text_ids = qualifier_text_ids;
+  record_node.n_qualifier_segments = 1;
+
+  c4c::hir::NamespaceQualifier real_ns;
+  real_ns.context_id = record_node.namespace_context_id;
+  real_ns.segment_text_ids.push_back(real_ns_text);
+  const c4c::hir::HirRecordOwnerKey real_key =
+      c4c::hir::make_hir_record_owner_key(real_ns, real_owner_text);
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealCallableReturnOwner";
+  real_def.tag_text_id = real_owner_text;
+  real_def.ns_qual = real_ns;
+  real_def.size_bytes = 0;
+  module.index_struct_def_owner(real_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::NamespaceQualifier collision_ns;
+  collision_ns.context_id = record_node.namespace_context_id;
+  collision_ns.segment_text_ids.push_back(collision_ns_text);
+  const c4c::hir::HirRecordOwnerKey collision_key =
+      c4c::hir::make_hir_record_owner_key(collision_ns,
+                                          collision_owner_text);
+  c4c::hir::HirStructDef collision_def;
+  collision_def.tag = "CollisionCallableReturnOwner";
+  collision_def.tag_text_id = collision_owner_text;
+  collision_def.ns_qual = collision_ns;
+  collision_def.size_bytes = 8;
+  module.index_struct_def_owner(collision_key, collision_def.tag, true);
+  module.struct_defs[collision_def.tag] = collision_def;
+
+  c4c::Node literal{};
+  literal.kind = c4c::NK_INT_LIT;
+  literal.ival = 17;
+
+  c4c::Node ret{};
+  ret.kind = c4c::NK_RETURN;
+  ret.left = &literal;
+
+  c4c::Node fn{};
+  fn.kind = c4c::NK_FUNCTION;
+  fn.name = "callable_zero_return_canonical";
+  fn.unqualified_name = "callable_zero_return_canonical";
+  fn.unqualified_text_id =
+      module.link_name_texts->intern("callable_zero_return_canonical");
+  fn.type.base = c4c::TB_STRUCT;
+  fn.type.tag_text_id = parser_owner_text_id;
+  fn.type.namespace_context_id = record_node.namespace_context_id;
+  fn.type.qualifier_segments = qualifier_segments;
+  fn.type.qualifier_text_ids = qualifier_text_ids;
+  fn.type.n_qualifier_segments = 1;
+  fn.type.record_def = &record_node;
+  fn.type.array_size = -1;
+  fn.type.inner_rank = -1;
+  fn.body = &ret;
+
+  lowerer.lower_function(&fn);
+
+  expect_true(!module.functions.empty(),
+              "canonical callable return fixture should lower a function");
+  expect_true(module.functions[0].return_type.spec.base == c4c::TB_INT,
+              "callable zero-sized return lookup should canonicalize record_def parser-owned owner ids before the structured miss decision");
+}
+
+void test_typespec_aggregate_owner_key_canonicalizes_record_def_parser_owner_ids() {
+  c4c::hir::Module module;
+
+  const c4c::TextId parser_ns_text_id = 1;
+  const c4c::TextId parser_owner_text_id = 2;
+  const c4c::TextId collision_ns_text =
+      module.link_name_texts->intern("CollisionCodegenNs");
+  const c4c::TextId collision_owner_text =
+      module.link_name_texts->intern("CollisionCodegenOwner");
+  expect_true(parser_ns_text_id == collision_ns_text &&
+                  parser_owner_text_id == collision_owner_text,
+              "codegen fixture should force parser-owned TextId collisions");
+  const c4c::TextId real_ns_text =
+      module.link_name_texts->intern("RealCodegenNs");
+  const c4c::TextId real_owner_text =
+      module.link_name_texts->intern("RealCodegenOwner");
+
+  const char* qualifier_segments[] = {"RealCodegenNs"};
+  c4c::TextId qualifier_text_ids[] = {parser_ns_text_id};
+  c4c::Node record_node{};
+  record_node.kind = c4c::NK_STRUCT_DEF;
+  record_node.name = "RealCodegenOwner";
+  record_node.unqualified_name = "RealCodegenOwner";
+  record_node.unqualified_text_id = parser_owner_text_id;
+  record_node.namespace_context_id = 73;
+  record_node.qualifier_segments = qualifier_segments;
+  record_node.qualifier_text_ids = qualifier_text_ids;
+  record_node.n_qualifier_segments = 1;
+
+  c4c::hir::NamespaceQualifier real_ns;
+  real_ns.context_id = record_node.namespace_context_id;
+  real_ns.segment_text_ids.push_back(real_ns_text);
+  const c4c::hir::HirRecordOwnerKey real_key =
+      c4c::hir::make_hir_record_owner_key(real_ns, real_owner_text);
+
+  c4c::hir::NamespaceQualifier collision_ns;
+  collision_ns.context_id = record_node.namespace_context_id;
+  collision_ns.segment_text_ids.push_back(collision_ns_text);
+  const c4c::hir::HirRecordOwnerKey collision_key =
+      c4c::hir::make_hir_record_owner_key(collision_ns,
+                                          collision_owner_text);
+  module.index_struct_def_owner(collision_key, "RealCodegenOwner", true);
+  module.index_struct_def_owner(real_key, "RealCodegenOwner", true);
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  query.tag_text_id = parser_owner_text_id;
+  query.namespace_context_id = record_node.namespace_context_id;
+  query.qualifier_segments = qualifier_segments;
+  query.qualifier_text_ids = qualifier_text_ids;
+  query.n_qualifier_segments = 1;
+  query.record_def = &record_node;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(query, module);
+  expect_true(owner_key.has_value() && *owner_key == real_key,
+              "codegen TypeSpec owner-key lookup should prefer AST-node canonicalization over parser-owned id collisions");
+}
+
 void test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -4104,6 +4333,9 @@ int main() {
   test_lvalue_cast_uses_template_param_text_id_binding();
   test_lvalue_cast_structured_miss_rejects_stale_tag();
   test_callable_zero_sized_return_structured_miss_rejects_stale_tag();
+  test_layout_type_lookup_canonicalizes_record_def_parser_owner_ids();
+  test_callable_zero_return_canonicalizes_record_def_parser_owner_ids();
+  test_typespec_aggregate_owner_key_canonicalizes_record_def_parser_owner_ids();
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
