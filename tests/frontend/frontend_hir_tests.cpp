@@ -2958,7 +2958,8 @@ void test_hir_out_of_class_method_attachment_prefers_structured_owner_key() {
 
   c4c::hir::HirStructMethodLookupKey method_key;
   method_key.owner_key = owner_key;
-  method_key.method_text_id = module.link_name_texts->intern("method");
+  const c4c::TextId method_text = module.link_name_texts->intern("method");
+  method_key.method_text_id = method_text;
   lowerer.struct_methods_by_owner_[method_key] = "StructuredOwner__method";
   lowerer.struct_methods_["RenderedOwner::method"] = "RenderedOwner__method";
 
@@ -2975,14 +2976,17 @@ void test_hir_out_of_class_method_attachment_prefers_structured_owner_key() {
   lowerer.pending_methods_.push_back(
       {"StructuredOwner__method", "RenderedOwner", &in_class_method, {}, {}});
 
-  const char* qualifier_segments[] = {"StructuredOwner"};
+  const char* qualifier_segments[] = {"StaleRenderedQualifier"};
+  c4c::TextId qualifier_text_ids[] = {owner_text};
   c4c::Node body{};
   c4c::Node out_of_class{};
   out_of_class.kind = c4c::NK_FUNCTION;
   out_of_class.name = "RenderedOwner::method";
   out_of_class.unqualified_name = "method";
+  out_of_class.unqualified_text_id = method_text;
   out_of_class.namespace_context_id = 11;
   out_of_class.qualifier_segments = qualifier_segments;
+  out_of_class.qualifier_text_ids = qualifier_text_ids;
   out_of_class.n_qualifier_segments = 1;
   out_of_class.body = &body;
 
@@ -3015,16 +3019,20 @@ void test_hir_out_of_class_method_skip_prefers_structured_owner_key() {
 
   c4c::hir::HirStructMethodLookupKey method_key;
   method_key.owner_key = owner_key;
-  method_key.method_text_id = module.link_name_texts->intern("method");
+  const c4c::TextId method_text = module.link_name_texts->intern("method");
+  method_key.method_text_id = method_text;
   lowerer.struct_methods_by_owner_[method_key] = "StructuredOwner__method";
 
-  const char* qualifier_segments[] = {"StructuredOwner"};
+  const char* qualifier_segments[] = {"StaleRenderedQualifier"};
+  c4c::TextId qualifier_text_ids[] = {owner_text};
   c4c::Node out_of_class{};
   out_of_class.kind = c4c::NK_FUNCTION;
   out_of_class.name = "MisleadingRendered::method";
   out_of_class.unqualified_name = "method";
+  out_of_class.unqualified_text_id = method_text;
   out_of_class.namespace_context_id = 13;
   out_of_class.qualifier_segments = qualifier_segments;
+  out_of_class.qualifier_text_ids = qualifier_text_ids;
   out_of_class.n_qualifier_segments = 1;
 
   std::vector<const c4c::Node*> items{&out_of_class};
@@ -3032,6 +3040,91 @@ void test_hir_out_of_class_method_skip_prefers_structured_owner_key() {
 
   expect_true(module.functions.empty(),
               "structured out-of-class methods should not lower as ordinary functions");
+}
+
+void test_hir_out_of_class_method_attachment_rejects_rendered_fallback_after_structured_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 17;
+  const c4c::TextId owner_text =
+      module.link_name_texts->intern("StructuredMissOwner");
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+  c4c::hir::HirStructDef def;
+  def.tag = "RenderedOwner";
+  def.tag_text_id = owner_text;
+  def.ns_qual = owner_ns;
+  module.index_struct_def_owner(owner_key, def.tag, true);
+  module.struct_defs[def.tag] = def;
+
+  lowerer.struct_methods_["RenderedOwner::method"] = "RenderedOwner__method";
+
+  c4c::Node stale_method{};
+  stale_method.kind = c4c::NK_FUNCTION;
+  stale_method.name = "method";
+  stale_method.unqualified_name = "method";
+  lowerer.pending_methods_.push_back(
+      {"RenderedOwner__method", "RenderedOwner", &stale_method, {}, {}});
+
+  const char* qualifier_segments[] = {"StaleRenderedQualifier"};
+  c4c::TextId qualifier_text_ids[] = {owner_text};
+  c4c::Node body{};
+  c4c::Node out_of_class{};
+  out_of_class.kind = c4c::NK_FUNCTION;
+  out_of_class.name = "RenderedOwner::method";
+  out_of_class.unqualified_name = "method";
+  out_of_class.unqualified_text_id = module.link_name_texts->intern("method");
+  out_of_class.namespace_context_id = 17;
+  out_of_class.qualifier_segments = qualifier_segments;
+  out_of_class.qualifier_text_ids = qualifier_text_ids;
+  out_of_class.n_qualifier_segments = 1;
+  out_of_class.body = &body;
+
+  std::vector<const c4c::Node*> items{&out_of_class};
+  lowerer.attach_out_of_class_struct_method_defs(items, module);
+
+  expect_true(lowerer.pending_methods_[0].method_node == &stale_method,
+              "complete structured method miss should not attach through rendered fallback");
+}
+
+void test_hir_out_of_class_method_skip_rejects_standalone_after_structured_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 19;
+  const c4c::TextId owner_text =
+      module.link_name_texts->intern("StructuredMissOwner");
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+  c4c::hir::HirStructDef def;
+  def.tag = "StructuredMissOwner";
+  def.tag_text_id = owner_text;
+  def.ns_qual = owner_ns;
+  module.index_struct_def_owner(owner_key, def.tag, true);
+  module.struct_defs[def.tag] = def;
+
+  const char* qualifier_segments[] = {"StaleRenderedQualifier"};
+  c4c::TextId qualifier_text_ids[] = {owner_text};
+  c4c::Node out_of_class{};
+  out_of_class.kind = c4c::NK_FUNCTION;
+  out_of_class.name = "RenderedFreeFunctionName";
+  out_of_class.unqualified_name = "missing_method";
+  out_of_class.unqualified_text_id = module.link_name_texts->intern("missing_method");
+  out_of_class.namespace_context_id = 19;
+  out_of_class.qualifier_segments = qualifier_segments;
+  out_of_class.qualifier_text_ids = qualifier_text_ids;
+  out_of_class.n_qualifier_segments = 1;
+
+  std::vector<const c4c::Node*> items{&out_of_class};
+  lowerer.lower_non_method_functions_and_globals(items, module);
+
+  expect_true(module.functions.empty(),
+              "complete structured method miss should not lower as a standalone function");
 }
 
 void test_hir_range_for_method_owner_prefers_record_def_over_stale_tag() {
@@ -5760,6 +5853,8 @@ int main() {
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_out_of_class_method_attachment_prefers_structured_owner_key();
   test_hir_out_of_class_method_skip_prefers_structured_owner_key();
+  test_hir_out_of_class_method_attachment_rejects_rendered_fallback_after_structured_miss();
+  test_hir_out_of_class_method_skip_rejects_standalone_after_structured_miss();
   test_hir_range_for_method_owner_prefers_record_def_over_stale_tag();
   test_hir_operator_call_method_owner_prefers_record_def_over_stale_tag();
   test_hir_operator_call_method_owner_keeps_rendered_fallback();

@@ -93,41 +93,48 @@ std::optional<HirRecordOwnerKey> make_template_origin_owner_key_from_specializat
   return key;
 }
 
-std::optional<HirStructMethodLookupKey> make_out_of_class_struct_method_lookup_key(
+struct OutOfClassStructMethodLookup {
+  bool has_complete_structured_metadata = false;
+  std::optional<HirStructMethodLookupKey> key;
+};
+
+OutOfClassStructMethodLookup make_out_of_class_struct_method_lookup_key(
     const Node* fn,
     Module& m) {
+  OutOfClassStructMethodLookup result;
   if (!fn || fn->kind != NK_FUNCTION || !m.link_name_texts ||
-      fn->n_qualifier_segments <= 0 || !fn->qualifier_segments ||
-      !fn->unqualified_name || !fn->unqualified_name[0]) {
-    return std::nullopt;
+      fn->n_qualifier_segments <= 0 || !fn->qualifier_text_ids ||
+      fn->unqualified_text_id == kInvalidText) {
+    return result;
   }
 
-  TextTable* texts = m.link_name_texts.get();
-  NamespaceQualifier owner_ns = make_ns_qual(fn, texts);
-  if (owner_ns.segment_text_ids.size() !=
-          static_cast<size_t>(fn->n_qualifier_segments) ||
-      owner_ns.segments.empty()) {
-    return std::nullopt;
+  NamespaceQualifier owner_ns;
+  owner_ns.context_id = fn->namespace_context_id;
+  owner_ns.is_global_qualified = fn->is_global_qualified;
+  owner_ns.segment_text_ids.reserve(fn->n_qualifier_segments - 1);
+  for (int i = 0; i + 1 < fn->n_qualifier_segments; ++i) {
+    if (fn->qualifier_text_ids[i] == kInvalidText) return result;
+    owner_ns.segment_text_ids.push_back(fn->qualifier_text_ids[i]);
   }
 
-  const TextId owner_text_id = owner_ns.segment_text_ids.back();
-  owner_ns.segments.pop_back();
-  owner_ns.segment_text_ids.pop_back();
+  const TextId owner_text_id =
+      fn->qualifier_text_ids[fn->n_qualifier_segments - 1];
+  if (owner_text_id == kInvalidText) return result;
   const HirRecordOwnerKey owner_key =
       make_hir_record_owner_key(owner_ns, owner_text_id);
-  if (!hir_record_owner_key_has_complete_metadata(owner_key) ||
-      !m.find_struct_def_tag_by_owner(owner_key)) {
-    return std::nullopt;
-  }
+  if (!hir_record_owner_key_has_complete_metadata(owner_key)) return result;
 
   HirStructMethodLookupKey method_key;
   method_key.owner_key = owner_key;
-  method_key.method_text_id = make_unqualified_text_id(fn, texts);
+  method_key.method_text_id = fn->unqualified_text_id;
   method_key.is_const_method = fn->is_const_method;
   if (!hir_struct_method_lookup_key_has_complete_metadata(method_key)) {
-    return std::nullopt;
+    return result;
   }
-  return method_key;
+  result.has_complete_structured_metadata = true;
+  if (!m.find_struct_def_tag_by_owner(owner_key)) return result;
+  result.key = method_key;
+  return result;
 }
 
 NamespaceQualifier make_type_ns_qual_for_ref_overload(const TypeSpec& ts) {
@@ -645,14 +652,15 @@ void Lowerer::attach_out_of_class_struct_method_defs(
   for (const Node* item : items) {
     if (item->kind != NK_FUNCTION || !item->body) continue;
     std::optional<std::string> mangled;
-    const auto structured_key =
+    const auto structured_lookup =
         make_out_of_class_struct_method_lookup_key(item, m);
-    if (structured_key) {
-      auto owner_it = struct_methods_by_owner_.find(*structured_key);
+    if (structured_lookup.key) {
+      auto owner_it = struct_methods_by_owner_.find(*structured_lookup.key);
       if (owner_it != struct_methods_by_owner_.end()) {
         mangled = owner_it->second;
       }
     }
+    if (!mangled && structured_lookup.has_complete_structured_metadata) continue;
     if (!mangled) {
       auto method_ref = try_parse_qualified_struct_method_name(item);
       if (!method_ref.has_value()) continue;
@@ -676,10 +684,12 @@ void Lowerer::lower_non_method_functions_and_globals(
   for (const Node* item : items) {
     if (item->kind == NK_FUNCTION) {
       bool is_out_of_class_method = false;
-      const auto structured_key =
+      const auto structured_lookup =
           make_out_of_class_struct_method_lookup_key(item, m);
-      if (structured_key &&
-          struct_methods_by_owner_.count(*structured_key) > 0) {
+      if (structured_lookup.key &&
+          struct_methods_by_owner_.count(*structured_lookup.key) > 0) {
+        is_out_of_class_method = true;
+      } else if (structured_lookup.has_complete_structured_metadata) {
         is_out_of_class_method = true;
       } else {
         auto method_ref = try_parse_qualified_struct_method_name(item);
