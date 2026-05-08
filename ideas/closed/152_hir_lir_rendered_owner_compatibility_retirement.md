@@ -1,7 +1,8 @@
 # HIR LIR Rendered Owner Compatibility Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-08
+Closed: 2026-05-08
 
 Parent Ideas:
 - `ideas/closed/151_parser_out_of_class_owner_probe_token_sequence.md`
@@ -86,6 +87,22 @@ closed parser idea.
   rendered compatibility were still semantic authority.
 - Validation includes the HIR/LIR/frontend subsets touched by the slice, with
   broader regression proof when aggregate layout or lowering behavior changes.
+
+## Closure Notes
+
+Closed after Step 7 inventory confirmed the targeted HIR/LIR rendered-owner
+compatibility routes now prefer structured owner keys, record definitions,
+structured LIR names, or owner-indexed module entries before rendered recovery.
+Remaining compatibility is documented as secondary fallback for incomplete
+metadata or legacy storage, with explicit owners, limitations, and removal
+conditions.
+
+Close proof:
+
+- Focused Step 6 proof scope passed 7/7 before and after under
+  `c4c-regression-guard` non-decreasing close policy.
+- Broader C++ subset evidence recorded by the supervisor passed 1147/1147.
+- Full-suite baseline evidence at commit `6edf2fba7` passed 3023/3023.
 
 ## Reviewer Reject Signals
 
