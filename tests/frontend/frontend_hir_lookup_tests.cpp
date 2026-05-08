@@ -4285,7 +4285,7 @@ void test_hir_template_arg_materialization_rejects_foreign_nttp_domain_carrier()
               "current primary's rendered parameter name");
 }
 
-void test_struct_def_owner_key_prefers_structured_qualifier_text_ids() {
+void test_struct_def_owner_key_prefers_spelling_carriers_over_stale_text_ids() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -4293,16 +4293,19 @@ void test_struct_def_owner_key_prefers_structured_qualifier_text_ids() {
   const c4c::TextId real_ns_text = module.link_name_texts->intern("RealNs");
   const c4c::TextId real_owner_text =
       module.link_name_texts->intern("RealOwner");
+  const c4c::TextId stale_ns_text = module.link_name_texts->intern("StaleNs");
+  const c4c::TextId stale_owner_text =
+      module.link_name_texts->intern("StaleOwner");
 
-  const char* stale_segments[] = {"StaleNs"};
-  c4c::TextId qualifier_text_ids[] = {real_ns_text};
+  const char* qualifier_segments[] = {"RealNs"};
+  c4c::TextId qualifier_text_ids[] = {stale_ns_text};
   c4c::Node sd{};
   sd.kind = c4c::NK_STRUCT_DEF;
   sd.name = "RenderedOwner";
-  sd.unqualified_name = "StaleOwner";
-  sd.unqualified_text_id = real_owner_text;
+  sd.unqualified_name = "RealOwner";
+  sd.unqualified_text_id = stale_owner_text;
   sd.namespace_context_id = 41;
-  sd.qualifier_segments = stale_segments;
+  sd.qualifier_segments = qualifier_segments;
   sd.qualifier_text_ids = qualifier_text_ids;
   sd.n_qualifier_segments = 1;
 
@@ -4314,22 +4317,22 @@ void test_struct_def_owner_key_prefers_structured_qualifier_text_ids() {
   real_ns.segment_text_ids.push_back(real_ns_text);
   const c4c::hir::HirRecordOwnerKey real_key =
       c4c::hir::make_hir_record_owner_key(real_ns, real_owner_text);
-  const c4c::hir::NamespaceQualifier stale_ns =
-      c4c::hir::make_ns_qual(&sd, module.link_name_texts.get());
+  c4c::hir::NamespaceQualifier stale_ns;
+  stale_ns.context_id = 41;
+  stale_ns.segment_text_ids.push_back(stale_ns_text);
   const c4c::hir::HirRecordOwnerKey stale_key =
-      c4c::hir::make_hir_record_owner_key(
-          stale_ns, module.link_name_texts->intern("StaleOwner"));
+      c4c::hir::make_hir_record_owner_key(stale_ns, stale_owner_text);
 
   const c4c::hir::HirStructDef* structured_def =
       module.find_struct_def_by_owner_structured(real_key);
   expect_true(structured_def != nullptr && structured_def->tag == "RenderedOwner",
-              "struct definition owner indexing should prefer structured TextIds over stale qualifier strings");
+              "struct definition owner indexing should prefer spelling carriers over stale TextIds");
   expect_true(module.find_struct_def_by_owner_structured(stale_key) == nullptr,
-              "stale qualifier strings must not control the struct-definition owner key");
+              "stale TextIds must not control the struct-definition owner key");
   expect_true(lowerer.struct_def_nodes_by_owner_.count(real_key) == 1,
               "struct definition node owner registration should use the structured owner key");
   expect_true(lowerer.struct_def_nodes_by_owner_.count(stale_key) == 0,
-              "struct definition node registration should reject stale rendered owner keys");
+              "struct definition node registration should reject stale TextId owner keys");
 }
 
 void test_struct_def_owner_key_canonicalizes_parser_qualifier_text_ids() {
@@ -4385,6 +4388,119 @@ void test_struct_def_owner_key_canonicalizes_parser_qualifier_text_ids() {
               "node owner registration should use canonical link_name_texts TextIds");
   expect_true(lowerer.struct_def_nodes_by_owner_.count(collision_key) == 0,
               "node owner registration should not copy parser-owned TextIds directly");
+}
+
+void test_struct_def_owner_key_interns_first_use_spelling_carriers() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId parser_ns_text_id = 1;
+  const c4c::TextId parser_owner_text_id = 2;
+  const c4c::TextId collision_ns_text =
+      module.link_name_texts->intern("FirstUseCollisionNs");
+  const c4c::TextId collision_owner_text =
+      module.link_name_texts->intern("FirstUseCollisionOwner");
+  expect_true(parser_ns_text_id == collision_ns_text &&
+                  parser_owner_text_id == collision_owner_text,
+              "first-use fixture should force parser-owned TextId collisions");
+  expect_true(module.link_name_texts->find("FirstUseRealNs") == c4c::kInvalidText,
+              "first-use real namespace spelling should not be pre-interned");
+  expect_true(module.link_name_texts->find("FirstUseRealOwner") == c4c::kInvalidText,
+              "first-use real owner spelling should not be pre-interned");
+
+  const char* qualifier_segments[] = {"FirstUseRealNs"};
+  c4c::TextId qualifier_text_ids[] = {parser_ns_text_id};
+  c4c::Node sd{};
+  sd.kind = c4c::NK_STRUCT_DEF;
+  sd.name = "RenderedFirstUseOwner";
+  sd.unqualified_name = "FirstUseRealOwner";
+  sd.unqualified_text_id = parser_owner_text_id;
+  sd.namespace_context_id = 44;
+  sd.qualifier_segments = qualifier_segments;
+  sd.qualifier_text_ids = qualifier_text_ids;
+  sd.n_qualifier_segments = 1;
+
+  lowerer.lower_struct_def(&sd);
+  lowerer.register_struct_def_node_owner(&sd);
+
+  const c4c::TextId real_ns_text =
+      module.link_name_texts->intern("FirstUseRealNs");
+  const c4c::TextId real_owner_text =
+      module.link_name_texts->intern("FirstUseRealOwner");
+  c4c::hir::NamespaceQualifier real_ns;
+  real_ns.context_id = 44;
+  real_ns.segment_text_ids.push_back(real_ns_text);
+  const c4c::hir::HirRecordOwnerKey real_key =
+      c4c::hir::make_hir_record_owner_key(real_ns, real_owner_text);
+  c4c::hir::NamespaceQualifier collision_ns;
+  collision_ns.context_id = 44;
+  collision_ns.segment_text_ids.push_back(collision_ns_text);
+  const c4c::hir::HirRecordOwnerKey collision_key =
+      c4c::hir::make_hir_record_owner_key(
+          collision_ns, collision_owner_text);
+
+  expect_true(module.find_struct_def_by_owner_structured(real_key) != nullptr,
+              "first-use spelling carriers should be interned into link_name_texts");
+  expect_true(module.find_struct_def_by_owner_structured(collision_key) == nullptr,
+              "first-use parser-owned raw TextId collisions must not become owner identity");
+  expect_true(lowerer.struct_def_nodes_by_owner_.count(real_key) == 1,
+              "first-use node owner registration should use interned spelling ids");
+  expect_true(lowerer.struct_def_nodes_by_owner_.count(collision_key) == 0,
+              "first-use node owner registration should reject raw parser ids");
+}
+
+void test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId structured_owner_text =
+      module.link_name_texts->intern("StructuredMethodMissOwner");
+  const c4c::TextId method_text = module.link_name_texts->intern("run");
+
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 57;
+  const c4c::hir::HirRecordOwnerKey structured_owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, structured_owner_text);
+  module.index_struct_def_owner(structured_owner_key,
+                                "StructuredMethodMissOwner", true);
+  c4c::hir::HirStructDef structured_def;
+  structured_def.tag = "StructuredMethodMissOwner";
+  structured_def.tag_text_id = structured_owner_text;
+  structured_def.ns_qual = owner_ns;
+  module.struct_defs[structured_def.tag] = structured_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "RenderedMethodOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("RenderedMethodOwner");
+  stale_def.ns_qual = owner_ns;
+  module.struct_defs[stale_def.tag] = stale_def;
+  lowerer.struct_methods_["RenderedMethodOwner::run"] =
+      "RenderedMethodOwner__run";
+
+  const char* qualifier_segments[] = {"StructuredMethodMissOwner"};
+  c4c::TextId qualifier_text_ids[] = {structured_owner_text};
+  c4c::Node fn{};
+  fn.kind = c4c::NK_FUNCTION;
+  fn.name = "RenderedMethodOwner::run";
+  fn.unqualified_name = "run";
+  fn.unqualified_text_id = method_text;
+  fn.qualifier_segments = qualifier_segments;
+  fn.qualifier_text_ids = qualifier_text_ids;
+  fn.n_qualifier_segments = 1;
+  fn.namespace_context_id = 57;
+  fn.type.array_size = -1;
+  fn.type.inner_rank = -1;
+  fn.type.base = c4c::TB_INT;
+
+  std::vector<const c4c::Node*> items = {&fn};
+  lowerer.lower_non_method_functions_and_globals(items, module);
+
+  expect_eq_int(static_cast<int>(module.functions.size()), 1,
+                "complete structured method miss should lower as a non-method instead of using stale rendered fallback");
+  expect_true(module.functions[0].name == "RenderedMethodOwner::run",
+              "non-method lowering should preserve the function definition after rejecting stale rendered method authority");
 }
 
 }  // namespace
@@ -4465,8 +4581,10 @@ int main() {
   test_pending_deferred_member_typedef_preserves_owner_qualifier_segments();
   test_hir_template_arg_materialization_uses_nttp_domain_carrier();
   test_hir_template_arg_materialization_rejects_foreign_nttp_domain_carrier();
-  test_struct_def_owner_key_prefers_structured_qualifier_text_ids();
+  test_struct_def_owner_key_prefers_spelling_carriers_over_stale_text_ids();
   test_struct_def_owner_key_canonicalizes_parser_qualifier_text_ids();
+  test_struct_def_owner_key_interns_first_use_spelling_carriers();
+  test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

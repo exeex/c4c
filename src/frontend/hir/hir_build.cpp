@@ -62,14 +62,11 @@ NamespaceQualifier make_ast_node_ns_qual_for_owner_key(
       }
       const char* segment =
           n->qualifier_segments ? n->qualifier_segments[i] : nullptr;
+      if (link_name_texts && segment && segment[0]) {
+        q.segment_text_ids.push_back(link_name_texts->intern(segment));
+        continue;
+      }
       if (link_name_texts && !link_name_texts->lookup(text_id).empty()) {
-        if (segment && segment[0]) {
-          const TextId segment_text_id = link_name_texts->find(segment);
-          if (segment_text_id != kInvalidText && segment_text_id != text_id) {
-            q.segment_text_ids.push_back(segment_text_id);
-            continue;
-          }
-        }
         q.segment_text_ids.push_back(text_id);
         continue;
       }
@@ -95,11 +92,7 @@ TextId make_ast_node_unqualified_text_id_for_owner_key(
                                ? n->unqualified_name
                                : n->name;
     if (spelling && spelling[0]) {
-      const TextId spelling_text_id = link_name_texts->find(spelling);
-      if (spelling_text_id != kInvalidText &&
-          spelling_text_id != n->unqualified_text_id) {
-        return spelling_text_id;
-      }
+      return link_name_texts->intern(spelling);
     }
     return n->unqualified_text_id;
   }
@@ -777,7 +770,7 @@ void Lowerer::lower_non_method_functions_and_globals(
       if (structured_lookup.key &&
           struct_methods_by_owner_.count(*structured_lookup.key) > 0) {
         is_out_of_class_method = true;
-      } else {
+      } else if (!structured_lookup.has_complete_structured_metadata) {
         auto method_ref = try_parse_qualified_struct_method_name(item);
         is_out_of_class_method =
             method_ref.has_value() &&
