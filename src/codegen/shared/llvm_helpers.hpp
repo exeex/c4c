@@ -637,11 +637,20 @@ inline bool is_named_aggregate_value(const TypeSpec& ts) {
 inline const HirStructDef* find_typespec_aggregate_layout(const Module& mod,
                                                           const TypeSpec& ts) {
   if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0) return nullptr;
+  if (const std::optional<HirRecordOwnerKey> record_def_owner_key =
+          typespec_record_def_owner_key(ts, mod)) {
+    if (const HirStructDef* def =
+            mod.find_struct_def_by_owner_structured(*record_def_owner_key)) {
+      return def;
+    }
+    return nullptr;
+  }
   if (const std::optional<HirRecordOwnerKey> owner_key =
-          typespec_aggregate_owner_key(ts, mod)) {
+          typespec_aggregate_owner_key(ts)) {
     if (const HirStructDef* def = mod.find_struct_def_by_owner_structured(*owner_key)) {
       return def;
     }
+    if (ts.namespace_context_id >= 0) return nullptr;
   }
   auto find_by_compatibility_tag = [&](const std::optional<std::string>& tag)
       -> const HirStructDef* {

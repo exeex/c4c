@@ -2949,6 +2949,74 @@ void test_builtin_record_layout_no_owner_uses_tag_text_id_compatibility() {
               "HIR builtin alignof no-owner compatibility should use tag_text_id, not rendered tag");
 }
 
+void test_codegen_aggregate_layout_complete_owner_miss_rejects_indexed_stale_tag() {
+  c4c::hir::Module module;
+
+  c4c::Node record_node{};
+  record_node.kind = c4c::NK_STRUCT_DEF;
+  record_node.name = "MissingCodegenLayout";
+  record_node.unqualified_name = "MissingCodegenLayout";
+  record_node.unqualified_text_id =
+      module.link_name_texts->intern("MissingCodegenLayout");
+  record_node.namespace_context_id = 74;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "IndexedStaleCodegenLayout";
+  stale_def.tag_text_id =
+      module.link_name_texts->intern("IndexedStaleCodegenLayout");
+  stale_def.ns_qual.context_id = record_node.namespace_context_id;
+  stale_def.size_bytes = 64;
+  stale_def.align_bytes = 16;
+  module.index_struct_def_owner(c4c::hir::make_hir_record_owner_key(stale_def),
+                                stale_def.tag, true);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  set_legacy_tag_if_present(query, "IndexedStaleCodegenLayout", 0);
+  query.tag_text_id = record_node.unqualified_text_id;
+  query.namespace_context_id = record_node.namespace_context_id;
+  query.record_def = &record_node;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  const c4c::hir::HirStructDef* layout =
+      c4c::codegen::llvm_helpers::find_typespec_aggregate_layout(module, query);
+  expect_true(!layout,
+              "codegen aggregate layout lookup must reject indexed rendered compatibility after complete owner miss");
+}
+
+void test_codegen_aggregate_layout_complete_typespec_owner_miss_rejects_stale_tag() {
+  c4c::hir::Module module;
+
+  const c4c::TextId missing_owner_text =
+      module.link_name_texts->intern("MissingTypespecLayout");
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "IndexedStaleTypespecLayout";
+  stale_def.tag_text_id =
+      module.link_name_texts->intern("IndexedStaleTypespecLayout");
+  stale_def.ns_qual.context_id = 75;
+  stale_def.size_bytes = 128;
+  stale_def.align_bytes = 32;
+  module.index_struct_def_owner(c4c::hir::make_hir_record_owner_key(stale_def),
+                                stale_def.tag, true);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  set_legacy_tag_if_present(query, "IndexedStaleTypespecLayout", 0);
+  query.tag_text_id = missing_owner_text;
+  query.namespace_context_id = stale_def.ns_qual.context_id;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  const c4c::hir::HirStructDef* layout =
+      c4c::codegen::llvm_helpers::find_typespec_aggregate_layout(module, query);
+  expect_true(!layout,
+              "codegen aggregate layout lookup must reject rendered compatibility after complete TypeSpec owner miss");
+}
+
 void test_builtin_query_type_uses_template_param_text_id_binding() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -4741,6 +4809,8 @@ int main() {
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_builtin_record_layout_structured_owner_miss_rejects_stale_tag();
   test_builtin_record_layout_no_owner_uses_tag_text_id_compatibility();
+  test_codegen_aggregate_layout_complete_owner_miss_rejects_indexed_stale_tag();
+  test_codegen_aggregate_layout_complete_typespec_owner_miss_rejects_stale_tag();
   test_builtin_query_type_uses_template_param_text_id_binding();
   test_builtin_query_type_uses_text_binding_when_module_text_missing();
   test_builtin_query_type_structured_miss_rejects_stale_tag();
