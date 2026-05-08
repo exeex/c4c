@@ -1937,6 +1937,31 @@ TypeSpec Parser::parse_base_type() {
                     [&](const Node* owner,
                         TextId alias_text_id) -> QualifiedNameKey {
                         if (!owner || alias_text_id == kInvalidText) return {};
+                        auto key_from_owner_type =
+                            [&](const TypeSpec& candidate)
+                                -> QualifiedNameKey {
+                            if (candidate.record_def == owner &&
+                                candidate.tpl_struct_origin_key.base_text_id !=
+                                    kInvalidText) {
+                                return record_member_typedef_key_from_owner_key(
+                                    candidate.tpl_struct_origin_key,
+                                    alias_text_id);
+                            }
+                            return {};
+                        };
+                        if (QualifiedNameKey key =
+                                key_from_owner_type(owner_ts);
+                            key.base_text_id != kInvalidText) {
+                            return key;
+                        }
+                        if (const TypeSpec* typedef_type =
+                                lookup_typedef_for_type(owner_ts)) {
+                            if (QualifiedNameKey key =
+                                    key_from_owner_type(*typedef_type);
+                                key.base_text_id != kInvalidText) {
+                                return key;
+                            }
+                        }
                         auto owner_base_text_id =
                             [&](std::string* base_name) -> TextId {
                             auto unqualified_base_from_spelling =
@@ -2027,6 +2052,27 @@ TypeSpec Parser::parse_base_type() {
                 auto template_primary_for_record =
                     [&](const Node* owner) -> const Node* {
                         if (!owner) return nullptr;
+                        auto primary_from_owner_type =
+                            [&](const TypeSpec& candidate) -> const Node* {
+                            if (candidate.record_def == owner &&
+                                candidate.tpl_struct_origin_key.base_text_id !=
+                                    kInvalidText) {
+                                return find_template_struct_primary(
+                                    candidate.tpl_struct_origin_key);
+                            }
+                            return nullptr;
+                        };
+                        if (const Node* primary =
+                                primary_from_owner_type(owner_ts)) {
+                            return primary;
+                        }
+                        if (const TypeSpec* typedef_type =
+                                lookup_typedef_for_type(owner_ts)) {
+                            if (const Node* primary =
+                                    primary_from_owner_type(*typedef_type)) {
+                                return primary;
+                            }
+                        }
                         if (owner->template_origin_name &&
                             owner->template_origin_name[0]) {
                             std::string_view origin(owner->template_origin_name);

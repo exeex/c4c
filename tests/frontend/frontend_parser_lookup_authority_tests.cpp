@@ -4201,6 +4201,10 @@ void test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name() 
   set_legacy_typespec_tag(concrete_wrapper, arena.strdup("ConcreteWrapper"));
   concrete_wrapper.tag_text_id = concrete_wrapper_text;
   concrete_wrapper.record_def = wrapper_inst;
+  concrete_wrapper.tpl_struct_origin_key =
+      parser.alias_template_key_in_context(wrapper_primary->namespace_context_id,
+                                           wrapper_text);
+  wrapper_inst->template_origin_name = arena.strdup("RenderedOwnerDrift");
   parser.register_structured_typedef_binding_in_context(
       parser.current_namespace_context_id(), concrete_wrapper_text,
       concrete_wrapper);
@@ -4352,6 +4356,10 @@ void test_alias_member_typedef_type_substitution_uses_text_id_without_tag() {
   set_legacy_typespec_tag(concrete_wrapper, arena.strdup("ConcreteWrapper"));
   concrete_wrapper.tag_text_id = concrete_wrapper_text;
   concrete_wrapper.record_def = wrapper_inst;
+  concrete_wrapper.tpl_struct_origin_key =
+      parser.alias_template_key_in_context(wrapper_primary->namespace_context_id,
+                                           wrapper_text);
+  wrapper_inst->template_origin_name = arena.strdup("RenderedOwnerDrift");
   parser.register_structured_typedef_binding_in_context(
       parser.current_namespace_context_id(), concrete_wrapper_text,
       concrete_wrapper);
@@ -4386,7 +4394,8 @@ void test_alias_member_typedef_type_substitution_uses_text_id_without_tag() {
   c4c::TypeSpec resolved = parser.parse_base_type();
   expect_true(resolved.record_def == owner_int_record,
               "record member typedef type substitution should use carried "
-              "TextId even when rendered tag spelling is absent");
+              "TextId and structured owner key even when rendered tag and "
+              "owner spellings are stale");
 }
 
 void test_alias_template_member_typedef_arg_uses_text_id_over_stale_name() {
