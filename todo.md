@@ -1,37 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/152_hir_lir_rendered_owner_compatibility_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Retire LIR Aggregate Helper Compatibility Tags
+Current Step ID: 7
+Current Step Title: Validate And Review Remaining Compatibility
 
 # Current Packet
 
 ## Just Finished
 
-Completed the delegated Plan Step 6 repair by resolving the template-local aggregate signature/call ABI mismatch that remained after the field-chain compatibility fallback was demoted.
+Completed Plan Step 7 inventory after the Step 6 commits.
 
-Template-local aggregate value lowering now detects `_tag_ctx`/`_local_text` layouts that have a unique canonical template instantiation with matching semantic layout, and uses the canonical aggregate name for LLVM value/signature/call ABI text. LIR owned signature parameter metadata is canonicalized only for those template-local compatibility carriers, preserving complete owner-key miss rejection and no-owner compatibility behavior.
+Re-inventoried the touched HIR/LIR rendered-owner and aggregate compatibility routes. No new testcase-overfit, expectation downgrade, unsupported rewrite, parser-route drift, or broad unrelated lowering rewrite was found. The current code prefers structured owner keys, record definitions, structured LIR `StructNameId`s, or owner-indexed module entries before rendered compatibility in the targeted routes.
 
-The earlier field-chain repair remains in place: anonymous-member recursion prefers structured child `StructNameId` metadata and keeps the rendered compatibility route as an explicitly secondary fallback for incomplete metadata.
+Remaining compatibility owners and removal conditions:
+
+- HIR owner-key bridge: `typespec_aggregate_owner_key(ts, mod)` still uses rendered aggregate spelling to repair parser/module text-table identity when a direct structured key misses or collides. Limitation: the rendered spelling is a cross-table carrier and is accepted only when it maps back to an indexed module record. Removal condition: aggregate `TypeSpec` producers carry module-canonical owner keys or record definitions at the boundary.
+- HIR/LIR aggregate layout bridge: `find_typespec_aggregate_layout` and `lookup_structured_layout` still have compatibility tag lookup for no-owner or incomplete-owner aggregate carriers. Limitation: complete owner-key misses stop instead of substituting a rendered record. Removal condition: all aggregate `TypeSpec`s carry complete owner metadata and all layouts are owner-indexed.
+- LIR lowering: call, signature, global, indexed GEP, const-init, variadic, va_arg, field-chain, and template-local aggregate ABI paths now prefer structured aggregate names or child `StructNameId`s. Remaining rendered compatibility is secondary for legacy carriers with no usable owner key; `_tag_ctx`/`_local_text` canonicalization is constrained to a unique canonical template instantiation candidate. Removal condition: HIR export supplies complete structured aggregate names and owner keys for every aggregate use, including anonymous union child layouts.
+- HIR member typedef and signature recovery: owner-key and text-id paths run before rendered member typedef recovery. The remaining rendered bridge exists because module member typedef/base-walk storage is still keyed by rendered tags after a structured owner has selected the record. Removal condition: member typedef and base-walk storage become owner-indexed, and deferred member typedef producers always carry `deferred_member_type_owner_key`, qualifier `TextId`s, and member `TextId`s.
+- HIR declaration/object/member-expression compatibility: rendered aggregate comparison or generated member payload extraction is guarded behind missing structured owner identity or missing unqualified member payload. Removal condition: those producers always carry complete owner and member text metadata.
 
 ## Suggested Next
 
-Supervisor should review and decide whether the completed Step 6 slice is ready to commit with the updated proof log, or whether Step 6 needs an independent route review before lifecycle closure.
+Plan-owner should close idea 152 rather than keep it active for more packets. The remaining compatibility is documented, secondary, and covered by concrete removal conditions; further deletion would be a separate cleanup initiative, not required for this plan's acceptance criteria.
 
 ## Watchouts
 
-- The no-owner compatibility path remains intentionally live for incomplete metadata.
-- Owner-key hits normalize aggregate-name mirrors to the structured owner tag; ABI fragments such as `ptr byval(%struct.X)` remain raw mirrors.
-- The field-chain anonymous-member compatibility route is now secondary and documented, but union anonymous-member recursion still cannot recover child layout ids from the current union LIR layout shape.
-- Template-local canonicalization is intentionally constrained to `_tag_ctx`/`_local_text` compatibility layouts with a unique canonical template instantiation candidate. The stale complete-owner-miss test in `frontend_lir_function_signature_type_ref` passed and should stay part of the acceptance proof.
+- Do not treat the remaining compatibility helpers as primary semantic authority in future work; they are acceptance-bounded fallbacks for incomplete metadata or legacy module storage.
+- Full deletion should be split into a follow-up idea only if the project wants to owner-index the remaining module storage and remove no-owner aggregate carrier support.
+- The anonymous union child-layout limitation remains the most concrete future removal blocker: current LIR layout metadata still cannot recover child layout ids for union anonymous-member recursion.
 
 ## Proof
 
-The delegated proof command passed, and the accepted `test_after.log` was rolled forward to `test_before.log` after supervisor regression-guard review. The command was:
+No new test command was delegated or required for this inventory-only packet. Accepted supervisor evidence already present:
 
-`cmake --build --preset default --target c4cll frontend_lir_call_type_ref_test frontend_lir_function_signature_type_ref_test frontend_lir_global_type_ref_test frontend_lir_extern_decl_type_ref_test && ctest --test-dir build -R '^(frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|frontend_lir_global_type_ref|frontend_lir_extern_decl_type_ref|cpp_positive_sema_template_(angle_bracket_validation|struct_advanced|struct_nested)_cpp)$' --output-on-failure > test_after.log`
+- focused Step 6 proof passed 7/7 with regression guard
+- broader `ctest --test-dir build -R '^cpp_' --output-on-failure` passed 1147/1147
+- full-suite `test_baseline.log` at commit `6edf2fba7` is green 3023/3023
 
-Accepted proof result:
-
-- passing: `frontend_lir_call_type_ref`, `frontend_lir_function_signature_type_ref`, `frontend_lir_global_type_ref`, `frontend_lir_extern_decl_type_ref`, `cpp_positive_sema_template_angle_bracket_validation_cpp`, `cpp_positive_sema_template_struct_advanced_cpp`, `cpp_positive_sema_template_struct_nested_cpp`
-- failing: none
+`test_after.log` was not modified by this packet.
