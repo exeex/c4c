@@ -1,22 +1,21 @@
 Status: Active
 Source Idea Path: ideas/open/151_parser_out_of_class_owner_probe_token_sequence.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Thread Structured Owner Identity To Consumers
+Current Step ID: 5
+Current Step Title: Add Focused Owner-Probe Tests Or Probes
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 consumer-gap repair for `Thread Structured Owner Identity To Consumers`.
+Completed Step 5 focused owner-probe coverage for `Add Focused Owner-Probe Tests Or Probes`.
 
-- Made AST-node owner-key helpers intern spelling carriers into `Module::link_name_texts` when building owner keys, including first-use parser-id collision cases where the real spelling was not already present in the module text table.
-- Gated `lower_non_method_functions_and_globals` rendered `try_parse_qualified_struct_method_name` fallback behind incomplete structured out-of-class method metadata, matching `attach_out_of_class_struct_method_defs`.
-- Added focused HIR lookup coverage for first-use owner-key parser-id collisions and for a complete structured method miss whose stale rendered qualified name would previously suppress ordinary function lowering.
+- Added parser coverage for `Outer::Inner::method` showing the parsed out-of-class method carries owner segment `TextId`s for both `Outer` and `Inner`; the test then drifts rendered owner spelling and validates through Sema to prove the structured segment sequence, not flattened rendered owner text, remains authoritative.
+- Added HIR consumer coverage for nested out-of-class method attachment where the structured owner key names `RealOuter::Inner::run` while the rendered function name would match a stale `StaleOuter::Inner::run` fallback; the probe asserts only the structured pending method is captured.
 
 ## Suggested Next
 
-Next packet: supervisor should decide whether Step 4 is ready for broader validation or another reviewer pass before selecting more consumer threading work.
+Next packet: begin Step 6 by inventorying remaining rendered-owner compatibility routes and deciding which ones can be retired versus documented as temporary compatibility.
 
 ## Watchouts
 
@@ -36,6 +35,7 @@ Next packet: supervisor should decide whether Step 4 is ready for broader valida
 - The const-init active-layout guard is a recursion safety valve; it should not be used to justify accepting future owner/layout cycles when exact metadata is available.
 - The `member_symbol_id` recovery intentionally accepts only a unique layout hit.
 - The stale rendered qualified-name test covers the non-method path by leaving the structured owner present but the structured method key absent; rendered method maps remain populated to prove the fallback is gated.
+- Nearby same-feature behavior considered in Step 5: the new parser probe covers nested out-of-class methods reached from parsed owner-probe metadata, and the HIR probe covers stale same-suffix nested owner ambiguity at the consumer boundary. Constructors, destructors, and operators remain covered by existing owner-authority tests and should not be weakened while Step 6 inventories remaining compatibility routes.
 
 ## Proof
 

@@ -577,6 +577,47 @@ void test_out_of_class_method_owner_handoff_uses_qualifier_metadata() {
                        : std::string(": ") + result.diagnostics.front().message));
 }
 
+void test_nested_out_of_class_method_owner_handoff_uses_segment_sequence() {
+  const char* source =
+      "struct Outer {\n"
+      "  struct Inner {\n"
+      "    int value;\n"
+      "    int method();\n"
+      "  };\n"
+      "};\n"
+      "int Outer::Inner::method() { return value; }\n";
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  c4c::Node* root = parse_cpp_source(arena, lexer);
+
+  const c4c::Node* outer = find_record(root, "Outer");
+  const c4c::Node* inner_carrier = find_field(outer, "Inner");
+  const c4c::Node* inner =
+      inner_carrier ? inner_carrier->type.record_def : nullptr;
+  c4c::Node* method = find_function(root, "Outer::Inner::method");
+  expect_true(outer != nullptr, "parsed Outer record should exist");
+  expect_true(inner != nullptr, "parsed nested Inner record should exist");
+  expect_true(method != nullptr, "parsed nested out-of-class method should exist");
+  expect_true(method->n_qualifier_segments == 2 && method->qualifier_text_ids &&
+                  method->qualifier_text_ids[0] == outer->unqualified_text_id &&
+                  method->qualifier_text_ids[1] == inner->unqualified_text_id,
+              "nested out-of-class method should carry owner segment TextIds");
+  expect_true(method->unqualified_text_id != c4c::kInvalidText,
+              "nested out-of-class method should carry method base TextId");
+
+  method->name = arena.strdup("StaleOuter::Inner::method");
+  method->qualifier_segments[0] = arena.strdup("StaleOuter");
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(root);
+  expect_true(result.ok,
+              "Sema nested method owner lookup should use parser owner segment "
+              "metadata instead of flattened rendered owner spelling" +
+                  (result.diagnostics.empty()
+                       ? std::string()
+                       : std::string(": ") + result.diagnostics.front().message));
+}
+
 void test_parsed_local_var_ref_handoff_uses_text_id_not_rendered_spelling() {
   const char* source =
       "int uses_local() {\n"
@@ -6743,6 +6784,7 @@ int main() {
   test_qualified_known_function_lookup_uses_key_not_rendered_spelling();
   test_namespace_qualified_function_decl_handoff_uses_context_metadata();
   test_out_of_class_method_owner_handoff_uses_qualifier_metadata();
+  test_nested_out_of_class_method_owner_handoff_uses_segment_sequence();
   test_parsed_local_var_ref_handoff_uses_text_id_not_rendered_spelling();
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();

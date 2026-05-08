@@ -4450,6 +4450,81 @@ void test_struct_def_owner_key_interns_first_use_spelling_carriers() {
               "first-use node owner registration should reject raw parser ids");
 }
 
+void test_out_of_class_nested_method_attach_uses_structured_owner_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId real_outer_text =
+      module.link_name_texts->intern("RealOuter");
+  const c4c::TextId stale_outer_text =
+      module.link_name_texts->intern("StaleOuter");
+  const c4c::TextId inner_text = module.link_name_texts->intern("Inner");
+  const c4c::TextId method_text = module.link_name_texts->intern("run");
+
+  c4c::hir::NamespaceQualifier real_owner_ns;
+  real_owner_ns.context_id = 61;
+  real_owner_ns.segment_text_ids.push_back(real_outer_text);
+  const c4c::hir::HirRecordOwnerKey real_owner_key =
+      c4c::hir::make_hir_record_owner_key(real_owner_ns, inner_text);
+  module.index_struct_def_owner(real_owner_key, "RealOuter::Inner", true);
+
+  c4c::hir::NamespaceQualifier stale_owner_ns;
+  stale_owner_ns.context_id = 61;
+  stale_owner_ns.segment_text_ids.push_back(stale_outer_text);
+  const c4c::hir::HirRecordOwnerKey stale_owner_key =
+      c4c::hir::make_hir_record_owner_key(stale_owner_ns, inner_text);
+  module.index_struct_def_owner(stale_owner_key, "StaleOuter::Inner", true);
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleOuter::Inner";
+  stale_def.tag_text_id = inner_text;
+  stale_def.ns_qual = stale_owner_ns;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::hir::HirStructMethodLookupKey real_method_key;
+  real_method_key.owner_key = real_owner_key;
+  real_method_key.method_text_id = method_text;
+  real_method_key.is_const_method = false;
+  lowerer.struct_methods_by_owner_[real_method_key] = "RealOuter_Inner__run";
+  lowerer.struct_methods_["StaleOuter::Inner::run"] = "StaleOuter_Inner__run";
+
+  c4c::Node real_decl{};
+  real_decl.kind = c4c::NK_FUNCTION;
+  real_decl.name = "run";
+  c4c::Node stale_decl{};
+  stale_decl.kind = c4c::NK_FUNCTION;
+  stale_decl.name = "run";
+  lowerer.pending_methods_.push_back(
+      {"RealOuter_Inner__run", "RealOuter::Inner", &real_decl, {}, {}, {}});
+  lowerer.pending_methods_.push_back(
+      {"StaleOuter_Inner__run", "StaleOuter::Inner", &stale_decl, {}, {}, {}});
+
+  const char* qualifier_segments[] = {"RealOuter", "Inner"};
+  c4c::TextId qualifier_text_ids[] = {real_outer_text, inner_text};
+  c4c::Node out_of_class{};
+  out_of_class.kind = c4c::NK_FUNCTION;
+  out_of_class.name = "StaleOuter::Inner::run";
+  out_of_class.unqualified_name = "run";
+  out_of_class.unqualified_text_id = method_text;
+  out_of_class.qualifier_segments = qualifier_segments;
+  out_of_class.qualifier_text_ids = qualifier_text_ids;
+  out_of_class.n_qualifier_segments = 2;
+  out_of_class.namespace_context_id = 61;
+  c4c::Node body{};
+  body.kind = c4c::NK_BLOCK;
+  out_of_class.body = &body;
+
+  std::vector<const c4c::Node*> items = {&out_of_class};
+  lowerer.attach_out_of_class_struct_method_defs(items, module);
+
+  expect_true(lowerer.pending_methods_[0].method_node == &out_of_class,
+              "nested out-of-class method attach should use structured owner "
+              "identity instead of stale rendered owner text");
+  expect_true(lowerer.pending_methods_[1].method_node == &stale_decl,
+              "stale rendered nested owner fallback must not capture the "
+              "structured out-of-class method");
+}
+
 void test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -4584,6 +4659,7 @@ int main() {
   test_struct_def_owner_key_prefers_spelling_carriers_over_stale_text_ids();
   test_struct_def_owner_key_canonicalizes_parser_qualifier_text_ids();
   test_struct_def_owner_key_interns_first_use_spelling_carriers();
+  test_out_of_class_nested_method_attach_uses_structured_owner_key();
   test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
