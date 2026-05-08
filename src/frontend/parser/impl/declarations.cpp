@@ -2805,16 +2805,9 @@ Node* parse_top_level(Parser& parser) {
             };
 
         auto consume_special_member_owner =
-            [&](bool stop_before_operator, bool stop_before_ctor,
-                std::vector<TextId>* out_owner_text_ids = nullptr,
-                std::vector<std::string>* out_owner_segments = nullptr,
-                bool* out_is_global_qualified = nullptr) -> bool {
+            [&](bool stop_before_operator, bool stop_before_ctor) -> bool {
                 parser.pos_ = saved_special_member_pos;
-                if (out_owner_text_ids) out_owner_text_ids->clear();
-                if (out_owner_segments) out_owner_segments->clear();
-                if (out_is_global_qualified) *out_is_global_qualified = false;
                 if (parser.check(TokenKind::ColonColon)) {
-                    if (out_is_global_qualified) *out_is_global_qualified = true;
                     parser.consume();
                 }
                 if (!parser.check(TokenKind::Identifier)) return false;
@@ -2825,10 +2818,6 @@ Node* parse_top_level(Parser& parser) {
                         parser.parser_text_id_for_token(parser.cur().text_id, seg);
                     parser.consume();
                     if (!consume_optional_template_id()) return false;
-                    if (out_owner_text_ids && seg_text_id != kInvalidText) {
-                        out_owner_text_ids->push_back(seg_text_id);
-                    }
-                    if (out_owner_segments) out_owner_segments->push_back(seg);
 
                     if (stop_before_operator &&
                         parser.check(TokenKind::ColonColon) &&
@@ -2870,14 +2859,14 @@ Node* parse_top_level(Parser& parser) {
             special_member_owner_probe.is_ctor;
 
         if (looks_like_qualified_operator) {
-            std::vector<TextId> qualified_owner_text_ids;
-            std::vector<std::string> qualified_owner_segments;
-            bool qualified_owner_is_global = false;
+            std::vector<TextId> qualified_owner_text_ids =
+                special_member_owner_probe.owner_text_ids;
+            std::vector<std::string> qualified_owner_segments =
+                special_member_owner_probe.owner_segments;
+            bool qualified_owner_is_global =
+                special_member_owner_probe.is_global_qualified;
             if (!consume_special_member_owner(/*stop_before_operator=*/true,
-                                              /*stop_before_ctor=*/false,
-                                              &qualified_owner_text_ids,
-                                              &qualified_owner_segments,
-                                              &qualified_owner_is_global)) {
+                                              /*stop_before_ctor=*/false)) {
                 parser.pos_ = saved_special_member_pos;
             }
             parser.expect(TokenKind::ColonColon);
@@ -3049,20 +3038,25 @@ Node* parse_top_level(Parser& parser) {
         }
 
         if (looks_like_qualified_ctor) {
-            std::vector<TextId> qualified_owner_text_ids;
-            std::vector<std::string> qualified_owner_segments;
-            bool qualified_owner_is_global = false;
+            std::vector<TextId> qualified_owner_text_ids =
+                special_member_owner_probe.owner_text_ids;
+            std::vector<std::string> qualified_owner_segments =
+                special_member_owner_probe.owner_segments;
+            bool qualified_owner_is_global =
+                special_member_owner_probe.is_global_qualified;
             if (!consume_special_member_owner(/*stop_before_operator=*/false,
-                                              /*stop_before_ctor=*/true,
-                                              &qualified_owner_text_ids,
-                                              &qualified_owner_segments,
-                                              &qualified_owner_is_global)) {
+                                              /*stop_before_ctor=*/true)) {
                 parser.pos_ = saved_special_member_pos;
             }
             parser.expect(TokenKind::ColonColon);
-            const std::string ctor_name = std::string(parser.token_spelling(parser.cur()));
+            const std::string ctor_name =
+                !special_member_owner_probe.terminal_member_name.empty()
+                    ? special_member_owner_probe.terminal_member_name
+                    : std::string(parser.token_spelling(parser.cur()));
             const TextId ctor_name_text_id =
-                parser.parser_text_id_for_token(parser.cur().text_id, ctor_name);
+                special_member_owner_probe.terminal_member_text_id != kInvalidText
+                    ? special_member_owner_probe.terminal_member_text_id
+                    : parser.parser_text_id_for_token(parser.cur().text_id, ctor_name);
             parser.consume();
             if (parser.check(TokenKind::LParen)) {
                 std::string qualified_ctor_name = qualified_owner;
