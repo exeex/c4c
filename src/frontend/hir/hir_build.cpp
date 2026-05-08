@@ -174,8 +174,8 @@ OutOfClassStructMethodLookup make_out_of_class_struct_method_lookup_key(
     Module& m) {
   OutOfClassStructMethodLookup result;
   if (!fn || fn->kind != NK_FUNCTION || !m.link_name_texts ||
-      fn->n_qualifier_segments <= 0 || !fn->qualifier_text_ids ||
-      fn->unqualified_text_id == kInvalidText) {
+      fn->n_qualifier_segments <= 0 ||
+      (!fn->qualifier_text_ids && !fn->qualifier_segments)) {
     return result;
   }
 
@@ -184,12 +184,26 @@ OutOfClassStructMethodLookup make_out_of_class_struct_method_lookup_key(
   owner_ns.is_global_qualified = fn->is_global_qualified;
   owner_ns.segment_text_ids.reserve(fn->n_qualifier_segments - 1);
   for (int i = 0; i + 1 < fn->n_qualifier_segments; ++i) {
-    if (fn->qualifier_text_ids[i] == kInvalidText) return result;
-    owner_ns.segment_text_ids.push_back(fn->qualifier_text_ids[i]);
+    TextId segment_text_id =
+        fn->qualifier_text_ids ? fn->qualifier_text_ids[i] : kInvalidText;
+    const char* segment =
+        fn->qualifier_segments ? fn->qualifier_segments[i] : nullptr;
+    if (segment && segment[0]) {
+      segment_text_id = m.link_name_texts->intern(segment);
+    }
+    if (segment_text_id == kInvalidText) return result;
+    owner_ns.segment_text_ids.push_back(segment_text_id);
   }
 
-  const TextId owner_text_id =
-      fn->qualifier_text_ids[fn->n_qualifier_segments - 1];
+  TextId owner_text_id =
+      fn->qualifier_text_ids ? fn->qualifier_text_ids[fn->n_qualifier_segments - 1]
+                             : kInvalidText;
+  const char* owner_segment =
+      fn->qualifier_segments ? fn->qualifier_segments[fn->n_qualifier_segments - 1]
+                             : nullptr;
+  if (owner_segment && owner_segment[0]) {
+    owner_text_id = m.link_name_texts->intern(owner_segment);
+  }
   if (owner_text_id == kInvalidText) return result;
   const HirRecordOwnerKey owner_key =
       make_hir_record_owner_key(owner_ns, owner_text_id);
@@ -197,7 +211,8 @@ OutOfClassStructMethodLookup make_out_of_class_struct_method_lookup_key(
 
   HirStructMethodLookupKey method_key;
   method_key.owner_key = owner_key;
-  method_key.method_text_id = fn->unqualified_text_id;
+  method_key.method_text_id =
+      make_ast_node_unqualified_text_id_for_owner_key(fn, m.link_name_texts.get());
   method_key.is_const_method = fn->is_const_method;
   if (!hir_struct_method_lookup_key_has_complete_metadata(method_key)) {
     return result;
@@ -761,8 +776,6 @@ void Lowerer::lower_non_method_functions_and_globals(
           make_out_of_class_struct_method_lookup_key(item, m);
       if (structured_lookup.key &&
           struct_methods_by_owner_.count(*structured_lookup.key) > 0) {
-        is_out_of_class_method = true;
-      } else if (structured_lookup.has_complete_structured_metadata) {
         is_out_of_class_method = true;
       } else {
         auto method_ref = try_parse_qualified_struct_method_name(item);

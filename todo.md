@@ -8,16 +8,15 @@ Current Step Title: Thread Structured Owner Identity To Consumers
 
 ## Just Finished
 
-Completed Step 4 member-typedef/template-owner TypeSpec owner-key consumer slice: the local signature `::type` and qualified member-typedef owner-key builders now canonicalize parser-owned qualifier/owner-base `TextId`s through spelling carriers and `Module::link_name_texts` before structured lookup.
+Completed Step 4 regression repair after owner-key canonicalization: qualified namespace functions are no longer skipped as out-of-class struct methods, and out-of-class method lookup now canonicalizes parser-owned owner/method `TextId`s through spelling carriers before consulting structured method maps.
 
-- Updated `complete_signature_type_member_lookup_key` to accept the link-name text table and canonicalize individual TypeSpec qualifier/base spelling carriers without rendered owner lookup.
-- Updated `complete_qualified_member_typedef_owner_key` to canonicalize each owner qualifier segment and the owner base segment from `qualifier_segments` when available.
-- Kept no-spelling fallback structured and non-rendered: it still builds `HirRecordOwnerKey` from available TypeSpec `TextId` metadata and rejects incomplete keys.
-- Added focused `frontend_hir_lookup_tests` coverage where direct parser-owned qualifier/base ids would select a wrong collision owner, while the canonicalized owner key resolves the intended member typedef.
+- Rebuilt `make_out_of_class_struct_method_lookup_key` owner qualifiers, owner base, and method text id through `Module::link_name_texts` when spelling carriers are available.
+- Kept structured method authority intact: a real owner-key hit still suppresses free-function lowering, while namespace-qualified free functions with no struct-method owner are lowered normally.
+- Repaired the observed failures where namespace functions such as `api::bump`/`geo::dot` were not materialized and an out-of-class constructor body was not attached.
 
 ## Suggested Next
 
-Next packet: inspect the remaining direct TypeSpec owner-key builders in deferred member-typedef readiness or static/member lookup paths and delegate one narrow spelling-carrier canonicalization slice if it stays inside HIR ownership.
+Next packet: let the supervisor decide whether this regression repair needs reviewer scrutiny because the smallest fix touched `src/frontend/hir/hir_build.cpp`, which was outside the packet's initial owned-file list but is the build-owned site of the failing owner-key consumer.
 
 ## Watchouts
 
@@ -32,9 +31,10 @@ Next packet: inspect the remaining direct TypeSpec owner-key builders in deferre
 - The no-module `typespec_aggregate_owner_key(TypeSpec)` path remains a structured parser-id fallback because it has no link-name table for cross-table canonicalization.
 - This slice does not canonicalize member typedef `tag_text_id` itself; the touched tests keep member ids canonical and isolate owner-key behavior.
 - Keep function/global namespace metadata changes out of the next packet unless the owner-key helper naturally supports them without changing lookup behavior.
+- `make_out_of_class_struct_method_lookup_key` lives in `hir_build.cpp`; the initial owned-file list named `hir_lowering_core.cpp`, but that draft is not the active consumer for this regression.
 
 ## Proof
 
-Passed: `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'frontend_hir|frontend_parser_lookup_authority') > test_after.log 2>&1`
+Passed: `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'cpp_positive_sema_namespace_struct_runtime_cpp|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_hir_module_decl_lookup_structured_mirror') > test_after.log 2>&1`
 
 Proof log: `test_after.log`.
