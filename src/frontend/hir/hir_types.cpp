@@ -2396,13 +2396,14 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
   HirStructDef def;
   def.tag = tag;
-  def.tag_text_id = make_unqualified_text_id(
+  def.tag_text_id = make_ast_node_unqualified_text_id_for_owner_key(
       sd, module_ ? module_->link_name_texts.get() : nullptr);
   if (def.tag_text_id == kInvalidText) {
     def.tag_text_id = make_text_id(
         def.tag, module_ ? module_->link_name_texts.get() : nullptr);
   }
-  def.ns_qual = make_ns_qual(sd, module_ ? module_->link_name_texts.get() : nullptr);
+  def.ns_qual = make_ast_node_ns_qual_for_owner_key(
+      sd, module_ ? module_->link_name_texts.get() : nullptr);
   const HirRecordOwnerKey struct_owner_key = make_hir_record_owner_key(def);
   const bool has_struct_owner_key =
       hir_record_owner_key_has_complete_metadata(struct_owner_key);

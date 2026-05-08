@@ -41,6 +41,77 @@
 
 namespace c4c::hir {
 
+NamespaceQualifier make_ast_node_ns_qual_for_owner_key(
+    const Node* n,
+    TextTable* link_name_texts) {
+  NamespaceQualifier q;
+  if (!n) return q;
+  q.is_global_qualified = n->is_global_qualified;
+  q.context_id = n->namespace_context_id;
+
+  const bool has_complete_text_ids =
+      n->n_qualifier_segments >= 0 &&
+      (n->n_qualifier_segments == 0 || n->qualifier_text_ids);
+  if (has_complete_text_ids) {
+    q.segment_text_ids.reserve(n->n_qualifier_segments);
+    for (int i = 0; i < n->n_qualifier_segments; ++i) {
+      const TextId text_id = n->qualifier_text_ids[i];
+      if (text_id == kInvalidText) {
+        q.segment_text_ids.clear();
+        return make_ns_qual(n, link_name_texts);
+      }
+      const char* segment =
+          n->qualifier_segments ? n->qualifier_segments[i] : nullptr;
+      if (link_name_texts && !link_name_texts->lookup(text_id).empty()) {
+        if (segment && segment[0]) {
+          const TextId segment_text_id = link_name_texts->find(segment);
+          if (segment_text_id != kInvalidText && segment_text_id != text_id) {
+            q.segment_text_ids.push_back(segment_text_id);
+            continue;
+          }
+        }
+        q.segment_text_ids.push_back(text_id);
+        continue;
+      }
+      if (!segment || !segment[0] || !link_name_texts) {
+        q.segment_text_ids.clear();
+        return make_ns_qual(n, link_name_texts);
+      }
+      q.segment_text_ids.push_back(link_name_texts->intern(segment));
+    }
+    return q;
+  }
+
+  return make_ns_qual(n, link_name_texts);
+}
+
+TextId make_ast_node_unqualified_text_id_for_owner_key(
+    const Node* n,
+    TextTable* link_name_texts) {
+  if (!n) return kInvalidText;
+  if (n->unqualified_text_id != kInvalidText && link_name_texts &&
+      !link_name_texts->lookup(n->unqualified_text_id).empty()) {
+    const char* spelling = n->unqualified_name && n->unqualified_name[0]
+                               ? n->unqualified_name
+                               : n->name;
+    if (spelling && spelling[0]) {
+      const TextId spelling_text_id = link_name_texts->find(spelling);
+      if (spelling_text_id != kInvalidText &&
+          spelling_text_id != n->unqualified_text_id) {
+        return spelling_text_id;
+      }
+    }
+    return n->unqualified_text_id;
+  }
+  if (link_name_texts && n->unqualified_name && n->unqualified_name[0]) {
+    return link_name_texts->intern(n->unqualified_name);
+  }
+  if (link_name_texts && n->name && n->name[0]) {
+    return link_name_texts->intern(n->name);
+  }
+  return n->unqualified_text_id;
+}
+
 namespace {
 
 void collect_late_static_asserts_recursive(
@@ -255,7 +326,9 @@ std::optional<HirRecordOwnerKey> Lowerer::make_struct_def_node_owner_key(
   }
   TextTable* texts = module_ ? module_->link_name_texts.get() : nullptr;
   HirRecordOwnerKey key =
-      make_hir_record_owner_key(make_ns_qual(sd, texts), make_unqualified_text_id(sd, texts));
+      make_hir_record_owner_key(
+          make_ast_node_ns_qual_for_owner_key(sd, texts),
+          make_ast_node_unqualified_text_id_for_owner_key(sd, texts));
   if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
   return key;
 }

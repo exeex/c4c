@@ -49,8 +49,14 @@ InitialHirBuildResult build_initial_hir(
 // Cross-TU syntax and source-location helpers.
 SourceSpan make_span(const Node* n);
 NamespaceQualifier make_ns_qual(const Node* n, TextTable* texts = nullptr);
+NamespaceQualifier make_ast_node_ns_qual_for_owner_key(
+    const Node* n,
+    TextTable* link_name_texts = nullptr);
 TextId make_text_id(std::string_view text, TextTable* texts = nullptr);
 TextId make_unqualified_text_id(const Node* n, TextTable* texts = nullptr);
+TextId make_ast_node_unqualified_text_id_for_owner_key(
+    const Node* n,
+    TextTable* link_name_texts = nullptr);
 std::string decode_string_node(const Node* n);
 std::string strip_quoted_string(const char* raw);
 
