@@ -44,7 +44,7 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, TypeSpec type,
                                                                       type)) {
     tag = layout->tag;
   }
-  if (!tag) {
+  if (!tag && !c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(type, mod)) {
     tag = c4c::codegen::llvm_helpers::typespec_aggregate_compatibility_tag(
         mod, type);
   }

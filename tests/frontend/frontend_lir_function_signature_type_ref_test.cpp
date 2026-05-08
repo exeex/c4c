@@ -81,6 +81,19 @@ c4c::codegen::lir::LirFunction& require_mutable_function(
   return *it;
 }
 
+c4c::hir::Function& require_hir_function(c4c::hir::Module& module,
+                                         std::string_view name,
+                                         bool is_declaration) {
+  const auto it = std::find_if(module.functions.begin(), module.functions.end(),
+                               [&](const c4c::hir::Function& fn) {
+                                 return fn.name == name &&
+                                        fn.blocks.empty() == is_declaration;
+                               });
+  expect_true(it != module.functions.end(),
+              "fixture function should exist in HIR: " + std::string(name));
+  return *it;
+}
+
 void expect_verify_rejects(const c4c::codegen::lir::LirModule& module,
                            const std::string& msg) {
   try {
@@ -146,9 +159,77 @@ void expect_single_signature_param(const c4c::codegen::lir::LirFunction& fn,
               msg + " should carry the HIR parameter type");
 }
 
+void test_owned_type_spec_rejects_stale_rendered_compatibility() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct StaleOwnedCompat {
+  int value;
+};
+
+struct StaleOwnedCompat owned_return(void);
+void owned_param(struct StaleOwnedCompat input);
+)c");
+
+  c4c::Node missing_owner{};
+  missing_owner.kind = c4c::NK_STRUCT_DEF;
+  missing_owner.name = "StaleOwnedCompat";
+  missing_owner.unqualified_name = "MissingOwnedCompatOwner";
+  missing_owner.unqualified_text_id =
+      hir_module.link_name_texts->intern("MissingOwnedCompatOwner");
+  missing_owner.namespace_context_id = 707;
+
+  auto make_missing_owner_type = [&]() {
+    c4c::TypeSpec ts{};
+    ts.base = c4c::TB_STRUCT;
+    ts.tag_text_id = missing_owner.unqualified_text_id;
+    ts.namespace_context_id = missing_owner.namespace_context_id;
+    ts.record_def = &missing_owner;
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    return ts;
+  };
+
+  c4c::hir::Function& return_fn =
+      require_hir_function(hir_module, "owned_return", true);
+  return_fn.return_type.spec = make_missing_owner_type();
+  c4c::hir::Function& param_fn =
+      require_hir_function(hir_module, "owned_param", true);
+  param_fn.params[0].type.spec = make_missing_owner_type();
+
+  const c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
+  const c4c::TextId stale_id =
+      hir_module.link_name_texts->find("StaleOwnedCompat");
+  const c4c::TextId missing_id =
+      hir_module.link_name_texts->find("MissingOwnedCompatOwner");
+  expect_true(stale_id != c4c::kInvalidText && missing_id != c4c::kInvalidText,
+              "fixture should carry both stale compatibility and missing owner text");
+
+  const auto& lowered_return =
+      require_function(lir_module, "owned_return", true);
+  expect_true(lowered_return.return_type.tag_text_id == missing_id,
+              "complete owner-key miss must not re-intern stale return compatibility");
+  expect_true(lowered_return.return_type.tag_text_id != stale_id,
+              "stale rendered return compatibility must stay retired after owner miss");
+  expect_true(lowered_return.return_type.record_def == nullptr,
+              "owned return type should still drop AST owner pointers for LIR storage");
+
+  const auto& lowered_param =
+      require_function(lir_module, "owned_param", true);
+  expect_eq(std::to_string(lowered_param.params.size()), "1",
+            "fixture should lower one owned parameter");
+  expect_true(lowered_param.params[0].second.tag_text_id == missing_id,
+              "complete owner-key miss must not re-intern stale parameter compatibility");
+  expect_true(lowered_param.params[0].second.tag_text_id != stale_id,
+              "stale rendered parameter compatibility must stay retired after owner miss");
+  expect_true(lowered_param.params[0].second.record_def == nullptr,
+              "owned parameter type should still drop AST owner pointers for LIR storage");
+}
+
 }  // namespace
 
 int main() {
+  test_owned_type_spec_rejects_stale_rendered_compatibility();
+
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct Pair {
   int left;
