@@ -113,6 +113,12 @@ void test_lookup_structured_layout_rejects_stale_rendered_compatibility() {
   real_def.ns_qual.context_id = real_owner.namespace_context_id;
   real_def.size_bytes = 24;
   real_def.align_bytes = 8;
+  c4c::hir::HirStructField real_field;
+  real_field.name = "value";
+  real_field.elem_type.base = c4c::TB_DOUBLE;
+  real_field.size_bytes = 8;
+  real_field.align_bytes = 8;
+  real_def.fields.push_back(real_field);
   hir_module.index_struct_def_owner(c4c::hir::make_hir_record_owner_key(real_def),
                                     real_def.tag, true);
   hir_module.struct_defs[real_def.tag] = real_def;
@@ -130,6 +136,12 @@ void test_lookup_structured_layout_rejects_stale_rendered_compatibility() {
   stale_def.ns_qual.context_id = 901;
   stale_def.size_bytes = 64;
   stale_def.align_bytes = 16;
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "value";
+  stale_field.elem_type.base = c4c::TB_FLOAT;
+  stale_field.size_bytes = 4;
+  stale_field.align_bytes = 4;
+  stale_def.fields.push_back(stale_field);
   hir_module.struct_defs[stale_def.tag] = stale_def;
 
   const c4c::StructNameId stale_name_id = lir_module.struct_names.intern(
@@ -153,6 +165,12 @@ void test_lookup_structured_layout_rejects_stale_rendered_compatibility() {
               "complete owner-key hit should select the structured HIR layout");
   expect_true(hit.structured_decl && hit.structured_name_id == real_name_id,
               "complete owner-key hit should select the structured LIR layout");
+  const auto hit_hfa =
+      c4c::codegen::lir::stmt_emitter_detail::classify_aarch64_hfa(
+          hir_module, owner_hit_query);
+  expect_true(hit_hfa && hit_hfa->aggregate_size == real_def.size_bytes &&
+                  hit_hfa->aggregate_align == real_def.align_bytes,
+              "ABI aggregate layout lookup should use the structured owner-key layout");
 
   c4c::Node missing_owner{};
   missing_owner.kind = c4c::NK_STRUCT_DEF;
@@ -178,6 +196,11 @@ void test_lookup_structured_layout_rejects_stale_rendered_compatibility() {
   expect_true(!miss.structured_decl &&
                   miss.structured_name_id == c4c::kInvalidStructName,
               "complete owner-key miss must not select stale rendered LIR layout compatibility");
+  const auto miss_hfa =
+      c4c::codegen::lir::stmt_emitter_detail::classify_aarch64_hfa(
+          hir_module, owner_miss_query);
+  expect_true(!miss_hfa,
+              "ABI aggregate layout lookup must stop after a complete owner-key miss");
 
   c4c::TypeSpec no_owner_query{};
   no_owner_query.base = c4c::TB_STRUCT;
@@ -196,6 +219,11 @@ void test_lookup_structured_layout_rejects_stale_rendered_compatibility() {
               "no-owner metadata should preserve rendered HIR layout compatibility");
   expect_true(compat.structured_decl && compat.structured_name_id == stale_name_id,
               "no-owner metadata should preserve rendered LIR layout compatibility");
+  const auto compat_hfa =
+      c4c::codegen::lir::stmt_emitter_detail::classify_aarch64_hfa(
+          hir_module, no_owner_query);
+  expect_true(compat_hfa && compat_hfa->aggregate_size == stale_def.size_bytes,
+              "ABI aggregate layout lookup should preserve no-owner rendered compatibility");
 }
 
 }  // namespace

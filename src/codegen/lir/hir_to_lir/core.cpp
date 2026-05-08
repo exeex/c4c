@@ -879,6 +879,7 @@ const HirStructDef* lookup_abi_struct_layout(const Module& mod, const TypeSpec& 
             mod.find_struct_def_by_owner_structured(*owner_key)) {
       return structured_decl;
     }
+    return nullptr;
   }
 
   return lookup_structured_layout_compatibility_decl(mod, ts);

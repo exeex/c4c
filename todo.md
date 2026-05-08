@@ -1,28 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/152_hir_lir_rendered_owner_compatibility_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Retire Member Typedef And Signature Recovery Fallbacks regression repair
+Current Step ID: 6
+Current Step Title: Retire LIR Aggregate Helper Compatibility Tags
 
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 5 regression repair by updating the member typedef readiness metadata fixture to seed the structured `struct_def_nodes_by_owner_` authority for the valid `tag_text_id` owner instead of relying on rendered/tag-map owner recovery.
+Completed Plan Step 6 by making `lookup_abi_struct_layout` return the structured layout on complete owner-key hits and stop after complete owner-key misses instead of consulting rendered compatibility tags.
 
-The readiness regression now passes without restoring fallback recovery after complete owner-key misses. Existing focused `frontend_hir_lookup_tests` coverage still rejects stale `struct_def_nodes_` and module `struct_defs` recovery after complete owner-key misses.
+Extended `frontend_lir_global_type_ref_test` so the focused aggregate fixture proves ABI helper behavior through `classify_aarch64_hfa`: complete owner-key hits use structured layout metadata, complete owner-key misses reject stale rendered compatibility, and incomplete/no-owner metadata still preserves legacy rendered compatibility.
 
 ## Suggested Next
 
-Next coherent packet: resume Step 6 aggregate-helper compatibility retirement, or have the supervisor route any remaining Step 5 review follow-up if the repaired fixture exposes additional owner-readiness drift.
+Next coherent packet: supervisor review/commit for Step 6, or route the next remaining compatibility-retirement slice if broader review finds another active helper family.
 
 ## Watchouts
 
-- The code path in `resolve_struct_member_typedef_if_ready` still treats complete structured owner-key misses as authoritative misses; do not reintroduce rendered tag or module tag scans for that case.
-- The passing readiness fixture now models the hit case through `struct_def_nodes_by_owner_`; stale rendered `struct_def_nodes_` entries remain present only as collision pressure.
+- `lookup_structured_layout` already had the owner-key miss cutoff; this packet aligned the ABI-only helper used by HFA classification.
+- The no-owner compatibility path is still intentionally live for incomplete metadata and is covered by the updated LIR-linked fixture.
 
 ## Proof
 
 Supervisor-selected proof passed and wrote `test_after.log`:
 
-`cmake --build --preset default --target cpp_hir_member_typedef_readiness_metadata_test frontend_hir_lookup_tests && ctest --test-dir build -R '^(cpp_hir_member_typedef_readiness_structured_metadata|frontend_hir_lookup_tests)$' --output-on-failure > test_after.log`
+`cmake --build --preset default --target c4cll frontend_lir_global_type_ref_test frontend_lir_function_signature_type_ref_test frontend_lir_extern_decl_type_ref_test frontend_lir_call_type_ref_test && ctest --test-dir build -R '^frontend_lir_' --output-on-failure > test_after.log`
