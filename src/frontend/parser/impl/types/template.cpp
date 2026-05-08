@@ -52,7 +52,10 @@ const char* template_final_display_spelling(Parser& parser,
 void set_template_record_typespec_metadata(Parser& parser,
                                            TypeSpec& out,
                                            Node* record,
-                                           std::string_view rendered) {
+                                           std::string_view rendered,
+                                           const ParserTemplateState::
+                                               TemplateInstantiationKey*
+                                                   structured_key = nullptr) {
     out = {};
     out.array_size = -1;
     out.inner_rank = -1;
@@ -66,6 +69,25 @@ void set_template_record_typespec_metadata(Parser& parser,
         record && record->namespace_context_id >= 0
             ? record->namespace_context_id
             : parser.current_namespace_context_id();
+    if (structured_key &&
+        structured_key->template_key.base_text_id != kInvalidText) {
+        out.tpl_struct_origin_key = structured_key->template_key;
+        if (const Node* primary =
+                parser.find_template_struct_primary(
+                    structured_key->template_key)) {
+            if (primary->template_origin_name &&
+                primary->template_origin_name[0]) {
+                out.tpl_struct_origin =
+                    parser.arena_.strdup(primary->template_origin_name);
+            } else if (primary->unqualified_name &&
+                       primary->unqualified_name[0]) {
+                out.tpl_struct_origin =
+                    parser.arena_.strdup(primary->unqualified_name);
+            } else if (primary->name && primary->name[0]) {
+                out.tpl_struct_origin = parser.arena_.strdup(primary->name);
+            }
+        }
+    }
     set_template_legacy_display_tag_if_present(
         out, template_final_display_spelling(parser, rendered, record), 0);
 }
@@ -253,6 +275,45 @@ void mark_template_instantiation_dedup_keys(
         parser.template_state_.instantiated_template_struct_keys_by_key.insert(
             structured_key);
     }
+}
+
+Node* find_template_instantiated_record_by_structured_key(
+    Parser& parser,
+    const ParserTemplateState::TemplateInstantiationKey& structured_key) {
+    if (structured_key.template_key.base_text_id == kInvalidText) {
+        return nullptr;
+    }
+    for (auto it = parser.definition_state_.struct_defs.rbegin();
+         it != parser.definition_state_.struct_defs.rend(); ++it) {
+        Node* candidate = *it;
+        if (!candidate || candidate->kind != NK_STRUCT_DEF ||
+            candidate->n_template_args <= 0 ||
+            !candidate->template_origin_name ||
+            !candidate->template_origin_name[0]) {
+            continue;
+        }
+        const TextId origin_text_id = parser.parser_text_id_for_token(
+            kInvalidText, candidate->template_origin_name);
+        const int context_id = candidate->namespace_context_id >= 0
+                                   ? candidate->namespace_context_id
+                                   : parser.current_namespace_context_id();
+        ParserTemplateState::TemplateInstantiationKey candidate_key{
+            parser.alias_template_key_in_context(context_id, origin_text_id),
+            {}};
+        if (!(candidate_key.template_key == structured_key.template_key)) {
+            continue;
+        }
+        std::vector<ParsedTemplateArg> candidate_args;
+        candidate_args.reserve(candidate->n_template_args);
+        for (int i = 0; i < candidate->n_template_args; ++i) {
+            candidate_args.push_back(
+                parsed_template_arg_from_node_slot(candidate, i));
+        }
+        candidate_key.arguments =
+            make_template_instantiation_argument_keys(candidate_args);
+        if (candidate_key == structured_key) return candidate;
+    }
+    return nullptr;
 }
 
 ParserTemplateParameterBindingKey parser_template_binding_key(
@@ -732,6 +793,8 @@ bool Parser::ensure_template_struct_instantiated_from_args(
     // rebuilding tokens and reparsing the instantiation spelling.
     if (selected != primary_tpl && selected->n_template_params == 0 &&
         selected->name && selected->name[0]) {
+        // Compatibility mirrors only: explicit specialization identity is the
+        // selected structured record, even if a stale rendered key exists.
         if (!definition_state_.struct_tag_def_map.count(*out_mangled)) {
             definition_state_.struct_tag_def_map[*out_mangled] =
                 const_cast<Node*>(selected);
@@ -740,28 +803,53 @@ bool Parser::ensure_template_struct_instantiated_from_args(
         if (out_resolved) {
             set_template_record_typespec_metadata(
                 *this, *out_resolved, const_cast<Node*>(selected),
-                *out_mangled);
+                *out_mangled, &structured_instance_key);
         }
         mark_template_instantiation_dedup_keys(
             *this, structured_instance_key);
         return true;
     }
 
+    Node* structured_record = nullptr;
     if (!definition_state_.struct_tag_def_map.count(*out_mangled)) {
         if (!instantiate_template_struct_via_injected_parse(
                 *this, template_name, primary_tpl, args, line, debug_reason,
                 out_resolved)) {
             return false;
         }
+        structured_record =
+            find_template_instantiated_record_by_structured_key(
+                *this, structured_instance_key);
     }
     mark_template_instantiation_dedup_keys(
         *this, structured_instance_key);
 
     auto injected_it = definition_state_.struct_tag_def_map.find(*out_mangled);
-    if (out_resolved && !out_resolved->record_def &&
-        injected_it != definition_state_.struct_tag_def_map.end()) {
+    if (!structured_record &&
+        injected_it != definition_state_.struct_tag_def_map.end() &&
+        structured_instance_key.template_key.base_text_id != kInvalidText &&
+        template_state_.instantiated_template_struct_keys_by_key.count(
+            structured_instance_key) > 0) {
+        structured_record =
+            find_template_instantiated_record_by_structured_key(
+                *this, structured_instance_key);
+    }
+    if (out_resolved && structured_record && !out_resolved->record_def) {
         set_template_record_typespec_metadata(
-            *this, *out_resolved, injected_it->second, *out_mangled);
+            *this, *out_resolved, structured_record, *out_mangled,
+            &structured_instance_key);
+    } else if (out_resolved && structured_record) {
+        out_resolved->record_def = structured_record;
+        if (out_resolved->tpl_struct_origin_key.base_text_id ==
+            kInvalidText) {
+            out_resolved->tpl_struct_origin_key =
+                structured_instance_key.template_key;
+        }
+    } else if (out_resolved && !out_resolved->record_def &&
+               injected_it != definition_state_.struct_tag_def_map.end()) {
+        set_template_record_typespec_metadata(
+            *this, *out_resolved, injected_it->second, *out_mangled,
+            &structured_instance_key);
     }
     return definition_state_.struct_tag_def_map.count(*out_mangled) > 0;
 }

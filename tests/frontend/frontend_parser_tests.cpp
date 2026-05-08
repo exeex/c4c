@@ -6799,6 +6799,15 @@ void test_parser_template_instantiation_dedup_keys_structure_direct_emission() {
           parser.template_state_.instantiated_template_struct_keys_by_key.size()),
       1,
       "direct template emission should keep one structured de-dup key after reuse");
+
+  c4c::Node* stale_instantiation = parser.make_node(c4c::NK_STRUCT_DEF, 3);
+  stale_instantiation->name = arena.strdup("StaleBoxInt");
+  parser.definition_state_.struct_tag_def_map[first_tag] = stale_instantiation;
+  c4c::TypeSpec fourth = parse_box_int();
+  expect_true(fourth.record_def == second.record_def,
+              "structured direct-emission de-dup should ignore stale rendered map entries");
+  expect_true(fourth.record_def != stale_instantiation,
+              "stale rendered template tag-map entries must not override structured instantiation identity");
 }
 
 void test_parser_template_substitution_preserves_record_definition_payloads() {

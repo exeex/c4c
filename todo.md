@@ -8,54 +8,58 @@ Current Step Title: Retire Template Instantiated Record Rendered Keys
 
 ## Just Finished
 
-Step 2 implementation packet completed for ordinary `parse_record_tag_setup`.
+Step 3 implementation packet completed for template instantiated record
+registration and lookup.
 
 Completed work:
 
-- Added a structured record lookup in `src/frontend/parser/impl/types/struct.cpp`
-  based on current namespace context plus tag `TextId`.
-- Non-body ordinary record tag setup now returns an existing structured parser
-  record before consulting `struct_tag_def_map`; the rendered map remains a
-  legacy complete-definition fallback when no structured record is found.
-- Body record setup now uses structured complete-record identity for ordinary
-  duplicate/shadow decisions before `defined_struct_tags`; rendered set fallback
-  is limited to qualified legacy spellings where this packet does not yet carry
-  structured qualified-name metadata.
-- Added stale rendered map/set coverage in
-  `tests/frontend/frontend_parser_tests.cpp` proving structured forward-record
-  identity wins over stale `struct_tag_def_map` and stale `defined_struct_tags`
-  does not force a shadow tag for a fresh structured definition.
+- Added structured template-instantiated record recovery helpers in
+  `src/frontend/parser/impl/types/template.cpp` and
+  `src/frontend/parser/impl/types/base.cpp` that compare the parser-owned
+  template key plus structured argument keys against concrete records in
+  `definition_state_.struct_defs`.
+- `ensure_template_struct_instantiated_from_args` now preserves the injected
+  parse path for missing rendered mirrors, but when a rendered mirror exists
+  and the structured instantiation key is established, resolved `TypeSpec`
+  metadata prefers the structured record over the rendered map payload.
+- Direct template struct emission in `parse_base_type` now reuses an existing
+  concrete instantiated record by structured instantiation key before falling
+  back to `struct_tag_def_map`; the rendered map remains a compatibility mirror
+  when no structured record carrier is available.
+- Added focused stale rendered-map coverage in
+  `tests/frontend/frontend_parser_tests.cpp` proving a poisoned
+  `struct_tag_def_map` entry cannot override structured `Box<int>` direct
+  emission identity.
 
 ## Suggested Next
 
-Next coherent packet: demote the template instantiated record registration and
-lookup path that still keys `struct_tag_def_map` / `defined_struct_tags` by
-rendered mangled specialization names.
+Next coherent packet: Step 4 member typedef and nearby record carrier handoff
+cleanup.
 
 Suggested owned files:
 
-- `src/frontend/parser/impl/types/template.cpp`
-- `src/frontend/parser/impl/types/base.cpp` if the instantiation helper route
-  requires keeping the registration/lookup contract consistent
-- focused template parser/HIR tests
+- `src/frontend/parser/impl/types/base.cpp`
+- `src/frontend/parser/impl/types/struct.cpp` only if record-member handoff
+  registration needs a shared helper
+- focused member typedef / record carrier tests
 
 ## Watchouts
 
-- This packet only covers ordinary unqualified parser record setup. Qualified
-  record definition setup still needs structured qualified-name metadata before
-  the rendered set fallback can be retired there.
-- Template instantiated records still have semantic rendered-key authority at
-  `template.cpp:735-766` and `base.cpp:8097-8105`; keep that as the next packet
-  instead of mixing it with support/declaration fallbacks.
-- `register_record_definition` still writes `struct_tag_def_map[source_tag]`
-  and `[sd->name]` as compatibility mirrors after structured registration.
+- `ensure_template_struct_instantiated_from_args` must still run injected parse
+  when the rendered mirror is missing; skipping that parse loses side effects
+  needed by variable-template/member-typedef normalization.
+- Rendered `struct_tag_def_map` writes remain compatibility mirrors for
+  template instantiated records. They are still present, but no longer override
+  structured direct-emission identity when the structured carrier exists.
+- Qualified record definition setup still needs structured qualified-name
+  metadata before the rendered set fallback can be retired there.
 
 ## Proof
 
 Supervisor-selected proof command completed and wrote `test_after.log`:
 
 ```bash
-bash -o pipefail -c "(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_hir_parser_core_.*structured_metadata|cpp_hir_parser_type_base_.*structured_metadata|cpp_hir_member_typedef_.*structured_metadata|cpp_hir_template_.*structured_metadata)$') | tee test_after.log"
+bash -o pipefail -c "(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_hir_template_.*structured_metadata|cpp_hir_parser_type_base_.*structured_metadata|cpp_hir_member_typedef_.*structured_metadata|cpp_positive_sema_.*template.*|frontend_cxx_)$') | tee test_after.log"
 ```
 
-Result: build succeeded; 26/26 selected tests passed.
+Result: build succeeded; 234/234 selected tests passed.

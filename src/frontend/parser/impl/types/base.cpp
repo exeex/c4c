@@ -541,6 +541,45 @@ static void mark_template_instantiation_dedup_key_for_direct_emit(
     }
 }
 
+static Node* find_template_instantiated_record_for_direct_emit(
+    Parser& parser,
+    const ParserTemplateState::TemplateInstantiationKey& structured_key) {
+    if (structured_key.template_key.base_text_id == kInvalidText) {
+        return nullptr;
+    }
+    for (auto it = parser.definition_state_.struct_defs.rbegin();
+         it != parser.definition_state_.struct_defs.rend(); ++it) {
+        Node* candidate = *it;
+        if (!candidate || candidate->kind != NK_STRUCT_DEF ||
+            candidate->n_template_args <= 0 ||
+            !candidate->template_origin_name ||
+            !candidate->template_origin_name[0]) {
+            continue;
+        }
+        const TextId origin_text_id = parser.parser_text_id_for_token(
+            kInvalidText, candidate->template_origin_name);
+        const int context_id = candidate->namespace_context_id >= 0
+                                   ? candidate->namespace_context_id
+                                   : parser.current_namespace_context_id();
+        ParserTemplateState::TemplateInstantiationKey candidate_key{
+            parser.alias_template_key_in_context(context_id, origin_text_id),
+            {}};
+        if (!(candidate_key.template_key == structured_key.template_key)) {
+            continue;
+        }
+        std::vector<ParsedTemplateArg> candidate_args;
+        candidate_args.reserve(candidate->n_template_args);
+        for (int i = 0; i < candidate->n_template_args; ++i) {
+            candidate_args.push_back(
+                parsed_template_arg_from_node_slot(candidate, i));
+        }
+        candidate_key.arguments =
+            make_template_instantiation_argument_keys(candidate_args);
+        if (candidate_key == structured_key) return candidate;
+    }
+    return nullptr;
+}
+
 bool Parser::is_type_start() const {
     TokenKind k = cur().kind;
     if (k == TokenKind::LBracket &&
@@ -5876,9 +5915,16 @@ TypeSpec Parser::parse_base_type() {
                         return ts;
                     }
 
-                    Node* instantiated_record = nullptr;
-                    if (!has_template_instantiation_dedup_key_for_direct_emit(
-                            *this, structured_emitted_instance_key)) {
+                    const bool has_structured_instantiation_key =
+                        has_template_instantiation_dedup_key_for_direct_emit(
+                            *this, structured_emitted_instance_key);
+                    Node* instantiated_record =
+                        has_structured_instantiation_key
+                            ? find_template_instantiated_record_for_direct_emit(
+                                  *this, structured_emitted_instance_key)
+                            : nullptr;
+                    if (!instantiated_record &&
+                        !has_structured_instantiation_key) {
                         mark_template_instantiation_dedup_key_for_direct_emit(
                             *this, structured_emitted_instance_key);
                         // Create a concrete NK_STRUCT_DEF with substituted field types
@@ -8098,12 +8144,22 @@ TypeSpec Parser::parse_base_type() {
                         definition_state_.defined_struct_tags.insert(mangled);
                         instantiated_record = inst;
                     } else {
-                        auto existing_inst =
-                            definition_state_.struct_tag_def_map.find(mangled);
-                        if (existing_inst !=
-                            definition_state_.struct_tag_def_map.end()) {
-                            instantiated_record = existing_inst->second;
+                        if (!instantiated_record) {
+                            auto existing_inst =
+                                definition_state_.struct_tag_def_map.find(
+                                    mangled);
+                            if (existing_inst !=
+                                definition_state_.struct_tag_def_map.end()) {
+                                // Compatibility fallback only: structured
+                                // instance keys above own semantic reuse when
+                                // a concrete record carrier exists.
+                                instantiated_record = existing_inst->second;
+                            }
                         }
+                    }
+                    if (instantiated_record) {
+                        mark_template_instantiation_dedup_key_for_direct_emit(
+                            *this, structured_emitted_instance_key);
                     }
                     ts.tag_text_id = mangled_text_id;
                     ts.namespace_context_id = mangled_namespace_context;
