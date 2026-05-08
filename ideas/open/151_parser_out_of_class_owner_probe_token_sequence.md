@@ -1,12 +1,17 @@
 # Parser Out Of Class Owner Probe Token Sequence
 
-Status: Draft
+Status: Open
 Created: 2026-05-06
+Opened: 2026-05-08
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
 - `ideas/closed/145_move_record_tag_authority_from_parser_to_sema.md`
-- `ideas/open/146_qualified_name_deferred_carrier_authority.md`
+- `ideas/closed/146_qualified_name_deferred_carrier_authority.md`
+- `ideas/closed/147_rendered_qualified_compatibility_bridge_removal.md`
+- `ideas/closed/148_hir_static_member_carrier_authority_decomposition.md`
+- `ideas/closed/149_template_instantiation_structured_argument_key.md`
+- `ideas/closed/150_nttp_type_binding_domain_key_contract.md`
 
 ## Goal
 
@@ -48,6 +53,74 @@ on formatting a qualified owner and then interpreting that text. The parser's
 job is declaration-shape classification and structured owner carrier
 production; semantic owner truth belongs to Sema or, for deferred/template
 cases, late HIR resolution through structured carriers.
+
+## Current Parser `token_spelling` Boundary
+
+Parser still has many `token_spelling(...)` calls. This idea does not require
+removing every spelling access. The boundary is whether the spelling is source
+syntax/display or semantic authority.
+
+Reasonable parser spelling uses:
+
+- source-literal and token-lexeme handling, such as integer parsing, string
+  literal concatenation, language linkage strings, and pragma payloads
+- keyword-like extension syntax that does not have a dedicated token kind in
+  the current lexer, such as `__label__`, `_Nullable`, `throw`,
+  `__underlying_type`, or identifier-spelled `noexcept`
+- diagnostics, debug output, and AST legacy `char* name` mirrors, when a
+  `TextId` or structured key is also preserved for semantic consumers
+- temporary compatibility wrappers that are explicitly gated by structured
+  metadata miss behavior and have removal conditions
+
+Suspicious parser spelling uses:
+
+- rendered owner strings used to decide declaration owner shape
+- spelling comparison used to classify constructors, destructors, conversion
+  functions, operators, or member ownership
+- compound paths assembled as `A::B::C` strings before a structured
+  `TextId` segment path / `QualifiedNameKey` is produced
+- spelling-derived names that are later used as semantic lookup keys without a
+  domain table, owner key, or parameter/member index
+
+The 151 target is the suspicious owner-probe family, not every spelling access
+in parser.
+
+## Current Anchors To Inspect By Name
+
+- `probe_special_member_owner` in
+  `src/frontend/parser/impl/declarations.cpp` builds an `owner` string while
+  probing out-of-class special-member declarations. This should become a
+  structured probe result based on token `TextId` segments, not a rendered
+  owner string.
+- `consume_special_member_owner` in
+  `src/frontend/parser/impl/declarations.cpp` already collects
+  `out_owner_text_ids`, but it also keeps `out_owner_segments` and still uses
+  `token_spelling(parser.peek(1)) == seg` for constructor detection. The
+  constructor check should compare token/TextId components directly.
+- The out-of-class constructor path near the `ctor_name` handling in
+  `src/frontend/parser/impl/declarations.cpp` constructs
+  `qualified_ctor_name` from `qualified_owner` plus rendered `ctor_name`.
+  That string may remain as display, but it should not be the owner or
+  constructor identity key.
+- Function-pointer declarator branches in
+  `src/frontend/parser/impl/declarations.cpp` use `token_spelling` for
+  nullability annotations and `decl_name` mirrors. Those are syntax and legacy
+  name-storage uses; they should not be pulled into this idea unless they feed
+  owner identity.
+- Parser template fallback in
+  `src/frontend/parser/impl/types/template.cpp` still compares
+  `token_spelling(tok)` with legacy binding spelling when structured metadata
+  is absent. Idea 150 classified this as compatibility, so 151 should not
+  reopen it except to ensure owner-probe work does not add new spelling
+  authority.
+- Qualified-name parsing helpers in `src/frontend/parser/impl/core.cpp` may
+  keep rendered `base_name` mirrors when they also produce `base_text_id` and
+  qualifier `TextId` segments. 151 should use these structured carriers
+  instead of flattening owners back into strings.
+- Expression paths such as qualified member spelling and `__builtin_offsetof`
+  field paths may need later cleanup if they become semantic lookup keys, but
+  they are not the primary 151 target unless they share the out-of-class owner
+  probe route.
 
 ## Working Responsibility Split
 
