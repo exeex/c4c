@@ -18,7 +18,7 @@ Completed Step 4 LIR/frontend-crash repair for `llvm_gcc_c_torture_src_pr44164_c
 
 ## Suggested Next
 
-Next packet: supervisor review/commit decision for this Step 4 repair.
+Next packet: repair the two reviewer-identified Step 4 consumer gaps before broadening further: make AST node owner-key helpers intern spelling carriers into `Module::link_name_texts` on first-use collisions, and gate `lower_non_method_functions_and_globals` rendered method fallback after complete structured metadata just like the attached-method path.
 
 ## Watchouts
 
@@ -37,6 +37,7 @@ Next packet: supervisor review/commit decision for this Step 4 repair.
 - `pr44164.c` still exposes frontend/HIR metadata drift: `struct Y` can exist in `struct_defs` without being listed in `struct_def_order`, and some member expressions carry stale rendered owner tags. This packet handles those facts in LIR consumers without parser changes.
 - The const-init active-layout guard is a recursion safety valve; it should not be used to justify accepting future owner/layout cycles when exact metadata is available.
 - The `member_symbol_id` recovery intentionally accepts only a unique layout hit.
+- Reviewer follow-up: add first-use collision coverage where the real owner spelling is not pre-interned, plus stale rendered qualified-name coverage for a complete structured miss in non-method lowering.
 
 ## Proof
 
