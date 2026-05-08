@@ -225,10 +225,44 @@ void owned_param(struct StaleOwnedCompat input);
               "owned parameter type should still drop AST owner pointers for LIR storage");
 }
 
+void test_signature_type_ref_preserves_no_owner_compatibility_name_id() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct StaleNoOwnerCompat {
+  int value;
+};
+
+struct StaleNoOwnerCompat no_owner_return(void);
+)c");
+
+  c4c::TypeSpec no_owner_type{};
+  no_owner_type.base = c4c::TB_STRUCT;
+  no_owner_type.tag_text_id =
+      hir_module.link_name_texts->intern("StaleNoOwnerCompat");
+  no_owner_type.namespace_context_id = -1;
+  c4c::TextId incomplete_qualifier[] = {c4c::kInvalidText};
+  no_owner_type.qualifier_text_ids = incomplete_qualifier;
+  no_owner_type.n_qualifier_segments = 1;
+  no_owner_type.array_size = -1;
+  no_owner_type.inner_rank = -1;
+
+  require_hir_function(hir_module, "no_owner_return", true).return_type.spec =
+      no_owner_type;
+
+  const c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
+  const auto& lowered = require_function(lir_module, "no_owner_return", true);
+  expect_true(lowered.signature_return_type_ref.has_value(),
+              "no-owner signature should carry a return type mirror");
+  expect_struct_type_ref(lir_module, *lowered.signature_return_type_ref,
+                         "%struct.StaleNoOwnerCompat",
+                         "no-owner signature compatibility mirror");
+}
+
 }  // namespace
 
 int main() {
   test_owned_type_spec_rejects_stale_rendered_compatibility();
+  test_signature_type_ref_preserves_no_owner_compatibility_name_id();
 
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct Pair {

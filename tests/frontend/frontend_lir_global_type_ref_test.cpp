@@ -76,6 +76,40 @@ c4c::codegen::lir::LirGlobal& require_global(
   return *it;
 }
 
+c4c::hir::GlobalVar& require_hir_global(c4c::hir::Module& module,
+                                        std::string_view name) {
+  const auto it = std::find_if(module.globals.begin(), module.globals.end(),
+                               [&](const c4c::hir::GlobalVar& global) {
+                                 return global.name == name;
+                               });
+  expect_true(it != module.globals.end(),
+              "fixture HIR global should exist: " + std::string(name));
+  return *it;
+}
+
+c4c::Node make_record_owner(std::string_view rendered_name,
+                            std::string_view owner_name, c4c::TextId text_id,
+                            int namespace_context_id) {
+  c4c::Node owner{};
+  owner.kind = c4c::NK_STRUCT_DEF;
+  owner.name = rendered_name.data();
+  owner.unqualified_name = owner_name.data();
+  owner.unqualified_text_id = text_id;
+  owner.namespace_context_id = namespace_context_id;
+  return owner;
+}
+
+c4c::TypeSpec make_owner_type(c4c::Node& owner) {
+  c4c::TypeSpec type{};
+  type.base = c4c::TB_STRUCT;
+  type.tag_text_id = owner.unqualified_text_id;
+  type.namespace_context_id = owner.namespace_context_id;
+  type.record_def = &owner;
+  type.array_size = -1;
+  type.inner_rank = -1;
+  return type;
+}
+
 void expect_global_type_ref(
     const c4c::codegen::lir::LirModule& module,
     const c4c::codegen::lir::LirGlobal& global,
@@ -226,6 +260,68 @@ void test_lookup_structured_layout_rejects_stale_rendered_compatibility() {
               "ABI aggregate layout lookup should preserve no-owner rendered compatibility");
 }
 
+void test_global_type_ref_owner_key_precedes_stale_rendered_names() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct RealGlobalOwner {
+  int value;
+};
+
+int owner_hit_global;
+int owner_miss_global;
+)c");
+
+  const c4c::TextId hit_owner_text =
+      hir_module.link_name_texts->intern("HitGlobalOwner");
+  c4c::Node hit_owner =
+      make_record_owner("StaleGlobalHitCompat", "HitGlobalOwner",
+                        hit_owner_text, 601);
+  c4c::hir::NamespaceQualifier hit_ns;
+  hit_ns.context_id = hit_owner.namespace_context_id;
+  hir_module.index_struct_def_owner(
+      c4c::hir::make_hir_record_owner_key(hit_ns, hit_owner_text),
+      "RealGlobalOwner", true);
+
+  require_hir_global(hir_module, "owner_hit_global").type.spec =
+      make_owner_type(hit_owner);
+
+  const c4c::TextId missing_owner_text =
+      hir_module.link_name_texts->intern("MissingGlobalOwner");
+  c4c::Node missing_owner =
+      make_record_owner("StaleGlobalMissCompat", "MissingGlobalOwner",
+                        missing_owner_text, 602);
+  require_hir_global(hir_module, "owner_miss_global").type.spec =
+      make_owner_type(missing_owner);
+
+  const c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
+  c4c::codegen::lir::verify_module(lir_module);
+
+  const auto& hit = require_global(lir_module, "owner_hit_global");
+  expect_eq(hit.llvm_type, "%struct.RealGlobalOwner",
+            "complete owner-key hit should lower the global type through structured owner identity");
+  expect_true(hit.llvm_type_ref.has_value(),
+              "complete owner-key hit should keep a global type mirror");
+  expect_eq(hit.llvm_type_ref->str(), "%struct.RealGlobalOwner",
+            "complete owner-key hit mirror text should match the structured owner tag");
+  expect_true(hit.llvm_type_ref->has_struct_name_id(),
+              "complete owner-key hit should produce a structured name id");
+  expect_eq(lir_module.struct_names.spelling(hit.llvm_type_ref->struct_name_id()),
+            "%struct.RealGlobalOwner",
+            "complete owner-key hit should prefer structured owner tag over stale rendered names");
+  expect_true(lir_module.struct_names.find("%struct.StaleGlobalHitCompat") ==
+                  c4c::kInvalidStructName,
+              "owner-key hit should not intern stale compatibility name ids");
+
+  const auto& miss = require_global(lir_module, "owner_miss_global");
+  expect_eq(miss.llvm_type, "%struct.StaleGlobalMissCompat",
+            "owner-key miss should preserve rendered global type text");
+  expect_true(!miss.llvm_type_ref.has_value(),
+              "complete owner-key miss must not return a stale compatibility type mirror");
+  expect_true(lir_module.struct_names.find("%struct.StaleGlobalMissCompat") ==
+                  c4c::kInvalidStructName,
+              "complete owner-key miss should stop before interning stale rendered names");
+}
+
 }  // namespace
 
 int main() {
@@ -276,6 +372,7 @@ union Slot slot_global = {.int_value = 3};
   }
 
   test_lookup_structured_layout_rejects_stale_rendered_compatibility();
+  test_global_type_ref_owner_key_precedes_stale_rendered_names();
 
   std::cout << "PASS: frontend_lir_global_type_ref\n";
   return 0;

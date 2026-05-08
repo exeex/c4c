@@ -61,8 +61,11 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, TypeSpec type,
 LirTypeRef lir_aggregate_type_ref(const std::string& rendered_text, LirModule* lir_module,
                                   StructNameId name_id, bool is_union) {
   if (!lir_module || name_id == kInvalidStructName) return LirTypeRef(rendered_text);
-  return is_union ? LirTypeRef::union_type(rendered_text, name_id)
-                  : LirTypeRef::struct_type(rendered_text, name_id);
+  const std::string_view structured_text = lir_module->struct_names.spelling(name_id);
+  const std::string mirror_text =
+      structured_text.empty() ? rendered_text : std::string(structured_text);
+  return is_union ? LirTypeRef::union_type(mirror_text, name_id)
+                  : LirTypeRef::struct_type(mirror_text, name_id);
 }
 
 StructNameId lir_aggregate_structured_name_id(const c4c::hir::Module& mod,
@@ -80,6 +83,22 @@ StructNameId lir_aggregate_structured_name_id(const c4c::hir::Module& mod,
     const std::string name = llvm_struct_type_str(*tag);
     return name == rendered_text ? lir_module->struct_names.intern(name) : kInvalidStructName;
   };
+  auto rendered_text_is_aggregate_name = [&]() {
+    return rendered_text.rfind("%struct.", 0) == 0 ||
+           rendered_text.rfind("%\"struct.", 0) == 0;
+  };
+
+  if (const std::optional<HirRecordOwnerKey> owner_key =
+          typespec_aggregate_owner_key(type, mod)) {
+    const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+    if (structured_tag && !structured_tag->empty()) {
+      const std::string name = llvm_struct_type_str(*structured_tag);
+      if (name == rendered_text || rendered_text_is_aggregate_name()) {
+        return lir_module->struct_names.intern(name);
+      }
+    }
+    return kInvalidStructName;
+  }
 
   if (const StructNameId declared_id = lir_module->struct_names.find(rendered_text);
       declared_id != kInvalidStructName) {
@@ -95,15 +114,6 @@ StructNameId lir_aggregate_structured_name_id(const c4c::hir::Module& mod,
           intern_if_rendered_match(typespec_aggregate_final_spelling(type));
       final_spelling_id != kInvalidStructName) {
     return final_spelling_id;
-  }
-
-  if (const std::optional<HirRecordOwnerKey> owner_key =
-          typespec_aggregate_owner_key(type, mod)) {
-    const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
-    if (structured_tag && !structured_tag->empty()) {
-      const std::string name = llvm_struct_type_str(*structured_tag);
-      if (name == rendered_text) return lir_module->struct_names.intern(name);
-    }
   }
   return kInvalidStructName;
 }
@@ -150,7 +160,7 @@ std::optional<LirTypeRef> lir_global_type_ref(const std::string& rendered_text,
       type.array_rank > 0) {
     return std::nullopt;
   }
-  const std::string canonical_text = llvm_alloca_ty(type);
+  const std::string canonical_text = stmt_emitter_detail::llvm_alloca_ty(mod, type);
   if (canonical_text != rendered_text) return std::nullopt;
   const StructNameId name_id =
       lir_aggregate_structured_name_id(mod, lir_module, canonical_text, type);
@@ -549,7 +559,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
   lg.type = ts;
   lg.is_internal = gv.linkage.is_static;
   lg.is_const = gv.is_const;
-  lg.llvm_type = llvm_alloca_ty(ts);
+  lg.llvm_type = stmt_emitter_detail::llvm_alloca_ty(mod, ts);
   lg.llvm_type_ref = lir_global_type_ref(lg.llvm_type, &module, mod, ts);
   lg.align_bytes = align;
 

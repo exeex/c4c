@@ -8,18 +8,18 @@ Current Step Title: Retire LIR Aggregate Helper Compatibility Tags
 
 ## Just Finished
 
-Completed Plan Step 6 member-access slice by making `member_access_owner_tag_from_type` return structured tags on complete owner-key hits and stop after complete owner-key misses instead of falling back to rendered compatibility tags.
+Completed Plan Step 6 LIR aggregate helper slice by making `lir_aggregate_structured_name_id` try structured owner-key identity before rendered compatibility/final-spelling paths and stop after complete owner-key misses instead of returning compatibility name ids.
 
-Extended `frontend_lir_call_type_ref_test` with focused LIR member-GEP coverage for structured owner recovery, complete owner-key miss rejection of stale rendered compatibility, and preserved no-owner rendered compatibility.
+Added focused LIR-linked coverage for `lir_aggregate_structured_name_id` through public lowering paths: global type refs prove complete owner-key hits produce verifier-consistent structured owner text/name-id mirrors instead of stale rendered text, and complete misses do not return or intern stale compatibility name ids; signature type refs prove incomplete/no-owner metadata still preserves the compatibility name-id path.
 
 ## Suggested Next
 
-Next coherent packet: supervisor review/commit for Step 6, or route any remaining compatibility-retirement helper only if broader review finds another active LIR owner-tag family.
+Next coherent packet: supervisor review/commit for Step 6, or route any remaining compatibility-retirement helper only if broader review finds another active LIR owner-name family.
 
 ## Watchouts
 
-- The no-owner compatibility path remains intentionally live for incomplete metadata and is covered through a member-GEP LIR path.
-- The complete-miss test injects a compatibility-only HIR layout without indexing it as a structured owner, matching the stale-rendered compatibility shape this slice is retiring.
+- The no-owner compatibility path remains intentionally live for incomplete metadata.
+- Owner-key hits normalize aggregate-name mirrors to the structured owner tag; ABI fragments such as `ptr byval(%struct.X)` remain raw mirrors.
 
 ## Proof
 
