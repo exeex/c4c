@@ -1,7 +1,8 @@
 # Parser Sema Record Tag Compatibility Table Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-08
+Closed: 2026-05-08
 
 Parent Ideas:
 - `ideas/closed/145_move_record_tag_authority_from_parser_to_sema.md`
@@ -100,3 +101,58 @@ HIR should not require parser rendered tags to rediscover record meaning.
   after the slice claims structured record authority.
 - Tests are weakened or narrowed around one fixture instead of proving record
   domain behavior.
+
+## Closure Notes
+
+Closed after Step 6 route review and full-suite validation.
+
+Accepted route summary:
+
+- Ordinary parser record setup now prefers structured record-domain lookup and
+  direct record carriers before rendered `struct_tag_def_map` or
+  `defined_struct_tags` compatibility mirrors.
+- Template instantiated record reuse and direct emission now prefer structured
+  instantiation keys before rendered map entries when owner/key metadata is
+  available.
+- Member typedef handoffs preserve structured owner keys through
+  `TypeSpec::tpl_struct_origin_key` before falling back to rendered owner
+  recovery.
+- Parser support helpers no longer let rendered map fallback override complete
+  structured `record_def` carriers.
+- Added stale or ambiguous rendered-tag coverage for ordinary records, template
+  direct-emission reuse, member typedef owner-key drift, and parser support
+  fallback boundaries.
+
+Retained compatibility routes:
+
+- Owner: parser instantiated-record node lookup in template/type-base code.
+  Limitation: an existing instantiated `NK_STRUCT_DEF` can still be found by
+  reconstructing a candidate key from `Node::template_origin_name` plus
+  structured argument slots when the node itself lacks a structured
+  template-origin key. Removal condition: store/preserve a structured
+  template-origin key on instantiated record nodes and stop deriving candidate
+  keys from `template_origin_name`.
+- Owner: parser qualified record definition setup.
+  Limitation: qualified setup still consults `defined_struct_tags` as an
+  explicit fallback when a qualified tag has no structured resolved record,
+  because this parse point lacks structured qualified-name metadata. Removal
+  condition: carry a structured qualified-name reference through this setup
+  path and retire the rendered-set fallback.
+- Owner: parser support and declaration compatibility bridges.
+  Limitation: `struct_tag_def_map` remains a bounded secondary bridge for
+  older callers with TextId/context metadata but no direct `record_def`, and
+  for TextId-less legacy spelling fallback; constant-layout and complete
+  structured carriers reject structured misses instead of recovering through
+  the map. Removal condition: migrate those remaining legacy callers to direct
+  record carriers or Sema record-domain owner keys.
+
+Validation:
+
+- Full-suite proof passed:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+  with 3023/3023 tests passed in `test_after.log`.
+- Regression guard against `test_baseline.log` and `test_after.log` passed with
+  equal full-suite pass counts and no new failures using the documented
+  non-decreasing maintenance comparison.
+- Reviewer report `review/idea153_step6_route_review.md` judged the route on
+  track with no testcase-overfit or expectation weakening.
