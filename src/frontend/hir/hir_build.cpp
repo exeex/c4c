@@ -62,19 +62,25 @@ NamespaceQualifier make_ast_node_ns_qual_for_owner_key(
       }
       const char* segment =
           n->qualifier_segments ? n->qualifier_segments[i] : nullptr;
-      if (link_name_texts && segment && segment[0]) {
-        q.segment_text_ids.push_back(link_name_texts->intern(segment));
-        continue;
-      }
-      if (link_name_texts && !link_name_texts->lookup(text_id).empty()) {
+      if (!link_name_texts) {
         q.segment_text_ids.push_back(text_id);
         continue;
       }
-      if (!segment || !segment[0] || !link_name_texts) {
+      const std::string_view text_spelling = link_name_texts->lookup(text_id);
+      if (!text_spelling.empty() &&
+          (!segment || !segment[0] || text_spelling == segment)) {
+        q.segment_text_ids.push_back(text_id);
+        continue;
+      }
+      if (segment && segment[0]) {
+        q.segment_text_ids.push_back(link_name_texts->intern(segment));
+        continue;
+      }
+      if (text_spelling.empty()) {
         q.segment_text_ids.clear();
         return make_ns_qual(n, link_name_texts);
       }
-      q.segment_text_ids.push_back(link_name_texts->intern(segment));
+      q.segment_text_ids.push_back(text_id);
     }
     return q;
   }
@@ -86,15 +92,18 @@ TextId make_ast_node_unqualified_text_id_for_owner_key(
     const Node* n,
     TextTable* link_name_texts) {
   if (!n) return kInvalidText;
-  if (n->unqualified_text_id != kInvalidText && link_name_texts &&
-      !link_name_texts->lookup(n->unqualified_text_id).empty()) {
-    const char* spelling = n->unqualified_name && n->unqualified_name[0]
-                               ? n->unqualified_name
-                               : n->name;
-    if (spelling && spelling[0]) {
-      return link_name_texts->intern(spelling);
+  if (n->unqualified_text_id != kInvalidText) {
+    if (!link_name_texts) return n->unqualified_text_id;
+    const std::string_view text_spelling =
+        link_name_texts->lookup(n->unqualified_text_id);
+    if (!text_spelling.empty()) {
+      const char* spelling = n->unqualified_name && n->unqualified_name[0]
+                                 ? n->unqualified_name
+                                 : n->name;
+      if (!spelling || !spelling[0] || text_spelling == spelling) {
+        return n->unqualified_text_id;
+      }
     }
-    return n->unqualified_text_id;
   }
   if (link_name_texts && n->unqualified_name && n->unqualified_name[0]) {
     return link_name_texts->intern(n->unqualified_name);
@@ -329,6 +338,11 @@ std::optional<HirRecordOwnerKey> Lowerer::make_struct_def_node_owner_key(
     const Node* sd) const {
   if (!sd || sd->kind != NK_STRUCT_DEF || !sd->name || !sd->name[0]) {
     return std::nullopt;
+  }
+  const auto existing = struct_def_owner_by_node_.find(sd);
+  if (existing != struct_def_owner_by_node_.end() &&
+      hir_record_owner_key_has_complete_metadata(existing->second)) {
+    return existing->second;
   }
   TextTable* texts = module_ ? module_->link_name_texts.get() : nullptr;
   HirRecordOwnerKey key =

@@ -4335,6 +4335,52 @@ void test_struct_def_owner_key_prefers_spelling_carriers_over_stale_text_ids() {
               "struct definition node registration should reject stale TextId owner keys");
 }
 
+void test_struct_def_owner_key_prefers_complete_text_ids_over_stale_spelling() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId real_ns_text = module.link_name_texts->intern("RealNs");
+  const c4c::TextId real_owner_text =
+      module.link_name_texts->intern("RealOwner");
+  const c4c::TextId stale_ns_text = module.link_name_texts->intern("StaleNs");
+  const c4c::TextId stale_owner_text =
+      module.link_name_texts->intern("StaleOwner");
+
+  const char* qualifier_segments[] = {"StaleNs"};
+  c4c::TextId qualifier_text_ids[] = {real_ns_text};
+  c4c::Node sd{};
+  sd.kind = c4c::NK_STRUCT_DEF;
+  sd.name = "RenderedOwner";
+  sd.unqualified_name = "StaleOwner";
+  sd.unqualified_text_id = real_owner_text;
+  sd.namespace_context_id = 42;
+  sd.qualifier_segments = qualifier_segments;
+  sd.qualifier_text_ids = qualifier_text_ids;
+  sd.n_qualifier_segments = 1;
+
+  c4c::hir::NamespaceQualifier real_ns;
+  real_ns.context_id = 42;
+  real_ns.segment_text_ids.push_back(real_ns_text);
+  const c4c::hir::HirRecordOwnerKey real_key =
+      c4c::hir::make_hir_record_owner_key(real_ns, real_owner_text);
+  c4c::hir::NamespaceQualifier stale_ns;
+  stale_ns.context_id = 42;
+  stale_ns.segment_text_ids.push_back(stale_ns_text);
+  const c4c::hir::HirRecordOwnerKey stale_key =
+      c4c::hir::make_hir_record_owner_key(stale_ns, stale_owner_text);
+
+  lowerer.struct_def_owner_by_node_[&sd] = real_key;
+  lowerer.register_struct_def_node_owner(&sd);
+
+  expect_true(lowerer.make_struct_def_node_owner_key(&sd) == real_key,
+              "complete node-carried owner TextIds should be the struct-definition owner authority");
+  expect_true(lowerer.struct_def_nodes_by_owner_.count(real_key) == 1,
+              "struct definition node registration should use complete TextId identity before rendered repair");
+  expect_true(lowerer.struct_def_nodes_by_owner_.count(stale_key) == 0,
+              "stale rendered spelling must not control struct-definition owner registration when TextIds are complete");
+}
+
 void test_struct_def_owner_key_canonicalizes_parser_qualifier_text_ids() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -4719,6 +4765,7 @@ int main() {
   test_hir_template_arg_materialization_uses_nttp_domain_carrier();
   test_hir_template_arg_materialization_rejects_foreign_nttp_domain_carrier();
   test_struct_def_owner_key_prefers_spelling_carriers_over_stale_text_ids();
+  test_struct_def_owner_key_prefers_complete_text_ids_over_stale_spelling();
   test_struct_def_owner_key_canonicalizes_parser_qualifier_text_ids();
   test_struct_def_owner_key_interns_first_use_spelling_carriers();
   test_out_of_class_nested_method_attach_uses_structured_owner_key();
