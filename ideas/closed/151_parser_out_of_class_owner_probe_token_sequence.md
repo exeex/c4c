@@ -1,8 +1,12 @@
 # Parser Out Of Class Owner Probe Token Sequence
 
-Status: Open
+Status: Closed
 Created: 2026-05-06
 Opened: 2026-05-08
+Closed: 2026-05-08
+Closure Decision: Parser-owned route complete; remaining HIR/LIR rendered-owner
+compatibility inventory split to
+`ideas/open/152_hir_lir_rendered_owner_compatibility_retirement.md`.
 
 Parent Ideas:
 - `ideas/closed/139_parser_sema_rendered_string_lookup_removal.md`
@@ -29,6 +33,21 @@ must remain structured. Sema should resolve the owner eagerly when possible.
 HIR may consume resolved or deferred owner carriers later, but no layer should
 decide owner identity by formatting and comparing a rendered `qualified_owner`
 string.
+
+## Closure Note
+
+Closed after Step 6 and reviewer closure-readiness review
+`review/idea151_closure_readiness.md`. The implemented route satisfies the
+parser-owned objective: out-of-class owner probing and template-owner relabeling
+now use structured owner metadata instead of rendered `qualified_owner` text as
+decision authority, and focused parser/HIR lookup-authority coverage shows no
+testcase-overfit or expectation downgrade.
+
+The retained HIR/LIR compatibility inventory from Step 6 was not discarded.
+Remaining rendered method-name, owner-key canonicalization, aggregate
+`TypeSpec`, member-typedef/signature, and LIR layout/name recovery fallbacks are
+tracked as the separate open idea
+`ideas/open/152_hir_lir_rendered_owner_compatibility_retirement.md`.
 
 ## Why This Idea Exists
 
