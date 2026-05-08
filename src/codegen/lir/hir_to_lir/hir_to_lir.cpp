@@ -48,6 +48,23 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, TypeSpec type,
     tag = c4c::codegen::llvm_helpers::typespec_aggregate_compatibility_tag(
         mod, type);
   }
+  const std::optional<std::string> source_tag =
+      tag ? tag : c4c::codegen::llvm_helpers::typespec_aggregate_compatibility_tag(
+                mod, type);
+  const bool source_is_template_local =
+      source_tag && source_tag->find("_tag_ctx") != std::string::npos;
+  if (source_is_template_local) {
+    if (const std::optional<std::string> canonical_ty =
+            stmt_emitter_detail::llvm_aggregate_value_ty(mod, type)) {
+      const std::string current_ty =
+          tag ? c4c::codegen::llvm_helpers::llvm_struct_type_str(*tag)
+              : std::string{};
+      if ((current_ty.empty() || *canonical_ty != current_ty) &&
+          canonical_ty->rfind("%struct.", 0) == 0) {
+        tag = canonical_ty->substr(std::string_view("%struct.").size());
+      }
+    }
+  }
   if (tag && lir_module->link_name_texts) {
     type.tag_text_id = lir_module->link_name_texts->intern(*tag);
   }
@@ -95,6 +112,13 @@ StructNameId lir_aggregate_structured_name_id(const c4c::hir::Module& mod,
       const std::string name = llvm_struct_type_str(*structured_tag);
       if (name == rendered_text || rendered_text_is_aggregate_name()) {
         return lir_module->struct_names.intern(name);
+      }
+    }
+    if (!type.record_def && rendered_text_is_aggregate_name()) {
+      const StructNameId declared_id = lir_module->struct_names.find(rendered_text);
+      if (declared_id != kInvalidStructName &&
+          lir_module->find_struct_decl(declared_id)) {
+        return declared_id;
       }
     }
     return kInvalidStructName;
@@ -189,7 +213,7 @@ std::string rendered_signature_return_type(const c4c::hir::Module& mod,
 }
 
 std::string rendered_signature_param_type(const c4c::hir::Module& mod,
-                                          LirModule* lir_module,
+                                          const LirModule* lir_module,
                                           const TypeSpec& param_ts) {
   using namespace c4c::codegen::llvm_helpers;
   const std::optional<std::string> aggregate_ty =
@@ -739,7 +763,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
   using namespace c4c::codegen::llvm_helpers;
 
   std::ostringstream sig_out;
-  const std::string ret_ty = stmt_emitter_detail::llvm_return_ty(mod, fn.return_type.spec);
+  const std::string ret_ty = rendered_signature_return_type(mod, fn.return_type.spec);
   const std::string emitted_name = emitted_link_name(mod, fn.link_name_id, fn.name);
 
   const bool void_param_list =
@@ -759,12 +783,11 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
       const TypeSpec& param_ts = fn.params[i].type.spec;
       if (llvm_target_is_amd64_sysv(mod.target_profile) &&
           llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
-        sig_out << "ptr byval(" << stmt_emitter_detail::llvm_value_ty(mod, param_ts) << ") align "
-                << std::max(8, object_align_bytes(mod, lir_module, param_ts));
+        sig_out << rendered_signature_param_type(mod, lir_module, param_ts);
       } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
         sig_out << "i32";
       } else {
-        sig_out << stmt_emitter_detail::llvm_value_ty(mod, param_ts);
+        sig_out << rendered_signature_param_type(mod, lir_module, param_ts);
       }
     }
     if (fn.attrs.variadic) {
@@ -797,12 +820,13 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
     const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
     if (llvm_target_is_amd64_sysv(mod.target_profile) &&
         llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
-      sig_out << "ptr byval(" << stmt_emitter_detail::llvm_value_ty(mod, param_ts) << ") align "
-              << std::max(8, object_align_bytes(mod, lir_module, param_ts)) << " " << pname;
+      sig_out << rendered_signature_param_type(mod, lir_module, param_ts)
+              << " " << pname;
     } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
       sig_out << "i32 " << pname << ".abi";
     } else {
-      sig_out << stmt_emitter_detail::llvm_value_ty(mod, param_ts) << " " << pname;
+      sig_out << rendered_signature_param_type(mod, lir_module, param_ts)
+              << " " << pname;
     }
   }
   if (fn.attrs.variadic) {

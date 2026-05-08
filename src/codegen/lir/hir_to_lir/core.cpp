@@ -629,6 +629,168 @@ std::optional<std::string> unique_decl_text_aggregate_ty(const hir::Module& mod,
   return llvm_struct_type_str(*match);
 }
 
+std::string template_origin_spelling(const hir::Module& mod, const TypeSpec& ts) {
+  if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
+    std::string_view origin = ts.tpl_struct_origin;
+    const size_t scope_pos = origin.rfind("::");
+    if (scope_pos != std::string_view::npos) origin.remove_prefix(scope_pos + 2);
+    return std::string(origin);
+  }
+  if (mod.link_name_texts &&
+      ts.tpl_struct_origin_key.base_text_id != kInvalidText) {
+    return std::string(mod.link_name_texts->lookup(
+        ts.tpl_struct_origin_key.base_text_id));
+  }
+  return {};
+}
+
+bool is_template_local_compat_tag(std::string_view tag) {
+  return tag.find("_tag_ctx") != std::string_view::npos ||
+         tag.find("_local_text") != std::string_view::npos;
+}
+
+bool template_tag_matches_origin(std::string_view tag, std::string_view origin) {
+  if (origin.empty()) return false;
+  return tag == origin ||
+         (tag.rfind(origin, 0) == 0 &&
+          tag.substr(origin.size()).rfind("_T_", 0) == 0);
+}
+
+std::string template_arg_mangled_fragment(const hir::Module& mod,
+                                          const TemplateArgRef& arg) {
+  if (arg.kind == TemplateArgKind::Value) return std::to_string(arg.value);
+  const TypeSpec& type = arg.type;
+  if (type.base == TB_STRUCT || type.base == TB_UNION) {
+    if (const std::optional<std::string> aggregate_ty =
+            llvm_aggregate_value_ty(mod, type)) {
+      constexpr std::string_view struct_prefix = "%struct.";
+      if (aggregate_ty->rfind(struct_prefix, 0) == 0) {
+        return "struct_" + aggregate_ty->substr(struct_prefix.size());
+      }
+      constexpr std::string_view union_prefix = "%union.";
+      if (aggregate_ty->rfind(union_prefix, 0) == 0) {
+        return "union_" + aggregate_ty->substr(union_prefix.size());
+      }
+    }
+  }
+  switch (type.base) {
+    case TB_INT: return "int";
+    case TB_UINT: return "uint";
+    case TB_CHAR: return "char";
+    case TB_SCHAR: return "schar";
+    case TB_UCHAR: return "uchar";
+    case TB_SHORT: return "short";
+    case TB_USHORT: return "ushort";
+    case TB_LONG: return "long";
+    case TB_ULONG: return "ulong";
+    case TB_LONGLONG: return "llong";
+    case TB_ULONGLONG: return "ullong";
+    case TB_FLOAT: return "float";
+    case TB_DOUBLE: return "double";
+    case TB_LONGDOUBLE: return "ldouble";
+    case TB_VOID: return "void";
+    case TB_BOOL: return "bool";
+    case TB_INT128: return "i128";
+    case TB_UINT128: return "u128";
+    default: return "unknown";
+  }
+}
+
+std::vector<std::string> aggregate_semantic_field_types(const hir::Module& mod,
+                                                        const HirStructDef& layout) {
+  std::vector<std::string> fields;
+  if (layout.is_union) {
+    fields.push_back("[" + std::to_string(layout.size_bytes) + " x i8]");
+    return fields;
+  }
+  int last_idx = -1;
+  for (const HirStructField& field : layout.fields) {
+    if (field.llvm_idx == last_idx) continue;
+    last_idx = field.llvm_idx;
+    if (field.elem_type.base == TB_STRUCT || field.elem_type.base == TB_UNION) {
+      fields.push_back(
+          llvm_aggregate_value_ty(mod, field.elem_type).value_or(llvm_field_ty(field)));
+    } else {
+      fields.push_back(llvm_field_ty(field));
+    }
+  }
+  return fields;
+}
+
+std::optional<std::string> duplicate_template_instance_aggregate_ty(
+    const hir::Module& mod, const TypeSpec& ts, const HirStructDef& layout) {
+  if (!is_template_local_compat_tag(layout.tag)) return std::nullopt;
+
+  std::vector<std::string> origins;
+  auto add_origin = [&](std::string origin) {
+    if (origin.empty()) return;
+    if (std::find(origins.begin(), origins.end(), origin) == origins.end()) {
+      origins.push_back(std::move(origin));
+    }
+  };
+  add_origin(template_origin_spelling(mod, ts));
+  const std::string_view tag = layout.tag;
+  const size_t template_pos = tag.find("_T_");
+  if (template_pos != std::string_view::npos) {
+    add_origin(std::string(tag.substr(0, template_pos)));
+  }
+  if (origins.empty()) return std::nullopt;
+
+  std::vector<std::string> expected_tags;
+  if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
+    for (const std::string& origin : origins) {
+      std::string expected = origin;
+      for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+        expected += "_T_";
+        expected += template_arg_mangled_fragment(mod, ts.tpl_struct_args.data[i]);
+      }
+      expected_tags.push_back(std::move(expected));
+    }
+  }
+
+  const std::vector<std::string> layout_semantic_fields =
+      aggregate_semantic_field_types(mod, layout);
+  const SymbolName* match = nullptr;
+  for (const auto& [candidate_tag, candidate] : mod.struct_defs) {
+    if (candidate_tag == layout.tag ||
+        candidate.is_union != layout.is_union ||
+        candidate.size_bytes != layout.size_bytes ||
+        candidate.align_bytes != layout.align_bytes ||
+        is_template_local_compat_tag(candidate_tag) ||
+        std::none_of(origins.begin(), origins.end(),
+                     [&](const std::string& origin) {
+                       return template_tag_matches_origin(candidate_tag, origin);
+                     })) {
+      continue;
+    }
+    if (!expected_tags.empty() &&
+        std::find(expected_tags.begin(), expected_tags.end(), candidate_tag) ==
+            expected_tags.end()) {
+      continue;
+    }
+    if (expected_tags.empty() &&
+        aggregate_semantic_field_types(mod, candidate) != layout_semantic_fields) {
+      continue;
+    }
+
+    if (match && *match != candidate_tag) return std::nullopt;
+    match = &candidate_tag;
+  }
+
+  if (!match) return std::nullopt;
+  return llvm_struct_type_str(*match);
+}
+
+std::optional<std::string> duplicate_template_instance_aggregate_ty(
+    const hir::Module& mod, const TypeSpec& ts) {
+  std::optional<std::string> tag = typespec_aggregate_final_spelling(ts);
+  if (!tag) tag = typespec_aggregate_compatibility_tag(mod, ts);
+  if (!tag) return std::nullopt;
+  const auto it = mod.struct_defs.find(*tag);
+  if (it == mod.struct_defs.end()) return std::nullopt;
+  return duplicate_template_instance_aggregate_ty(mod, ts, it->second);
+}
+
 std::optional<std::string> llvm_aggregate_value_ty(const hir::Module& mod,
                                                    const TypeSpec& ts) {
   if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0 ||
@@ -636,7 +798,15 @@ std::optional<std::string> llvm_aggregate_value_ty(const hir::Module& mod,
     return std::nullopt;
   }
   if (const HirStructDef* layout = find_typespec_aggregate_layout(mod, ts)) {
+    if (const std::optional<std::string> duplicate_ty =
+            duplicate_template_instance_aggregate_ty(mod, ts, *layout)) {
+      return duplicate_ty;
+    }
     return llvm_struct_type_str(layout->tag);
+  }
+  if (const std::optional<std::string> duplicate_ty =
+          duplicate_template_instance_aggregate_ty(mod, ts)) {
+    return duplicate_ty;
   }
   if (const std::optional<std::string> declared_ty =
           unique_decl_text_aggregate_ty(mod, ts)) {

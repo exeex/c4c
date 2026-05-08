@@ -20,9 +20,15 @@ TypeSpec field_chain_owner_type_spec(const std::string& tag, const HirStructDef&
   return ts;
 }
 
-std::optional<std::string> field_chain_nested_tag(const Module& mod, const HirStructField& field) {
-  if (!field.is_anon_member) return std::nullopt;
-  return typespec_aggregate_compatibility_tag(mod, field.elem_type);
+std::optional<std::string> field_chain_tag_from_structured_name_id(
+    const Module& mod, const LirModule* lir_module, StructNameId name_id) {
+  if (!lir_module || name_id == kInvalidStructName) return std::nullopt;
+  const std::string_view lir_name = lir_module->struct_names.spelling(name_id);
+  if (lir_name.empty()) return std::nullopt;
+  for (const auto& [tag, _] : mod.struct_defs) {
+    if (llvm_struct_type_str(tag) == lir_name) return tag;
+  }
+  return std::nullopt;
 }
 
 StructNameId structured_child_name_id(const StructuredLayoutLookup& layout, int llvm_idx) {
@@ -31,6 +37,33 @@ StructNameId structured_child_name_id(const StructuredLayoutLookup& layout, int 
   if (field_index >= layout.structured_decl->fields.size()) return kInvalidStructName;
   const LirTypeRef& type = layout.structured_decl->fields[field_index].type;
   return type.has_struct_name_id() ? type.struct_name_id() : kInvalidStructName;
+}
+
+struct FieldChainNestedAggregate {
+  std::optional<std::string> tag;
+  StructNameId structured_name_id = kInvalidStructName;
+};
+
+FieldChainNestedAggregate field_chain_nested_aggregate(
+    const Module& mod, const LirModule* lir_module,
+    const StructuredLayoutLookup& layout, const HirStructField& field,
+    int llvm_idx, bool allow_structured_child) {
+  FieldChainNestedAggregate result;
+  if (!field.is_anon_member) return result;
+
+  if (allow_structured_child) {
+    result.structured_name_id = structured_child_name_id(layout, llvm_idx);
+    result.tag =
+        field_chain_tag_from_structured_name_id(mod, lir_module,
+                                                result.structured_name_id);
+    if (result.tag) return result;
+  }
+
+  // Secondary compatibility path for anonymous aggregate members whose LIR
+  // field metadata is not yet rich enough to name the child layout.
+  result.structured_name_id = kInvalidStructName;
+  result.tag = typespec_aggregate_compatibility_tag(mod, field.elem_type);
+  return result;
 }
 
 }  // namespace
@@ -107,14 +140,14 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
   }
 
   for (const auto& f : sd.fields) {
-    const std::optional<std::string> nested_tag = field_chain_nested_tag(mod_, f);
-    if (!nested_tag || nested_tag->empty()) continue;
     std::vector<FieldStep> sub_chain;
     TypeSpec sub_ts{};
     const int llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
-    const StructNameId child_structured_name_id =
-        sd.is_union ? kInvalidStructName : structured_child_name_id(layout, llvm_idx);
-    if (find_field_chain(*nested_tag, field_name, sub_chain, sub_ts, child_structured_name_id)) {
+    const FieldChainNestedAggregate nested = field_chain_nested_aggregate(
+        mod_, module_, layout, f, llvm_idx, !sd.is_union);
+    if (!nested.tag || nested.tag->empty()) continue;
+    if (find_field_chain(*nested.tag, field_name, sub_chain, sub_ts,
+                         nested.structured_name_id)) {
       FieldStep step;
       step.tag = tag;
       step.structured_name_id = step_structured_name_id;
@@ -183,15 +216,14 @@ bool StmtEmitter::find_field_chain_by_member_symbol_id(const std::string& tag,
   }
 
   for (const auto& f : sd.fields) {
-    const std::optional<std::string> nested_tag = field_chain_nested_tag(mod_, f);
-    if (!nested_tag || nested_tag->empty()) continue;
     std::vector<FieldStep> sub_chain;
     TypeSpec sub_ts{};
     const int llvm_idx = llvm_struct_field_slot(mod_, sd, f.llvm_idx);
-    const StructNameId child_structured_name_id =
-        sd.is_union ? kInvalidStructName : structured_child_name_id(layout, llvm_idx);
-    if (!find_field_chain_by_member_symbol_id(*nested_tag, member_symbol_id, sub_chain,
-                                              sub_ts, child_structured_name_id)) {
+    const FieldChainNestedAggregate nested = field_chain_nested_aggregate(
+        mod_, module_, layout, f, llvm_idx, !sd.is_union);
+    if (!nested.tag || nested.tag->empty()) continue;
+    if (!find_field_chain_by_member_symbol_id(*nested.tag, member_symbol_id, sub_chain,
+                                              sub_ts, nested.structured_name_id)) {
       continue;
     }
     FieldStep step;

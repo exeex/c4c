@@ -8,31 +8,30 @@ Current Step Title: Retire LIR Aggregate Helper Compatibility Tags
 
 ## Just Finished
 
-Completed a partial Plan Step 6 LIR aggregate helper slice by making `lir_aggregate_structured_name_id` try structured owner-key identity before rendered compatibility/final-spelling paths and stop after complete owner-key misses instead of returning compatibility name ids.
+Completed the delegated Plan Step 6 repair by resolving the template-local aggregate signature/call ABI mismatch that remained after the field-chain compatibility fallback was demoted.
 
-Added focused LIR-linked coverage for `lir_aggregate_structured_name_id` through public lowering paths: global type refs prove complete owner-key hits produce verifier-consistent structured owner text/name-id mirrors instead of stale rendered text, and complete misses do not return or intern stale compatibility name ids; signature type refs prove incomplete/no-owner metadata still preserves the compatibility name-id path.
+Template-local aggregate value lowering now detects `_tag_ctx`/`_local_text` layouts that have a unique canonical template instantiation with matching semantic layout, and uses the canonical aggregate name for LLVM value/signature/call ABI text. LIR owned signature parameter metadata is canonicalized only for those template-local compatibility carriers, preserving complete owner-key miss rejection and no-owner compatibility behavior.
 
-Reviewer result from `review/idea152_step6_route_review.md`: the retained Step 6 changes are aligned and not testcase-overfit, but Step 6 is incomplete after revert `323e73722` because `src/codegen/lir/hir_to_lir/types.cpp` still has `field_chain_nested_tag` returning `typespec_aggregate_compatibility_tag(...)` as a primary route for anonymous members.
+The earlier field-chain repair remains in place: anonymous-member recursion prefers structured child `StructNameId` metadata and keeps the rendered compatibility route as an explicitly secondary fallback for incomplete metadata.
 
 ## Suggested Next
 
-Next coherent packet: repair or explicitly demote/document the `field_chain_nested_tag` compatibility route in `src/codegen/lir/hir_to_lir/types.cpp` under Plan Step 6. The packet should make structured owner/layout data the primary path when available, keep any compatibility path secondary with owner/limitation/removal-condition guidance, and avoid restoring the reverted over-broad field-chain slice.
+Supervisor should review and decide whether the completed Step 6 slice is ready to commit with the updated proof log, or whether Step 6 needs an independent route review before lifecycle closure.
 
 ## Watchouts
 
 - The no-owner compatibility path remains intentionally live for incomplete metadata.
 - Owner-key hits normalize aggregate-name mirrors to the structured owner tag; ABI fragments such as `ptr byval(%struct.X)` remain raw mirrors.
-- `field_chain_nested_tag` is the remaining active LIR aggregate-helper compatibility route called out by review; accepting the current slice as complete Step 6 would be route drift.
-- Current validation is failing in adjacent cpp positive signature type-ref coverage, so proof must be rerun after the Step 6 repair.
+- The field-chain anonymous-member compatibility route is now secondary and documented, but union anonymous-member recursion still cannot recover child layout ids from the current union LIR layout shape.
+- Template-local canonicalization is intentionally constrained to `_tag_ctx`/`_local_text` compatibility layouts with a unique canonical template instantiation candidate. The stale complete-owner-miss test in `frontend_lir_function_signature_type_ref` passed and should stay part of the acceptance proof.
 
 ## Proof
 
-Current `test_after.log` is failing, not passing. It records three cpp positive failures adjacent to LIR signature type refs:
+The delegated proof command passed, and the accepted `test_after.log` was rolled forward to `test_before.log` after supervisor regression-guard review. The command was:
 
-- `cpp_positive_sema_template_angle_bracket_validation_cpp`: `LirFunction.signature_return_type_ref` missing matching `StructNameId`.
-- `cpp_positive_sema_template_struct_advanced_cpp`: `LirFunction.signature_return_type_ref` missing matching `StructNameId`.
-- `cpp_positive_sema_template_struct_nested_cpp`: `LirFunction.signature_param_type_refs` missing matching `StructNameId`.
+`cmake --build --preset default --target c4cll frontend_lir_call_type_ref_test frontend_lir_function_signature_type_ref_test frontend_lir_global_type_ref_test frontend_lir_extern_decl_type_ref_test && ctest --test-dir build -R '^(frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|frontend_lir_global_type_ref|frontend_lir_extern_decl_type_ref|cpp_positive_sema_template_(angle_bracket_validation|struct_advanced|struct_nested)_cpp)$' --output-on-failure > test_after.log`
 
-Stale passing-proof claim replaced. After the next Step 6 repair, rerun the supervisor-selected proof or a supervisor-approved subset:
+Accepted proof result:
 
-`cmake --build --preset default --target c4cll frontend_lir_global_type_ref_test frontend_lir_function_signature_type_ref_test frontend_lir_extern_decl_type_ref_test frontend_lir_call_type_ref_test && ctest --test-dir build -R '^frontend_lir_' --output-on-failure > test_after.log`
+- passing: `frontend_lir_call_type_ref`, `frontend_lir_function_signature_type_ref`, `frontend_lir_global_type_ref`, `frontend_lir_extern_decl_type_ref`, `cpp_positive_sema_template_angle_bracket_validation_cpp`, `cpp_positive_sema_template_struct_advanced_cpp`, `cpp_positive_sema_template_struct_nested_cpp`
+- failing: none
