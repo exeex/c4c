@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/153_parser_sema_record_tag_compatibility_table_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Demote Parser Record Tag Maps To Mirrors
+Current Step ID: 3
+Current Step Title: Retire Template Instantiated Record Rendered Keys
 
 # Current Packet
 
