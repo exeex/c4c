@@ -618,6 +618,73 @@ void test_nested_out_of_class_method_owner_handoff_uses_segment_sequence() {
                        : std::string(": ") + result.diagnostics.front().message));
 }
 
+void expect_out_of_class_template_owner_relabel_uses_qn_metadata(
+    const char* source, const std::string& route,
+    const std::string& expected_display_owner) {
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+
+  const c4c::TextId ns_text = lexer.text_table().intern("ns");
+  const c4c::TextId owner_text = lexer.text_table().intern("Owner");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text);
+  expect_true(ns_context > 0,
+              route + ": test namespace context should be created");
+
+  c4c::Node* owner_primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner_primary->name = arena.strdup("ns::Owner");
+  owner_primary->unqualified_name = arena.strdup("Owner");
+  owner_primary->unqualified_text_id = owner_text;
+  owner_primary->namespace_context_id = ns_context;
+  owner_primary->n_template_params = 1;
+  parser.register_template_struct_primary(
+      parser.alias_template_key_in_context(ns_context, owner_text),
+      owner_primary);
+
+  const c4c::TextId rendered_owner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns::Owner");
+  expect_true(parser.find_template_struct_primary(
+                  parser.current_namespace_context_id(),
+                  rendered_owner_text) == nullptr,
+              route + ": rendered ns::Owner TextId should not be template "
+                      "owner authority");
+
+  c4c::Parser::TemplateScopeParam param{};
+  param.name_text_id = lexer.text_table().intern("T");
+  param.name = arena.strdup("T");
+  parser.push_template_scope(
+      c4c::Parser::TemplateScopeKind::FreeFunctionTemplate, {param});
+
+  (void)c4c::parse_top_level(parser);
+  expect_true(!parser.template_state_.template_scope_stack.empty(),
+              route + ": manually pushed template scope should remain active");
+  expect_true(parser.template_state_.template_scope_stack.back().kind ==
+                  c4c::Parser::TemplateScopeKind::EnclosingClass,
+              route + ": parser should relabel template scope from structured "
+                      "QualifiedNameRef owner metadata");
+  expect_true(parser.template_state_.template_scope_stack.back()
+                      .owner_struct_tag == expected_display_owner,
+              route + ": relabel display owner should remain the parsed "
+                      "qualified spelling");
+  parser.pop_template_scope();
+}
+
+void test_parser_template_owner_relabel_uses_structured_owner_metadata() {
+  expect_out_of_class_template_owner_relabel_uses_qn_metadata(
+      "int ns::Owner::method() { return 0; }\n",
+      "generic out-of-class method", "ns::Owner");
+  expect_out_of_class_template_owner_relabel_uses_qn_metadata(
+      "namespace ns { Owner::Owner() {} }\n",
+      "out-of-class constructor", "Owner");
+  expect_out_of_class_template_owner_relabel_uses_qn_metadata(
+      "namespace ns { Owner::operator bool() { return true; } }\n",
+      "out-of-class conversion operator", "Owner");
+}
+
 void test_parsed_local_var_ref_handoff_uses_text_id_not_rendered_spelling() {
   const char* source =
       "int uses_local() {\n"
@@ -6785,6 +6852,7 @@ int main() {
   test_namespace_qualified_function_decl_handoff_uses_context_metadata();
   test_out_of_class_method_owner_handoff_uses_qualifier_metadata();
   test_nested_out_of_class_method_owner_handoff_uses_segment_sequence();
+  test_parser_template_owner_relabel_uses_structured_owner_metadata();
   test_parsed_local_var_ref_handoff_uses_text_id_not_rendered_spelling();
   test_alias_template_lookup_rejects_visible_type_rendered_reentry();
   test_qualified_typedef_name_uses_structured_result_not_rendered_reentry();

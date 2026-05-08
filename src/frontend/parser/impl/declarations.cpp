@@ -293,6 +293,43 @@ static Parser::QualifiedNameRef make_out_of_class_method_qn(
     return qn;
 }
 
+static Parser::QualifiedNameRef make_out_of_class_owner_qn(
+    bool is_global_qualified, const std::vector<std::string>& owner_segments,
+    const std::vector<TextId>& owner_text_ids) {
+    Parser::QualifiedNameRef qn;
+    if (owner_text_ids.empty()) return qn;
+    qn.is_global_qualified = is_global_qualified;
+    for (size_t i = 0; i + 1 < owner_text_ids.size(); ++i) {
+        qn.qualifier_text_ids.push_back(owner_text_ids[i]);
+        if (i < owner_segments.size()) {
+            qn.qualifier_segments.push_back(owner_segments[i]);
+        } else {
+            qn.qualifier_segments.emplace_back();
+        }
+    }
+    const size_t base_index = owner_text_ids.size() - 1;
+    qn.base_text_id = owner_text_ids[base_index];
+    if (base_index < owner_segments.size()) {
+        qn.base_name = owner_segments[base_index];
+    }
+    return qn;
+}
+
+static void relabel_free_function_template_as_owner_scope(
+    Parser& parser, const Parser::QualifiedNameRef& owner_qn,
+    const std::string& display_owner) {
+    if (parser.template_state_.template_scope_stack.empty() ||
+        parser.template_state_.template_scope_stack.back().kind !=
+            Parser::TemplateScopeKind::FreeFunctionTemplate ||
+        !parser.find_template_struct_primary(owner_qn)) {
+        return;
+    }
+    parser.template_state_.template_scope_stack.back().kind =
+        Parser::TemplateScopeKind::EnclosingClass;
+    parser.template_state_.template_scope_stack.back().owner_struct_tag =
+        display_owner;
+}
+
 static void finalize_pending_operator_name(std::string& name, size_t param_count) {
     if (name.find("operator_star_pending") != std::string::npos) {
         name.replace(name.find("operator_star_pending"),
@@ -2882,18 +2919,12 @@ Node* parse_top_level(Parser& parser) {
                     qualified_owner_segments)) {
                 parser.clear_current_struct_tag();
             }
-            if (!parser.template_state_.template_scope_stack.empty() &&
-                parser.template_state_.template_scope_stack.back().kind ==
-                    Parser::TemplateScopeKind::FreeFunctionTemplate &&
-                parser.find_template_struct_primary(
-                    parser.current_namespace_context_id(),
-                    parser.parser_text_id_for_token(kInvalidText,
-                                                    qualified_owner))) {
-                parser.template_state_.template_scope_stack.back().kind =
-                    Parser::TemplateScopeKind::EnclosingClass;
-                parser.template_state_.template_scope_stack.back().owner_struct_tag =
-                    qualified_owner;
-            }
+            relabel_free_function_template_as_owner_scope(
+                parser,
+                make_out_of_class_owner_qn(qualified_owner_is_global,
+                                           qualified_owner_segments,
+                                           qualified_owner_text_ids),
+                qualified_owner);
 
             TypeSpec conv_ts = parser.parse_base_type();
             parser.parse_attributes(&conv_ts);
@@ -3073,18 +3104,12 @@ Node* parse_top_level(Parser& parser) {
                         qualified_owner_segments)) {
                     parser.clear_current_struct_tag();
                 }
-                if (!parser.template_state_.template_scope_stack.empty() &&
-                    parser.template_state_.template_scope_stack.back().kind ==
-                        Parser::TemplateScopeKind::FreeFunctionTemplate &&
-                    parser.find_template_struct_primary(
-                        parser.current_namespace_context_id(),
-                        parser.parser_text_id_for_token(kInvalidText,
-                                                        qualified_owner))) {
-                    parser.template_state_.template_scope_stack.back().kind =
-                        Parser::TemplateScopeKind::EnclosingClass;
-                    parser.template_state_.template_scope_stack.back().owner_struct_tag =
-                        qualified_owner;
-                }
+                relabel_free_function_template_as_owner_scope(
+                    parser,
+                    make_out_of_class_owner_qn(qualified_owner_is_global,
+                                               qualified_owner_segments,
+                                               qualified_owner_text_ids),
+                    qualified_owner);
 
                 parser.consume();  // (
                 std::vector<Node*> params;
@@ -3657,19 +3682,12 @@ top_level_base_ready:
         }
         // If the owner is a known template struct and we have an active
         // FreeFunctionTemplate scope, relabel it as EnclosingClass.
-        if (!parser.template_state_.template_scope_stack.empty() &&
-            parser.template_state_.template_scope_stack.back().kind ==
-                Parser::TemplateScopeKind::FreeFunctionTemplate) {
-            if (parser.find_template_struct_primary(
-                    parser.current_namespace_context_id(),
-                    parser.parser_text_id_for_token(kInvalidText,
-                                                    qualified_owner_tag))) {
-                parser.template_state_.template_scope_stack.back().kind =
-                    Parser::TemplateScopeKind::EnclosingClass;
-                parser.template_state_.template_scope_stack.back().owner_struct_tag =
-                    qualified_owner_tag;
-            }
-        }
+        relabel_free_function_template_as_owner_scope(
+            parser,
+            make_out_of_class_owner_qn(decl_qn.is_global_qualified,
+                                       decl_qn.qualifier_segments,
+                                       decl_qn.qualifier_text_ids),
+            qualified_owner_tag);
     };
     const TextId saved_struct_tag_text_id_for_qualified =
         parser.active_context_state_.current_struct_tag_text_id;
