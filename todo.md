@@ -8,15 +8,17 @@ Current Step Title: Thread Structured Owner Identity To Consumers
 
 ## Just Finished
 
-Completed Step 4 regression repair after owner-key canonicalization: qualified namespace functions are no longer skipped as out-of-class struct methods, and out-of-class method lookup now canonicalizes parser-owned owner/method `TextId`s through spelling carriers before consulting structured method maps.
+Completed Step 4 LIR/frontend-crash repair for `llvm_gcc_c_torture_src_pr44164_c` after owner-key canonicalization.
 
-- Rebuilt `make_out_of_class_struct_method_lookup_key` owner qualifiers, owner base, and method text id through `Module::link_name_texts` when spelling carriers are available.
-- Kept structured method authority intact: a real owner-key hit still suppresses free-function lowering, while namespace-qualified free functions with no struct-method owner are lowered normally.
-- Repaired the observed failures where namespace functions such as `api::bump`/`geo::dot` were not materialized and an out-of-class constructor body was not attached.
+- Stopped structured layout observation from recursively re-entering owner/layout lookup for aggregate field types while serializing legacy field parity.
+- Added a const-initializer active-layout guard so a stale or missing nested aggregate owner cannot recursively substitute the currently emitted layout.
+- Made LIR type declaration emission include `Module::struct_defs` entries that were missing from `struct_def_order`, sorting the fallback tail deterministically while restoring the `%struct.Y` declaration needed by the nested `X -> Y -> YY -> Z` layout.
+- Aligned aggregate field type serialization in type declarations with non-recursive field spelling, preventing `%struct.Y` from becoming self-referential.
+- Added member access recovery that retries stale `resolved_owner_tag` misses through structured base-owner lookup and, when needed, a unique `member_symbol_id` layout hit.
 
 ## Suggested Next
 
-Next packet: let the supervisor decide whether this regression repair needs reviewer scrutiny because the smallest fix touched `src/frontend/hir/hir_build.cpp`, which was outside the packet's initial owned-file list but is the build-owned site of the failing owner-key consumer.
+Next packet: supervisor review/commit decision for this Step 4 repair.
 
 ## Watchouts
 
@@ -32,9 +34,12 @@ Next packet: let the supervisor decide whether this regression repair needs revi
 - This slice does not canonicalize member typedef `tag_text_id` itself; the touched tests keep member ids canonical and isolate owner-key behavior.
 - Keep function/global namespace metadata changes out of the next packet unless the owner-key helper naturally supports them without changing lookup behavior.
 - `make_out_of_class_struct_method_lookup_key` lives in `hir_build.cpp`; the initial owned-file list named `hir_lowering_core.cpp`, but that draft is not the active consumer for this regression.
+- `pr44164.c` still exposes frontend/HIR metadata drift: `struct Y` can exist in `struct_defs` without being listed in `struct_def_order`, and some member expressions carry stale rendered owner tags. This packet handles those facts in LIR consumers without parser changes.
+- The const-init active-layout guard is a recursion safety valve; it should not be used to justify accepting future owner/layout cycles when exact metadata is available.
+- The `member_symbol_id` recovery intentionally accepts only a unique layout hit.
 
 ## Proof
 
-Passed: `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'cpp_positive_sema_namespace_struct_runtime_cpp|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_hir_module_decl_lookup_structured_mirror') > test_after.log 2>&1`
+Passed: `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'cpp_hir_module_decl_lookup_structured_mirror|cpp_positive_sema_inherited_implicit_member_out_of_class_runtime_cpp|cpp_positive_sema_local_direct_init_member_call_runtime_cpp|cpp_positive_sema_namespace_dual_using_runtime_cpp|cpp_positive_sema_namespace_function_call_runtime_cpp|cpp_positive_sema_namespace_global_var_runtime_cpp|cpp_positive_sema_namespace_nested_runtime_cpp|cpp_positive_sema_namespace_nested_using_std_runtime_cpp|cpp_positive_sema_namespace_reopen_runtime_cpp|cpp_positive_sema_namespace_reopen_using_std_runtime_cpp|cpp_positive_sema_namespace_struct_collision_runtime_cpp|cpp_positive_sema_namespace_struct_runtime_cpp|cpp_positive_sema_operator_implicit_member_runtime_cpp|cpp_positive_sema_operator_this_out_of_class_runtime_cpp|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_positive_sema_unqualified_static_member_call_runtime_cpp|cpp_positive_sema_using_namespace_fn_lookup_cpp|llvm_gcc_c_torture_src_pr44164_c' && ctest --test-dir build -j --output-on-failure -R 'frontend_hir|frontend_parser_lookup_authority') > test_after.log 2>&1`
 
 Proof log: `test_after.log`.

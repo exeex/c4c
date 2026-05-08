@@ -56,6 +56,8 @@ static void append_legacy_layout_field_types(const Module& mod, const HirStructD
       out.push_back("[" + std::to_string(f.array_first_dim) + " x " + elem_ty + "]");
     } else if (f.elem_type.base == TB_VA_LIST) {
       out.push_back(llvm_va_list_storage_ty());
+    } else if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
+      out.push_back(llvm_field_ty(f));
     } else {
       out.push_back(llvm_value_ty(mod, f.elem_type));
     }

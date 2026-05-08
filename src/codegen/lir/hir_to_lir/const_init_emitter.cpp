@@ -1347,6 +1347,16 @@ std::vector<std::string> ConstInitEmitter::emit_const_struct_fields_impl(const T
 std::string ConstInitEmitter::emit_const_struct(const TypeSpec& ts, const GlobalInit& init) {
   const HirStructDef* sd_ptr = lookup_const_init_struct_def(ts);
   if (!sd_ptr) return "zeroinitializer";
+  if (std::find(active_const_struct_defs_.begin(),
+                active_const_struct_defs_.end(),
+                sd_ptr) != active_const_struct_defs_.end()) {
+    return "zeroinitializer";
+  }
+  active_const_struct_defs_.push_back(sd_ptr);
+  struct ActiveStructGuard {
+    std::vector<const HirStructDef*>& active;
+    ~ActiveStructGuard() { active.pop_back(); }
+  } guard{active_const_struct_defs_};
   const HirStructDef& sd = *sd_ptr;
   if (sd.is_union) return emit_const_union(ts, sd, init);
   return format_struct_literal(sd, emit_const_struct_fields_impl(ts, sd, init, nullptr));

@@ -168,6 +168,7 @@ class ConstInitEmitter {
  private:
   const c4c::hir::Module& mod_;
   LirModule& module_;
+  std::vector<const c4c::hir::HirStructDef*> active_const_struct_defs_;
 
   // ── Expr lookup ─────────────────────────────────────────────────────────
   const c4c::hir::Expr& get_expr(c4c::hir::ExprId id) const;

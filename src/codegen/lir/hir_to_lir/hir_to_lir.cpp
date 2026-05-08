@@ -129,6 +129,9 @@ std::string lir_field_ty(const c4c::hir::Module& mod, const HirStructField& fiel
     return "[" + std::to_string(field.array_first_dim) + " x " + elem_ty + "]";
   }
   if (field.elem_type.base == TB_VA_LIST) return llvm_va_list_storage_ty();
+  if (field.elem_type.base == TB_STRUCT || field.elem_type.base == TB_UNION) {
+    return llvm_field_ty(field);
+  }
   return stmt_emitter_detail::llvm_value_ty(mod, field.elem_type);
 }
 
@@ -604,7 +607,18 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
     }
   }
 
-  for (const auto& tag : mod.struct_def_order) {
+  std::vector<std::string> ordered_tags = mod.struct_def_order;
+  std::vector<std::string> missing_ordered_tags;
+  for (const auto& [tag, _] : mod.struct_defs) {
+    if (std::find(ordered_tags.begin(), ordered_tags.end(), tag) == ordered_tags.end()) {
+      missing_ordered_tags.push_back(tag);
+    }
+  }
+  std::sort(missing_ordered_tags.begin(), missing_ordered_tags.end());
+  ordered_tags.insert(ordered_tags.end(), missing_ordered_tags.begin(),
+                      missing_ordered_tags.end());
+
+  for (const auto& tag : ordered_tags) {
     const auto it = mod.struct_defs.find(tag);
     if (it == mod.struct_defs.end()) continue;
     const auto& sd = it->second;

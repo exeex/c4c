@@ -677,6 +677,50 @@ MemberFieldAccess StmtEmitter::resolve_member_field_access(FnCtx& ctx, const Mem
     access.field_found =
         resolve_field_access(access.tag, m.field, access.chain, access.field_ts, &access.bf);
   }
+  if (!access.field_found && !m.resolved_owner_tag.empty()) {
+    if (const std::optional<std::string> owner_tag =
+            member_access_owner_tag_from_type(mod_, access.base_ts);
+        owner_tag && *owner_tag != access.tag) {
+      std::vector<FieldStep> recovered_chain;
+      TypeSpec recovered_field_ts{};
+      BitfieldAccess recovered_bf{};
+      if (resolve_field_access(*owner_tag, m.field, recovered_chain, recovered_field_ts,
+                               &recovered_bf)) {
+        access.tag = *owner_tag;
+        access.chain = std::move(recovered_chain);
+        access.field_ts = recovered_field_ts;
+        access.bf = recovered_bf;
+        access.field_found = true;
+      }
+    }
+  }
+  if (!access.field_found && m.member_symbol_id != kInvalidMemberSymbol) {
+    std::optional<MemberFieldAccess> unique_match;
+    bool ambiguous = false;
+    for (const auto& tag : mod_.struct_def_order) {
+      std::vector<FieldStep> recovered_chain;
+      TypeSpec recovered_field_ts{};
+      BitfieldAccess recovered_bf{};
+      if (!resolve_field_access_by_member_symbol_id(tag, m.member_symbol_id,
+                                                    recovered_chain,
+                                                    recovered_field_ts,
+                                                    &recovered_bf)) {
+        continue;
+      }
+      MemberFieldAccess candidate = access;
+      candidate.tag = tag;
+      candidate.chain = std::move(recovered_chain);
+      candidate.field_ts = recovered_field_ts;
+      candidate.bf = recovered_bf;
+      candidate.field_found = true;
+      if (unique_match.has_value()) {
+        ambiguous = true;
+        break;
+      }
+      unique_match = std::move(candidate);
+    }
+    if (!ambiguous && unique_match.has_value()) access = std::move(*unique_match);
+  }
   return access;
 }
 
