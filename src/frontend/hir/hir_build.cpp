@@ -158,7 +158,6 @@ std::optional<HirRecordOwnerKey> make_template_origin_owner_key_from_specializat
 }
 
 struct OutOfClassStructMethodLookup {
-  bool has_complete_structured_metadata = false;
   std::optional<HirStructMethodLookupKey> key;
 };
 
@@ -210,7 +209,6 @@ OutOfClassStructMethodLookup make_out_of_class_struct_method_lookup_key(
   if (!hir_struct_method_lookup_key_has_complete_metadata(method_key)) {
     return result;
   }
-  result.has_complete_structured_metadata = true;
   if (!m.find_struct_def_tag_by_owner(owner_key)) return result;
   result.key = method_key;
   return result;
@@ -741,15 +739,7 @@ void Lowerer::attach_out_of_class_struct_method_defs(
         mangled = owner_it->second;
       }
     }
-    if (!mangled && structured_lookup.has_complete_structured_metadata) continue;
-    if (!mangled) {
-      auto method_ref = try_parse_qualified_struct_method_name(item);
-      if (!method_ref.has_value()) continue;
-      if (!m.struct_defs.count(method_ref->struct_tag)) continue;
-      auto mit = struct_methods_.find(method_ref->key);
-      if (mit == struct_methods_.end()) continue;
-      mangled = mit->second;
-    }
+    if (!mangled) continue;
     for (auto& pm : pending_methods_) {
       if (pm.mangled == *mangled) {
         pm.method_node = item;
@@ -770,12 +760,6 @@ void Lowerer::lower_non_method_functions_and_globals(
       if (structured_lookup.key &&
           struct_methods_by_owner_.count(*structured_lookup.key) > 0) {
         is_out_of_class_method = true;
-      } else if (!structured_lookup.has_complete_structured_metadata) {
-        auto method_ref = try_parse_qualified_struct_method_name(item);
-        is_out_of_class_method =
-            method_ref.has_value() &&
-            m.struct_defs.count(method_ref->struct_tag) > 0 &&
-            struct_methods_.count(method_ref->key) > 0;
       }
       if (is_out_of_class_method) {
         continue;

@@ -4525,6 +4525,39 @@ void test_out_of_class_nested_method_attach_uses_structured_owner_key() {
               "structured out-of-class method");
 }
 
+void test_out_of_class_method_attach_rejects_rendered_name_without_structured_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef rendered_def;
+  rendered_def.tag = "RenderedOnlyOwner";
+  rendered_def.tag_text_id = module.link_name_texts->intern("RenderedOnlyOwner");
+  module.struct_defs[rendered_def.tag] = rendered_def;
+  lowerer.struct_methods_["RenderedOnlyOwner::run"] = "RenderedOnlyOwner__run";
+
+  c4c::Node stale_decl{};
+  stale_decl.kind = c4c::NK_FUNCTION;
+  stale_decl.name = "run";
+  lowerer.pending_methods_.push_back(
+      {"RenderedOnlyOwner__run", "RenderedOnlyOwner", &stale_decl, {}, {}, {}});
+
+  c4c::Node fn{};
+  fn.kind = c4c::NK_FUNCTION;
+  fn.name = "RenderedOnlyOwner::run";
+  fn.unqualified_name = "run";
+  fn.unqualified_text_id = module.link_name_texts->intern("run");
+  c4c::Node body{};
+  body.kind = c4c::NK_BLOCK;
+  fn.body = &body;
+
+  std::vector<const c4c::Node*> items = {&fn};
+  lowerer.attach_out_of_class_struct_method_defs(items, module);
+
+  expect_true(lowerer.pending_methods_[0].method_node == &stale_decl,
+              "out-of-class method attach must not use rendered Node::name splitting without a structured owner key");
+}
+
 void test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -4576,6 +4609,35 @@ void test_lower_non_method_complete_structured_method_miss_rejects_rendered_fall
                 "complete structured method miss should lower as a non-method instead of using stale rendered fallback");
   expect_true(module.functions[0].name == "RenderedMethodOwner::run",
               "non-method lowering should preserve the function definition after rejecting stale rendered method authority");
+}
+
+void test_lower_non_method_incomplete_structured_method_metadata_rejects_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef rendered_def;
+  rendered_def.tag = "RenderedOnlyOwner";
+  rendered_def.tag_text_id = module.link_name_texts->intern("RenderedOnlyOwner");
+  module.struct_defs[rendered_def.tag] = rendered_def;
+  lowerer.struct_methods_["RenderedOnlyOwner::run"] = "RenderedOnlyOwner__run";
+
+  c4c::Node fn{};
+  fn.kind = c4c::NK_FUNCTION;
+  fn.name = "RenderedOnlyOwner::run";
+  fn.unqualified_name = "run";
+  fn.unqualified_text_id = module.link_name_texts->intern("run");
+  fn.type.array_size = -1;
+  fn.type.inner_rank = -1;
+  fn.type.base = c4c::TB_INT;
+
+  std::vector<const c4c::Node*> items = {&fn};
+  lowerer.lower_non_method_functions_and_globals(items, module);
+
+  expect_eq_int(static_cast<int>(module.functions.size()), 1,
+                "incomplete structured method metadata should lower as a non-method instead of using rendered fallback");
+  expect_true(module.functions[0].name == "RenderedOnlyOwner::run",
+              "non-method lowering should preserve rendered names after rejecting rendered method authority");
 }
 
 }  // namespace
@@ -4660,7 +4722,9 @@ int main() {
   test_struct_def_owner_key_canonicalizes_parser_qualifier_text_ids();
   test_struct_def_owner_key_interns_first_use_spelling_carriers();
   test_out_of_class_nested_method_attach_uses_structured_owner_key();
+  test_out_of_class_method_attach_rejects_rendered_name_without_structured_key();
   test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback();
+  test_lower_non_method_incomplete_structured_method_metadata_rejects_rendered_fallback();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }
