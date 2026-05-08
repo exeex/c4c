@@ -2472,6 +2472,16 @@ void parse_record_definition_prelude(
     parse_record_base_clause(parser, base_types);
 }
 
+static Node* find_structured_record_tag_definition(Parser& parser,
+                                                   const char* tag) {
+    if (!tag || !tag[0] || std::strstr(tag, "::")) return nullptr;
+    const TextId tag_text_id =
+        parser.parser_text_id_for_token(kInvalidText, tag);
+    if (tag_text_id == kInvalidText) return nullptr;
+    return record_definition_in_context_by_text_id(
+        parser, parser.current_namespace_context_id(), tag_text_id);
+}
+
 Node* parse_record_tag_setup(
     Parser& parser,
     int line,
@@ -2497,6 +2507,14 @@ Node* parse_record_tag_setup(
             resolved_tag = parser.arena_.strdup(qtag.c_str());
             if (!(template_origin_name && template_origin_name[0]) &&
                 specialization_args.empty()) {
+                if (Node* structured_record =
+                        find_structured_record_tag_definition(parser,
+                                                              source_tag)) {
+                    if (tag) *tag = resolved_tag;
+                    return structured_record;
+                }
+                // Legacy compatibility mirror for records that have not yet
+                // populated structured parser metadata.
                 auto existing =
                     parser.definition_state_.struct_tag_def_map.find(qtag);
                 if (existing != parser.definition_state_.struct_tag_def_map.end() &&
@@ -2561,7 +2579,17 @@ Node* parse_record_tag_setup(
                 : parser.render_name_in_context(
                       parser.current_namespace_context_id(),
                       parser.parser_text_id_for_token(kInvalidText, resolved_tag));
-        if (parser.definition_state_.defined_struct_tags.count(qtag)) {
+        Node* structured_record =
+            find_structured_record_tag_definition(parser, resolved_tag);
+        const bool structured_definition_exists =
+            structured_record && structured_record->n_fields >= 0;
+        // Qualified tag setup still lacks a structured QualifiedNameRef here;
+        // keep the rendered set as a compatibility fallback for that route.
+        const bool legacy_rendered_definition_exists =
+            !structured_record && std::strstr(resolved_tag, "::") &&
+            parser.definition_state_.defined_struct_tags.count(qtag);
+        if (structured_definition_exists ||
+            legacy_rendered_definition_exists) {
             if (parser.active_context_state_.parsing_top_level_context &&
                 !parser.is_cpp_mode()) {
                 throw std::runtime_error(std::string("redefinition of ") +

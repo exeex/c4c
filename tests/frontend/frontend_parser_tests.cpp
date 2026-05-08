@@ -7106,6 +7106,68 @@ c4c::Node* parser_test_record(c4c::Parser& parser, c4c::Arena& arena,
   return record;
 }
 
+void test_parser_record_tag_setup_prefers_structured_identity() {
+  {
+    c4c::Lexer lexer("struct Shared; struct Shared* value;\n",
+                     c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    (void)parse_top_level(parser);
+    c4c::Node* structured_forward = nullptr;
+    for (c4c::Node* candidate : parser.definition_state_.struct_defs) {
+      if (candidate && candidate->unqualified_text_id ==
+                           parser_test_text_id(parser, "Shared")) {
+        structured_forward = candidate;
+        break;
+      }
+    }
+    expect_true(structured_forward != nullptr &&
+                    structured_forward->n_fields < 0,
+                "test fixture should create a structured forward record");
+
+    c4c::Node* stale_complete = parser_test_record(parser, arena, "Shared", {});
+    stale_complete->unqualified_text_id = parser_test_text_id(parser, "Shared");
+    stale_complete->namespace_context_id =
+        parser.current_namespace_context_id();
+    parser.definition_state_.struct_tag_def_map["Shared"] = stale_complete;
+    parser.definition_state_.defined_struct_tags.insert("Shared");
+
+    c4c::Node* decl = parse_top_level(parser);
+    expect_true(decl != nullptr && decl->kind == c4c::NK_GLOBAL_VAR,
+                "tag-only record use should still parse as a declaration");
+    expect_true(decl->type.record_def == structured_forward,
+                "tag setup should prefer structured record identity before a "
+                "stale rendered tag-map definition");
+  }
+
+  {
+    c4c::Lexer lexer("struct Shared { int value; } after;\n",
+                     c4c::LexProfile::CppSubset);
+    const std::vector<c4c::Token> tokens = lexer.scan_all();
+    c4c::Arena arena;
+    c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                       c4c::SourceProfile::CppSubset);
+
+    parser.definition_state_.defined_struct_tags.insert("Shared");
+    c4c::Node* stale_complete = parser_test_record(parser, arena, "Shared", {});
+    parser.definition_state_.struct_tag_def_map["Shared"] = stale_complete;
+
+    const c4c::TypeSpec parsed = parser.parse_base_type();
+    expect_true(parsed.record_def != nullptr &&
+                    parsed.record_def != stale_complete,
+                "record definition setup should not let stale rendered maps "
+                "replace the parsed structured record");
+    expect_eq(parser.parser_text(parsed.tag_text_id), "Shared",
+              "stale rendered defined-tag state should not force a shadow tag "
+              "when no structured definition exists");
+    expect_true(std::string_view(parsed.record_def->name) == "Shared",
+                "parsed record definition should keep its source tag spelling");
+  }
+}
+
 void test_parser_direct_record_type_head_uses_structured_metadata() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -10087,6 +10149,7 @@ int main() {
   test_parser_template_substitution_preserves_record_definition_payloads();
   test_parser_direct_record_types_carry_record_definition();
   test_parser_tag_only_record_types_carry_incomplete_record_definition();
+  test_parser_record_tag_setup_prefers_structured_identity();
   test_parser_c_typedef_name_stays_separate_from_record_tag_identity();
   test_parser_direct_record_type_head_uses_structured_metadata();
   test_parser_record_layout_const_eval_uses_record_definition_authority();
