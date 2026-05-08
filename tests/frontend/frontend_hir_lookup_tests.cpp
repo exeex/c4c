@@ -4046,6 +4046,109 @@ void test_deferred_member_typedef_record_def_miss_rejects_stale_tag() {
               "failed structured member typedef lookup should leave the pending owner type intact");
 }
 
+void test_deferred_member_typedef_owner_key_miss_rejects_stale_node_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  const c4c::TextId ns_text = texts.intern("real_ns");
+  const c4c::TextId owner_text = texts.intern("MissingOwner");
+  const c4c::TextId member_text = texts.intern("value_type");
+
+  c4c::Node stale_record{};
+  stale_record.kind = c4c::NK_STRUCT_DEF;
+  stale_record.unqualified_text_id = owner_text;
+  stale_record.namespace_context_id = 7;
+  stale_record.n_member_typedefs = 1;
+  stale_record.member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
+  stale_record.member_typedef_text_ids[0] = member_text;
+  stale_record.member_typedef_names = arena.alloc_array<const char*>(1);
+  stale_record.member_typedef_names[0] = arena.strdup("value_type");
+  stale_record.member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  stale_record.member_typedef_types[0].array_size = -1;
+  stale_record.member_typedef_types[0].inner_rank = -1;
+  stale_record.member_typedef_types[0].base = c4c::TB_LONG;
+
+  c4c::TextId* qualifier_segments = arena.alloc_array<c4c::TextId>(1);
+  qualifier_segments[0] = ns_text;
+  c4c::TypeSpec pending{};
+  pending.array_size = -1;
+  pending.inner_rank = -1;
+  pending.base = c4c::TB_STRUCT;
+  pending.namespace_context_id = 7;
+  pending.qualifier_text_ids = qualifier_segments;
+  pending.n_qualifier_segments = 1;
+  pending.deferred_member_type_owner_key =
+      c4c::QualifiedNameKey{7, false, c4c::kInvalidNamePath, owner_text};
+  pending.deferred_member_type_text_id = member_text;
+  pending.deferred_member_type_name = arena.strdup("value_type");
+  pending.tag_text_id = owner_text;
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.struct_def_nodes_["real_ns::MissingOwner"] = &stale_record;
+
+  const bool resolved = lowerer.resolve_struct_member_typedef_if_ready(&pending);
+  expect_true(!resolved,
+              "complete owner-key miss must not recover member typedef through stale struct_def_nodes_ tag scan");
+  expect_true(pending.base == c4c::TB_STRUCT &&
+                  pending.deferred_member_type_name != nullptr,
+              "failed complete owner-key lookup should leave the pending member typedef intact");
+}
+
+void test_deferred_member_typedef_owner_key_miss_rejects_stale_module_tag() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  const c4c::TextId ns_text = texts.intern("real_ns");
+  const c4c::TextId owner_text = texts.intern("MissingOwner");
+  const c4c::TextId member_text = texts.intern("value_type");
+
+  c4c::Node stale_record{};
+  stale_record.kind = c4c::NK_STRUCT_DEF;
+  stale_record.unqualified_text_id = c4c::kInvalidText;
+  stale_record.namespace_context_id = -1;
+  stale_record.n_member_typedefs = 1;
+  stale_record.member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
+  stale_record.member_typedef_text_ids[0] = member_text;
+  stale_record.member_typedef_names = arena.alloc_array<const char*>(1);
+  stale_record.member_typedef_names[0] = arena.strdup("value_type");
+  stale_record.member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  stale_record.member_typedef_types[0].array_size = -1;
+  stale_record.member_typedef_types[0].inner_rank = -1;
+  stale_record.member_typedef_types[0].base = c4c::TB_LONG;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "real_ns::MissingOwner";
+  stale_def.tag_text_id = owner_text;
+  stale_def.ns_qual.context_id = 7;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TextId* qualifier_segments = arena.alloc_array<c4c::TextId>(1);
+  qualifier_segments[0] = ns_text;
+  c4c::TypeSpec pending{};
+  pending.array_size = -1;
+  pending.inner_rank = -1;
+  pending.base = c4c::TB_STRUCT;
+  pending.namespace_context_id = 7;
+  pending.qualifier_text_ids = qualifier_segments;
+  pending.n_qualifier_segments = 1;
+  pending.deferred_member_type_owner_key =
+      c4c::QualifiedNameKey{7, false, c4c::kInvalidNamePath, owner_text};
+  pending.deferred_member_type_text_id = member_text;
+  pending.deferred_member_type_name = arena.strdup("value_type");
+  pending.tag_text_id = owner_text;
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_def_nodes_[stale_def.tag] = &stale_record;
+
+  const bool resolved = lowerer.resolve_struct_member_typedef_if_ready(&pending);
+  expect_true(!resolved,
+              "complete owner-key miss must not recover member typedef through stale module struct_defs tag scan");
+  expect_true(pending.base == c4c::TB_STRUCT &&
+                  pending.deferred_member_type_name != nullptr,
+              "failed complete owner-key module lookup should leave the pending member typedef intact");
+}
+
 void test_deferred_member_typedef_uses_owner_key_and_member_text_id() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4829,6 +4932,8 @@ int main() {
   test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag();
   test_local_anonymous_aggregate_init_uses_record_owner_key();
   test_deferred_member_typedef_record_def_miss_rejects_stale_tag();
+  test_deferred_member_typedef_owner_key_miss_rejects_stale_node_tag();
+  test_deferred_member_typedef_owner_key_miss_rejects_stale_module_tag();
   test_deferred_member_typedef_uses_owner_key_and_member_text_id();
   test_deferred_member_typedef_owner_key_beats_suffix_split_collision();
   test_pending_deferred_member_typedef_preserves_owner_qualifier_segments();

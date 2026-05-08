@@ -663,15 +663,7 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
           return *tag;
         }
       }
-      for (const auto& [rendered_tag, candidate] : struct_def_nodes_) {
-        if (!candidate || candidate->kind != NK_STRUCT_DEF) continue;
-        if (candidate->unqualified_text_id != owner.tag_text_id) continue;
-        if (owner.namespace_context_id >= 0 &&
-            candidate->namespace_context_id != owner.namespace_context_id) {
-          continue;
-        }
-        return rendered_tag;
-      }
+      return std::nullopt;
     }
     if (module_ && owner.tag_text_id != kInvalidText) {
       for (const auto& [rendered_tag, def] : module_->struct_defs) {
