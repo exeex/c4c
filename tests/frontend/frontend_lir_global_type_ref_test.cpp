@@ -1,5 +1,6 @@
 #include "arena.hpp"
 #include "hir_to_lir.hpp"
+#include "hir_to_lir/lowering.hpp"
 #include "ir.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -92,6 +93,111 @@ void expect_global_type_ref(
             "global StructNameId should resolve to the rendered aggregate type");
 }
 
+void test_lookup_structured_layout_rejects_stale_rendered_compatibility() {
+  c4c::hir::Module hir_module;
+  c4c::codegen::lir::LirModule lir_module;
+  lir_module.link_name_texts = hir_module.link_name_texts;
+  lir_module.struct_names.attach_text_table(lir_module.link_name_texts.get());
+
+  c4c::Node real_owner{};
+  real_owner.kind = c4c::NK_STRUCT_DEF;
+  real_owner.name = "RealLirLayoutOwner";
+  real_owner.unqualified_name = "RealLirLayoutOwner";
+  real_owner.unqualified_text_id =
+      hir_module.link_name_texts->intern("RealLirLayoutOwner");
+  real_owner.namespace_context_id = 901;
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealLirLayoutOwner";
+  real_def.tag_text_id = real_owner.unqualified_text_id;
+  real_def.ns_qual.context_id = real_owner.namespace_context_id;
+  real_def.size_bytes = 24;
+  real_def.align_bytes = 8;
+  hir_module.index_struct_def_owner(c4c::hir::make_hir_record_owner_key(real_def),
+                                    real_def.tag, true);
+  hir_module.struct_defs[real_def.tag] = real_def;
+
+  const c4c::StructNameId real_name_id = lir_module.struct_names.intern(
+      c4c::codegen::llvm_helpers::llvm_struct_type_str(real_def.tag));
+  c4c::codegen::lir::LirStructDecl real_lir_decl;
+  real_lir_decl.name_id = real_name_id;
+  lir_module.record_struct_decl(real_lir_decl);
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleLirLayoutCompat";
+  stale_def.tag_text_id =
+      hir_module.link_name_texts->intern("StaleLirLayoutCompat");
+  stale_def.ns_qual.context_id = 901;
+  stale_def.size_bytes = 64;
+  stale_def.align_bytes = 16;
+  hir_module.struct_defs[stale_def.tag] = stale_def;
+
+  const c4c::StructNameId stale_name_id = lir_module.struct_names.intern(
+      c4c::codegen::llvm_helpers::llvm_struct_type_str(stale_def.tag));
+  c4c::codegen::lir::LirStructDecl stale_lir_decl;
+  stale_lir_decl.name_id = stale_name_id;
+  lir_module.record_struct_decl(stale_lir_decl);
+
+  c4c::TypeSpec owner_hit_query{};
+  owner_hit_query.base = c4c::TB_STRUCT;
+  owner_hit_query.tag_text_id = real_owner.unqualified_text_id;
+  owner_hit_query.namespace_context_id = real_owner.namespace_context_id;
+  owner_hit_query.record_def = &real_owner;
+  owner_hit_query.array_size = -1;
+  owner_hit_query.inner_rank = -1;
+
+  const c4c::codegen::lir::stmt_emitter_detail::StructuredLayoutLookup hit =
+      c4c::codegen::lir::stmt_emitter_detail::lookup_structured_layout(
+          hir_module, &lir_module, owner_hit_query, "test-lir-layout-hit");
+  expect_true(hit.legacy_decl && hit.legacy_decl->tag == real_def.tag,
+              "complete owner-key hit should select the structured HIR layout");
+  expect_true(hit.structured_decl && hit.structured_name_id == real_name_id,
+              "complete owner-key hit should select the structured LIR layout");
+
+  c4c::Node missing_owner{};
+  missing_owner.kind = c4c::NK_STRUCT_DEF;
+  missing_owner.name = "StaleLirLayoutCompat";
+  missing_owner.unqualified_name = "StaleLirLayoutCompat";
+  missing_owner.unqualified_text_id =
+      hir_module.link_name_texts->intern("MissingLirLayoutOwner");
+  missing_owner.namespace_context_id = stale_def.ns_qual.context_id;
+
+  c4c::TypeSpec owner_miss_query{};
+  owner_miss_query.base = c4c::TB_STRUCT;
+  owner_miss_query.tag_text_id = missing_owner.unqualified_text_id;
+  owner_miss_query.namespace_context_id = missing_owner.namespace_context_id;
+  owner_miss_query.record_def = &missing_owner;
+  owner_miss_query.array_size = -1;
+  owner_miss_query.inner_rank = -1;
+
+  const c4c::codegen::lir::stmt_emitter_detail::StructuredLayoutLookup miss =
+      c4c::codegen::lir::stmt_emitter_detail::lookup_structured_layout(
+          hir_module, &lir_module, owner_miss_query, "test-lir-layout-miss");
+  expect_true(!miss.legacy_decl,
+              "complete owner-key miss must not select stale rendered HIR layout compatibility");
+  expect_true(!miss.structured_decl &&
+                  miss.structured_name_id == c4c::kInvalidStructName,
+              "complete owner-key miss must not select stale rendered LIR layout compatibility");
+
+  c4c::TypeSpec no_owner_query{};
+  no_owner_query.base = c4c::TB_STRUCT;
+  no_owner_query.tag_text_id = stale_def.tag_text_id;
+  no_owner_query.namespace_context_id = -1;
+  c4c::TextId incomplete_qualifier[] = {c4c::kInvalidText};
+  no_owner_query.qualifier_text_ids = incomplete_qualifier;
+  no_owner_query.n_qualifier_segments = 1;
+  no_owner_query.array_size = -1;
+  no_owner_query.inner_rank = -1;
+
+  const c4c::codegen::lir::stmt_emitter_detail::StructuredLayoutLookup compat =
+      c4c::codegen::lir::stmt_emitter_detail::lookup_structured_layout(
+          hir_module, &lir_module, no_owner_query, "test-lir-layout-compat");
+  expect_true(compat.legacy_decl && compat.legacy_decl->tag == stale_def.tag,
+              "no-owner metadata should preserve rendered HIR layout compatibility");
+  expect_true(compat.structured_decl && compat.structured_name_id == stale_name_id,
+              "no-owner metadata should preserve rendered LIR layout compatibility");
+}
+
 }  // namespace
 
 int main() {
@@ -140,6 +246,8 @@ union Slot slot_global = {.int_value = 3};
     fail("verifier should reject a global mirror text mismatch without StructNameId");
   } catch (const c4c::codegen::lir::LirVerifyError&) {
   }
+
+  test_lookup_structured_layout_rejects_stale_rendered_compatibility();
 
   std::cout << "PASS: frontend_lir_global_type_ref\n";
   return 0;

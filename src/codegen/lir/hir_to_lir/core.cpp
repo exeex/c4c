@@ -366,6 +366,7 @@ static StructNameId lookup_structured_name_id_by_owner_or_compatibility(
           lir_module.struct_names.find(llvm_struct_type_str(*structured_tag));
       if (name_id != kInvalidStructName) return name_id;
     }
+    return kInvalidStructName;
   }
 
   const std::optional<std::string> compatibility_tag =
@@ -389,8 +390,9 @@ StructuredLayoutLookup lookup_structured_layout(const Module& mod,
   if (const std::optional<HirRecordOwnerKey> owner_key =
           typespec_aggregate_owner_key(ts, mod)) {
     result.legacy_decl = mod.find_struct_def_by_owner_structured(*owner_key);
+    if (!result.legacy_decl) return result;
   }
-  if (!result.legacy_decl) {
+  else {
     result.legacy_decl = lookup_structured_layout_compatibility_decl(mod, ts);
   }
 
