@@ -1750,6 +1750,120 @@ c4c::TypeSpec make_signature_owner_type(c4c::TextId owner_text,
   return ts;
 }
 
+void test_signature_member_typedef_owner_key_canonicalizes_parser_owner_ids() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId parser_ns_text_id = 1;
+  const c4c::TextId parser_owner_text_id = 2;
+  const c4c::TextId collision_ns_text =
+      texts.intern("CollisionMemberTypedefNs");
+  const c4c::TextId collision_owner_text =
+      texts.intern("CollisionMemberTypedefOwner");
+  expect_true(parser_ns_text_id == collision_ns_text &&
+                  parser_owner_text_id == collision_owner_text,
+              "member typedef fixture should force parser-owned owner TextId collisions");
+  const c4c::TextId real_ns_text = texts.intern("RealMemberTypedefNs");
+  const c4c::TextId real_owner_text =
+      texts.intern("RealMemberTypedefOwner");
+  const c4c::TextId member_text = texts.intern("type");
+
+  c4c::Node real_record{};
+  fill_type_member_typedef_record(arena, real_record, member_text, c4c::TB_LONG);
+  c4c::Node collision_record{};
+  fill_type_member_typedef_record(arena, collision_record, member_text,
+                                  c4c::TB_INT);
+
+  c4c::hir::NamespaceQualifier real_ns;
+  real_ns.context_id = 74;
+  real_ns.segment_text_ids.push_back(real_ns_text);
+  const c4c::hir::HirRecordOwnerKey real_key =
+      c4c::hir::make_hir_record_owner_key(real_ns, real_owner_text);
+
+  c4c::hir::NamespaceQualifier collision_ns;
+  collision_ns.context_id = 74;
+  collision_ns.segment_text_ids.push_back(collision_ns_text);
+  const c4c::hir::HirRecordOwnerKey collision_key =
+      c4c::hir::make_hir_record_owner_key(collision_ns, collision_owner_text);
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_def_nodes_by_owner_[real_key] = &real_record;
+  lowerer.struct_def_nodes_by_owner_[collision_key] = &collision_record;
+
+  const char* qualifier_segments[] = {"RealMemberTypedefNs",
+                                      "RealMemberTypedefOwner"};
+  c4c::TextId qualifier_text_ids[] = {parser_ns_text_id,
+                                      parser_owner_text_id};
+  c4c::TypeSpec pending{};
+  pending.array_size = -1;
+  pending.inner_rank = -1;
+  pending.base = c4c::TB_TYPEDEF;
+  pending.namespace_context_id = 74;
+  pending.qualifier_segments = qualifier_segments;
+  pending.qualifier_text_ids = qualifier_text_ids;
+  pending.n_qualifier_segments = 2;
+  pending.tag_text_id = member_text;
+
+  const c4c::TypeSpec resolved =
+      lowerer.substitute_signature_template_type(pending, nullptr);
+  expect_true(resolved.base == c4c::TB_LONG,
+              "signature member typedef owner-key lookup should canonicalize parser-owned qualifier/base ids through spelling carriers");
+}
+
+void test_signature_type_member_owner_key_canonicalizes_parser_qualifier_ids() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId parser_ns_text_id = 1;
+  const c4c::TextId collision_ns_text =
+      texts.intern("CollisionSignatureTypeNs");
+  expect_true(parser_ns_text_id == collision_ns_text,
+              "signature type fixture should force a parser-owned qualifier TextId collision");
+  const c4c::TextId real_ns_text = texts.intern("RealSignatureTypeNs");
+  const c4c::TextId owner_text = texts.intern("RealSignatureTypeOwner");
+  const c4c::TextId type_text = texts.intern("type");
+
+  c4c::Node real_record{};
+  fill_type_member_typedef_record(arena, real_record, type_text, c4c::TB_LONG);
+  c4c::Node collision_record{};
+  fill_type_member_typedef_record(arena, collision_record, type_text,
+                                  c4c::TB_INT);
+
+  c4c::hir::NamespaceQualifier real_ns;
+  real_ns.context_id = 75;
+  real_ns.segment_text_ids.push_back(real_ns_text);
+  const c4c::hir::HirRecordOwnerKey real_key =
+      c4c::hir::make_hir_record_owner_key(real_ns, owner_text);
+
+  c4c::hir::NamespaceQualifier collision_ns;
+  collision_ns.context_id = 75;
+  collision_ns.segment_text_ids.push_back(collision_ns_text);
+  const c4c::hir::HirRecordOwnerKey collision_key =
+      c4c::hir::make_hir_record_owner_key(collision_ns, owner_text);
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_def_nodes_by_owner_[real_key] = &real_record;
+  lowerer.struct_def_nodes_by_owner_[collision_key] = &collision_record;
+
+  const char* qualifier_segments[] = {"RealSignatureTypeNs"};
+  c4c::TextId qualifier_text_ids[] = {parser_ns_text_id};
+  c4c::TypeSpec ret_ts =
+      make_signature_owner_type(owner_text, qualifier_text_ids, 1, 75);
+  ret_ts.qualifier_segments = qualifier_segments;
+
+  const c4c::TypeSpec resolved =
+      lowerer.prepare_callable_return_type(ret_ts, nullptr, nullptr, nullptr,
+                                           "signature-type-canonical", false);
+  expect_true(resolved.base == c4c::TB_LONG,
+              "signature ::type owner-key lookup should canonicalize parser-owned qualifier ids through spelling carriers");
+}
+
 void test_signature_return_type_complete_owner_miss_rejects_rendered_type_fallback() {
   c4c::Arena arena;
   c4c::hir::Module module;
@@ -4299,6 +4413,8 @@ int main() {
   test_signature_substitution_preserves_nested_template_owner_identity();
   test_signature_member_typedef_complete_owner_miss_rejects_rendered_split();
   test_signature_member_typedef_no_complete_metadata_keeps_rendered_split();
+  test_signature_member_typedef_owner_key_canonicalizes_parser_owner_ids();
+  test_signature_type_member_owner_key_canonicalizes_parser_qualifier_ids();
   test_signature_return_type_complete_owner_miss_rejects_rendered_type_fallback();
   test_signature_return_type_no_complete_metadata_keeps_rendered_type_fallback();
   test_signature_parameter_type_complete_owner_miss_rejects_rendered_type_fallback();
