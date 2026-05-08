@@ -37,6 +37,13 @@ c4c::TypeSpec make_scalar_ts(c4c::TypeBase base) {
   return ts;
 }
 
+c4c::hir::HirRecordOwnerKey make_owner_key(int namespace_context_id,
+                                           c4c::TextId owner_text) {
+  c4c::hir::NamespaceQualifier ns;
+  ns.context_id = namespace_context_id;
+  return c4c::hir::make_hir_record_owner_key(ns, owner_text);
+}
+
 void attach_alias(c4c::Node& owner,
                   const char* alias_name,
                   c4c::TypeSpec* alias_type) {
@@ -74,6 +81,8 @@ void test_readiness_prefers_tag_text_id_owner_over_stale_tag() {
   lowerer.module_ = &module;
   lowerer.struct_def_nodes_[real_owner.name] = &real_owner;
   lowerer.struct_def_nodes_[stale_owner.name] = &stale_owner;
+  lowerer.struct_def_nodes_by_owner_[make_owner_key(5, real_owner_text)] =
+      &real_owner;
 
   c4c::TypeSpec owner_ts = make_scalar_ts(c4c::TB_STRUCT);
   set_legacy_tag_if_present(owner_ts, "StaleOwner", 0);
