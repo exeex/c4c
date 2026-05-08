@@ -2702,17 +2702,32 @@ Node* parse_top_level(Parser& parser) {
             return depth <= 0;
         };
 
+        struct SpecialMemberOwnerProbe {
+            std::string qualified_owner;
+            std::string owner_base_name;
+            std::vector<TextId> owner_text_ids;
+            std::vector<std::string> owner_segments;
+            TextId terminal_member_text_id = kInvalidText;
+            std::string terminal_member_name;
+            bool is_global_qualified = false;
+            bool is_operator = false;
+            bool is_ctor = false;
+        };
+
+        auto probe_identifier_text_id = [&](const Token& tok) -> TextId {
+            return parser.parser_text_id_for_token(
+                tok.text_id, std::string(parser.token_spelling(tok)));
+        };
+
         auto probe_special_member_owner =
-            [&](std::string* out_owner, std::string* out_base_name,
-                bool* out_is_operator, bool* out_is_ctor) -> bool {
-                if (out_owner) out_owner->clear();
-                if (out_base_name) out_base_name->clear();
-                if (out_is_operator) *out_is_operator = false;
-                if (out_is_ctor) *out_is_ctor = false;
+            [&](SpecialMemberOwnerProbe* out_probe) -> bool {
+                if (!out_probe) return false;
+                *out_probe = SpecialMemberOwnerProbe{};
 
                 int probe = saved_special_member_pos;
                 if (probe < static_cast<int>(parser.core_input_state_.tokens.size()) &&
                     parser.core_input_state_.tokens[probe].kind == TokenKind::ColonColon) {
+                    out_probe->is_global_qualified = true;
                     ++probe;
                 }
                 if (probe >= static_cast<int>(parser.core_input_state_.tokens.size()) ||
@@ -2722,8 +2737,10 @@ Node* parse_top_level(Parser& parser) {
 
                 std::string owner;
                 while (true) {
+                    const Token& seg_tok = parser.core_input_state_.tokens[probe];
                     const std::string seg =
-                        std::string(parser.token_spelling(parser.core_input_state_.tokens[probe]));
+                        std::string(parser.token_spelling(seg_tok));
+                    const TextId seg_text_id = probe_identifier_text_id(seg_tok);
                     ++probe;
                     if (!probe_skip_optional_template_id(&probe)) {
                         return false;
@@ -2735,9 +2752,13 @@ Node* parse_top_level(Parser& parser) {
                             TokenKind::KwOperator) {
                         if (!owner.empty()) owner += "::";
                         owner += seg;
-                        if (out_owner) *out_owner = owner;
-                        if (out_base_name) *out_base_name = seg;
-                        if (out_is_operator) *out_is_operator = true;
+                        out_probe->qualified_owner = owner;
+                        out_probe->owner_base_name = seg;
+                        if (seg_text_id != kInvalidText) {
+                            out_probe->owner_text_ids.push_back(seg_text_id);
+                        }
+                        out_probe->owner_segments.push_back(seg);
+                        out_probe->is_operator = true;
                         return true;
                     }
 
@@ -2745,25 +2766,36 @@ Node* parse_top_level(Parser& parser) {
                         parser.core_input_state_.tokens[probe].kind == TokenKind::ColonColon &&
                         parser.core_input_state_.tokens[probe + 1].kind ==
                             TokenKind::Identifier) {
-                        const std::string next_name =
-                            std::string(
-                                parser.token_spelling(parser.core_input_state_.tokens[probe + 1]));
+                        const Token& next_tok = parser.core_input_state_.tokens[probe + 1];
+                        const TextId next_text_id = probe_identifier_text_id(next_tok);
                         int terminal_probe = probe + 2;
-                        if (next_name == seg &&
+                        if (seg_text_id != kInvalidText &&
+                            seg_text_id == next_text_id &&
                             terminal_probe <
                                 static_cast<int>(parser.core_input_state_.tokens.size()) &&
                             parser.core_input_state_.tokens[terminal_probe].kind ==
                                 TokenKind::LParen) {
                             if (!owner.empty()) owner += "::";
                             owner += seg;
-                            if (out_owner) *out_owner = owner;
-                            if (out_base_name) *out_base_name = seg;
-                            if (out_is_ctor) *out_is_ctor = true;
+                            out_probe->qualified_owner = owner;
+                            out_probe->owner_base_name = seg;
+                            if (seg_text_id != kInvalidText) {
+                                out_probe->owner_text_ids.push_back(seg_text_id);
+                            }
+                            out_probe->owner_segments.push_back(seg);
+                            out_probe->terminal_member_text_id = next_text_id;
+                            out_probe->terminal_member_name =
+                                std::string(parser.token_spelling(next_tok));
+                            out_probe->is_ctor = true;
                             return true;
                         }
 
                         if (!owner.empty()) owner += "::";
                         owner += seg;
+                        if (seg_text_id != kInvalidText) {
+                            out_probe->owner_text_ids.push_back(seg_text_id);
+                        }
+                        out_probe->owner_segments.push_back(seg);
                         probe += 2;
                         continue;
                     }
@@ -2807,7 +2839,11 @@ Node* parse_top_level(Parser& parser) {
                     if (stop_before_ctor &&
                         parser.check(TokenKind::ColonColon) &&
                         parser.peek(1).kind == TokenKind::Identifier &&
-                        parser.token_spelling(parser.peek(1)) == seg &&
+                        seg_text_id != kInvalidText &&
+                        seg_text_id ==
+                            parser.parser_text_id_for_token(
+                                parser.peek(1).text_id,
+                                std::string(parser.token_spelling(parser.peek(1)))) &&
                         parser.core_input_state_.pos + 2 <
                             static_cast<int>(parser.core_input_state_.tokens.size()) &&
                         parser.core_input_state_.tokens[parser.core_input_state_.pos + 2].kind ==
@@ -2824,13 +2860,14 @@ Node* parse_top_level(Parser& parser) {
                 }
             };
 
-        std::string qualified_owner;
-        std::string owner_base_name;
-        bool looks_like_qualified_operator = false;
-        bool looks_like_qualified_ctor = false;
-        probe_special_member_owner(&qualified_owner, &owner_base_name,
-                                   &looks_like_qualified_operator,
-                                   &looks_like_qualified_ctor);
+        SpecialMemberOwnerProbe special_member_owner_probe;
+        probe_special_member_owner(&special_member_owner_probe);
+        const std::string& qualified_owner =
+            special_member_owner_probe.qualified_owner;
+        const bool looks_like_qualified_operator =
+            special_member_owner_probe.is_operator;
+        const bool looks_like_qualified_ctor =
+            special_member_owner_probe.is_ctor;
 
         if (looks_like_qualified_operator) {
             std::vector<TextId> qualified_owner_text_ids;
