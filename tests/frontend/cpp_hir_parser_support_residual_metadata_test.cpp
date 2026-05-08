@@ -76,14 +76,17 @@ void test_record_layout_resolution_uses_record_definition_before_stale_tag() {
   real_record.kind = c4c::NK_STRUCT_DEF;
   real_record.name = "RealRecord";
   real_record.unqualified_text_id = 21;
+  real_record.namespace_context_id = 3;
+  real_record.n_fields = 0;
 
   c4c::Node stale_record = {};
   stale_record.kind = c4c::NK_STRUCT_DEF;
   stale_record.name = "StaleRendered";
-  stale_record.unqualified_text_id = 22;
+  stale_record.unqualified_text_id = real_record.unqualified_text_id;
+  stale_record.namespace_context_id = real_record.namespace_context_id;
+  stale_record.n_fields = 0;
 
   std::unordered_map<std::string, c4c::Node*> records;
-  records.emplace("RealRecord", &real_record);
   records.emplace("StaleRendered", &stale_record);
 
   c4c::TypeSpec query = {};
@@ -91,15 +94,16 @@ void test_record_layout_resolution_uses_record_definition_before_stale_tag() {
   query.enum_underlying_base = c4c::TB_VOID;
   set_legacy_tag_if_present(query, "StaleRendered", 0);
   query.tag_text_id = real_record.unqualified_text_id;
+  query.namespace_context_id = real_record.namespace_context_id;
   query.record_def = &real_record;
   query.array_size = -1;
 
   expect_true(c4c::resolve_record_type_spec(query, &records) == &real_record,
-              "record layout lookup should use record_def before stale rendered tag");
+              "record layout lookup should use complete record_def before a stale exact-context rendered map");
 
   query.record_def = nullptr;
-  expect_true(c4c::resolve_record_type_spec(query, &records) == &real_record,
-              "public parser support keeps bounded tag_text_id compatibility for non-layout callers");
+  expect_true(c4c::resolve_record_type_spec(query, &records) == &stale_record,
+              "public parser support keeps bounded structured map compatibility only after direct record_def is absent");
 
   query.tag_text_id = 99;
   expect_true(c4c::resolve_record_type_spec(query, &records) == nullptr,

@@ -565,6 +565,9 @@ Node* resolve_record_type_spec(
     }
     if (!compatibility_tag_map) return nullptr;
     if (typespec_has_structured_record_context(ts)) {
+        // Secondary compatibility only: once a direct record_def carrier exists
+        // it wins above. This path is for older parser callers that have
+        // structured TextIds/context but have not yet carried the Node* itself.
         for (const auto& entry : *compatibility_tag_map) {
             if (type_record_context_matches_candidate(ts, entry.second)) {
                 return entry.second;
@@ -573,6 +576,8 @@ Node* resolve_record_type_spec(
         return nullptr;
     }
     if (ts.tag_text_id != kInvalidText) {
+        // Secondary compatibility for unqualified TextId carriers. Do not use
+        // the rendered key itself as authority when structured metadata misses.
         for (const auto& entry : *compatibility_tag_map) {
             Node* sd = entry.second;
             if (sd && sd->kind == NK_STRUCT_DEF &&
