@@ -3,7 +3,6 @@ Source Idea Path: ideas/open/158_sema_validate_string_authority_audit.md
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Global, Function, Enum, and Consteval Lookup Precedence
-你該做test baseline review了
 
 # Current Packet
 
