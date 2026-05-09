@@ -289,6 +289,26 @@ bool qualified_name_has_ordinary_qualifier(
            !name.qualifier_segments.empty();
 }
 
+void drop_last_ordinary_qualifier(Parser::QualifiedNameRef* name) {
+    if (!name) return;
+    if (!name->qualifier_text_ids.empty()) {
+        name->qualifier_text_ids.pop_back();
+        if (name->qualifier_segments.size() > name->qualifier_text_ids.size()) {
+            name->qualifier_segments.resize(name->qualifier_text_ids.size());
+        }
+        if (name->qualifier_symbol_ids.size() > name->qualifier_text_ids.size()) {
+            name->qualifier_symbol_ids.resize(name->qualifier_text_ids.size());
+        }
+        return;
+    }
+    if (!name->qualifier_segments.empty()) {
+        name->qualifier_segments.pop_back();
+        if (name->qualifier_symbol_ids.size() > name->qualifier_segments.size()) {
+            name->qualifier_symbol_ids.resize(name->qualifier_segments.size());
+        }
+    }
+}
+
 template <typename TextIdForMirror>
 TextId ordinary_qualified_base_text_id(const Parser& parser,
                                        const Parser::QualifiedNameRef& name,
@@ -3363,12 +3383,10 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
     }
     if (resolved_name && resolved_name[0]) {
         node->namespace_context_id = resolve_namespace_context(qn);
-        if (node->namespace_context_id < 0 && qn.qualifier_segments.size() > 0) {
+        if (node->namespace_context_id < 0 &&
+            qualified_name_has_ordinary_qualifier(qn)) {
             QualifiedNameRef owner_namespace = qn;
-            owner_namespace.qualifier_segments.pop_back();
-            if (!owner_namespace.qualifier_text_ids.empty()) {
-                owner_namespace.qualifier_text_ids.pop_back();
-            }
+            drop_last_ordinary_qualifier(&owner_namespace);
             node->namespace_context_id = resolve_namespace_context(owner_namespace);
         }
     }
