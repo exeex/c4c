@@ -1,49 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/154_parser_sema_qualified_name_text_reparse_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Retire Ordinary Semantic Reparse Callers
+Current Step ID: 3
+Current Step Title: Demote Qualified Member-Type String Splitting
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 non-`core.cpp` ordinary `QualifiedNameRef` semantic caller
-scan and TextId-first cleanup.
+Completed Step 3 qualified member-type string splitter demotion.
 
-- Scanned focused non-`core.cpp` callers in `declarations.cpp`,
-  `expressions.cpp`, `types/declarator.cpp`, `types/base.cpp`,
-  `types/template.cpp`, and `types_helpers.hpp` for
-  `QualifiedNameRef`, `qualifier_segments`, `resolve_qualified_type/value`,
-  and `qualified_name_key` usage.
-- Added ordinary qualifier accessors in `types_helpers.hpp` so semantic callers
-  can test/count/copy qualifier `TextId`s first, with segment strings retained
-  only as bounded legacy mirrors.
-- Updated semantic branches in declarations, expressions, declarator, and type
-  helper lookup paths that were using `qualifier_segments.empty()` or
-  `qualifier_segments.size()` as ordinary lookup authority.
-- Retained `qualifier_segments` uses that are syntax-position reconstruction,
-  AST/display mirror copying, or compatibility fallback internals; no rendered
-  `A::B::C` splitter was added.
-- Step 2 is ready for supervisor review.
+- Scanned `split_qualified_member_type_name` and its adjacent member-type
+  lookup helpers in `types_helpers.hpp` plus the active declarator member-type
+  lookup paths.
+- Found no active callers of `split_qualified_member_type_name`; its private
+  rendered-text parser `qualified_name_from_text` was only used by that
+  splitter.
+- Removed both unused helpers from `types_helpers.hpp`.
+- Retained existing semantic member-type lookup paths because they already use
+  structured `QualifiedNameRef`, `QualifiedNameKey`, owner keys, and member
+  `TextId`s; no rendered `A::B::C` splitter was added.
 
 ## Suggested Next
 
-Send Step 2 for reviewer scrutiny against the source idea, with attention to
-the retained syntax/display/compatibility `qualifier_segments` uses.
+Proceed to the next plan step by inspecting any remaining rendered qualified
+name reparse or compatibility paths outside this member-type splitter.
 
 ## Watchouts
 
-- `types/template.cpp` still has a branch that calls `resolve_namespace_context`
-  when segment mirrors are present and otherwise follows `qualifier_text_ids`
-  directly; this is retained because `resolve_namespace_context` is now
-  TextId-first for ordinary qualifiers.
-- `types/base.cpp` remaining segment-size uses in the focused scan are token
-  lookahead math from freshly parsed syntax or syntax reconstruction, not
-  semantic lookup authority.
-- `declarations.cpp` and expression/declarator AST projection still preserve
-  segment mirrors beside TextIds for downstream compatibility and display.
-- No blocker found in non-`core.cpp` ordinary semantic callers.
+- No active member-type caller still requires rendered string splitting.
+- `append_qualified_name_tokens` remains as an injected-token compatibility
+  emitter, not as semantic lookup authority.
 
 ## Proof
 
