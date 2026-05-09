@@ -211,6 +211,11 @@ static std::optional<SemaStructuredNameKey> sema_using_value_alias_target_key(
   return key;
 }
 
+static bool sema_valid_structured_key(
+    const std::optional<SemaStructuredNameKey>& key) {
+  return key.has_value() && key->valid();
+}
+
 static std::optional<SemaStructuredNameKey> sema_template_param_local_name_key(
     const Node* node, int param_index) {
   if (!node || param_index < 0 || param_index >= node->n_template_params ||
@@ -1044,15 +1049,23 @@ class Validator {
 
   const FunctionSig* lookup_function_by_name(const std::string& name,
                                              const Node* reference = nullptr) const {
+    bool has_structured_metadata = false;
+    const bool complete_unqualified_metadata =
+        reference && !reference->is_global_qualified &&
+        reference->n_qualifier_segments == 0 &&
+        name.find("::") == std::string::npos;
     if (reference) {
       if (auto target_key = sema_using_value_alias_target_key(reference);
           target_key.has_value() && target_key->valid()) {
+        has_structured_metadata = true;
         return lookup_function_by_key(*target_key);
       }
       if (auto key = sema_function_lookup_key(reference);
           key.has_value() && key->valid()) {
-        return lookup_function_by_key(*key);
+        has_structured_metadata = true;
+        if (const FunctionSig* fn = lookup_function_by_key(*key)) return fn;
       }
+      if (has_structured_metadata && complete_unqualified_metadata) return nullptr;
     }
     auto it = funcs_.find(name);
     return it != funcs_.end() ? &it->second : nullptr;
@@ -1245,6 +1258,14 @@ class Validator {
         reference ? sema_symbol_name_key(reference) : std::nullopt;
     const auto qualified_structured_key =
         reference ? sema_qualified_symbol_name_key(reference) : std::nullopt;
+    const auto using_alias_target_key =
+        reference ? sema_using_value_alias_target_key(reference) : std::nullopt;
+    const bool reference_has_complete_unqualified_value_metadata =
+        reference && !reference->is_global_qualified &&
+        reference->n_qualifier_segments == 0 &&
+        name.find("::") == std::string::npos &&
+        (sema_valid_structured_key(structured_key) ||
+         sema_valid_structured_key(using_alias_target_key));
     auto g = globals_.find(name);
     const TypeSpec* rendered_global_compatibility = g != globals_.end() ? &g->second : nullptr;
     const bool reference_has_qualified_structured_metadata =
@@ -1256,10 +1277,7 @@ class Validator {
       (void)compare_sema_lookup_ptrs(rendered_global_compatibility, structured_global);
       if (structured_global) return ScopedSym{*structured_global, true};
     }
-    if (const auto using_alias_target_key =
-            reference ? sema_using_value_alias_target_key(reference)
-                      : std::nullopt;
-        using_alias_target_key.has_value()) {
+    if (using_alias_target_key.has_value()) {
       const TypeSpec* structured_global =
           lookup_global_by_key(*using_alias_target_key);
       (void)compare_sema_lookup_ptrs(rendered_global_compatibility,
@@ -1275,7 +1293,8 @@ class Validator {
       (void)compare_sema_lookup_ptrs(rendered_global_compatibility, structured_global);
       if (structured_global) return ScopedSym{*structured_global, true};
     }
-    if (!reference_has_qualified_structured_metadata) {
+    if (!reference_has_complete_unqualified_value_metadata &&
+        !reference_has_qualified_structured_metadata) {
       auto rendered_key = structured_global_keys_by_name_.find(name);
       if (rendered_key != structured_global_keys_by_name_.end()) {
         const TypeSpec* structured_global = lookup_global_by_key(rendered_key->second);
@@ -1309,7 +1328,8 @@ class Validator {
       (void)compare_sema_lookup_ptrs(rendered_enum_compatibility, structured_enum);
       if (structured_enum) return ScopedSym{*structured_enum, true};
     }
-    if (!reference_has_qualified_structured_metadata) {
+    if (!reference_has_complete_unqualified_value_metadata &&
+        !reference_has_qualified_structured_metadata) {
       auto rendered_key = structured_enum_const_keys_by_name_.find(name);
       if (rendered_key != structured_enum_const_keys_by_name_.end()) {
         const TypeSpec* structured_enum = nullptr;
