@@ -776,9 +776,15 @@ class Validator {
   //   table after all covered references enter through SemaStructuredNameKey or
   //   TextId maps and complete metadata misses fail closed.
   // - consteval_funcs_ is the rendered bridge passed to consteval/HIR call
-  //   evaluation beside consteval_funcs_by_text_ and consteval_funcs_by_key_.
-  //   Its owner is the validate-to-consteval handoff; remove it when that
-  //   interface no longer needs rendered-name compatibility.
+  //   evaluation beside the validate-owned TextId and structured-key handoff
+  //   maps below. Its owner is the validate-to-consteval handoff; remove it
+  //   when that interface no longer needs rendered-name compatibility.
+  // - consteval_funcs_by_text_ is the unqualified TextId handoff for legacy
+  //   no-domain carriers. consteval_funcs_by_key_ is the structured authority
+  //   when call-site metadata carries namespace/qualifier state. Lookup must
+  //   prefer structured hits and treat structured misses as authoritative once
+  //   that table is populated, only falling back to TextId/string carriers when
+  //   the reference lacks complete structured metadata.
   //
   // Compatibility mirrors:
   // - structured_global_keys_by_name_, structured_enum_const_keys_by_name_,
@@ -1142,6 +1148,7 @@ class Validator {
         has_authoritative_metadata = !consteval_funcs_by_key_.empty();
         const Node* structured = lookup_consteval_function_by_key(*key);
         if (structured) return structured;
+        if (has_authoritative_metadata) return nullptr;
       }
       if (reference->unqualified_text_id != kInvalidText &&
           !reference->is_global_qualified && reference->n_qualifier_segments == 0) {
