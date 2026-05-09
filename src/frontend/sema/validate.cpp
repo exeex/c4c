@@ -1265,8 +1265,7 @@ class Validator {
       (void)compare_sema_lookup_ptrs(rendered_local.symbol, structured);
       if (structured) return *structured;
     }
-    if (rendered_local.symbol &&
-        !(local_key.has_value() && rendered_local.has_structured_metadata)) {
+    if (rendered_local.symbol && !local_key.has_value()) {
       return *rendered_local.symbol;
     }
 

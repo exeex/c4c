@@ -1,39 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/158_sema_validate_string_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Record Completion And Record Lookup Authority
+Current Step ID: 4
+Current Step Title: Template Parameter And Local Scope Visibility
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Record Completion And Record Lookup Authority completed a bounded
-record-domain audit slice for rendered tag completion mirrors and field-name
-compatibility bridges in `validate.cpp`. No remaining covered structured
-metadata fallback gap was found: record completion uses strict
-`*_by_key_`/metadata lookup before rendered tags, `structured_record_keys_by_tag_`
-is an ambiguity-safe no-metadata mirror, and
-`struct_field_text_ids_by_name_by_key_` is only a same-record-domain bridge for
-member references that lack a field `TextId`.
+Step 4: Template Parameter And Local Scope Visibility completed a bounded audit
+and fix for local symbol lookup authority in `validate.cpp`. Template type
+parameter lookup already prefers `template_param_text_id`/`tag_text_id`, rejects
+rendered fallback when TypeSpec name metadata exists, and has focused stale
+identity/no-metadata tests. Local lookup now fails closed after a structured
+local reference key misses, instead of recovering through a rendered local name
+whose declaration lacked structured metadata.
 
 ## Suggested Next
 
-Continue Step 3 only if the supervisor has another distinct record-domain
-authority bridge to audit; otherwise consider moving the active packet toward
+Continue Step 4 only if the supervisor wants another distinct template/local
+visibility bridge audited; otherwise consider moving the active packet toward
 the next runbook area.
 
 ## Watchouts
 
 - Do not weaken tests or mark supported paths unsupported.
-- The unique-base record-owner fallback is still needed for existing nested
-  record carriers that do not carry qualifier metadata; do not remove it unless
-  those parser carriers are migrated first.
-- Do not expand `struct_field_text_ids_by_name_by_key_` into a rendered-name
-  authority path; it is acceptable only after the current structured record key
-  has already selected the owner domain and the member `TextId` is absent.
-- This slice did not broaden into template/local scope Step 4 or HIR storage
-  migration.
+- Rendered local lookup remains available only when the reference lacks a local
+  structured key; do not reopen it after a metadata-bearing reference misses.
+- Existing template type-parameter rendered-name compatibility remains limited
+  to no-metadata carriers; TypeSpec metadata misses fail closed.
+- This slice did not broaden into consteval/HIR storage migration.
 
 ## Proof
 

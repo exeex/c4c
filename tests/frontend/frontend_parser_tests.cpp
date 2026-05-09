@@ -5754,6 +5754,63 @@ void test_sema_unqualified_symbol_lookup_rejects_stale_rendered_local_spelling()
               "unqualified symbol lookup should reject stale rendered local names after a structured local miss");
 }
 
+void test_sema_unqualified_symbol_lookup_rejects_legacy_local_after_metadata_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  c4c::Node* init = parser.make_node(c4c::NK_INT_LIT, 2);
+  init->ival = 1;
+
+  c4c::Node* legacy_local = parser.make_node(c4c::NK_DECL, 2);
+  legacy_local->name = arena.strdup("legacy");
+  legacy_local->type = make_ts(c4c::TB_INT);
+  legacy_local->init = init;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 3);
+  ref->name = arena.strdup("legacy");
+  ref->unqualified_name = arena.strdup("missing_legacy");
+  ref->unqualified_text_id = texts.intern("missing_legacy");
+  ref->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 3);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 2;
+  body->children = arena.alloc_array<c4c::Node*>(2);
+  body->children[0] = legacy_local;
+  body->children[1] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->name = arena.strdup("rejects_legacy_local_after_metadata_miss");
+  fn->unqualified_name = arena.strdup("rejects_legacy_local_after_metadata_miss");
+  fn->unqualified_text_id =
+      texts.intern("rejects_legacy_local_after_metadata_miss");
+  fn->namespace_context_id = parser.current_namespace_context_id();
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 1;
+  program->children = arena.alloc_array<c4c::Node*>(1);
+  program->children[0] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "unqualified symbol lookup should not recover a legacy rendered "
+              "local after a structured local reference miss");
+}
+
 void test_sema_unqualified_symbol_lookup_rejects_stale_rendered_global_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -10328,6 +10385,7 @@ int main() {
   test_sema_template_type_param_lookup_rejects_no_metadata_rendered_compatibility();
   test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_local_spelling();
+  test_sema_unqualified_symbol_lookup_rejects_legacy_local_after_metadata_miss();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_global_spelling();
   test_sema_symbol_lookup_rejects_stale_qualified_rendered_global_spelling();
   test_sema_symbol_lookup_rejects_stale_qualified_rendered_enum_spelling();
