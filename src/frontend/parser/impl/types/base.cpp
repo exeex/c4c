@@ -45,6 +45,7 @@ static TextId parse_base_type_member_typedef_text_id(Parser& parser,
         record->member_typedef_text_ids[index] != kInvalidText) {
         return record->member_typedef_text_ids[index];
     }
+    if (record->member_typedef_text_ids) return kInvalidText;
     const char* member_name =
         record->member_typedef_names ? record->member_typedef_names[index]
                                      : nullptr;
