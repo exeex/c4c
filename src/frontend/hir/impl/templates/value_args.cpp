@@ -749,6 +749,7 @@ bool Lowerer::resolve_ast_template_value_arg(
         return true;
       }
     }
+    if (forwarded_text_id != kInvalidText) return false;
     if (auto nttp_value = lookup_nttp_binding(ctx, nullptr, nttp_name)) {
       *out_value = *nttp_value;
       return true;

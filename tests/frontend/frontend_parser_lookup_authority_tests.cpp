@@ -6223,6 +6223,68 @@ void test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_m
               "back to stale rendered template-argument text");
 }
 
+void test_hir_template_value_arg_text_id_miss_blocks_rendered_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId structured_text = texts.intern("StructuredN");
+  const c4c::TextId other_text = texts.intern("OtherN");
+
+  c4c::Node* owner = parser.make_node(c4c::NK_FUNCTION, 1);
+  owner->kind = c4c::NK_FUNCTION;
+  owner->n_template_params = 1;
+  owner->template_param_names = arena.alloc_array<const char*>(1);
+  owner->template_param_names[0] = arena.strdup("N");
+  owner->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  owner->template_param_name_text_ids[0] = structured_text;
+  owner->template_param_is_nttp = arena.alloc_array<bool>(1);
+  owner->template_param_is_nttp[0] = true;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 1);
+  ref->kind = c4c::NK_VAR;
+  ref->has_template_args = true;
+  ref->n_template_args = 1;
+  ref->template_arg_is_value = arena.alloc_array<bool>(1);
+  ref->template_arg_is_value[0] = true;
+  ref->template_arg_values = arena.alloc_array<long long>(1);
+  ref->template_arg_values[0] = 0;
+  ref->template_arg_nttp_names = arena.alloc_array<const char*>(1);
+  ref->template_arg_nttp_names[0] = arena.strdup("RenderedN");
+  ref->template_arg_nttp_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ref->template_arg_nttp_text_ids[0] = structured_text;
+
+  c4c::hir::Lowerer lowerer;
+  c4c::hir::Lowerer::FunctionCtx ctx{};
+  ctx.nttp_bindings["RenderedN"] = 42;
+
+  long long value = 0;
+  expect_true(!lowerer.resolve_ast_template_value_arg(owner, ref, 0, &ctx, &value),
+              "HIR template value materialization should not reopen rendered "
+              "NTTP lookup when a TextId carrier is present but no TextId "
+              "environment map is available");
+
+  ctx.nttp_bindings_by_text[other_text] = 17;
+  expect_true(!lowerer.resolve_ast_template_value_arg(owner, ref, 0, &ctx, &value),
+              "HIR template value materialization should not reopen rendered "
+              "NTTP lookup after a TextId carrier miss");
+
+  ctx.nttp_bindings_by_text[structured_text] = 5;
+  expect_true(lowerer.resolve_ast_template_value_arg(owner, ref, 0, &ctx, &value) &&
+                  value == 5,
+              "HIR template value materialization should use the matching "
+              "TextId carrier when it is available");
+
+  ref->template_arg_nttp_text_ids[0] = c4c::kInvalidText;
+  value = 0;
+  expect_true(lowerer.resolve_ast_template_value_arg(owner, ref, 0, &ctx, &value) &&
+                  value == 42,
+              "no-carrier HIR template value materialization should keep "
+              "rendered-name compatibility");
+}
+
 void test_hir_forwarded_nttp_rejects_rendered_after_text_id_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -7126,6 +7188,7 @@ int main() {
   test_dependent_template_specialization_uses_typespec_carriers_before_text();
   test_dependent_template_specialization_uses_nested_arg_carriers_before_debug_text();
   test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss();
+  test_hir_template_value_arg_text_id_miss_blocks_rendered_lookup();
   test_hir_forwarded_nttp_rejects_rendered_after_text_id_miss();
   test_typespec_template_origin_equality_uses_structured_key();
   test_typespec_equality_uses_structured_type_identity_before_rendered_tag();
