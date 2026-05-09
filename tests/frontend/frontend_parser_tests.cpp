@@ -9777,6 +9777,31 @@ void test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_ove
               "consteval type binding lookup should reject stale rendered names after metadata misses");
 }
 
+void test_parser_support_typedef_helpers_reject_stale_rendered_maps_after_text_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  const c4c::TextId actual_text = texts.intern("ActualAlias");
+  const c4c::TextId missing_text = texts.intern("MissingAlias");
+
+  c4c::TypeSpec alias = make_consteval_typedef_ref(arena, "stale_alias");
+  alias.tag_text_id = missing_text;
+
+  std::unordered_map<c4c::TextId, c4c::TypeSpec> structured_typedefs;
+  structured_typedefs[actual_text] = make_sema_lookup_ts(c4c::TB_LONGLONG);
+
+  std::unordered_map<std::string, c4c::TypeSpec> rendered_typedefs;
+  rendered_typedefs["stale_alias"] = make_sema_lookup_ts(c4c::TB_INT);
+  (void)rendered_typedefs;
+
+  c4c::TypeSpec structured =
+      c4c::resolve_typedef_chain(alias, structured_typedefs);
+  expect_true(structured.base == c4c::TB_TYPEDEF,
+              "parser-support TextId typedef-chain miss should not recover through stale rendered maps");
+  expect_true(!c4c::types_compatible_p(alias, make_sema_lookup_ts(c4c::TB_INT),
+                                       structured_typedefs),
+              "parser-support TextId compatibility miss should not recover through stale rendered maps");
+}
+
 void test_consteval_type_binding_lookup_rejects_no_metadata_rendered_compatibility() {
   c4c::Arena arena;
   c4c::hir::TypeBindings rendered;
@@ -10369,6 +10394,7 @@ int main() {
   test_consteval_type_binding_lookup_uses_typespec_text_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_uses_typespec_structured_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
+  test_parser_support_typedef_helpers_reject_stale_rendered_maps_after_text_miss();
   test_consteval_type_binding_lookup_rejects_no_metadata_rendered_compatibility();
   test_consteval_function_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
   test_sema_consteval_function_lookup_prefers_text_metadata_over_stale_rendered_name();

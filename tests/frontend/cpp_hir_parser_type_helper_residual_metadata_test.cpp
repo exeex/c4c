@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -36,6 +37,22 @@ c4c::TypeSpec make_struct(c4c::TextId name_text_id,
   ts.namespace_context_id = 0;
   ts.array_size = -1;
   ts.inner_rank = -1;
+  return ts;
+}
+
+c4c::TypeSpec make_scalar(c4c::TypeBase base) {
+  c4c::TypeSpec ts{};
+  ts.base = base;
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  return ts;
+}
+
+c4c::TypeSpec make_typedef_ref(c4c::TextId name_text_id,
+                               const char* rendered_tag) {
+  c4c::TypeSpec ts = make_scalar(c4c::TB_TYPEDEF);
+  ts.tag_text_id = name_text_id;
+  set_legacy_tag_if_present(ts, rendered_tag, 0);
   return ts;
 }
 
@@ -144,6 +161,43 @@ void test_mangling_uses_record_metadata_before_rendered_tag() {
               "mangled suffix should use anonymous fallback when structured record metadata is absent");
 }
 
+void test_typedef_chain_uses_text_identity_before_rendered_map() {
+  c4c::TextTable texts;
+  const c4c::TextId actual_text_id = texts.intern("ActualAlias");
+  c4c::TypeSpec alias = make_typedef_ref(actual_text_id, "StaleAlias");
+
+  std::unordered_map<c4c::TextId, c4c::TypeSpec> structured_typedefs;
+  structured_typedefs[actual_text_id] = make_scalar(c4c::TB_LONGLONG);
+
+  c4c::TypeSpec structured =
+      c4c::resolve_typedef_chain(alias, structured_typedefs);
+  expect_true(structured.base == c4c::TB_LONGLONG,
+              "TextId typedef-chain lookup should prefer structured identity");
+}
+
+void test_typedef_chain_text_miss_rejects_stale_rendered_map() {
+  c4c::TextTable texts;
+  const c4c::TextId actual_text_id = texts.intern("ActualAlias");
+  const c4c::TextId missing_text_id = texts.intern("MissingAlias");
+  c4c::TypeSpec alias = make_typedef_ref(missing_text_id, "StaleAlias");
+
+  std::unordered_map<c4c::TextId, c4c::TypeSpec> structured_typedefs;
+  structured_typedefs[actual_text_id] = make_scalar(c4c::TB_LONGLONG);
+
+  std::unordered_map<std::string, c4c::TypeSpec> rendered_typedefs;
+  rendered_typedefs["StaleAlias"] = make_scalar(c4c::TB_INT);
+  (void)rendered_typedefs;
+
+  c4c::TypeSpec structured =
+      c4c::resolve_typedef_chain(alias, structured_typedefs);
+  expect_true(structured.base == c4c::TB_TYPEDEF,
+              "TextId typedef-chain miss should not recover through stale rendered maps");
+
+  expect_true(!c4c::types_compatible_p(alias, make_scalar(c4c::TB_INT),
+                                       structured_typedefs),
+              "TextId type compatibility miss should not recover through stale rendered maps");
+}
+
 }  // namespace
 
 int main() {
@@ -151,6 +205,8 @@ int main() {
   test_specialization_score_uses_template_param_text_identity();
   test_template_type_components_use_text_identity_before_rendered_tag();
   test_mangling_uses_record_metadata_before_rendered_tag();
+  test_typedef_chain_uses_text_identity_before_rendered_map();
+  test_typedef_chain_text_miss_rejects_stale_rendered_map();
   std::cout << "PASS: cpp_hir_parser_type_helper_residual_metadata_test\n";
   return 0;
 }

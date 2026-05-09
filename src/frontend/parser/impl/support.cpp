@@ -1084,14 +1084,37 @@ double parse_float_lexeme(const char* s) {
     return strtod(buf, nullptr);
 }
 
-TypeSpec resolve_typedef_chain(TypeSpec ts,
-                                      const std::unordered_map<std::string, TypeSpec>& tmap) {
+TypeSpec resolve_typedef_chain(
+    TypeSpec ts,
+    const std::unordered_map<TextId, TypeSpec>& typedefs) {
+    for (int depth = 0; depth < 16; ++depth) {
+        if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) break;
+        TextId typedef_text_id = ts.tag_text_id;
+        if (typedef_text_id == kInvalidText) {
+            typedef_text_id = ts.template_param_text_id;
+        }
+        if (typedef_text_id == kInvalidText) break;
+        auto it = typedefs.find(typedef_text_id);
+        if (it == typedefs.end()) break;
+        bool c = ts.is_const, v = ts.is_volatile;
+        ts = it->second;
+        ts.is_const   |= c;
+        ts.is_volatile |= v;
+    }
+    return ts;
+}
+
+// Compatibility bridge for legacy/HIR callers that only carry rendered typedef
+// names. Parser-owned paths should use the TextId-domain overload above.
+TypeSpec resolve_typedef_chain(
+    TypeSpec ts,
+    const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs) {
     for (int depth = 0; depth < 16; ++depth) {
         if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) break;
         const char* tag = support_legacy_typespec_tag_if_present(ts, 0);
         if (!tag) break;
-        auto it = tmap.find(tag);
-        if (it == tmap.end()) break;
+        auto it = compatibility_typedefs.find(tag);
+        if (it == compatibility_typedefs.end()) break;
         bool c = ts.is_const, v = ts.is_volatile;
         ts = it->second;
         ts.is_const   |= c;
@@ -1152,11 +1175,12 @@ static bool same_nominal_typespec_identity(const TypeSpec& a,
     return a_tag && b_tag && strcmp(a_tag, b_tag) == 0;
 }
 
-// Returns true if type a and type b are compatible per GCC __builtin_types_compatible_p rules.
-bool types_compatible_p(TypeSpec a, TypeSpec b,
-                                const std::unordered_map<std::string, TypeSpec>& tmap) {
-    a = resolve_typedef_chain(a, tmap);
-    b = resolve_typedef_chain(b, tmap);
+template <typename TypedefMap>
+static bool types_compatible_after_typedef_resolution(TypeSpec a,
+                                                      TypeSpec b,
+                                                      const TypedefMap& typedefs) {
+    a = resolve_typedef_chain(a, typedefs);
+    b = resolve_typedef_chain(b, typedefs);
     // Strip top-level cv-qualifiers (they don't affect compatibility at the value level).
     // But for pointer types, qualifiers on the pointed-to type DO matter (char* vs const char*).
     if (a.ptr_level == 0 && a.array_rank == 0) { a.is_const = false; a.is_volatile = false; }
@@ -1179,6 +1203,21 @@ bool types_compatible_p(TypeSpec a, TypeSpec b,
         if (!same_nominal_typespec_identity(a, b)) return false;
     }
     return true;
+}
+
+// Returns true if type a and type b are compatible per GCC __builtin_types_compatible_p rules.
+bool types_compatible_p(TypeSpec a, TypeSpec b,
+                        const std::unordered_map<TextId, TypeSpec>& typedefs) {
+    return types_compatible_after_typedef_resolution(a, b, typedefs);
+}
+
+// Compatibility bridge for legacy/HIR callers that only carry rendered typedef
+// names. Parser-owned paths should use the TextId-domain overload above.
+bool types_compatible_p(
+    TypeSpec a, TypeSpec b,
+    const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs) {
+    return types_compatible_after_typedef_resolution(a, b,
+                                                    compatibility_typedefs);
 }
 
 }  // namespace c4c

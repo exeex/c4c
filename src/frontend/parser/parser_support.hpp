@@ -36,9 +36,19 @@ bool eval_const_int(Node* n, long long* out,
                         compatibility_tag_map,
                     const std::unordered_map<std::string, long long>* compatibility_named_consts);
 
+// Parser-owned typedef resolution should pass typedef names through the
+// TextId table. A miss in this structured domain is authoritative and must not
+// recover through rendered fallback names.
 TypeSpec resolve_typedef_chain(TypeSpec ts,
-                               const std::unordered_map<std::string, TypeSpec>& tmap);
+                               const std::unordered_map<TextId, TypeSpec>& typedefs);
 bool types_compatible_p(TypeSpec a, TypeSpec b,
-                        const std::unordered_map<std::string, TypeSpec>& tmap);
+                        const std::unordered_map<TextId, TypeSpec>& typedefs);
+
+// Compatibility bridges for legacy/HIR proof paths that only carry rendered
+// typedef names. New parser-owned callers should use the TextId overloads.
+TypeSpec resolve_typedef_chain(TypeSpec ts,
+                               const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs);
+bool types_compatible_p(TypeSpec a, TypeSpec b,
+                        const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs);
 
 }  // namespace c4c
