@@ -753,22 +753,6 @@ bool Lowerer::resolve_ast_template_value_arg(
       *out_value = *nttp_value;
       return true;
     }
-    if (owner_tpl && owner_tpl->n_template_params > 0 &&
-        is_deferred_nttp_expr_ref(nttp_name)) {
-      std::vector<std::pair<std::string, TypeSpec>> type_env;
-      std::vector<std::pair<std::string, long long>> nttp_env;
-      if (ctx) {
-        type_env.reserve(ctx->tpl_bindings.size());
-        for (const auto& [name, ts] : ctx->tpl_bindings) type_env.push_back({name, ts});
-        nttp_env.reserve(ctx->nttp_bindings.size());
-        for (const auto& [name, val] : ctx->nttp_bindings) nttp_env.push_back({name, val});
-      }
-      std::string expr = deferred_nttp_expr_text(nttp_name);
-      if (eval_deferred_nttp_expr_hir(
-              owner_tpl, 0, type_env, nttp_env, &expr, out_value)) {
-        return true;
-      }
-    }
   }
   *out_value = ref->template_arg_values ? ref->template_arg_values[index] : 0;
   return ref->template_arg_values != nullptr;

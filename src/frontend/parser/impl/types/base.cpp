@@ -5736,30 +5736,6 @@ TypeSpec Parser::parse_base_type() {
                                             actual_args[pi]
                                                 .captured_expr_tokens.clear();
                                         }
-                                    } else if (!parsed_nttp_arg_has_structured_carrier(
-                                                   actual_args[pi]) &&
-                                               actual_args[pi].nttp_name &&
-                                               std::strncmp(
-                                                   actual_args[pi].nttp_name,
-                                                   "$expr:", 6) == 0) {
-                                        std::vector<Token> expr_toks = lex_template_expr_text(
-                                            actual_args[pi].nttp_name + 6,
-                                            core_input_state_.source_profile);
-                                        const ParserTemplateBindingSet
-                                            prelim_bindings =
-                                                parser_binding_set_from_metadata(
-                                                    *this,
-                                                    primary_template_key,
-                                                    prelim_tb, prelim_nb,
-                                                    prelim_tb_meta,
-                                                    prelim_nb_meta);
-                                        if (eval_deferred_nttp_expr_tokens(
-                                                tpl_name, expr_toks,
-                                                prelim_bindings, &ev)) {
-                                            actual_args[pi].value = ev;
-                                            actual_args[pi].nttp_name =
-                                                nullptr;
-                                        }
                                     }
                                     prelim_tb.resize(saved_tb_size);
                                     prelim_tb_meta.resize(saved_tb_size);

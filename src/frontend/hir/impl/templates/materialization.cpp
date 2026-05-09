@@ -593,7 +593,6 @@ bool HirTemplateArgMaterializer::decode_type_ref(const std::string& ref,
 }
 
 bool HirTemplateArgMaterializer::can_bind_value_param(const std::string& ref) const {
-  if (is_deferred_nttp_expr_ref(ref)) return true;
   if (nttp_bindings.count(ref)) return true;
   if (ref == "true" || ref == "false") return true;
   try {
@@ -688,18 +687,6 @@ bool HirTemplateArgMaterializer::resolve_explicit_string_arg(
       primary_tpl->template_param_is_nttp &&
       primary_tpl->template_param_is_nttp[pi];
   if (out_arg->is_value) {
-    if (is_deferred_nttp_expr_ref(ref)) {
-      long long eval_val = 0;
-      std::string expr = deferred_nttp_expr_text(ref);
-      const auto type_env = merged_type_bindings();
-      const auto nttp_env = merged_nttp_bindings();
-      if (!eval_deferred_nttp(
-              primary_tpl, pi, type_env, nttp_env, &expr, &eval_val)) {
-        return false;
-      }
-      out_arg->value = eval_val;
-      return true;
-    }
     auto nit = nttp_bindings.find(ref);
     if (nit != nttp_bindings.end()) {
       out_arg->value = nit->second;
@@ -750,18 +737,6 @@ bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
         out_arg->value = eval_val;
         return true;
       }
-    }
-    if (!debug_text.empty() && is_deferred_nttp_expr_ref(debug_text)) {
-      long long eval_val = 0;
-      std::string expr = deferred_nttp_expr_text(debug_text);
-      const auto type_env = merged_type_bindings();
-      const auto nttp_env = merged_nttp_bindings();
-      if (!eval_deferred_nttp(
-              primary_tpl, pi, type_env, nttp_env, &expr, &eval_val)) {
-        return false;
-      }
-      out_arg->value = eval_val;
-      return true;
     }
     if (ref.nttp_param_kind == TemplateParamDomainKind::NonType ||
         ref.nttp_text_id != kInvalidText) {

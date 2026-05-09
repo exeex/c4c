@@ -5400,6 +5400,55 @@ void test_direct_template_explicit_nttp_expr_ignores_stale_display_text() {
               "display text when a parsed expression carrier exists");
 }
 
+void test_direct_template_nttp_expr_text_requires_structured_carrier() {
+  const char* source =
+      "template <int N, int M>\n"
+      "struct pair_value {\n"
+      "  static constexpr int value = M;\n"
+      "};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId pair_text = lexer.text_table().intern("pair_value");
+  c4c::Node* primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), pair_text);
+  expect_true(primary && primary->n_template_params == 2,
+              "pair_value primary should be registered");
+
+  c4c::Parser::TemplateArgParseResult n_arg{};
+  n_arg.is_value = true;
+  n_arg.value = 3;
+  c4c::Parser::TemplateArgParseResult m_arg{};
+  m_arg.is_value = true;
+  m_arg.value = 0;
+  m_arg.nttp_name = arena.strdup("$expr:N+1");
+
+  std::vector<c4c::Parser::TemplateArgParseResult> args;
+  args.push_back(n_arg);
+  args.push_back(m_arg);
+
+  std::string mangled;
+  c4c::TypeSpec resolved{};
+  expect_true(parser.ensure_template_struct_instantiated_from_args(
+                  "pair_value", primary, args, primary->line, &mangled,
+                  "direct_nttp_expr_text_requires_carrier", &resolved),
+              "manual pair_value instantiation should complete");
+  expect_true(resolved.record_def && resolved.record_def->n_template_args == 2 &&
+                  resolved.record_def->template_arg_values,
+              "pair_value instantiation should expose concrete NTTP values");
+  expect_true(resolved.record_def->template_arg_values[1] == 0,
+              "raw `$expr:` display text without captured tokens, expression "
+              "nodes, or TextId carriers must not be re-lexed as semantic "
+              "NTTP authority");
+}
+
 void test_pending_template_nttp_carriers_suppress_rendered_debug_text() {
   const char* source =
       "template <typename T, int N>\n"
@@ -6988,6 +7037,7 @@ int main() {
   test_dependent_member_typedef_base_carries_structured_record_def();
   test_default_only_template_base_uses_cached_default_metadata();
   test_direct_template_explicit_nttp_expr_ignores_stale_display_text();
+  test_direct_template_nttp_expr_text_requires_structured_carrier();
   test_qualified_partial_specialization_member_typedef_resolves_concrete_type();
   test_pending_template_nttp_carriers_suppress_rendered_debug_text();
   test_template_specialization_param_lookup_rejects_rendered_fallback();
