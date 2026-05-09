@@ -5754,7 +5754,7 @@ void test_sema_unqualified_symbol_lookup_rejects_stale_rendered_local_spelling()
               "unqualified symbol lookup should reject stale rendered local names after a structured local miss");
 }
 
-void test_sema_unqualified_symbol_lookup_rejects_legacy_local_after_metadata_miss() {
+void test_sema_unqualified_symbol_lookup_keeps_legacy_local_after_metadata_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -5792,10 +5792,10 @@ void test_sema_unqualified_symbol_lookup_rejects_legacy_local_after_metadata_mis
   body->children[1] = ret;
 
   c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
-  fn->name = arena.strdup("rejects_legacy_local_after_metadata_miss");
-  fn->unqualified_name = arena.strdup("rejects_legacy_local_after_metadata_miss");
+  fn->name = arena.strdup("keeps_legacy_local_after_metadata_miss");
+  fn->unqualified_name = arena.strdup("keeps_legacy_local_after_metadata_miss");
   fn->unqualified_text_id =
-      texts.intern("rejects_legacy_local_after_metadata_miss");
+      texts.intern("keeps_legacy_local_after_metadata_miss");
   fn->namespace_context_id = parser.current_namespace_context_id();
   fn->type = make_ts(c4c::TB_INT);
   fn->body = body;
@@ -5806,9 +5806,11 @@ void test_sema_unqualified_symbol_lookup_rejects_legacy_local_after_metadata_mis
   program->children[0] = fn;
 
   const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
-  expect_true(!result.ok,
-              "unqualified symbol lookup should not recover a legacy rendered "
-              "local after a structured local reference miss");
+  const std::string diag =
+      result.diagnostics.empty() ? "" : (": " + result.diagnostics.front().message);
+  expect_true(result.ok,
+              "unqualified symbol lookup should retain no-metadata legacy local "
+              "compatibility after a structured local reference miss" + diag);
 }
 
 void test_sema_unqualified_symbol_lookup_rejects_stale_rendered_global_spelling() {
@@ -10385,7 +10387,7 @@ int main() {
   test_sema_template_type_param_lookup_rejects_no_metadata_rendered_compatibility();
   test_sema_unqualified_symbol_lookup_prefers_structured_key_over_rendered_spelling();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_local_spelling();
-  test_sema_unqualified_symbol_lookup_rejects_legacy_local_after_metadata_miss();
+  test_sema_unqualified_symbol_lookup_keeps_legacy_local_after_metadata_miss();
   test_sema_unqualified_symbol_lookup_rejects_stale_rendered_global_spelling();
   test_sema_symbol_lookup_rejects_stale_qualified_rendered_global_spelling();
   test_sema_symbol_lookup_rejects_stale_qualified_rendered_enum_spelling();

@@ -3,37 +3,38 @@ Source Idea Path: ideas/open/158_sema_validate_string_authority_audit.md
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Template Parameter And Local Scope Visibility
+你該做test baseline review了
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Template Parameter And Local Scope Visibility completed a bounded audit
-and fix for local symbol lookup authority in `validate.cpp`. Template type
-parameter lookup already prefers `template_param_text_id`/`tag_text_id`, rejects
-rendered fallback when TypeSpec name metadata exists, and has focused stale
-identity/no-metadata tests. Local lookup now fails closed after a structured
-local reference key misses, instead of recovering through a rendered local name
-whose declaration lacked structured metadata.
+Step 4: Template Parameter And Local Scope Visibility repaired the full-suite
+baseline regression in local symbol lookup authority. A structured local
+reference miss now retains rendered compatibility only when the rendered local
+binding has no structured metadata; stale rendered fallback remains rejected
+when the rendered local binding itself has structured metadata. The over-broad
+legacy-local test was corrected to assert intended no-metadata compatibility.
 
 ## Suggested Next
 
-Continue Step 4 only if the supervisor wants another distinct template/local
-visibility bridge audited; otherwise consider moving the active packet toward
-the next runbook area.
+Supervisor can review and commit this Step 4 repair slice, then decide whether
+Step 4 has any remaining template/local visibility bridge work.
 
 ## Watchouts
 
 - Do not weaken tests or mark supported paths unsupported.
-- Rendered local lookup remains available only when the reference lacks a local
-  structured key; do not reopen it after a metadata-bearing reference misses.
+- Rendered local lookup remains available after a metadata-bearing reference
+  miss only for legacy/no-metadata local bindings.
+- Do not weaken `test_sema_unqualified_symbol_lookup_rejects_stale_rendered_local_spelling`;
+  it still covers the structured local binding stale-rendered rejection.
 - Existing template type-parameter rendered-name compatibility remains limited
   to no-metadata carriers; TypeSpec metadata misses fail closed.
 - This slice did not broaden into consteval/HIR storage migration.
 
 ## Proof
 
-Passed: `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|positive_sema_|cpp_positive_sema_)') > test_after.log 2>&1`
+Passed: `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|positive_sema_|cpp_positive_sema_|llvm_gcc_c_torture_src_930603_1_c|llvm_gcc_c_torture_src_loop_2_c)') > test_after.log 2>&1`
 
-Proof log: `test_after.log` reports 921/921 matching parser and positive sema
-tests passed.
+Proof log: `test_after.log` reports 923/923 matching parser, positive sema, and
+representative GCC torture tests passed.
