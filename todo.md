@@ -3,7 +3,6 @@ Source Idea Path: ideas/open/158_sema_validate_string_authority_audit.md
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Template Parameter And Local Scope Visibility
-你該做test baseline review了
 
 # Current Packet
 
