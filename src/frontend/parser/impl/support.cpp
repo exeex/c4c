@@ -556,7 +556,8 @@ bool eval_const_int(Node* n, long long* out,
 // This helper intentionally does not introduce a rendered-string semantic
 // field. The rendered tag map below is a parser-local compatibility bridge for
 // non-layout probes and declaration checks that have not yet been routed
-// through Sema's record table; Sema owns final record identity and completion.
+// through Sema's record table; remove it once those callers carry record_def or
+// structured record keys. Sema owns final record identity and completion.
 Node* resolve_record_type_spec(
     const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map) {
@@ -844,7 +845,8 @@ bool eval_const_int(Node* n, long long* out,
 }
 
 // Compatibility bridge for callers that only have rendered names. Keep this
-// path behavior-identical until those non-parser surfaces gain structured IDs.
+// path behavior-identical until those non-parser surfaces gain structured IDs,
+// then remove the overload instead of adding new parser-owned callers.
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
     const std::unordered_map<std::string, long long>* compatibility_named_consts) {
@@ -1106,6 +1108,8 @@ TypeSpec resolve_typedef_chain(
 
 // Compatibility bridge for legacy/HIR callers that only carry rendered typedef
 // names. Parser-owned paths should use the TextId-domain overload above.
+// Remove this overload once those callers pass structured typedef TextIds or
+// typed HIR bindings.
 TypeSpec resolve_typedef_chain(
     TypeSpec ts,
     const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs) {
@@ -1210,6 +1214,8 @@ bool types_compatible_p(TypeSpec a, TypeSpec b,
 
 // Compatibility bridge for legacy/HIR callers that only carry rendered typedef
 // names. Parser-owned paths should use the TextId-domain overload above.
+// Remove this overload once those callers pass structured typedef TextIds or
+// typed HIR bindings.
 bool types_compatible_p(
     TypeSpec a, TypeSpec b,
     const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs) {

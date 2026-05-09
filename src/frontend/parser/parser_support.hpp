@@ -12,6 +12,11 @@ namespace c4c {
 long long sizeof_base(TypeBase b);
 long long sizeof_type_spec(const TypeSpec& ts);
 long long alignof_type_spec(const TypeSpec& ts);
+
+// Compatibility bridge for parser-local record probes that still receive
+// rendered record maps. Prefer direct record_def and structured record
+// metadata; remove this map parameter once those callers carry record_def or
+// structured record keys.
 Node* resolve_record_type_spec(
     const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map);
@@ -22,8 +27,10 @@ Node* resolve_record_type_spec(
 // qualifier TextId sequence, source spelling/location on the owning Node, and
 // declaration/reference role from AST context. resolve_record_type_spec keeps
 // the existing parser-local compatibility bridge alive for non-layout parser
-// probes and declaration checks. Constant-layout evaluation uses record_def for
-// structured records; Sema owns final record identity and completion.
+// probes and declaration checks. Remove that bridge once those callers carry
+// record_def or structured record keys into this helper. Constant-layout
+// evaluation uses record_def for structured records; Sema owns final record
+// identity and completion.
 bool eval_const_int(Node* n, long long* out,
                     const std::unordered_map<std::string, Node*>*
                         compatibility_tag_map = nullptr,
@@ -31,6 +38,7 @@ bool eval_const_int(Node* n, long long* out,
                         nullptr);
 // Compatibility bridge for legacy/HIR proof paths that only carry rendered
 // constant names. New parser-owned callers should use the TextId overload.
+// Remove this overload once those proof paths pass structured constant TextIds.
 bool eval_const_int(Node* n, long long* out,
                     const std::unordered_map<std::string, Node*>*
                         compatibility_tag_map,
@@ -46,6 +54,8 @@ bool types_compatible_p(TypeSpec a, TypeSpec b,
 
 // Compatibility bridges for legacy/HIR proof paths that only carry rendered
 // typedef names. New parser-owned callers should use the TextId overloads.
+// Remove these overloads once those proof paths pass structured typedef
+// TextIds or typed HIR bindings.
 TypeSpec resolve_typedef_chain(TypeSpec ts,
                                const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs);
 bool types_compatible_p(TypeSpec a, TypeSpec b,
