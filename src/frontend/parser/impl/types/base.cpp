@@ -36,6 +36,23 @@ static TextId parse_base_type_record_text_id(Parser& parser, const Node* record)
     return kInvalidText;
 }
 
+static TextId parse_base_type_member_typedef_text_id(Parser& parser,
+                                                     const Node* record,
+                                                     int index) {
+    if (!record || index < 0 || index >= record->n_member_typedefs)
+        return kInvalidText;
+    if (record->member_typedef_text_ids &&
+        record->member_typedef_text_ids[index] != kInvalidText) {
+        return record->member_typedef_text_ids[index];
+    }
+    const char* member_name =
+        record->member_typedef_names ? record->member_typedef_names[index]
+                                     : nullptr;
+    return member_name && member_name[0]
+               ? parser.parser_text_id_for_token(kInvalidText, member_name)
+               : kInvalidText;
+}
+
 static const char* parse_base_type_final_spelling_compat(Parser& parser,
                                                          const TypeSpec& ts,
                                                          const Node* record) {
@@ -1838,14 +1855,14 @@ TypeSpec Parser::parse_base_type() {
                     if (!sdef || sdef->n_member_typedefs <= 0) return false;
                     for (int i = 0; i < sdef->n_member_typedefs; ++i) {
                         const char* name = sdef->member_typedef_names[i];
+                        const TextId alias_text_id =
+                            parse_base_type_member_typedef_text_id(*this, sdef,
+                                                                   i);
                         const bool name_matches =
                             member_text_id != kInvalidText
-                                ? find_parser_text_id(name ? name : "") == member_text_id
+                                ? alias_text_id == member_text_id
                                 : (name && member == name);
                         if (name_matches) {
-                            TextId alias_text_id = member_text_id;
-                            if (alias_text_id == kInvalidText && name)
-                                alias_text_id = find_parser_text_id(name);
                             if (resolve_record_member_typedef_sidecar &&
                                 alias_text_id != kInvalidText &&
                                 resolve_record_member_typedef_sidecar(
@@ -2312,7 +2329,8 @@ TypeSpec Parser::parse_base_type() {
                                 selected->member_typedef_names[mi];
                             if (!member || !member[0]) continue;
                             const TextId selected_member_text_id =
-                                parser_text_id_for_token(kInvalidText, member);
+                                parse_base_type_member_typedef_text_id(
+                                    *this, selected, mi);
                             if (selected_member_text_id !=
                                 info->member_text_id) {
                                 continue;
@@ -2438,10 +2456,12 @@ TypeSpec Parser::parse_base_type() {
                         if (!selected || selected->n_member_typedefs <= 0) return false;
                         for (int i = 0; i < selected->n_member_typedefs; ++i) {
                             const char* name = selected->member_typedef_names[i];
+                            const TextId selected_member_text_id =
+                                parse_base_type_member_typedef_text_id(
+                                    *this, selected, i);
                             const bool name_matches =
                                 member_text_id != kInvalidText
-                                    ? find_parser_text_id(name ? name : "") ==
-                                          member_text_id
+                                    ? selected_member_text_id == member_text_id
                                     : (name && member == name);
                             if (!name_matches) continue;
                             TypeSpec selected_member_ts =
@@ -4318,9 +4338,10 @@ TypeSpec Parser::parse_base_type() {
                                                         }
                                                         const TextId
                                                             selected_member_text_id =
-                                                                parser_text_id_for_token(
-                                                                    kInvalidText,
-                                                                    member);
+                                                                parse_base_type_member_typedef_text_id(
+                                                                    *this,
+                                                                    owner_selected,
+                                                                    mi);
                                                         if (selected_member_text_id !=
                                                             owner_alias
                                                                 ->member_typedef
@@ -4433,8 +4454,8 @@ TypeSpec Parser::parse_base_type() {
                                                         ->member_typedef_names[mi];
                                                 if (!member || !member[0]) continue;
                                                 const TextId selected_member_text_id =
-                                                    parser_text_id_for_token(
-                                                        kInvalidText, member);
+                                                    parse_base_type_member_typedef_text_id(
+                                                        *this, selected, mi);
                                                 if (selected_member_text_id !=
                                                     ati->member_typedef
                                                         .member_text_id) {
@@ -8117,12 +8138,10 @@ TypeSpec Parser::parse_base_type() {
                                     *this, &member_ts, nttp_bindings,
                                     &nttp_binding_meta);
                                 inst->member_typedef_types[ti] = member_ts;
-                                if (inst->member_typedef_names[ti] &&
-                                    inst->member_typedef_names[ti][0]) {
+                                {
                                     const TextId member_text_id =
-                                        parser_text_id_for_token(
-                                            kInvalidText,
-                                            inst->member_typedef_names[ti]);
+                                        parse_base_type_member_typedef_text_id(
+                                            *this, inst, ti);
                                     register_template_instantiation_member_typedef_binding(
                                         structured_emitted_instance_key,
                                         member_text_id, member_ts);

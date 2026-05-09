@@ -22,6 +22,46 @@ auto set_declarator_legacy_display_tag_if_present(T& ts, const char* tag, int)
 void set_declarator_legacy_display_tag_if_present(TypeSpec&, const char*,
                                                   long) {}
 
+static TextId declarator_member_typedef_text_id(Parser& parser,
+                                                const Node* record,
+                                                int index) {
+    if (!record || index < 0 || index >= record->n_member_typedefs)
+        return kInvalidText;
+    if (record->member_typedef_text_ids &&
+        record->member_typedef_text_ids[index] != kInvalidText) {
+        return record->member_typedef_text_ids[index];
+    }
+    const char* member_name =
+        record->member_typedef_names ? record->member_typedef_names[index]
+                                     : nullptr;
+    return member_name && member_name[0]
+               ? parser.parser_text_id_for_token(kInvalidText, member_name)
+               : kInvalidText;
+}
+
+static QualifiedNameKey declarator_template_owner_key(Parser& parser,
+                                                      const Node* primary) {
+    if (!primary) return {};
+    const int context_id = primary->namespace_context_id >= 0
+                               ? primary->namespace_context_id
+                               : parser.current_namespace_context_id();
+    TextId owner_text_id = primary->unqualified_text_id;
+    if (owner_text_id == kInvalidText && primary->unqualified_name &&
+        primary->unqualified_name[0]) {
+        owner_text_id = parser.parser_text_id_for_token(
+            kInvalidText, primary->unqualified_name);
+    }
+    if (owner_text_id == kInvalidText && primary->name && primary->name[0]) {
+        const char* tail = std::strrchr(primary->name, ':');
+        owner_text_id = parser.parser_text_id_for_token(
+            kInvalidText, tail && tail[1] ? tail + 1 : primary->name);
+    }
+    return owner_text_id == kInvalidText
+               ? QualifiedNameKey{}
+               : parser.alias_template_key_in_context(context_id,
+                                                       owner_text_id);
+}
+
 bool Parser::is_typedef_name(TextId name_text_id) const {
     if (has_typedef_name(name_text_id)) return true;
     return find_local_visible_typedef_type(name_text_id) != nullptr;
@@ -460,6 +500,16 @@ static bool try_resolve_alias_template_member_typedef_type(
     }
     if (declarator_template_args_are_dependent(owner_actual_args)) return false;
 
+    const ParserTemplateState::TemplateInstantiationKey concrete_owner{
+        info.member_typedef.owner_key,
+        make_template_instantiation_argument_keys(owner_actual_args)};
+    if (const TypeSpec* structured_member =
+            parser.find_template_instantiation_member_typedef_type(
+                concrete_owner, info.member_typedef.member_text_id)) {
+        *out_ts = *structured_member;
+        return true;
+    }
+
     std::vector<std::pair<std::string, TypeSpec>> type_bindings;
     std::vector<std::pair<std::string, long long>> nttp_bindings;
     const std::vector<Node*>* specializations =
@@ -476,7 +526,7 @@ static bool try_resolve_alias_template_member_typedef_type(
         const char* member = selected->member_typedef_names[i];
         if (!member || !member[0]) continue;
         const TextId member_text_id =
-            parser.parser_text_id_for_token(kInvalidText, member);
+            declarator_member_typedef_text_id(parser, selected, i);
         if (member_text_id != info.member_typedef.member_text_id) continue;
         *out_ts = declarator_apply_type_bindings(
             parser, selected->member_typedef_types[i], type_bindings);
@@ -493,6 +543,18 @@ static bool try_resolve_template_owner_member_typedef_type(
     TypeSpec* out_ts) {
     if (!owner_primary || member_text_id == kInvalidText || !out_ts) {
         return false;
+    }
+
+    if (!declarator_template_args_are_dependent(actual_args)) {
+        const ParserTemplateState::TemplateInstantiationKey concrete_owner{
+            declarator_template_owner_key(parser, owner_primary),
+            make_template_instantiation_argument_keys(actual_args)};
+        if (const TypeSpec* structured_member =
+                parser.find_template_instantiation_member_typedef_type(
+                    concrete_owner, member_text_id)) {
+            *out_ts = *structured_member;
+            return true;
+        }
     }
 
     std::vector<std::pair<std::string, TypeSpec>> type_bindings;
@@ -512,7 +574,7 @@ static bool try_resolve_template_owner_member_typedef_type(
         const char* member = selected->member_typedef_names[i];
         if (!member || !member[0]) continue;
         const TextId selected_member_text_id =
-            parser.parser_text_id_for_token(kInvalidText, member);
+            declarator_member_typedef_text_id(parser, selected, i);
         if (selected_member_text_id != member_text_id) continue;
         *out_ts = declarator_apply_type_bindings(
             parser, selected->member_typedef_types[i], type_bindings);
@@ -1757,8 +1819,13 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                     bool found_member = false;
                     for (int i = 0; !found_member && i < owner->n_member_typedefs; ++i) {
                         const char* name = owner->member_typedef_names[i];
-                        if (!name ||
-                            parser_text(qn.base_text_id, qn.base_name) != name)
+                        const TextId owner_member_text_id =
+                            declarator_member_typedef_text_id(*this, owner, i);
+                        if (qn.base_text_id != kInvalidText
+                                ? owner_member_text_id != qn.base_text_id
+                                : (!name ||
+                                   parser_text(qn.base_text_id,
+                                               qn.base_name) != name))
                             continue;
                         resolved_member = owner->member_typedef_types[i];
                         found_member = true;

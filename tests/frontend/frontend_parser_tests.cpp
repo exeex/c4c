@@ -3177,7 +3177,7 @@ void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
   primary->template_param_is_pack[0] = false;
   primary->n_member_typedefs = 1;
   primary->member_typedef_names = arena.alloc_array<const char*>(1);
-  primary->member_typedef_names[0] = arena.strdup("Alias");
+  primary->member_typedef_names[0] = arena.strdup("RenderedAliasDrift");
   primary->member_typedef_text_ids = arena.alloc_array<c4c::TextId>(1);
   primary->member_typedef_text_ids[0] = alias_text;
   primary->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
@@ -3231,7 +3231,25 @@ void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
       parser.find_template_instantiation_member_typedef_type(concrete_owner,
                                                              alias_text);
   expect_true(stored_member != nullptr && stored_member->record_def == payload,
-              "template instantiation member typedef writer should store by concrete owner key plus member TextId");
+              "template instantiation member typedef writer should store by concrete owner key plus member TextId before rendered member spelling");
+
+  const c4c::QualifiedNameKey other_owner_key =
+      parser.alias_template_key_in_context(
+          parser.current_namespace_context_id(),
+          parser.parser_text_id_for_token(c4c::kInvalidText, "OtherBox"));
+  const c4c::ParserTemplateState::TemplateInstantiationKey other_concrete_owner{
+      other_owner_key,
+      c4c::make_template_instantiation_argument_keys({concrete_arg})};
+  c4c::TypeSpec wrong_owner_member{};
+  wrong_owner_member.array_size = -1;
+  wrong_owner_member.inner_rank = -1;
+  wrong_owner_member.base = c4c::TB_DOUBLE;
+  parser.register_template_instantiation_member_typedef_binding(
+      other_concrete_owner, alias_text, wrong_owner_member);
+  stored_member = parser.find_template_instantiation_member_typedef_type(
+      concrete_owner, alias_text);
+  expect_true(stored_member != nullptr && stored_member->record_def == payload,
+              "same-spelling member typedef TextIds under a different concrete owner key should not collide");
 
   c4c::TypeSpec stale_rendered_ts{};
   stale_rendered_ts.array_size = -1;
@@ -3254,7 +3272,7 @@ void test_parser_template_instantiation_member_typedef_uses_concrete_key() {
   });
   const c4c::TypeSpec alias_ts = parser.parse_base_type();
   expect_true(alias_ts.record_def == payload,
-              "template instantiation member typedef reader should prefer the concrete owner carrier over stale rendered scoped storage");
+              "template instantiation member typedef reader should prefer the concrete owner/member TextId carrier over stale rendered scoped storage and member spelling");
 }
 
 void test_parser_deferred_member_typedef_lookup_uses_member_text_id() {
