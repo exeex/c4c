@@ -1,49 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/154_parser_sema_qualified_name_text_reparse_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Audit QualifiedNameRef Display Mirrors
+Current Step ID: 6
+Current Step Title: Closure Review And Broader Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5 QualifiedNameRef display mirror audit.
+Completed Step 6 Closure Review And Broader Proof.
 
-- Audited direct parser uses of `QualifiedNameRef::qualifier_segments` and
-  `base_name`; retained display/debug/syntax uses are token-position math,
-  rendered `qualified_name_text`, parsed spelling construction, compatibility
-  TypeSpec token reconstruction, and arena display copies.
-- Fixed semantic carrier propagation in `Parser::apply_qualified_name` so Node
-  qualifier metadata is sized and copied from the paired qualifier TextIds when
-  present, with display segments only as bounded legacy compatibility fallback.
-- Fixed static-member expression `member_qn` construction to copy qualifier
-  TextIds through `qualified_name_ordinary_qualifier_count` and helper accessors
-  instead of iterating display mirrors directly.
-- Confirmed remaining semantic lookup paths use `QualifiedNameKey`,
-  `NamePathTable`/context keys, base/qualifier TextIds, or symbol/Node metadata
-  before display spelling; no rendered `A::B::C` splitter was added.
+- Classified retained `append_qualified_name_compatibility_tokens` callers as
+  explicit syntax reconstruction for TypeSpec/deferred-template injected
+  parser recovery; semantic lookup remains on TypeSpec metadata,
+  QualifiedNameRef, QualifiedNameKey, and parser/name-path carriers before
+  any reconstructed tokens are reparsed.
+- Classified retained `find_legacy_mirrored_name_text_id` and
+  `intern_legacy_mirrored_name_text_id` users as bounded compatibility bridges
+  for older string-only mirrors; both reject rendered qualified spellings that
+  contain `::`, so they cannot split `A::B::C` into semantic authority.
+- Classified remaining `QualifiedNameRef::qualifier_segments` and
+  `base_name` display mirrors as parse spelling, token-position/lookahead,
+  diagnostics/rendered `qualified_name_text`, or arena display copies paired
+  with `base_text_id` and `qualifier_text_ids`; semantic paths audited in
+  Steps 2-5 prefer structured TextIds, keys, symbols, or Node metadata.
+- `qualified_name_from_text`, `split_qualified_member_type_name`, and the old
+  `append_qualified_name_tokens` helper name have no remaining production
+  matches under `src/frontend` or `src/shared`.
 
 ## Suggested Next
 
-Proceed to Step 6 closure review and broader proof selection for the retained
-compatibility/display paths.
+Supervisor can compare `test_after.log` with `test_baseline.log` and route to
+plan-owner closure review; the source idea appears closure-ready from this
+executor packet.
 
 ## Watchouts
 
-- Retained mirror reads in `peek_qualified_name`, declaration/type-start
-  lookahead, and declarator parsing are syntax/display carriers paired with
-  `base_text_id` and `qualifier_text_ids` from parsed tokens.
-- Retained fallback helpers (`find_legacy_mirrored_name_text_id`,
-  `intern_legacy_mirrored_name_text_id`, and TypeSpec mirror bridges) are
-  bounded to unqualified segment strings and reject rendered qualified names.
+- Retained TypeSpec/template reparse paths still intentionally reconstruct
+  tokens for compatibility; they are non-removal candidates unless the deferred
+  parse/recovery architecture stops requiring token injection.
+- Retained display mirrors should continue to be treated as compatibility and
+  rendering surfaces; new semantic work should keep using TextIds, keys, or
+  symbol metadata rather than splitting rendered spelling.
 - `review/step2_qualified_name_textid_route_review.md` remains an existing
   untracked transient artifact and was not touched.
 
 ## Proof
 
-Passed. Proof log: `test_after.log`.
+Passed. Full proof log: `test_after.log`.
 
 Command:
 
-`cmake --build --preset default && ctest --test-dir build -R '^(frontend_parser_lookup_authority_tests|frontend_hir_lookup_tests|cpp_hir_parser_member_typedef_lookup_structured_metadata|cpp_hir_parser_type_base_deferred_member_template_origin_structured_metadata|cpp_positive_sema_qualified_member_typedef_functional_cast_frontend_cpp|cpp_positive_sema_namespace_cross_namespace_lookup_parse_cpp)$' -j --output-on-failure`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+
+Result: 100% tests passed, 0 tests failed out of 3023.
