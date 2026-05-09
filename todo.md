@@ -13,9 +13,11 @@ materialization. `resolve_explicit_typed_arg` now handles typed type args
 structurally instead of falling through to string fallback, so a structured
 type carrier miss cannot reopen `TemplateArgRef::debug_text` lookup. Type-pack
 materialization no longer expands `debug_text` pack bindings when structured
-type-param metadata is present and misses. Added focused lookup-authority
-coverage for scalar typed type args and type packs, including no-carrier
-compatibility cases.
+same-owner type-param metadata is present and misses. The bounded
+foreign-owner pack bridge remains for nested owner handoff cases where the
+current primary cannot resolve a different template owner's pack carrier
+directly. Added focused lookup-authority coverage for scalar typed type args
+and type packs, including no-carrier compatibility cases.
 
 ## Suggested Next
 
@@ -27,9 +29,9 @@ step is being treated as complete.
 
 - `debug_text` remains valid for display and no-carrier compatibility. The new
   tests explicitly preserve no-carrier typed scalar and pack lookup behavior.
-- `find_bound_type_pack_for_param_ref` now treats any structured type-param
-  carrier as authoritative for pack expansion; stale rendered pack names should
-  not be reintroduced through foreign-owner index shortcuts.
+- `find_bound_type_pack_for_param_ref` treats same-owner structured type-param
+  carriers as authoritative for pack expansion; the foreign-owner/index bridge
+  is retained for nested owner handoff compatibility.
 - The delegated packet did not require changes in `type_resolution.cpp`,
   `templates.cpp`, `hir_types.cpp`, or `tests/cpp/internal/hir_case/*.cpp`.
 

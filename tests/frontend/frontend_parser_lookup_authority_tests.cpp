@@ -6431,13 +6431,13 @@ void test_hir_type_pack_carrier_miss_blocks_debug_text_pack_lookup() {
                      c4c::SourceProfile::CppSubset);
 
   const c4c::TextId pack_text = texts.intern("Pack");
-  const c4c::TextId foreign_owner_text = texts.intern("ForeignTemplate");
+  const c4c::TextId box_text = texts.intern("Box");
 
   c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   primary->kind = c4c::NK_STRUCT_DEF;
   primary->name = arena.strdup("Box");
   primary->unqualified_name = arena.strdup("Box");
-  primary->unqualified_text_id = texts.intern("Box");
+  primary->unqualified_text_id = box_text;
   primary->n_template_params = 1;
   primary->template_param_names = arena.alloc_array<const char*>(1);
   primary->template_param_names[0] = arena.strdup("Pack");
@@ -6464,8 +6464,9 @@ void test_hir_type_pack_carrier_miss_blocks_debug_text_pack_lookup() {
     arg.type.inner_rank = -1;
     set_legacy_typespec_tag(arg.type, arena.strdup("RenderedPack"));
     if (with_carrier) {
-      arg.type.template_param_owner_text_id = foreign_owner_text;
+      arg.type.template_param_owner_text_id = box_text;
       arg.type.template_param_index = 0;
+      arg.type.template_param_text_id = texts.intern("OtherPack");
     }
     arg.debug_text = arena.strdup("RenderedPack");
     return owner;

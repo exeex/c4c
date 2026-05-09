@@ -413,6 +413,27 @@ HirTemplateArgMaterializer::find_bound_type_pack_for_param_ref(
   }
 
   if (has_structured_type_param_carrier(ts)) {
+    const bool has_foreign_owner_index_carrier =
+        primary_tpl && ts.template_param_owner_text_id != kInvalidText &&
+        primary_tpl->unqualified_text_id != kInvalidText &&
+        ts.template_param_owner_text_id != primary_tpl->unqualified_text_id &&
+        ts.template_param_index >= 0;
+    if (!has_foreign_owner_index_carrier) return pack_entries;
+
+    for (const std::string& name : type_binding_name_candidates(ts, debug_name)) {
+      for (const auto& [binding_name, bound_type] : tpl_bindings) {
+        int pack_index = 0;
+        if (parse_pack_binding_name_hir(binding_name, name, &pack_index)) {
+          pack_entries.push_back({pack_index, bound_type});
+        }
+      }
+      if (!pack_entries.empty()) break;
+    }
+
+    std::sort(pack_entries.begin(), pack_entries.end(),
+              [](const auto& lhs, const auto& rhs) {
+                return lhs.first < rhs.first;
+              });
     return pack_entries;
   }
 
