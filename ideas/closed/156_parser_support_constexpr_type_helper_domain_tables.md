@@ -1,7 +1,8 @@
 # Parser Support Constexpr Type Helper Domain Tables
 
-Status: Open
+Status: Closed
 Created: 2026-05-08
+Closed: 2026-05-09
 
 Parent Ideas:
 - `ideas/closed/123_parser_legacy_string_lookup_removal_convergence.md`
@@ -82,6 +83,21 @@ Sema owns semantic interpretation:
   string maps.
 - Tests cover at least one stale record/typedef/named-constant string fallback
   that must not win over structured identity.
+
+## Closure Rationale
+
+Closed after the active runbook completed Step 6. Acceptance validation covered
+the parser support, constexpr helper, type helper, template, and type-traits
+subset with 294/294 tests passing. The proof included stale rendered fallback
+coverage for record layout resolution and typedef/type-compatibility helpers,
+and route review found no testcase-shaped matching, expectation-only progress,
+or new ordinary parser-support `unordered_map<string, ...>` semantic contract.
+
+Retained string-map overloads are compatibility bridges with documented removal
+conditions rather than ordinary semantic environments, so the source acceptance
+criteria are satisfied. The close-time regression guard passed in
+non-decreasing mode against the canonical `test_before.log` and
+`test_after.log`, both at 294/294 with no new failures.
 
 ## Reviewer Reject Signals
 
