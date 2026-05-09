@@ -1,41 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/154_parser_sema_qualified_name_text_reparse_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Bound Token Injection Helpers
+Current Step ID: 5
+Current Step Title: Audit QualifiedNameRef Display Mirrors
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 token-injection helper bounding.
+Completed Step 5 QualifiedNameRef display mirror audit.
 
-- Audited `append_qualified_name_tokens` and found only two direct callers:
-  the legacy `TypeSpec` tag fallback inside `append_typespec_reparse_tokens`
-  and the template-struct injected-parse spelling in
-  `instantiate_template_struct_via_injected_parse`.
-- Renamed the helper to `append_qualified_name_compatibility_tokens` and
-  documented that it is only a compatibility spelling emitter for injected
-  parser recovery paths.
-- Confirmed structured carriers remain the lookup authority:
-  `append_typespec_metadata_name_tokens` is preferred before legacy tag
-  emission, and template instantiation still keys identity through structured
-  template keys after injected syntax reconstruction.
-- Added no rendered `A::B::C` splitter and found no token-injection caller that
-  still acts as semantic lookup authority.
+- Audited direct parser uses of `QualifiedNameRef::qualifier_segments` and
+  `base_name`; retained display/debug/syntax uses are token-position math,
+  rendered `qualified_name_text`, parsed spelling construction, compatibility
+  TypeSpec token reconstruction, and arena display copies.
+- Fixed semantic carrier propagation in `Parser::apply_qualified_name` so Node
+  qualifier metadata is sized and copied from the paired qualifier TextIds when
+  present, with display segments only as bounded legacy compatibility fallback.
+- Fixed static-member expression `member_qn` construction to copy qualifier
+  TextIds through `qualified_name_ordinary_qualifier_count` and helper accessors
+  instead of iterating display mirrors directly.
+- Confirmed remaining semantic lookup paths use `QualifiedNameKey`,
+  `NamePathTable`/context keys, base/qualifier TextIds, or symbol/Node metadata
+  before display spelling; no rendered `A::B::C` splitter was added.
 
 ## Suggested Next
 
-Proceed to supervisor review or the next planned retirement slice for remaining
-rendered qualified-name compatibility paths outside the now-bounded injected
-token emitter.
+Proceed to Step 6 closure review and broader proof selection for the retained
+compatibility/display paths.
 
 ## Watchouts
 
-- The compatibility emitter still tokenizes legacy rendered spellings only for
-  reparsing through `parse_injected_base_type`; future semantic lookup work
-  should continue to use `TypeSpec` metadata, `QualifiedNameRef`, or
-  `QualifiedNameKey` instead.
+- Retained mirror reads in `peek_qualified_name`, declaration/type-start
+  lookahead, and declarator parsing are syntax/display carriers paired with
+  `base_text_id` and `qualifier_text_ids` from parsed tokens.
+- Retained fallback helpers (`find_legacy_mirrored_name_text_id`,
+  `intern_legacy_mirrored_name_text_id`, and TypeSpec mirror bridges) are
+  bounded to unqualified segment strings and reject rendered qualified names.
 - `review/step2_qualified_name_textid_route_review.md` remains an existing
   untracked transient artifact and was not touched.
 

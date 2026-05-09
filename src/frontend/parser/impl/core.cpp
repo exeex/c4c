@@ -289,6 +289,37 @@ bool qualified_name_has_ordinary_qualifier(
            !name.qualifier_segments.empty();
 }
 
+size_t qualified_name_ordinary_qualifier_count(
+    const Parser::QualifiedNameRef& name) {
+    if (!name.qualifier_text_ids.empty() &&
+        (name.qualifier_segments.empty() ||
+         name.qualifier_text_ids.size() >= name.qualifier_segments.size())) {
+        return name.qualifier_text_ids.size();
+    }
+    return name.qualifier_segments.size();
+}
+
+TextId qualified_name_ordinary_qualifier_text_id(
+    const Parser& parser, const Parser::QualifiedNameRef& name, size_t index) {
+    if (index < name.qualifier_text_ids.size() &&
+        name.qualifier_text_ids[index] != kInvalidText) {
+        return name.qualifier_text_ids[index];
+    }
+    if (index >= name.qualifier_segments.size()) return kInvalidText;
+    return intern_legacy_mirrored_name_text_id(parser,
+                                               name.qualifier_segments[index]);
+}
+
+std::string_view qualified_name_ordinary_qualifier_text(
+    const Parser& parser, const Parser::QualifiedNameRef& name, size_t index) {
+    const TextId text_id =
+        qualified_name_ordinary_qualifier_text_id(parser, name, index);
+    if (index < name.qualifier_segments.size()) {
+        return parser.parser_text(text_id, name.qualifier_segments[index]);
+    }
+    return parser.parser_text(text_id, {});
+}
+
 void drop_last_ordinary_qualifier(Parser::QualifiedNameRef* name) {
     if (!name) return;
     if (!name->qualifier_text_ids.empty()) {
@@ -2954,12 +2985,11 @@ std::string Parser::qualified_name_text(const QualifiedNameRef& name,
                                         bool include_global_prefix) const {
     std::string qualified;
     if (include_global_prefix && name.is_global_qualified) qualified = "::";
-    for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
+    const size_t qualifier_count =
+        qualified_name_ordinary_qualifier_count(name);
+    for (size_t i = 0; i < qualifier_count; ++i) {
         if (!qualified.empty() && qualified != "::") qualified += "::";
-        const TextId segment_text_id =
-            i < name.qualifier_text_ids.size() ? name.qualifier_text_ids[i]
-                                               : kInvalidText;
-        qualified += parser_text(segment_text_id, name.qualifier_segments[i]);
+        qualified += qualified_name_ordinary_qualifier_text(*this, name, i);
     }
     if (!qualified.empty() && qualified != "::") qualified += "::";
     qualified += parser_text(name.base_text_id, name.base_name);
@@ -3361,24 +3391,20 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
                                             qn.base_text_id)
                                       : std::string_view(qn.base_name))
                           .c_str());
-    node->n_qualifier_segments = static_cast<int>(qn.qualifier_segments.size());
+    node->n_qualifier_segments =
+        static_cast<int>(qualified_name_ordinary_qualifier_count(qn));
     if (node->n_qualifier_segments > 0) {
         node->qualifier_segments = arena_.alloc_array<const char*>(node->n_qualifier_segments);
         node->qualifier_text_ids = arena_.alloc_array<TextId>(node->n_qualifier_segments);
         for (int i = 0; i < node->n_qualifier_segments; ++i) {
             const std::string_view segment =
-                shared_lookup_state_.token_texts &&
-                        i < static_cast<int>(qn.qualifier_text_ids.size()) &&
-                        qn.qualifier_text_ids[i] != kInvalidText
-                    ? shared_lookup_state_.token_texts->lookup(
-                          qn.qualifier_text_ids[i])
-                    : std::string_view(qn.qualifier_segments[i]);
+                qualified_name_ordinary_qualifier_text(*this, qn,
+                                                       static_cast<size_t>(i));
             node->qualifier_segments[i] =
                 arena_.strdup(std::string(segment).c_str());
             node->qualifier_text_ids[i] =
-                i < static_cast<int>(qn.qualifier_text_ids.size())
-                    ? qn.qualifier_text_ids[i]
-                    : parser_text_id_for_token(kInvalidText, segment);
+                qualified_name_ordinary_qualifier_text_id(
+                    *this, qn, static_cast<size_t>(i));
         }
     }
     if (resolved_name && resolved_name[0]) {

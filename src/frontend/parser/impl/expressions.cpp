@@ -2098,19 +2098,17 @@ Node* parse_primary(Parser& parser) {
                                 } else if (qn.base_text_id != kInvalidText) {
                                     member_qn.is_global_qualified =
                                         qn.is_global_qualified;
+                                    const size_t qualifier_count =
+                                        qualified_name_ordinary_qualifier_count(
+                                            qn);
                                     for (size_t qi = 0;
-                                         qi < qn.qualifier_segments.size();
-                                         ++qi) {
+                                         qi < qualifier_count; ++qi) {
                                         member_qn.qualifier_segments.push_back(
-                                            qn.qualifier_segments[qi]);
+                                            qualified_name_ordinary_qualifier_segment(
+                                                parser, qn, qi));
                                         member_qn.qualifier_text_ids.push_back(
-                                            qi < qn.qualifier_text_ids.size()
-                                                ? qn.qualifier_text_ids[qi]
-                                                : parser
-                                                      .parser_text_id_for_token(
-                                                          kInvalidText,
-                                                          qn.qualifier_segments
-                                                              [qi]));
+                                            qualified_name_ordinary_qualifier_text_id(
+                                                parser, qn, qi));
                                     }
                                     const std::string owner_segment =
                                         std::string(parser.parser_text(
