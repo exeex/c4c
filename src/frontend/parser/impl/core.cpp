@@ -265,14 +265,23 @@ QualifiedNameKey find_qualified_name_key(const Parser& parser,
     QualifiedNameKey key;
     key.context_id = 0;
     key.is_global_qualified = name.is_global_qualified;
-    key.base_text_id = name.base_text_id;
-    const std::string_view base_text = parser.parser_text(key.base_text_id, {});
-    if (key.base_text_id == kInvalidText ||
-        base_text.find("::") != std::string_view::npos) {
-        key.base_text_id = !name.base_name.empty()
-                               ? parser.find_parser_text_id(name.base_name)
-                               : kInvalidText;
-    }
+    auto legacy_find_mirrored_text_id =
+        [&](std::string_view mirror) -> TextId {
+        // Legacy compatibility: older constructed QualifiedNameRef values may
+        // carry only string mirrors. Do not split rendered qualified spelling.
+        return !mirror.empty() && mirror.find("::") == std::string_view::npos
+                   ? parser.find_parser_text_id(mirror)
+                   : kInvalidText;
+    };
+    auto valid_unqualified_text_id = [&](TextId text_id) {
+        return text_id != kInvalidText &&
+               parser.parser_text(text_id, {}).find("::") ==
+                   std::string_view::npos;
+    };
+
+    key.base_text_id = valid_unqualified_text_id(name.base_text_id)
+                           ? name.base_text_id
+                           : legacy_find_mirrored_text_id(name.base_name);
     if (key.base_text_id == kInvalidText) return key;
 
     if (name.qualifier_segments.empty() && name.qualifier_text_ids.empty()) {
@@ -280,23 +289,25 @@ QualifiedNameKey find_qualified_name_key(const Parser& parser,
     }
 
     std::vector<TextId> qualifier_text_ids;
-    qualifier_text_ids.reserve(
-        std::max(name.qualifier_text_ids.size(),
-                 name.qualifier_segments.size()));
-    for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
-        TextId text_id = i < name.qualifier_text_ids.size()
-                             ? name.qualifier_text_ids[i]
-                             : kInvalidText;
-        if (text_id == kInvalidText) {
-            text_id = parser.find_parser_text_id(name.qualifier_segments[i]);
+    const bool has_complete_text_id_qualifiers =
+        !name.qualifier_text_ids.empty() &&
+        (name.qualifier_segments.empty() ||
+         name.qualifier_text_ids.size() >= name.qualifier_segments.size());
+    if (has_complete_text_id_qualifiers) {
+        qualifier_text_ids.reserve(name.qualifier_text_ids.size());
+        for (TextId text_id : name.qualifier_text_ids) {
+            if (!valid_unqualified_text_id(text_id)) return {};
+            qualifier_text_ids.push_back(text_id);
         }
-        if (text_id == kInvalidText) return {};
-        qualifier_text_ids.push_back(text_id);
-    }
-    for (size_t i = name.qualifier_segments.size();
-         i < name.qualifier_text_ids.size(); ++i) {
-        if (name.qualifier_text_ids[i] == kInvalidText) return {};
-        qualifier_text_ids.push_back(name.qualifier_text_ids[i]);
+    } else {
+        // Legacy compatibility: bound fallback for callers that still build
+        // QualifiedNameRef from mirrored segment strings without TextIds.
+        qualifier_text_ids.reserve(name.qualifier_segments.size());
+        for (const std::string& segment : name.qualifier_segments) {
+            const TextId text_id = legacy_find_mirrored_text_id(segment);
+            if (text_id == kInvalidText) return {};
+            qualifier_text_ids.push_back(text_id);
+        }
     }
 
     if (!qualifier_text_ids.empty()) {
@@ -1535,40 +1546,45 @@ QualifiedNameKey Parser::qualified_name_key(const QualifiedNameRef& name) const 
     QualifiedNameKey key;
     key.context_id = 0;
     key.is_global_qualified = name.is_global_qualified;
-    key.base_text_id = name.base_text_id;
-    const std::string_view base_text = parser_text(key.base_text_id, {});
-    if (key.base_text_id == kInvalidText ||
-        base_text.find("::") != std::string_view::npos) {
-        key.base_text_id =
-            !name.base_name.empty()
-                ? parser_text_id_for_token(kInvalidText, name.base_name)
-                : kInvalidText;
-    }
+    auto legacy_intern_mirrored_text_id =
+        [&](std::string_view mirror) -> TextId {
+        // Legacy compatibility: older constructed QualifiedNameRef values may
+        // carry only string mirrors. Do not split rendered qualified spelling.
+        return !mirror.empty() && mirror.find("::") == std::string_view::npos
+                   ? parser_text_id_for_token(kInvalidText, mirror)
+                   : kInvalidText;
+    };
+    auto valid_unqualified_text_id = [&](TextId text_id) {
+        return text_id != kInvalidText &&
+               parser_text(text_id, {}).find("::") == std::string_view::npos;
+    };
+
+    key.base_text_id = valid_unqualified_text_id(name.base_text_id)
+                           ? name.base_text_id
+                           : legacy_intern_mirrored_text_id(name.base_name);
     if (key.base_text_id == kInvalidText) return key;
 
-    if (!name.qualifier_text_ids.empty()) {
+    const bool has_complete_text_id_qualifiers =
+        !name.qualifier_text_ids.empty() &&
+        (name.qualifier_segments.empty() ||
+         name.qualifier_text_ids.size() >= name.qualifier_segments.size());
+    if (has_complete_text_id_qualifiers) {
         std::vector<TextId> qualifier_text_ids;
         qualifier_text_ids.reserve(name.qualifier_text_ids.size());
-        for (size_t i = 0; i < name.qualifier_text_ids.size(); ++i) {
-            TextId text_id = name.qualifier_text_ids[i];
-            const std::string_view text = parser_text(text_id, {});
-            if ((text_id == kInvalidText ||
-                 text.find("::") != std::string_view::npos) &&
-                i < name.qualifier_segments.size()) {
-                text_id = parser_text_id_for_token(kInvalidText,
-                                                   name.qualifier_segments[i]);
-            }
-            if (text_id == kInvalidText) return {};
+        for (TextId text_id : name.qualifier_text_ids) {
+            if (!valid_unqualified_text_id(text_id)) return {};
             qualifier_text_ids.push_back(text_id);
         }
         key.qualifier_path_id = const_cast<NamePathTable&>(
                                     shared_lookup_state_.parser_name_paths)
                                     .intern(qualifier_text_ids);
     } else if (!name.qualifier_segments.empty()) {
+        // Legacy compatibility: bound fallback for callers that still build
+        // QualifiedNameRef from mirrored segment strings without TextIds.
         std::vector<TextId> qualifier_text_ids;
         qualifier_text_ids.reserve(name.qualifier_segments.size());
         for (const std::string& segment : name.qualifier_segments) {
-            TextId text_id = parser_text_id_for_token(kInvalidText, segment);
+            const TextId text_id = legacy_intern_mirrored_text_id(segment);
             if (text_id == kInvalidText) return {};
             qualifier_text_ids.push_back(text_id);
         }

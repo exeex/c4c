@@ -297,6 +297,62 @@ void test_rendered_qualified_text_ids_fail_closed_at_parser_key_helpers() {
               "unqualified TextId plus namespace context");
 }
 
+void test_qualified_name_key_prefers_complete_text_ids_over_string_mirrors() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId outer_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "A");
+  const c4c::TextId inner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "B");
+  const c4c::TextId base_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "C");
+  const c4c::TextId stale_outer_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Stale");
+  const c4c::TextId stale_inner_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Mirror");
+
+  const int outer_context = parser.ensure_named_namespace_context(0, outer_text);
+  const int inner_context =
+      parser.ensure_named_namespace_context(outer_context, inner_text);
+  const int stale_outer_context =
+      parser.ensure_named_namespace_context(0, stale_outer_text);
+  const int stale_inner_context =
+      parser.ensure_named_namespace_context(stale_outer_context,
+                                            stale_inner_text);
+  expect_true(inner_context > 0 && stale_inner_context > 0,
+              "test namespace contexts should be created");
+
+  c4c::TypeSpec real_type{};
+  real_type.array_size = -1;
+  real_type.inner_rank = -1;
+  real_type.base = c4c::TB_INT;
+  parser.register_structured_typedef_binding_in_context(inner_context,
+                                                        base_text, real_type);
+
+  c4c::TypeSpec stale_type{};
+  stale_type.array_size = -1;
+  stale_type.inner_rank = -1;
+  stale_type.base = c4c::TB_DOUBLE;
+  parser.register_structured_typedef_binding_in_context(stale_inner_context,
+                                                        base_text, stale_type);
+
+  c4c::Parser::QualifiedNameRef qn;
+  qn.qualifier_segments = {"Stale", "Mirror"};
+  qn.qualifier_text_ids = {outer_text, inner_text};
+  qn.base_name = "Wrong";
+  qn.base_text_id = base_text;
+
+  const c4c::TypeSpec* resolved =
+      parser.find_typedef_type(parser.qualified_name_key(qn));
+  expect_true(resolved != nullptr && resolved->base == c4c::TB_INT,
+              "qualified-name keys should use complete qualifier/base TextIds "
+              "before stale string mirrors");
+}
+
 void test_rendered_current_record_tag_fails_closed_for_member_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6854,6 +6910,7 @@ int main() {
   test_global_qualified_lookup_rejects_rendered_fallback_authority();
   test_rendered_qualified_text_ids_do_not_reenter_concept_lookup();
   test_rendered_qualified_text_ids_fail_closed_at_parser_key_helpers();
+  test_qualified_name_key_prefers_complete_text_ids_over_string_mirrors();
   test_rendered_current_record_tag_fails_closed_for_member_key();
   test_sema_global_lookup_uses_using_value_alias_target_key();
   test_sema_function_call_uses_using_value_alias_target_key();
