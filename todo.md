@@ -26,6 +26,10 @@ Continue Step 2 with a reviewer/supervisor pass over the accumulated payload
 API boundary changes, or move to the next payload-family packet the supervisor
 selects.
 
+Reviewer follow-up completed in `review/deferred_payload_step2_route_review.md`:
+route is on track, matches the source idea, and shows no testcase-overfit.
+Broader parser/frontend/HIR proof remains needed before closure.
+
 ## Watchouts
 
 - HIR keyed default evaluation still calls `eval_deferred_nttp_expr_hir` with
