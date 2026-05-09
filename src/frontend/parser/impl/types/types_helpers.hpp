@@ -515,10 +515,14 @@ std::string resolve_qualified_owner_type_name(
     return std::string(parser.parser_text(owner_qn.base_text_id, owner_qn.base_name));
 }
 
-void append_qualified_name_tokens(Parser& parser,
-                                  std::vector<Token>* out,
-                                  const Token& seed,
-                                  const std::string& name) {
+// Compatibility-only spelling emitter for injected parser recovery paths.
+// Structured carriers such as TypeSpec metadata, QualifiedNameRef, and
+// QualifiedNameKey remain the semantic lookup authority; this helper only
+// reconstructs tokens for legacy rendered spellings that must be reparsed.
+void append_qualified_name_compatibility_tokens(Parser& parser,
+                                                std::vector<Token>* out,
+                                                const Token& seed,
+                                                const std::string& name) {
     if (!out || name.empty()) return;
     size_t start = 0;
     while (start < name.size()) {
@@ -556,7 +560,8 @@ void append_typespec_reparse_tokens(Parser& parser,
     } else if (const char* legacy_tag =
                    typespec_legacy_display_tag_if_present(ts, 0);
                legacy_tag && legacy_tag[0]) {
-        append_qualified_name_tokens(parser, out, seed, legacy_tag);
+        append_qualified_name_compatibility_tokens(parser, out, seed,
+                                                   legacy_tag);
         emitted_head = true;
     } else {
         switch (ts.base) {
@@ -639,7 +644,8 @@ bool instantiate_template_struct_via_injected_parse(
         : primary_tpl && primary_tpl->name && primary_tpl->name[0]
             ? primary_tpl->name
         : template_name.c_str();
-    append_qualified_name_tokens(parser, &inject_toks, t, primary_name);
+    append_qualified_name_compatibility_tokens(parser, &inject_toks, t,
+                                               primary_name);
     inject_toks.push_back(parser.make_injected_token(t, TokenKind::Less, "<"));
     for (int ai = 0; ai < static_cast<int>(args.size()); ++ai) {
         if (ai > 0) {

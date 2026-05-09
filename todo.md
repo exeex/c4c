@@ -1,36 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/154_parser_sema_qualified_name_text_reparse_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Demote Qualified Member-Type String Splitting
+Current Step ID: 4
+Current Step Title: Bound Token Injection Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 qualified member-type string splitter demotion.
+Completed Step 4 token-injection helper bounding.
 
-- Scanned `split_qualified_member_type_name` and its adjacent member-type
-  lookup helpers in `types_helpers.hpp` plus the active declarator member-type
-  lookup paths.
-- Found no active callers of `split_qualified_member_type_name`; its private
-  rendered-text parser `qualified_name_from_text` was only used by that
-  splitter.
-- Removed both unused helpers from `types_helpers.hpp`.
-- Retained existing semantic member-type lookup paths because they already use
-  structured `QualifiedNameRef`, `QualifiedNameKey`, owner keys, and member
-  `TextId`s; no rendered `A::B::C` splitter was added.
+- Audited `append_qualified_name_tokens` and found only two direct callers:
+  the legacy `TypeSpec` tag fallback inside `append_typespec_reparse_tokens`
+  and the template-struct injected-parse spelling in
+  `instantiate_template_struct_via_injected_parse`.
+- Renamed the helper to `append_qualified_name_compatibility_tokens` and
+  documented that it is only a compatibility spelling emitter for injected
+  parser recovery paths.
+- Confirmed structured carriers remain the lookup authority:
+  `append_typespec_metadata_name_tokens` is preferred before legacy tag
+  emission, and template instantiation still keys identity through structured
+  template keys after injected syntax reconstruction.
+- Added no rendered `A::B::C` splitter and found no token-injection caller that
+  still acts as semantic lookup authority.
 
 ## Suggested Next
 
-Proceed to the next plan step by inspecting any remaining rendered qualified
-name reparse or compatibility paths outside this member-type splitter.
+Proceed to supervisor review or the next planned retirement slice for remaining
+rendered qualified-name compatibility paths outside the now-bounded injected
+token emitter.
 
 ## Watchouts
 
-- No active member-type caller still requires rendered string splitting.
-- `append_qualified_name_tokens` remains as an injected-token compatibility
-  emitter, not as semantic lookup authority.
+- The compatibility emitter still tokenizes legacy rendered spellings only for
+  reparsing through `parse_injected_base_type`; future semantic lookup work
+  should continue to use `TypeSpec` metadata, `QualifiedNameRef`, or
+  `QualifiedNameKey` instead.
+- `review/step2_qualified_name_textid_route_review.md` remains an existing
+  untracked transient artifact and was not touched.
 
 ## Proof
 
