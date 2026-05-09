@@ -1175,12 +1175,7 @@ static bool same_nominal_typespec_identity(const TypeSpec& a,
     return a_tag && b_tag && strcmp(a_tag, b_tag) == 0;
 }
 
-template <typename TypedefMap>
-static bool types_compatible_after_typedef_resolution(TypeSpec a,
-                                                      TypeSpec b,
-                                                      const TypedefMap& typedefs) {
-    a = resolve_typedef_chain(a, typedefs);
-    b = resolve_typedef_chain(b, typedefs);
+static bool types_compatible_after_typedef_resolution(TypeSpec a, TypeSpec b) {
     // Strip top-level cv-qualifiers (they don't affect compatibility at the value level).
     // But for pointer types, qualifiers on the pointed-to type DO matter (char* vs const char*).
     if (a.ptr_level == 0 && a.array_rank == 0) { a.is_const = false; a.is_volatile = false; }
@@ -1208,7 +1203,9 @@ static bool types_compatible_after_typedef_resolution(TypeSpec a,
 // Returns true if type a and type b are compatible per GCC __builtin_types_compatible_p rules.
 bool types_compatible_p(TypeSpec a, TypeSpec b,
                         const std::unordered_map<TextId, TypeSpec>& typedefs) {
-    return types_compatible_after_typedef_resolution(a, b, typedefs);
+    return types_compatible_after_typedef_resolution(
+        resolve_typedef_chain(a, typedefs),
+        resolve_typedef_chain(b, typedefs));
 }
 
 // Compatibility bridge for legacy/HIR callers that only carry rendered typedef
@@ -1216,8 +1213,9 @@ bool types_compatible_p(TypeSpec a, TypeSpec b,
 bool types_compatible_p(
     TypeSpec a, TypeSpec b,
     const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs) {
-    return types_compatible_after_typedef_resolution(a, b,
-                                                    compatibility_typedefs);
+    return types_compatible_after_typedef_resolution(
+        resolve_typedef_chain(a, compatibility_typedefs),
+        resolve_typedef_chain(b, compatibility_typedefs));
 }
 
 }  // namespace c4c
