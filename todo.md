@@ -9,26 +9,26 @@ Current Step Title: Global, Function, Enum, and Consteval Lookup Precedence
 ## Just Finished
 
 Step 2: Global, Function, Enum, and Consteval Lookup Precedence repaired the
-baseline regression in function and overload lookup. `lookup_function_by_name`,
-`lookup_ref_overloads_by_name`, and `lookup_cpp_overloads_by_name` now treat a
-valid function structured key or using-value-alias target key as authoritative
-for that reference, so qualified structured metadata misses fail closed instead
-of falling through stale rendered function names. No-metadata rendered
-compatibility remains available when the reference carries no structured key.
+reviewer watch item by adding focused coverage for stale rendered function
+lookup after a complete structured metadata miss.
+`cpp_hir_sema_lookup_value_metadata_test` now proves that a call carrying a
+valid missing structured function key cannot fall through to an existing stale
+rendered function signature, while a no-metadata function reference still uses
+rendered compatibility.
 
 ## Suggested Next
 
-Return to supervisor review for the repaired Step 2 regression and decide
-whether this slice is ready to commit or needs broader route review before
-continuing Step 2.
+Return to supervisor review for the Step 2 watch item and decide whether this
+focused proof-only slice is ready to commit.
 
 ## Watchouts
 
-- Function and overload lookup now fail closed for any valid function metadata
-  key on the reference, including qualified keys. Value lookup behavior from the
-  earlier unqualified slice was not changed in this repair.
+- This packet changed only focused test coverage; no implementation change was
+  needed because the existing function lookup behavior already failed closed
+  when complete structured metadata missed.
 - Do not weaken tests or mark supported paths unsupported.
-- Existing parser coverage exercised the regression; no test files were changed.
+- The function no-metadata compatibility check uses an incompatible `int*`
+  return signature so rendered fallback remains observable.
 
 ## Proof
 

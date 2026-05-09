@@ -25,6 +25,13 @@ c4c::TypeSpec int_type() {
   return ts;
 }
 
+c4c::TypeSpec int_pointer_type() {
+  c4c::TypeSpec ts{};
+  ts.base = c4c::TB_INT;
+  ts.ptr_level = 1;
+  return ts;
+}
+
 c4c::Node base_node(c4c::NodeKind kind) {
   c4c::Node n{};
   n.kind = kind;
@@ -81,6 +88,23 @@ c4c::Node function(c4c::Node* body) {
   return n;
 }
 
+c4c::Node function_decl(const char* rendered_name, const char* unqualified_name,
+                        c4c::TextId text_id, c4c::TypeSpec ret) {
+  c4c::Node n = base_node(c4c::NK_FUNCTION);
+  n.name = rendered_name;
+  n.unqualified_name = unqualified_name;
+  n.unqualified_text_id = text_id;
+  n.namespace_context_id = 0;
+  n.type = ret;
+  return n;
+}
+
+c4c::Node call_expr(c4c::Node* callee) {
+  c4c::Node n = base_node(c4c::NK_CALL);
+  n.left = callee;
+  return n;
+}
+
 c4c::Node program(c4c::Node** children, int n_children) {
   c4c::Node n = base_node(c4c::NK_PROGRAM);
   n.children = children;
@@ -111,6 +135,14 @@ bool has_undeclared_identifier(const c4c::sema::ValidateResult& result,
   return false;
 }
 
+bool has_diagnostic_message(const c4c::sema::ValidateResult& result,
+                            std::string_view message) {
+  for (const c4c::sema::Diagnostic& diag : result.diagnostics) {
+    if (diag.message.find(message) != std::string::npos) return true;
+  }
+  return false;
+}
+
 c4c::sema::ValidateResult validate_single_return(c4c::Node& binding,
                                                  c4c::Node& ref) {
   c4c::Node ret = return_stmt(&ref);
@@ -120,6 +152,22 @@ c4c::sema::ValidateResult validate_single_return(c4c::Node& binding,
   c4c::Node* root_children[] = {&binding, &fn};
   c4c::Node root = program(root_children, 2);
   return c4c::sema::validate_program(&root);
+}
+
+void test_function_metadata_miss_rejects_stale_rendered_name() {
+  c4c::Node stale =
+      function_decl("stale_function", "stale_function", kStaleText,
+                    int_pointer_type());
+  c4c::Node callee = var_ref("stale_function", "real_function",
+                             kMissingText, 0);
+  c4c::Node call = call_expr(&callee);
+
+  const c4c::sema::ValidateResult result = validate_single_return(stale, call);
+
+  expect_true(result.ok,
+              "structured function reference miss should not recover through rendered name");
+  expect_true(!has_diagnostic_message(result, "incompatible return type"),
+              "function metadata miss should not use stale rendered function signature");
 }
 
 void test_global_metadata_miss_rejects_stale_rendered_name() {
@@ -159,12 +207,31 @@ void test_no_metadata_reference_keeps_rendered_compatibility() {
               "rendered-name fallback should remain available without metadata");
 }
 
+void test_no_metadata_function_reference_keeps_rendered_compatibility() {
+  c4c::Node rendered =
+      function_decl("rendered_function", "rendered_function", kStaleText,
+                    int_pointer_type());
+  c4c::Node callee = var_ref("rendered_function", "rendered_function",
+                             c4c::kInvalidText, -1);
+  c4c::Node call = call_expr(&callee);
+
+  const c4c::sema::ValidateResult result =
+      validate_single_return(rendered, call);
+
+  expect_true(!result.ok,
+              "rendered function lookup should remain available without metadata");
+  expect_true(has_diagnostic_message(result, "incompatible return type"),
+              "no-metadata function reference should use rendered function signature");
+}
+
 }  // namespace
 
 int main() {
+  test_function_metadata_miss_rejects_stale_rendered_name();
   test_global_metadata_miss_rejects_stale_rendered_name();
   test_enum_metadata_miss_rejects_stale_rendered_name();
   test_no_metadata_reference_keeps_rendered_compatibility();
+  test_no_metadata_function_reference_keeps_rendered_compatibility();
   std::cout << "PASS: cpp_hir_sema_lookup_value_metadata_test\n";
   return 0;
 }
