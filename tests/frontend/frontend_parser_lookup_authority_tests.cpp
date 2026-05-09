@@ -6352,6 +6352,158 @@ void test_hir_forwarded_nttp_rejects_rendered_after_text_id_miss() {
               "rendered names");
 }
 
+void test_hir_typed_type_arg_carrier_miss_blocks_debug_text_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId param_text = texts.intern("T");
+  const c4c::TextId stale_text = texts.intern("RenderedDrift");
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->kind = c4c::NK_STRUCT_DEF;
+  primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->unqualified_text_id = texts.intern("Box");
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_name_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  primary->template_param_name_text_ids[0] = param_text;
+
+  auto make_owner = [&](c4c::TextId carrier_text) {
+    c4c::TypeSpec owner{};
+    owner.base = c4c::TB_STRUCT;
+    owner.array_size = -1;
+    owner.inner_rank = -1;
+    owner.tpl_struct_origin = arena.strdup("Box");
+    owner.tpl_struct_args.size = 1;
+    owner.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+    c4c::TemplateArgRef& arg = owner.tpl_struct_args.data[0];
+    arg = c4c::TemplateArgRef{};
+    arg.kind = c4c::TemplateArgKind::Type;
+    arg.type = c4c::TypeSpec{};
+    arg.type.base = c4c::TB_TYPEDEF;
+    arg.type.array_size = -1;
+    arg.type.inner_rank = -1;
+    set_legacy_typespec_tag(arg.type, arena.strdup("RenderedDrift"));
+    arg.type.tag_text_id = carrier_text;
+    arg.debug_text = arena.strdup("RenderedDrift");
+    return owner;
+  };
+
+  c4c::TypeSpec rendered_binding{};
+  rendered_binding.base = c4c::TB_INT;
+  rendered_binding.array_size = -1;
+  rendered_binding.inner_rank = -1;
+
+  c4c::hir::TypeBindings type_bindings;
+  type_bindings["RenderedDrift"] = rendered_binding;
+  c4c::hir::NttpBindings nttp_bindings;
+
+  c4c::hir::Lowerer lowerer;
+  c4c::hir::ResolvedTemplateArgs resolved =
+      lowerer.materialize_template_args(primary, make_owner(stale_text),
+                                        type_bindings, nttp_bindings);
+  expect_true(resolved.concrete_args.size() == 1 &&
+                  !resolved.concrete_args[0].is_value &&
+                  resolved.concrete_args[0].type.base == c4c::TB_TYPEDEF,
+              "typed HIR type args with structured carriers should not reopen "
+              "debug_text type lookup after the carrier misses");
+
+  resolved = lowerer.materialize_template_args(
+      primary, make_owner(c4c::kInvalidText), type_bindings, nttp_bindings);
+  expect_true(resolved.concrete_args.size() == 1 &&
+                  !resolved.concrete_args[0].is_value &&
+                  resolved.concrete_args[0].type.base == c4c::TB_INT,
+              "no-carrier typed HIR type args should keep debug_text lookup "
+              "compatibility");
+}
+
+void test_hir_type_pack_carrier_miss_blocks_debug_text_pack_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId pack_text = texts.intern("Pack");
+  const c4c::TextId foreign_owner_text = texts.intern("ForeignTemplate");
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->kind = c4c::NK_STRUCT_DEF;
+  primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->unqualified_text_id = texts.intern("Box");
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("Pack");
+  primary->template_param_name_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  primary->template_param_name_text_ids[0] = pack_text;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = true;
+
+  auto make_owner = [&](bool with_carrier) {
+    c4c::TypeSpec owner{};
+    owner.base = c4c::TB_STRUCT;
+    owner.array_size = -1;
+    owner.inner_rank = -1;
+    owner.tpl_struct_origin = arena.strdup("Box");
+    owner.tpl_struct_args.size = 1;
+    owner.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+    c4c::TemplateArgRef& arg = owner.tpl_struct_args.data[0];
+    arg = c4c::TemplateArgRef{};
+    arg.kind = c4c::TemplateArgKind::Type;
+    arg.type = c4c::TypeSpec{};
+    arg.type.base = c4c::TB_TYPEDEF;
+    arg.type.array_size = -1;
+    arg.type.inner_rank = -1;
+    set_legacy_typespec_tag(arg.type, arena.strdup("RenderedPack"));
+    if (with_carrier) {
+      arg.type.template_param_owner_text_id = foreign_owner_text;
+      arg.type.template_param_index = 0;
+    }
+    arg.debug_text = arena.strdup("RenderedPack");
+    return owner;
+  };
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.array_size = -1;
+  int_type.inner_rank = -1;
+  c4c::TypeSpec char_type{};
+  char_type.base = c4c::TB_CHAR;
+  char_type.array_size = -1;
+  char_type.inner_rank = -1;
+
+  c4c::hir::TypeBindings type_bindings;
+  type_bindings["RenderedPack#0"] = int_type;
+  type_bindings["RenderedPack#1"] = char_type;
+  c4c::hir::NttpBindings nttp_bindings;
+
+  c4c::hir::Lowerer lowerer;
+  c4c::hir::ResolvedTemplateArgs resolved =
+      lowerer.materialize_template_args(primary, make_owner(true),
+                                        type_bindings, nttp_bindings);
+  expect_true(resolved.concrete_args.size() == 1 &&
+                  !resolved.concrete_args[0].is_value &&
+                  resolved.concrete_args[0].type.base == c4c::TB_TYPEDEF,
+              "typed HIR type packs with structured carriers should not "
+              "expand stale debug_text pack bindings after the carrier misses");
+
+  resolved = lowerer.materialize_template_args(
+      primary, make_owner(false), type_bindings, nttp_bindings);
+  expect_true(resolved.concrete_args.size() == 2 &&
+                  resolved.concrete_args[0].type.base == c4c::TB_INT &&
+                  resolved.concrete_args[1].type.base == c4c::TB_CHAR,
+              "no-carrier typed HIR type packs should keep debug_text pack "
+              "expansion compatibility");
+}
+
 void test_typespec_template_origin_equality_uses_structured_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -7190,6 +7342,8 @@ int main() {
   test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss();
   test_hir_template_value_arg_text_id_miss_blocks_rendered_lookup();
   test_hir_forwarded_nttp_rejects_rendered_after_text_id_miss();
+  test_hir_typed_type_arg_carrier_miss_blocks_debug_text_lookup();
+  test_hir_type_pack_carrier_miss_blocks_debug_text_pack_lookup();
   test_typespec_template_origin_equality_uses_structured_key();
   test_typespec_equality_uses_structured_type_identity_before_rendered_tag();
   test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag();
