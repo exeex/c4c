@@ -1,7 +1,8 @@
 # Sema Validate String Authority Audit
 
-Status: Open
+Status: Closed
 Created: 2026-05-09
+Closed: 2026-05-09
 
 Parent Ideas:
 - `ideas/closed/153_parser_sema_record_tag_compatibility_table_retirement.md`
@@ -131,6 +132,21 @@ rendered names.
   diagnostics/display, or no-metadata fallback with removal conditions.
 - Focused tests prove stale rendered names cannot override structured Sema
   identity in at least one global/function/record/template or local-scope path.
+
+## Completion Notes
+
+The active runbook completed all six steps. `validate.cpp` now documents the
+remaining string-keyed Sema validate paths as semantic authority with
+structured mirrors, compatibility mirrors, diagnostics/display, local syntax
+names, or no-metadata fallbacks, including removal conditions for retained
+rendered-name bridges.
+
+Covered value/function, record, template/local, and consteval handoff paths now
+prefer structured identity where complete metadata is available, and focused
+tests cover stale rendered-name rejection for the converted lookup families.
+Milestone validation passed the full suite with 3024/3024 tests passing, and
+the close-time regression guard passed against the matching full-suite
+baseline.
 
 ## Reviewer Reject Signals
 
