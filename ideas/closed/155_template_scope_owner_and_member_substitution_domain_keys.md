@@ -1,7 +1,8 @@
 # Template Scope Owner And Member Substitution Domain Keys
 
-Status: Open
+Status: Closed
 Created: 2026-05-08
+Closed: 2026-05-09
 
 Parent Ideas:
 - `ideas/closed/149_template_instantiation_structured_argument_key.md`
@@ -97,3 +98,12 @@ binding carriers rather than rendered parameter-name strings.
 - Template owner identity is still a rendered struct tag after the slice.
 - NTTP substitution succeeds primarily because `std::string(name) == param`.
 - Tests protect one named fixture instead of proving domain-key substitution.
+
+## Closure Notes
+
+Closed after implementation of the active runbook for structured owner,
+member typedef, and NTTP substitution domain keys. Reviewer report
+`review/template_domain_key_closure_review.md` found no blocking findings and
+no testcase-overfit. Full-suite validation passed 3023/3023, and regression
+guard comparison against `test_baseline.log` reported no new failures with
+`--allow-non-decreasing-passed`.
