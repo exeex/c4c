@@ -248,6 +248,7 @@ struct ParserInjectedTemplateParam {
 struct ParserTemplateScopeFrame {
   ParserTemplateScopeKind kind = ParserTemplateScopeKind::FreeFunctionTemplate;
   std::vector<ParserTemplateScopeParam> params;
+  QualifiedNameKey owner_struct_key;
   std::string owner_struct_tag;
 };
 

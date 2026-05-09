@@ -320,14 +320,24 @@ static void relabel_free_function_template_as_owner_scope(
     const std::string& display_owner) {
     if (parser.template_state_.template_scope_stack.empty() ||
         parser.template_state_.template_scope_stack.back().kind !=
-            Parser::TemplateScopeKind::FreeFunctionTemplate ||
-        !parser.find_template_struct_primary(owner_qn)) {
+            Parser::TemplateScopeKind::FreeFunctionTemplate) {
         return;
     }
-    parser.template_state_.template_scope_stack.back().kind =
-        Parser::TemplateScopeKind::EnclosingClass;
-    parser.template_state_.template_scope_stack.back().owner_struct_tag =
-        display_owner;
+    Node* primary = parser.find_template_struct_primary(owner_qn);
+    if (!primary) return;
+
+    QualifiedNameKey owner_key =
+        primary->namespace_context_id >= 0 &&
+                primary->unqualified_text_id != kInvalidText
+            ? parser.alias_template_key_in_context(
+                  primary->namespace_context_id, primary->unqualified_text_id)
+            : parser.qualified_name_key(owner_qn);
+    if (owner_key.base_text_id == kInvalidText) return;
+
+    auto& frame = parser.template_state_.template_scope_stack.back();
+    frame.kind = Parser::TemplateScopeKind::EnclosingClass;
+    frame.owner_struct_key = owner_key;
+    frame.owner_struct_tag = display_owner;
 }
 
 static void finalize_pending_operator_name(std::string& name, size_t param_count) {

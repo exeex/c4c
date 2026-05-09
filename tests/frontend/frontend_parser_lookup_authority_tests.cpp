@@ -697,9 +697,10 @@ void expect_out_of_class_template_owner_relabel_uses_qn_metadata(
   owner_primary->unqualified_text_id = owner_text;
   owner_primary->namespace_context_id = ns_context;
   owner_primary->n_template_params = 1;
+  const c4c::QualifiedNameKey owner_key =
+      parser.alias_template_key_in_context(ns_context, owner_text);
   parser.register_template_struct_primary(
-      parser.alias_template_key_in_context(ns_context, owner_text),
-      owner_primary);
+      owner_key, owner_primary);
 
   const c4c::TextId rendered_owner_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ns::Owner");
@@ -722,6 +723,10 @@ void expect_out_of_class_template_owner_relabel_uses_qn_metadata(
                   c4c::Parser::TemplateScopeKind::EnclosingClass,
               route + ": parser should relabel template scope from structured "
                       "QualifiedNameRef owner metadata");
+  expect_true(parser.template_state_.template_scope_stack.back()
+                      .owner_struct_key == owner_key,
+              route + ": relabel owner key should carry the structured "
+                      "template primary identity");
   expect_true(parser.template_state_.template_scope_stack.back()
                       .owner_struct_tag == expected_display_owner,
               route + ": relabel display owner should remain the parsed "
