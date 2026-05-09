@@ -16,7 +16,11 @@ string refs, or `TemplateArgRef::debug_text`. Structured expression nodes,
 captured tokens, TextId forwarding, and keyed deferred-default token evaluation
 remain intact. Added stale-payload coverage for a direct NTTP instantiation
 whose only `$expr:` payload is display text without captured tokens,
-expression nodes, or TextId carriers.
+expression nodes, or TextId carriers. Follow-up regression repair preserved
+parsed NTTP expression nodes into `TemplateArgRef` carriers so
+`sizeof...(pack)` remains a structured expression path rather than falling
+back to `$expr:` text, and taught HIR template value-arg evaluation to handle
+`NK_SIZEOF_PACK` from that structured expression carrier.
 
 ## Suggested Next
 
@@ -42,3 +46,7 @@ Ran the delegated proof:
 `cmake --build --preset default && ctest --test-dir build -R '(frontend_parser_lookup_authority|cpp_hir_.*template|frontend_hir_.*template|hir_case)' --output-on-failure > test_after.log 2>&1`
 
 Result: passed. `test_after.log` reports 46/46 tests passed.
+
+Targeted regression repair proof also passed:
+
+`cmake --build --preset default && ctest --test-dir build -R '^(cpp_positive_sema_variadic_template_arg_sizeof_pack_parse_cpp)$' --output-on-failure`

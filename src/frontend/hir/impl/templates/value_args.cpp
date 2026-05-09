@@ -852,6 +852,18 @@ bool Lowerer::try_eval_template_value_arg_expr(
       return try_eval_template_value_arg_expr(cond ? expr->then_ : expr->else_,
                                              ctx, out_value);
     }
+    case NK_SIZEOF_PACK: {
+      if (!ctx) return false;
+      std::string pack_name = expr->sval ? expr->sval : "";
+      if (pack_name.empty() && expr->left && expr->left->kind == NK_VAR &&
+          expr->left->name) {
+        pack_name = expr->left->name;
+      }
+      if (pack_name.empty()) return false;
+      *out_value = count_pack_bindings_for_name(
+          ctx->tpl_bindings, ctx->nttp_bindings, pack_name);
+      return true;
+    }
     case NK_VAR: {
       if (!expr->name || !expr->name[0]) return false;
       if (auto nttp_value = lookup_nttp_binding(ctx, expr, expr->name)) {

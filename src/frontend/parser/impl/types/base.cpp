@@ -1525,7 +1525,8 @@ TypeSpec Parser::parse_base_type() {
                     out.type.array_size = -1;
                     out.type.inner_rank = -1;
                     out.type.array_size_expr =
-                        rematerialize_captured_template_arg_expr(arg);
+                        arg.expr ? arg.expr
+                                 : rematerialize_captured_template_arg_expr(arg);
                 }
                 out.value = arg.is_value ? arg.value : 0;
                 out.nttp_text_id =
