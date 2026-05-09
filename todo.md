@@ -8,36 +8,33 @@ Current Step Title: Retire Ordinary Semantic Reparse Callers
 
 ## Just Finished
 
-Completed Step 2 first semantic-key packet in
+Completed Step 2 ordinary qualified resolver packet in
 `src/frontend/parser/impl/core.cpp`.
 
-- `find_qualified_name_key` and `Parser::qualified_name_key` now use
-  `base_text_id` and complete `qualifier_text_ids` as the direct semantic
-  identity path.
-- `base_name` / `qualifier_segments` fallback is bounded behind explicitly named
-  legacy mirror helpers/comments and rejects rendered `A::B::C` spelling
-  instead of splitting it.
-- Added `frontend_parser_lookup_authority_tests` coverage proving complete
-  qualifier/base `TextId`s win over stale string mirrors.
+- Added shared ordinary qualified-name helpers that treat complete
+  `qualifier_text_ids` as the semantic qualifier carrier and keep
+  `qualifier_segments` as a bounded legacy mirror fallback.
+- Updated `find_qualified_name_key`, `Parser::qualified_name_key`,
+  `resolve_namespace_context`, `resolve_namespace_name`,
+  `resolve_qualified_value`, and `resolve_qualified_type` to use the structured
+  carrier for shape/iteration and base lookup when available.
+- No rendered `A::B::C` splitter was added; mirror fallback still rejects names
+  containing `::`.
 
 ## Suggested Next
 
-Continue Step 2 with a bounded packet on the remaining ordinary semantic
-callers in `src/frontend/parser/impl/core.cpp`: make namespace/type/value
-resolution predicates distinguish structured `qualifier_text_ids` from legacy
-`qualifier_segments` mirrors where needed, without changing display/debug
-projection or injected syntax reconstruction.
+Continue Step 2 with a bounded scan of `core.cpp` callers that project
+`QualifiedNameRef` into AST/display state, especially `apply_qualified_name` and
+namespace owner fallback, to decide whether any remaining ordinary semantic
+branch still uses `qualifier_segments` as authority instead of TextIds.
 
 ## Watchouts
 
-- `resolve_qualified_value`, `resolve_qualified_type`,
-  `resolve_namespace_context`, and `resolve_namespace_name` still use
-  `qualifier_segments.empty()` / string-vector iteration as ordinary lookup
-  shape tests; that is the next likely semantic mirror dependency.
-- The legacy fallback intentionally remains for constructed refs with missing
-  ids; it should stay compatibility-only and must not become a rendered-name
-  splitter.
-- `declarator.cpp` was not needed for this slice.
+- `qualified_name_text`, parser construction, and AST projection still naturally
+  use `qualifier_segments` for spelling/display; do not treat those as semantic
+  lookup regressions without a concrete ordinary resolution branch.
+- The legacy mirror fallback is intentionally find/intern-by-segment only and
+  should remain compatibility-only.
 
 ## Proof
 

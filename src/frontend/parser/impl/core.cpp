@@ -260,54 +260,95 @@ std::string render_value_binding_name(const Parser& parser,
     return render_structured_name(parser, key);
 }
 
-QualifiedNameKey find_qualified_name_key(const Parser& parser,
-                                         const Parser::QualifiedNameRef& name) {
-    QualifiedNameKey key;
-    key.context_id = 0;
-    key.is_global_qualified = name.is_global_qualified;
-    auto legacy_find_mirrored_text_id =
-        [&](std::string_view mirror) -> TextId {
-        // Legacy compatibility: older constructed QualifiedNameRef values may
-        // carry only string mirrors. Do not split rendered qualified spelling.
-        return !mirror.empty() && mirror.find("::") == std::string_view::npos
-                   ? parser.find_parser_text_id(mirror)
-                   : kInvalidText;
-    };
-    auto valid_unqualified_text_id = [&](TextId text_id) {
-        return text_id != kInvalidText &&
-               parser.parser_text(text_id, {}).find("::") ==
-                   std::string_view::npos;
-    };
+bool is_valid_ordinary_name_text_id(const Parser& parser, TextId text_id) {
+    return text_id != kInvalidText &&
+           parser.parser_text(text_id, {}).find("::") == std::string_view::npos;
+}
 
-    key.base_text_id = valid_unqualified_text_id(name.base_text_id)
-                           ? name.base_text_id
-                           : legacy_find_mirrored_text_id(name.base_name);
-    if (key.base_text_id == kInvalidText) return key;
+TextId find_legacy_mirrored_name_text_id(const Parser& parser,
+                                         std::string_view mirror) {
+    // Legacy compatibility: older constructed QualifiedNameRef values may
+    // carry only string mirrors. Do not split rendered qualified spelling.
+    return !mirror.empty() && mirror.find("::") == std::string_view::npos
+               ? parser.find_parser_text_id(mirror)
+               : kInvalidText;
+}
 
-    if (name.qualifier_segments.empty() && name.qualifier_text_ids.empty()) {
-        return key;
-    }
+TextId intern_legacy_mirrored_name_text_id(const Parser& parser,
+                                           std::string_view mirror) {
+    // Legacy compatibility: older constructed QualifiedNameRef values may
+    // carry only string mirrors. Do not split rendered qualified spelling.
+    return !mirror.empty() && mirror.find("::") == std::string_view::npos
+               ? parser.parser_text_id_for_token(kInvalidText, mirror)
+               : kInvalidText;
+}
 
-    std::vector<TextId> qualifier_text_ids;
+bool qualified_name_has_ordinary_qualifier(
+    const Parser::QualifiedNameRef& name) {
+    return !name.qualifier_text_ids.empty() ||
+           !name.qualifier_segments.empty();
+}
+
+template <typename TextIdForMirror>
+TextId ordinary_qualified_base_text_id(const Parser& parser,
+                                       const Parser::QualifiedNameRef& name,
+                                       TextIdForMirror text_id_for_mirror) {
+    return is_valid_ordinary_name_text_id(parser, name.base_text_id)
+               ? name.base_text_id
+               : text_id_for_mirror(name.base_name);
+}
+
+template <typename TextIdForMirror>
+bool collect_ordinary_qualifier_text_ids(
+    const Parser& parser, const Parser::QualifiedNameRef& name,
+    TextIdForMirror text_id_for_mirror, std::vector<TextId>* out) {
+    out->clear();
     const bool has_complete_text_id_qualifiers =
         !name.qualifier_text_ids.empty() &&
         (name.qualifier_segments.empty() ||
          name.qualifier_text_ids.size() >= name.qualifier_segments.size());
     if (has_complete_text_id_qualifiers) {
-        qualifier_text_ids.reserve(name.qualifier_text_ids.size());
+        out->reserve(name.qualifier_text_ids.size());
         for (TextId text_id : name.qualifier_text_ids) {
-            if (!valid_unqualified_text_id(text_id)) return {};
-            qualifier_text_ids.push_back(text_id);
+            if (!is_valid_ordinary_name_text_id(parser, text_id)) return false;
+            out->push_back(text_id);
         }
-    } else {
-        // Legacy compatibility: bound fallback for callers that still build
-        // QualifiedNameRef from mirrored segment strings without TextIds.
-        qualifier_text_ids.reserve(name.qualifier_segments.size());
-        for (const std::string& segment : name.qualifier_segments) {
-            const TextId text_id = legacy_find_mirrored_text_id(segment);
-            if (text_id == kInvalidText) return {};
-            qualifier_text_ids.push_back(text_id);
-        }
+        return true;
+    }
+
+    // Legacy compatibility: bound fallback for callers that still build
+    // QualifiedNameRef from mirrored segment strings without TextIds.
+    out->reserve(name.qualifier_segments.size());
+    for (const std::string& segment : name.qualifier_segments) {
+        const TextId text_id = text_id_for_mirror(segment);
+        if (text_id == kInvalidText) return false;
+        out->push_back(text_id);
+    }
+    return true;
+}
+
+QualifiedNameKey find_qualified_name_key(const Parser& parser,
+                                         const Parser::QualifiedNameRef& name) {
+    QualifiedNameKey key;
+    key.context_id = 0;
+    key.is_global_qualified = name.is_global_qualified;
+
+    auto legacy_find_mirrored_text_id = [&](std::string_view mirror) {
+        return find_legacy_mirrored_name_text_id(parser, mirror);
+    };
+    key.base_text_id = ordinary_qualified_base_text_id(
+        parser, name, legacy_find_mirrored_text_id);
+    if (key.base_text_id == kInvalidText) return key;
+
+    if (!qualified_name_has_ordinary_qualifier(name)) {
+        return key;
+    }
+
+    std::vector<TextId> qualifier_text_ids;
+    if (!collect_ordinary_qualifier_text_ids(
+            parser, name, legacy_find_mirrored_text_id,
+            &qualifier_text_ids)) {
+        return {};
     }
 
     if (!qualifier_text_ids.empty()) {
@@ -1546,47 +1587,20 @@ QualifiedNameKey Parser::qualified_name_key(const QualifiedNameRef& name) const 
     QualifiedNameKey key;
     key.context_id = 0;
     key.is_global_qualified = name.is_global_qualified;
-    auto legacy_intern_mirrored_text_id =
-        [&](std::string_view mirror) -> TextId {
-        // Legacy compatibility: older constructed QualifiedNameRef values may
-        // carry only string mirrors. Do not split rendered qualified spelling.
-        return !mirror.empty() && mirror.find("::") == std::string_view::npos
-                   ? parser_text_id_for_token(kInvalidText, mirror)
-                   : kInvalidText;
-    };
-    auto valid_unqualified_text_id = [&](TextId text_id) {
-        return text_id != kInvalidText &&
-               parser_text(text_id, {}).find("::") == std::string_view::npos;
+    auto legacy_intern_mirrored_text_id = [&](std::string_view mirror) {
+        return intern_legacy_mirrored_name_text_id(*this, mirror);
     };
 
-    key.base_text_id = valid_unqualified_text_id(name.base_text_id)
-                           ? name.base_text_id
-                           : legacy_intern_mirrored_text_id(name.base_name);
+    key.base_text_id = ordinary_qualified_base_text_id(
+        *this, name, legacy_intern_mirrored_text_id);
     if (key.base_text_id == kInvalidText) return key;
 
-    const bool has_complete_text_id_qualifiers =
-        !name.qualifier_text_ids.empty() &&
-        (name.qualifier_segments.empty() ||
-         name.qualifier_text_ids.size() >= name.qualifier_segments.size());
-    if (has_complete_text_id_qualifiers) {
+    if (qualified_name_has_ordinary_qualifier(name)) {
         std::vector<TextId> qualifier_text_ids;
-        qualifier_text_ids.reserve(name.qualifier_text_ids.size());
-        for (TextId text_id : name.qualifier_text_ids) {
-            if (!valid_unqualified_text_id(text_id)) return {};
-            qualifier_text_ids.push_back(text_id);
-        }
-        key.qualifier_path_id = const_cast<NamePathTable&>(
-                                    shared_lookup_state_.parser_name_paths)
-                                    .intern(qualifier_text_ids);
-    } else if (!name.qualifier_segments.empty()) {
-        // Legacy compatibility: bound fallback for callers that still build
-        // QualifiedNameRef from mirrored segment strings without TextIds.
-        std::vector<TextId> qualifier_text_ids;
-        qualifier_text_ids.reserve(name.qualifier_segments.size());
-        for (const std::string& segment : name.qualifier_segments) {
-            const TextId text_id = legacy_intern_mirrored_text_id(segment);
-            if (text_id == kInvalidText) return {};
-            qualifier_text_ids.push_back(text_id);
+        if (!collect_ordinary_qualifier_text_ids(
+                *this, name, legacy_intern_mirrored_text_id,
+                &qualifier_text_ids)) {
+            return {};
         }
         key.qualifier_path_id = const_cast<NamePathTable&>(
                                     shared_lookup_state_.parser_name_paths)
@@ -2864,14 +2878,19 @@ std::string Parser::render_name_in_context(int context_id,
 }
 
 int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
+    auto legacy_find_mirrored_text_id = [&](std::string_view mirror) {
+        return find_legacy_mirrored_name_text_id(*this, mirror);
+    };
+    std::vector<TextId> qualifier_text_ids;
+    if (!collect_ordinary_qualifier_text_ids(*this, name,
+                                             legacy_find_mirrored_text_id,
+                                             &qualifier_text_ids)) {
+        return -1;
+    }
+
     auto follow_path = [&](int start_id) -> int {
         int context_id = start_id;
-        for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
-            const TextId segment_text_id =
-                i < name.qualifier_text_ids.size()
-                    ? name.qualifier_text_ids[i]
-                    : kInvalidText;
-            if (segment_text_id == kInvalidText) return -1;
+        for (TextId segment_text_id : qualifier_text_ids) {
             context_id = find_named_namespace_child(context_id, segment_text_id);
             if (context_id < 0) return -1;
         }
@@ -2884,21 +2903,25 @@ int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
 }
 
 int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
+    auto legacy_find_mirrored_text_id = [&](std::string_view mirror) {
+        return find_legacy_mirrored_name_text_id(*this, mirror);
+    };
+    std::vector<TextId> qualifier_text_ids;
+    if (!collect_ordinary_qualifier_text_ids(*this, name,
+                                             legacy_find_mirrored_text_id,
+                                             &qualifier_text_ids)) {
+        return -1;
+    }
+    const TextId base_text_id = ordinary_qualified_base_text_id(
+        *this, name, legacy_find_mirrored_text_id);
+    if (base_text_id == kInvalidText) return -1;
+
     auto follow_name = [&](int start_id) -> int {
         int context_id = start_id;
-        for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
-            const TextId segment_text_id =
-                i < name.qualifier_text_ids.size()
-                    ? name.qualifier_text_ids[i]
-                    : kInvalidText;
-            if (segment_text_id == kInvalidText) return -1;
+        for (TextId segment_text_id : qualifier_text_ids) {
             context_id = find_named_namespace_child(context_id, segment_text_id);
             if (context_id < 0) return -1;
         }
-        const TextId base_text_id =
-            name.base_text_id != kInvalidText ? name.base_text_id
-                                              : kInvalidText;
-        if (base_text_id == kInvalidText) return -1;
         return find_named_namespace_child(context_id, base_text_id);
     };
 
@@ -2925,12 +2948,19 @@ std::string Parser::qualified_name_text(const QualifiedNameRef& name,
 
 Parser::VisibleNameResult Parser::resolve_qualified_value(
     const QualifiedNameRef& name) const {
-    if (name.qualifier_segments.empty()) {
+    auto legacy_find_mirrored_text_id = [&](std::string_view mirror) {
+        return find_legacy_mirrored_name_text_id(*this, mirror);
+    };
+    const TextId base_text_id = ordinary_qualified_base_text_id(
+        *this, name, legacy_find_mirrored_text_id);
+    if (base_text_id == kInvalidText) return {};
+
+    if (!qualified_name_has_ordinary_qualifier(name)) {
         if (!name.is_global_qualified) {
-            return resolve_visible_value(name.base_text_id);
+            return resolve_visible_value(base_text_id);
         }
         VisibleNameResult result;
-        if (lookup_value_in_context(0, name.base_text_id, &result)) {
+        if (lookup_value_in_context(0, base_text_id, &result)) {
             return result;
         }
         return {};
@@ -2941,12 +2971,12 @@ Parser::VisibleNameResult Parser::resolve_qualified_value(
 
     VisibleNameResult result;
     VisibleNameResult alias_result;
-    if (lookup_using_value_alias(context_id, name.base_text_id,
+    if (lookup_using_value_alias(context_id, base_text_id,
                                  &alias_result)) {
         return alias_result;
     }
 
-    if (lookup_value_in_context(context_id, name.base_text_id, &result)) {
+    if (lookup_value_in_context(context_id, base_text_id, &result)) {
         return result;
     }
     return {};
@@ -2954,12 +2984,19 @@ Parser::VisibleNameResult Parser::resolve_qualified_value(
 
 Parser::VisibleNameResult Parser::resolve_qualified_type(
     const QualifiedNameRef& name) const {
-    if (name.qualifier_segments.empty()) {
+    auto legacy_find_mirrored_text_id = [&](std::string_view mirror) {
+        return find_legacy_mirrored_name_text_id(*this, mirror);
+    };
+    const TextId base_text_id = ordinary_qualified_base_text_id(
+        *this, name, legacy_find_mirrored_text_id);
+    if (base_text_id == kInvalidText) return {};
+
+    if (!qualified_name_has_ordinary_qualifier(name)) {
         if (!name.is_global_qualified) {
-            return resolve_visible_type(name.base_text_id);
+            return resolve_visible_type(base_text_id);
         }
         VisibleNameResult result;
-        if (lookup_type_in_context(0, name.base_text_id, &result)) {
+        if (lookup_type_in_context(0, base_text_id, &result)) {
             return result;
         }
         return {};
@@ -2986,7 +3023,7 @@ Parser::VisibleNameResult Parser::resolve_qualified_type(
     const int context_id = resolve_namespace_context(name);
     if (context_id < 0) return {};
     VisibleNameResult result;
-    if (lookup_type_in_context(context_id, name.base_text_id, &result)) {
+    if (lookup_type_in_context(context_id, base_text_id, &result)) {
         return result;
     }
     return {};
