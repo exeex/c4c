@@ -368,7 +368,7 @@ static QualifiedNameKey alias_template_member_owner_key(
     }
 
     const int context_id =
-        owner_qn.qualifier_segments.empty()
+        !qualified_name_has_ordinary_qualifier(owner_qn)
             ? (owner_qn.is_global_qualified ? 0 : parser.current_namespace_context_id())
             : parser.resolve_namespace_context(owner_qn);
     if (context_id < 0) return {};
@@ -1868,11 +1868,12 @@ Node* parse_top_level(Parser& parser) {
 
         int context_id = parser.current_namespace_context_id();
         if (has_name) {
-            for (size_t i = 0; i < ns_name.qualifier_segments.size(); ++i) {
+            const size_t qualifier_count =
+                qualified_name_ordinary_qualifier_count(ns_name);
+            for (size_t i = 0; i < qualifier_count; ++i) {
                 const TextId segment_text_id =
-                    i < ns_name.qualifier_text_ids.size()
-                        ? ns_name.qualifier_text_ids[i]
-                        : kInvalidText;
+                    qualified_name_ordinary_qualifier_text_id(parser,
+                                                              ns_name, i);
                 context_id = parser.ensure_named_namespace_context(
                     context_id, segment_text_id);
             }

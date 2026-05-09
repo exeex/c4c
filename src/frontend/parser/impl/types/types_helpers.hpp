@@ -307,11 +307,47 @@ Node* record_definition_in_context_by_text_id(const Parser& parser,
     return lookup.ambiguous ? nullptr : lookup.record;
 }
 
+bool qualified_name_has_ordinary_qualifier(
+    const Parser::QualifiedNameRef& qn) {
+    return !qn.qualifier_text_ids.empty() || !qn.qualifier_segments.empty();
+}
+
+size_t qualified_name_ordinary_qualifier_count(
+    const Parser::QualifiedNameRef& qn) {
+    if (!qn.qualifier_text_ids.empty() &&
+        (qn.qualifier_segments.empty() ||
+         qn.qualifier_text_ids.size() >= qn.qualifier_segments.size())) {
+        return qn.qualifier_text_ids.size();
+    }
+    return qn.qualifier_segments.size();
+}
+
+TextId qualified_name_ordinary_qualifier_text_id(
+    const Parser& parser, const Parser::QualifiedNameRef& qn, size_t index) {
+    if (index < qn.qualifier_text_ids.size() &&
+        qn.qualifier_text_ids[index] != kInvalidText) {
+        return qn.qualifier_text_ids[index];
+    }
+    if (index >= qn.qualifier_segments.size()) return kInvalidText;
+    return parser.parser_text_id_for_token(kInvalidText,
+                                           qn.qualifier_segments[index]);
+}
+
+std::string qualified_name_ordinary_qualifier_segment(
+    const Parser& parser, const Parser::QualifiedNameRef& qn, size_t index) {
+    if (index < qn.qualifier_segments.size()) {
+        return qn.qualifier_segments[index];
+    }
+    const TextId text_id =
+        qualified_name_ordinary_qualifier_text_id(parser, qn, index);
+    return std::string(parser.parser_text(text_id, {}));
+}
+
 Node* qualified_record_definition_in_context(
     const Parser& parser, const Parser::QualifiedNameRef& qn) {
     if (qn.base_text_id == kInvalidText) return nullptr;
     const int context_id =
-        qn.qualifier_segments.empty()
+        !qualified_name_has_ordinary_qualifier(qn)
             ? (qn.is_global_qualified ? 0 : parser.current_namespace_context_id())
             : parser.resolve_namespace_context(qn);
     return record_definition_in_context_by_text_id(parser, context_id,
@@ -326,7 +362,7 @@ Node* qualified_type_record_definition_from_structured_authority(
         return record;
     }
 
-    const bool is_qualified = !qn.qualifier_segments.empty() ||
+    const bool is_qualified = qualified_name_has_ordinary_qualifier(qn) ||
                               qn.is_global_qualified;
     if (!is_qualified) {
         if (const TypeSpec* current_member_type =
@@ -384,7 +420,7 @@ bool qualified_type_owner_has_structured_authority(
     const Parser& parser, const Parser::QualifiedNameRef& owner_qn) {
     if (owner_qn.base_text_id == kInvalidText) return false;
 
-    if (owner_qn.qualifier_segments.empty() &&
+    if (!qualified_name_has_ordinary_qualifier(owner_qn) &&
         !owner_qn.is_global_qualified &&
         parser.has_visible_typedef_type(owner_qn.base_text_id)) {
         return true;
@@ -406,7 +442,7 @@ Node* qualified_enum_definition_in_context(
     const Parser& parser, const Parser::QualifiedNameRef& qn) {
     if (qn.base_text_id == kInvalidText) return nullptr;
     const int context_id =
-        qn.qualifier_segments.empty()
+        !qualified_name_has_ordinary_qualifier(qn)
             ? (qn.is_global_qualified ? 0 : parser.current_namespace_context_id())
             : parser.resolve_namespace_context(qn);
     if (context_id < 0) return nullptr;
@@ -456,36 +492,28 @@ bool qualified_name_from_text(const Parser& parser, std::string_view text,
 Parser::QualifiedNameRef qualified_owner_name(const Parser& parser,
                                               const Parser::QualifiedNameRef& qn) {
     Parser::QualifiedNameRef owner_qn;
-    if (qn.qualifier_segments.empty()) return owner_qn;
+    const size_t qualifier_count = qualified_name_ordinary_qualifier_count(qn);
+    if (qualifier_count == 0) return owner_qn;
 
     owner_qn.is_global_qualified = qn.is_global_qualified;
-    owner_qn.qualifier_segments.assign(qn.qualifier_segments.begin(),
-                                       qn.qualifier_segments.end() - 1);
-    if (!qn.qualifier_text_ids.empty()) {
-        const size_t owner_qualifier_count =
-            qn.qualifier_segments.size() > 0 ? qn.qualifier_segments.size() - 1 : 0;
-        const size_t copy_count =
-            owner_qualifier_count < qn.qualifier_text_ids.size()
-                ? owner_qualifier_count
-                : qn.qualifier_text_ids.size();
-        owner_qn.qualifier_text_ids.assign(
-            qn.qualifier_text_ids.begin(),
-            qn.qualifier_text_ids.begin() + copy_count);
+    for (size_t i = 0; i + 1 < qualifier_count; ++i) {
+        owner_qn.qualifier_segments.push_back(
+            qualified_name_ordinary_qualifier_segment(parser, qn, i));
+        owner_qn.qualifier_text_ids.push_back(
+            qualified_name_ordinary_qualifier_text_id(parser, qn, i));
     }
 
-    owner_qn.base_name = qn.qualifier_segments.back();
-    if (qn.qualifier_text_ids.size() >= qn.qualifier_segments.size()) {
-        owner_qn.base_text_id = qn.qualifier_text_ids[qn.qualifier_segments.size() - 1];
-    } else {
-        owner_qn.base_text_id =
-            parser.parser_text_id_for_token(kInvalidText, owner_qn.base_name);
-    }
+    owner_qn.base_text_id = qualified_name_ordinary_qualifier_text_id(
+        parser, qn, qualifier_count - 1);
+    owner_qn.base_name = qualified_name_ordinary_qualifier_segment(
+        parser, qn, qualifier_count - 1);
     return owner_qn;
 }
 
 const TypeSpec* record_member_typedef_type_from_structured_authority(
     const Parser& parser, const Parser::QualifiedNameRef& qn) {
-    if (qn.qualifier_segments.empty() || qn.base_text_id == kInvalidText) {
+    if (!qualified_name_has_ordinary_qualifier(qn) ||
+        qn.base_text_id == kInvalidText) {
         return nullptr;
     }
 
@@ -511,7 +539,7 @@ const TypeSpec* record_member_typedef_type_from_structured_authority(
 std::string resolve_qualified_owner_type_name(
     const Parser& parser,
     const Parser::QualifiedNameRef& qn) {
-    if (qn.qualifier_segments.empty()) return {};
+    if (!qualified_name_has_ordinary_qualifier(qn)) return {};
 
     const Parser::QualifiedNameRef owner_qn = qualified_owner_name(parser, qn);
     const std::string owner_name =
@@ -526,7 +554,7 @@ bool split_qualified_member_type_name(
     Parser::QualifiedNameRef* owner_qn, std::string* member_name) {
     Parser::QualifiedNameRef qn;
     if (!qualified_name_from_text(parser, text, &qn) ||
-        qn.qualifier_segments.empty()) {
+        !qualified_name_has_ordinary_qualifier(qn)) {
         return false;
     }
     if (owner_qn) *owner_qn = qualified_owner_name(parser, qn);
@@ -855,7 +883,7 @@ std::string qualified_name_text(const Parser& parser,
 
 std::string resolve_qualified_typedef_name(const Parser& parser,
                                            const Parser::QualifiedNameRef& qn) {
-    const bool is_qualified = !qn.qualifier_segments.empty() ||
+    const bool is_qualified = qualified_name_has_ordinary_qualifier(qn) ||
                               qn.is_global_qualified;
     const std::string_view base_name =
         parser.parser_text(qn.base_text_id, qn.base_name);
@@ -873,7 +901,7 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
     std::string resolved = parser.visible_name_spelling(visible_type);
     if (visible_type && parser.has_visible_typedef_type(qn.base_text_id))
         return resolved;
-    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
+    if (qualified_name_has_ordinary_qualifier(qn) || qn.is_global_qualified) {
         return {};
     }
     return {};
@@ -885,7 +913,7 @@ std::string resolve_qualified_known_type_name(
     std::string resolved = resolve_qualified_typedef_name(parser, qn);
     if (!resolved.empty()) return resolved;
 
-    const bool is_qualified = !qn.qualifier_segments.empty() ||
+    const bool is_qualified = qualified_name_has_ordinary_qualifier(qn) ||
                               qn.is_global_qualified;
     if (is_qualified) {
         const Parser::VisibleNameResult resolved_type =
@@ -929,7 +957,7 @@ std::string resolve_qualified_known_type_name(
 QualifiedTypeProbe probe_qualified_type(const Parser& parser,
                                         const Parser::QualifiedNameRef& qn) {
     QualifiedTypeProbe probe;
-    const bool is_qualified = !qn.qualifier_segments.empty() ||
+    const bool is_qualified = qualified_name_has_ordinary_qualifier(qn) ||
                               qn.is_global_qualified;
 
     if (is_qualified) {

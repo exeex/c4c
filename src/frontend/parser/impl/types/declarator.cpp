@@ -525,7 +525,8 @@ static const ParserAliasTemplateInfo*
 find_structured_alias_template_info_for_expr_head(
     Parser& parser, const Parser::QualifiedNameRef& qn) {
     if (qn.base_text_id == kInvalidText) return nullptr;
-    if (qn.qualifier_segments.empty() && !qn.is_global_qualified) {
+    if (!qualified_name_has_ordinary_qualifier(qn) &&
+        !qn.is_global_qualified) {
         if (const ParserAliasTemplateInfo* info =
                 parser.find_alias_template_info_in_context(
                     parser.current_namespace_context_id(), qn.base_text_id)) {
@@ -538,7 +539,7 @@ find_structured_alias_template_info_for_expr_head(
     }
 
     const int context_id =
-        qn.qualifier_segments.empty()
+        !qualified_name_has_ordinary_qualifier(qn)
             ? (qn.is_global_qualified ? 0
                                       : parser.current_namespace_context_id())
             : parser.resolve_namespace_context(qn);
@@ -556,7 +557,7 @@ static bool has_structured_alias_like_template_expr_head(
         if (out_alias_info) *out_alias_info = alias_info;
         return true;
     }
-    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
+    if (qualified_name_has_ordinary_qualifier(qn) || qn.is_global_qualified) {
         return false;
     }
     return parser.find_visible_typedef_type(qn.base_text_id) != nullptr;
@@ -844,7 +845,8 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         if (check(TokenKind::ColonColon) || check(TokenKind::Identifier)) {
             QualifiedNameRef qn;
             if (peek_qualified_name(&qn, /*allow_global=*/true) &&
-                (qn.is_global_qualified || !qn.qualifier_segments.empty())) {
+                (qn.is_global_qualified ||
+                 qualified_name_has_ordinary_qualifier(qn))) {
                 const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
                 if (has_qualified_type_parse_fallback(probe))
                     return true;
@@ -1426,22 +1428,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                                          &owner_ts);
 
                 auto attach_final_owner_spelling = [&]() {
-                    if (qn.qualifier_segments.empty()) return;
-                    Parser::QualifiedNameRef owner_qn;
-                    owner_qn.is_global_qualified = qn.is_global_qualified;
-                    const size_t owner_base_index = qn.qualifier_segments.size() - 1;
-                    owner_qn.qualifier_segments.assign(
-                        qn.qualifier_segments.begin(),
-                        qn.qualifier_segments.begin() + owner_base_index);
-                    owner_qn.qualifier_text_ids.assign(
-                        qn.qualifier_text_ids.begin(),
-                        qn.qualifier_text_ids.begin() + owner_base_index);
-                    owner_qn.base_name = qn.qualifier_segments[owner_base_index];
-                    owner_qn.base_text_id =
-                        owner_base_index < qn.qualifier_text_ids.size()
-                            ? qn.qualifier_text_ids[owner_base_index]
-                            : parser_text_id_for_token(kInvalidText,
-                                                       owner_qn.base_name);
+                    if (!qualified_name_has_ordinary_qualifier(qn)) return;
+                    Parser::QualifiedNameRef owner_qn =
+                        qualified_owner_name(*this, qn);
                     owner_ts.base = TB_TYPEDEF;
                     owner_ts.tag_text_id = owner_qn.base_text_id;
                     owner_ts.tpl_struct_origin_key = qualified_name_key(owner_qn);
@@ -1449,7 +1438,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                         resolve_namespace_context(owner_qn);
                     owner_ts.is_global_qualified = owner_qn.is_global_qualified;
                     owner_ts.n_qualifier_segments =
-                        static_cast<int>(owner_qn.qualifier_segments.size());
+                        static_cast<int>(
+                            qualified_name_ordinary_qualifier_count(owner_qn));
                     if (owner_ts.n_qualifier_segments > 0) {
                         owner_ts.qualifier_segments =
                             arena_.alloc_array<const char*>(
@@ -1459,12 +1449,14 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                                 owner_ts.n_qualifier_segments);
                         for (int i = 0; i < owner_ts.n_qualifier_segments; ++i) {
                             owner_ts.qualifier_segments[i] =
-                                arena_.strdup(owner_qn.qualifier_segments[i].c_str());
+                                arena_.strdup(
+                                    qualified_name_ordinary_qualifier_segment(
+                                        *this, owner_qn,
+                                        static_cast<size_t>(i))
+                                        .c_str());
                             owner_ts.qualifier_text_ids[i] =
-                                i < static_cast<int>(
-                                        owner_qn.qualifier_text_ids.size())
-                                    ? owner_qn.qualifier_text_ids[i]
-                                    : kInvalidText;
+                                qualified_name_ordinary_qualifier_text_id(
+                                    *this, owner_qn, static_cast<size_t>(i));
                         }
                     }
                     set_declarator_legacy_display_tag_if_present(
@@ -1477,7 +1469,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                 };
 
                 if (!has_deferred_template_owner_member_identity(owner_ts) &&
-                    !qn.qualifier_segments.empty()) {
+                    qualified_name_has_ordinary_qualifier(qn)) {
                     attach_final_owner_spelling();
                 }
 
@@ -1496,14 +1488,15 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                 return true;
             };
         const bool is_qualified_typename =
-            qn.is_global_qualified || !qn.qualifier_segments.empty();
+            qn.is_global_qualified || qualified_name_has_ordinary_qualifier(qn);
         auto attach_qualified_typename_metadata = [&](TypeSpec* type) {
             if (!type || !is_qualified_typename) return;
             type->tag_text_id = qn.base_text_id;
             type->is_global_qualified = qn.is_global_qualified;
             type->namespace_context_id = resolve_namespace_context(qn);
             type->n_qualifier_segments =
-                static_cast<int>(qn.qualifier_segments.size());
+                static_cast<int>(
+                    qualified_name_ordinary_qualifier_count(qn));
             if (type->n_qualifier_segments <= 0) return;
             type->qualifier_segments =
                 arena_.alloc_array<const char*>(type->n_qualifier_segments);
@@ -1511,11 +1504,13 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                 arena_.alloc_array<TextId>(type->n_qualifier_segments);
             for (int i = 0; i < type->n_qualifier_segments; ++i) {
                 type->qualifier_segments[i] =
-                    arena_.strdup(qn.qualifier_segments[i].c_str());
+                    arena_.strdup(
+                        qualified_name_ordinary_qualifier_segment(
+                            *this, qn, static_cast<size_t>(i))
+                            .c_str());
                 type->qualifier_text_ids[i] =
-                    i < static_cast<int>(qn.qualifier_text_ids.size())
-                        ? qn.qualifier_text_ids[i]
-                        : kInvalidText;
+                    qualified_name_ordinary_qualifier_text_id(
+                        *this, qn, static_cast<size_t>(i));
             }
         };
         auto write_resolved_type_output = [&]() {
@@ -1534,7 +1529,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                     return type;
                 }
             }
-            if (qn.qualifier_segments.empty() ||
+            if (!qualified_name_has_ordinary_qualifier(qn) ||
                 qn.base_text_id == kInvalidText) {
                 return nullptr;
             }
@@ -1571,7 +1566,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
             }
         }
         const TypeSpec* visible_dep_typedef =
-            (!qn.is_global_qualified && qn.qualifier_segments.empty())
+            (!qn.is_global_qualified &&
+             !qualified_name_has_ordinary_qualifier(qn))
                 ? find_visible_typedef_type(qn.base_text_id)
                 : nullptr;
         if (visible_dep_typedef) {
@@ -1630,40 +1626,38 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                 return true;
             }
             resolved = dep_name;
-            if (!qn.qualifier_segments.empty()) {
+            if (qualified_name_has_ordinary_qualifier(qn)) {
                 auto follow_nested_owner =
                     [&](const QualifiedNameRef& owner_name) -> const Node* {
-                    if (owner_name.qualifier_segments.empty()) return nullptr;
+                    const size_t owner_segment_count =
+                        qualified_name_ordinary_qualifier_count(owner_name);
+                    if (owner_segment_count == 0) return nullptr;
 
                     auto owner_segment_text_id = [&](size_t index) -> TextId {
-                        if (index < owner_name.qualifier_text_ids.size() &&
-                            owner_name.qualifier_text_ids[index] != kInvalidText) {
-                            return owner_name.qualifier_text_ids[index];
-                        }
-                        if (index >= owner_name.qualifier_segments.size()) {
-                            return kInvalidText;
-                        }
-                        return parser_text_id_for_token(
-                            kInvalidText, owner_name.qualifier_segments[index]);
+                        return qualified_name_ordinary_qualifier_text_id(
+                            *this, owner_name, index);
                     };
 
-                    auto owner_segment_text = [&](size_t index) -> std::string_view {
-                        if (index >= owner_name.qualifier_segments.size()) return {};
-                        return parser_text(owner_segment_text_id(index),
-                                           owner_name.qualifier_segments[index]);
+                    auto owner_segment_text = [&](size_t index) -> std::string {
+                        if (index >= owner_segment_count) return {};
+                        return std::string(
+                            parser_text(
+                                owner_segment_text_id(index),
+                                qualified_name_ordinary_qualifier_segment(
+                                    *this, owner_name, index)));
                     };
 
                     for (size_t owner_start = 0;
-                         owner_start < owner_name.qualifier_segments.size();
+                         owner_start < owner_segment_count;
                          ++owner_start) {
                         QualifiedNameRef owner_qn;
                         owner_qn.is_global_qualified =
                             owner_name.is_global_qualified;
-                        owner_qn.qualifier_segments.assign(
-                            owner_name.qualifier_segments.begin(),
-                            owner_name.qualifier_segments.begin() + owner_start);
                         owner_qn.qualifier_text_ids.reserve(owner_start);
                         for (size_t i = 0; i < owner_start; ++i) {
+                            owner_qn.qualifier_segments.push_back(
+                                qualified_name_ordinary_qualifier_segment(
+                                    *this, owner_name, i));
                             owner_qn.qualifier_text_ids.push_back(
                                 owner_segment_text_id(i));
                         }
@@ -1678,11 +1672,11 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
 
                         bool ok = true;
                         for (size_t i = owner_start + 1;
-                             i < owner_name.qualifier_segments.size(); ++i) {
+                             i < owner_segment_count; ++i) {
                             const Node* nested_decl = nullptr;
                             const Node* nested_owner = nullptr;
                             const TextId segment_text_id = owner_segment_text_id(i);
-                            const std::string_view segment_text =
+                            const std::string segment_text =
                                 owner_segment_text(i);
                             auto matches_owner_segment = [&](const Node* candidate) -> bool {
                                 if (!candidate) return false;
@@ -1855,7 +1849,7 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         out_ts->is_global_qualified = qn.is_global_qualified;
         out_ts->namespace_context_id = parser.resolve_namespace_context(qn);
         out_ts->n_qualifier_segments =
-            static_cast<int>(qn.qualifier_segments.size());
+            static_cast<int>(qualified_name_ordinary_qualifier_count(qn));
         if (out_ts->n_qualifier_segments > 0) {
             out_ts->qualifier_segments =
                 parser.arena_.alloc_array<const char*>(out_ts->n_qualifier_segments);
@@ -1863,17 +1857,19 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
                 parser.arena_.alloc_array<TextId>(out_ts->n_qualifier_segments);
             for (int i = 0; i < out_ts->n_qualifier_segments; ++i) {
                 out_ts->qualifier_segments[i] =
-                    parser.arena_.strdup(qn.qualifier_segments[i].c_str());
+                    parser.arena_.strdup(
+                        qualified_name_ordinary_qualifier_segment(
+                            parser, qn, static_cast<size_t>(i))
+                            .c_str());
                 out_ts->qualifier_text_ids[i] =
-                    i < static_cast<int>(qn.qualifier_text_ids.size())
-                        ? qn.qualifier_text_ids[i]
-                        : kInvalidText;
+                    qualified_name_ordinary_qualifier_text_id(
+                        parser, qn, static_cast<size_t>(i));
             }
         }
     };
 
     const bool is_qualified =
-        qn.is_global_qualified || !qn.qualifier_segments.empty();
+        qn.is_global_qualified || qualified_name_has_ordinary_qualifier(qn);
     const int after_pos =
         parser.core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
         2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
@@ -1883,7 +1879,7 @@ bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
         Node* primary_tpl = parser.find_template_struct_primary(qn);
         if (!primary_tpl) {
             const int context_id =
-                qn.qualifier_segments.empty()
+                !qualified_name_has_ordinary_qualifier(qn)
                     ? (qn.is_global_qualified ? 0
                                               : parser.current_namespace_context_id())
                     : parser.resolve_namespace_context(qn);

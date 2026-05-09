@@ -8,34 +8,42 @@ Current Step Title: Retire Ordinary Semantic Reparse Callers
 
 ## Just Finished
 
-Completed Step 2 `core.cpp` projection/owner-fallback packet in
-`src/frontend/parser/impl/core.cpp`.
+Completed Step 2 non-`core.cpp` ordinary `QualifiedNameRef` semantic caller
+scan and TextId-first cleanup.
 
-- Scanned remaining `core.cpp` `QualifiedNameRef` projection callers after the
-  ordinary resolver helper work.
-- Changed `apply_qualified_name` namespace owner fallback to treat
-  `qualifier_text_ids` as the authority when trimming the owner qualifier,
-  with `qualifier_segments` and `qualifier_symbol_ids` only resized as mirrors.
-- Left `qualified_name_text`, parser construction, and AST/debug spelling
-  projection on `qualifier_segments`; those are retained display/compatibility
-  paths, not ordinary semantic lookup authority.
-- No rendered `A::B::C` splitter was added.
+- Scanned focused non-`core.cpp` callers in `declarations.cpp`,
+  `expressions.cpp`, `types/declarator.cpp`, `types/base.cpp`,
+  `types/template.cpp`, and `types_helpers.hpp` for
+  `QualifiedNameRef`, `qualifier_segments`, `resolve_qualified_type/value`,
+  and `qualified_name_key` usage.
+- Added ordinary qualifier accessors in `types_helpers.hpp` so semantic callers
+  can test/count/copy qualifier `TextId`s first, with segment strings retained
+  only as bounded legacy mirrors.
+- Updated semantic branches in declarations, expressions, declarator, and type
+  helper lookup paths that were using `qualifier_segments.empty()` or
+  `qualifier_segments.size()` as ordinary lookup authority.
+- Retained `qualifier_segments` uses that are syntax-position reconstruction,
+  AST/display mirror copying, or compatibility fallback internals; no rendered
+  `A::B::C` splitter was added.
+- Step 2 is ready for supervisor review.
 
 ## Suggested Next
 
-Continue Step 2 with a supervisor-selected bounded scan of non-`core.cpp`
-ordinary `QualifiedNameRef` callers, or send Step 2 for review if the remaining
-projection-only uses are acceptable.
+Send Step 2 for reviewer scrutiny against the source idea, with attention to
+the retained syntax/display/compatibility `qualifier_segments` uses.
 
 ## Watchouts
 
-- `apply_qualified_name` still populates AST spelling arrays from
-  `qualifier_segments` because downstream AST/HIR display and compatibility
-  paths expect that shape; semantic consumers should use the paired TextIds.
-- The legacy mirror fallback remains intentionally find/intern-by-segment only
-  and should remain compatibility-only.
-- No blocker found in `core.cpp`: the remaining ordinary semantic branches
-  inspected now prefer TextIds when present.
+- `types/template.cpp` still has a branch that calls `resolve_namespace_context`
+  when segment mirrors are present and otherwise follows `qualifier_text_ids`
+  directly; this is retained because `resolve_namespace_context` is now
+  TextId-first for ordinary qualifiers.
+- `types/base.cpp` remaining segment-size uses in the focused scan are token
+  lookahead math from freshly parsed syntax or syntax reconstruction, not
+  semantic lookup authority.
+- `declarations.cpp` and expression/declarator AST projection still preserve
+  segment mirrors beside TextIds for downstream compatibility and display.
+- No blocker found in non-`core.cpp` ordinary semantic callers.
 
 ## Proof
 

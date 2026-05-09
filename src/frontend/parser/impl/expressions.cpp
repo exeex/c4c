@@ -93,7 +93,7 @@ static void attach_alias_template_member_typedef_expr_type(
     const std::vector<Parser::TemplateArgParseResult>& parsed_args) {
     if (!ident || parsed_args.empty()) return;
     const int context_id =
-        qn.qualifier_segments.empty()
+        !qualified_name_has_ordinary_qualifier(qn)
             ? (qn.is_global_qualified ? 0 : parser.current_namespace_context_id())
             : parser.resolve_namespace_context(qn);
     if (context_id < 0) return;
@@ -341,36 +341,28 @@ static const Node* nested_record_definition_from_member_carrier(
     return nullptr;
 }
 
-static TextId qualified_name_qualifier_text_id(
-    const Parser& parser, const Parser::QualifiedNameRef& qn, size_t index) {
-    if (index < qn.qualifier_text_ids.size() &&
-        qn.qualifier_text_ids[index] != kInvalidText) {
-        return qn.qualifier_text_ids[index];
-    }
-    if (index >= qn.qualifier_segments.size()) return kInvalidText;
-    return parser.parser_text_id_for_token(kInvalidText,
-                                           qn.qualifier_segments[index]);
-}
-
 static const Node* static_member_owner_record_from_structured_path(
     const Parser& parser, const Parser::QualifiedNameRef& qn) {
-    const size_t owner_segment_count = qn.qualifier_segments.size();
+    const size_t owner_segment_count =
+        qualified_name_ordinary_qualifier_count(qn);
     if (owner_segment_count == 0) return nullptr;
 
     for (size_t first_record = 0; first_record < owner_segment_count;
          ++first_record) {
         Parser::QualifiedNameRef record_qn;
         record_qn.is_global_qualified = qn.is_global_qualified;
-        record_qn.qualifier_segments.assign(qn.qualifier_segments.begin(),
-                                            qn.qualifier_segments.begin() +
-                                                first_record);
         for (size_t i = 0; i < first_record; ++i) {
+            record_qn.qualifier_segments.push_back(
+                qualified_name_ordinary_qualifier_segment(parser, qn, i));
             record_qn.qualifier_text_ids.push_back(
-                qualified_name_qualifier_text_id(parser, qn, i));
+                qualified_name_ordinary_qualifier_text_id(parser, qn, i));
         }
-        record_qn.base_name = qn.qualifier_segments[first_record];
+        record_qn.base_name =
+            qualified_name_ordinary_qualifier_segment(parser, qn,
+                                                     first_record);
         record_qn.base_text_id =
-            qualified_name_qualifier_text_id(parser, qn, first_record);
+            qualified_name_ordinary_qualifier_text_id(parser, qn,
+                                                     first_record);
 
         const Node* record =
             qualified_type_record_definition_from_structured_authority(
@@ -381,7 +373,8 @@ static const Node* static_member_owner_record_from_structured_path(
              record && nested_index < owner_segment_count; ++nested_index) {
             record = nested_record_definition_from_member_carrier(
                 record,
-                qualified_name_qualifier_text_id(parser, qn, nested_index));
+                qualified_name_ordinary_qualifier_text_id(parser, qn,
+                                                         nested_index));
         }
         if (record) return record;
     }
@@ -391,22 +384,22 @@ static const Node* static_member_owner_record_from_structured_path(
 
 static const Node* canonical_static_member_owner_record(
     const Parser& parser, Parser::QualifiedNameRef& qn) {
-    if (qn.qualifier_segments.empty()) return nullptr;
+    if (!qualified_name_has_ordinary_qualifier(qn)) return nullptr;
 
     Parser::QualifiedNameRef owner_qn;
     owner_qn.is_global_qualified = qn.is_global_qualified;
-    const size_t owner_segment_count = qn.qualifier_segments.size();
-    owner_qn.qualifier_segments.assign(qn.qualifier_segments.begin(),
-                                       qn.qualifier_segments.end() - 1);
-    owner_qn.qualifier_text_ids.assign(qn.qualifier_text_ids.begin(),
-                                       qn.qualifier_text_ids.begin() +
-                                           std::min(qn.qualifier_text_ids.size(),
-                                                    owner_segment_count - 1));
-    owner_qn.base_name = qn.qualifier_segments.back();
-    owner_qn.base_text_id =
-        qn.qualifier_text_ids.size() >= owner_segment_count
-            ? qn.qualifier_text_ids[owner_segment_count - 1]
-            : parser.parser_text_id_for_token(kInvalidText, owner_qn.base_name);
+    const size_t owner_segment_count =
+        qualified_name_ordinary_qualifier_count(qn);
+    for (size_t i = 0; i + 1 < owner_segment_count; ++i) {
+        owner_qn.qualifier_segments.push_back(
+            qualified_name_ordinary_qualifier_segment(parser, qn, i));
+        owner_qn.qualifier_text_ids.push_back(
+            qualified_name_ordinary_qualifier_text_id(parser, qn, i));
+    }
+    owner_qn.base_name = qualified_name_ordinary_qualifier_segment(
+        parser, qn, owner_segment_count - 1);
+    owner_qn.base_text_id = qualified_name_ordinary_qualifier_text_id(
+        parser, qn, owner_segment_count - 1);
 
     const Node* owner =
         qualified_type_record_definition_from_structured_authority(parser,
@@ -1731,10 +1724,11 @@ Node* parse_primary(Parser& parser) {
         const std::string_view qn_base_name =
             parser.parser_text(qn.base_text_id, qn.base_name);
         const Parser::VisibleNameResult direct_resolved_type =
-            qn.qualifier_segments.empty()
+            !qualified_name_has_ordinary_qualifier(qn)
                 ? parser.resolve_visible_type(qn.base_text_id)
                 : Parser::VisibleNameResult{};
-        if (parser.is_cpp_mode() && qn.qualifier_segments.empty() &&
+        if (parser.is_cpp_mode() &&
+            !qualified_name_has_ordinary_qualifier(qn) &&
             parser.check(TokenKind::LParen)) {
             const TypeSpec* direct_typedef =
                 parser.find_visible_typedef_type(qn.base_text_id);
