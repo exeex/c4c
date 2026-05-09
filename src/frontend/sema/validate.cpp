@@ -759,6 +759,42 @@ class Validator {
   };
 
   std::vector<Diagnostic> diags_;
+
+  // String-keyed Sema state inventory.
+  //
+  // Semantic authority with structured mirrors:
+  // - globals_, enum_consts_, funcs_, ref_overload_sigs_, cpp_overload_sigs_,
+  //   scopes_, and local/enum/global ConstMap stacks are rendered-name lookup
+  //   tables retained for legacy carriers and diagnostics. Their owners are
+  //   Validator binding/lookup paths; their limitation is that equal spelling
+  //   can cross namespace/domain boundaries. Remove or demote each rendered
+  //   table after all covered references enter through SemaStructuredNameKey or
+  //   TextId maps and complete metadata misses fail closed.
+  // - consteval_funcs_ is the rendered bridge passed to consteval/HIR call
+  //   evaluation beside consteval_funcs_by_text_ and consteval_funcs_by_key_.
+  //   Its owner is the validate-to-consteval handoff; remove it when that
+  //   interface no longer needs rendered-name compatibility.
+  //
+  // Compatibility mirrors:
+  // - structured_global_keys_by_name_, structured_enum_const_keys_by_name_,
+  //   structured_function_names_, structured_ref_overload_names_,
+  //   structured_cpp_overload_names_, structured_scope_names_,
+  //   structured_record_keys_by_tag_, complete_structs_, complete_unions_, and
+  //   template_type_param_text_id_by_name_ describe which rendered spellings
+  //   have structured backing or map one rendered spelling back to one
+  //   structured key. They are not cross-domain identity. Keep them only while
+  //   no-metadata parser carriers and comparison probes need a rendered bridge.
+  //
+  // Local syntax-name helpers:
+  // - struct_defs_by_unqualified_name_ and
+  //   struct_field_text_ids_by_name_by_key_ intentionally use unqualified
+  //   spelling inside an already selected record domain. Their owner is record
+  //   lookup/layout. They can go away when all member and owner references carry
+  //   TextId/domain keys.
+  // - template_type_params_ is the legacy rendered fallback for template type
+  //   parameter visibility. template_type_param_text_ids_ is the structured
+  //   authority; remove the rendered set once TypeSpec/Node carriers always
+  //   preserve template parameter TextIds.
   std::unordered_map<std::string, TypeSpec> globals_;
   std::unordered_map<SemaStructuredNameKey, const TypeSpec*, SemaStructuredNameKeyHash>
       structured_globals_;

@@ -8,22 +8,28 @@ Current Step Title: Inventory Validate String Tables
 
 ## Just Finished
 
-Lifecycle activation created the active runbook and initialized executor state
-for Step 1.
+Step 1: Inventory Validate String Tables completed for
+`src/frontend/sema/validate.cpp`. The Validator state now has an in-file
+inventory classifying the named string-keyed tables as semantic authority with
+structured mirrors, compatibility mirrors, local syntax-name helpers, or legacy
+template fallbacks, with owner/limitation/removal-condition notes for retained
+rendered-name bridges.
 
 ## Suggested Next
 
-Start Step 1 by inventorying string-keyed tables in
-`src/frontend/sema/validate.cpp` and classifying each table's current role.
+Start the next Step 2 packet by converting one covered lookup path to prefer
+structured keys/TextIds and to fail closed when complete metadata is present.
 
 ## Watchouts
 
 - Do not treat rendered `std::string` lookup as authority when complete
   structured metadata is present.
 - Do not weaken tests or mark supported paths unsupported.
-- Keep source-idea changes out of routine execution unless durable intent
-  changes.
+- The Step 1 change is comment-only; any behavior change should be in a
+  separate packet with focused tests for stale rendered names.
 
 ## Proof
 
-Lifecycle-only activation; no build or test proof required.
+Passed: `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^positive_sema_') > test_after.log 2>&1`
+
+Proof log: `test_after.log` reports 34/34 `positive_sema_` tests passed.
