@@ -1,7 +1,8 @@
 # Parser Sema Qualified Name Text Reparse Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-08
+Closed: 2026-05-09
 
 Parent Ideas:
 - `ideas/closed/146_qualified_name_deferred_carrier_authority.md`
@@ -94,3 +95,18 @@ split rendered qualified names to recover semantics.
 - `qualifier_segments` strings are used without checking the matching
   `qualifier_text_ids` / `QualifiedNameKey`.
 - Tests only assert prettier spelling and do not prove semantic authority.
+
+## Closure Notes
+
+Closed after Steps 1-6 retired ordinary semantic reparse callers, demoted
+qualified member-type string splitting, bounded token injection to syntax
+reconstruction compatibility, and audited `QualifiedNameRef` display mirrors.
+Retained rendered qualified-name surfaces are classified as diagnostics,
+display, compatibility mirrors, or explicit syntax reconstruction rather than
+semantic lookup authority.
+
+Closure proof used full-suite validation in `test_after.log`:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+passed 3023/3023 tests. The close-time regression guard compared
+`test_baseline.log` to `test_after.log` with non-decreasing pass-count policy
+and found no new failures.
