@@ -427,6 +427,72 @@ static bool parser_binding_key_has_authoritative_metadata(
             key.spelling_text_id != kInvalidText);
 }
 
+static bool parser_nttp_binding_metadata_is_authoritative(
+    const ParserNttpBindingMetadata& meta) {
+    return meta.name_text_id != kInvalidText ||
+           meta.owner_template_key.base_text_id != kInvalidText ||
+           meta.parameter_index >= 0;
+}
+
+static bool substitute_nttp_array_size_from_metadata(
+    Parser& parser,
+    TypeSpec* type,
+    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+    const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata) {
+    if (!type || !type->array_size_expr ||
+        type->array_size_expr->kind != NK_VAR ||
+        !type->array_size_expr->name) {
+        return false;
+    }
+
+    auto apply_value = [&](long long value) {
+        if (type->array_rank > 0) {
+            type->array_dims[0] = value;
+            type->array_size = value;
+        }
+        type->array_size_expr = nullptr;
+    };
+
+    bool has_authoritative_metadata = false;
+    if (nttp_binding_metadata) {
+        TextId ref_text_id = type->array_size_expr->unqualified_text_id;
+        if (ref_text_id == kInvalidText &&
+            type->array_size_expr->unqualified_name &&
+            type->array_size_expr->unqualified_name[0]) {
+            ref_text_id = parser.parser_text_id_for_token(
+                kInvalidText, type->array_size_expr->unqualified_name);
+        }
+        if (ref_text_id == kInvalidText && type->array_size_expr->name &&
+            type->array_size_expr->name[0]) {
+            ref_text_id = parser.find_parser_text_id(type->array_size_expr->name);
+        }
+
+        for (const ParserNttpBindingMetadata& meta :
+             *nttp_binding_metadata) {
+            has_authoritative_metadata =
+                has_authoritative_metadata ||
+                parser_nttp_binding_metadata_is_authoritative(meta);
+            if (ref_text_id != kInvalidText &&
+                meta.name_text_id != kInvalidText &&
+                ref_text_id == meta.name_text_id &&
+                meta.parameter_index >= 0) {
+                apply_value(meta.value);
+                return true;
+            }
+        }
+    }
+
+    if (has_authoritative_metadata) return false;
+
+    for (const auto& [pname, value] : nttp_bindings) {
+        if (std::string(type->array_size_expr->name) == pname) {
+            apply_value(value);
+            return true;
+        }
+    }
+    return false;
+}
+
 static ParserTemplateBindingSet parser_binding_set_from_metadata(
     Parser& parser,
     const QualifiedNameKey& owner_template_key,
@@ -1880,6 +1946,7 @@ TypeSpec Parser::parse_base_type() {
                     [&](TypeSpec member_ts,
                         const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
                         const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+                        const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata = nullptr,
                         bool* substituted_type = nullptr) {
                         if (substituted_type) *substituted_type = false;
                         for (const auto& [pname, pts] : type_bindings) {
@@ -1917,20 +1984,9 @@ TypeSpec Parser::parse_base_type() {
                                 break;
                             }
                         }
-                        if (member_ts.array_size_expr &&
-                            member_ts.array_size_expr->kind == NK_VAR &&
-                            member_ts.array_size_expr->name) {
-                            for (const auto& [pname, value] : nttp_bindings) {
-                                if (std::string(member_ts.array_size_expr->name) == pname) {
-                                    if (member_ts.array_rank > 0) {
-                                        member_ts.array_dims[0] = value;
-                                        member_ts.array_size = value;
-                                    }
-                                    member_ts.array_size_expr = nullptr;
-                                    break;
-                                }
-                            }
-                        }
+                        substitute_nttp_array_size_from_metadata(
+                            *this, &member_ts, nttp_bindings,
+                            nttp_binding_metadata);
                         return member_ts;
                     };
                 auto record_member_key_for_node =
@@ -2246,6 +2302,10 @@ TypeSpec Parser::parse_base_type() {
                                 &type_bindings, &nttp_bindings);
                         if (!selected || selected->n_member_typedefs <= 0)
                             return false;
+                        const std::vector<ParserNttpBindingMetadata>
+                            nttp_binding_meta =
+                                nttp_binding_metadata_for_template_params(
+                                    *this, rhs_primary, nttp_bindings);
                         for (int mi = 0; mi < selected->n_member_typedefs;
                              ++mi) {
                             const char* member =
@@ -2260,7 +2320,8 @@ TypeSpec Parser::parse_base_type() {
                             bool substituted = false;
                             *resolved_out = apply_template_bindings(
                                 selected->member_typedef_types[mi],
-                                type_bindings, nttp_bindings, &substituted);
+                                type_bindings, nttp_bindings,
+                                &nttp_binding_meta, &substituted);
                             (void)substituted;
                             return true;
                         }
@@ -2300,6 +2361,10 @@ TypeSpec Parser::parse_base_type() {
                         const Node* selected = select_template_struct_pattern_for_args(
                             actual_args, primary_tpl, specializations,
                             &type_bindings, &nttp_bindings);
+                        const std::vector<ParserNttpBindingMetadata>
+                            nttp_binding_meta =
+                                nttp_binding_metadata_for_template_params(
+                                    *this, primary_tpl, nttp_bindings);
                         if (selected && selected->template_arg_types &&
                             selected->template_arg_is_value) {
                             for (int ai = 0;
@@ -2384,7 +2449,8 @@ TypeSpec Parser::parse_base_type() {
                             bool substituted_type = false;
                             TypeSpec member_ts = apply_template_bindings(
                                 selected_member_ts,
-                                type_bindings, nttp_bindings, &substituted_type);
+                                type_bindings, nttp_bindings,
+                                &nttp_binding_meta, &substituted_type);
                             complete_member_typedef_type_from_owner_fields(
                                 owner, &member_ts);
                             if (!member_ts.record_def) {
@@ -3854,6 +3920,7 @@ TypeSpec Parser::parse_base_type() {
                                         [&](TypeSpec member_ts,
                                             const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
                                             const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+                                            const std::vector<ParserNttpBindingMetadata>* nttp_binding_metadata = nullptr,
                                             bool* substituted_type = nullptr) {
                                             if (substituted_type) {
                                                 *substituted_type = false;
@@ -3917,27 +3984,10 @@ TypeSpec Parser::parse_base_type() {
                                                     break;
                                                 }
                                             }
-                                            if (member_ts.array_size_expr &&
-                                                member_ts.array_size_expr->kind ==
-                                                    NK_VAR &&
-                                                member_ts.array_size_expr->name) {
-                                                for (const auto& [pname, value] :
-                                                     nttp_bindings) {
-                                                    if (std::string(
-                                                            member_ts.array_size_expr
-                                                                ->name) == pname) {
-                                                        if (member_ts.array_rank > 0) {
-                                                            member_ts.array_dims[0] =
-                                                                value;
-                                                            member_ts.array_size =
-                                                                value;
-                                                        }
-                                                        member_ts.array_size_expr =
-                                                            nullptr;
-                                                        break;
-                                                    }
-                                                }
-                                            }
+                                            substitute_nttp_array_size_from_metadata(
+                                                *this, &member_ts,
+                                                nttp_bindings,
+                                                nttp_binding_metadata);
                                             return member_ts;
                                         };
                                     auto resolve_structured_alias_member_type =
@@ -4248,6 +4298,12 @@ TypeSpec Parser::parse_base_type() {
                                                             0) {
                                                         return false;
                                                     }
+                                                    const std::vector<ParserNttpBindingMetadata>
+                                                        owner_nttp_binding_meta =
+                                                            nttp_binding_metadata_for_template_params(
+                                                                *this,
+                                                                owner_primary_tpl,
+                                                                owner_nttp_bindings);
                                                     for (int mi = 0;
                                                          mi < owner_selected
                                                                   ->n_member_typedefs;
@@ -4279,6 +4335,7 @@ TypeSpec Parser::parse_base_type() {
                                                                         [mi],
                                                                 owner_type_bindings,
                                                                 owner_nttp_bindings,
+                                                                &owner_nttp_binding_meta,
                                                                 &substituted);
                                                         (void)substituted;
                                                         break;
@@ -4363,6 +4420,11 @@ TypeSpec Parser::parse_base_type() {
                                                 selected->n_member_typedefs <= 0) {
                                                 return false;
                                             }
+                                            const std::vector<ParserNttpBindingMetadata>
+                                                nttp_binding_meta =
+                                                    nttp_binding_metadata_for_template_params(
+                                                        *this, primary_tpl,
+                                                        nttp_bindings);
                                             for (int mi = 0;
                                                  mi < selected->n_member_typedefs;
                                                  ++mi) {
@@ -4383,6 +4445,7 @@ TypeSpec Parser::parse_base_type() {
                                                     selected
                                                         ->member_typedef_types[mi],
                                                     type_bindings, nttp_bindings,
+                                                    &nttp_binding_meta,
                                                     &substituted);
                                                 (void)substituted;
                                                 return true;
@@ -8050,20 +8113,9 @@ TypeSpec Parser::parse_base_type() {
                                 member_ts =
                                     substitute_direct_member_template_param(
                                         member_ts);
-                                if (member_ts.array_size_expr &&
-                                    member_ts.array_size_expr->kind == NK_VAR &&
-                                    member_ts.array_size_expr->name) {
-                                    for (const auto& [npname, nval] : nttp_bindings) {
-                                        if (std::string(member_ts.array_size_expr->name) == npname) {
-                                            if (member_ts.array_rank > 0) {
-                                                member_ts.array_dims[0] = nval;
-                                                member_ts.array_size = nval;
-                                            }
-                                            member_ts.array_size_expr = nullptr;
-                                            break;
-                                        }
-                                    }
-                                }
+                                substitute_nttp_array_size_from_metadata(
+                                    *this, &member_ts, nttp_bindings,
+                                    &nttp_binding_meta);
                                 inst->member_typedef_types[ti] = member_ts;
                                 if (inst->member_typedef_names[ti] &&
                                     inst->member_typedef_names[ti][0]) {
@@ -8109,22 +8161,9 @@ TypeSpec Parser::parse_base_type() {
                                 substitute_direct_member_template_param(
                                     new_f->type);
                             // Substitute NTTP values in array dimensions
-                            if (new_f->type.array_size_expr) {
-                                Node* ase = new_f->type.array_size_expr;
-                                if (ase->kind == NK_VAR && ase->name) {
-                                    for (const auto& [npname, nval] : nttp_bindings) {
-                                        if (std::string(ase->name) == npname) {
-                                            // Replace the first array dim with the NTTP value
-                                            if (new_f->type.array_rank > 0) {
-                                                new_f->type.array_dims[0] = nval;
-                                                new_f->type.array_size = nval;
-                                            }
-                                            new_f->type.array_size_expr = nullptr;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
+                            substitute_nttp_array_size_from_metadata(
+                                *this, &new_f->type, nttp_bindings,
+                                &nttp_binding_meta);
                             inst->fields[fi] = new_f;
                         }
                         // Clone methods with type substitution

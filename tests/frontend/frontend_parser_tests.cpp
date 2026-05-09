@@ -6810,6 +6810,149 @@ void test_parser_template_instantiation_dedup_keys_structure_direct_emission() {
               "stale rendered template tag-map entries must not override structured instantiation identity");
 }
 
+void test_parser_nttp_array_size_substitution_uses_param_text_metadata() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+  const c4c::Token box_token =
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Box");
+  const c4c::TextId param_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "N");
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->unqualified_text_id = box_token.text_id;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("N");
+  primary->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  primary->template_param_name_text_ids[0] = param_text;
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = true;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+  primary->n_fields = 1;
+  primary->fields = arena.alloc_array<c4c::Node*>(1);
+  primary->fields[0] = parser.make_node(c4c::NK_DECL, 1);
+  primary->fields[0]->name = arena.strdup("items");
+  primary->fields[0]->type.array_size = -1;
+  primary->fields[0]->type.inner_rank = -1;
+  primary->fields[0]->type.base = c4c::TB_INT;
+  primary->fields[0]->type.array_rank = 1;
+  primary->fields[0]->type.array_dims[0] = -1;
+  primary->fields[0]->type.array_size_expr = parser.make_node(c4c::NK_VAR, 1);
+  primary->fields[0]->type.array_size_expr->name =
+      arena.strdup("stale_rendered_N");
+  primary->fields[0]->type.array_size_expr->unqualified_name =
+      arena.strdup("stale_rendered_N");
+  primary->fields[0]->type.array_size_expr->unqualified_text_id = param_text;
+
+  parser.register_template_struct_primary(
+      parser.current_namespace_context_id(), box_token.text_id, primary);
+  parser.template_state_
+      .template_struct_defs_by_key[parser.alias_template_key_in_context(
+          parser.current_namespace_context_id(), box_token.text_id)] = primary;
+  c4c::TypeSpec box_alias{};
+  box_alias.array_size = -1;
+  box_alias.inner_rank = -1;
+  box_alias.base = c4c::TB_STRUCT;
+  box_alias.tag_text_id = box_token.text_id;
+  box_alias.record_def = primary;
+  parser.register_typedef_binding(box_token.text_id, box_alias, true);
+
+  parser.replace_token_stream_for_testing({
+      box_token,
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "4"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+  });
+  const c4c::TypeSpec box_ts = parser.parse_base_type();
+  expect_true(box_ts.record_def != nullptr && box_ts.record_def->n_fields == 1,
+              "NTTP array-size metadata test should instantiate Box<4>");
+  const c4c::TypeSpec& field_type = box_ts.record_def->fields[0]->type;
+  expect_eq_int(static_cast<int>(field_type.array_size), 4,
+                "NTTP array-size substitution should use parameter TextId metadata before rendered names");
+  expect_true(field_type.array_size_expr == nullptr,
+              "stale rendered NTTP array-size spelling should not block structured substitution");
+}
+
+void test_parser_nttp_array_size_substitution_rejects_stale_text_metadata() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+  const c4c::Token box_token =
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Box");
+  const c4c::TextId param_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "N");
+  const c4c::TextId stale_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "OtherN");
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->unqualified_text_id = box_token.text_id;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("N");
+  primary->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  primary->template_param_name_text_ids[0] = param_text;
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = true;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+  primary->n_fields = 1;
+  primary->fields = arena.alloc_array<c4c::Node*>(1);
+  primary->fields[0] = parser.make_node(c4c::NK_DECL, 1);
+  primary->fields[0]->name = arena.strdup("items");
+  primary->fields[0]->type.array_size = -1;
+  primary->fields[0]->type.inner_rank = -1;
+  primary->fields[0]->type.base = c4c::TB_INT;
+  primary->fields[0]->type.array_rank = 1;
+  primary->fields[0]->type.array_dims[0] = -1;
+  primary->fields[0]->type.array_size_expr = parser.make_node(c4c::NK_VAR, 1);
+  primary->fields[0]->type.array_size_expr->name = arena.strdup("N");
+  primary->fields[0]->type.array_size_expr->unqualified_name =
+      arena.strdup("N");
+  primary->fields[0]->type.array_size_expr->unqualified_text_id = stale_text;
+
+  parser.register_template_struct_primary(
+      parser.current_namespace_context_id(), box_token.text_id, primary);
+  parser.template_state_
+      .template_struct_defs_by_key[parser.alias_template_key_in_context(
+          parser.current_namespace_context_id(), box_token.text_id)] = primary;
+  c4c::TypeSpec box_alias{};
+  box_alias.array_size = -1;
+  box_alias.inner_rank = -1;
+  box_alias.base = c4c::TB_STRUCT;
+  box_alias.tag_text_id = box_token.text_id;
+  box_alias.record_def = primary;
+  parser.register_typedef_binding(box_token.text_id, box_alias, true);
+
+  parser.replace_token_stream_for_testing({
+      box_token,
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "4"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+  });
+  const c4c::TypeSpec box_ts = parser.parse_base_type();
+  expect_true(box_ts.record_def != nullptr && box_ts.record_def->n_fields == 1,
+              "stale NTTP array-size metadata test should instantiate Box<4>");
+  const c4c::TypeSpec& field_type = box_ts.record_def->fields[0]->type;
+  expect_true(field_type.array_size_expr != nullptr,
+              "NTTP array-size substitution should reject rendered-name fallback after stale TextId metadata misses");
+  expect_true(field_type.array_size != 4,
+              "same-spelling stale NTTP text metadata must not select the rendered-name binding");
+}
+
 void test_parser_template_substitution_preserves_record_definition_payloads() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -10155,6 +10298,8 @@ int main() {
   test_sema_method_validation_rejects_stale_rendered_field_spelling();
   test_parser_template_instantiation_dedup_keys_skip_mark_on_failed_instantiation();
   test_parser_template_instantiation_dedup_keys_structure_direct_emission();
+  test_parser_nttp_array_size_substitution_uses_param_text_metadata();
+  test_parser_nttp_array_size_substitution_rejects_stale_text_metadata();
   test_parser_template_substitution_preserves_record_definition_payloads();
   test_parser_direct_record_types_carry_record_definition();
   test_parser_tag_only_record_types_carry_incomplete_record_definition();
