@@ -795,6 +795,10 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
                 continue;
               }
             }
+            if (forwarded_text_id != kInvalidText) {
+              continue;
+            }
+            // No TextId carrier: retain legacy rendered-name forwarding.
             auto it = ctx->nttp_bindings.find(n->left->template_arg_nttp_names[i]);
             if (it != ctx->nttp_bindings.end()) {
               ce_nttp_bindings[fn_def->template_param_names[i]] = it->second;

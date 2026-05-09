@@ -8,10 +8,18 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <memory>
+#include <optional>
+#include <set>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
+
+#define private public
+#include "hir/impl/lowerer.hpp"
+#undef private
 
 namespace {
 
@@ -6215,6 +6223,73 @@ void test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_m
               "back to stale rendered template-argument text");
 }
 
+void test_hir_forwarded_nttp_rejects_rendered_after_text_id_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId scalar_text = texts.intern("ScalarN");
+  const c4c::TextId pack_text = texts.intern("PackN");
+  const c4c::TextId other_text = texts.intern("OtherN");
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->kind = c4c::NK_FUNCTION;
+  fn->n_template_params = 2;
+  fn->template_param_names = arena.alloc_array<const char*>(2);
+  fn->template_param_names[0] = arena.strdup("ScalarN");
+  fn->template_param_names[1] = arena.strdup("PackN");
+  fn->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(2);
+  fn->template_param_name_text_ids[0] = scalar_text;
+  fn->template_param_name_text_ids[1] = pack_text;
+  fn->template_param_is_nttp = arena.alloc_array<bool>(2);
+  fn->template_param_is_nttp[0] = true;
+  fn->template_param_is_nttp[1] = true;
+  fn->template_param_is_pack = arena.alloc_array<bool>(2);
+  fn->template_param_is_pack[0] = false;
+  fn->template_param_is_pack[1] = true;
+
+  c4c::Node* call = parser.make_node(c4c::NK_VAR, 1);
+  call->kind = c4c::NK_VAR;
+  call->has_template_args = true;
+  call->n_template_args = 2;
+  call->template_arg_is_value = arena.alloc_array<bool>(2);
+  call->template_arg_is_value[0] = true;
+  call->template_arg_is_value[1] = true;
+  call->template_arg_values = arena.alloc_array<long long>(2);
+  call->template_arg_values[0] = 0;
+  call->template_arg_values[1] = 0;
+  call->template_arg_nttp_names = arena.alloc_array<const char*>(2);
+  call->template_arg_nttp_names[0] = arena.strdup("RenderedScalar");
+  call->template_arg_nttp_names[1] = arena.strdup("RenderedPack");
+  call->template_arg_nttp_text_ids = arena.alloc_array<c4c::TextId>(2);
+  call->template_arg_nttp_text_ids[0] = scalar_text;
+  call->template_arg_nttp_text_ids[1] = pack_text;
+
+  c4c::hir::NttpBindings rendered_nttp;
+  rendered_nttp["RenderedScalar"] = 11;
+  rendered_nttp["RenderedPack"] = 13;
+  c4c::hir::NttpTextBindings stale_text_nttp;
+  stale_text_nttp[other_text] = 17;
+
+  c4c::hir::Lowerer lowerer;
+  c4c::hir::NttpBindings bindings =
+      lowerer.build_call_nttp_bindings(
+          call, fn, &rendered_nttp, &stale_text_nttp);
+  expect_true(bindings.empty(),
+              "HIR forwarded NTTP binding should not reopen rendered-name "
+              "lookup after TextId metadata misses");
+
+  call->template_arg_nttp_text_ids[0] = c4c::kInvalidText;
+  call->template_arg_nttp_text_ids[1] = c4c::kInvalidText;
+  bindings = lowerer.build_call_nttp_bindings(call, fn, &rendered_nttp,
+                                              &stale_text_nttp);
+  expect_true(bindings["ScalarN"] == 11 && bindings["PackN#0"] == 13,
+              "no-metadata forwarded NTTP compatibility should still use "
+              "rendered names");
+}
+
 void test_typespec_template_origin_equality_uses_structured_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -7051,6 +7126,7 @@ int main() {
   test_dependent_template_specialization_uses_typespec_carriers_before_text();
   test_dependent_template_specialization_uses_nested_arg_carriers_before_debug_text();
   test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss();
+  test_hir_forwarded_nttp_rejects_rendered_after_text_id_miss();
   test_typespec_template_origin_equality_uses_structured_key();
   test_typespec_equality_uses_structured_type_identity_before_rendered_tag();
   test_parser_typedef_chain_uses_tag_text_id_before_rendered_tag();

@@ -8,34 +8,31 @@ Current Step Title: Make Payload API Boundaries Explicit
 
 ## Just Finished
 
-Completed Step 2 first repair: `$expr:` raw string replay is no longer used as
-semantic authority after structured carriers miss. Removed the parser
-`lex_template_expr_text(actual_args[pi].nttp_name + 6, ...)` fallback and the
-HIR mirrors that evaluated `$expr:` from `template_arg_nttp_names`, explicit
-string refs, or `TemplateArgRef::debug_text`. Structured expression nodes,
-captured tokens, TextId forwarding, and keyed deferred-default token evaluation
-remain intact. Added stale-payload coverage for a direct NTTP instantiation
-whose only `$expr:` payload is display text without captured tokens,
-expression nodes, or TextId carriers. Follow-up regression repair preserved
-parsed NTTP expression nodes into `TemplateArgRef` carriers so
-`sizeof...(pack)` remains a structured expression path rather than falling
-back to `$expr:` text, and taught HIR template value-arg evaluation to handle
-`NK_SIZEOF_PACK` from that structured expression carrier.
+Completed Step 2 audit continuation: demoted remaining HIR forwarded-NTTP
+rendered-name bridges in `build_call_nttp_bindings` and consteval call
+lowering so a present `template_arg_nttp_text_ids` carrier is authoritative.
+If the TextId carrier misses, HIR no longer reopens
+`template_arg_nttp_names` lookup against enclosing `nttp_bindings`. The
+rendered-name path remains documented as no-metadata compatibility when no
+TextId carrier is present. Added stale-payload coverage for scalar and pack
+forwarded NTTP arguments, including the retained no-carrier compatibility
+case.
 
 ## Suggested Next
 
-Continue Step 2 by auditing remaining non-`$expr:` rendered-string bridges that
-still participate in semantic lookup after a structured carrier miss, starting
-with the string-key NTTP/name compatibility maps identified in Step 1.
+Continue Step 2 by auditing remaining `TemplateArgRef::debug_text` and
+explicit string argument materialization paths in HIR template
+materialization; classify each as display/literal compatibility or demote it
+if it can still influence semantic lookup after a structured carrier miss.
 
 ## Watchouts
 
 - HIR keyed default evaluation still calls `eval_deferred_nttp_expr_hir` with
   `expr_override == nullptr`; that is the structured default-token path and
   should stay separate from display-string replay.
-- Plain forwarded NTTP names still have compatibility lookup behavior when no
-  TextId carrier is available. This packet only demoted `$expr:` syntax-text
-  replay, not all legacy name fallback.
+- Plain forwarded NTTP names still have compatibility lookup behavior only
+  when no TextId carrier is available. Do not remove that without checking
+  legacy no-metadata forwarding coverage.
 - Do not remove `debug_text` fields wholesale; they remain useful for display
   and legacy materialization paths that do not perform expression evaluation.
 
@@ -43,10 +40,6 @@ with the string-key NTTP/name compatibility maps identified in Step 1.
 
 Ran the delegated proof:
 
-`cmake --build --preset default && ctest --test-dir build -R '(frontend_parser_lookup_authority|cpp_hir_.*template|frontend_hir_.*template|hir_case)' --output-on-failure > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -R '(frontend_parser_lookup_authority|cpp_hir_.*template|frontend_hir_.*template|hir_case|cpp_positive_sema_variadic_template_arg_sizeof_pack_parse_cpp)' --output-on-failure > test_after.log 2>&1`
 
-Result: passed. `test_after.log` reports 46/46 tests passed.
-
-Targeted regression repair proof also passed:
-
-`cmake --build --preset default && ctest --test-dir build -R '^(cpp_positive_sema_variadic_template_arg_sizeof_pack_parse_cpp)$' --output-on-failure`
+Result: passed. `test_after.log` reports 47/47 tests passed.

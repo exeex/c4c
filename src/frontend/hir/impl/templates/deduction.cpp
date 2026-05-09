@@ -570,6 +570,10 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
               continue;
             }
           }
+          if (forwarded_text_id != kInvalidText) {
+            continue;
+          }
+          // No TextId carrier: retain legacy rendered-name forwarding.
           if (enclosing_nttp) {
             auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);
             if (it != enclosing_nttp->end()) bindings[key] = it->second;
@@ -606,6 +610,11 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
             continue;
           }
         }
+        if (forwarded_text_id != kInvalidText) {
+          ++arg_index;
+          continue;
+        }
+        // No TextId carrier: retain legacy rendered-name forwarding.
         if (enclosing_nttp) {
           auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);
           if (it != enclosing_nttp->end()) {
