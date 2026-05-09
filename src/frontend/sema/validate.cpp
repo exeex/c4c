@@ -1050,22 +1050,18 @@ class Validator {
   const FunctionSig* lookup_function_by_name(const std::string& name,
                                              const Node* reference = nullptr) const {
     bool has_structured_metadata = false;
-    const bool complete_unqualified_metadata =
-        reference && !reference->is_global_qualified &&
-        reference->n_qualifier_segments == 0 &&
-        name.find("::") == std::string::npos;
     if (reference) {
       if (auto target_key = sema_using_value_alias_target_key(reference);
           target_key.has_value() && target_key->valid()) {
         has_structured_metadata = true;
-        return lookup_function_by_key(*target_key);
+        if (const FunctionSig* fn = lookup_function_by_key(*target_key)) return fn;
       }
       if (auto key = sema_function_lookup_key(reference);
           key.has_value() && key->valid()) {
         has_structured_metadata = true;
         if (const FunctionSig* fn = lookup_function_by_key(*key)) return fn;
       }
-      if (has_structured_metadata && complete_unqualified_metadata) return nullptr;
+      if (has_structured_metadata) return nullptr;
     }
     auto it = funcs_.find(name);
     return it != funcs_.end() ? &it->second : nullptr;
@@ -1073,15 +1069,25 @@ class Validator {
 
   const std::vector<FunctionSig>* lookup_ref_overloads_by_name(
       const std::string& name, const Node* reference = nullptr) const {
+    bool has_structured_metadata = false;
     if (reference) {
       if (auto target_key = sema_using_value_alias_target_key(reference);
           target_key.has_value() && target_key->valid()) {
-        return lookup_ref_overloads_by_key(*target_key);
+        has_structured_metadata = true;
+        if (const std::vector<FunctionSig>* overloads =
+                lookup_ref_overloads_by_key(*target_key)) {
+          return overloads;
+        }
       }
       if (auto key = sema_function_lookup_key(reference);
           key.has_value() && key->valid()) {
-        return lookup_ref_overloads_by_key(*key);
+        has_structured_metadata = true;
+        if (const std::vector<FunctionSig>* overloads =
+                lookup_ref_overloads_by_key(*key)) {
+          return overloads;
+        }
       }
+      if (has_structured_metadata) return nullptr;
     }
     auto it = ref_overload_sigs_.find(name);
     return it != ref_overload_sigs_.end() ? &it->second : nullptr;
@@ -1089,15 +1095,25 @@ class Validator {
 
   const std::vector<FunctionSig>* lookup_cpp_overloads_by_name(
       const std::string& name, const Node* reference = nullptr) const {
+    bool has_structured_metadata = false;
     if (reference) {
       if (auto target_key = sema_using_value_alias_target_key(reference);
           target_key.has_value() && target_key->valid()) {
-        return lookup_cpp_overloads_by_key(*target_key);
+        has_structured_metadata = true;
+        if (const std::vector<FunctionSig>* overloads =
+                lookup_cpp_overloads_by_key(*target_key)) {
+          return overloads;
+        }
       }
       if (auto key = sema_function_lookup_key(reference);
           key.has_value() && key->valid()) {
-        return lookup_cpp_overloads_by_key(*key);
+        has_structured_metadata = true;
+        if (const std::vector<FunctionSig>* overloads =
+                lookup_cpp_overloads_by_key(*key)) {
+          return overloads;
+        }
       }
+      if (has_structured_metadata) return nullptr;
     }
     auto it = cpp_overload_sigs_.find(name);
     return it != cpp_overload_sigs_.end() ? &it->second : nullptr;
