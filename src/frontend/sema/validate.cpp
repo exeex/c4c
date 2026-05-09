@@ -1720,6 +1720,10 @@ class Validator {
           candidate.is_global_qualified != key->is_global_qualified) {
         continue;
       }
+      if (!key->qualifier_text_ids.empty() && !candidate.qualifier_text_ids.empty() &&
+          candidate.qualifier_text_ids != key->qualifier_text_ids) {
+        continue;
+      }
       if (unique.has_value() && *unique != candidate) return std::nullopt;
       unique = candidate;
     }

@@ -1,34 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/158_sema_validate_string_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Global, Function, Enum, and Consteval Lookup Precedence
+Current Step ID: 3
+Current Step Title: Record Completion And Record Lookup Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Global, Function, Enum, and Consteval Lookup Precedence repaired the
-reviewer watch item by adding focused coverage for stale rendered function
-lookup after a complete structured metadata miss.
-`cpp_hir_sema_lookup_value_metadata_test` now proves that a call carrying a
-valid missing structured function key cannot fall through to an existing stale
-rendered function signature, while a no-metadata function reference still uses
-rendered compatibility.
+Step 3: Record Completion And Record Lookup Authority tightened record-owner
+lookup in `validate.cpp` so an exact structured record-domain owner miss cannot
+reuse a qualified candidate whose qualifier TextId metadata conflicts with the
+reference. The remaining unique-base collapse is preserved only for candidates
+that lack qualifier metadata, keeping existing no-metadata/nested-record
+compatibility bridges.
+
+`frontend_parser_lookup_authority_tests` now covers a static-member path where
+the rendered owner spelling points at `OwnerA::Shared::value` but the complete
+structured qualifier metadata points at `OwnerB::Shared`; validation rejects the
+lookup instead of reopening the stale rendered owner path.
 
 ## Suggested Next
 
-Return to supervisor review for the Step 2 watch item and decide whether this
-focused proof-only slice is ready to commit.
+Continue Step 3 with the next bounded record-domain audit slice, likely around
+the remaining rendered tag completion mirrors or field-name compatibility
+bridges if the supervisor wants more record coverage.
 
 ## Watchouts
 
-- This packet changed only focused test coverage; no implementation change was
-  needed because the existing function lookup behavior already failed closed
-  when complete structured metadata missed.
 - Do not weaken tests or mark supported paths unsupported.
-- The function no-metadata compatibility check uses an incompatible `int*`
-  return signature so rendered fallback remains observable.
+- The unique-base record-owner fallback is still needed for existing nested
+  record carriers that do not carry qualifier metadata; do not remove it unless
+  those parser carriers are migrated first.
+- This slice did not broaden into template/local scope Step 4 or HIR storage
+  migration.
 
 ## Proof
 

@@ -1324,6 +1324,90 @@ void test_sema_record_completion_preserves_global_and_qualifier_metadata() {
               "records with mismatched global qualification metadata");
 }
 
+void test_sema_static_member_lookup_rejects_qualified_record_owner_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  auto make_ts = [](c4c::TypeBase base) {
+    c4c::TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    ts.base = base;
+    return ts;
+  };
+
+  const int namespace_context = parser.current_namespace_context_id();
+  const c4c::TextId owner_a_text = texts.intern("OwnerA");
+  const c4c::TextId owner_b_text = texts.intern("OwnerB");
+  const c4c::TextId shared_text = texts.intern("Shared");
+  const c4c::TextId value_text = texts.intern("value");
+
+  c4c::Node* owner_a_shared = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner_a_shared->name = arena.strdup("OwnerA::Shared");
+  owner_a_shared->unqualified_name = arena.strdup("Shared");
+  owner_a_shared->unqualified_text_id = shared_text;
+  owner_a_shared->namespace_context_id = namespace_context;
+  owner_a_shared->n_qualifier_segments = 1;
+  owner_a_shared->qualifier_segments = arena.alloc_array<const char*>(1);
+  owner_a_shared->qualifier_segments[0] = arena.strdup("OwnerA");
+  owner_a_shared->qualifier_text_ids = arena.alloc_array<c4c::TextId>(1);
+  owner_a_shared->qualifier_text_ids[0] = owner_a_text;
+  owner_a_shared->n_fields = 1;
+  owner_a_shared->fields = arena.alloc_array<c4c::Node*>(1);
+
+  c4c::Node* value = parser.make_node(c4c::NK_DECL, 1);
+  value->name = arena.strdup("value");
+  value->unqualified_name = arena.strdup("value");
+  value->unqualified_text_id = value_text;
+  value->namespace_context_id = namespace_context;
+  value->is_static = true;
+  value->type = make_ts(c4c::TB_INT);
+  owner_a_shared->fields[0] = value;
+
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 2);
+  ref->name = arena.strdup("OwnerA::Shared::value");
+  ref->unqualified_name = arena.strdup("value");
+  ref->unqualified_text_id = value_text;
+  ref->namespace_context_id = namespace_context;
+  ref->n_qualifier_segments = 2;
+  ref->qualifier_segments = arena.alloc_array<const char*>(2);
+  ref->qualifier_segments[0] = arena.strdup("OwnerA");
+  ref->qualifier_segments[1] = arena.strdup("Shared");
+  ref->qualifier_text_ids = arena.alloc_array<c4c::TextId>(2);
+  ref->qualifier_text_ids[0] = owner_b_text;
+  ref->qualifier_text_ids[1] = shared_text;
+
+  c4c::Node* ret = parser.make_node(c4c::NK_RETURN, 2);
+  ret->left = ref;
+
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 2);
+  body->n_children = 1;
+  body->children = arena.alloc_array<c4c::Node*>(1);
+  body->children[0] = ret;
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 2);
+  fn->name = arena.strdup("read");
+  fn->unqualified_name = arena.strdup("read");
+  fn->unqualified_text_id = texts.intern("read");
+  fn->namespace_context_id = namespace_context;
+  fn->type = make_ts(c4c::TB_INT);
+  fn->body = body;
+
+  c4c::Node* program = parser.make_node(c4c::NK_PROGRAM, 1);
+  program->n_children = 2;
+  program->children = arena.alloc_array<c4c::Node*>(2);
+  program->children[0] = owner_a_shared;
+  program->children[1] = fn;
+
+  const c4c::sema::ValidateResult result = c4c::sema::validate_program(program);
+  expect_true(!result.ok,
+              "Sema static-member lookup should reject a qualified record-owner "
+              "structured miss instead of reopening a stale rendered owner path");
+}
+
 void test_sema_template_static_member_lookup_rejects_stale_rendered_owner_reentry() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -7275,6 +7359,7 @@ int main() {
   test_sema_record_completeness_uses_structured_metadata_before_rendered_tag();
   test_sema_same_spelling_record_completion_uses_structured_identity();
   test_sema_record_completion_preserves_global_and_qualifier_metadata();
+  test_sema_static_member_lookup_rejects_qualified_record_owner_miss();
   test_parsed_static_member_lookup_uses_qualifier_metadata_after_rendered_tag_drift();
   test_parsed_static_member_alias_owner_uses_canonical_owner_metadata();
   test_parsed_template_static_member_lookup_uses_structured_owner_after_rendered_tag_drift();
