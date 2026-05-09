@@ -1,7 +1,8 @@
 # Deferred Syntax Text Payload Contract
 
-Status: Open
+Status: Closed
 Created: 2026-05-08
+Closed: 2026-05-09
 
 Parent Ideas:
 - `ideas/closed/149_template_instantiation_structured_argument_key.md`
@@ -84,6 +85,23 @@ binding/owner/domain carriers instead of treating payload text as the key.
 - Stale debug/rendered text cannot override structured template, owner,
   qualified-name, or record metadata.
 - Remaining text payloads have clear owners and removal/non-removal rationale.
+
+## Closure Summary
+
+The active runbook completed all six steps. Deferred syntax/debug/display text
+remains available only as syntax, diagnostic/debug, final spelling, literal
+payload, or bounded compatibility mirror, while semantic lookup paths touched
+by the plan now prefer structured `TextId`, owner/index, record,
+qualified-name, expression, or domain carriers.
+
+Step 6 closure validation passed the selected parser/frontend/HIR/C++ scope
+with 1149/1149 tests passing. Close-time regression guard accepted the existing
+matching `test_before.log` and `test_after.log` comparison with no new
+failures.
+
+Known retained compatibility debt: the foreign-owner type-pack bridge remains
+until a structured cross-owner pack binding key maps foreign owner/index
+carriers without rendered names.
 
 ## Reviewer Reject Signals
 
