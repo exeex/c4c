@@ -1,6 +1,7 @@
 #include "canonical_symbol.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <string_view>
 #include <utility>
 
@@ -236,6 +237,21 @@ bool qualified_name_identity_equal(const CanonicalQualifiedNameIdentity& a,
          a.is_global_qualified == b.is_global_qualified &&
          a.unqualified_text_id == b.unqualified_text_id &&
          a.qualifier_text_ids == b.qualifier_text_ids;
+}
+
+template <typename T>
+void hash_combine(std::size_t* seed, const T& value) {
+  *seed ^= std::hash<T>{}(value) + 0x9e3779b97f4a7c15ULL + (*seed << 6) + (*seed >> 2);
+}
+
+std::size_t qualified_name_identity_hash(const CanonicalQualifiedNameIdentity& identity) {
+  std::size_t h = std::hash<int>{}(identity.namespace_context_id);
+  hash_combine(&h, identity.is_global_qualified);
+  hash_combine(&h, identity.unqualified_text_id);
+  for (TextId qualifier : identity.qualifier_text_ids) {
+    hash_combine(&h, qualifier);
+  }
+  return h;
 }
 
 bool nominal_identity_equal(const CanonicalType& a, const CanonicalType& b) {
@@ -1271,9 +1287,18 @@ std::string mangle_type(const CanonicalType& ct) {
 
 bool CanonicalIdentity::operator==(const CanonicalIdentity& o) const {
   if (kind != o.kind) return false;
-  if (name != o.name) return false;
   if (linkage != o.linkage) return false;
-  // For C linkage, name+kind is sufficient identity.
+
+  const bool has_identity = has_complete_qualified_name_identity(name_identity);
+  const bool other_has_identity = has_complete_qualified_name_identity(o.name_identity);
+  if (has_identity || other_has_identity) {
+    if (!has_identity || !other_has_identity) return false;
+    if (!qualified_name_identity_equal(name_identity, o.name_identity)) return false;
+  } else if (name != o.name) {
+    return false;
+  }
+
+  // For C linkage, declaration name identity + kind is sufficient identity.
   if (linkage == LanguageLinkage::C) return true;
   // For C++ linkage, function overloads need type discrimination.
   if (kind == CanonicalSymbolKind::Function) {
@@ -1285,9 +1310,16 @@ bool CanonicalIdentity::operator==(const CanonicalIdentity& o) const {
 }
 
 std::size_t CanonicalIdentityHash::operator()(const CanonicalIdentity& id) const {
-  std::size_t h = std::hash<std::string>{}(id.name);
-  h ^= std::hash<uint8_t>{}(static_cast<uint8_t>(id.kind)) << 1;
-  h ^= std::hash<uint8_t>{}(static_cast<uint8_t>(id.linkage)) << 2;
+  std::size_t h = 0;
+  hash_combine(&h, static_cast<uint8_t>(id.kind));
+  hash_combine(&h, static_cast<uint8_t>(id.linkage));
+  if (has_complete_qualified_name_identity(id.name_identity)) {
+    hash_combine(&h, uint8_t{1});
+    hash_combine(&h, qualified_name_identity_hash(id.name_identity));
+  } else {
+    hash_combine(&h, uint8_t{0});
+    hash_combine(&h, id.name);
+  }
   return h;
 }
 

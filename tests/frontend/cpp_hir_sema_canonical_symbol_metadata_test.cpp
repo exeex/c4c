@@ -132,6 +132,30 @@ c4c::sema::CanonicalTemplateArg make_type_arg(c4c::sema::CanonicalType type) {
   return arg;
 }
 
+c4c::sema::CanonicalQualifiedNameIdentity make_name_identity(
+    int namespace_context_id,
+    c4c::TextId unqualified_text_id) {
+  c4c::sema::CanonicalQualifiedNameIdentity identity{};
+  identity.namespace_context_id = namespace_context_id;
+  identity.unqualified_text_id = unqualified_text_id;
+  return identity;
+}
+
+c4c::sema::CanonicalSymbol make_object_symbol(
+    std::string_view rendered_name,
+    c4c::sema::CanonicalQualifiedNameIdentity identity,
+    int line) {
+  c4c::sema::CanonicalSymbol symbol{};
+  symbol.kind = c4c::sema::CanonicalSymbolKind::Object;
+  symbol.source_name = rendered_name;
+  symbol.name_identity = std::move(identity);
+  symbol.linkage = c4c::sema::LanguageLinkage::C;
+  symbol.line = line;
+  symbol.type = std::make_shared<c4c::sema::CanonicalType>(
+      make_primitive_type(c4c::sema::CanonicalTypeKind::Int, c4c::TB_INT, "int"));
+  return symbol;
+}
+
 void test_template_substitution_uses_owner_identity_before_name() {
   const c4c::sema::CanonicalTemplateParamIdentity first_owner =
       make_template_param_identity(1, 100, 0, 500);
@@ -307,6 +331,93 @@ void test_types_equal_keeps_no_metadata_spelling_fallback() {
               "no-metadata template-parameter equality should keep rendered spelling fallback");
 }
 
+void test_canonical_identity_uses_structured_name_before_spelling() {
+  c4c::sema::CanonicalIdentity first{};
+  first.kind = c4c::sema::CanonicalSymbolKind::Object;
+  first.name = "SharedRendered";
+  first.name_identity = make_name_identity(7, 100);
+
+  c4c::sema::CanonicalIdentity second = first;
+  second.name_identity = make_name_identity(8, 100);
+
+  expect_false(first == second,
+               "same-spelled complete symbol identities from different domains should differ");
+  expect_false(c4c::sema::CanonicalIdentityHash{}(first) ==
+                   c4c::sema::CanonicalIdentityHash{}(second),
+               "structured identity hash should separate distinct complete domains");
+
+  second.name = "StaleRendered";
+  second.name_identity = first.name_identity;
+  expect_true(first == second,
+              "matching complete symbol identity should not require matching rendered spelling");
+  expect_true(c4c::sema::CanonicalIdentityHash{}(first) ==
+                  c4c::sema::CanonicalIdentityHash{}(second),
+              "matching complete symbol identity should hash independently of rendered spelling");
+}
+
+void test_canonical_identity_keeps_no_metadata_spelling_fallback() {
+  c4c::sema::CanonicalIdentity first{};
+  first.kind = c4c::sema::CanonicalSymbolKind::Object;
+  first.name = "LegacyRendered";
+
+  c4c::sema::CanonicalIdentity second = first;
+
+  expect_true(first == second,
+              "no-metadata symbol identity should keep rendered spelling fallback");
+  expect_true(c4c::sema::CanonicalIdentityHash{}(first) ==
+                  c4c::sema::CanonicalIdentityHash{}(second),
+              "no-metadata spelling fallback should keep matching hash");
+
+  second.name_identity = make_name_identity(7, 100);
+  expect_false(first == second,
+               "complete identity should not fall back to rendered spelling against no metadata");
+}
+
+void test_symbol_table_uses_structured_identity_lookup() {
+  c4c::sema::CanonicalSymbol first =
+      make_object_symbol("SharedRendered", make_name_identity(7, 100), 11);
+  c4c::sema::CanonicalSymbol second =
+      make_object_symbol("SharedRendered", make_name_identity(8, 100), 22);
+
+  c4c::sema::CanonicalSymbolTable table;
+  const c4c::sema::CanonicalIdentity first_id = c4c::sema::identity_of(first);
+  const c4c::sema::CanonicalIdentity second_id = c4c::sema::identity_of(second);
+  table.insert_or_merge(std::move(first));
+  table.insert_or_merge(std::move(second));
+
+  expect_true(table.by_identity.size() == 2,
+              "same-spelled symbols in distinct structured domains should not merge");
+  const c4c::sema::CanonicalSymbol* first_lookup = table.lookup(first_id);
+  const c4c::sema::CanonicalSymbol* second_lookup = table.lookup(second_id);
+  expect_true(first_lookup && first_lookup->line == 11,
+              "structured lookup should find first same-spelled domain");
+  expect_true(second_lookup && second_lookup->line == 22,
+              "structured lookup should find second same-spelled domain");
+}
+
+void test_cxx_function_identity_still_uses_type_discriminator() {
+  c4c::sema::CanonicalIdentity first{};
+  first.kind = c4c::sema::CanonicalSymbolKind::Function;
+  first.name = "overload";
+  first.name_identity = make_name_identity(7, 100);
+  first.linkage = c4c::sema::LanguageLinkage::Cxx;
+  first.discriminator_type = std::make_shared<c4c::sema::CanonicalType>(
+      make_primitive_type(c4c::sema::CanonicalTypeKind::Int, c4c::TB_INT, "int"));
+
+  c4c::sema::CanonicalIdentity second = first;
+  second.name = "stale_overload";
+  second.discriminator_type = std::make_shared<c4c::sema::CanonicalType>(
+      make_primitive_type(c4c::sema::CanonicalTypeKind::Double, c4c::TB_DOUBLE, "double"));
+
+  expect_false(first == second,
+               "C++ function overload identity should still use canonical type equality");
+
+  second.discriminator_type = std::make_shared<c4c::sema::CanonicalType>(
+      make_primitive_type(c4c::sema::CanonicalTypeKind::Int, c4c::TB_INT, "renamed int"));
+  expect_true(first == second,
+              "matching C++ function discriminator types should ignore rendered symbol spelling");
+}
+
 }  // namespace
 
 int main() {
@@ -319,6 +430,10 @@ int main() {
   test_types_equal_uses_nominal_name_before_spelling();
   test_types_equal_uses_template_param_identity_before_spelling();
   test_types_equal_keeps_no_metadata_spelling_fallback();
+  test_canonical_identity_uses_structured_name_before_spelling();
+  test_canonical_identity_keeps_no_metadata_spelling_fallback();
+  test_symbol_table_uses_structured_identity_lookup();
+  test_cxx_function_identity_still_uses_type_discriminator();
   std::cout << "PASS: cpp_hir_sema_canonical_symbol_metadata_test\n";
   return 0;
 }

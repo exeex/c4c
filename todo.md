@@ -1,26 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/160_sema_canonical_symbol_template_key_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Repair Nominal Type Equality
+Current Step ID: 5
+Current Step Title: Repair Canonical Symbol Identity And Hashing
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 repaired nominal/template-parameter type equality in
+Step 5 repaired canonical symbol identity equality and hashing in
 `canonical_symbol.cpp`.
 
-`types_equal` now compares complete owner-aware template-parameter metadata
-before rendered spelling, compares complete nominal metadata through
-`record_def` or qualified-name identity, and only uses `user_spelling` for the
-legacy no-metadata fallback path. Template-parameter semantic identity excludes
-declaration-only carrier attributes such as pack/default flags.
+`CanonicalIdentity::operator==` and `CanonicalIdentityHash` now prefer complete
+`name_identity` metadata over rendered `name`. A complete structured identity
+miss does not fall back through matching rendered spelling, while the rendered
+name path remains the intentional no-metadata compatibility bridge. C++ function
+overload discrimination still delegates discriminator type comparison through
+`types_equal`.
 
-The focused metadata test now proves same-spelled records, typedef leaves, and
-template-parameter leaves from different structured domains do not compare
-equal, while matching structured identities do not require matching rendered
-spelling and no-metadata fallback remains intentional.
+The focused metadata test now proves same-spelled symbols in distinct
+structured domains differ in equality and hash, stay separate in
+`CanonicalSymbolTable` lookup, matching complete identities ignore stale
+rendered spelling, and no-metadata spelling fallback remains intentional.
 
 ## Suggested Next
 
@@ -30,16 +31,15 @@ only for intentional no-metadata compatibility.
 
 ## Watchouts
 
-- This packet intentionally did not change `CanonicalIdentity::operator==`,
-  `CanonicalIdentityHash`, ABI mangling, or debug formatting outside the
-  existing `types_equal` call path.
+- This packet intentionally did not change ABI mangling or debug formatting;
+  those paths still use their existing rendered names.
 - `CanonicalScopeSegment::identity` is present beside `name`, but current
   `canonical_symbol.cpp` only constructs translation-unit scope segments, so
   there was no namespace/record scope metadata path to populate in this slice.
 - If a future producer creates one complete structured identity and one
-  no-metadata spelling-only leaf for the same entity, `types_equal` now treats
-  that as a structured/incomplete mismatch rather than reopening spelling
-  fallback.
+  no-metadata spelling-only symbol for the same entity,
+  `CanonicalIdentity::operator==` now treats that as a structured/incomplete
+  mismatch rather than reopening spelling fallback.
 
 ## Proof
 
