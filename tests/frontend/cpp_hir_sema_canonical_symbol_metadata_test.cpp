@@ -418,6 +418,47 @@ void test_cxx_function_identity_still_uses_type_discriminator() {
               "matching C++ function discriminator types should ignore rendered symbol spelling");
 }
 
+void test_debug_formatting_remains_display_rendering_only() {
+  c4c::sema::CanonicalType first = make_nominal_type(
+      c4c::sema::CanonicalTypeKind::TypedefName, c4c::TB_TYPEDEF, "Alias", 7, 100);
+  c4c::sema::CanonicalType second = make_nominal_type(
+      c4c::sema::CanonicalTypeKind::TypedefName, c4c::TB_TYPEDEF, "Alias", 8, 100);
+
+  expect_false(c4c::sema::types_equal(first, second),
+               "different structured type identities should remain semantically distinct");
+  expect_eq(c4c::sema::format_canonical_type(first),
+            c4c::sema::format_canonical_type(second),
+            "debug formatting should render stable display spelling, not structured identity");
+}
+
+void test_abi_mangling_remains_display_rendering_only() {
+  c4c::sema::CanonicalType first_type = make_nominal_type(
+      c4c::sema::CanonicalTypeKind::Struct, c4c::TB_STRUCT, "SharedRendered", 7, 100);
+  c4c::sema::CanonicalType second_type = make_nominal_type(
+      c4c::sema::CanonicalTypeKind::Struct, c4c::TB_STRUCT, "SharedRendered", 8, 100);
+
+  expect_false(c4c::sema::types_equal(first_type, second_type),
+               "different structured nominal type identities should not collapse");
+  expect_eq(c4c::sema::mangle_type(first_type),
+            c4c::sema::mangle_type(second_type),
+            "type mangling should remain source-spelling rendering only");
+
+  c4c::sema::CanonicalSymbol first_symbol =
+      make_object_symbol("same_name", make_name_identity(7, 100), 11);
+  c4c::sema::CanonicalSymbol second_symbol =
+      make_object_symbol("same_name", make_name_identity(8, 100), 22);
+  first_symbol.linkage = c4c::sema::LanguageLinkage::Cxx;
+  second_symbol.linkage = c4c::sema::LanguageLinkage::Cxx;
+
+  const c4c::sema::CanonicalIdentity first_id = c4c::sema::identity_of(first_symbol);
+  const c4c::sema::CanonicalIdentity second_id = c4c::sema::identity_of(second_symbol);
+  expect_false(first_id == second_id,
+               "different structured symbol identities should remain lookup-distinct");
+  expect_eq(c4c::sema::mangle_symbol(first_symbol),
+            c4c::sema::mangle_symbol(second_symbol),
+            "symbol mangling should render stable source names, not structured identity");
+}
+
 }  // namespace
 
 int main() {
@@ -434,6 +475,8 @@ int main() {
   test_canonical_identity_keeps_no_metadata_spelling_fallback();
   test_symbol_table_uses_structured_identity_lookup();
   test_cxx_function_identity_still_uses_type_discriminator();
+  test_debug_formatting_remains_display_rendering_only();
+  test_abi_mangling_remains_display_rendering_only();
   std::cout << "PASS: cpp_hir_sema_canonical_symbol_metadata_test\n";
   return 0;
 }

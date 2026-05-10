@@ -643,6 +643,8 @@ SemaCanonicalResult build_canonical_symbols(const Node* root, SourceProfile prof
 }
 
 std::string format_canonical_type(const CanonicalType& type) {
+  // Debug formatting is a rendering path only. It intentionally prints the
+  // source/display spelling and must not become semantic lookup authority.
   std::string result;
 
   if (type.is_const) result += "const ";
@@ -1048,6 +1050,8 @@ bool prototypes_compatible(const CanonicalType& a, const CanonicalType& b) {
 /// Encode a canonical type as an Itanium ABI type string.
 /// Reference: https://itanium-cxx-abi.github.io/cxx-abi/abi.html#mangling-type
 static void mangle_type_impl(const CanonicalType& ct, std::string& out) {
+  // ABI text is derived from display/source spellings. Structured identity
+  // metadata is reserved for semantic equality and lookup.
   // Qualifiers: const → K, volatile → V (applied outermost-first,
   // but in Itanium ABI the order is: cv-qualifiers wrap the type,
   // so const volatile int → KVi, read as K(V(i))).
@@ -1206,6 +1210,8 @@ static void mangle_unqualified_name(const std::string& name, std::string& out) {
 /// Encode nested name if scope has namespace/record segments.
 /// <nested-name> ::= N [<prefix>] <unqualified-name> E
 static void mangle_name(const CanonicalSymbol& sym, std::string& out) {
+  // Nested-name rendering follows scope/source strings. Do not use this as a
+  // semantic key; CanonicalIdentity owns structured lookup identity.
   bool has_nesting = false;
   for (const auto& seg : sym.scope.segments) {
     if (seg.kind == CanonicalScopeKind::Namespace ||

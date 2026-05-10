@@ -1,45 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/160_sema_canonical_symbol_template_key_authority.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Repair Canonical Symbol Identity And Hashing
+Current Step ID: 6
+Current Step Title: Keep ABI And Debug Paths Rendering-Only
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 repaired canonical symbol identity equality and hashing in
-`canonical_symbol.cpp`.
+Step 6 confirmed ABI mangling and debug formatting remain rendering-only paths
+in `canonical_symbol.cpp`.
 
-`CanonicalIdentity::operator==` and `CanonicalIdentityHash` now prefer complete
-`name_identity` metadata over rendered `name`. A complete structured identity
-miss does not fall back through matching rendered spelling, while the rendered
-name path remains the intentional no-metadata compatibility bridge. C++ function
-overload discrimination still delegates discriminator type comparison through
-`types_equal`.
-
-The focused metadata test now proves same-spelled symbols in distinct
-structured domains differ in equality and hash, stay separate in
-`CanonicalSymbolTable` lookup, matching complete identities ignore stale
-rendered spelling, and no-metadata spelling fallback remains intentional.
+`format_canonical_type`, `mangle_type_impl`, and `mangle_name` now carry explicit
+comments that they consume display/source spelling and must not become semantic
+lookup authority. The focused metadata test proves structured identity equality
+can differ while `format_canonical_type`, `mangle_type`, and `mangle_symbol`
+still render the same stable display/source text.
 
 ## Suggested Next
 
-Move the next supervisor-selected bounded authority site to prefer structured
-identity when complete metadata exists, preserving explicit spelling fallback
-only for intentional no-metadata compatibility.
+Supervisor should decide whether Step 6 closes the current runbook slice or
+whether another bounded authority site needs review before lifecycle handling.
 
 ## Watchouts
 
-- This packet intentionally did not change ABI mangling or debug formatting;
-  those paths still use their existing rendered names.
-- `CanonicalScopeSegment::identity` is present beside `name`, but current
-  `canonical_symbol.cpp` only constructs translation-unit scope segments, so
-  there was no namespace/record scope metadata path to populate in this slice.
-- If a future producer creates one complete structured identity and one
-  no-metadata spelling-only symbol for the same entity,
-  `CanonicalIdentity::operator==` now treats that as a structured/incomplete
-  mismatch rather than reopening spelling fallback.
+- No semantic lookup code changed in this packet.
+- ABI/debug rendering is intentionally allowed to collide for semantically
+  distinct entities with the same display/source spelling; lookup authority
+  remains `CanonicalIdentity`, `types_equal`, and their structured metadata.
 
 ## Proof
 
