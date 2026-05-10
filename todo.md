@@ -1,51 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/160_sema_canonical_symbol_template_key_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Structured Identity Carriers
+Current Step ID: 3
+Current Step Title: Replace Template Substitution Binding Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added structured identity carriers beside existing display spellings in
-`CanonicalScopeSegment`, `CanonicalTemplateParam`, `CanonicalType`,
-`CanonicalSymbol`, and `CanonicalIdentity`.
+Step 3 replaced template-substitution binding authority in
+`canonical_symbol.cpp`.
 
-`canonical_symbol.cpp` now populates those carriers from parser/sema metadata on
-covered paths:
-- declaration names from `Node::unqualified_text_id`, qualifiers, global
-  qualification, and namespace context into `CanonicalSymbol::name_identity`
-  and then `CanonicalIdentity::name_identity`
-- template params from `Node::template_param_name_text_ids`, owner namespace,
-  owner text id, index, domain, pack, and default metadata into
-  `CanonicalTemplateParam::identity`
-- nominal type and template-param type leaves from `TypeSpec` tag, qualifier,
-  namespace, record-def, template-param, template-struct-origin, and deferred
-  member typedef metadata into `CanonicalType::identity`
-- top-level record and enum symbols from `Node` name metadata into their
-  canonical type identity carriers
+`substitute_template_args` now builds owner-aware template-parameter identity
+bindings when complete metadata exists, while keeping a clearly named fallback
+map for rendered-name compatibility on incomplete/no-metadata paths.
+`substitute_template_args_impl` now resolves `CanonicalType` template-parameter
+leaves by `CanonicalType::identity.template_param` when complete metadata
+exists, and only falls back to `user_spelling` when the use-site identity is
+incomplete/no-metadata.
 
-Existing display strings remain available and retain current semantic authority
-for equality, hashing, substitution, ABI mangling, debug formatting, and
-no-metadata compatibility in this slice.
+The focused metadata test now proves two same-spelled `T` parameters with
+different owner metadata substitute independently, a complete owner-aware miss
+does not reopen spelling fallback, and the legacy no-metadata spelling fallback
+remains intentional.
 
 ## Suggested Next
 
-Start the next packet by moving one bounded authority site to prefer the new
-structured carriers when both sides have metadata, while preserving explicit
-rendered-spelling fallback for no-metadata paths.
+Move the next supervisor-selected bounded authority site to prefer structured
+identity when both sides have metadata, preserving explicit spelling fallback
+only for incomplete/no-metadata compatibility.
 
 ## Watchouts
 
 - This packet intentionally did not change `types_equal`,
-  `substitute_template_args`, `CanonicalIdentity::operator==`, or
-  `CanonicalIdentityHash`; those still use existing strings as authority.
+  `CanonicalIdentity::operator==`, `CanonicalIdentityHash`, ABI mangling, or
+  debug formatting; those still use existing strings as authority.
 - `CanonicalScopeSegment::identity` is present beside `name`, but current
   `canonical_symbol.cpp` only constructs translation-unit scope segments, so
   there was no namespace/record scope metadata path to populate in this slice.
-- Do not collapse owner-aware carriers into a single raw `TextId`; template
-  params and qualified nominal names require owner/scope context.
+- The spelling fallback in substitution remains available only for
+  old/incomplete metadata leaves; complete template-param leaves use the
+  owner-aware path and remain unsubstituted on identity miss.
 
 ## Proof
 

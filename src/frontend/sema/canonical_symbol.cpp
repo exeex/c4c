@@ -203,6 +203,41 @@ LanguageLinkage linkage_for_node(const Node* node, SourceProfile profile) {
   return default_linkage_for(profile);
 }
 
+bool has_complete_template_param_identity(const CanonicalTemplateParamIdentity& identity) {
+  return identity.owner_namespace_context_id >= 0 &&
+         identity.owner_text_id != kInvalidText &&
+         identity.index >= 0 &&
+         identity.param_text_id != kInvalidText &&
+         identity.domain != TemplateParamDomainKind::Unknown;
+}
+
+bool template_param_identity_equal(const CanonicalTemplateParamIdentity& a,
+                                   const CanonicalTemplateParamIdentity& b) {
+  return a.owner_namespace_context_id == b.owner_namespace_context_id &&
+         a.owner_text_id == b.owner_text_id &&
+         a.index == b.index &&
+         a.param_text_id == b.param_text_id &&
+         a.domain == b.domain &&
+         a.is_pack == b.is_pack &&
+         a.has_default == b.has_default;
+}
+
+struct TemplateSubstitutionBindings {
+  std::vector<std::pair<CanonicalTemplateParamIdentity, CanonicalTemplateArg>>
+      identity_bindings;
+  std::unordered_map<std::string, CanonicalTemplateArg> fallback_name_bindings;
+};
+
+const CanonicalTemplateArg* lookup_template_arg_by_identity(
+    const TemplateSubstitutionBindings& bindings,
+    const CanonicalTemplateParamIdentity& identity) {
+  if (!has_complete_template_param_identity(identity)) return nullptr;
+  for (const auto& binding : bindings.identity_bindings) {
+    if (template_param_identity_equal(binding.first, identity)) return &binding.second;
+  }
+  return nullptr;
+}
+
 template <typename T>
 auto typespec_legacy_display_tag_if_present(const T& ts, int) -> decltype(ts.tag) {
   return ts.tag;
@@ -438,11 +473,18 @@ void collect_top_level_symbol(const Node* item,
 
 CanonicalType substitute_template_args_impl(
     const CanonicalType& type,
-    const std::unordered_map<std::string, CanonicalTemplateArg>& bindings) {
-  if (type.kind == CanonicalTypeKind::TypedefName && !type.user_spelling.empty()) {
-    auto it = bindings.find(type.user_spelling);
-    if (it != bindings.end() && it->second.type) {
-      CanonicalType substituted = *it->second.type;
+    const TemplateSubstitutionBindings& bindings) {
+  if (type.kind == CanonicalTypeKind::TypedefName) {
+    const bool has_complete_identity =
+        has_complete_template_param_identity(type.identity.template_param);
+    const CanonicalTemplateArg* arg =
+        lookup_template_arg_by_identity(bindings, type.identity.template_param);
+    if (!arg && !has_complete_identity && !type.user_spelling.empty()) {
+      auto it = bindings.fallback_name_bindings.find(type.user_spelling);
+      if (it != bindings.fallback_name_bindings.end()) arg = &it->second;
+    }
+    if (arg && arg->type) {
+      CanonicalType substituted = *arg->type;
       substituted.is_const = substituted.is_const || type.is_const;
       substituted.is_volatile = substituted.is_volatile || type.is_volatile;
       return substituted;
@@ -652,10 +694,15 @@ CanonicalType substitute_template_args(
     const CanonicalType& type,
     const std::vector<CanonicalTemplateParam>& params,
     const std::vector<CanonicalTemplateArg>& args) {
-  std::unordered_map<std::string, CanonicalTemplateArg> bindings;
+  TemplateSubstitutionBindings bindings;
   const size_t count = std::min(params.size(), args.size());
   for (size_t i = 0; i < count; ++i) {
-    bindings.emplace(params[i].name, args[i]);
+    if (has_complete_template_param_identity(params[i].identity)) {
+      bindings.identity_bindings.emplace_back(params[i].identity, args[i]);
+    }
+    if (!params[i].name.empty()) {
+      bindings.fallback_name_bindings.emplace(params[i].name, args[i]);
+    }
   }
   return substitute_template_args_impl(type, bindings);
 }
