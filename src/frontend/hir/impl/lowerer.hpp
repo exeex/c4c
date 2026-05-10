@@ -1044,10 +1044,12 @@ class Lowerer {
   TypeBindings merge_explicit_and_deduced_type_bindings(
       const Node* call_node, const Node* call_var, const Node* fn_def,
       const TypeBindings* enclosing_bindings = nullptr,
-      const Node* enclosing_fn = nullptr);
+      const Node* enclosing_fn = nullptr,
+      HirTemplateTypeBindings* out_structured_type_bindings = nullptr);
   TypeBindings merge_explicit_and_ctx_deduced_type_bindings(
       const Node* call_node, const Node* call_var, const Node* fn_def,
-      FunctionCtx* ctx);
+      FunctionCtx* ctx,
+      HirTemplateTypeBindings* out_structured_type_bindings = nullptr);
 
   // ── End template argument deduction ────────────────────────────────────
 

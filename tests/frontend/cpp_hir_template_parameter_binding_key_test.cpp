@@ -384,6 +384,70 @@ void test_specialization_argument_identity_uses_structured_parameter_key() {
               "fallback identity hash/equality should remain parameter-name compatible");
 }
 
+void test_structured_specialization_key_requires_complete_binding_maps() {
+  const char* names[] = {"T", "N"};
+  c4c::TextId text_ids[] = {17, 19};
+  bool is_nttp[] = {false, true};
+  c4c::Node owner{};
+  owner.name = const_cast<char*>("pick");
+  owner.namespace_context_id = 8;
+  owner.unqualified_text_id = 301;
+  owner.n_template_params = 2;
+  owner.template_param_names = names;
+  owner.template_param_name_text_ids = text_ids;
+  owner.template_param_is_nttp = is_nttp;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  c4c::hir::TypeBindings legacy_type_bindings;
+  legacy_type_bindings.emplace("T", int_ts);
+  c4c::hir::NttpBindings legacy_nttp_bindings;
+  legacy_nttp_bindings.emplace("N", 4);
+
+  auto type_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 0, c4c::hir::HirTemplateParameterBindingKind::Type);
+  auto nttp_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 1, c4c::hir::HirTemplateParameterBindingKind::NonType);
+  expect_true(type_key.has_value() && nttp_key.has_value(),
+              "complete owner metadata should produce specialization binding keys");
+
+  c4c::hir::HirTemplateTypeBindings structured_type_bindings;
+  structured_type_bindings.emplace(*type_key, int_ts);
+  c4c::hir::HirTemplateNttpBindings structured_nttp_bindings;
+  structured_nttp_bindings.emplace(*nttp_key, 4);
+
+  std::vector<std::string> param_order{"T", "N"};
+  auto structured_key = c4c::hir::try_make_structured_specialization_key(
+      "pick", param_order, legacy_type_bindings, structured_type_bindings,
+      legacy_nttp_bindings, structured_nttp_bindings, &owner);
+  expect_true(structured_key.has_value(),
+              "complete count-compatible maps should build a structured specialization key");
+  expect_true(structured_key->canonical == "pick<T=int,N=4>",
+              "structured specialization key should preserve legacy display canonical");
+  expect_true(structured_key->arguments.size() == 2,
+              "structured specialization key should keep declaration-order arguments");
+  expect_true(structured_key->arguments[0].parameter_key == type_key,
+              "type specialization argument should carry its structured parameter key");
+  expect_true(structured_key->arguments[1].parameter_key == nttp_key,
+              "NTTP specialization argument should carry its structured parameter key");
+
+  c4c::hir::HirTemplateNttpBindings incomplete_nttp_bindings;
+  auto incomplete_key = c4c::hir::try_make_structured_specialization_key(
+      "pick", param_order, legacy_type_bindings, structured_type_bindings,
+      legacy_nttp_bindings, incomplete_nttp_bindings, &owner);
+  expect_true(!incomplete_key.has_value(),
+              "missing structured NTTP mirror should force legacy specialization-key fallback");
+
+  c4c::hir::HirTemplateNttpBindings mismatched_nttp_bindings;
+  mismatched_nttp_bindings.emplace(*nttp_key, 5);
+  auto mismatched_key = c4c::hir::try_make_structured_specialization_key(
+      "pick", param_order, legacy_type_bindings, structured_type_bindings,
+      legacy_nttp_bindings, mismatched_nttp_bindings, &owner);
+  expect_true(!mismatched_key.has_value(),
+              "mismatched structured NTTP mirror should force legacy specialization-key fallback");
+}
+
 void test_pending_template_binding_identity_helpers_accept_structured_maps() {
   c4c::TypeSpec int_ts{};
   int_ts.base = c4c::TB_INT;
@@ -775,6 +839,7 @@ int main() {
   test_call_binding_parity_observes_structured_maps();
   test_legacy_name_dual_write_helpers_require_complete_owner_metadata();
   test_specialization_argument_identity_uses_structured_parameter_key();
+  test_structured_specialization_key_requires_complete_binding_maps();
   test_pending_template_binding_identity_helpers_accept_structured_maps();
   test_pending_template_state_can_use_structured_identity_key();
   test_pending_template_state_rejects_incomplete_structured_identity_key();

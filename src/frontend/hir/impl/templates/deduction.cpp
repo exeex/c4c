@@ -1194,11 +1194,17 @@ void Lowerer::fill_deduced_defaults(TypeBindings& deduced, const Node* fn_def) {
 
 TypeBindings Lowerer::merge_explicit_and_deduced_type_bindings(
     const Node* call_node, const Node* call_var, const Node* fn_def,
-    const TypeBindings* enclosing_bindings, const Node* enclosing_fn) {
+    const TypeBindings* enclosing_bindings, const Node* enclosing_fn,
+    HirTemplateTypeBindings* out_structured_type_bindings) {
   HirTemplateTypeBindings structured_bindings;
   TypeBindings bindings = build_call_bindings(
       call_var, fn_def, enclosing_bindings, &structured_bindings);
-  if (!call_node || !fn_def) return bindings;
+  if (!call_node || !fn_def) {
+    if (out_structured_type_bindings) {
+      *out_structured_type_bindings = structured_bindings;
+    }
+    return bindings;
+  }
 
   TypeBindings deduced = try_deduce_template_type_args(call_node, fn_def, enclosing_fn);
   for (const auto& [name, ts] : deduced) {
@@ -1211,12 +1217,20 @@ TypeBindings Lowerer::merge_explicit_and_deduced_type_bindings(
   observe_template_call_binding_structured_parity(
       fn_def, bindings, structured_bindings, {}, {});
   fill_deduced_defaults(bindings, fn_def);
+  for (const auto& [name, ts] : bindings) {
+    (void)add_hir_template_type_binding_by_legacy_name(
+        fn_def, name, ts, &structured_bindings);
+  }
+  if (out_structured_type_bindings) {
+    *out_structured_type_bindings = structured_bindings;
+  }
   return bindings;
 }
 
 TypeBindings Lowerer::merge_explicit_and_ctx_deduced_type_bindings(
     const Node* call_node, const Node* call_var, const Node* fn_def,
-    FunctionCtx* ctx) {
+    FunctionCtx* ctx,
+    HirTemplateTypeBindings* out_structured_type_bindings) {
   HirTemplateTypeBindings structured_bindings;
   TypeBindings bindings =
       build_call_bindings(call_var, fn_def,
@@ -1224,7 +1238,12 @@ TypeBindings Lowerer::merge_explicit_and_ctx_deduced_type_bindings(
                               ? &ctx->tpl_bindings
                               : nullptr,
                           &structured_bindings);
-  if (!call_node || !fn_def || !ctx) return bindings;
+  if (!call_node || !fn_def || !ctx) {
+    if (out_structured_type_bindings) {
+      *out_structured_type_bindings = structured_bindings;
+    }
+    return bindings;
+  }
 
   TypeBindings deduced;
   NttpBindings deduced_nttp;
@@ -1246,6 +1265,13 @@ TypeBindings Lowerer::merge_explicit_and_ctx_deduced_type_bindings(
       fn_def, bindings, structured_bindings, deduced_nttp,
       structured_deduced_nttp);
   fill_deduced_defaults(bindings, fn_def);
+  for (const auto& [name, ts] : bindings) {
+    (void)add_hir_template_type_binding_by_legacy_name(
+        fn_def, name, ts, &structured_bindings);
+  }
+  if (out_structured_type_bindings) {
+    *out_structured_type_bindings = structured_bindings;
+  }
   return bindings;
 }
 

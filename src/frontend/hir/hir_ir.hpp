@@ -2132,6 +2132,41 @@ inline std::string canonical_type_str(const TypeSpec& ts) {
   return format_type_for_specialization_display_key(ts);
 }
 
+[[nodiscard]] inline std::optional<HirTemplateParameterBindingKey>
+find_hir_template_parameter_binding_key_by_legacy_name(
+    const Node* template_owner,
+    std::string_view legacy_name,
+    HirTemplateParameterBindingKind parameter_kind) {
+  if (!template_owner || template_owner->n_template_params <= 0 ||
+      !template_owner->template_param_names) {
+    return std::nullopt;
+  }
+  for (int i = 0; i < template_owner->n_template_params; ++i) {
+    const char* param_name = template_owner->template_param_names[i];
+    if (!param_name) continue;
+    const bool is_nttp = template_owner->template_param_is_nttp &&
+                         template_owner->template_param_is_nttp[i];
+    const bool is_pack = template_owner->template_param_is_pack &&
+                         template_owner->template_param_is_pack[i];
+    if ((parameter_kind == HirTemplateParameterBindingKind::NonType) !=
+        is_nttp) {
+      continue;
+    }
+    int pack_element_index = -1;
+    if (is_pack) {
+      auto parsed_pack_index =
+          hir_template_pack_element_index_from_legacy_name(legacy_name, param_name);
+      if (!parsed_pack_index) continue;
+      pack_element_index = *parsed_pack_index;
+    } else if (legacy_name != std::string_view(param_name)) {
+      continue;
+    }
+    return make_hir_template_parameter_binding_key(
+        template_owner, i, parameter_kind, pack_element_index);
+  }
+  return std::nullopt;
+}
+
 /// Build a specialization key from template name, parameter order, and bindings.
 /// Format: "template_name<param1=type1,param2=type2>"
 /// Parameters are in declaration order for determinism.
@@ -2226,6 +2261,85 @@ inline SpecializationKey make_specialization_key(
     const NttpBindings& nttp_bindings) {
   return make_specialization_key(
       template_name, param_order, bindings, nttp_bindings, nullptr);
+}
+
+/// Build a specialization key whose argument identity is owner-aware.
+///
+/// Returns nullopt unless the structured maps completely mirror the legacy
+/// rendered-name maps for this call. `canonical` remains the legacy display
+/// string so mangling, dumps, and compatibility consumers do not change.
+[[nodiscard]] inline std::optional<SpecializationKey>
+try_make_structured_specialization_key(
+    const std::string& template_name,
+    const std::vector<std::string>& param_order,
+    const TypeBindings& bindings,
+    const HirTemplateTypeBindings& structured_type_bindings,
+    const NttpBindings& nttp_bindings,
+    const HirTemplateNttpBindings& structured_nttp_bindings,
+    const Node* primary_def) {
+  if (!primary_def) return std::nullopt;
+  if (bindings.size() != structured_type_bindings.size() ||
+      nttp_bindings.size() != structured_nttp_bindings.size()) {
+    return std::nullopt;
+  }
+
+  SpecializationKey legacy_display =
+      nttp_bindings.empty()
+          ? make_specialization_key(
+                template_name, param_order, bindings, primary_def)
+          : make_specialization_key(
+                template_name, param_order, bindings, nttp_bindings,
+                primary_def);
+
+  std::vector<SpecializationArgumentIdentity> args;
+  args.reserve(param_order.size());
+  for (const auto& param : param_order) {
+    SpecializationArgumentIdentity arg;
+    arg.parameter_name = param;
+
+    if (const auto nttp_it = nttp_bindings.find(param);
+        nttp_it != nttp_bindings.end()) {
+      auto key = find_hir_template_parameter_binding_key_by_legacy_name(
+          primary_def, param, HirTemplateParameterBindingKind::NonType);
+      if (!key) return std::nullopt;
+      auto structured_it = structured_nttp_bindings.find(*key);
+      if (structured_it == structured_nttp_bindings.end() ||
+          structured_it->second != nttp_it->second) {
+        return std::nullopt;
+      }
+      arg.parameter_key = *key;
+      arg.kind = SpecializationArgumentKind::NttpValue;
+      arg.nttp_value = nttp_it->second;
+      args.push_back(std::move(arg));
+      continue;
+    }
+
+    if (const auto type_it = bindings.find(param); type_it != bindings.end()) {
+      auto key = find_hir_template_parameter_binding_key_by_legacy_name(
+          primary_def, param, HirTemplateParameterBindingKind::Type);
+      if (!key) return std::nullopt;
+      auto structured_it = structured_type_bindings.find(*key);
+      if (structured_it == structured_type_bindings.end() ||
+          !specialization_type_identity_equal(
+              structured_it->second, type_it->second)) {
+        return std::nullopt;
+      }
+      arg.parameter_key = *key;
+      arg.kind = SpecializationArgumentKind::Type;
+      arg.type = type_it->second;
+      args.push_back(std::move(arg));
+      continue;
+    }
+
+    arg.kind = SpecializationArgumentKind::Missing;
+    args.push_back(std::move(arg));
+  }
+
+  SpecializationKey out;
+  out.owner = make_specialization_owner_identity(template_name, primary_def);
+  out.arguments = std::move(args);
+  out.canonical = std::move(legacy_display.canonical);
+  return out;
 }
 
 /// A single template instantiation produced during lowering.

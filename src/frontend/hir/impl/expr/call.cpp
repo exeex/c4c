@@ -561,6 +561,8 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
     const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
     TypeBindings bindings;
     NttpBindings nttp_bindings;
+    HirTemplateTypeBindings structured_bindings;
+    HirTemplateNttpBindings structured_nttp_bindings;
     if (auto ded_it = deduced_template_calls_.find(n);
         ded_it != deduced_template_calls_.end()) {
       resolved_callee_name = ded_it->second.mangled_name;
@@ -568,23 +570,34 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
       nttp_bindings = ded_it->second.nttp_bindings;
     } else {
       bindings = ctx ? merge_explicit_and_ctx_deduced_type_bindings(
-                           n, n->left, tpl_fn, ctx)
+                           n, n->left, tpl_fn, ctx, &structured_bindings)
                      : merge_explicit_and_deduced_type_bindings(
-                           n, n->left, tpl_fn, enc);
+                           n, n->left, tpl_fn, enc, nullptr,
+                           &structured_bindings);
       nttp_bindings = build_call_nttp_bindings(
-          n->left, tpl_fn, enc_nttp, enc_nttp_by_text);
+          n->left, tpl_fn, enc_nttp, enc_nttp_by_text,
+          &structured_nttp_bindings);
       resolved_callee_name =
           mangle_template_name(n->left->name, bindings, nttp_bindings);
       if (tpl_fn) {
         const auto param_order = get_template_param_order(tpl_fn, &bindings, &nttp_bindings);
-        const SpecializationKey spec_key = nttp_bindings.empty()
-            ? make_specialization_key(n->left->name, param_order, bindings,
-                                      tpl_fn)
-            : make_specialization_key(n->left->name, param_order, bindings,
-                                      nttp_bindings, tpl_fn);
+        const std::optional<SpecializationKey> structured_spec_key =
+            try_make_structured_specialization_key(
+                n->left->name, param_order, bindings, structured_bindings,
+                nttp_bindings, structured_nttp_bindings, tpl_fn);
+        const SpecializationKey legacy_spec_key =
+            nttp_bindings.empty()
+                ? make_specialization_key(
+                      n->left->name, param_order, bindings, tpl_fn)
+                : make_specialization_key(
+                      n->left->name, param_order, bindings, nttp_bindings,
+                      tpl_fn);
+        const SpecializationKey spec_key =
+            structured_spec_key ? *structured_spec_key : legacy_spec_key;
         if (const auto* inst_list = registry_.find_instances(n->left->name)) {
           for (const auto& inst : *inst_list) {
-            if (inst.spec_key == spec_key) {
+            if (inst.spec_key == spec_key ||
+                (structured_spec_key && inst.spec_key == legacy_spec_key)) {
               resolved_callee_name = inst.mangled_name;
               break;
             }
