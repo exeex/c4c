@@ -317,11 +317,25 @@ TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
       lookup_type_binding_by_text_id(env, ts.tag_text_id);
   if (intrinsic_text.status == TypeBindingLookupStatus::Found) return *intrinsic_text.type;
   if (intrinsic_text.status == TypeBindingLookupStatus::Miss) return ts;
+
+  const char* compatibility_tag = typespec_legacy_display_tag_if_present(ts, 0);
+  if (compatibility_tag && compatibility_tag[0]) {
+    const std::string name = compatibility_tag;
+    const TypeBindingLookupResult named_key =
+        lookup_type_binding_by_key(env, name);
+    if (named_key.status == TypeBindingLookupStatus::Found) return *named_key.type;
+    if (named_key.status == TypeBindingLookupStatus::Miss) return ts;
+
+    const TypeBindingLookupResult named_text =
+        lookup_type_binding_by_text(env, name);
+    if (named_text.status == TypeBindingLookupStatus::Found) return *named_text.type;
+    if (named_text.status == TypeBindingLookupStatus::Miss) return ts;
+  }
+
   if (has_intrinsic_carrier && has_type_binding_metadata_channel(env)) return ts;
 
   if (has_type_binding_metadata_channel(env)) return ts;
 
-  const char* compatibility_tag = typespec_legacy_display_tag_if_present(ts, 0);
   // Final no-metadata fallback for legacy typedef TypeSpecs. Once any binding
   // metadata channel exists, rendered strings above are not reopened.
   if (!compatibility_tag || !compatibility_tag[0] || !env.type_bindings) return ts;
@@ -417,9 +431,12 @@ ConstEvalValueLookupResult lookup_forwarded_nttp_arg_by_text(
     }
     saw_metadata = true;
   }
-  return saw_metadata
-             ? ConstEvalValueLookupResult{ConstEvalValueLookupStatus::Miss, 0}
-             : ConstEvalValueLookupResult{};
+  if (saw_metadata) {
+    ConstEvalValueLookupResult miss{ConstEvalValueLookupStatus::Miss, 0};
+    miss.nttp_binding_metadata_miss = true;
+    return miss;
+  }
+  return {};
 }
 
 std::optional<HirRecordOwnerKey> record_owner_key_from_node(const Node* record_def) {

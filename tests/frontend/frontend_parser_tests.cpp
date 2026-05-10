@@ -9193,6 +9193,72 @@ void test_consteval_template_arg_expr_payload_ignores_stale_rendered_name() {
                 "stale rendered $expr text must not select the NTTP value");
 }
 
+void test_consteval_forwarded_nttp_binding_rejects_rendered_after_text_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId n_text = texts.intern("StructuredN");
+  const c4c::TextId other_text = texts.intern("OtherN");
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->kind = c4c::NK_FUNCTION;
+  fn->n_template_params = 1;
+  fn->template_param_names = arena.alloc_array<const char*>(1);
+  fn->template_param_names[0] = arena.strdup("N");
+  fn->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  fn->template_param_name_text_ids[0] = n_text;
+  fn->template_param_is_nttp = arena.alloc_array<bool>(1);
+  fn->template_param_is_nttp[0] = true;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
+  callee->kind = c4c::NK_VAR;
+  callee->name = arena.strdup("fn");
+  callee->has_template_args = true;
+  callee->n_template_args = 1;
+  callee->template_arg_is_value = arena.alloc_array<bool>(1);
+  callee->template_arg_is_value[0] = true;
+  callee->template_arg_values = arena.alloc_array<long long>(1);
+  callee->template_arg_values[0] = 0;
+  callee->template_arg_nttp_names = arena.alloc_array<const char*>(1);
+  callee->template_arg_nttp_names[0] = arena.strdup("RenderedN");
+  callee->template_arg_nttp_text_ids = arena.alloc_array<c4c::TextId>(1);
+  callee->template_arg_nttp_text_ids[0] = n_text;
+
+  c4c::hir::NttpBindings rendered;
+  rendered["RenderedN"] = 42;
+  c4c::hir::ConstTextMap by_text;
+  by_text[other_text] = 7;
+
+  c4c::hir::ConstEvalEnv outer_env{};
+  outer_env.nttp_bindings = &rendered;
+  outer_env.nttp_bindings_by_text = &by_text;
+
+  c4c::hir::NttpBindings nttp_bindings;
+  c4c::hir::ConstTextMap out_by_text;
+  c4c::hir::ConstStructuredMap out_by_key;
+  (void)c4c::hir::bind_consteval_call_env(
+      callee, fn, outer_env, nullptr, &nttp_bindings, nullptr, nullptr,
+      nullptr, nullptr, &out_by_text, &out_by_key);
+  expect_true(nttp_bindings.empty(),
+              "forwarded consteval NTTP binding should reject rendered fallback after TextId metadata misses");
+
+  by_text[n_text] = 5;
+  (void)c4c::hir::bind_consteval_call_env(
+      callee, fn, outer_env, nullptr, &nttp_bindings, nullptr, nullptr,
+      nullptr, nullptr, &out_by_text, &out_by_key);
+  expect_true(nttp_bindings.count("N") == 1 && nttp_bindings["N"] == 5,
+              "forwarded consteval NTTP binding should use matching TextId metadata");
+
+  callee->template_arg_nttp_text_ids[0] = c4c::kInvalidText;
+  (void)c4c::hir::bind_consteval_call_env(
+      callee, fn, outer_env, nullptr, &nttp_bindings, nullptr, nullptr,
+      nullptr, nullptr, &out_by_text, &out_by_key);
+  expect_true(nttp_bindings.count("N") == 1 && nttp_bindings["N"] == 42,
+              "no-metadata forwarded consteval NTTP binding should keep rendered compatibility");
+}
+
 void test_parser_consteval_parameter_preserves_unqualified_text_metadata() {
   c4c::Lexer lexer("consteval int id(int value) { return value; }\n",
                    c4c::LexProfile::CppSubset);
@@ -10457,6 +10523,7 @@ int main() {
   test_template_instantiation_key_expression_payload_preserves_tree_shape();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
   test_consteval_template_arg_expr_payload_ignores_stale_rendered_name();
+  test_consteval_forwarded_nttp_binding_rejects_rendered_after_text_miss();
   test_parser_consteval_parameter_preserves_unqualified_text_metadata();
   test_consteval_parameter_binding_uses_text_metadata_over_stale_rendered_name();
   test_consteval_condition_decl_binding_uses_text_metadata_over_stale_rendered_name();
