@@ -945,6 +945,9 @@ std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
           ? &ctx->nttp_bindings_by_text
           : nullptr,
       &structured_call_nttp_bindings);
+  observe_template_call_binding_structured_parity(
+      callee_def, call_bindings, structured_call_bindings, call_nttp_bindings,
+      structured_call_nttp_bindings);
 
   TypeBindings deduced_types;
   NttpBindings deduced_nttp;
@@ -980,6 +983,23 @@ std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
   }
   resolve_typedef_to_struct(result_ts);
   return reference_value_ts(result_ts);
+}
+
+void Lowerer::observe_template_call_binding_structured_parity(
+    const Node* fn_def,
+    const TypeBindings& legacy_type_bindings,
+    const HirTemplateTypeBindings& structured_type_bindings,
+    const NttpBindings& legacy_nttp_bindings,
+    const HirTemplateNttpBindings& structured_nttp_bindings) const {
+  const HirTemplateCallBindingParity parity =
+      observe_hir_template_call_binding_parity(
+          fn_def, legacy_type_bindings, structured_type_bindings,
+          legacy_nttp_bindings, structured_nttp_bindings);
+  template_call_binding_structured_parity_checks_ +=
+      parity.type_bindings_checked + parity.nttp_bindings_checked;
+  template_call_binding_structured_parity_mismatches_ +=
+      parity.type_bindings_missing + parity.type_bindings_mismatched +
+      parity.nttp_bindings_missing + parity.nttp_bindings_mismatched;
 }
 
 bool Lowerer::deduce_template_bindings_from_call_args(

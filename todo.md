@@ -8,39 +8,34 @@ Current Step Title: Populate Structured Binding Maps
 
 ## Just Finished
 
-Completed the first bounded Step 3 packet of `plan.md`: explicit call-binding
-construction now has an additive structured-map dual-write boundary for type and
-NTTP parameters without switching any downstream reader away from legacy
-`TypeBindings`, `NttpBindings`, or `NttpTextBindings`.
+Completed the next bounded Step 3 packet of `plan.md`: structured type and NTTP
+call-binding maps now reach the template-call result inference consumer for
+parity observation only, while legacy `TypeBindings`, `NttpBindings`, and
+`NttpTextBindings` remain lookup, substitution, mangling, and call-lowering
+authority.
 
 Concrete changes:
-- Added `make_hir_template_parameter_binding_key` in
-  `src/frontend/hir/hir_ir.hpp` to construct owner-aware keys only when owner
-  template `TextId`, parameter index, parameter `TextId`, kind, and qualifier
-  metadata are complete.
-- Extended `build_call_bindings` and `build_call_nttp_bindings` with optional
-  structured binding outputs, preserving existing call compatibility through
-  default arguments.
-- Dual-wrote non-pack explicit/default type and NTTP bindings into
-  `HirTemplateTypeBindings` / `HirTemplateNttpBindings` where complete metadata
-  is available. Pack bindings remain legacy-only for now because the current
-  structured key has no pack-element index.
-- Wired the local explicit call-binding flows in
-  `src/frontend/hir/impl/templates/deduction.cpp` to allocate structured maps,
-  while leaving lookup, deduction merge, pending work, specialization, consteval,
-  and lowerer readers on existing legacy maps.
-- Expanded `cpp_hir_template_parameter_binding_key_structured_metadata` to cover
-  constructing distinct structured keys from same-spelled template parameters on
-  distinct owners and indices, then using those keys in
-  `HirTemplateTypeBindings`.
+- Added `HirTemplateCallBindingParity` and
+  `observe_hir_template_call_binding_parity` in
+  `src/frontend/hir/hir_ir.hpp` to compare covered non-pack legacy call
+  bindings against structured owner/index keys without performing lookup
+  through the structured maps.
+- Wired `try_infer_template_call_result_for_deduction` to pass its
+  `build_call_bindings` / `build_call_nttp_bindings` structured outputs into a
+  Lowerer parity observer before deduced bindings are merged for result-type
+  inference.
+- Added Lowerer parity counters for the observed call-result inference boundary;
+  they are diagnostics-only state and do not affect behavior.
+- Extended `cpp_hir_template_parameter_binding_key_structured_metadata` with a
+  focused parity helper test covering matching type/NTTP maps and an NTTP
+  mismatch count.
 
 ## Suggested Next
 
-Implement the next bounded Step 3 packet: expose or carry the structured maps
-far enough to observe parity at a real call-binding consumer, still without
-making structured keys lookup authority. Keep the next slice additive and avoid
-touching pending-template dedup or specialization equality until parity is
-visible.
+Implement the next bounded Step 3 packet: dual-write structured entries for
+deduced type/NTTP bindings during the explicit/deduced merge path, still keeping
+legacy maps authoritative and avoiding pending-template dedup or specialization
+identity changes until structured merge parity is covered.
 
 ## Watchouts
 
@@ -54,8 +49,11 @@ visible.
   display/compatibility outputs; do not make them replacement semantic keys.
 - This packet intentionally did not dual-write template parameter packs because
   `HirTemplateParameterBindingKey` does not yet encode a pack element index.
-- The structured maps created in this packet are additive local state; no reader
-  depends on them yet.
+- The structured maps are now observed at the template-call result inference
+  boundary only; no reader depends on them for lookup.
+- The parity observation currently covers structured entries produced before
+  deduced call-argument bindings are merged. Deduced merge dual-write remains
+  the next Step 3 gap.
 - `make_hir_template_parameter_binding_key` rejects incomplete owner/parameter
   metadata, but callers still own deciding whether the source owner is the
   correct semantic authority for a binding domain.

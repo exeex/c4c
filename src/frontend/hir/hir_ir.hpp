@@ -1908,6 +1908,79 @@ inline std::string format_type_for_specialization_display_key(const TypeSpec& ts
   return s;
 }
 
+struct HirTemplateCallBindingParity {
+  size_t type_bindings_checked = 0;
+  size_t type_bindings_missing = 0;
+  size_t type_bindings_mismatched = 0;
+  size_t nttp_bindings_checked = 0;
+  size_t nttp_bindings_missing = 0;
+  size_t nttp_bindings_mismatched = 0;
+
+  [[nodiscard]] bool ok() const {
+    return type_bindings_missing == 0 && type_bindings_mismatched == 0 &&
+           nttp_bindings_missing == 0 && nttp_bindings_mismatched == 0;
+  }
+};
+
+/// Observe parity between legacy rendered-name call bindings and owner-aware
+/// structured call bindings. This is intentionally observational while legacy
+/// maps remain the lookup/mangling authority for current call consumers.
+[[nodiscard]] inline HirTemplateCallBindingParity
+observe_hir_template_call_binding_parity(
+    const Node* template_owner,
+    const TypeBindings& legacy_type_bindings,
+    const HirTemplateTypeBindings& structured_type_bindings,
+    const NttpBindings& legacy_nttp_bindings,
+    const HirTemplateNttpBindings& structured_nttp_bindings) {
+  HirTemplateCallBindingParity parity;
+  if (!template_owner || template_owner->n_template_params <= 0) return parity;
+
+  for (int i = 0; i < template_owner->n_template_params; ++i) {
+    if (!template_owner->template_param_names ||
+        !template_owner->template_param_names[i]) {
+      continue;
+    }
+    const bool is_pack = template_owner->template_param_is_pack &&
+                         template_owner->template_param_is_pack[i];
+    if (is_pack) continue;
+
+    const bool is_nttp = template_owner->template_param_is_nttp &&
+                         template_owner->template_param_is_nttp[i];
+    const std::string legacy_name(template_owner->template_param_names[i]);
+    if (is_nttp) {
+      const auto legacy_it = legacy_nttp_bindings.find(legacy_name);
+      if (legacy_it == legacy_nttp_bindings.end()) continue;
+      auto key = make_hir_template_parameter_binding_key(
+          template_owner, i, HirTemplateParameterBindingKind::NonType);
+      if (!key) continue;
+      ++parity.nttp_bindings_checked;
+      const auto structured_it = structured_nttp_bindings.find(*key);
+      if (structured_it == structured_nttp_bindings.end()) {
+        ++parity.nttp_bindings_missing;
+      } else if (structured_it->second != legacy_it->second) {
+        ++parity.nttp_bindings_mismatched;
+      }
+      continue;
+    }
+
+    const auto legacy_it = legacy_type_bindings.find(legacy_name);
+    if (legacy_it == legacy_type_bindings.end()) continue;
+    auto key = make_hir_template_parameter_binding_key(
+        template_owner, i, HirTemplateParameterBindingKind::Type);
+    if (!key) continue;
+    ++parity.type_bindings_checked;
+    const auto structured_it = structured_type_bindings.find(*key);
+    if (structured_it == structured_type_bindings.end()) {
+      ++parity.type_bindings_missing;
+    } else if (format_type_for_specialization_display_key(structured_it->second) !=
+               format_type_for_specialization_display_key(legacy_it->second)) {
+      ++parity.type_bindings_mismatched;
+    }
+  }
+
+  return parity;
+}
+
 /// Compatibility wrapper for old callers/tests. Do not add new semantic users;
 /// compare TypeSpec values with specialization_type_identity_equal instead.
 inline std::string canonical_type_str(const TypeSpec& ts) {

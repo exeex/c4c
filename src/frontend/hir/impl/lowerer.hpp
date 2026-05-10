@@ -1002,6 +1002,12 @@ class Lowerer {
   std::optional<TypeSpec> try_infer_template_call_result_for_deduction(
       FunctionCtx* ctx,
       const Node* call_node);
+  void observe_template_call_binding_structured_parity(
+      const Node* fn_def,
+      const TypeBindings& legacy_type_bindings,
+      const HirTemplateTypeBindings& structured_type_bindings,
+      const NttpBindings& legacy_nttp_bindings,
+      const HirTemplateNttpBindings& structured_nttp_bindings) const;
 
   // Check if deduced bindings cover all required type parameters (those
   // without defaults).
@@ -1235,6 +1241,8 @@ class Lowerer {
   };
   std::unordered_map<const Node*, DeducedTemplateCall> deduced_template_calls_;
   std::unordered_set<const Node*> rejected_template_calls_;
+  mutable size_t template_call_binding_structured_parity_checks_ = 0;
+  mutable size_t template_call_binding_structured_parity_mismatches_ = 0;
   // Constructor overloads per struct tag: tag → list of {mangled, method_node}.
   struct CtorOverload {
     std::string mangled_name;

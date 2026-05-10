@@ -145,6 +145,56 @@ void test_constructs_distinct_structured_keys_from_template_nodes() {
               "owner B index 0 binding should be preserved");
 }
 
+void test_call_binding_parity_observes_structured_maps() {
+  c4c::Node owner{};
+  owner.namespace_context_id = 8;
+  owner.unqualified_text_id = 301;
+  owner.n_template_params = 2;
+  const char* names[] = {"T", "N"};
+  c4c::TextId text_ids[] = {17, 19};
+  bool is_nttp[] = {false, true};
+  owner.template_param_names = names;
+  owner.template_param_name_text_ids = text_ids;
+  owner.template_param_is_nttp = is_nttp;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  c4c::hir::TypeBindings legacy_type_bindings;
+  legacy_type_bindings.emplace("T", int_ts);
+  c4c::hir::NttpBindings legacy_nttp_bindings;
+  legacy_nttp_bindings.emplace("N", 42);
+
+  auto type_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 0, c4c::hir::HirTemplateParameterBindingKind::Type);
+  auto nttp_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 1, c4c::hir::HirTemplateParameterBindingKind::NonType);
+  expect_true(type_key.has_value(), "type parameter should produce a key");
+  expect_true(nttp_key.has_value(), "NTTP parameter should produce a key");
+
+  c4c::hir::HirTemplateTypeBindings structured_type_bindings;
+  structured_type_bindings.emplace(*type_key, int_ts);
+  c4c::hir::HirTemplateNttpBindings structured_nttp_bindings;
+  structured_nttp_bindings.emplace(*nttp_key, 42);
+
+  auto parity = c4c::hir::observe_hir_template_call_binding_parity(
+      &owner, legacy_type_bindings, structured_type_bindings,
+      legacy_nttp_bindings, structured_nttp_bindings);
+  expect_true(parity.ok(), "structured call bindings should match legacy maps");
+  expect_true(parity.type_bindings_checked == 1,
+              "parity should check the structured type binding");
+  expect_true(parity.nttp_bindings_checked == 1,
+              "parity should check the structured NTTP binding");
+
+  structured_nttp_bindings[*nttp_key] = 7;
+  parity = c4c::hir::observe_hir_template_call_binding_parity(
+      &owner, legacy_type_bindings, structured_type_bindings,
+      legacy_nttp_bindings, structured_nttp_bindings);
+  expect_true(!parity.ok(), "parity should report structured/legacy mismatch");
+  expect_true(parity.nttp_bindings_mismatched == 1,
+              "parity should count mismatched NTTP values");
+}
+
 }  // namespace
 
 int main() {
@@ -152,6 +202,7 @@ int main() {
   test_complete_metadata_rejects_text_id_only_key();
   test_unordered_map_lookup_uses_structured_hash();
   test_constructs_distinct_structured_keys_from_template_nodes();
+  test_call_binding_parity_observes_structured_maps();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;
 }
