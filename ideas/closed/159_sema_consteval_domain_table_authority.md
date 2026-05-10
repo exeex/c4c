@@ -1,7 +1,8 @@
 # Sema Consteval Domain Table Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-10
+Closed: 2026-05-10
 
 Parent Ideas:
 - `ideas/closed/158_sema_validate_string_authority_audit.md`
@@ -140,6 +141,26 @@ explicit compatibility bridges.
   override structured metadata.
 - Validation covers the sema consteval tests plus any parser/HIR/frontend
   subsets touched by consteval handoff behavior.
+
+## Closure Notes
+
+The active runbook completed all six steps: inventory, value/local binding
+authority, consteval function authority, template type and NTTP authority,
+record-layout owner authority, and retained-bridge documentation.
+
+Close-time focused validation used the canonical regression guard on
+`test_before.log` and `test_after.log`. The guard passed with 36/36 tests
+passing before, 38/38 passing after, and no new failures. The accepted proof
+scope was:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_positive_sema_lookup_value_structured_metadata|positive_sema_)'`
+
+Full-suite baseline candidates were not accepted for this closure because they
+regressed from the stored `test_baseline.log` and included unrelated failures
+outside this idea's accepted proof scope:
+`frontend_parser_lookup_authority_tests`,
+`cpp_c4_static_assert_if_constexpr_branch_unlocks_later`, and
+`cpp_c4_static_assert_multistage_shape_chain`.
 
 ## Reviewer Reject Signals
 
