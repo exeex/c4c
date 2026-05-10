@@ -39,6 +39,13 @@ c4c::Node sizeof_type_node(const c4c::TypeSpec& ts) {
   return n;
 }
 
+c4c::Node alignof_type_node(const c4c::TypeSpec& ts) {
+  c4c::Node n{};
+  n.kind = c4c::NK_ALIGNOF_TYPE;
+  n.type = ts;
+  return n;
+}
+
 c4c::TypeSpec record_ref(c4c::TextId text_id, const char* rendered_tag) {
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_STRUCT;
@@ -50,22 +57,25 @@ c4c::TypeSpec record_ref(c4c::TextId text_id, const char* rendered_tag) {
 
 c4c::hir::HirStructDef struct_def(std::string tag,
                                   c4c::TextId text_id,
-                                  int size_bytes) {
+                                  int size_bytes,
+                                  int align_bytes) {
   c4c::hir::HirStructDef def{};
   def.tag = std::move(tag);
   def.tag_text_id = text_id;
   def.ns_qual.context_id = 3;
   def.size_bytes = size_bytes;
+  def.align_bytes = align_bytes;
   return def;
 }
 
 void test_consteval_sizeof_prefers_owner_metadata_over_stale_rendered_tag() {
-  constexpr c4c::TextId real_text = 41;
-  constexpr c4c::TextId stale_text = 42;
+  c4c::TextTable link_texts;
+  const c4c::TextId real_text = link_texts.intern("RealRecord");
+  const c4c::TextId stale_text = link_texts.intern("StaleRecord");
 
   std::unordered_map<std::string, c4c::hir::HirStructDef> struct_defs;
-  struct_defs.emplace("RealRecord", struct_def("RealRecord", real_text, 24));
-  struct_defs.emplace("StaleRecord", struct_def("StaleRecord", stale_text, 8));
+  struct_defs.emplace("RealRecord", struct_def("RealRecord", real_text, 24, 8));
+  struct_defs.emplace("StaleRecord", struct_def("StaleRecord", stale_text, 4, 1));
 
   c4c::hir::HirRecordOwnerKey real_key =
       c4c::hir::make_hir_record_owner_key(struct_defs.at("RealRecord"));
@@ -77,6 +87,7 @@ void test_consteval_sizeof_prefers_owner_metadata_over_stale_rendered_tag() {
   c4c::hir::ConstEvalEnv env{};
   env.struct_defs = &struct_defs;
   env.struct_def_owner_index = &owner_index;
+  env.link_name_texts = &link_texts;
 
   c4c::Node n = sizeof_type_node(record_ref(real_text, "StaleRecord"));
   const c4c::hir::ConstEvalResult result =
@@ -86,21 +97,35 @@ void test_consteval_sizeof_prefers_owner_metadata_over_stale_rendered_tag() {
               "sizeof should resolve record layout through owner metadata");
   expect_eq_int(static_cast<int>(result.as_int()), 24,
                 "stale rendered tag must not select the compatibility layout");
+
+  c4c::Node align = alignof_type_node(record_ref(real_text, "StaleRecord"));
+  const c4c::hir::ConstEvalResult align_result =
+      c4c::hir::evaluate_constant_expr(&align, env);
+
+  expect_true(align_result.ok(),
+              "alignof should resolve record layout through owner metadata");
+  expect_eq_int(static_cast<int>(align_result.as_int()), 8,
+                "stale rendered tag must not select compatibility alignment");
 }
 
 void test_consteval_sizeof_metadata_miss_rejects_stale_rendered_tag() {
-  constexpr c4c::TextId real_text = 41;
-  constexpr c4c::TextId stale_text = 42;
+  c4c::TextTable link_texts;
+  const c4c::TextId real_text = link_texts.intern("RealRecord");
+  const c4c::TextId stale_text = link_texts.intern("StaleRecord");
 
   std::unordered_map<std::string, c4c::hir::HirStructDef> struct_defs;
-  struct_defs.emplace("StaleRecord", struct_def("StaleRecord", stale_text, 8));
+  struct_defs.emplace("StaleRecord", struct_def("StaleRecord", stale_text, 8, 2));
   std::unordered_map<c4c::hir::HirRecordOwnerKey, std::string,
                      c4c::hir::HirRecordOwnerKeyHash>
       owner_index;
+  owner_index.emplace(c4c::hir::make_hir_record_owner_key(
+                          struct_defs.at("StaleRecord")),
+                      "StaleRecord");
 
   c4c::hir::ConstEvalEnv env{};
   env.struct_defs = &struct_defs;
   env.struct_def_owner_index = &owner_index;
+  env.link_name_texts = &link_texts;
 
   c4c::Node n = sizeof_type_node(record_ref(real_text, "StaleRecord"));
   const c4c::hir::ConstEvalResult result =
@@ -108,6 +133,12 @@ void test_consteval_sizeof_metadata_miss_rejects_stale_rendered_tag() {
 
   expect_true(!result.ok(),
               "structured owner metadata miss should not recover through stale rendered tag");
+
+  c4c::Node align = alignof_type_node(record_ref(real_text, "StaleRecord"));
+  const c4c::hir::ConstEvalResult align_result =
+      c4c::hir::evaluate_constant_expr(&align, env);
+  expect_true(!align_result.ok(),
+              "alignof owner metadata miss should not recover through stale rendered tag");
 }
 
 void test_type_binding_equivalence_rejects_rendered_name_when_metadata_exists() {

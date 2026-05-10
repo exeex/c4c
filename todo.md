@@ -1,33 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/159_sema_consteval_domain_table_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Make template type and NTTP binding lookup structured-first
+Current Step ID: 5
+Current Step Title: Make record-layout lookup prefer owner keys
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4, "Make template type and NTTP binding lookup
-structured-first." `resolve_type` now routes legacy rendered TypeSpec names
-through structured/TextId type binding bridge maps before rendered fallback and
-treats bridge misses as authoritative. Forwarded consteval NTTP lookup now
-reports `nttp_binding_metadata_miss` on TextId/key metadata misses and keeps
-rendered NTTP lookup available only for no-carrier compatibility. Added focused
-`frontend_parser_tests` coverage for forwarded NTTP TextId miss rejection,
-matching TextId success, and no-metadata rendered compatibility.
+Completed Step 5, "Make record-layout lookup prefer owner keys." Consteval
+record-layout lookup now treats a complete owner-key miss with
+`struct_def_owner_index` present as authoritative, so stale rendered record tags
+cannot reopen layout lookup for covered `sizeof`/`alignof` paths. Added focused
+coverage where the stale rendered tag is present in `link_name_texts` and the
+owner index, proving both successful owner-key layout lookup and owner-key miss
+failure for `sizeof` and `alignof`.
 
 ## Suggested Next
 
-Start Step 5 from `plan.md`: make record-layout lookup prefer owner keys and
-fail closed on covered owner metadata misses.
+Start Step 6 from `plan.md`: consolidate retained rendered-bridge
+documentation and run the final validation ladder for the active consteval
+authority migration.
 
 ## Watchouts
 
-- The current `TypeSpec` shape has no rendered `tag` field in this build, so
-  rendered-name type bridge behavior is covered through active TextId/key
-  carriers rather than a synthetic stale `TypeSpec::tag` fixture.
-- A local exploratory run from the prior packet found
+- The `link_name_texts` canonicalization bridge is still available only after
+  `record_owner_key_from_typespec` cannot form a complete owner key; complete
+  owner-key misses fail closed before that bridge.
+- A local exploratory run from an earlier packet found
   `frontend_parser_lookup_authority_tests` red for an unrelated value-domain
   assertion; this packet used the delegated proof target instead.
 - Do not weaken tests, mark supported paths unsupported, or rely on
@@ -36,7 +36,7 @@ fail closed on covered owner metadata misses.
 ## Proof
 
 Ran delegated proof:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_lookup_value_structured_metadata|positive_sema_)'; } > test_after.log 2>&1`
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_sema_consteval_type_utils_structured_metadata|frontend_parser_tests|positive_sema_)'; } > test_after.log 2>&1`
 
 Result: passed. `test_after.log` contains the successful build and 36/36
 passing delegated tests.

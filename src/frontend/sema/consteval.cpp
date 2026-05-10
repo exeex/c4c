@@ -510,6 +510,7 @@ const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv&
   // Path 1: trust ts as-is (works when tag_text_id is in link_name_texts).
   if (auto direct = record_owner_key_from_typespec(ts); direct.has_value()) {
     if (const HirStructDef* def = try_owner_lookup(*direct)) return def;
+    if (env.struct_def_owner_index) return nullptr;
   }
 
   // Path 2: canonicalize a rendered mirror via link_name_texts->find(). This
