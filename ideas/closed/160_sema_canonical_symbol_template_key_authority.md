@@ -1,7 +1,8 @@
 # Sema Canonical Symbol Template Key Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-10
+Closed: 2026-05-10
 
 Parent Ideas:
 - `ideas/closed/159_sema_consteval_domain_table_authority.md`
@@ -147,3 +148,15 @@ that handoff.
 - A raw `TextId` is treated as complete cross-domain identity without owner,
   scope, or nominal-domain context where those are needed.
 - Tests only update debug/mangle text without proving identity separation.
+
+## Closure Note
+
+Closed after the canonical close-scope regression guard passed for command-matched
+`test_before.log` and `test_after.log` using:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_sema_canonical_symbol_structured_metadata|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_positive_sema_lookup_value_structured_metadata)$'`
+
+The guard result was accepted with
+`--allow-non-decreasing-passed`: before and after both passed 3/3 with no new
+failures. `test_baseline.new.log` was not accepted as a full-suite baseline
+because its known failures are unrelated to this canonical-symbol source idea.
