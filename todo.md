@@ -8,25 +8,19 @@ Current Step Title: Acquire Accepted Closure Regression Gate
 
 ## Just Finished
 
-Step 8 of the previous implementation runbook is complete. The selected sema
-metadata validation passed after a fresh build:
-`cpp_hir_sema_canonical_symbol_structured_metadata`,
+Step 1 is complete. Acquired canonical close-scope `test_after.log` for the
+accepted closure subset after a fresh build. The selected sema metadata tests
+passed: `cpp_hir_sema_canonical_symbol_structured_metadata`,
 `cpp_hir_sema_consteval_type_utils_structured_metadata`, and
-`cpp_positive_sema_lookup_value_structured_metadata`.
-
-The implementation route is exhausted, but close is rejected for now because no
-accepted close-time regression guard is available. `test_baseline.new.log` must
-not be accepted as the full-suite baseline while it still contains these known
-non-canonical-symbol failures: `frontend_parser_lookup_authority_tests`,
-`cpp_c4_static_assert_if_constexpr_branch_unlocks_later`, and
-`cpp_c4_static_assert_multistage_shape_chain`.
+`cpp_positive_sema_lookup_value_structured_metadata`. The command-matched
+regression guard also passed for the accepted close scope: before and after
+both passed 3/3, with no new failures and no new tests over 30 seconds.
 
 ## Suggested Next
 
-Acquire command-matched canonical `test_before.log` and `test_after.log` for an
-accepted close scope, then run the regression guard. If that passes and the
-source idea acceptance criteria remain satisfied, ask the plan owner to close
-the idea.
+Proceed to Step 2 / close-or-reassess. If the source idea acceptance criteria
+remain satisfied, ask the plan owner to close the idea; otherwise reassess the
+remaining lifecycle state before closure.
 
 ## Watchouts
 
@@ -46,7 +40,12 @@ Last accepted supporting proof:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_sema_canonical_symbol_structured_metadata|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_positive_sema_lookup_value_structured_metadata)$'`
 
-Result: passed.
+Result: passed as closure-scope after proof.
 
-Close proof: pending. No accepted canonical `test_after.log` is present for the
-close-time regression guard in this lifecycle state.
+Regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed for the accepted close scope.
+
+Proof log: `test_after.log`.
