@@ -197,8 +197,115 @@ struct ModuleDeclLookupKeyHash {
   return key;
 }
 
-/// Non-type template parameter value bindings (forward decl for TemplateCallInfo).
+enum class HirTemplateParameterBindingKind : uint8_t {
+  Type,
+  NonType,
+};
+
+/// Owner-aware HIR identity for a template parameter binding.
+///
+/// `parameter_text_id` alone is not a complete binding key: two templates may
+/// reuse the same spelling for unrelated parameters. The owner and declaration
+/// index fields make the key suitable for future lookup/dedup authority while
+/// the legacy string/TextId maps below remain compatibility mirrors.
+struct HirTemplateParameterBindingKey {
+  HirTemplateParameterBindingKind parameter_kind =
+      HirTemplateParameterBindingKind::Type;
+  int owner_namespace_context_id = -1;
+  bool owner_is_global_qualified = false;
+  std::vector<TextId> owner_qualifier_segment_text_ids;
+  TextId owner_template_text_id = kInvalidText;
+  int parameter_index = -1;
+  TextId parameter_text_id = kInvalidText;
+
+  [[nodiscard]] bool operator==(
+      const HirTemplateParameterBindingKey& other) const {
+    return parameter_kind == other.parameter_kind &&
+           owner_namespace_context_id == other.owner_namespace_context_id &&
+           owner_is_global_qualified == other.owner_is_global_qualified &&
+           owner_qualifier_segment_text_ids ==
+               other.owner_qualifier_segment_text_ids &&
+           owner_template_text_id == other.owner_template_text_id &&
+           parameter_index == other.parameter_index &&
+           parameter_text_id == other.parameter_text_id;
+  }
+
+  [[nodiscard]] bool operator!=(
+      const HirTemplateParameterBindingKey& other) const {
+    return !(*this == other);
+  }
+
+  [[nodiscard]] bool operator<(
+      const HirTemplateParameterBindingKey& other) const {
+    if (parameter_kind != other.parameter_kind) {
+      return parameter_kind < other.parameter_kind;
+    }
+    if (owner_namespace_context_id != other.owner_namespace_context_id) {
+      return owner_namespace_context_id < other.owner_namespace_context_id;
+    }
+    if (owner_is_global_qualified != other.owner_is_global_qualified) {
+      return owner_is_global_qualified < other.owner_is_global_qualified;
+    }
+    if (owner_qualifier_segment_text_ids !=
+        other.owner_qualifier_segment_text_ids) {
+      return owner_qualifier_segment_text_ids <
+             other.owner_qualifier_segment_text_ids;
+    }
+    if (owner_template_text_id != other.owner_template_text_id) {
+      return owner_template_text_id < other.owner_template_text_id;
+    }
+    if (parameter_index != other.parameter_index) {
+      return parameter_index < other.parameter_index;
+    }
+    return parameter_text_id < other.parameter_text_id;
+  }
+};
+
+struct HirTemplateParameterBindingKeyHash {
+  [[nodiscard]] size_t operator()(
+      const HirTemplateParameterBindingKey& key) const noexcept {
+    const size_t owner_qualifier_hash = hash_text_id_sequence(
+        key.owner_qualifier_segment_text_ids.data(),
+        key.owner_qualifier_segment_text_ids.size());
+    return static_cast<size_t>(hash_id_words(
+        kIdHashSeed, static_cast<uint32_t>(key.parameter_kind),
+        static_cast<uint32_t>(key.owner_namespace_context_id),
+        static_cast<uint32_t>(key.owner_is_global_qualified),
+        key.owner_template_text_id, static_cast<uint32_t>(key.parameter_index),
+        key.parameter_text_id, static_cast<uint64_t>(owner_qualifier_hash)));
+  }
+};
+
+[[nodiscard]] inline bool hir_template_parameter_binding_key_has_complete_metadata(
+    const HirTemplateParameterBindingKey& key) {
+  return key.owner_template_text_id != kInvalidText &&
+         key.parameter_index >= 0 && key.parameter_text_id != kInvalidText &&
+         std::find(key.owner_qualifier_segment_text_ids.begin(),
+                   key.owner_qualifier_segment_text_ids.end(),
+                   kInvalidText) == key.owner_qualifier_segment_text_ids.end();
+}
+
+/// Structured type template parameter bindings keyed by owner/kind/index/text.
+using HirTemplateTypeBindings = std::unordered_map<
+    HirTemplateParameterBindingKey,
+    TypeSpec,
+    HirTemplateParameterBindingKeyHash>;
+
+/// Structured non-type template parameter bindings keyed by owner/kind/index/text.
+using HirTemplateNttpBindings = std::unordered_map<
+    HirTemplateParameterBindingKey,
+    long long,
+    HirTemplateParameterBindingKeyHash>;
+
+/// Legacy compatibility mirror keyed by rendered template parameter spelling.
+/// Keep this map in sync during migration, but do not add new semantic
+/// authority that depends only on the rendered parameter name.
+using TypeBindings = std::unordered_map<std::string, TypeSpec>;
+
+/// Legacy compatibility mirror keyed by rendered NTTP parameter spelling.
 using NttpBindings = std::unordered_map<std::string, long long>;
+
+/// Legacy compatibility mirror keyed only by parameter TextId; not owner-aware.
 using NttpTextBindings = std::unordered_map<TextId, long long>;
 
 struct SourceLoc {
@@ -1671,9 +1778,6 @@ struct HirStructMemberLookupKeyHash {
 }
 
 // ── Template function definition metadata (populated by hir build) ───────────
-
-/// Type bindings for template parameter substitution.
-using TypeBindings = std::unordered_map<std::string, TypeSpec>;
 
 inline std::string format_nominal_type_for_specialization_display_key(
     const TypeSpec& ts) {

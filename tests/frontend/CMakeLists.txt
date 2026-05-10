@@ -2,6 +2,7 @@ set(frontend_test_targets frontend_lexer_tests frontend_parser_tests
                           frontend_parser_lookup_authority_tests
                           frontend_hir_lookup_tests
                           cpp_hir_template_type_arg_encoding_test
+                          cpp_hir_template_parameter_binding_key_test
                           cpp_hir_static_member_base_metadata_test
                           cpp_hir_member_typedef_binding_metadata_test
                           cpp_hir_nested_member_typedef_record_def_metadata_test
@@ -70,6 +71,8 @@ add_test(NAME frontend_parser_lookup_authority_tests
 add_test(NAME frontend_hir_lookup_tests COMMAND frontend_hir_lookup_tests)
 add_test(NAME cpp_hir_template_type_arg_encoding_structured_metadata
          COMMAND cpp_hir_template_type_arg_encoding_test)
+add_test(NAME cpp_hir_template_parameter_binding_key_structured_metadata
+         COMMAND cpp_hir_template_parameter_binding_key_test)
 add_test(NAME cpp_hir_static_member_base_structured_metadata
          COMMAND cpp_hir_static_member_base_metadata_test)
 add_test(NAME cpp_hir_member_typedef_binding_structured_metadata
@@ -154,6 +157,8 @@ set_tests_properties(frontend_parser_lookup_authority_tests
                      PROPERTIES LABELS "internal;parse")
 set_tests_properties(frontend_hir_lookup_tests PROPERTIES LABELS "internal;hir")
 set_tests_properties(cpp_hir_template_type_arg_encoding_structured_metadata
+                     PROPERTIES LABELS "internal;hir;cpp")
+set_tests_properties(cpp_hir_template_parameter_binding_key_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
 set_tests_properties(cpp_hir_static_member_base_structured_metadata
                      PROPERTIES LABELS "internal;hir;cpp")
