@@ -214,7 +214,9 @@ ConstEvalResult evaluate_pending_consteval(
   env.struct_def_owner_index = &module.struct_def_owner_index;
   env.link_name_texts = module.link_name_texts.get();
   return evaluate_consteval_call(
-      ce_fn_def, args, env, ct_state.consteval_fn_defs());
+      ce_fn_def, args, env, ct_state.consteval_fn_defs(), 0,
+      &ct_state.consteval_fn_defs_by_text(),
+      &ct_state.consteval_fn_defs_by_key());
 }
 
 /// Attempt one round of template instantiation resolution.
@@ -467,7 +469,7 @@ bool try_evaluate_consteval_call_expr(
     return false;
   }
 
-  const Node* ce_fn_def = ct_state.find_consteval_def(expr->left->name);
+  const Node* ce_fn_def = ct_state.find_consteval_def(expr->left, expr->left->name);
   if (!ce_fn_def) return false;
 
   EngineConstEvalStructuredMaps structured_maps;
@@ -487,7 +489,9 @@ bool try_evaluate_consteval_call_expr(
     args.push_back(*arg.value);
   }
 
-  auto result = evaluate_consteval_call(ce_fn_def, args, env, ct_state.consteval_fn_defs());
+  auto result = evaluate_consteval_call(ce_fn_def, args, env, ct_state.consteval_fn_defs(), 0,
+                                        &ct_state.consteval_fn_defs_by_text(),
+                                        &ct_state.consteval_fn_defs_by_key());
   if (!result.ok()) return false;
   if (out_value) *out_value = result.as_int();
   return true;

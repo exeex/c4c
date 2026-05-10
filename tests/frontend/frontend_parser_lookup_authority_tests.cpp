@@ -3672,10 +3672,23 @@ void test_nested_consteval_call_preserves_structured_template_bindings() {
   std::unordered_map<std::string, const c4c::Node*> consteval_fns;
   consteval_fns["inner"] = inner;
   consteval_fns["outer"] = outer;
+  c4c::hir::ConstEvalFunctionTextMap consteval_fns_by_text;
+  consteval_fns_by_text[inner->unqualified_text_id] = inner;
+  consteval_fns_by_text[outer->unqualified_text_id] = outer;
+  c4c::hir::ConstEvalFunctionStructuredMap consteval_fns_by_key;
+  c4c::hir::ConstEvalStructuredNameKey inner_key;
+  inner_key.namespace_context_id = inner->namespace_context_id;
+  inner_key.base_text_id = inner->unqualified_text_id;
+  consteval_fns_by_key[inner_key] = inner;
+  c4c::hir::ConstEvalStructuredNameKey outer_key;
+  outer_key.namespace_context_id = outer->namespace_context_id;
+  outer_key.base_text_id = outer->unqualified_text_id;
+  consteval_fns_by_key[outer_key] = outer;
 
   c4c::hir::ConstEvalEnv env;
   const c4c::hir::ConstEvalResult result =
-      c4c::hir::evaluate_consteval_call(root, {}, env, consteval_fns);
+      c4c::hir::evaluate_consteval_call(root, {}, env, consteval_fns, 0,
+                                        &consteval_fns_by_text, &consteval_fns_by_key);
   expect_true(result.ok() && result.as_int() == 11,
               "nested consteval calls should pass structured type-binding "
               "and NTTP maps through bind_consteval_call_env instead of "

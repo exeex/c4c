@@ -19,6 +19,7 @@
 // those deferred compile-time semantics into concrete HIR state.
 
 #include "hir_ir.hpp"
+#include "../sema/consteval.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -1344,9 +1345,15 @@ struct CompileTimeState {
   /// Register a consteval function definition (AST node pointer).
   void register_consteval_def(const std::string& name, const Node* node) {
     consteval_fn_defs_[name] = node;
+    if (node && node->unqualified_text_id != kInvalidText) {
+      consteval_fn_defs_by_text_[node->unqualified_text_id] = node;
+    }
     if (auto key = make_compile_time_registry_key(
             CompileTimeRegistryKeyKind::ConstevalFunction, node)) {
       consteval_fn_defs_by_key_[*key] = node;
+    }
+    if (auto key = make_consteval_function_key(node)) {
+      consteval_fn_defs_by_consteval_key_[*key] = node;
     }
   }
 
@@ -1498,6 +1505,14 @@ struct CompileTimeState {
   /// Useful for passing to evaluate_consteval_call() which expects a map ref.
   const std::unordered_map<std::string, const Node*>& consteval_fn_defs() const {
     return consteval_fn_defs_;
+  }
+
+  const ConstEvalFunctionTextMap& consteval_fn_defs_by_text() const {
+    return consteval_fn_defs_by_text_;
+  }
+
+  const ConstEvalFunctionStructuredMap& consteval_fn_defs_by_key() const {
+    return consteval_fn_defs_by_consteval_key_;
   }
 
   /// Const reference to registered enum constants used during consteval.
@@ -1767,6 +1782,32 @@ struct CompileTimeState {
     return nullptr;
   }
 
+  static std::optional<ConstEvalStructuredNameKey> make_consteval_function_key(
+      const Node* declaration) {
+    if (!declaration || declaration->namespace_context_id < 0 ||
+        declaration->unqualified_text_id == kInvalidText) {
+      return std::nullopt;
+    }
+    if (declaration->n_qualifier_segments < 0) return std::nullopt;
+    if (declaration->n_qualifier_segments > 0 &&
+        !declaration->qualifier_text_ids) {
+      return std::nullopt;
+    }
+    ConstEvalStructuredNameKey key;
+    key.namespace_context_id = declaration->namespace_context_id;
+    key.is_global_qualified = declaration->is_global_qualified;
+    key.base_text_id = declaration->unqualified_text_id;
+    key.qualifier_text_ids.reserve(
+        static_cast<std::size_t>(declaration->n_qualifier_segments));
+    for (int i = 0; i < declaration->n_qualifier_segments; ++i) {
+      const TextId segment = declaration->qualifier_text_ids[i];
+      if (segment == kInvalidText) return std::nullopt;
+      key.qualifier_text_ids.push_back(segment);
+    }
+    return key.valid() ? std::optional<ConstEvalStructuredNameKey>(key)
+                       : std::nullopt;
+  }
+
   // Step 5 classification: rendered-name maps are compatibility fallbacks for
   // callers that cannot yet supply declaration keys; *_by_key_ mirrors are the
   // structured authority when present.
@@ -1791,6 +1832,8 @@ struct CompileTimeState {
   std::unordered_map<CompileTimeRegistryKey, const Node*,
                      CompileTimeRegistryKeyHash>
       consteval_fn_defs_by_key_;
+  ConstEvalFunctionTextMap consteval_fn_defs_by_text_;
+  ConstEvalFunctionStructuredMap consteval_fn_defs_by_consteval_key_;
   // Enum/const integer name maps remain compatibility and diagnostic-facing
   // consteval inputs; structured value-binding mirrors are preferred when a
   // declaration key is available.

@@ -9963,7 +9963,7 @@ void test_consteval_function_lookup_prefers_structured_and_text_metadata_over_st
 
   c4c::hir::ConstEvalFunctionStructuredMap empty_key;
   auto text = c4c::hir::evaluate_consteval_call(
-      caller, {}, env, rendered, 0, &by_text, &empty_key);
+      caller, {}, env, rendered, 0, &by_text);
   expect_true(text.ok(), "TextId consteval function lookup should evaluate");
   expect_eq_int(static_cast<int>(text.as_int()), 7,
                 "consteval function lookup should prefer TextId metadata over stale rendered names");
@@ -9973,6 +9973,22 @@ void test_consteval_function_lookup_prefers_structured_and_text_metadata_over_st
       caller, {}, env, rendered, 0, &empty_text, &empty_key);
   expect_true(!authoritative_miss.ok(),
               "consteval function lookup should reject stale rendered names after metadata misses");
+
+  auto no_map_metadata_miss = c4c::hir::evaluate_consteval_call(
+      caller, {}, env, rendered);
+  expect_true(!no_map_metadata_miss.ok(),
+              "consteval function lookup should reject rendered fallback when call metadata exists");
+
+  c4c::Node* text_only_callee = parser.make_node(c4c::NK_VAR, 1);
+  text_only_callee->name = arena.strdup("stale_consteval");
+  text_only_callee->unqualified_name = arena.strdup("actual_consteval");
+  text_only_callee->unqualified_text_id = actual_text;
+  text_only_callee->namespace_context_id = -1;
+  c4c::Node* text_only_caller = make_consteval_calling(parser, arena, text_only_callee);
+  auto text_only_miss = c4c::hir::evaluate_consteval_call(
+      text_only_caller, {}, env, rendered, 0, &empty_text);
+  expect_true(!text_only_miss.ok(),
+              "consteval function lookup should reject stale rendered names after TextId miss");
 
   c4c::Node* legacy_callee = parser.make_node(c4c::NK_VAR, 1);
   legacy_callee->name = arena.strdup("stale_consteval");

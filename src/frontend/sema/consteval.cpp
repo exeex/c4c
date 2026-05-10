@@ -991,12 +991,6 @@ std::optional<ConstEvalStructuredNameKey> consteval_symbol_key(const Node* n) {
   return key;
 }
 
-template <typename T>
-bool compare_ptrs(const T* legacy, const T* structured) {
-  if (!structured) return true;
-  return legacy && legacy == structured;
-}
-
 const Node* lookup_consteval_function_by_text(const ConstEvalFunctionTextMap* map,
                                               const Node* callee) {
   if (!map || !callee || callee->unqualified_text_id == kInvalidText ||
@@ -1025,23 +1019,26 @@ const Node* lookup_consteval_function(
   // `consteval_fns` is the legacy rendered compatibility map. TextId and
   // structured function maps are authoritative when call metadata is present;
   // only no-metadata calls fall back to the rendered spelling.
-  auto it = consteval_fns.find(callee->name);
-  const Node* legacy = it != consteval_fns.end() ? it->second : nullptr;
-  const Node* text = lookup_consteval_function_by_text(consteval_fns_by_text, callee);
-  (void)compare_ptrs(legacy, text);
-  bool has_authoritative_metadata = text != nullptr;
-  if (auto key = consteval_symbol_key(callee); key.has_value() && key->valid()) {
-    has_authoritative_metadata = has_authoritative_metadata || consteval_fns_by_key != nullptr;
+  auto key = consteval_symbol_key(callee);
+  if (key.has_value() && key->valid()) {
     const Node* structured = lookup_consteval_function_by_key(consteval_fns_by_key, callee);
-    (void)compare_ptrs(legacy, structured);
     if (structured) return structured;
+    if (consteval_fns_by_key) return nullptr;
   }
+
+  const bool has_text_metadata =
+      callee->unqualified_text_id != kInvalidText && !callee->is_global_qualified &&
+      callee->n_qualifier_segments == 0;
+  const Node* text = lookup_consteval_function_by_text(consteval_fns_by_text, callee);
+  if (text) return text;
   if (consteval_fns_by_text && callee->unqualified_text_id != kInvalidText &&
       !callee->is_global_qualified && callee->n_qualifier_segments == 0) {
-    has_authoritative_metadata = true;
+    return nullptr;
   }
-  if (text) return text;
-  if (has_authoritative_metadata) return nullptr;
+  if (key.has_value() || has_text_metadata) return nullptr;
+
+  auto it = consteval_fns.find(callee->name);
+  const Node* legacy = it != consteval_fns.end() ? it->second : nullptr;
   return legacy;
 }
 

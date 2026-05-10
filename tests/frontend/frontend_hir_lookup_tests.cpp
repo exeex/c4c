@@ -2156,6 +2156,71 @@ int use_consteval_nttp() { return plus_one<41>(); }
               "TextId NTTP binding mirror should preserve the constant value");
 }
 
+void test_pending_consteval_nested_call_uses_compile_time_function_metadata() {
+  constexpr std::string_view source = R"cpp(
+consteval int inner() { return 5; }
+consteval int outer() { return inner(); }
+
+int use_nested_consteval() { return outer(); }
+)cpp";
+
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_hir_lookup_tests.cpp");
+  c4c::Node* root = parser.parse();
+  auto sema_result = c4c::sema::analyze_program(
+      root, c4c::sema_profile_from(c4c::SourceProfile::CppSubset));
+  expect_true(sema_result.validation.ok,
+              "nested consteval HIR fixture should validate");
+
+  auto initial = c4c::hir::build_initial_hir(
+      root, &sema_result.canonical.resolved_types);
+  const c4c::Node* inner_def =
+      initial.ct_state->find_consteval_def("inner");
+  const c4c::Node* outer_def =
+      initial.ct_state->find_consteval_def("outer");
+  expect_true(inner_def && outer_def,
+              "compile-time state should register both nested consteval definitions");
+  expect_true(inner_def->unqualified_text_id != c4c::kInvalidText &&
+                  outer_def->unqualified_text_id != c4c::kInvalidText,
+              "nested consteval definitions should carry TextId metadata");
+  expect_true(initial.ct_state->consteval_fn_defs_by_text().count(
+                  inner_def->unqualified_text_id) == 1 &&
+                  initial.ct_state->consteval_fn_defs_by_text().count(
+                      outer_def->unqualified_text_id) == 1,
+              "compile-time state should expose consteval TextId function metadata");
+  expect_true(!initial.ct_state->consteval_fn_defs_by_key().empty(),
+              "compile-time state should expose consteval structured function metadata");
+
+  bool saw_pending_before = false;
+  for (const auto& expr : initial.module->expr_pool) {
+    if (std::holds_alternative<c4c::hir::PendingConstevalExpr>(expr.payload)) {
+      saw_pending_before = true;
+      break;
+    }
+  }
+  expect_true(saw_pending_before,
+              "initial HIR should retain a pending outer consteval call before reduction");
+
+  c4c::hir::run_compile_time_engine(
+      *initial.module, initial.ct_state, initial.deferred_instantiate,
+      initial.deferred_instantiate_type);
+
+  bool found_reduced_nested_call = false;
+  for (const auto& expr : initial.module->expr_pool) {
+    expect_true(!std::holds_alternative<c4c::hir::PendingConstevalExpr>(expr.payload),
+                "compile-time function metadata should let nested consteval calls reduce");
+    const auto* literal = std::get_if<c4c::hir::IntLiteral>(&expr.payload);
+    if (literal && literal->value == 5) found_reduced_nested_call = true;
+  }
+  expect_true(found_reduced_nested_call,
+              "nested consteval call should reduce to the inner function result");
+}
+
 void test_template_call_nttp_handoff_carries_text_id_bindings() {
   constexpr std::string_view source = R"cpp(
 template<int V>
@@ -4896,6 +4961,7 @@ int main() {
   test_type_suffix_for_mangling_uses_record_def_not_stale_tag();
   test_type_suffix_for_mangling_no_metadata_is_explicit_unknown();
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
+  test_pending_consteval_nested_call_uses_compile_time_function_metadata();
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();
   test_static_member_nttp_const_eval_prefers_text_id_binding();

@@ -1,39 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/159_sema_consteval_domain_table_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Make value and local binding lookup structured-first
+Current Step ID: 3
+Current Step Title: Make consteval function lookup structured-first
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2, "Make value and local binding lookup structured-first."
-`ConstEvalEnv::lookup(const Node*)` now keeps per-domain metadata miss state so
-complete structured/TextId misses skip only the covered rendered enum, local,
-named, or NTTP compatibility map. Empty but present metadata maps count as
-complete lookup authority, and rendered `ConstMap`/interpreter-local `by_name`
-paths remain available only for uncovered no-metadata compatibility domains.
-Added focused sema lookup metadata tests for stale rendered consteval local and
-named value fallbacks, including an unrelated no-metadata named fallback guard.
+Completed Step 3, "Make consteval function lookup structured-first."
+`lookup_consteval_function` now checks structured function metadata first, uses
+TextId metadata when no structured map is provided, treats complete structured
+or TextId misses as authoritative, and falls back to rendered `consteval_fns`
+only when the callee carries no usable function metadata. Added focused
+consteval function tests for stale rendered fallback rejection, TextId-only
+misses, and no-metadata rendered compatibility. Follow-up review gap fixed:
+`CompileTimeState` now exposes consteval function TextId/structured maps and
+HIR compile-time engine consteval call sites pass them into
+`evaluate_consteval_call`, so real pending/nested HIR consteval reduction does
+not fail closed after metadata-rich nested calls.
 
 ## Suggested Next
 
-Start Step 3 from `plan.md`: make consteval function lookup structured-first,
-including complete structured/TextId misses that do not reopen rendered
-function-name fallback.
+Start Step 4 from `plan.md`: make template type and NTTP binding lookup
+structured-first, including complete metadata misses that do not reopen
+rendered binding fallbacks.
 
 ## Watchouts
 
-- `lookup_rendered_compatibility` intentionally preserves no-metadata rendered
-  fallback by domain; future steps should avoid collapsing per-domain miss
-  state back into one global rendered-fallback gate.
-- `ConstEvalValueLookupResult` now has enum/local/named/NTTP miss flags; any
-  Step 4 NTTP changes should set `nttp_binding_metadata_miss` when extending
-  lookup helpers outside `ConstEvalEnv`.
-- `InterpreterBindings::by_name` is still exposed through `env.local_consts`
-  beside `by_text` and `by_key`, but complete local metadata misses now skip
-  the rendered local fallback.
+- HIR compile-time `evaluate_consteval_call` sites now pass function
+  TextId/structured maps from `CompileTimeState`; future new call sites should
+  do the same for metadata-rich nested calls.
+- A local exploratory run of `frontend_parser_lookup_authority_tests` still
+  fails an unrelated value-domain assertion:
+  `consteval value lookup should reject rendered NTTP fallback after a qualified
+  structured value-domain key misses`.
 - Do not weaken tests, mark supported paths unsupported, or rely on
   testcase-shaped shortcuts.
 
@@ -44,5 +45,6 @@ Ran delegated proof:
 
 Result: passed. `test_after.log` contains the successful build and 34/34
 passing `positive_sema_` tests. Also ran the focused pre-proof check
-`cmake --build --preset default --target cpp_hir_sema_lookup_value_metadata_test && ctest --test-dir build --output-on-failure -R '^cpp_positive_sema_lookup_value_structured_metadata$'`,
-which passed.
+`cmake --build --preset default --target frontend_parser_tests && ctest --test-dir build --output-on-failure -R '^frontend_parser_tests$'`,
+which passed. Follow-up focused HIR proof also passed:
+`cmake --build --preset default --target frontend_hir_lookup_tests && ctest --test-dir build --output-on-failure -R '^frontend_hir_lookup_tests$'`.
