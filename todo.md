@@ -8,35 +8,37 @@ Current Step Title: Populate Structured Binding Maps
 
 ## Just Finished
 
-Completed the next bounded Step 3 packet of `plan.md`: structured type and NTTP
-entries are now dual-written for deduced non-pack bindings in the
-explicit/deduced merge paths when complete owner/parameter metadata exists,
-while legacy `TypeBindings`, `NttpBindings`, and `NttpTextBindings` remain
-lookup, substitution, mangling, and call-lowering authority.
+Completed the remaining Step 3 pack-boundary packet of `plan.md`: structured
+type and NTTP binding keys can now represent pack elements separately from the
+ordinary parameter key, and explicit type/NTTP pack call bindings dual-write
+structured entries when complete owner/parameter metadata exists. Legacy
+`TypeBindings`, `NttpBindings`, and `NttpTextBindings` remain lookup,
+substitution, mangling, and call-lowering authority.
 
 Concrete changes:
-- Added owner-aware legacy-name mirror helpers for non-pack type and NTTP
-  bindings; they refuse incomplete metadata and leave packs legacy-only.
-- Extended `deduce_template_bindings_from_call_args` with optional structured
-  type/NTTP outputs populated from deduced legacy maps.
-- Wired `try_infer_template_call_result_for_deduction`,
-  `merge_explicit_and_deduced_type_bindings`, and
-  `merge_explicit_and_ctx_deduced_type_bindings` to add structured entries only
-  for deduced names that legacy merge insertion accepts, so explicit/default
-  legacy bindings remain authoritative.
-- Moved call-result parity observation to the merged explicit+deduced maps and
-  added parity observation at the explicit/deduced merge boundaries.
-- Extended `cpp_hir_template_parameter_binding_key_structured_metadata` with a
-  focused dual-write helper test covering complete metadata, type/NTTP entries,
-  pack rejection, and incomplete owner metadata rejection.
+- Added `pack_element_index` to `HirTemplateParameterBindingKey`, with `-1`
+  preserving non-pack identity and non-negative values representing pack
+  elements.
+- Included the pack element index in structured key equality, ordering, and
+  hashing.
+- Extended owner-aware legacy-name mirror helpers to parse `Name#N` pack
+  binding names and populate structured type/NTTP pack entries only when owner
+  metadata is complete.
+- Wired `build_call_bindings` and `build_call_nttp_bindings` pack branches to
+  dual-write structured explicit pack entries while leaving legacy maps as the
+  authoritative result.
+- Extended `cpp_hir_template_parameter_binding_key_structured_metadata` to cover
+  distinct pack elements, non-pack-vs-pack identity, type pack dual-write, NTTP
+  pack dual-write, and invalid unsuffixed pack names.
 
 ## Suggested Next
 
-Implement the next bounded Step 3 packet: decide the remaining structured map
-boundary for defaulted/deduced pack bindings before any reader switch. Keep
-legacy maps authoritative and avoid pending-template dedup or specialization
-identity changes until the structured key can represent every binding domain
-the reader would need.
+Step 3 now has structured dual-write coverage for explicit, defaulted
+non-pack, deduced non-pack, and pack-element binding names that flow through the
+owner-aware legacy mirror helpers. Suggested next packet: start Step 4 by
+choosing one read-only parity observation point for structured-vs-legacy
+binding lookup, without switching lookup authority or touching specialization
+dedup.
 
 ## Watchouts
 
@@ -48,13 +50,11 @@ the reader would need.
 - `mangle_template_name`, `format_pending_template_type_key_for_display`,
   `encode_pending_type_ref`, and `SpecializationKey::canonical` are
   display/compatibility outputs; do not make them replacement semantic keys.
-- Template parameter packs remain legacy-only because
-  `HirTemplateParameterBindingKey` still does not encode a pack element index.
 - Structured maps are now observed after explicit+deduced merge at the covered
   call-result and merge boundaries; no reader depends on them for lookup.
-- Defaulted type parameters are covered when they flow through the existing
-  build/deduction helpers, but this slice did not switch any default reader or
-  add pack-element identity.
+- Pack bindings have structured identity only when the legacy binding name uses
+  the existing `Name#N` suffix form; unsuffixed pack parameter names still refuse
+  structured dual-write.
 - `make_hir_template_parameter_binding_key` rejects incomplete owner/parameter
   metadata, but callers still own deciding whether the source owner is the
   correct semantic authority for a binding domain.

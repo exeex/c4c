@@ -499,7 +499,11 @@ TypeBindings Lowerer::build_call_bindings(
                 module_ ? module_->link_name_texts.get() : nullptr)) {
           arg_ts = *resolved;
         }
-        bindings[pack_binding_name(fn_def->template_param_names[i], pack_index)] = arg_ts;
+        const std::string key =
+            pack_binding_name(fn_def->template_param_names[i], pack_index);
+        bindings[key] = arg_ts;
+        add_hir_template_type_binding_by_legacy_name(
+            fn_def, key, arg_ts, structured_bindings);
       }
       continue;
     }
@@ -565,13 +569,18 @@ NttpBindings Lowerer::build_call_nttp_bindings(
           continue;
         }
         const std::string key = pack_binding_name(fn_def->template_param_names[i], pack_index);
+        const auto bind_pack_nttp = [&](long long value) {
+          bindings[key] = value;
+          add_hir_template_nttp_binding_by_legacy_name(
+              fn_def, key, value, structured_bindings);
+        };
         long long expr_value = 0;
         if (call_var->template_arg_exprs && call_var->template_arg_exprs[arg_index]) {
           if (eval_template_arg_expr_with_nttp_bindings(
                   call_var->template_arg_exprs[arg_index], enclosing_nttp,
                   enclosing_nttp_by_text,
                   &expr_value)) {
-            bindings[key] = expr_value;
+            bind_pack_nttp(expr_value);
             continue;
           }
         }
@@ -583,7 +592,7 @@ NttpBindings Lowerer::build_call_nttp_bindings(
           if (forwarded_text_id != kInvalidText && enclosing_nttp_by_text) {
             auto text_it = enclosing_nttp_by_text->find(forwarded_text_id);
             if (text_it != enclosing_nttp_by_text->end()) {
-              bindings[key] = text_it->second;
+              bind_pack_nttp(text_it->second);
               continue;
             }
           }
@@ -593,11 +602,11 @@ NttpBindings Lowerer::build_call_nttp_bindings(
           // No TextId carrier: retain legacy rendered-name forwarding.
           if (enclosing_nttp) {
             auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);
-            if (it != enclosing_nttp->end()) bindings[key] = it->second;
+            if (it != enclosing_nttp->end()) bind_pack_nttp(it->second);
           }
           continue;
         }
-        bindings[key] = call_var->template_arg_values[arg_index];
+        bind_pack_nttp(call_var->template_arg_values[arg_index]);
       }
       continue;
     }

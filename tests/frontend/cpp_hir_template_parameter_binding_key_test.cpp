@@ -96,6 +96,35 @@ void test_unordered_map_lookup_uses_structured_hash() {
               "hash lookup should find second-index binding");
 }
 
+void test_pack_element_identity_distinct_from_parameter_key() {
+  c4c::hir::HirTemplateParameterBindingKey pack_param =
+      make_type_key(8, 301, 2, 23);
+  c4c::hir::HirTemplateParameterBindingKey pack_element_0 = pack_param;
+  pack_element_0.pack_element_index = 0;
+  c4c::hir::HirTemplateParameterBindingKey pack_element_1 = pack_param;
+  pack_element_1.pack_element_index = 1;
+
+  expect_true(pack_param != pack_element_0,
+              "pack parameter key and pack element key must be distinct");
+  expect_true(pack_element_0 != pack_element_1,
+              "different pack elements must be distinct structured keys");
+
+  c4c::hir::HirTemplateTypeBindings bindings;
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  c4c::TypeSpec char_ts{};
+  char_ts.base = c4c::TB_CHAR;
+  bindings.emplace(pack_element_0, int_ts);
+  bindings.emplace(pack_element_1, char_ts);
+
+  expect_true(bindings.size() == 2,
+              "hash map must preserve distinct pack element bindings");
+  expect_true(bindings.at(pack_element_0).base == c4c::TB_INT,
+              "pack element 0 binding should be preserved");
+  expect_true(bindings.at(pack_element_1).base == c4c::TB_CHAR,
+              "pack element 1 binding should be preserved");
+}
+
 void test_constructs_distinct_structured_keys_from_template_nodes() {
   c4c::Node owner_a{};
   owner_a.namespace_context_id = 8;
@@ -199,11 +228,11 @@ void test_legacy_name_dual_write_helpers_require_complete_owner_metadata() {
   c4c::Node owner{};
   owner.namespace_context_id = 8;
   owner.unqualified_text_id = 301;
-  owner.n_template_params = 3;
-  const char* names[] = {"T", "N", "Pack"};
-  c4c::TextId text_ids[] = {17, 19, 23};
-  bool is_nttp[] = {false, true, false};
-  bool is_pack[] = {false, false, true};
+  owner.n_template_params = 4;
+  const char* names[] = {"T", "N", "Pack", "Nums"};
+  c4c::TextId text_ids[] = {17, 19, 23, 29};
+  bool is_nttp[] = {false, true, false, true};
+  bool is_pack[] = {false, false, true, true};
   owner.template_param_names = names;
   owner.template_param_name_text_ids = text_ids;
   owner.template_param_is_nttp = is_nttp;
@@ -211,6 +240,8 @@ void test_legacy_name_dual_write_helpers_require_complete_owner_metadata() {
 
   c4c::TypeSpec int_ts{};
   int_ts.base = c4c::TB_INT;
+  c4c::TypeSpec char_ts{};
+  char_ts.base = c4c::TB_CHAR;
 
   c4c::hir::HirTemplateTypeBindings structured_type_bindings;
   c4c::hir::HirTemplateNttpBindings structured_nttp_bindings;
@@ -232,9 +263,43 @@ void test_legacy_name_dual_write_helpers_require_complete_owner_metadata() {
   expect_true(structured_nttp_bindings.at(*nttp_key) == 42,
               "dual-written structured NTTP binding should be keyed by owner");
 
+  expect_true(c4c::hir::add_hir_template_type_binding_by_legacy_name(
+                  &owner, "Pack#0", int_ts, &structured_type_bindings),
+              "type pack element 0 should dual-write with complete metadata");
+  expect_true(c4c::hir::add_hir_template_type_binding_by_legacy_name(
+                  &owner, "Pack#1", char_ts, &structured_type_bindings),
+              "type pack element 1 should dual-write with complete metadata");
+  expect_true(c4c::hir::add_hir_template_nttp_binding_by_legacy_name(
+                  &owner, "Nums#0", 7, &structured_nttp_bindings),
+              "NTTP pack element 0 should dual-write with complete metadata");
+  expect_true(c4c::hir::add_hir_template_nttp_binding_by_legacy_name(
+                  &owner, "Nums#1", 9, &structured_nttp_bindings),
+              "NTTP pack element 1 should dual-write with complete metadata");
+
+  auto type_pack_0 = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 2, c4c::hir::HirTemplateParameterBindingKind::Type, 0);
+  auto type_pack_1 = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 2, c4c::hir::HirTemplateParameterBindingKind::Type, 1);
+  auto nttp_pack_0 = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 3, c4c::hir::HirTemplateParameterBindingKind::NonType, 0);
+  auto nttp_pack_1 = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 3, c4c::hir::HirTemplateParameterBindingKind::NonType, 1);
+  expect_true(type_pack_0.has_value(), "type pack element 0 should produce a key");
+  expect_true(type_pack_1.has_value(), "type pack element 1 should produce a key");
+  expect_true(nttp_pack_0.has_value(), "NTTP pack element 0 should produce a key");
+  expect_true(nttp_pack_1.has_value(), "NTTP pack element 1 should produce a key");
+  expect_true(structured_type_bindings.at(*type_pack_0).base == c4c::TB_INT,
+              "type pack element 0 binding should be keyed by pack index");
+  expect_true(structured_type_bindings.at(*type_pack_1).base == c4c::TB_CHAR,
+              "type pack element 1 binding should be keyed by pack index");
+  expect_true(structured_nttp_bindings.at(*nttp_pack_0) == 7,
+              "NTTP pack element 0 binding should be keyed by pack index");
+  expect_true(structured_nttp_bindings.at(*nttp_pack_1) == 9,
+              "NTTP pack element 1 binding should be keyed by pack index");
+
   expect_true(!c4c::hir::add_hir_template_type_binding_by_legacy_name(
                   &owner, "Pack", int_ts, &structured_type_bindings),
-              "pack parameters should remain legacy-only until pack indices exist");
+              "pack parameters without an element suffix should not dual-write");
 
   owner.unqualified_text_id = c4c::kInvalidText;
   expect_true(!c4c::hir::add_hir_template_type_binding_by_legacy_name(
@@ -248,6 +313,7 @@ int main() {
   test_same_spelling_distinct_by_owner_and_index();
   test_complete_metadata_rejects_text_id_only_key();
   test_unordered_map_lookup_uses_structured_hash();
+  test_pack_element_identity_distinct_from_parameter_key();
   test_constructs_distinct_structured_keys_from_template_nodes();
   test_call_binding_parity_observes_structured_maps();
   test_legacy_name_dual_write_helpers_require_complete_owner_metadata();

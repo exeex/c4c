@@ -207,7 +207,8 @@ enum class HirTemplateParameterBindingKind : uint8_t {
 /// `parameter_text_id` alone is not a complete binding key: two templates may
 /// reuse the same spelling for unrelated parameters. The owner and declaration
 /// index fields make the key suitable for future lookup/dedup authority while
-/// the legacy string/TextId maps below remain compatibility mirrors.
+/// the legacy string/TextId maps below remain compatibility mirrors. Pack
+/// bindings use `pack_element_index >= 0`; ordinary parameters keep -1.
 struct HirTemplateParameterBindingKey {
   HirTemplateParameterBindingKind parameter_kind =
       HirTemplateParameterBindingKind::Type;
@@ -217,6 +218,7 @@ struct HirTemplateParameterBindingKey {
   TextId owner_template_text_id = kInvalidText;
   int parameter_index = -1;
   TextId parameter_text_id = kInvalidText;
+  int pack_element_index = -1;
 
   [[nodiscard]] bool operator==(
       const HirTemplateParameterBindingKey& other) const {
@@ -227,7 +229,8 @@ struct HirTemplateParameterBindingKey {
                other.owner_qualifier_segment_text_ids &&
            owner_template_text_id == other.owner_template_text_id &&
            parameter_index == other.parameter_index &&
-           parameter_text_id == other.parameter_text_id;
+           parameter_text_id == other.parameter_text_id &&
+           pack_element_index == other.pack_element_index;
   }
 
   [[nodiscard]] bool operator!=(
@@ -257,7 +260,10 @@ struct HirTemplateParameterBindingKey {
     if (parameter_index != other.parameter_index) {
       return parameter_index < other.parameter_index;
     }
-    return parameter_text_id < other.parameter_text_id;
+    if (parameter_text_id != other.parameter_text_id) {
+      return parameter_text_id < other.parameter_text_id;
+    }
+    return pack_element_index < other.pack_element_index;
   }
 };
 
@@ -272,7 +278,8 @@ struct HirTemplateParameterBindingKeyHash {
         static_cast<uint32_t>(key.owner_namespace_context_id),
         static_cast<uint32_t>(key.owner_is_global_qualified),
         key.owner_template_text_id, static_cast<uint32_t>(key.parameter_index),
-        key.parameter_text_id, static_cast<uint64_t>(owner_qualifier_hash)));
+        key.parameter_text_id, static_cast<uint32_t>(key.pack_element_index),
+        static_cast<uint64_t>(owner_qualifier_hash)));
   }
 };
 
@@ -280,6 +287,7 @@ struct HirTemplateParameterBindingKeyHash {
     const HirTemplateParameterBindingKey& key) {
   return key.owner_template_text_id != kInvalidText &&
          key.parameter_index >= 0 && key.parameter_text_id != kInvalidText &&
+         key.pack_element_index >= -1 &&
          std::find(key.owner_qualifier_segment_text_ids.begin(),
                    key.owner_qualifier_segment_text_ids.end(),
                    kInvalidText) == key.owner_qualifier_segment_text_ids.end();
@@ -289,7 +297,8 @@ struct HirTemplateParameterBindingKeyHash {
 make_hir_template_parameter_binding_key(
     const Node* template_owner,
     int parameter_index,
-    HirTemplateParameterBindingKind parameter_kind) {
+    HirTemplateParameterBindingKind parameter_kind,
+    int pack_element_index = -1) {
   if (!template_owner || parameter_index < 0 ||
       parameter_index >= template_owner->n_template_params ||
       !template_owner->template_param_name_text_ids) {
@@ -311,6 +320,7 @@ make_hir_template_parameter_binding_key(
   key.parameter_index = parameter_index;
   key.parameter_text_id =
       template_owner->template_param_name_text_ids[parameter_index];
+  key.pack_element_index = pack_element_index;
 
   if (!hir_template_parameter_binding_key_has_complete_metadata(key)) {
     return std::nullopt;
@@ -341,6 +351,24 @@ using NttpBindings = std::unordered_map<std::string, long long>;
 /// Legacy compatibility mirror keyed only by parameter TextId; not owner-aware.
 using NttpTextBindings = std::unordered_map<TextId, long long>;
 
+[[nodiscard]] inline std::optional<int>
+hir_template_pack_element_index_from_legacy_name(
+    std::string_view legacy_name,
+    std::string_view parameter_name) {
+  if (legacy_name.size() <= parameter_name.size() + 1 ||
+      legacy_name.substr(0, parameter_name.size()) != parameter_name ||
+      legacy_name[parameter_name.size()] != '#') {
+    return std::nullopt;
+  }
+  int index = 0;
+  for (size_t i = parameter_name.size() + 1; i < legacy_name.size(); ++i) {
+    const char ch = legacy_name[i];
+    if (ch < '0' || ch > '9') return std::nullopt;
+    index = index * 10 + (ch - '0');
+  }
+  return index;
+}
+
 [[nodiscard]] inline bool add_hir_template_type_binding_by_legacy_name(
     const Node* template_owner,
     std::string_view legacy_name,
@@ -353,14 +381,24 @@ using NttpTextBindings = std::unordered_map<TextId, long long>;
   }
   for (int i = 0; i < template_owner->n_template_params; ++i) {
     const char* param_name = template_owner->template_param_names[i];
-    if (!param_name || legacy_name != std::string_view(param_name)) continue;
+    if (!param_name) continue;
     const bool is_nttp = template_owner->template_param_is_nttp &&
                          template_owner->template_param_is_nttp[i];
     const bool is_pack = template_owner->template_param_is_pack &&
                          template_owner->template_param_is_pack[i];
-    if (is_nttp || is_pack) return false;
+    int pack_element_index = -1;
+    if (is_pack) {
+      auto parsed_pack_index =
+          hir_template_pack_element_index_from_legacy_name(legacy_name, param_name);
+      if (!parsed_pack_index) continue;
+      pack_element_index = *parsed_pack_index;
+    } else if (legacy_name != std::string_view(param_name)) {
+      continue;
+    }
+    if (is_nttp) return false;
     auto key = make_hir_template_parameter_binding_key(
-        template_owner, i, HirTemplateParameterBindingKind::Type);
+        template_owner, i, HirTemplateParameterBindingKind::Type,
+        pack_element_index);
     if (!key) return false;
     (*structured_bindings)[*key] = value;
     return true;
@@ -380,14 +418,24 @@ using NttpTextBindings = std::unordered_map<TextId, long long>;
   }
   for (int i = 0; i < template_owner->n_template_params; ++i) {
     const char* param_name = template_owner->template_param_names[i];
-    if (!param_name || legacy_name != std::string_view(param_name)) continue;
+    if (!param_name) continue;
     const bool is_nttp = template_owner->template_param_is_nttp &&
                          template_owner->template_param_is_nttp[i];
     const bool is_pack = template_owner->template_param_is_pack &&
                          template_owner->template_param_is_pack[i];
-    if (!is_nttp || is_pack) return false;
+    int pack_element_index = -1;
+    if (is_pack) {
+      auto parsed_pack_index =
+          hir_template_pack_element_index_from_legacy_name(legacy_name, param_name);
+      if (!parsed_pack_index) continue;
+      pack_element_index = *parsed_pack_index;
+    } else if (legacy_name != std::string_view(param_name)) {
+      continue;
+    }
+    if (!is_nttp) return false;
     auto key = make_hir_template_parameter_binding_key(
-        template_owner, i, HirTemplateParameterBindingKind::NonType);
+        template_owner, i, HirTemplateParameterBindingKind::NonType,
+        pack_element_index);
     if (!key) return false;
     (*structured_bindings)[*key] = value;
     return true;
