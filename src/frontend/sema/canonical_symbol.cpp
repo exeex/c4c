@@ -211,15 +211,53 @@ bool has_complete_template_param_identity(const CanonicalTemplateParamIdentity& 
          identity.domain != TemplateParamDomainKind::Unknown;
 }
 
+bool has_complete_qualified_name_identity(const CanonicalQualifiedNameIdentity& identity) {
+  if (identity.namespace_context_id < 0 || identity.unqualified_text_id == kInvalidText) {
+    return false;
+  }
+  return std::all_of(identity.qualifier_text_ids.begin(),
+                     identity.qualifier_text_ids.end(),
+                     [](TextId text_id) { return text_id != kInvalidText; });
+}
+
+CanonicalQualifiedNameIdentity nominal_name_identity(const CanonicalType& type) {
+  if (type.identity.record_def) return qualified_name_identity_from_node(type.identity.record_def);
+  return type.identity.nominal_name;
+}
+
+bool has_complete_nominal_identity(const CanonicalType& type) {
+  return type.identity.record_def ||
+         has_complete_qualified_name_identity(nominal_name_identity(type));
+}
+
+bool qualified_name_identity_equal(const CanonicalQualifiedNameIdentity& a,
+                                   const CanonicalQualifiedNameIdentity& b) {
+  return a.namespace_context_id == b.namespace_context_id &&
+         a.is_global_qualified == b.is_global_qualified &&
+         a.unqualified_text_id == b.unqualified_text_id &&
+         a.qualifier_text_ids == b.qualifier_text_ids;
+}
+
+bool nominal_identity_equal(const CanonicalType& a, const CanonicalType& b) {
+  if (a.identity.record_def && b.identity.record_def) {
+    return a.identity.record_def == b.identity.record_def;
+  }
+  const CanonicalQualifiedNameIdentity a_name = nominal_name_identity(a);
+  const CanonicalQualifiedNameIdentity b_name = nominal_name_identity(b);
+  if (has_complete_qualified_name_identity(a_name) &&
+      has_complete_qualified_name_identity(b_name)) {
+    return qualified_name_identity_equal(a_name, b_name);
+  }
+  return false;
+}
+
 bool template_param_identity_equal(const CanonicalTemplateParamIdentity& a,
                                    const CanonicalTemplateParamIdentity& b) {
   return a.owner_namespace_context_id == b.owner_namespace_context_id &&
          a.owner_text_id == b.owner_text_id &&
          a.index == b.index &&
          a.param_text_id == b.param_text_id &&
-         a.domain == b.domain &&
-         a.is_pack == b.is_pack &&
-         a.has_default == b.has_default;
+         a.domain == b.domain;
 }
 
 struct TemplateSubstitutionBindings {
@@ -932,8 +970,26 @@ bool types_equal(const CanonicalType& a, const CanonicalType& b) {
     case CanonicalTypeKind::Struct:
     case CanonicalTypeKind::Union:
     case CanonicalTypeKind::Enum:
-    case CanonicalTypeKind::TypedefName:
+    case CanonicalTypeKind::TypedefName: {
+      const bool a_has_template_param_identity =
+          has_complete_template_param_identity(a.identity.template_param);
+      const bool b_has_template_param_identity =
+          has_complete_template_param_identity(b.identity.template_param);
+      if (a_has_template_param_identity || b_has_template_param_identity) {
+        return a_has_template_param_identity && b_has_template_param_identity &&
+               template_param_identity_equal(a.identity.template_param,
+                                             b.identity.template_param);
+      }
+
+      const bool a_has_nominal_identity = has_complete_nominal_identity(a);
+      const bool b_has_nominal_identity = has_complete_nominal_identity(b);
+      if (a_has_nominal_identity || b_has_nominal_identity) {
+        return a_has_nominal_identity && b_has_nominal_identity &&
+               nominal_identity_equal(a, b);
+      }
+
       return a.user_spelling == b.user_spelling;
+    }
 
     default:
       // Leaf primitive types: kind + qualifiers already compared above.

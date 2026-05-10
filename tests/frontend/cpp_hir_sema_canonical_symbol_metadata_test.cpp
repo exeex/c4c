@@ -19,6 +19,10 @@ void expect_true(bool condition, const std::string& msg) {
   if (!condition) fail(msg);
 }
 
+void expect_false(bool condition, const std::string& msg) {
+  if (condition) fail(msg);
+}
+
 void expect_eq(std::string_view actual, std::string_view expected,
                const std::string& msg) {
   if (actual != expected) {
@@ -44,13 +48,15 @@ const char* legacy_tag_if_present(const c4c::TypeSpec&, long) {
   return nullptr;
 }
 
-c4c::Node make_record(std::string_view name) {
+c4c::Node make_record(std::string_view name,
+                      int namespace_context_id = 7,
+                      c4c::TextId unqualified_text_id = 42) {
   c4c::Node record{};
   record.kind = c4c::NK_STRUCT_DEF;
   record.name = name.data();
   record.unqualified_name = name.data();
-  record.unqualified_text_id = 42;
-  record.namespace_context_id = 7;
+  record.unqualified_text_id = unqualified_text_id;
+  record.namespace_context_id = namespace_context_id;
   return record;
 }
 
@@ -108,6 +114,18 @@ c4c::sema::CanonicalType make_primitive_type(c4c::sema::CanonicalTypeKind kind,
   return type;
 }
 
+c4c::sema::CanonicalType make_nominal_type(
+    c4c::sema::CanonicalTypeKind kind,
+    c4c::TypeBase source_base,
+    std::string_view spelling,
+    int namespace_context_id,
+    c4c::TextId unqualified_text_id) {
+  c4c::sema::CanonicalType type = make_primitive_type(kind, source_base, spelling);
+  type.identity.nominal_name.namespace_context_id = namespace_context_id;
+  type.identity.nominal_name.unqualified_text_id = unqualified_text_id;
+  return type;
+}
+
 c4c::sema::CanonicalTemplateArg make_type_arg(c4c::sema::CanonicalType type) {
   c4c::sema::CanonicalTemplateArg arg{};
   arg.type = std::make_shared<c4c::sema::CanonicalType>(std::move(type));
@@ -127,6 +145,8 @@ void test_template_substitution_uses_owner_identity_before_name() {
   c4c::sema::CanonicalTemplateParam second_param{};
   second_param.name = "T";
   second_param.identity = second_owner;
+  second_param.identity.is_pack = true;
+  second_param.identity.has_default = true;
 
   c4c::sema::CanonicalType use_second_owner{};
   use_second_owner.kind = c4c::sema::CanonicalTypeKind::TypedefName;
@@ -144,7 +164,8 @@ void test_template_substitution_uses_owner_identity_before_name() {
                                          "double"))});
 
   expect_true(substituted.kind == c4c::sema::CanonicalTypeKind::Double,
-              "owner-aware template parameter substitution should not collide on name");
+              "owner-aware template parameter substitution should ignore declaration-only "
+              "carrier flags");
 
   c4c::sema::CanonicalType identity_only_use = use_second_owner;
   identity_only_use.user_spelling.clear();
@@ -210,6 +231,82 @@ void test_template_substitution_keeps_no_metadata_name_fallback() {
               "no-metadata template parameter substitution should use name fallback");
 }
 
+void test_types_equal_uses_record_def_before_spelling() {
+  c4c::Node first_record = make_record("SharedRenderedName", 7, 42);
+  c4c::Node second_record = make_record("SharedRenderedName", 8, 42);
+
+  c4c::sema::CanonicalType first{};
+  first.kind = c4c::sema::CanonicalTypeKind::Struct;
+  first.source_base = c4c::TB_STRUCT;
+  first.user_spelling = "SharedRenderedName";
+  first.identity.record_def = &first_record;
+
+  c4c::sema::CanonicalType second = first;
+  second.identity.record_def = &second_record;
+
+  expect_false(c4c::sema::types_equal(first, second),
+               "same-spelled structured records with different record_def metadata should differ");
+
+  second.identity.record_def = &first_record;
+  second.user_spelling = "StaleRenderedName";
+  expect_true(c4c::sema::types_equal(first, second),
+              "matching record_def metadata should not require matching rendered spelling");
+}
+
+void test_types_equal_uses_nominal_name_before_spelling() {
+  c4c::sema::CanonicalType first = make_nominal_type(
+      c4c::sema::CanonicalTypeKind::TypedefName, c4c::TB_TYPEDEF, "Alias", 7, 100);
+  c4c::sema::CanonicalType second = make_nominal_type(
+      c4c::sema::CanonicalTypeKind::TypedefName, c4c::TB_TYPEDEF, "Alias", 8, 100);
+
+  expect_false(c4c::sema::types_equal(first, second),
+               "same-spelled typedef leaves from different nominal domains should differ");
+
+  second.identity.nominal_name.namespace_context_id = 7;
+  second.user_spelling = "StaleAlias";
+  expect_true(c4c::sema::types_equal(first, second),
+              "matching nominal metadata should not require matching rendered spelling");
+}
+
+void test_types_equal_uses_template_param_identity_before_spelling() {
+  c4c::sema::CanonicalType first{};
+  first.kind = c4c::sema::CanonicalTypeKind::TypedefName;
+  first.source_base = c4c::TB_TYPEDEF;
+  first.user_spelling = "T";
+  first.identity.template_param = make_template_param_identity(1, 100, 0, 500);
+
+  c4c::sema::CanonicalType second = first;
+  second.identity.template_param = make_template_param_identity(2, 200, 0, 500);
+
+  expect_false(c4c::sema::types_equal(first, second),
+               "same-spelled template parameters with different owner metadata should differ");
+
+  second.identity.template_param = first.identity.template_param;
+  second.user_spelling.clear();
+  expect_true(c4c::sema::types_equal(first, second),
+              "matching template parameter metadata should not require rendered spelling");
+}
+
+void test_types_equal_keeps_no_metadata_spelling_fallback() {
+  c4c::sema::CanonicalType first_nominal{};
+  first_nominal.kind = c4c::sema::CanonicalTypeKind::Struct;
+  first_nominal.source_base = c4c::TB_STRUCT;
+  first_nominal.user_spelling = "Legacy";
+
+  c4c::sema::CanonicalType second_nominal = first_nominal;
+  expect_true(c4c::sema::types_equal(first_nominal, second_nominal),
+              "no-metadata nominal equality should keep rendered spelling fallback");
+
+  c4c::sema::CanonicalType first_template_param{};
+  first_template_param.kind = c4c::sema::CanonicalTypeKind::TypedefName;
+  first_template_param.source_base = c4c::TB_TYPEDEF;
+  first_template_param.user_spelling = "T";
+
+  c4c::sema::CanonicalType second_template_param = first_template_param;
+  expect_true(c4c::sema::types_equal(first_template_param, second_template_param),
+              "no-metadata template-parameter equality should keep rendered spelling fallback");
+}
+
 }  // namespace
 
 int main() {
@@ -218,6 +315,10 @@ int main() {
   test_template_substitution_uses_owner_identity_before_name();
   test_template_substitution_rejects_name_fallback_after_identity_miss();
   test_template_substitution_keeps_no_metadata_name_fallback();
+  test_types_equal_uses_record_def_before_spelling();
+  test_types_equal_uses_nominal_name_before_spelling();
+  test_types_equal_uses_template_param_identity_before_spelling();
+  test_types_equal_keeps_no_metadata_spelling_fallback();
   std::cout << "PASS: cpp_hir_sema_canonical_symbol_metadata_test\n";
   return 0;
 }
