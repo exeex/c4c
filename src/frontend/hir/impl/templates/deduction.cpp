@@ -502,7 +502,7 @@ TypeBindings Lowerer::build_call_bindings(
         const std::string key =
             pack_binding_name(fn_def->template_param_names[i], pack_index);
         bindings[key] = arg_ts;
-        add_hir_template_type_binding_by_legacy_name(
+        (void)add_hir_template_type_binding_by_legacy_name(
             fn_def, key, arg_ts, structured_bindings);
       }
       continue;
@@ -571,7 +571,7 @@ NttpBindings Lowerer::build_call_nttp_bindings(
         const std::string key = pack_binding_name(fn_def->template_param_names[i], pack_index);
         const auto bind_pack_nttp = [&](long long value) {
           bindings[key] = value;
-          add_hir_template_nttp_binding_by_legacy_name(
+          (void)add_hir_template_nttp_binding_by_legacy_name(
               fn_def, key, value, structured_bindings);
         };
         long long expr_value = 0;
@@ -966,14 +966,14 @@ std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
     for (const auto& [name, ts] : deduced_types) {
       const auto [_, inserted] = call_bindings.emplace(name, ts);
       if (inserted) {
-        add_hir_template_type_binding_by_legacy_name(
+        (void)add_hir_template_type_binding_by_legacy_name(
             callee_def, name, ts, &structured_call_bindings);
       }
     }
     for (const auto& [name, value] : deduced_nttp) {
       const auto [_, inserted] = call_nttp_bindings.emplace(name, value);
       if (inserted) {
-        add_hir_template_nttp_binding_by_legacy_name(
+        (void)add_hir_template_nttp_binding_by_legacy_name(
             callee_def, name, value, &structured_call_nttp_bindings);
       }
     }
@@ -995,6 +995,16 @@ std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
   for (const auto& [name, ts] : call_bindings) {
     resolution_bindings[name] = ts;
   }
+  HirTemplateTypeBindings structured_resolution_bindings =
+      ctx ? ctx->structured_tpl_bindings : HirTemplateTypeBindings{};
+  for (const auto& [key, ts] : structured_call_bindings) {
+    structured_resolution_bindings[key] = ts;
+  }
+  HirTemplateNttpBindings structured_resolution_nttp_bindings =
+      ctx ? ctx->structured_nttp_bindings : HirTemplateNttpBindings{};
+  for (const auto& [key, value] : structured_call_nttp_bindings) {
+    structured_resolution_nttp_bindings[key] = value;
+  }
   if (result_ts.tpl_struct_origin) {
     const char* context_name = "ctx-deduction-template-call-result";
     const Node* owner_primary_def =
@@ -1013,8 +1023,8 @@ std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
     const PendingTemplateTypeKey structured_pending_key =
         make_pending_template_type_key(
             PendingTemplateTypeKind::OwnerStruct, canonical_result_ts,
-            owner_primary_def, structured_call_bindings,
-            structured_call_nttp_bindings, context_name, span);
+            owner_primary_def, structured_resolution_bindings,
+            structured_resolution_nttp_bindings, context_name, span);
     const PendingTemplateStructuredIdentityObservation
         structured_pending_observation =
             observe_pending_template_type_structured_identity(
@@ -1140,13 +1150,13 @@ bool Lowerer::deduce_template_bindings_from_call_args(
   fill_deduced_defaults(*out_type_bindings, fn_def);
   if (out_structured_type_bindings) {
     for (const auto& [name, ts] : *out_type_bindings) {
-      add_hir_template_type_binding_by_legacy_name(
+      (void)add_hir_template_type_binding_by_legacy_name(
           fn_def, name, ts, out_structured_type_bindings);
     }
   }
   if (out_structured_nttp_bindings) {
     for (const auto& [name, value] : *out_nttp_bindings) {
-      add_hir_template_nttp_binding_by_legacy_name(
+      (void)add_hir_template_nttp_binding_by_legacy_name(
           fn_def, name, value, out_structured_nttp_bindings);
     }
   }
@@ -1191,7 +1201,7 @@ TypeBindings Lowerer::merge_explicit_and_deduced_type_bindings(
   for (const auto& [name, ts] : deduced) {
     const auto [_, inserted] = bindings.emplace(name, ts);
     if (inserted) {
-      add_hir_template_type_binding_by_legacy_name(
+      (void)add_hir_template_type_binding_by_legacy_name(
           fn_def, name, ts, &structured_bindings);
     }
   }
@@ -1224,7 +1234,7 @@ TypeBindings Lowerer::merge_explicit_and_ctx_deduced_type_bindings(
     for (const auto& [name, ts] : deduced) {
       const auto [_, inserted] = bindings.emplace(name, ts);
       if (inserted) {
-        add_hir_template_type_binding_by_legacy_name(
+        (void)add_hir_template_type_binding_by_legacy_name(
             fn_def, name, ts, &structured_bindings);
       }
     }

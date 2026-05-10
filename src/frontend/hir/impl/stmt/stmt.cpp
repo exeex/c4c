@@ -583,6 +583,31 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   populate_template_type_text_bindings(ctx, method_node, tpl_bindings);
   if (nttp_bindings) ctx.nttp_bindings = *nttp_bindings;
   if (nttp_text_bindings) ctx.nttp_bindings_by_text = *nttp_text_bindings;
+  const Node* structured_binding_owner = method_node;
+  auto owner_it = struct_def_nodes_.find(struct_tag);
+  if (owner_it != struct_def_nodes_.end() && owner_it->second) {
+    structured_binding_owner = owner_it->second;
+  }
+  if (tpl_bindings) {
+    for (const auto& [name, ts] : *tpl_bindings) {
+      const bool recorded = add_hir_template_type_binding_by_legacy_name(
+          structured_binding_owner, name, ts, &ctx.structured_tpl_bindings);
+      if (!recorded && structured_binding_owner != method_node) {
+        (void)add_hir_template_type_binding_by_legacy_name(
+            method_node, name, ts, &ctx.structured_tpl_bindings);
+      }
+    }
+  }
+  if (nttp_bindings) {
+    for (const auto& [name, value] : *nttp_bindings) {
+      const bool recorded = add_hir_template_nttp_binding_by_legacy_name(
+          structured_binding_owner, name, value, &ctx.structured_nttp_bindings);
+      if (!recorded && structured_binding_owner != method_node) {
+        (void)add_hir_template_nttp_binding_by_legacy_name(
+            method_node, name, value, &ctx.structured_nttp_bindings);
+      }
+    }
+  }
   ctx.method_struct_tag = struct_tag;
   if (owner_key && *owner_key) ctx.method_struct_owner_key = **owner_key;
 

@@ -8,33 +8,31 @@ Current Step Title: Use Structured Keys for Pending and Specialization Identity
 
 ## Just Finished
 
-Completed the next bounded Step 4 packet of `plan.md`: the
-`ctx-deduction-template-call-result` pending-template mutation point now records
-dedup/progress state with the structured `PendingTemplateTypeKey` when
-structured binding identities are complete and static-compatible. Incomplete or
-non-parity structured metadata keeps the existing legacy
-`seed_and_resolve_pending_template_type_if_needed` path.
+Completed the next bounded Step 4 packet of `plan.md`: structured enclosing
+template binding mirrors now propagate from `FunctionCtx` into the
+`ctx-deduction-template-call-result` pending-template structured key path when
+complete owner-aware metadata is available. Incomplete enclosing mirrors still
+leave the structured key under-counted, so the existing legacy state-key path
+remains active.
 
 Concrete changes:
-- Added a compile-time-state recorder that preserves legacy work-item maps and
-  display keys while accepting an explicit pending-template identity key for
-  dedup/resolved-progress authority.
-- Added a reusable completeness gate for structured pending-template identity
-  observations.
-- Switched the deduction template-call-result boundary to use the structured
-  key only when structured metadata is complete and covers the same legacy type
-  and NTTP binding counts; otherwise it falls back to the legacy path.
-- Added focused tests proving complete structured metadata becomes the state
-  key, legacy display output remains present, resolved-progress checks use the
-  structured key, and incomplete structured metadata is rejected for state-key
-  authority.
+- Added structured type and NTTP mirror maps to `FunctionCtx`.
+- Populated struct-method `FunctionCtx` structured mirrors from the enclosing
+  template struct owner when available, with a method-template fallback for
+  method-owned bindings.
+- Merged enclosing structured mirrors with callee structured call/deduction
+  bindings before building the `ctx-deduction-template-call-result`
+  `PendingTemplateTypeKey`.
+- Added focused coverage proving missing enclosing structured mirrors keep the
+  legacy state-key path, while complete enclosing mirrors allow structured
+  state-key authority.
 
 ## Suggested Next
 
-Continue Step 4 by selecting the next pending-template or specialization
-identity mutation point that already has complete structured binding metadata,
-or expand structured metadata propagation for call-result cases that still fall
-back because enclosing context bindings lack structured mirrors.
+Continue Step 4 by either wiring structured mirrors for non-method function and
+global initializer `FunctionCtx` creation sites, or selecting the next
+pending-template/specialization identity mutation point that already has
+complete structured binding metadata.
 
 ## Watchouts
 
@@ -52,6 +50,10 @@ back because enclosing context bindings lack structured mirrors.
 - The call-result switch intentionally requires structured type/NTTP binding
   counts to match the legacy maps, so enclosing context bindings without
   structured mirrors remain legacy-keyed instead of partially structured.
+- This packet populates structured enclosing mirrors for struct-method lowering
+  where `struct_def_nodes_[struct_tag]` exposes the template struct owner. Other
+  `FunctionCtx` creation paths still need their own metadata handoff before
+  they can avoid the count-gated fallback.
 - Structured `SpecializationArgumentIdentity` entries currently keep
   `parameter_name` as display/fallback data only; equality and hashing use the
   structured key when complete metadata is present, and ordering follows the

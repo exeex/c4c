@@ -576,6 +576,66 @@ void test_pending_template_state_rejects_incomplete_structured_identity_key() {
               "incomplete structured pending metadata should keep the legacy state-key path");
 }
 
+void test_pending_template_state_requires_enclosing_structured_mirrors() {
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  c4c::TypeSpec long_ts{};
+  long_ts.base = c4c::TB_LONG;
+
+  c4c::Node pending_owner{};
+  pending_owner.name = const_cast<char*>("Box");
+  pending_owner.namespace_context_id = 4;
+  pending_owner.unqualified_text_id = 401;
+
+  c4c::TypeSpec pending_ts{};
+  pending_ts.base = c4c::TB_STRUCT;
+  pending_ts.tpl_struct_origin = "Box";
+
+  c4c::hir::TypeBindings legacy_type_bindings;
+  legacy_type_bindings.emplace("Outer", long_ts);
+  legacy_type_bindings.emplace("T", int_ts);
+
+  c4c::hir::HirTemplateTypeBindings callee_only_structured_bindings;
+  callee_only_structured_bindings.emplace(make_type_key(8, 301, 0, 17), int_ts);
+
+  c4c::hir::HirTemplateTypeBindings complete_structured_bindings =
+      callee_only_structured_bindings;
+  complete_structured_bindings.emplace(make_type_key(9, 501, 0, 23), long_ts);
+
+  c4c::hir::SourceSpan span{};
+  span.begin.line = 23;
+  span.end.line = 23;
+
+  auto legacy_key = c4c::hir::make_pending_template_type_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, legacy_type_bindings, c4c::hir::NttpBindings{},
+      "test-enclosing-structured-state-key", span);
+  auto callee_only_key = c4c::hir::make_pending_template_type_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, callee_only_structured_bindings,
+      c4c::hir::HirTemplateNttpBindings{},
+      "test-enclosing-structured-state-key", span);
+  auto complete_key = c4c::hir::make_pending_template_type_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, complete_structured_bindings,
+      c4c::hir::HirTemplateNttpBindings{},
+      "test-enclosing-structured-state-key", span);
+
+  auto callee_only_observation =
+      c4c::hir::observe_pending_template_type_structured_identity(
+          legacy_key, callee_only_key);
+  expect_true(!c4c::hir::pending_template_structured_identity_can_key_state(
+                  callee_only_observation, legacy_type_bindings.size(), 0),
+              "missing enclosing structured mirrors should keep the legacy state-key path");
+
+  auto complete_observation =
+      c4c::hir::observe_pending_template_type_structured_identity(
+          legacy_key, complete_key);
+  expect_true(c4c::hir::pending_template_structured_identity_can_key_state(
+                  complete_observation, legacy_type_bindings.size(), 0),
+              "complete enclosing structured mirrors should allow structured state-key authority");
+}
+
 }  // namespace
 
 int main() {
@@ -590,6 +650,7 @@ int main() {
   test_pending_template_binding_identity_helpers_accept_structured_maps();
   test_pending_template_state_can_use_structured_identity_key();
   test_pending_template_state_rejects_incomplete_structured_identity_key();
+  test_pending_template_state_requires_enclosing_structured_mirrors();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;
 }

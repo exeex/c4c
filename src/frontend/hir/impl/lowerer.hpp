@@ -285,8 +285,10 @@ class Lowerer {
     std::vector<SwitchCtx> switch_stack;
     std::unordered_map<std::string, long long> local_const_bindings;
     TypeBindings tpl_bindings;  // template param → concrete type for enclosing template fn
+    HirTemplateTypeBindings structured_tpl_bindings;
     std::unordered_map<TextId, TypeSpec> tpl_bindings_by_text;
     NttpBindings nttp_bindings; // non-type template param → constant value
+    HirTemplateNttpBindings structured_nttp_bindings;
     NttpTextBindings nttp_bindings_by_text; // non-type template param TextId → value
     std::unordered_map<std::string, std::vector<PackParamElem>> pack_params;
     std::string method_struct_tag; // non-empty when lowering a struct method body
