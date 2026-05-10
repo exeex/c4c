@@ -997,7 +997,9 @@ class Lowerer {
       Node* const* arg_nodes,
       int nargs,
       TypeBindings* out_type_bindings,
-      NttpBindings* out_nttp_bindings);
+      NttpBindings* out_nttp_bindings,
+      HirTemplateTypeBindings* out_structured_type_bindings = nullptr,
+      HirTemplateNttpBindings* out_structured_nttp_bindings = nullptr);
 
   std::optional<TypeSpec> try_infer_template_call_result_for_deduction(
       FunctionCtx* ctx,

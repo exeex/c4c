@@ -341,6 +341,60 @@ using NttpBindings = std::unordered_map<std::string, long long>;
 /// Legacy compatibility mirror keyed only by parameter TextId; not owner-aware.
 using NttpTextBindings = std::unordered_map<TextId, long long>;
 
+[[nodiscard]] inline bool add_hir_template_type_binding_by_legacy_name(
+    const Node* template_owner,
+    std::string_view legacy_name,
+    const TypeSpec& value,
+    HirTemplateTypeBindings* structured_bindings) {
+  if (!template_owner || !structured_bindings ||
+      template_owner->n_template_params <= 0 ||
+      !template_owner->template_param_names) {
+    return false;
+  }
+  for (int i = 0; i < template_owner->n_template_params; ++i) {
+    const char* param_name = template_owner->template_param_names[i];
+    if (!param_name || legacy_name != std::string_view(param_name)) continue;
+    const bool is_nttp = template_owner->template_param_is_nttp &&
+                         template_owner->template_param_is_nttp[i];
+    const bool is_pack = template_owner->template_param_is_pack &&
+                         template_owner->template_param_is_pack[i];
+    if (is_nttp || is_pack) return false;
+    auto key = make_hir_template_parameter_binding_key(
+        template_owner, i, HirTemplateParameterBindingKind::Type);
+    if (!key) return false;
+    (*structured_bindings)[*key] = value;
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] inline bool add_hir_template_nttp_binding_by_legacy_name(
+    const Node* template_owner,
+    std::string_view legacy_name,
+    long long value,
+    HirTemplateNttpBindings* structured_bindings) {
+  if (!template_owner || !structured_bindings ||
+      template_owner->n_template_params <= 0 ||
+      !template_owner->template_param_names) {
+    return false;
+  }
+  for (int i = 0; i < template_owner->n_template_params; ++i) {
+    const char* param_name = template_owner->template_param_names[i];
+    if (!param_name || legacy_name != std::string_view(param_name)) continue;
+    const bool is_nttp = template_owner->template_param_is_nttp &&
+                         template_owner->template_param_is_nttp[i];
+    const bool is_pack = template_owner->template_param_is_pack &&
+                         template_owner->template_param_is_pack[i];
+    if (!is_nttp || is_pack) return false;
+    auto key = make_hir_template_parameter_binding_key(
+        template_owner, i, HirTemplateParameterBindingKind::NonType);
+    if (!key) return false;
+    (*structured_bindings)[*key] = value;
+    return true;
+  }
+  return false;
+}
+
 struct SourceLoc {
   int line = 0;
 };

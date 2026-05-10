@@ -945,22 +945,33 @@ std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
           ? &ctx->nttp_bindings_by_text
           : nullptr,
       &structured_call_nttp_bindings);
-  observe_template_call_binding_structured_parity(
-      callee_def, call_bindings, structured_call_bindings, call_nttp_bindings,
-      structured_call_nttp_bindings);
 
   TypeBindings deduced_types;
   NttpBindings deduced_nttp;
+  HirTemplateTypeBindings structured_deduced_types;
+  HirTemplateNttpBindings structured_deduced_nttp;
   if (deduce_template_bindings_from_call_args(
           callee_def, ctx, call_node->children, call_node->n_children,
-          &deduced_types, &deduced_nttp)) {
+          &deduced_types, &deduced_nttp, &structured_deduced_types,
+          &structured_deduced_nttp)) {
     for (const auto& [name, ts] : deduced_types) {
-      call_bindings.emplace(name, ts);
+      const auto [_, inserted] = call_bindings.emplace(name, ts);
+      if (inserted) {
+        add_hir_template_type_binding_by_legacy_name(
+            callee_def, name, ts, &structured_call_bindings);
+      }
     }
     for (const auto& [name, value] : deduced_nttp) {
-      call_nttp_bindings.emplace(name, value);
+      const auto [_, inserted] = call_nttp_bindings.emplace(name, value);
+      if (inserted) {
+        add_hir_template_nttp_binding_by_legacy_name(
+            callee_def, name, value, &structured_call_nttp_bindings);
+      }
     }
   }
+  observe_template_call_binding_structured_parity(
+      callee_def, call_bindings, structured_call_bindings, call_nttp_bindings,
+      structured_call_nttp_bindings);
   fill_deduced_defaults(call_bindings, callee_def);
 
   TypeSpec result_ts = callee_def->type;
@@ -1008,7 +1019,9 @@ bool Lowerer::deduce_template_bindings_from_call_args(
     Node* const* arg_nodes,
     int nargs,
     TypeBindings* out_type_bindings,
-    NttpBindings* out_nttp_bindings) {
+    NttpBindings* out_nttp_bindings,
+    HirTemplateTypeBindings* out_structured_type_bindings,
+    HirTemplateNttpBindings* out_structured_nttp_bindings) {
   if (!fn_def || !out_type_bindings || !out_nttp_bindings) return false;
   if (fn_def->n_template_params <= 0) return true;
   const int match_count = std::min(nargs, fn_def->n_params);
@@ -1065,6 +1078,18 @@ bool Lowerer::deduce_template_bindings_from_call_args(
     }
   }
   fill_deduced_defaults(*out_type_bindings, fn_def);
+  if (out_structured_type_bindings) {
+    for (const auto& [name, ts] : *out_type_bindings) {
+      add_hir_template_type_binding_by_legacy_name(
+          fn_def, name, ts, out_structured_type_bindings);
+    }
+  }
+  if (out_structured_nttp_bindings) {
+    for (const auto& [name, value] : *out_nttp_bindings) {
+      add_hir_template_nttp_binding_by_legacy_name(
+          fn_def, name, value, out_structured_nttp_bindings);
+    }
+  }
   return true;
 }
 
@@ -1104,8 +1129,14 @@ TypeBindings Lowerer::merge_explicit_and_deduced_type_bindings(
 
   TypeBindings deduced = try_deduce_template_type_args(call_node, fn_def, enclosing_fn);
   for (const auto& [name, ts] : deduced) {
-    bindings.emplace(name, ts);
+    const auto [_, inserted] = bindings.emplace(name, ts);
+    if (inserted) {
+      add_hir_template_type_binding_by_legacy_name(
+          fn_def, name, ts, &structured_bindings);
+    }
   }
+  observe_template_call_binding_structured_parity(
+      fn_def, bindings, structured_bindings, {}, {});
   fill_deduced_defaults(bindings, fn_def);
   return bindings;
 }
@@ -1124,13 +1155,23 @@ TypeBindings Lowerer::merge_explicit_and_ctx_deduced_type_bindings(
 
   TypeBindings deduced;
   NttpBindings deduced_nttp;
+  HirTemplateTypeBindings structured_deduced;
+  HirTemplateNttpBindings structured_deduced_nttp;
   if (deduce_template_bindings_from_call_args(
           fn_def, ctx, call_node->children, call_node->n_children,
-          &deduced, &deduced_nttp)) {
+          &deduced, &deduced_nttp, &structured_deduced,
+          &structured_deduced_nttp)) {
     for (const auto& [name, ts] : deduced) {
-      bindings.emplace(name, ts);
+      const auto [_, inserted] = bindings.emplace(name, ts);
+      if (inserted) {
+        add_hir_template_type_binding_by_legacy_name(
+            fn_def, name, ts, &structured_bindings);
+      }
     }
   }
+  observe_template_call_binding_structured_parity(
+      fn_def, bindings, structured_bindings, deduced_nttp,
+      structured_deduced_nttp);
   fill_deduced_defaults(bindings, fn_def);
   return bindings;
 }

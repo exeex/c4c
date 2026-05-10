@@ -195,6 +195,53 @@ void test_call_binding_parity_observes_structured_maps() {
               "parity should count mismatched NTTP values");
 }
 
+void test_legacy_name_dual_write_helpers_require_complete_owner_metadata() {
+  c4c::Node owner{};
+  owner.namespace_context_id = 8;
+  owner.unqualified_text_id = 301;
+  owner.n_template_params = 3;
+  const char* names[] = {"T", "N", "Pack"};
+  c4c::TextId text_ids[] = {17, 19, 23};
+  bool is_nttp[] = {false, true, false};
+  bool is_pack[] = {false, false, true};
+  owner.template_param_names = names;
+  owner.template_param_name_text_ids = text_ids;
+  owner.template_param_is_nttp = is_nttp;
+  owner.template_param_is_pack = is_pack;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  c4c::hir::HirTemplateTypeBindings structured_type_bindings;
+  c4c::hir::HirTemplateNttpBindings structured_nttp_bindings;
+  expect_true(c4c::hir::add_hir_template_type_binding_by_legacy_name(
+                  &owner, "T", int_ts, &structured_type_bindings),
+              "type legacy-name binding should dual-write with complete metadata");
+  expect_true(c4c::hir::add_hir_template_nttp_binding_by_legacy_name(
+                  &owner, "N", 42, &structured_nttp_bindings),
+              "NTTP legacy-name binding should dual-write with complete metadata");
+
+  auto type_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 0, c4c::hir::HirTemplateParameterBindingKind::Type);
+  auto nttp_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 1, c4c::hir::HirTemplateParameterBindingKind::NonType);
+  expect_true(type_key.has_value(), "type parameter should produce a key");
+  expect_true(nttp_key.has_value(), "NTTP parameter should produce a key");
+  expect_true(structured_type_bindings.at(*type_key).base == c4c::TB_INT,
+              "dual-written structured type binding should be keyed by owner");
+  expect_true(structured_nttp_bindings.at(*nttp_key) == 42,
+              "dual-written structured NTTP binding should be keyed by owner");
+
+  expect_true(!c4c::hir::add_hir_template_type_binding_by_legacy_name(
+                  &owner, "Pack", int_ts, &structured_type_bindings),
+              "pack parameters should remain legacy-only until pack indices exist");
+
+  owner.unqualified_text_id = c4c::kInvalidText;
+  expect_true(!c4c::hir::add_hir_template_type_binding_by_legacy_name(
+                  &owner, "T", int_ts, &structured_type_bindings),
+              "incomplete owner metadata should prevent structured dual-write");
+}
+
 }  // namespace
 
 int main() {
@@ -203,6 +250,7 @@ int main() {
   test_unordered_map_lookup_uses_structured_hash();
   test_constructs_distinct_structured_keys_from_template_nodes();
   test_call_binding_parity_observes_structured_maps();
+  test_legacy_name_dual_write_helpers_require_complete_owner_metadata();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;
 }
