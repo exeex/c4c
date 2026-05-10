@@ -8,33 +8,33 @@ Current Step Title: Use Structured Keys for Pending and Specialization Identity
 
 ## Just Finished
 
-Completed the next bounded Step 4 packet of `plan.md`: structured binding
-identity is now fed into a read-only pending-template key construction
-observation at the template-call-result deduction boundary. The existing
-legacy `seed_and_resolve_pending_template_type_if_needed` call remains the only
-pending-template state mutation, so recorded dedup, lookup authority, reader
-authority, specialization materialization, and lowerer forwarding authority are
-unchanged.
+Completed the next bounded Step 4 packet of `plan.md`: the
+`ctx-deduction-template-call-result` pending-template mutation point now records
+dedup/progress state with the structured `PendingTemplateTypeKey` when
+structured binding identities are complete and static-compatible. Incomplete or
+non-parity structured metadata keeps the existing legacy
+`seed_and_resolve_pending_template_type_if_needed` path.
 
 Concrete changes:
-- Added a structured `make_pending_template_type_key` overload that consumes
-  `HirTemplateTypeBindings` / `HirTemplateNttpBindings` through the structured
-  binding identity helpers.
-- Added a read-only pending-template structured identity observation result
-  that reports static-context parity, expected legacy-vs-structured key
-  difference, structured binding counts, and incomplete structured identities.
-- Wired the `ctx-deduction-template-call-result` path to construct legacy and
-  structured pending keys side by side and observe them before the existing
-  legacy pending-template seed/resolve call.
-- Added focused tests proving the structured pending key helper emits complete
-  structured identities and remains distinct from the legacy/fallback key while
-  preserving the same pending static context.
+- Added a compile-time-state recorder that preserves legacy work-item maps and
+  display keys while accepting an explicit pending-template identity key for
+  dedup/resolved-progress authority.
+- Added a reusable completeness gate for structured pending-template identity
+  observations.
+- Switched the deduction template-call-result boundary to use the structured
+  key only when structured metadata is complete and covers the same legacy type
+  and NTTP binding counts; otherwise it falls back to the legacy path.
+- Added focused tests proving complete structured metadata becomes the state
+  key, legacy display output remains present, resolved-progress checks use the
+  structured key, and incomplete structured metadata is rejected for state-key
+  authority.
 
 ## Suggested Next
 
-Continue Step 4 by choosing the first actual pending-template dedup switch
-point, or add one more observation point if the supervisor wants parity data
-from a non-call-result pending-template path before switching authority.
+Continue Step 4 by selecting the next pending-template or specialization
+identity mutation point that already has complete structured binding metadata,
+or expand structured metadata propagation for call-result cases that still fall
+back because enclosing context bindings lack structured mirrors.
 
 ## Watchouts
 
@@ -47,8 +47,11 @@ from a non-call-result pending-template path before switching authority.
   `encode_pending_type_ref`, and `SpecializationKey::canonical` are
   display/compatibility outputs; do not make them replacement semantic keys.
 - Existing pending-template state mutation still records the legacy
-  `TypeBindings` / `NttpBindings` key; the structured key is constructed only
-  for observation at `ctx-deduction-template-call-result`.
+  `TypeBindings` / `NttpBindings` key outside the
+  `ctx-deduction-template-call-result` complete-metadata path.
+- The call-result switch intentionally requires structured type/NTTP binding
+  counts to match the legacy maps, so enclosing context bindings without
+  structured mirrors remain legacy-keyed instead of partially structured.
 - Structured `SpecializationArgumentIdentity` entries currently keep
   `parameter_name` as display/fallback data only; equality and hashing use the
   structured key when complete metadata is present, and ordering follows the

@@ -913,6 +913,16 @@ observe_pending_template_type_structured_identity(
   return observation;
 }
 
+[[nodiscard]] inline bool pending_template_structured_identity_can_key_state(
+    const PendingTemplateStructuredIdentityObservation& observation,
+    size_t legacy_type_binding_count,
+    size_t legacy_nttp_binding_count) {
+  return observation.static_context_matches &&
+         observation.structured_bindings_complete() &&
+         observation.structured_type_bindings == legacy_type_binding_count &&
+         observation.structured_nttp_bindings == legacy_nttp_binding_count;
+}
+
 /// Render the structured pending-template identity for diagnostics only.
 /// `PendingTemplateTypeWorkItem::display_key` must not participate in dedup or
 /// resolved-progress checks.
@@ -1799,6 +1809,52 @@ struct CompileTimeState {
         kind, canonical_pending_type, canonical_owner_primary_def,
         type_bindings, nttp_bindings,
         context_name, span);
+    item.display_key = format_pending_template_type_key_for_display(
+        kind, canonical_pending_type, canonical_owner_primary_def,
+        type_bindings, nttp_bindings,
+        context_name, span);
+    if (pending_template_type_keys_.count(item.identity_key) > 0) return false;
+    pending_template_type_keys_.insert(item.identity_key);
+    pending_template_types_.push_back(std::move(item));
+    return true;
+  }
+
+  bool record_pending_template_type_with_identity_key(
+      PendingTemplateTypeKind kind,
+      const TypeSpec& pending_type,
+      const Node* owner_primary_def,
+      const TypeBindings& type_bindings,
+      const NttpBindings& nttp_bindings,
+      const SourceSpan& span,
+      const std::string& context_name,
+      const PendingTemplateTypeKey& identity_key) {
+    if (!pending_type.tpl_struct_origin && !pending_type.deferred_member_type_name)
+      return false;
+    PendingTemplateTypeWorkItem item;
+    const Node* canonical_owner_primary_def = owner_primary_def;
+    if (!canonical_owner_primary_def) {
+      const std::string rendered_origin =
+          pending_type.tpl_struct_origin ? pending_type.tpl_struct_origin : "";
+      if (pending_type.record_def && pending_type.record_def->kind == NK_STRUCT_DEF) {
+        canonical_owner_primary_def =
+            find_template_struct_def(pending_type.record_def, rendered_origin);
+      } else if (!rendered_origin.empty()) {
+        canonical_owner_primary_def = find_template_struct_def(rendered_origin);
+      }
+    }
+    TypeSpec canonical_pending_type = pending_type;
+    if (canonical_owner_primary_def && canonical_owner_primary_def->name &&
+        canonical_pending_type.tpl_struct_origin) {
+      canonical_pending_type.tpl_struct_origin = canonical_owner_primary_def->name;
+    }
+    item.kind = kind;
+    item.pending_type = canonical_pending_type;
+    item.owner_primary_def = canonical_owner_primary_def;
+    item.type_bindings = type_bindings;
+    item.nttp_bindings = nttp_bindings;
+    item.span = span;
+    item.context_name = context_name;
+    item.identity_key = identity_key;
     item.display_key = format_pending_template_type_key_for_display(
         kind, canonical_pending_type, canonical_owner_primary_def,
         type_bindings, nttp_bindings,

@@ -1010,7 +1010,8 @@ class Lowerer {
       const HirTemplateTypeBindings& structured_type_bindings,
       const NttpBindings& legacy_nttp_bindings,
       const HirTemplateNttpBindings& structured_nttp_bindings) const;
-  void observe_pending_template_type_structured_identity(
+  PendingTemplateStructuredIdentityObservation
+  observe_pending_template_type_structured_identity(
       const PendingTemplateTypeKey& legacy_key,
       const PendingTemplateTypeKey& structured_key) const;
 

@@ -1015,17 +1015,33 @@ std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
             PendingTemplateTypeKind::OwnerStruct, canonical_result_ts,
             owner_primary_def, structured_call_bindings,
             structured_call_nttp_bindings, context_name, span);
-    observe_pending_template_type_structured_identity(
-        legacy_pending_key, structured_pending_key);
-    seed_and_resolve_pending_template_type_if_needed(
-        result_ts, resolution_bindings, call_nttp_bindings, call_node,
-        PendingTemplateTypeKind::OwnerStruct, context_name);
+    const PendingTemplateStructuredIdentityObservation
+        structured_pending_observation =
+            observe_pending_template_type_structured_identity(
+                legacy_pending_key, structured_pending_key);
+    const bool structured_pending_key_complete =
+        pending_template_structured_identity_can_key_state(
+            structured_pending_observation, resolution_bindings.size(),
+            call_nttp_bindings.size());
+    if (structured_pending_key_complete) {
+      ct_state_->record_pending_template_type_with_identity_key(
+          PendingTemplateTypeKind::OwnerStruct, canonical_result_ts,
+          owner_primary_def, resolution_bindings, call_nttp_bindings, span,
+          context_name, structured_pending_key);
+      realize_template_struct_if_needed(
+          result_ts, resolution_bindings, call_nttp_bindings, nullptr);
+    } else {
+      seed_and_resolve_pending_template_type_if_needed(
+          result_ts, resolution_bindings, call_nttp_bindings, call_node,
+          PendingTemplateTypeKind::OwnerStruct, context_name);
+    }
   }
   resolve_typedef_to_struct(result_ts);
   return reference_value_ts(result_ts);
 }
 
-void Lowerer::observe_pending_template_type_structured_identity(
+PendingTemplateStructuredIdentityObservation
+Lowerer::observe_pending_template_type_structured_identity(
     const PendingTemplateTypeKey& legacy_key,
     const PendingTemplateTypeKey& structured_key) const {
   const PendingTemplateStructuredIdentityObservation observation =
@@ -1037,6 +1053,7 @@ void Lowerer::observe_pending_template_type_structured_identity(
   if (!observation.static_context_matches) {
     ++pending_template_structured_identity_static_mismatches_;
   }
+  return observation;
 }
 
 void Lowerer::observe_template_call_binding_structured_parity(

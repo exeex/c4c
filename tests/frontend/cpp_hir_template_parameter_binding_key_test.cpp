@@ -470,6 +470,112 @@ void test_pending_template_binding_identity_helpers_accept_structured_maps() {
               "structured pending key helper should emit complete structured identities");
 }
 
+void test_pending_template_state_can_use_structured_identity_key() {
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  c4c::Node pending_owner{};
+  pending_owner.name = const_cast<char*>("Box");
+  pending_owner.namespace_context_id = 4;
+  pending_owner.unqualified_text_id = 401;
+
+  c4c::TypeSpec pending_ts{};
+  pending_ts.base = c4c::TB_STRUCT;
+  pending_ts.tpl_struct_origin = "Box";
+
+  c4c::hir::TypeBindings legacy_type_bindings;
+  legacy_type_bindings.emplace("T", int_ts);
+  c4c::hir::NttpBindings legacy_nttp_bindings;
+
+  c4c::hir::HirTemplateTypeBindings structured_type_bindings;
+  structured_type_bindings.emplace(make_type_key(8, 301, 0, 17), int_ts);
+  c4c::hir::HirTemplateNttpBindings structured_nttp_bindings;
+
+  c4c::hir::SourceSpan span{};
+  span.begin.line = 21;
+  span.end.line = 21;
+
+  auto legacy_key = c4c::hir::make_pending_template_type_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, legacy_type_bindings, legacy_nttp_bindings,
+      "test-structured-state-key", span);
+  auto structured_key = c4c::hir::make_pending_template_type_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, structured_type_bindings, structured_nttp_bindings,
+      "test-structured-state-key", span);
+  auto observation =
+      c4c::hir::observe_pending_template_type_structured_identity(
+          legacy_key, structured_key);
+  expect_true(c4c::hir::pending_template_structured_identity_can_key_state(
+                  observation, legacy_type_bindings.size(),
+                  legacy_nttp_bindings.size()),
+              "complete structured pending metadata should be eligible for state-key authority");
+
+  c4c::hir::CompileTimeState state;
+  const bool recorded = state.record_pending_template_type_with_identity_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, legacy_type_bindings, legacy_nttp_bindings, span,
+      "test-structured-state-key", structured_key);
+  expect_true(recorded,
+              "structured pending state key should record a pending work item");
+  expect_true(state.pending_template_type_count() == 1,
+              "structured pending state key should record one pending item");
+  const auto& item = state.pending_template_types().front();
+  expect_true(item.identity_key == structured_key,
+              "pending dedup/progress identity should use the structured key");
+  expect_true(!(item.identity_key == legacy_key),
+              "structured pending state key should not collapse to the legacy fallback key");
+  expect_true(item.display_key.find("T=") != std::string::npos,
+              "pending display key should preserve legacy rendered binding output");
+  state.mark_pending_template_type_resolved(structured_key);
+  expect_true(state.is_pending_template_type_resolved(structured_key),
+              "pending resolved progress should be tracked by the structured key");
+  expect_true(!state.is_pending_template_type_resolved(legacy_key),
+              "legacy key should not become the resolved progress key when structured metadata is complete");
+}
+
+void test_pending_template_state_rejects_incomplete_structured_identity_key() {
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  c4c::Node pending_owner{};
+  pending_owner.name = const_cast<char*>("Box");
+  pending_owner.namespace_context_id = 4;
+  pending_owner.unqualified_text_id = 401;
+
+  c4c::TypeSpec pending_ts{};
+  pending_ts.base = c4c::TB_STRUCT;
+  pending_ts.tpl_struct_origin = "Box";
+
+  c4c::hir::TypeBindings legacy_type_bindings;
+  legacy_type_bindings.emplace("T", int_ts);
+  c4c::hir::HirTemplateTypeBindings incomplete_structured_type_bindings;
+  auto incomplete_key = make_type_key(8, 301, 0, c4c::kInvalidText);
+  incomplete_structured_type_bindings.emplace(incomplete_key, int_ts);
+
+  c4c::hir::SourceSpan span{};
+  span.begin.line = 22;
+  span.end.line = 22;
+
+  auto legacy_key = c4c::hir::make_pending_template_type_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, legacy_type_bindings, c4c::hir::NttpBindings{},
+      "test-incomplete-structured-state-key", span);
+  auto incomplete_structured_key = c4c::hir::make_pending_template_type_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, incomplete_structured_type_bindings,
+      c4c::hir::HirTemplateNttpBindings{},
+      "test-incomplete-structured-state-key", span);
+  auto observation =
+      c4c::hir::observe_pending_template_type_structured_identity(
+          legacy_key, incomplete_structured_key);
+  expect_true(!observation.structured_bindings_complete(),
+              "incomplete structured pending metadata should be observable");
+  expect_true(!c4c::hir::pending_template_structured_identity_can_key_state(
+                  observation, legacy_type_bindings.size(), 0),
+              "incomplete structured pending metadata should keep the legacy state-key path");
+}
+
 }  // namespace
 
 int main() {
@@ -482,6 +588,8 @@ int main() {
   test_legacy_name_dual_write_helpers_require_complete_owner_metadata();
   test_specialization_argument_identity_uses_structured_parameter_key();
   test_pending_template_binding_identity_helpers_accept_structured_maps();
+  test_pending_template_state_can_use_structured_identity_key();
+  test_pending_template_state_rejects_incomplete_structured_identity_key();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;
 }
