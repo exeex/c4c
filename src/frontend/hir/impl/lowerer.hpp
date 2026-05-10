@@ -952,12 +952,18 @@ class Lowerer {
   // Build TypeBindings from a call-site template args and a function definition.
   // Resolves typedef args through `enclosing_bindings` if provided.
   // Fills missing args from fn_def's default template parameters.
-  TypeBindings build_call_bindings(const Node* call_var, const Node* fn_def,
-                                   const TypeBindings* enclosing_bindings);
+  TypeBindings build_call_bindings(
+      const Node* call_var,
+      const Node* fn_def,
+      const TypeBindings* enclosing_bindings,
+      HirTemplateTypeBindings* structured_bindings = nullptr);
 
-  NttpBindings build_call_nttp_bindings(const Node* call_var, const Node* fn_def,
-                                        const NttpBindings* enclosing_nttp = nullptr,
-                                        const NttpTextBindings* enclosing_nttp_by_text = nullptr);
+  NttpBindings build_call_nttp_bindings(
+      const Node* call_var,
+      const Node* fn_def,
+      const NttpBindings* enclosing_nttp = nullptr,
+      const NttpTextBindings* enclosing_nttp_by_text = nullptr,
+      HirTemplateNttpBindings* structured_bindings = nullptr);
 
   NttpTextBindings build_call_nttp_text_bindings(const Node* call_var,
                                                  const Node* fn_def,

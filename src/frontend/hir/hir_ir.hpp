@@ -285,6 +285,39 @@ struct HirTemplateParameterBindingKeyHash {
                    kInvalidText) == key.owner_qualifier_segment_text_ids.end();
 }
 
+[[nodiscard]] inline std::optional<HirTemplateParameterBindingKey>
+make_hir_template_parameter_binding_key(
+    const Node* template_owner,
+    int parameter_index,
+    HirTemplateParameterBindingKind parameter_kind) {
+  if (!template_owner || parameter_index < 0 ||
+      parameter_index >= template_owner->n_template_params ||
+      !template_owner->template_param_name_text_ids) {
+    return std::nullopt;
+  }
+
+  HirTemplateParameterBindingKey key;
+  key.parameter_kind = parameter_kind;
+  key.owner_namespace_context_id = template_owner->namespace_context_id;
+  key.owner_is_global_qualified = template_owner->is_global_qualified;
+  if (template_owner->qualifier_text_ids &&
+      template_owner->n_qualifier_segments > 0) {
+    key.owner_qualifier_segment_text_ids.assign(
+        template_owner->qualifier_text_ids,
+        template_owner->qualifier_text_ids +
+            template_owner->n_qualifier_segments);
+  }
+  key.owner_template_text_id = template_owner->unqualified_text_id;
+  key.parameter_index = parameter_index;
+  key.parameter_text_id =
+      template_owner->template_param_name_text_ids[parameter_index];
+
+  if (!hir_template_parameter_binding_key_has_complete_metadata(key)) {
+    return std::nullopt;
+  }
+  return key;
+}
+
 /// Structured type template parameter bindings keyed by owner/kind/index/text.
 using HirTemplateTypeBindings = std::unordered_map<
     HirTemplateParameterBindingKey,

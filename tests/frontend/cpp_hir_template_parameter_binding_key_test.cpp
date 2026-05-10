@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -95,12 +96,62 @@ void test_unordered_map_lookup_uses_structured_hash() {
               "hash lookup should find second-index binding");
 }
 
+void test_constructs_distinct_structured_keys_from_template_nodes() {
+  c4c::Node owner_a{};
+  owner_a.namespace_context_id = 8;
+  owner_a.unqualified_text_id = 301;
+  owner_a.n_template_params = 2;
+  const char* owner_a_names[] = {"T", "T"};
+  c4c::TextId owner_a_text_ids[] = {17, 17};
+  owner_a.template_param_names = owner_a_names;
+  owner_a.template_param_name_text_ids = owner_a_text_ids;
+
+  c4c::Node owner_b = owner_a;
+  owner_b.namespace_context_id = 9;
+  owner_b.unqualified_text_id = 302;
+
+  auto owner_a_t0 = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner_a, 0, c4c::hir::HirTemplateParameterBindingKind::Type);
+  auto owner_a_t1 = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner_a, 1, c4c::hir::HirTemplateParameterBindingKind::Type);
+  auto owner_b_t0 = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner_b, 0, c4c::hir::HirTemplateParameterBindingKind::Type);
+
+  expect_true(owner_a_t0.has_value(), "owner A index 0 should produce a key");
+  expect_true(owner_a_t1.has_value(), "owner A index 1 should produce a key");
+  expect_true(owner_b_t0.has_value(), "owner B index 0 should produce a key");
+  expect_true(*owner_a_t0 != *owner_a_t1,
+              "same-spelled template params on distinct indices must differ");
+  expect_true(*owner_a_t0 != *owner_b_t0,
+              "same-spelled template params on distinct owners must differ");
+
+  c4c::hir::HirTemplateTypeBindings bindings;
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  c4c::TypeSpec char_ts{};
+  char_ts.base = c4c::TB_CHAR;
+  c4c::TypeSpec long_ts{};
+  long_ts.base = c4c::TB_LONG;
+  bindings.emplace(*owner_a_t0, int_ts);
+  bindings.emplace(*owner_a_t1, char_ts);
+  bindings.emplace(*owner_b_t0, long_ts);
+  expect_true(bindings.size() == 3,
+              "structured type bindings must keep owner/index keys distinct");
+  expect_true(bindings.at(*owner_a_t0).base == c4c::TB_INT,
+              "owner A index 0 binding should be preserved");
+  expect_true(bindings.at(*owner_a_t1).base == c4c::TB_CHAR,
+              "owner A index 1 binding should be preserved");
+  expect_true(bindings.at(*owner_b_t0).base == c4c::TB_LONG,
+              "owner B index 0 binding should be preserved");
+}
+
 }  // namespace
 
 int main() {
   test_same_spelling_distinct_by_owner_and_index();
   test_complete_metadata_rejects_text_id_only_key();
   test_unordered_map_lookup_uses_structured_hash();
+  test_constructs_distinct_structured_keys_from_template_nodes();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;
 }

@@ -472,8 +472,10 @@ const TypeSpec* find_enclosing_type_binding_for_deduction(
 
 }  // namespace
 
-TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_def,
-                                          const TypeBindings* enclosing_bindings) {
+TypeBindings Lowerer::build_call_bindings(
+    const Node* call_var, const Node* fn_def,
+    const TypeBindings* enclosing_bindings,
+    HirTemplateTypeBindings* structured_bindings) {
   TypeBindings bindings;
   if (!call_var || !fn_def || fn_def->n_template_params <= 0) return bindings;
   const int total_args = call_var->n_template_args > 0 ? call_var->n_template_args : 0;
@@ -509,6 +511,12 @@ TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_d
       arg_ts = *resolved;
     }
     bindings[fn_def->template_param_names[i]] = arg_ts;
+    if (structured_bindings) {
+      if (auto structured_key = make_hir_template_parameter_binding_key(
+              fn_def, i, HirTemplateParameterBindingKind::Type)) {
+        (*structured_bindings)[*structured_key] = arg_ts;
+      }
+    }
   }
   if (fn_def->template_param_has_default) {
     for (int i = 0; i < fn_def->n_template_params; ++i) {
@@ -517,16 +525,25 @@ TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_d
       if (fn_def->template_param_is_pack && fn_def->template_param_is_pack[i]) continue;
       if (bindings.count(fn_def->template_param_names[i])) continue;
       if (fn_def->template_param_has_default[i]) {
-        bindings[fn_def->template_param_names[i]] = fn_def->template_param_default_types[i];
+        const TypeSpec& default_ts = fn_def->template_param_default_types[i];
+        bindings[fn_def->template_param_names[i]] = default_ts;
+        if (structured_bindings) {
+          if (auto structured_key = make_hir_template_parameter_binding_key(
+                  fn_def, i, HirTemplateParameterBindingKind::Type)) {
+            (*structured_bindings)[*structured_key] = default_ts;
+          }
+        }
       }
     }
   }
   return bindings;
 }
 
-NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node* fn_def,
-                                               const NttpBindings* enclosing_nttp,
-                                               const NttpTextBindings* enclosing_nttp_by_text) {
+NttpBindings Lowerer::build_call_nttp_bindings(
+    const Node* call_var, const Node* fn_def,
+    const NttpBindings* enclosing_nttp,
+    const NttpTextBindings* enclosing_nttp_by_text,
+    HirTemplateNttpBindings* structured_bindings) {
   NttpBindings bindings;
   if (!call_var || !fn_def || fn_def->n_template_params <= 0) return bindings;
   const int total_args = call_var->n_template_args > 0 ? call_var->n_template_args : 0;
@@ -586,13 +603,22 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
     }
     if (arg_index >= total_args) continue;
     if (call_var->template_arg_is_value && call_var->template_arg_is_value[arg_index]) {
+      const auto bind_nttp = [&](long long value) {
+        bindings[fn_def->template_param_names[i]] = value;
+        if (structured_bindings) {
+          if (auto structured_key = make_hir_template_parameter_binding_key(
+                  fn_def, i, HirTemplateParameterBindingKind::NonType)) {
+            (*structured_bindings)[*structured_key] = value;
+          }
+        }
+      };
       long long expr_value = 0;
       if (call_var->template_arg_exprs && call_var->template_arg_exprs[arg_index]) {
         if (eval_template_arg_expr_with_nttp_bindings(
                 call_var->template_arg_exprs[arg_index], enclosing_nttp,
                 enclosing_nttp_by_text,
                 &expr_value)) {
-          bindings[fn_def->template_param_names[i]] = expr_value;
+          bind_nttp(expr_value);
           ++arg_index;
           continue;
         }
@@ -605,7 +631,7 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
         if (forwarded_text_id != kInvalidText && enclosing_nttp_by_text) {
           auto text_it = enclosing_nttp_by_text->find(forwarded_text_id);
           if (text_it != enclosing_nttp_by_text->end()) {
-            bindings[fn_def->template_param_names[i]] = text_it->second;
+            bind_nttp(text_it->second);
             ++arg_index;
             continue;
           }
@@ -618,7 +644,7 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
         if (enclosing_nttp) {
           auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);
           if (it != enclosing_nttp->end()) {
-            bindings[fn_def->template_param_names[i]] = it->second;
+            bind_nttp(it->second);
             ++arg_index;
             continue;
           }
@@ -626,7 +652,7 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
         ++arg_index;
         continue;
       }
-      bindings[fn_def->template_param_names[i]] = call_var->template_arg_values[arg_index];
+      bind_nttp(call_var->template_arg_values[arg_index]);
     }
     ++arg_index;
   }
@@ -637,7 +663,14 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
       if (fn_def->template_param_is_pack && fn_def->template_param_is_pack[i]) continue;
       if (bindings.count(fn_def->template_param_names[i])) continue;
       if (fn_def->template_param_has_default[i]) {
-        bindings[fn_def->template_param_names[i]] = fn_def->template_param_default_values[i];
+        const long long default_value = fn_def->template_param_default_values[i];
+        bindings[fn_def->template_param_names[i]] = default_value;
+        if (structured_bindings) {
+          if (auto structured_key = make_hir_template_parameter_binding_key(
+                  fn_def, i, HirTemplateParameterBindingKind::NonType)) {
+            (*structured_bindings)[*structured_key] = default_value;
+          }
+        }
       }
     }
   }
@@ -899,15 +932,19 @@ std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
   const Node* callee_def = ct_state_->find_template_def(call_node->left->name);
   if (!callee_def || callee_def->n_template_params <= 0) return std::nullopt;
 
+  HirTemplateTypeBindings structured_call_bindings;
+  HirTemplateNttpBindings structured_call_nttp_bindings;
   TypeBindings call_bindings = build_call_bindings(
       call_node->left, callee_def,
-      ctx && !ctx->tpl_bindings.empty() ? &ctx->tpl_bindings : nullptr);
+      ctx && !ctx->tpl_bindings.empty() ? &ctx->tpl_bindings : nullptr,
+      &structured_call_bindings);
   NttpBindings call_nttp_bindings = build_call_nttp_bindings(
       call_node->left, callee_def,
       ctx && !ctx->nttp_bindings.empty() ? &ctx->nttp_bindings : nullptr,
       ctx && !ctx->nttp_bindings_by_text.empty()
           ? &ctx->nttp_bindings_by_text
-          : nullptr);
+          : nullptr,
+      &structured_call_nttp_bindings);
 
   TypeBindings deduced_types;
   NttpBindings deduced_nttp;
@@ -1040,7 +1077,9 @@ void Lowerer::fill_deduced_defaults(TypeBindings& deduced, const Node* fn_def) {
 TypeBindings Lowerer::merge_explicit_and_deduced_type_bindings(
     const Node* call_node, const Node* call_var, const Node* fn_def,
     const TypeBindings* enclosing_bindings, const Node* enclosing_fn) {
-  TypeBindings bindings = build_call_bindings(call_var, fn_def, enclosing_bindings);
+  HirTemplateTypeBindings structured_bindings;
+  TypeBindings bindings = build_call_bindings(
+      call_var, fn_def, enclosing_bindings, &structured_bindings);
   if (!call_node || !fn_def) return bindings;
 
   TypeBindings deduced = try_deduce_template_type_args(call_node, fn_def, enclosing_fn);
@@ -1054,11 +1093,13 @@ TypeBindings Lowerer::merge_explicit_and_deduced_type_bindings(
 TypeBindings Lowerer::merge_explicit_and_ctx_deduced_type_bindings(
     const Node* call_node, const Node* call_var, const Node* fn_def,
     FunctionCtx* ctx) {
+  HirTemplateTypeBindings structured_bindings;
   TypeBindings bindings =
       build_call_bindings(call_var, fn_def,
                           ctx && !ctx->tpl_bindings.empty()
                               ? &ctx->tpl_bindings
-                              : nullptr);
+                              : nullptr,
+                          &structured_bindings);
   if (!call_node || !fn_def || !ctx) return bindings;
 
   TypeBindings deduced;
