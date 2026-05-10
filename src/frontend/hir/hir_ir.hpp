@@ -1487,21 +1487,48 @@ enum class SpecializationArgumentKind : uint8_t {
 
 struct SpecializationArgumentIdentity {
   std::string parameter_name;
+  std::optional<HirTemplateParameterBindingKey> parameter_key;
   SpecializationArgumentKind kind = SpecializationArgumentKind::Missing;
   TypeSpec type{};
   long long nttp_value = 0;
 
+  [[nodiscard]] bool has_complete_structured_parameter_identity() const {
+    return parameter_key &&
+           hir_template_parameter_binding_key_has_complete_metadata(
+               *parameter_key);
+  }
+
   [[nodiscard]] bool operator==(
       const SpecializationArgumentIdentity& other) const {
-    return parameter_name == other.parameter_name &&
-           kind == other.kind &&
+    const bool has_structured = has_complete_structured_parameter_identity();
+    const bool other_has_structured =
+        other.has_complete_structured_parameter_identity();
+    if (has_structured != other_has_structured) return false;
+    const bool same_parameter =
+        has_structured ? (*parameter_key == *other.parameter_key)
+                       : (parameter_name == other.parameter_name);
+    return same_parameter && kind == other.kind &&
            nttp_value == other.nttp_value &&
            specialization_type_identity_equal(type, other.type);
   }
 
+  [[nodiscard]] bool operator!=(
+      const SpecializationArgumentIdentity& other) const {
+    return !(*this == other);
+  }
+
   [[nodiscard]] bool operator<(
       const SpecializationArgumentIdentity& other) const {
-    if (parameter_name != other.parameter_name) {
+    const bool has_structured = has_complete_structured_parameter_identity();
+    const bool other_has_structured =
+        other.has_complete_structured_parameter_identity();
+    if (has_structured != other_has_structured) {
+      return has_structured < other_has_structured;
+    }
+    if (has_structured) {
+      if (*parameter_key < *other.parameter_key) return true;
+      if (*other.parameter_key < *parameter_key) return false;
+    } else if (parameter_name != other.parameter_name) {
       return parameter_name < other.parameter_name;
     }
     if (kind != other.kind) return kind < other.kind;
@@ -1528,13 +1555,29 @@ inline size_t specialization_owner_identity_hash(
 
 inline size_t specialization_argument_identity_hash(
     const SpecializationArgumentIdentity& arg) noexcept {
-  size_t h = std::hash<std::string>{}(arg.parameter_name);
+  const bool has_structured =
+      arg.has_complete_structured_parameter_identity();
+  size_t h = std::hash<bool>{}(has_structured);
+  if (has_structured) {
+    h = specialization_key_hash_mix(
+        h, HirTemplateParameterBindingKeyHash{}(*arg.parameter_key));
+  } else {
+    h = specialization_key_hash_mix(
+        h, std::hash<std::string>{}(arg.parameter_name));
+  }
   h = specialization_key_hash_mix(
       h, std::hash<uint8_t>{}(static_cast<uint8_t>(arg.kind)));
   h = specialization_key_hash_mix(h, specialization_type_identity_hash(arg.type));
   h = specialization_key_hash_mix(h, std::hash<long long>{}(arg.nttp_value));
   return h;
 }
+
+struct SpecializationArgumentIdentityHash {
+  [[nodiscard]] std::size_t operator()(
+      const SpecializationArgumentIdentity& arg) const noexcept {
+    return specialization_argument_identity_hash(arg);
+  }
+};
 
 /// A stable specialization key for template instantiation identity.
 ///

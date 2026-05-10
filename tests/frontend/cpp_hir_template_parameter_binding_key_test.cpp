@@ -1,10 +1,12 @@
 #include "hir/hir_ir.hpp"
+#include "hir/compile_time_engine.hpp"
 
 #include <cstdlib>
 #include <iostream>
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_set>
 
 namespace {
 
@@ -307,6 +309,131 @@ void test_legacy_name_dual_write_helpers_require_complete_owner_metadata() {
               "incomplete owner metadata should prevent structured dual-write");
 }
 
+void test_specialization_argument_identity_uses_structured_parameter_key() {
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  c4c::hir::SpecializationArgumentIdentity owner_a;
+  owner_a.parameter_name = "T";
+  owner_a.parameter_key = make_type_key(8, 301, 0, 17);
+  owner_a.kind = c4c::hir::SpecializationArgumentKind::Type;
+  owner_a.type = int_ts;
+
+  c4c::hir::SpecializationArgumentIdentity owner_b = owner_a;
+  owner_b.parameter_key = make_type_key(9, 302, 0, 17);
+  c4c::hir::SpecializationArgumentIdentity different_text_id = owner_a;
+  different_text_id.parameter_key = make_type_key(8, 301, 0, 19);
+  c4c::hir::SpecializationArgumentIdentity pack_element_0 = owner_a;
+  pack_element_0.parameter_key->pack_element_index = 0;
+  c4c::hir::SpecializationArgumentIdentity pack_element_1 = owner_a;
+  pack_element_1.parameter_key->pack_element_index = 1;
+  c4c::hir::SpecializationArgumentIdentity same_key_different_display =
+      owner_a;
+  same_key_different_display.parameter_name = "DifferentDisplayName";
+
+  expect_true(owner_a == same_key_different_display,
+              "complete structured identities with the same key should ignore display names for equality");
+  expect_true(!(owner_a < same_key_different_display),
+              "same structured key must not order before a different display-name mirror");
+  expect_true(!(same_key_different_display < owner_a),
+              "different display-name mirror must not order before the same structured key");
+
+  expect_true(owner_a != owner_b,
+              "same rendered parameter name from different owners must not compare equal");
+  expect_true(owner_a != different_text_id,
+              "same rendered parameter name with different parameter TextId must not compare equal");
+  expect_true(pack_element_0 != pack_element_1,
+              "same rendered pack parameter name with different element indices must not compare equal");
+
+  std::unordered_set<
+      c4c::hir::SpecializationArgumentIdentity,
+      c4c::hir::SpecializationArgumentIdentityHash>
+      structured_identities;
+  structured_identities.insert(owner_a);
+  structured_identities.insert(same_key_different_display);
+  structured_identities.insert(owner_b);
+  structured_identities.insert(different_text_id);
+  structured_identities.insert(pack_element_0);
+  structured_identities.insert(pack_element_1);
+  expect_true(structured_identities.size() == 5,
+              "structured argument identity hash/equality must ignore display names but preserve distinct parameter keys");
+
+  c4c::hir::SpecializationArgumentIdentity fallback_a;
+  fallback_a.parameter_name = "T";
+  fallback_a.kind = c4c::hir::SpecializationArgumentKind::Type;
+  fallback_a.type = int_ts;
+  c4c::hir::SpecializationArgumentIdentity fallback_b = fallback_a;
+  expect_true(fallback_a == fallback_b,
+              "fallback identities should preserve legacy parameter-name equality");
+
+  std::unordered_set<
+      c4c::hir::SpecializationArgumentIdentity,
+      c4c::hir::SpecializationArgumentIdentityHash>
+      fallback_identities;
+  fallback_identities.insert(fallback_a);
+  fallback_identities.insert(fallback_b);
+  expect_true(fallback_identities.size() == 1,
+              "fallback identity hash/equality should remain parameter-name compatible");
+}
+
+void test_pending_template_binding_identity_helpers_accept_structured_maps() {
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  c4c::TypeSpec char_ts{};
+  char_ts.base = c4c::TB_CHAR;
+
+  auto owner_a_t = make_type_key(8, 301, 0, 17);
+  auto owner_b_t = make_type_key(9, 302, 0, 17);
+  c4c::hir::HirTemplateTypeBindings structured_type_bindings;
+  structured_type_bindings.emplace(owner_a_t, int_ts);
+  structured_type_bindings.emplace(owner_b_t, char_ts);
+
+  auto type_identities =
+      c4c::hir::make_pending_template_type_binding_identities(
+          structured_type_bindings);
+  expect_true(type_identities.size() == 2,
+              "structured type binding helper should emit one identity per structured key");
+  expect_true(type_identities[0] != type_identities[1],
+              "structured type identities with same rendered name should remain distinct");
+  expect_true(type_identities[0].has_complete_structured_parameter_identity(),
+              "structured type identity should carry complete parameter metadata");
+  expect_true(type_identities[1].has_complete_structured_parameter_identity(),
+              "second structured type identity should carry complete parameter metadata");
+
+  auto nttp_pack_0 = make_type_key(8, 301, 1, 19);
+  nttp_pack_0.parameter_kind = c4c::hir::HirTemplateParameterBindingKind::NonType;
+  nttp_pack_0.pack_element_index = 0;
+  auto nttp_pack_1 = nttp_pack_0;
+  nttp_pack_1.pack_element_index = 1;
+  c4c::hir::HirTemplateNttpBindings structured_nttp_bindings;
+  structured_nttp_bindings.emplace(nttp_pack_0, 7);
+  structured_nttp_bindings.emplace(nttp_pack_1, 9);
+
+  auto nttp_identities =
+      c4c::hir::make_pending_template_nttp_binding_identities(
+          structured_nttp_bindings);
+  expect_true(nttp_identities.size() == 2,
+              "structured NTTP binding helper should emit one identity per structured key");
+  expect_true(nttp_identities[0] != nttp_identities[1],
+              "structured NTTP pack element identities should remain distinct");
+  expect_true(nttp_identities[0].has_complete_structured_parameter_identity(),
+              "structured NTTP identity should carry complete parameter metadata");
+  expect_true(nttp_identities[1].has_complete_structured_parameter_identity(),
+              "second structured NTTP identity should carry complete parameter metadata");
+
+  c4c::hir::TypeBindings legacy_type_bindings;
+  legacy_type_bindings.emplace("T", int_ts);
+  auto legacy_type_identities =
+      c4c::hir::make_pending_template_type_binding_identities(
+          legacy_type_bindings);
+  expect_true(legacy_type_identities.size() == 1,
+              "legacy type binding helper should keep old name-based output");
+  expect_true(legacy_type_identities[0].parameter_name == "T",
+              "legacy type binding identity should preserve parameter display name");
+  expect_true(!legacy_type_identities[0].has_complete_structured_parameter_identity(),
+              "legacy type binding identity should not invent structured metadata");
+}
+
 }  // namespace
 
 int main() {
@@ -317,6 +444,8 @@ int main() {
   test_constructs_distinct_structured_keys_from_template_nodes();
   test_call_binding_parity_observes_structured_maps();
   test_legacy_name_dual_write_helpers_require_complete_owner_metadata();
+  test_specialization_argument_identity_uses_structured_parameter_key();
+  test_pending_template_binding_identity_helpers_accept_structured_maps();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;
 }

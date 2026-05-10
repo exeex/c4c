@@ -1,44 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/161_hir_template_binding_domain_key_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Populate Structured Binding Maps
+Current Step ID: 4
+Current Step Title: Use Structured Keys for Pending and Specialization Identity
 
 # Current Packet
 
 ## Just Finished
 
-Completed the remaining Step 3 pack-boundary packet of `plan.md`: structured
-type and NTTP binding keys can now represent pack elements separately from the
-ordinary parameter key, and explicit type/NTTP pack call bindings dual-write
-structured entries when complete owner/parameter metadata exists. Legacy
-`TypeBindings`, `NttpBindings`, and `NttpTextBindings` remain lookup,
-substitution, mangling, and call-lowering authority.
+Completed the first bounded Step 4 packet of `plan.md`: pending/specialization
+argument identity can now carry owner-aware structured template parameter
+identity while legacy rendered parameter names remain the fallback display and
+compatibility path. No reader authority, lookup authority, specialization dedup
+call site, materialization path, or lowerer path was switched.
 
 Concrete changes:
-- Added `pack_element_index` to `HirTemplateParameterBindingKey`, with `-1`
-  preserving non-pack identity and non-negative values representing pack
-  elements.
-- Included the pack element index in structured key equality, ordering, and
-  hashing.
-- Extended owner-aware legacy-name mirror helpers to parse `Name#N` pack
-  binding names and populate structured type/NTTP pack entries only when owner
-  metadata is complete.
-- Wired `build_call_bindings` and `build_call_nttp_bindings` pack branches to
-  dual-write structured explicit pack entries while leaving legacy maps as the
-  authoritative result.
-- Extended `cpp_hir_template_parameter_binding_key_structured_metadata` to cover
-  distinct pack elements, non-pack-vs-pack identity, type pack dual-write, NTTP
-  pack dual-write, and invalid unsuffixed pack names.
+- Added optional `HirTemplateParameterBindingKey` metadata to
+  `SpecializationArgumentIdentity`.
+- Updated argument identity equality, ordering, and hashing so complete
+  structured keys distinguish same-spelled parameters from different owners,
+  different parameter TextIds, and different pack element indices.
+- Fixed the structured identity consistency rule so complete structured
+  identities with the same `parameter_key` ignore differing display names for
+  equality, ordering, and hashing.
+- Kept fallback identities compatible: when structured metadata is absent or
+  incomplete, argument identity continues to use `parameter_name`.
+- Added structured overloads for
+  `make_pending_template_type_binding_identities` and
+  `make_pending_template_nttp_binding_identities` that consume
+  `HirTemplateTypeBindings` / `HirTemplateNttpBindings` and emit structured
+  `SpecializationArgumentIdentity` entries.
+- Extended `cpp_hir_template_parameter_binding_key_structured_metadata` with
+  focused tests for structured argument identity, hash/equality behavior,
+  legacy fallback behavior, and pending binding identity helper overloads.
 
 ## Suggested Next
 
-Step 3 now has structured dual-write coverage for explicit, defaulted
-non-pack, deduced non-pack, and pack-element binding names that flow through the
-owner-aware legacy mirror helpers. Suggested next packet: start Step 4 by
-choosing one read-only parity observation point for structured-vs-legacy
-binding lookup, without switching lookup authority or touching specialization
-dedup.
+Continue Step 4 with a narrow wiring packet that feeds structured binding
+identity into one covered pending-template key construction path for parity or
+observation only. Keep legacy-map call sites authoritative until the supervisor
+chooses the specific dedup switch point.
 
 ## Watchouts
 
@@ -50,11 +51,13 @@ dedup.
 - `mangle_template_name`, `format_pending_template_type_key_for_display`,
   `encode_pending_type_ref`, and `SpecializationKey::canonical` are
   display/compatibility outputs; do not make them replacement semantic keys.
-- Structured maps are now observed after explicit+deduced merge at the covered
-  call-result and merge boundaries; no reader depends on them for lookup.
-- Pack bindings have structured identity only when the legacy binding name uses
-  the existing `Name#N` suffix form; unsuffixed pack parameter names still refuse
-  structured dual-write.
+- Existing `make_pending_template_type_key` call sites still pass legacy
+  `TypeBindings` / `NttpBindings`; this packet deliberately added structured
+  helper overloads without switching those call sites.
+- Structured `SpecializationArgumentIdentity` entries currently keep
+  `parameter_name` as display/fallback data only; equality and hashing use the
+  structured key when complete metadata is present, and ordering follows the
+  same identity rule.
 - `make_hir_template_parameter_binding_key` rejects incomplete owner/parameter
   metadata, but callers still own deciding whether the source owner is the
   correct semantic authority for a binding domain.

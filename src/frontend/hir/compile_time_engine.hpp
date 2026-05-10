@@ -764,6 +764,26 @@ make_pending_template_type_binding_identities(
 }
 
 inline std::vector<SpecializationArgumentIdentity>
+make_pending_template_type_binding_identities(
+    const HirTemplateTypeBindings& type_bindings) {
+  std::vector<HirTemplateParameterBindingKey> keys;
+  keys.reserve(type_bindings.size());
+  for (const auto& [key, _] : type_bindings) keys.push_back(key);
+  std::sort(keys.begin(), keys.end());
+
+  std::vector<SpecializationArgumentIdentity> bindings;
+  bindings.reserve(keys.size());
+  for (const auto& key : keys) {
+    SpecializationArgumentIdentity binding;
+    binding.parameter_key = key;
+    binding.kind = SpecializationArgumentKind::Type;
+    binding.type = type_bindings.at(key);
+    bindings.push_back(std::move(binding));
+  }
+  return bindings;
+}
+
+inline std::vector<SpecializationArgumentIdentity>
 make_pending_template_nttp_binding_identities(
     const NttpBindings& nttp_bindings) {
   std::vector<std::string> names;
@@ -778,6 +798,26 @@ make_pending_template_nttp_binding_identities(
     binding.parameter_name = name;
     binding.kind = SpecializationArgumentKind::NttpValue;
     binding.nttp_value = nttp_bindings.at(name);
+    bindings.push_back(std::move(binding));
+  }
+  return bindings;
+}
+
+inline std::vector<SpecializationArgumentIdentity>
+make_pending_template_nttp_binding_identities(
+    const HirTemplateNttpBindings& nttp_bindings) {
+  std::vector<HirTemplateParameterBindingKey> keys;
+  keys.reserve(nttp_bindings.size());
+  for (const auto& [key, _] : nttp_bindings) keys.push_back(key);
+  std::sort(keys.begin(), keys.end());
+
+  std::vector<SpecializationArgumentIdentity> bindings;
+  bindings.reserve(keys.size());
+  for (const auto& key : keys) {
+    SpecializationArgumentIdentity binding;
+    binding.parameter_key = key;
+    binding.kind = SpecializationArgumentKind::NttpValue;
+    binding.nttp_value = nttp_bindings.at(key);
     bindings.push_back(std::move(binding));
   }
   return bindings;
