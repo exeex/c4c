@@ -1136,25 +1136,38 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
             : nullptr;
     const Node* tpl_fn = ct_state_->find_template_def(call->left->name);
     if (tpl_fn) {
+      HirTemplateTypeBindings structured_bindings;
       TypeBindings bindings =
           ctx ? merge_explicit_and_ctx_deduced_type_bindings(
-                    call, call->left, tpl_fn, const_cast<FunctionCtx*>(ctx))
+                    call, call->left, tpl_fn, const_cast<FunctionCtx*>(ctx),
+                    &structured_bindings)
               : merge_explicit_and_deduced_type_bindings(
-                    call, call->left, tpl_fn, enc);
-      NttpBindings nttp_bindings =
-          build_call_nttp_bindings(call->left, tpl_fn, enc_nttp, enc_nttp_by_text);
+                    call, call->left, tpl_fn, enc, nullptr,
+                    &structured_bindings);
+      HirTemplateNttpBindings structured_nttp_bindings;
+      NttpBindings nttp_bindings = build_call_nttp_bindings(
+          call->left, tpl_fn, enc_nttp, enc_nttp_by_text,
+          &structured_nttp_bindings);
       std::string resolved_name =
           mangle_template_name(call->left->name, bindings, nttp_bindings);
       const auto param_order =
           get_template_param_order(tpl_fn, &bindings, &nttp_bindings);
-      const SpecializationKey spec_key = nttp_bindings.empty()
-          ? make_specialization_key(call->left->name, param_order, bindings,
-                                    tpl_fn)
-          : make_specialization_key(call->left->name, param_order, bindings,
-                                    nttp_bindings, tpl_fn);
+      const std::optional<SpecializationKey> structured_spec_key =
+          try_make_structured_specialization_key(
+              call->left->name, param_order, bindings, structured_bindings,
+              nttp_bindings, structured_nttp_bindings, tpl_fn);
+      const SpecializationKey legacy_spec_key =
+          nttp_bindings.empty()
+              ? make_specialization_key(call->left->name, param_order,
+                                        bindings, tpl_fn)
+              : make_specialization_key(call->left->name, param_order,
+                                        bindings, nttp_bindings, tpl_fn);
+      const SpecializationKey spec_key =
+          structured_spec_key ? *structured_spec_key : legacy_spec_key;
       if (const auto* inst_list = registry_.find_instances(call->left->name)) {
         for (const auto& inst : *inst_list) {
-          if (inst.spec_key == spec_key) {
+          if (inst.spec_key == spec_key ||
+              (structured_spec_key && inst.spec_key == legacy_spec_key)) {
             resolved_name = inst.mangled_name;
             break;
           }

@@ -8,37 +8,33 @@ Current Step Title: Use Structured Keys for Pending and Specialization Identity
 
 ## Just Finished
 
-Completed the next bounded Step 4 packet of `plan.md`: specialization identity
-now has a structured construction path that emits
-`SpecializationArgumentIdentity::parameter_key` when owner-aware type/NTTP
-binding mirrors completely and count-compatibly cover the legacy rendered maps.
-The direct template-call resolution path in `expr/call.cpp` now returns the
-structured type/NTTP maps it already builds, prefers the structured
-`SpecializationKey` for instance lookup, and keeps a legacy comparison fallback
-for registry seeds still produced by the legacy `record_seed` path.
+Completed the next bounded Step 4 packet of `plan.md`: function-template seed
+and instance production can now record structured `SpecializationKey` identity
+when complete structured type/NTTP binding mirrors are available, and
+`infer_call_result_type` uses the same structured-first lookup policy as direct
+call lowering.
 
 Concrete changes:
-- Added `try_make_structured_specialization_key`, which preserves
-  `SpecializationKey::canonical` as the legacy display/compatibility mirror
-  while using structured parameter keys for equality/hash identity when all
-  mirrored bindings are complete and value-compatible.
-- Added an optional structured type-binding return path to
-  `merge_explicit_and_deduced_type_bindings` and
-  `merge_explicit_and_ctx_deduced_type_bindings`, including default-filled
-  bindings.
-- Routed direct template-call instance lookup through the structured key when
-  complete, falling back to the legacy key when structured mirrors are missing
-  or mismatched.
-- Added focused coverage for complete structured specialization-key
-  construction plus missing/mismatched structured-map fallback.
+- Added structured type/NTTP binding mirrors to `TemplateSeedWorkItem` and
+  `TemplateInstance`.
+- Extended `InstantiationRegistry::record_seed` to build a structured
+  specialization key through `try_make_structured_specialization_key` when the
+  supplied mirrors are complete and count-compatible; incomplete metadata keeps
+  the legacy specialization key path.
+- Threaded structured maps from the main direct, deduced, enclosing, and
+  consteval template seed collection paths.
+- Updated `infer_call_result_type` to prefer structured instance lookup and
+  retain the same legacy fallback used by direct call lowering.
+- Added focused registry coverage proving realized instances born from
+  structured seed metadata carry structured specialization argument keys while
+  preserving legacy display canonical text.
 
 ## Suggested Next
 
-Continue Step 4 by moving the seed/instance production side, especially
-`InstantiationRegistry::record_seed` and nearby specialization materialization
-paths, to accept structured type/NTTP binding mirrors so new registry entries
-can be born with the same structured `SpecializationKey` that direct call
-resolution now prefers.
+Continue Step 4 by auditing remaining struct/global specialization materialize
+paths that still construct `SpecializationKey` only from legacy rendered maps,
+or add an end-to-end same-spelled-owner collision test before deciding whether
+Step 4 is ready to move on.
 
 ## Watchouts
 
@@ -75,12 +71,15 @@ resolution now prefers.
 - The new structured-aware seed/resolve overload keeps realization inputs as
   the legacy `TypeBindings` / `NttpBindings`; structured keys affect only
   pending dedup/progress identity when complete and count-compatible.
-- Direct template-call lookup is structured-first, but still compares against a
-  legacy key when registry entries came from the current legacy-only seed path;
-  remove that compatibility comparison only after the seed path is structured.
+- Direct template-call and call-result type lookup are structured-first, but
+  still compare against a legacy key for compatibility with older or incomplete
+  seed paths.
 - `try_make_structured_specialization_key` intentionally rejects missing or
   mismatched structured mirrors by returning `nullopt`; callers should keep
   using the legacy key in that case instead of fabricating partial identity.
+- `InstantiationRegistry::record_seed` still preserves `mangled_name` output
+  from legacy binding maps; structured specialization keys affect dedup and
+  lookup identity only when complete.
 
 ## Proof
 

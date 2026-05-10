@@ -1104,7 +1104,9 @@ class Lowerer {
       TypeBindings bindings,
       NttpBindings nttp_bindings = {},
       NttpTextBindings nttp_bindings_by_text = {},
-      TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall);
+      TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall,
+      HirTemplateTypeBindings structured_type_bindings = {},
+      HirTemplateNttpBindings structured_nttp_bindings = {});
 
   // Resolve the mangled name for a call to a template function.
   std::string resolve_template_call_name(

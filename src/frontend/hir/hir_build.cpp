@@ -439,14 +439,18 @@ std::string Lowerer::record_template_seed(const std::string& fn_name,
                                           TypeBindings bindings,
                                           NttpBindings nttp_bindings,
                                           NttpTextBindings nttp_bindings_by_text,
-                                          TemplateSeedOrigin origin) {
+                                          TemplateSeedOrigin origin,
+                                          HirTemplateTypeBindings structured_type_bindings,
+                                          HirTemplateNttpBindings structured_nttp_bindings) {
   const Node* primary_def = ct_state_->find_template_def(fn_name);
   auto param_order =
       get_template_param_order(primary_def, &bindings, &nttp_bindings);
   return registry_.record_seed(fn_name, std::move(bindings),
                                std::move(nttp_bindings),
-                               std::move(nttp_bindings_by_text), param_order,
-                               origin, primary_def);
+                               std::move(nttp_bindings_by_text),
+                               std::move(structured_type_bindings),
+                               std::move(structured_nttp_bindings),
+                               param_order, origin, primary_def);
 }
 
 std::string Lowerer::resolve_template_call_name(
@@ -479,31 +483,39 @@ void Lowerer::collect_template_instantiations(const Node* n,
         auto* enc_list = registry_.find_instances(enclosing_fn->name);
         if (enc_list) {
           for (const auto& enc_inst : *enc_list) {
+            HirTemplateTypeBindings structured_inner;
             TypeBindings inner = merge_explicit_and_deduced_type_bindings(
-                n, n->left, fn_def, &enc_inst.bindings, enclosing_fn);
+                n, n->left, fn_def, &enc_inst.bindings, enclosing_fn,
+                &structured_inner);
+            HirTemplateNttpBindings structured_call_nttp;
             NttpBindings call_nttp = build_call_nttp_bindings(
                 n->left, fn_def, &enc_inst.nttp_bindings,
-                &enc_inst.nttp_bindings_by_text);
+                &enc_inst.nttp_bindings_by_text, &structured_call_nttp);
             NttpTextBindings call_nttp_by_text =
                 build_call_nttp_text_bindings(n->left, fn_def, call_nttp);
             record_template_seed(
                 n->left->name, std::move(inner), call_nttp,
                 std::move(call_nttp_by_text),
-                TemplateSeedOrigin::EnclosingTemplateExpansion);
+                TemplateSeedOrigin::EnclosingTemplateExpansion,
+                std::move(structured_inner), std::move(structured_call_nttp));
           }
           goto recurse;
         }
       }
-      NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
+      HirTemplateNttpBindings structured_call_nttp;
+      NttpBindings call_nttp = build_call_nttp_bindings(
+          n->left, fn_def, nullptr, nullptr, &structured_call_nttp);
       NttpTextBindings call_nttp_by_text =
           build_call_nttp_text_bindings(n->left, fn_def, call_nttp);
       if (has_forwarded_nttp(n->left)) goto recurse;
+      HirTemplateTypeBindings structured_bindings;
       TypeBindings bindings = merge_explicit_and_deduced_type_bindings(
-          n, n->left, fn_def, nullptr, enclosing_fn);
+          n, n->left, fn_def, nullptr, enclosing_fn, &structured_bindings);
       std::string mangled = record_template_seed(
           n->left->name, std::move(bindings), call_nttp,
           call_nttp_by_text,
-          TemplateSeedOrigin::DirectCall);
+          TemplateSeedOrigin::DirectCall,
+          std::move(structured_bindings), structured_call_nttp);
       if (fn_def->n_template_params > n->left->n_template_args) {
         TypeBindings full_bindings = merge_explicit_and_deduced_type_bindings(
             n, n->left, fn_def, nullptr, enclosing_fn);
@@ -538,9 +550,20 @@ void Lowerer::collect_template_instantiations(const Node* n,
         }
         NttpTextBindings nttp_by_text =
             build_call_nttp_text_bindings(n->left, fn_def, nttp);
+        HirTemplateTypeBindings structured_deduced;
+        for (const auto& [name, ts] : deduced) {
+          (void)add_hir_template_type_binding_by_legacy_name(
+              fn_def, name, ts, &structured_deduced);
+        }
+        HirTemplateNttpBindings structured_nttp;
+        for (const auto& [name, value] : nttp) {
+          (void)add_hir_template_nttp_binding_by_legacy_name(
+              fn_def, name, value, &structured_nttp);
+        }
         std::string mangled = record_template_seed(
             n->left->name, TypeBindings(deduced), nttp, nttp_by_text,
-            TemplateSeedOrigin::DeducedCall);
+            TemplateSeedOrigin::DeducedCall,
+            std::move(structured_deduced), std::move(structured_nttp));
         deduced_template_calls_[n] = {
             mangled, std::move(deduced), std::move(nttp),
             std::move(nttp_by_text)};
@@ -575,30 +598,40 @@ void Lowerer::collect_consteval_template_instantiations(
         auto* enc_list = registry_.find_instances(enclosing_fn->name);
         if (enc_list) {
           for (const auto& enc_inst : *enc_list) {
+            HirTemplateTypeBindings structured_inner;
             TypeBindings inner =
-                build_call_bindings(n->left, fn_def, &enc_inst.bindings);
+                build_call_bindings(n->left, fn_def, &enc_inst.bindings,
+                                    &structured_inner);
+            HirTemplateNttpBindings structured_call_nttp;
             NttpBindings call_nttp = build_call_nttp_bindings(
                 n->left, fn_def, &enc_inst.nttp_bindings,
-                &enc_inst.nttp_bindings_by_text);
+                &enc_inst.nttp_bindings_by_text, &structured_call_nttp);
             NttpTextBindings call_nttp_by_text =
                 build_call_nttp_text_bindings(n->left, fn_def, call_nttp);
             record_template_seed(
                 n->left->name, std::move(inner), call_nttp,
                 std::move(call_nttp_by_text),
-                TemplateSeedOrigin::ConstevalEnclosingExpansion);
+                TemplateSeedOrigin::ConstevalEnclosingExpansion,
+                std::move(structured_inner), std::move(structured_call_nttp));
           }
           goto recurse_ce;
         }
         if (enclosing_fn->n_template_params > 0) goto recurse_ce;
       }
-      NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
+      HirTemplateNttpBindings structured_call_nttp;
+      NttpBindings call_nttp = build_call_nttp_bindings(
+          n->left, fn_def, nullptr, nullptr, &structured_call_nttp);
       NttpTextBindings call_nttp_by_text =
           build_call_nttp_text_bindings(n->left, fn_def, call_nttp);
       if (has_forwarded_nttp(n->left)) goto recurse_ce;
-      TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
+      HirTemplateTypeBindings structured_bindings;
+      TypeBindings bindings =
+          build_call_bindings(n->left, fn_def, nullptr, &structured_bindings);
       record_template_seed(n->left->name, std::move(bindings), call_nttp,
                            std::move(call_nttp_by_text),
-                           TemplateSeedOrigin::ConstevalSeed);
+                           TemplateSeedOrigin::ConstevalSeed,
+                           std::move(structured_bindings),
+                           std::move(structured_call_nttp));
     }
   }
 

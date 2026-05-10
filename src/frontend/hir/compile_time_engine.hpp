@@ -53,6 +53,8 @@ struct TemplateSeedWorkItem {
   TypeBindings bindings;
   NttpBindings nttp_bindings;
   NttpTextBindings nttp_bindings_by_text;
+  HirTemplateTypeBindings structured_type_bindings;
+  HirTemplateNttpBindings structured_nttp_bindings;
   std::string mangled_name;
   SpecializationKey spec_key;
   TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall;
@@ -64,6 +66,8 @@ struct TemplateInstance {
   TypeBindings bindings;
   NttpBindings nttp_bindings;  // non-type template param → constant value
   NttpTextBindings nttp_bindings_by_text;  // non-type template param TextId → value
+  HirTemplateTypeBindings structured_type_bindings;
+  HirTemplateNttpBindings structured_nttp_bindings;
   std::string mangled_name;
   SpecializationKey spec_key;  // stable identity for dedup/caching
   const Node* primary_def = nullptr;  // structured identity (when available)
@@ -1136,16 +1140,25 @@ class InstantiationRegistry {
       const std::string& fn_name, TypeBindings bindings,
       NttpBindings nttp_bindings,
       NttpTextBindings nttp_bindings_by_text,
+      HirTemplateTypeBindings structured_type_bindings,
+      HirTemplateNttpBindings structured_nttp_bindings,
       const std::vector<std::string>& param_order,
       TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall,
       const Node* primary_def = nullptr) {
     if (!bindings_are_concrete(bindings)) return "";
     std::string mangled = mangle_template_name(fn_name, bindings,
                                                 nttp_bindings);
-    SpecializationKey sk = nttp_bindings.empty()
-        ? make_specialization_key(fn_name, param_order, bindings, primary_def)
-        : make_specialization_key(fn_name, param_order, bindings,
-                                  nttp_bindings, primary_def);
+    const SpecializationKey legacy_sk =
+        nttp_bindings.empty()
+            ? make_specialization_key(fn_name, param_order, bindings,
+                                      primary_def)
+            : make_specialization_key(fn_name, param_order, bindings,
+                                      nttp_bindings, primary_def);
+    std::optional<SpecializationKey> structured_sk =
+        try_make_structured_specialization_key(
+            fn_name, param_order, bindings, structured_type_bindings,
+            nttp_bindings, structured_nttp_bindings, primary_def);
+    SpecializationKey sk = structured_sk ? *structured_sk : legacy_sk;
     // Semantic dedup uses owner identity when available.
     if (primary_def) {
       FunctionTemplateInstanceKey fk{primary_def, sk};
@@ -1171,9 +1184,24 @@ class InstantiationRegistry {
     }
     seed_work_[fn_name].push_back(
         TemplateSeedWorkItem{fn_name, bindings, nttp_bindings,
-                             std::move(nttp_bindings_by_text), mangled,
-                             sk, origin, primary_def});
+                             std::move(nttp_bindings_by_text),
+                             std::move(structured_type_bindings),
+                             std::move(structured_nttp_bindings),
+                             mangled, sk, origin, primary_def});
     return mangled;
+  }
+
+  std::string record_seed(
+      const std::string& fn_name, TypeBindings bindings,
+      NttpBindings nttp_bindings,
+      NttpTextBindings nttp_bindings_by_text,
+      const std::vector<std::string>& param_order,
+      TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall,
+      const Node* primary_def = nullptr) {
+    return record_seed(fn_name, std::move(bindings), std::move(nttp_bindings),
+                       std::move(nttp_bindings_by_text),
+                       HirTemplateTypeBindings{}, HirTemplateNttpBindings{},
+                       param_order, origin, primary_def);
   }
 
   /// Realize all seeds that have not yet been converted to instances.
@@ -1194,6 +1222,7 @@ class InstantiationRegistry {
         }
         instances_[fn_name].push_back(
             {seed.bindings, seed.nttp_bindings, seed.nttp_bindings_by_text,
+             seed.structured_type_bindings, seed.structured_nttp_bindings,
              seed.mangled_name,
              seed.spec_key, seed.primary_def});
         ++realized;
