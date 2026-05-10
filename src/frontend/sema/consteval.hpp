@@ -141,7 +141,9 @@ enum class ConstEvalValueLookupStatus {
 struct ConstEvalValueLookupResult {
   ConstEvalValueLookupStatus status = ConstEvalValueLookupStatus::NoMetadata;
   long long value = 0;
+  bool enum_binding_metadata_miss = false;
   bool local_binding_metadata_miss = false;
+  bool named_binding_metadata_miss = false;
   bool nttp_binding_metadata_miss = false;
 };
 
@@ -261,16 +263,16 @@ struct ConstEvalEnv {
         has_authoritative_metadata ||
         text.status == ConstEvalValueLookupStatus::Miss;
     if (has_authoritative_metadata) {
-      const bool nttp_metadata_missed =
+      return lookup_rendered_compatibility(
+          n->name,
+          structured.enum_binding_metadata_miss ||
+              text.enum_binding_metadata_miss,
+          structured.local_binding_metadata_miss ||
+              text.local_binding_metadata_miss,
+          structured.named_binding_metadata_miss ||
+              text.named_binding_metadata_miss,
           structured.nttp_binding_metadata_miss ||
-          text.nttp_binding_metadata_miss;
-      if (!nttp_metadata_missed && !n->is_global_qualified &&
-          n->n_qualifier_segments == 0 && n->namespace_context_id < 0) {
-        if (auto nttp = lookup_rendered_nttp(n->name); nttp.has_value()) {
-          return nttp;
-        }
-      }
-      return std::nullopt;
+              text.nttp_binding_metadata_miss);
     }
 
     return lookup(n->name);
@@ -310,7 +312,7 @@ struct ConstEvalEnv {
   static ConstEvalValueLookupResult lookup_text_map_status(
       const ConstTextMap* map,
       TextId text_id) {
-    if (!map || map->empty() || text_id == kInvalidText) return {};
+    if (!map || text_id == kInvalidText) return {};
     auto it = map->find(text_id);
     if (it == map->end()) return {ConstEvalValueLookupStatus::Miss, 0};
     return {ConstEvalValueLookupStatus::Found, it->second};
@@ -319,7 +321,7 @@ struct ConstEvalEnv {
   static ConstEvalValueLookupResult lookup_key_map_status(
       const ConstStructuredMap* map,
       const std::optional<ConstEvalStructuredNameKey>& key) {
-    if (!map || map->empty() || !key.has_value() || !key->valid()) return {};
+    if (!map || !key.has_value() || !key->valid()) return {};
     auto it = map->find(*key);
     if (it == map->end()) return {ConstEvalValueLookupStatus::Miss, 0};
     return {ConstEvalValueLookupStatus::Found, it->second};
@@ -335,6 +337,47 @@ struct ConstEvalEnv {
                                       : std::nullopt;
   }
 
+  std::optional<long long> lookup_rendered_compatibility(
+      const std::string& name,
+      bool skip_enum,
+      bool skip_local,
+      bool skip_named,
+      bool skip_nttp) const {
+    // Metadata-rich misses close only the covered domain. Other rendered maps
+    // remain no-metadata compatibility fallbacks for legacy handoffs.
+    if (!skip_enum) {
+      if (enum_scopes) {
+        for (auto it = enum_scopes->rbegin(); it != enum_scopes->rend(); ++it) {
+          auto sit = it->find(name);
+          if (sit != it->end()) return sit->second;
+        }
+      }
+      if (enum_consts) {
+        auto it = enum_consts->find(name);
+        if (it != enum_consts->end()) return it->second;
+      }
+    }
+    if (!skip_local) {
+      if (local_const_scopes) {
+        for (auto it = local_const_scopes->rbegin();
+             it != local_const_scopes->rend(); ++it) {
+          auto sit = it->find(name);
+          if (sit != it->end()) return sit->second;
+        }
+      }
+      if (local_consts) {
+        auto it = local_consts->find(name);
+        if (it != local_consts->end()) return it->second;
+      }
+    }
+    if (!skip_named && named_consts) {
+      auto it = named_consts->find(name);
+      if (it != named_consts->end()) return it->second;
+    }
+    if (!skip_nttp) return lookup_rendered_nttp(name);
+    return std::nullopt;
+  }
+
   ConstEvalValueLookupResult lookup_by_text(const Node* n) const {
     if (n && (n->is_global_qualified || n->n_qualifier_segments > 0)) {
       return {};
@@ -342,13 +385,14 @@ struct ConstEvalEnv {
     const TextId text_id = n ? n->unqualified_text_id : kInvalidText;
     if (text_id == kInvalidText) return {};
     bool saw_metadata = false;
-    bool local_binding_metadata_miss = false;
+    ConstEvalValueLookupResult miss;
     if (enum_scopes_by_text) {
       for (auto it = enum_scopes_by_text->rbegin(); it != enum_scopes_by_text->rend(); ++it) {
         ConstEvalValueLookupResult result = lookup_text_map_status(&*it, text_id);
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
         if (result.status == ConstEvalValueLookupStatus::Miss) {
           saw_metadata = true;
+          miss.enum_binding_metadata_miss = true;
         }
       }
     }
@@ -358,6 +402,7 @@ struct ConstEvalEnv {
     } else {
       if (result.status == ConstEvalValueLookupStatus::Miss) {
         saw_metadata = true;
+        miss.enum_binding_metadata_miss = true;
       }
     }
     if (local_const_scopes_by_text) {
@@ -367,7 +412,7 @@ struct ConstEvalEnv {
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
         if (result.status == ConstEvalValueLookupStatus::Miss) {
           saw_metadata = true;
-          local_binding_metadata_miss = true;
+          miss.local_binding_metadata_miss = true;
         }
       }
     }
@@ -377,7 +422,7 @@ struct ConstEvalEnv {
     } else {
       if (result.status == ConstEvalValueLookupStatus::Miss) {
         saw_metadata = true;
-        local_binding_metadata_miss = true;
+        miss.local_binding_metadata_miss = true;
       }
     }
     if (auto result = lookup_text_map_status(named_consts_by_text, text_id);
@@ -386,6 +431,7 @@ struct ConstEvalEnv {
     } else {
       if (result.status == ConstEvalValueLookupStatus::Miss) {
         saw_metadata = true;
+        miss.named_binding_metadata_miss = true;
       }
     }
     if (auto result = lookup_text_map_status(nttp_bindings_by_text, text_id);
@@ -394,12 +440,12 @@ struct ConstEvalEnv {
     } else {
       if (result.status == ConstEvalValueLookupStatus::Miss) {
         saw_metadata = true;
-        return {ConstEvalValueLookupStatus::Miss, 0, false, true};
+        miss.nttp_binding_metadata_miss = true;
       }
     }
     if (saw_metadata) {
-      return {ConstEvalValueLookupStatus::Miss, 0,
-              local_binding_metadata_miss};
+      miss.status = ConstEvalValueLookupStatus::Miss;
+      return miss;
     }
     return {};
   }
@@ -408,13 +454,14 @@ struct ConstEvalEnv {
     const auto local = local_key(n);
     const auto symbol = symbol_key(n);
     bool saw_metadata = false;
-    bool local_binding_metadata_miss = false;
+    ConstEvalValueLookupResult miss;
     if (enum_scopes_by_key) {
       for (auto it = enum_scopes_by_key->rbegin(); it != enum_scopes_by_key->rend(); ++it) {
         ConstEvalValueLookupResult result = lookup_key_map_status(&*it, local);
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
         if (result.status == ConstEvalValueLookupStatus::Miss) {
           saw_metadata = true;
+          miss.enum_binding_metadata_miss = true;
         }
       }
     }
@@ -424,6 +471,7 @@ struct ConstEvalEnv {
     } else {
       if (result.status == ConstEvalValueLookupStatus::Miss) {
         saw_metadata = true;
+        miss.enum_binding_metadata_miss = true;
       }
     }
     if (local_const_scopes_by_key) {
@@ -433,7 +481,7 @@ struct ConstEvalEnv {
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
         if (result.status == ConstEvalValueLookupStatus::Miss) {
           saw_metadata = true;
-          local_binding_metadata_miss = true;
+          miss.local_binding_metadata_miss = true;
         }
       }
     }
@@ -443,15 +491,17 @@ struct ConstEvalEnv {
     } else {
       if (result.status == ConstEvalValueLookupStatus::Miss) {
         saw_metadata = true;
-        local_binding_metadata_miss = true;
+        miss.local_binding_metadata_miss = true;
       }
     }
     if (auto result = lookup_key_map_status(named_consts_by_key, symbol);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
-      saw_metadata =
-          saw_metadata || result.status == ConstEvalValueLookupStatus::Miss;
+      if (result.status == ConstEvalValueLookupStatus::Miss) {
+        saw_metadata = true;
+        miss.named_binding_metadata_miss = true;
+      }
     }
     if (auto result = lookup_key_map_status(nttp_bindings_by_key, local);
         result.status == ConstEvalValueLookupStatus::Found) {
@@ -459,12 +509,12 @@ struct ConstEvalEnv {
     } else {
       if (result.status == ConstEvalValueLookupStatus::Miss) {
         saw_metadata = true;
-        return {ConstEvalValueLookupStatus::Miss, 0, false, true};
+        miss.nttp_binding_metadata_miss = true;
       }
     }
     if (saw_metadata) {
-      return {ConstEvalValueLookupStatus::Miss, 0,
-              local_binding_metadata_miss};
+      miss.status = ConstEvalValueLookupStatus::Miss;
+      return miss;
     }
     return {};
   }

@@ -1,39 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/159_sema_consteval_domain_table_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory rendered consteval authority
+Current Step ID: 2
+Current Step Title: Make value and local binding lookup structured-first
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1, "Inventory rendered consteval authority." Classified the
-rendered string-keyed consteval surfaces in `consteval.hpp`/`consteval.cpp`:
-`ConstMap`, `TypeBindings`, rendered NTTP maps, `type_binding_*_by_name`
-bridges, `ConstEvalEnv::lookup(std::string)`, `lookup_rendered_nttp`,
-`bind_consteval_call_env` mirrors, `lookup_consteval_function`, and
-`InterpreterBindings::by_name`. Added owner/limitation/removal or fallback
-comments for retained bridges without changing behavior.
+Completed Step 2, "Make value and local binding lookup structured-first."
+`ConstEvalEnv::lookup(const Node*)` now keeps per-domain metadata miss state so
+complete structured/TextId misses skip only the covered rendered enum, local,
+named, or NTTP compatibility map. Empty but present metadata maps count as
+complete lookup authority, and rendered `ConstMap`/interpreter-local `by_name`
+paths remain available only for uncovered no-metadata compatibility domains.
+Added focused sema lookup metadata tests for stale rendered consteval local and
+named value fallbacks, including an unrelated no-metadata named fallback guard.
 
 ## Suggested Next
 
-Start Step 2 from `plan.md`: make value and interpreter-local lookup
-structured/text-first, preserving rendered `ConstMap` and
-`InterpreterBindings::by_name` only as documented no-metadata compatibility
-fallbacks.
+Start Step 3 from `plan.md`: make consteval function lookup structured-first,
+including complete structured/TextId misses that do not reopen rendered
+function-name fallback.
 
 ## Watchouts
 
-- `ConstEvalEnv::lookup(std::string)` remains the no-metadata rendered value
-  fallback; Node-based lookup must continue to gate metadata-rich misses before
-  entering it.
-- `lookup_rendered_nttp` is currently a narrow compatibility bridge for
-  unqualified NTTPs after other metadata channels were seen; covered NTTP
-  metadata misses must not reach it.
+- `lookup_rendered_compatibility` intentionally preserves no-metadata rendered
+  fallback by domain; future steps should avoid collapsing per-domain miss
+  state back into one global rendered-fallback gate.
+- `ConstEvalValueLookupResult` now has enum/local/named/NTTP miss flags; any
+  Step 4 NTTP changes should set `nttp_binding_metadata_miss` when extending
+  lookup helpers outside `ConstEvalEnv`.
 - `InterpreterBindings::by_name` is still exposed through `env.local_consts`
-  beside `by_text` and `by_key`; Step 2 should verify metadata-rich local
-  misses cannot be reopened by rendered spelling.
+  beside `by_text` and `by_key`, but complete local metadata misses now skip
+  the rendered local fallback.
 - Do not weaken tests, mark supported paths unsupported, or rely on
   testcase-shaped shortcuts.
 
@@ -43,4 +43,6 @@ Ran delegated proof:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^positive_sema_'; } > test_after.log 2>&1`
 
 Result: passed. `test_after.log` contains the successful build and 34/34
-passing `positive_sema_` tests.
+passing `positive_sema_` tests. Also ran the focused pre-proof check
+`cmake --build --preset default --target cpp_hir_sema_lookup_value_metadata_test && ctest --test-dir build --output-on-failure -R '^cpp_positive_sema_lookup_value_structured_metadata$'`,
+which passed.

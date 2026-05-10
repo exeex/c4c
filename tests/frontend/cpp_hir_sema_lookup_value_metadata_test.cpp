@@ -1,3 +1,4 @@
+#include "sema/consteval.hpp"
 #include "sema/validate.hpp"
 
 #include <cstdlib>
@@ -224,6 +225,71 @@ void test_no_metadata_function_reference_keeps_rendered_compatibility() {
               "no-metadata function reference should use rendered function signature");
 }
 
+void test_consteval_local_metadata_miss_rejects_rendered_fallback() {
+  c4c::Node ref = var_ref("stale_local", "real_local", kMissingText, -1);
+
+  c4c::hir::ConstMap rendered_locals;
+  rendered_locals["stale_local"] = 17;
+  c4c::hir::ConstTextMap local_text;
+  c4c::hir::ConstStructuredMap local_key;
+
+  c4c::hir::ConstEvalEnv env{};
+  env.local_consts = &rendered_locals;
+  env.local_consts_by_text = &local_text;
+  env.local_consts_by_key = &local_key;
+
+  const c4c::hir::ConstEvalResult result =
+      c4c::hir::evaluate_constant_expr(&ref, env);
+
+  expect_true(!result.ok(),
+              "complete local metadata miss should not recover through rendered local name");
+}
+
+void test_consteval_named_metadata_miss_rejects_empty_map_rendered_fallback() {
+  c4c::Node ref = var_ref("stale_global", "real_global", kMissingText, 0);
+
+  c4c::hir::ConstMap rendered_globals;
+  rendered_globals["stale_global"] = 23;
+  c4c::hir::ConstTextMap named_text;
+  c4c::hir::ConstStructuredMap named_key;
+
+  c4c::hir::ConstEvalEnv env{};
+  env.named_consts = &rendered_globals;
+  env.named_consts_by_text = &named_text;
+  env.named_consts_by_key = &named_key;
+
+  const c4c::hir::ConstEvalResult result =
+      c4c::hir::evaluate_constant_expr(&ref, env);
+
+  expect_true(!result.ok(),
+              "complete named metadata miss should not recover through rendered global name");
+}
+
+void test_consteval_local_metadata_miss_keeps_uncovered_named_compatibility() {
+  c4c::Node ref = var_ref("rendered_global", "local_probe", kMissingText, -1);
+
+  c4c::hir::ConstMap rendered_locals;
+  rendered_locals["rendered_global"] = 29;
+  c4c::hir::ConstTextMap local_text;
+  c4c::hir::ConstStructuredMap local_key;
+  c4c::hir::ConstMap rendered_globals;
+  rendered_globals["rendered_global"] = 31;
+
+  c4c::hir::ConstEvalEnv env{};
+  env.local_consts = &rendered_locals;
+  env.local_consts_by_text = &local_text;
+  env.local_consts_by_key = &local_key;
+  env.named_consts = &rendered_globals;
+
+  const c4c::hir::ConstEvalResult result =
+      c4c::hir::evaluate_constant_expr(&ref, env);
+
+  expect_true(result.ok(),
+              "local metadata miss should still allow unrelated no-metadata named fallback");
+  expect_true(result.as_int() == 31,
+              "local metadata miss should skip rendered local compatibility only");
+}
+
 }  // namespace
 
 int main() {
@@ -232,6 +298,9 @@ int main() {
   test_enum_metadata_miss_rejects_stale_rendered_name();
   test_no_metadata_reference_keeps_rendered_compatibility();
   test_no_metadata_function_reference_keeps_rendered_compatibility();
+  test_consteval_local_metadata_miss_rejects_rendered_fallback();
+  test_consteval_named_metadata_miss_rejects_empty_map_rendered_fallback();
+  test_consteval_local_metadata_miss_keeps_uncovered_named_compatibility();
   std::cout << "PASS: cpp_hir_sema_lookup_value_metadata_test\n";
   return 0;
 }
