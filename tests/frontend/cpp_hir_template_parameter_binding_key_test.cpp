@@ -644,6 +644,79 @@ void test_pending_template_state_requires_enclosing_structured_mirrors() {
               "complete enclosing structured mirrors should allow structured state-key authority");
 }
 
+void test_lowerer_pending_seed_prefers_complete_structured_ctx_mirrors() {
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec pending_ts{};
+  pending_ts.base = c4c::TB_STRUCT;
+  pending_ts.tpl_struct_origin = "Box";
+
+  c4c::hir::TypeBindings legacy_type_bindings;
+  legacy_type_bindings.emplace("T", int_ts);
+  c4c::hir::NttpBindings legacy_nttp_bindings;
+
+  c4c::hir::HirTemplateTypeBindings structured_type_bindings;
+  structured_type_bindings.emplace(make_type_key(8, 301, 0, 17), int_ts);
+  c4c::hir::HirTemplateNttpBindings structured_nttp_bindings;
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.seed_and_resolve_pending_template_type_if_needed(
+      pending_ts, legacy_type_bindings, legacy_nttp_bindings,
+      structured_type_bindings, structured_nttp_bindings, nullptr,
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct,
+      "ctx-deduction-arg");
+
+  expect_true(lowerer.ct_state_->pending_template_type_count() == 1,
+              "structured ctx-deduction seed should record one pending item");
+  const auto& item = lowerer.ct_state_->pending_template_types().front();
+  const c4c::hir::PendingTemplateTypeKey structured_key =
+      c4c::hir::make_pending_template_type_key(
+          c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts, nullptr,
+          structured_type_bindings, structured_nttp_bindings,
+          "ctx-deduction-arg", c4c::hir::SourceSpan{});
+  expect_true(item.identity_key == structured_key,
+              "ctx-deduction seed should use the complete structured mirror key");
+  expect_true(item.display_key.find("T=") != std::string::npos,
+              "structured ctx-deduction seed should keep legacy display output");
+}
+
+void test_lowerer_pending_seed_falls_back_for_incomplete_ctx_mirrors() {
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec pending_ts{};
+  pending_ts.base = c4c::TB_STRUCT;
+  pending_ts.tpl_struct_origin = "Box";
+
+  c4c::hir::TypeBindings legacy_type_bindings;
+  legacy_type_bindings.emplace("T", int_ts);
+  c4c::hir::NttpBindings legacy_nttp_bindings;
+
+  c4c::hir::HirTemplateTypeBindings incomplete_structured_type_bindings;
+  incomplete_structured_type_bindings.emplace(
+      make_type_key(8, 301, 0, c4c::kInvalidText), int_ts);
+  c4c::hir::HirTemplateNttpBindings structured_nttp_bindings;
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.seed_and_resolve_pending_template_type_if_needed(
+      pending_ts, legacy_type_bindings, legacy_nttp_bindings,
+      incomplete_structured_type_bindings, structured_nttp_bindings, nullptr,
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct,
+      "ctx-deduction-constructed-arg");
+
+  expect_true(lowerer.ct_state_->pending_template_type_count() == 1,
+              "incomplete ctx-deduction seed should still record pending work");
+  const auto& item = lowerer.ct_state_->pending_template_types().front();
+  const c4c::hir::PendingTemplateTypeKey legacy_key =
+      c4c::hir::make_pending_template_type_key(
+          c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts, nullptr,
+          legacy_type_bindings, legacy_nttp_bindings,
+          "ctx-deduction-constructed-arg", c4c::hir::SourceSpan{});
+  expect_true(item.identity_key == legacy_key,
+              "incomplete ctx-deduction seed should keep the legacy state key");
+}
+
 void test_function_ctx_structured_mirror_population_requires_complete_owner_metadata() {
   c4c::TypeSpec int_ts{};
   int_ts.base = c4c::TB_INT;
@@ -706,6 +779,8 @@ int main() {
   test_pending_template_state_can_use_structured_identity_key();
   test_pending_template_state_rejects_incomplete_structured_identity_key();
   test_pending_template_state_requires_enclosing_structured_mirrors();
+  test_lowerer_pending_seed_prefers_complete_structured_ctx_mirrors();
+  test_lowerer_pending_seed_falls_back_for_incomplete_ctx_mirrors();
   test_function_ctx_structured_mirror_population_requires_complete_owner_metadata();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;

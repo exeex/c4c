@@ -1105,7 +1105,8 @@ bool Lowerer::deduce_template_bindings_from_call_args(
       arg_ts = substitute_signature_template_type(arg_ts, &ctx->tpl_bindings);
       if (arg_ts.tpl_struct_origin) {
         seed_and_resolve_pending_template_type_if_needed(
-            arg_ts, ctx->tpl_bindings, ctx->nttp_bindings, arg,
+            arg_ts, ctx->tpl_bindings, ctx->nttp_bindings,
+            ctx->structured_tpl_bindings, ctx->structured_nttp_bindings, arg,
             PendingTemplateTypeKind::OwnerStruct,
             "ctx-deduction-arg");
       }
@@ -1130,7 +1131,9 @@ bool Lowerer::deduce_template_bindings_from_call_args(
             substitute_signature_template_type(constructed_ts, &ctx->tpl_bindings);
         if (constructed_ts.tpl_struct_origin) {
           seed_and_resolve_pending_template_type_if_needed(
-              constructed_ts, ctx->tpl_bindings, ctx->nttp_bindings, arg->left,
+              constructed_ts, ctx->tpl_bindings, ctx->nttp_bindings,
+              ctx->structured_tpl_bindings, ctx->structured_nttp_bindings,
+              arg->left,
               PendingTemplateTypeKind::OwnerStruct,
               "ctx-deduction-constructed-arg");
         }

@@ -8,29 +8,30 @@ Current Step Title: Use Structured Keys for Pending and Specialization Identity
 
 ## Just Finished
 
-Completed the next bounded Step 4 packet of `plan.md`: non-method function,
-template-global initializer, and template-argument materialization expression
-`FunctionCtx` setup now populate structured type/NTTP binding mirrors alongside
-legacy binding maps when complete owner-aware template metadata is available.
-Incomplete owner metadata still produces no structured mirror, preserving the
-existing count-gated legacy fallback for pending-template state keys.
+Completed the next bounded Step 4 packet of `plan.md`: the
+`ctx-deduction-arg` and `ctx-deduction-constructed-arg` pending-template
+seed/resolve paths now use structured `PendingTemplateTypeKey` identity for
+pending dedup/progress state when the enclosing `FunctionCtx` structured
+mirrors are complete and count-compatible with the legacy binding maps.
+Incomplete structured mirrors keep the existing legacy seed/resolve path.
 
 Concrete changes:
-- Added a shared `FunctionCtx` structured mirror population helper keyed by the
-  template owner node.
-- Wired the helper into `lower_function`, template global initializer lowering,
-  and the materialization expression context used while evaluating template
-  argument defaults/value expressions.
-- Added focused coverage proving complete owner metadata creates structured
-  type and NTTP mirrors, while incomplete owner metadata does not fabricate
-  structured keys.
+- Added a structured-aware `seed_and_resolve_pending_template_type_if_needed`
+  overload that observes legacy-vs-structured pending identity, records with
+  the structured key only when `pending_template_structured_identity_can_key_state`
+  accepts it, and otherwise delegates to the legacy helper.
+- Routed the two deduction argument pending-template contexts through the new
+  overload with `ctx->structured_tpl_bindings` and
+  `ctx->structured_nttp_bindings`.
+- Added focused coverage proving complete `FunctionCtx` mirrors key pending
+  state structurally, while incomplete structured mirrors preserve legacy state
+  identity.
 
 ## Suggested Next
 
-Continue Step 4 by moving to the next pending-template/specialization identity
-mutation point that still keys state on legacy rendered binding maps, now that
-the known non-method/global-initializer `FunctionCtx` mirror handoff paths are
-wired.
+Continue Step 4 by moving to the next pending-template or specialization
+identity mutation point that still records dedup/progress state from legacy
+rendered binding maps after the deduction argument contexts.
 
 ## Watchouts
 
@@ -64,6 +65,9 @@ wired.
 - `populate_structured_template_binding_mirrors` intentionally mirrors only
   bindings that the supplied template owner can identify by complete
   owner/parameter metadata; legacy maps remain populated for fallback.
+- The new structured-aware seed/resolve overload keeps realization inputs as
+  the legacy `TypeBindings` / `NttpBindings`; structured keys affect only
+  pending dedup/progress identity when complete and count-compatible.
 
 ## Proof
 
@@ -71,5 +75,5 @@ Ran delegated proof command:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_|cpp_positive_sema_.*template|cpp_positive_sema_.*qualified_.*template)'; } > test_after.log 2>&1`
 
 Result: command exited 0 and `test_after.log` was written. The selected subset
-ran 322 tests with 100% passing after the build, including
+ran 322 tests with 100% passing after the build, including the updated
 `cpp_hir_template_parameter_binding_key_structured_metadata`.

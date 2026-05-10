@@ -791,6 +791,51 @@ void Lowerer::seed_pending_template_type(const TypeSpec& ts,
       make_span(span_node), context_name);
 }
 
+void Lowerer::seed_and_resolve_pending_template_type_if_needed(
+    TypeSpec& ts,
+    const TypeBindings& tpl_bindings,
+    const NttpBindings& nttp_bindings,
+    const HirTemplateTypeBindings& structured_tpl_bindings,
+    const HirTemplateNttpBindings& structured_nttp_bindings,
+    const Node* span_node,
+    PendingTemplateTypeKind kind,
+    const std::string& context_name,
+    const Node* primary_tpl) {
+  if (!ts.tpl_struct_origin) return;
+
+  const Node* owner_primary_def = canonical_template_struct_primary(ts, primary_tpl);
+  TypeSpec canonical_ts = ts;
+  if (owner_primary_def && owner_primary_def->name && canonical_ts.tpl_struct_origin) {
+    canonical_ts.tpl_struct_origin = owner_primary_def->name;
+  }
+
+  const SourceSpan span = make_span(span_node);
+  const PendingTemplateTypeKey legacy_pending_key =
+      make_pending_template_type_key(
+          kind, canonical_ts, owner_primary_def, tpl_bindings, nttp_bindings,
+          context_name, span);
+  const PendingTemplateTypeKey structured_pending_key =
+      make_pending_template_type_key(
+          kind, canonical_ts, owner_primary_def, structured_tpl_bindings,
+          structured_nttp_bindings, context_name, span);
+  const PendingTemplateStructuredIdentityObservation observation =
+      observe_pending_template_type_structured_identity(
+          legacy_pending_key, structured_pending_key);
+  if (pending_template_structured_identity_can_key_state(
+          observation, tpl_bindings.size(), nttp_bindings.size())) {
+    ct_state_->record_pending_template_type_with_identity_key(
+        kind, canonical_ts, owner_primary_def, tpl_bindings, nttp_bindings,
+        span, context_name, structured_pending_key);
+    realize_template_struct_if_needed(
+        ts, tpl_bindings, nttp_bindings, owner_primary_def);
+    return;
+  }
+
+  seed_and_resolve_pending_template_type_if_needed(
+      ts, tpl_bindings, nttp_bindings, span_node, kind, context_name,
+      owner_primary_def);
+}
+
 const Node* Lowerer::canonical_template_struct_primary(
     const TypeSpec& ts,
     const Node* primary_tpl) const {

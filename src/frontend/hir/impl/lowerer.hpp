@@ -203,6 +203,16 @@ class Lowerer {
       PendingTemplateTypeKind kind,
       const std::string& context_name,
       const Node* primary_tpl = nullptr);
+  void seed_and_resolve_pending_template_type_if_needed(
+      TypeSpec& ts,
+      const TypeBindings& tpl_bindings,
+      const NttpBindings& nttp_bindings,
+      const HirTemplateTypeBindings& structured_tpl_bindings,
+      const HirTemplateNttpBindings& structured_nttp_bindings,
+      const Node* span_node,
+      PendingTemplateTypeKind kind,
+      const std::string& context_name,
+      const Node* primary_tpl = nullptr);
 
   bool resolve_struct_member_typedef_if_ready(TypeSpec* ts);
 
