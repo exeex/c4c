@@ -5,8 +5,16 @@
 #include <iostream>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
+#include <vector>
+
+#define private public
+#include "hir/impl/lowerer.hpp"
+#undef private
 
 namespace {
 
@@ -636,6 +644,53 @@ void test_pending_template_state_requires_enclosing_structured_mirrors() {
               "complete enclosing structured mirrors should allow structured state-key authority");
 }
 
+void test_function_ctx_structured_mirror_population_requires_complete_owner_metadata() {
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  const char* complete_names[] = {"T", "N"};
+  c4c::TextId complete_name_text_ids[] = {17, 23};
+  bool complete_is_nttp[] = {false, true};
+  c4c::Node complete_owner{};
+  complete_owner.name = const_cast<char*>("make_box");
+  complete_owner.unqualified_text_id = 101;
+  complete_owner.namespace_context_id = 7;
+  complete_owner.n_template_params = 2;
+  complete_owner.template_param_names = complete_names;
+  complete_owner.template_param_name_text_ids = complete_name_text_ids;
+  complete_owner.template_param_is_nttp = complete_is_nttp;
+
+  c4c::hir::Lowerer::FunctionCtx complete_ctx{};
+  complete_ctx.tpl_bindings.emplace("T", int_ts);
+  complete_ctx.nttp_bindings.emplace("N", 9);
+  c4c::hir::Lowerer::populate_structured_template_binding_mirrors(
+      complete_ctx, &complete_owner, &complete_ctx.tpl_bindings,
+      &complete_ctx.nttp_bindings);
+
+  auto type_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &complete_owner, 0, c4c::hir::HirTemplateParameterBindingKind::Type);
+  auto nttp_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &complete_owner, 1, c4c::hir::HirTemplateParameterBindingKind::NonType);
+  expect_true(type_key.has_value() && nttp_key.has_value(),
+              "complete owner metadata should produce structured binding keys");
+  expect_true(complete_ctx.structured_tpl_bindings.count(*type_key) == 1,
+              "complete function/global FunctionCtx type binding should get a structured mirror");
+  expect_true(complete_ctx.structured_nttp_bindings.count(*nttp_key) == 1,
+              "complete function/global FunctionCtx NTTP binding should get a structured mirror");
+
+  c4c::Node incomplete_owner = complete_owner;
+  incomplete_owner.template_param_name_text_ids = nullptr;
+  c4c::hir::Lowerer::FunctionCtx incomplete_ctx{};
+  incomplete_ctx.tpl_bindings.emplace("T", int_ts);
+  incomplete_ctx.nttp_bindings.emplace("N", 9);
+  c4c::hir::Lowerer::populate_structured_template_binding_mirrors(
+      incomplete_ctx, &incomplete_owner, &incomplete_ctx.tpl_bindings,
+      &incomplete_ctx.nttp_bindings);
+  expect_true(incomplete_ctx.structured_tpl_bindings.empty() &&
+                  incomplete_ctx.structured_nttp_bindings.empty(),
+              "incomplete owner metadata should not fabricate structured mirrors");
+}
+
 }  // namespace
 
 int main() {
@@ -651,6 +706,7 @@ int main() {
   test_pending_template_state_can_use_structured_identity_key();
   test_pending_template_state_rejects_incomplete_structured_identity_key();
   test_pending_template_state_requires_enclosing_structured_mirrors();
+  test_function_ctx_structured_mirror_population_requires_complete_owner_metadata();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;
 }

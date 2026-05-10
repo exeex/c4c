@@ -317,6 +317,12 @@ class Lowerer {
 
   static bool is_any_ref_ts(const TypeSpec& ts);
 
+  static void populate_structured_template_binding_mirrors(
+      FunctionCtx& ctx,
+      const Node* template_owner,
+      const TypeBindings* tpl_bindings,
+      const NttpBindings* nttp_bindings);
+
   std::optional<long long> lookup_nttp_binding(const FunctionCtx* ctx,
                                                const Node* name_node,
                                                const char* rendered_name) const;

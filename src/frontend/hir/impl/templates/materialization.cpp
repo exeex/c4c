@@ -988,11 +988,13 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
         return eval_deferred_nttp_expr_hir(
             owner_tpl, param_idx, type_env, nttp_env, expr_override, out);
       },
-      [this](const Node* expr, const TypeBindings& type_env,
-             const NttpBindings& nttp_env, long long* out) {
+      [this, primary_tpl](const Node* expr, const TypeBindings& type_env,
+                          const NttpBindings& nttp_env, long long* out) {
         FunctionCtx expr_ctx;
         expr_ctx.tpl_bindings = type_env;
         expr_ctx.nttp_bindings = nttp_env;
+        populate_structured_template_binding_mirrors(
+            expr_ctx, primary_tpl, &type_env, &nttp_env);
         return try_eval_template_value_arg_expr(expr, &expr_ctx, out);
       },
       [this, &tpl_bindings, &nttp_bindings](TypeSpec& ts) {

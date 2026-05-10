@@ -8,31 +8,29 @@ Current Step Title: Use Structured Keys for Pending and Specialization Identity
 
 ## Just Finished
 
-Completed the next bounded Step 4 packet of `plan.md`: structured enclosing
-template binding mirrors now propagate from `FunctionCtx` into the
-`ctx-deduction-template-call-result` pending-template structured key path when
-complete owner-aware metadata is available. Incomplete enclosing mirrors still
-leave the structured key under-counted, so the existing legacy state-key path
-remains active.
+Completed the next bounded Step 4 packet of `plan.md`: non-method function,
+template-global initializer, and template-argument materialization expression
+`FunctionCtx` setup now populate structured type/NTTP binding mirrors alongside
+legacy binding maps when complete owner-aware template metadata is available.
+Incomplete owner metadata still produces no structured mirror, preserving the
+existing count-gated legacy fallback for pending-template state keys.
 
 Concrete changes:
-- Added structured type and NTTP mirror maps to `FunctionCtx`.
-- Populated struct-method `FunctionCtx` structured mirrors from the enclosing
-  template struct owner when available, with a method-template fallback for
-  method-owned bindings.
-- Merged enclosing structured mirrors with callee structured call/deduction
-  bindings before building the `ctx-deduction-template-call-result`
-  `PendingTemplateTypeKey`.
-- Added focused coverage proving missing enclosing structured mirrors keep the
-  legacy state-key path, while complete enclosing mirrors allow structured
-  state-key authority.
+- Added a shared `FunctionCtx` structured mirror population helper keyed by the
+  template owner node.
+- Wired the helper into `lower_function`, template global initializer lowering,
+  and the materialization expression context used while evaluating template
+  argument defaults/value expressions.
+- Added focused coverage proving complete owner metadata creates structured
+  type and NTTP mirrors, while incomplete owner metadata does not fabricate
+  structured keys.
 
 ## Suggested Next
 
-Continue Step 4 by either wiring structured mirrors for non-method function and
-global initializer `FunctionCtx` creation sites, or selecting the next
-pending-template/specialization identity mutation point that already has
-complete structured binding metadata.
+Continue Step 4 by moving to the next pending-template/specialization identity
+mutation point that still keys state on legacy rendered binding maps, now that
+the known non-method/global-initializer `FunctionCtx` mirror handoff paths are
+wired.
 
 ## Watchouts
 
@@ -50,10 +48,9 @@ complete structured binding metadata.
 - The call-result switch intentionally requires structured type/NTTP binding
   counts to match the legacy maps, so enclosing context bindings without
   structured mirrors remain legacy-keyed instead of partially structured.
-- This packet populates structured enclosing mirrors for struct-method lowering
-  where `struct_def_nodes_[struct_tag]` exposes the template struct owner. Other
-  `FunctionCtx` creation paths still need their own metadata handoff before
-  they can avoid the count-gated fallback.
+- Struct-method, non-method function, template-global initializer, and
+  template-argument materialization expression `FunctionCtx` creation paths now
+  have structured mirror handoff when their owner metadata is complete.
 - Structured `SpecializationArgumentIdentity` entries currently keep
   `parameter_name` as display/fallback data only; equality and hashing use the
   structured key when complete metadata is present, and ordering follows the
@@ -64,6 +61,9 @@ complete structured binding metadata.
 - `make_hir_template_parameter_binding_key` rejects incomplete owner/parameter
   metadata, but callers still own deciding whether the source owner is the
   correct semantic authority for a binding domain.
+- `populate_structured_template_binding_mirrors` intentionally mirrors only
+  bindings that the supplied template owner can identify by complete
+  owner/parameter metadata; legacy maps remain populated for fallback.
 
 ## Proof
 

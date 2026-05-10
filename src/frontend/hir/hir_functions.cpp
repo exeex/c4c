@@ -440,6 +440,25 @@ void Lowerer::populate_template_type_text_bindings(
   }
 }
 
+void Lowerer::populate_structured_template_binding_mirrors(
+    FunctionCtx& ctx,
+    const Node* template_owner,
+    const TypeBindings* tpl_bindings,
+    const NttpBindings* nttp_bindings) {
+  if (tpl_bindings) {
+    for (const auto& [name, ts] : *tpl_bindings) {
+      (void)add_hir_template_type_binding_by_legacy_name(
+          template_owner, name, ts, &ctx.structured_tpl_bindings);
+    }
+  }
+  if (nttp_bindings) {
+    for (const auto& [name, value] : *nttp_bindings) {
+      (void)add_hir_template_nttp_binding_by_legacy_name(
+          template_owner, name, value, &ctx.structured_nttp_bindings);
+    }
+  }
+}
+
 void Lowerer::lower_function(const Node* fn_node,
                              const std::string* name_override,
                              const TypeBindings* tpl_override,
@@ -557,6 +576,8 @@ void Lowerer::lower_function(const Node* fn_node,
   if (nttp_text_override) {
     ctx.nttp_bindings_by_text = *nttp_text_override;
   }
+  populate_structured_template_binding_mirrors(
+      ctx, fn_node, tpl_override, nttp_override);
   append_callable_params(
       fn, ctx, fn_node, tpl_override, nttp_override, "function-param:", false,
       true);

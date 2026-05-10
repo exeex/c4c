@@ -3001,6 +3001,10 @@ void Lowerer::lower_global(const Node* gv,
   if (tpl_override) {
     init_ctx.tpl_bindings = *tpl_override;
     populate_template_type_text_bindings(init_ctx, gv, tpl_override);
+  }
+  populate_structured_template_binding_mirrors(
+      init_ctx, gv, tpl_override, nttp_override);
+  if (tpl_override) {
     for (auto& [name, bound_ts] : init_ctx.tpl_bindings) {
       (void)name;
       seed_and_resolve_pending_template_type_if_needed(
