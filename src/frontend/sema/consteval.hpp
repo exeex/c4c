@@ -125,9 +125,11 @@ struct TypeBindingStructuredKeyHash {
 
 using TypeBindingStructuredMap =
     std::unordered_map<TypeBindingStructuredKey, TypeSpec, TypeBindingStructuredKeyHash>;
-// Rendered parameter spelling -> metadata bridges. These are not binding
-// authority; they let legacy rendered TypeSpec payloads enter text/key maps
-// until all TypeSpecs carry the parameter metadata directly.
+// Rendered parameter spelling -> metadata bridges. Owner: call-env/type
+// substitution compatibility for legacy TypeSpecs that still carry only a
+// display tag. Limitation: these maps select TextId/key authority but are not
+// binding authority themselves. Removal condition: all TypeSpecs carry
+// parameter TextId or structured owner metadata directly.
 using TypeBindingNameTextMap = std::unordered_map<std::string, TextId>;
 using TypeBindingNameStructuredMap =
     std::unordered_map<std::string, TypeBindingStructuredKey>;
@@ -163,8 +165,10 @@ struct ConstEvalEnv {
   const ConstStructuredMap* local_consts_by_key = nullptr;
 
   // Scoped rendered maps are compatibility mirrors for validate.cpp scope
-  // stacks. TextId/key scope stacks are authoritative when present. Searched
-  // innermost (back) to outermost (front).
+  // stacks. Owner: legacy scoped enum/local handoff. Limitation: TextId/key
+  // scope stacks are authoritative when present. Removal condition: scoped
+  // handoff always provides metadata maps. Searched innermost (back) to
+  // outermost (front).
   const std::vector<ConstMap>* enum_scopes = nullptr;
   const std::vector<ConstMap>* local_const_scopes = nullptr;
   const std::vector<ConstTextMap>* enum_scopes_by_text = nullptr;
@@ -181,20 +185,21 @@ struct ConstEvalEnv {
   const TypeBindingNameTextMap* type_binding_text_ids_by_name = nullptr;
   const TypeBindingNameStructuredMap* type_binding_keys_by_name = nullptr;
 
-  // NTTP substitution. The rendered map is a no-metadata compatibility mirror;
-  // text/key maps are authoritative for forwarded NTTP metadata.
+  // NTTP substitution. Owner: call-env compatibility for legacy forwarded
+  // parameter spellings. Limitation: the rendered map is a no-metadata mirror;
+  // text/key maps are authoritative for forwarded NTTP metadata. Removal
+  // condition: all NTTP forwarding carries TextId/key metadata.
   const std::unordered_map<std::string, long long>* nttp_bindings = nullptr;
   const ConstTextMap* nttp_bindings_by_text = nullptr;
   const ConstStructuredMap* nttp_bindings_by_key = nullptr;
 
-  // Optional late-known record layouts from HIR lowering. When present, the
-  // constant evaluator can resolve sizeof/alignof on tagged records that were
-  // not immediately computable in the sema-only path. `struct_defs` remains a
-  // rendered-tag compatibility map; `struct_def_owner_index` is the structured
-  // HIR record-owner handoff when TypeSpec metadata can identify the record.
-  // `link_name_texts` is the HIR module's TextTable used to canonicalize
-  // TypeSpec tag identity when `tag_text_id` came from a different intern
-  // table (e.g. parser/lexer) than the owner index uses.
+  // Optional late-known record layouts from HIR lowering. Owner: HIR layout
+  // handoff for sizeof/alignof on tagged records that were not immediately
+  // computable in sema. Limitation: `struct_defs` is only a rendered-tag
+  // compatibility map; `struct_def_owner_index` is authority when TypeSpec
+  // metadata can identify the record. `link_name_texts` only canonicalizes
+  // cross-table TextIds and still ends at owner-key lookup. Removal condition:
+  // all record TypeSpecs and layout handoff use one structured owner-key table.
   const std::unordered_map<std::string, HirStructDef>* struct_defs = nullptr;
   const std::unordered_map<HirRecordOwnerKey, std::string, HirRecordOwnerKeyHash>*
       struct_def_owner_index = nullptr;

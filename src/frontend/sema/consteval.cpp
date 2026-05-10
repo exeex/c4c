@@ -103,8 +103,10 @@ struct TypeBindingLookupResult {
 
 TypeBindingLookupResult lookup_type_binding_by_text(const ConstEvalEnv& env,
                                                     const std::string& name) {
-  // Compatibility bridge from rendered TypeSpec tags into TextId binding
-  // authority. A present name->TextId mirror means a miss is authoritative.
+  // Owner: type-substitution compatibility for legacy rendered TypeSpec tags.
+  // Limitation: this bridge only enters TextId binding authority; a present
+  // name->TextId mirror makes a miss authoritative. Removal condition: typedef
+  // TypeSpecs carry binding TextIds directly.
   if (!env.type_bindings_by_text || !env.type_binding_text_ids_by_name) return {};
   auto text_it = env.type_binding_text_ids_by_name->find(name);
   if (text_it == env.type_binding_text_ids_by_name->end()) return {};
@@ -128,8 +130,10 @@ TypeBindingLookupResult lookup_type_binding_by_text_id(const ConstEvalEnv& env,
 
 TypeBindingLookupResult lookup_type_binding_by_key(const ConstEvalEnv& env,
                                                    const std::string& name) {
-  // Compatibility bridge from rendered TypeSpec tags into structured binding
-  // authority. The rendered spelling only selects the key mirror.
+  // Owner: type-substitution compatibility for legacy rendered TypeSpec tags.
+  // Limitation: rendered spelling only selects the structured key mirror; the
+  // key map remains authority. Removal condition: typedef TypeSpecs carry
+  // structured binding owner metadata directly.
   if (!env.type_bindings_by_key || !env.type_binding_keys_by_name) return {};
   auto key_it = env.type_binding_keys_by_name->find(name);
   if (key_it == env.type_binding_keys_by_name->end()) return {};
@@ -378,8 +382,10 @@ void record_type_binding_mirrors(
     TypeBindingStructuredMap* out_type_bindings_by_key,
     TypeBindingNameTextMap* out_type_binding_text_ids_by_name,
     TypeBindingNameStructuredMap* out_type_binding_keys_by_name) {
-  // Output string maps are call-env compatibility mirrors for older TypeSpec
-  // payloads. TextId/key maps carry the binding authority for covered paths.
+  // Owner: consteval call-env construction for older TypeSpec payloads.
+  // Limitation: output string maps are compatibility mirrors; TextId/key maps
+  // carry binding authority for covered paths. Removal condition: all
+  // call-site type substitutions consume parameter metadata directly.
   if (structured_key.param_text_id != kInvalidText) {
     if (out_type_bindings_by_text) {
       (*out_type_bindings_by_text)[structured_key.param_text_id] = arg_ts;
@@ -502,10 +508,11 @@ const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv&
     return &layout_it->second;
   };
 
-  // Constant-layout lookup follows the Sema/HIR record-domain contract:
-  // TypeSpec carries record kind and structured name metadata to the owner
-  // index; rendered strings below are compatibility bridges while parser
-  // carriers migrate, not authoritative identity.
+  // Constant-layout lookup follows the Sema/HIR record-domain contract. Owner:
+  // late HIR layout handoff. Limitation: TypeSpec record metadata drives
+  // owner-index lookup; rendered strings below are compatibility bridges while
+  // parser carriers migrate, not authoritative identity. Removal condition:
+  // all record-layout callers provide complete owner keys.
 
   // Path 1: trust ts as-is (works when tag_text_id is in link_name_texts).
   if (auto direct = record_owner_key_from_typespec(ts); direct.has_value()) {
@@ -513,9 +520,11 @@ const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv&
     if (env.struct_def_owner_index) return nullptr;
   }
 
-  // Path 2: canonicalize a rendered mirror via link_name_texts->find(). This
-  // recovers from intern-table mismatches during the transition, but still ends
-  // at an owner-index lookup keyed by structured record metadata.
+  // Path 2: canonicalize a rendered mirror via link_name_texts->find(). Owner:
+  // HIR TextTable bridge for parser/HIR intern-table mismatches. Limitation:
+  // rendered spelling only recovers the canonical TextId and still ends at an
+  // owner-index lookup keyed by structured record metadata. Removal condition:
+  // TypeSpec tag_text_id is always interned in the owner-index TextTable.
   const char* compatibility_tag = typespec_legacy_display_tag_if_present(ts, 0);
   if (env.link_name_texts && compatibility_tag && compatibility_tag[0]) {
     const TextId canonical_id = env.link_name_texts->find(compatibility_tag);
@@ -535,9 +544,10 @@ const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv&
     }
   }
 
-  // Path 3: bare rendered-tag fallback. Only safe when no owner_index is
-  // available — otherwise stale spelling could silently override structured
-  // identity (idea 141 guard).
+  // Path 3: bare rendered-tag fallback. Owner: legacy HIR layout handoff with
+  // no owner index. Limitation: only safe when no owner_index is available;
+  // otherwise stale spelling could silently override structured identity.
+  // Removal condition: all HIR layout handoff provides struct_def_owner_index.
   if (env.struct_def_owner_index) return nullptr;
   if (!compatibility_tag || !compatibility_tag[0]) return nullptr;
   auto it = env.struct_defs->find(compatibility_tag);
@@ -834,8 +844,10 @@ ConstEvalEnv bind_consteval_call_env(
         auto expr_value =
             evaluate_constant_expr(callee_expr->template_arg_exprs[i], outer_env);
         if (expr_value.ok()) {
-          // Rendered NTTP output is a compatibility mirror for callers that
-          // still lack the text/key metadata emitted beside it.
+          // Owner: consteval call-env construction. Limitation: rendered NTTP
+          // output is a compatibility mirror for callers that still lack the
+          // text/key metadata emitted beside it. Removal condition: all
+          // consteval NTTP consumers read text/key binding maps.
           (*out_nttp_bindings)[param_name] = expr_value.as_int();
           record_nttp_binding_mirrors(
               expr_value.as_int(), nttp_binding_key_for_param(func_def, i),
@@ -850,8 +862,10 @@ ConstEvalEnv bind_consteval_call_env(
       const ConstEvalValueLookupResult text_result =
           lookup_forwarded_nttp_arg_by_text(outer_env, forwarded_text_id);
       if (text_result.status == ConstEvalValueLookupStatus::Found) {
-        // Forwarded NTTPs use text/key lookup as authority; this rendered
-        // assignment mirrors the result into the legacy call environment.
+        // Owner: forwarded-NTTP call-env compatibility. Limitation: text/key
+        // lookup is authority; this rendered assignment only mirrors the
+        // result into the legacy call environment. Removal condition: all
+        // nested consteval calls consume text/key NTTP maps.
         (*out_nttp_bindings)[param_name] = text_result.value;
         record_nttp_binding_mirrors(
             text_result.value, nttp_binding_key_for_param(func_def, i),
@@ -869,8 +883,10 @@ ConstEvalEnv bind_consteval_call_env(
       }
       if (callee_expr->template_arg_nttp_names && callee_expr->template_arg_nttp_names[i] &&
           outer_env.nttp_bindings) {
-        // No-metadata fallback for legacy forwarded NTTP spelling. A valid
-        // forwarded TextId miss above intentionally blocks this path.
+        // Owner: legacy forwarded NTTP spelling. Limitation: no-metadata
+        // fallback only; a valid forwarded TextId miss above intentionally
+        // blocks this path. Removal condition: forwarded NTTP args always
+        // carry TextId/key metadata.
         auto it = outer_env.nttp_bindings->find(callee_expr->template_arg_nttp_names[i]);
         if (it != outer_env.nttp_bindings->end()) {
           (*out_nttp_bindings)[param_name] = it->second;
@@ -881,8 +897,9 @@ ConstEvalEnv bind_consteval_call_env(
         }
       }
       if (callee_expr->template_arg_values) {
-        // Syntax payload fallback: parser-provided literal NTTP values do not
-        // depend on rendered lookup authority.
+        // Owner: parser syntax payloads. Limitation: literal NTTP values do
+        // not depend on rendered lookup authority. Removal condition: none;
+        // this is source payload, not a rendered-name bridge.
         (*out_nttp_bindings)[param_name] = callee_expr->template_arg_values[i];
         record_nttp_binding_mirrors(
             callee_expr->template_arg_values[i], nttp_binding_key_for_param(func_def, i),
@@ -894,8 +911,10 @@ ConstEvalEnv bind_consteval_call_env(
     if (!out_type_bindings || !callee_expr->template_arg_types) continue;
     TypeSpec arg_ts = callee_expr->template_arg_types[i];
     arg_ts = resolve_type(arg_ts, outer_env);
-    // Rendered type binding output is retained as a compatibility mirror; the
-    // adjacent text/key maps are the authoritative metadata-rich channels.
+    // Owner: consteval call-env construction. Limitation: rendered type
+    // binding output is retained as a compatibility mirror; adjacent text/key
+    // maps are the authoritative metadata-rich channels. Removal condition:
+    // all TypeSpec substitution consumers use parameter metadata.
     (*out_type_bindings)[param_name] = arg_ts;
     record_type_binding_mirrors(
         param_name, arg_ts, type_binding_key_for_param(func_def, i),
@@ -914,8 +933,10 @@ ConstEvalEnv bind_consteval_call_env(
           func_def->template_param_is_nttp && func_def->template_param_is_nttp[i];
       if (is_nttp) {
         if (!out_nttp_bindings) continue;
-        // Template default values are syntax payloads mirrored into the legacy
-        // rendered NTTP map and the metadata maps when available.
+        // Owner: template default syntax payloads. Limitation: default values
+        // are mirrored into the legacy rendered NTTP map and metadata maps when
+        // available; lookup authority still belongs to text/key maps. Removal
+        // condition: default NTTP consumers read only metadata maps.
         (*out_nttp_bindings)[param_name] = func_def->template_param_default_values[i];
         record_nttp_binding_mirrors(
             func_def->template_param_default_values[i], nttp_binding_key_for_param(func_def, i),
@@ -924,8 +945,10 @@ ConstEvalEnv bind_consteval_call_env(
         if (!out_type_bindings) continue;
         TypeSpec arg_ts = func_def->template_param_default_types[i];
         arg_ts = resolve_type(arg_ts, outer_env);
-        // Template default types are syntax payloads mirrored for compatibility
-        // while text/key maps remain the covered lookup authority.
+        // Owner: template default syntax payloads. Limitation: default types
+        // are mirrored for compatibility while text/key maps remain covered
+        // lookup authority. Removal condition: default type consumers read only
+        // metadata maps.
         (*out_type_bindings)[param_name] = arg_ts;
         record_type_binding_mirrors(
             param_name, arg_ts, type_binding_key_for_param(func_def, i),
@@ -1073,9 +1096,11 @@ struct InterpreterBindingSnapshot {
 };
 
 struct InterpreterBindings {
-  // `by_name` is a compatibility mirror exposed through ConstEvalEnv for
-  // no-metadata local lookups. `by_text` and `by_key` carry interpreter-local
-  // authority whenever the AST node provides TextId/key metadata.
+  // Owner: consteval interpreter local environment. Limitation: `by_name` is a
+  // compatibility mirror exposed through ConstEvalEnv for no-metadata local
+  // lookups; `by_text` and `by_key` carry interpreter-local authority whenever
+  // the AST node provides TextId/key metadata. Removal condition: interpreter
+  // local declarations always carry TextId/key metadata through evaluation.
   ConstMap by_name;
   ConstTextMap by_text;
   ConstStructuredMap by_key;

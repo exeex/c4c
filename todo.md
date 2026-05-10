@@ -1,42 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/159_sema_consteval_domain_table_authority.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Make record-layout lookup prefer owner keys
+Current Step ID: 6
+Current Step Title: Consolidate bridge documentation and validation
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5, "Make record-layout lookup prefer owner keys." Consteval
-record-layout lookup now treats a complete owner-key miss with
-`struct_def_owner_index` present as authoritative, so stale rendered record tags
-cannot reopen layout lookup for covered `sizeof`/`alignof` paths. Added focused
-coverage where the stale rendered tag is present in `link_name_texts` and the
-owner index, proving both successful owner-key layout lookup and owner-key miss
-failure for `sizeof` and `alignof`.
+Completed Step 6, "Consolidate bridge documentation and validation." Retained
+rendered consteval maps and bridges in `consteval.hpp`/`consteval.cpp` now have
+concise owner, limitation, and removal-condition notes where they were missing.
+No lookup behavior was changed and no temporary helper was added or retained
+that reopens rendered-name authority for covered metadata-rich paths.
 
 ## Suggested Next
 
-Start Step 6 from `plan.md`: consolidate retained rendered-bridge
-documentation and run the final validation ladder for the active consteval
-authority migration.
+The active runbook appears exhausted. Supervisor should decide whether to route
+to plan-owner for closure, deactivation, or replacement against the source idea.
 
 ## Watchouts
 
-- The `link_name_texts` canonicalization bridge is still available only after
-  `record_owner_key_from_typespec` cannot form a complete owner key; complete
-  owner-key misses fail closed before that bridge.
-- A local exploratory run from an earlier packet found
-  `frontend_parser_lookup_authority_tests` red for an unrelated value-domain
-  assertion; this packet used the delegated proof target instead.
-- Do not weaken tests, mark supported paths unsupported, or rely on
-  testcase-shaped shortcuts.
+- This packet was documentation-only in owned consteval files; no tests or
+  baselines were changed.
+- Full-suite baseline candidates remain outside this packet and were not
+  accepted or updated.
+- Do not weaken tests, mark supported paths unsupported, or rely on testcase-
+  shaped shortcuts.
 
 ## Proof
 
 Ran delegated proof:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_sema_consteval_type_utils_structured_metadata|frontend_parser_tests|positive_sema_)'; } > test_after.log 2>&1`
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_lookup_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_positive_sema_lookup_value_structured_metadata|positive_sema_)'; } > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains the successful build and 36/36
+Result: passed. `test_after.log` contains the successful build and 38/38
 passing delegated tests.
