@@ -71,6 +71,77 @@ CanonicalType make_leaf_type(TypeBase base,
   return type;
 }
 
+std::vector<TextId> copy_text_ids(const TextId* ids, int count) {
+  std::vector<TextId> out;
+  if (!ids || count <= 0) return out;
+  out.reserve(static_cast<size_t>(count));
+  for (int i = 0; i < count; ++i) out.push_back(ids[i]);
+  return out;
+}
+
+CanonicalQualifiedNameIdentity qualified_name_identity_from_node(const Node* node) {
+  CanonicalQualifiedNameIdentity identity{};
+  if (!node) return identity;
+  identity.namespace_context_id = node->namespace_context_id;
+  identity.is_global_qualified = node->is_global_qualified;
+  identity.unqualified_text_id = node->unqualified_text_id;
+  identity.qualifier_text_ids =
+      copy_text_ids(node->qualifier_text_ids, node->n_qualifier_segments);
+  return identity;
+}
+
+CanonicalQualifiedNameIdentity qualified_name_identity_from_typespec(const TypeSpec& ts) {
+  CanonicalQualifiedNameIdentity identity{};
+  identity.namespace_context_id = ts.namespace_context_id;
+  identity.is_global_qualified = ts.is_global_qualified;
+  identity.unqualified_text_id = ts.tag_text_id;
+  identity.qualifier_text_ids =
+      copy_text_ids(ts.qualifier_text_ids, ts.n_qualifier_segments);
+  return identity;
+}
+
+CanonicalTemplateParamIdentity template_param_identity_from_typespec(const TypeSpec& ts) {
+  CanonicalTemplateParamIdentity identity{};
+  identity.owner_namespace_context_id = ts.template_param_owner_namespace_context_id;
+  identity.owner_text_id = ts.template_param_owner_text_id;
+  identity.index = ts.template_param_index;
+  identity.param_text_id = ts.template_param_text_id;
+  identity.domain = TemplateParamDomainKind::Type;
+  return identity;
+}
+
+CanonicalTemplateParamIdentity template_param_identity_from_node(const Node* node, int index) {
+  CanonicalTemplateParamIdentity identity{};
+  if (!node || index < 0 || index >= node->n_template_params) return identity;
+  identity.owner_namespace_context_id = node->namespace_context_id;
+  identity.owner_text_id = node->unqualified_text_id;
+  identity.index = index;
+  if (node->template_param_name_text_ids) {
+    identity.param_text_id = node->template_param_name_text_ids[index];
+  }
+  if (node->template_param_is_nttp && node->template_param_is_nttp[index]) {
+    identity.domain = TemplateParamDomainKind::NonType;
+  } else {
+    identity.domain = TemplateParamDomainKind::Type;
+  }
+  if (node->template_param_is_pack) identity.is_pack = node->template_param_is_pack[index];
+  if (node->template_param_has_default) {
+    identity.has_default = node->template_param_has_default[index];
+  }
+  return identity;
+}
+
+CanonicalTypeIdentity type_identity_from_typespec(const TypeSpec& ts) {
+  CanonicalTypeIdentity identity{};
+  identity.nominal_name = qualified_name_identity_from_typespec(ts);
+  identity.record_def = ts.record_def;
+  identity.template_param = template_param_identity_from_typespec(ts);
+  identity.template_struct_origin_key = ts.tpl_struct_origin_key;
+  identity.deferred_member_type_owner_key = ts.deferred_member_type_owner_key;
+  identity.deferred_member_type_text_id = ts.deferred_member_type_text_id;
+  return identity;
+}
+
 CanonicalType wrap_pointer(CanonicalType pointee) {
   CanonicalType type{};
   type.kind = CanonicalTypeKind::Pointer;
@@ -180,9 +251,12 @@ bool is_unspecified_fn_ptr_param_list(const Node* decl_like_node) {
 }
 
 CanonicalType canonicalize_base_type(const TypeSpec& ts) {
-  return make_leaf_type(ts.base, canonical_leaf_display_spelling(ts), ts.is_const,
-                        ts.is_volatile, ts.is_vector, ts.vector_lanes,
-                        ts.vector_bytes);
+  CanonicalType type =
+      make_leaf_type(ts.base, canonical_leaf_display_spelling(ts), ts.is_const,
+                     ts.is_volatile, ts.is_vector, ts.vector_lanes,
+                     ts.vector_bytes);
+  type.identity = type_identity_from_typespec(ts);
+  return type;
 }
 
 CanonicalType apply_array_layers(CanonicalType type, const TypeSpec& ts) {
@@ -310,12 +384,16 @@ void collect_top_level_symbol(const Node* item,
     for (int i = 0; i < item->n_template_params; ++i) {
       const char* pname = item->template_param_names ? item->template_param_names[i] : nullptr;
       if (!pname || !pname[0]) continue;
-      symbol.template_params.push_back({pname});
+      CanonicalTemplateParam param{};
+      param.name = pname;
+      param.identity = template_param_identity_from_node(item, i);
+      symbol.template_params.push_back(std::move(param));
     }
 
     if (item->kind == NK_FUNCTION) {
       symbol.kind = CanonicalSymbolKind::Function;
       symbol.source_name = item->name ? item->name : "<anon_fn>";
+      symbol.name_identity = qualified_name_identity_from_node(item);
       symbol.type = std::make_shared<CanonicalType>(canonicalize_declarator_type(item));
       // Record parameter types.
       if (resolved) record_param_types(item, resolved);
@@ -324,22 +402,30 @@ void collect_top_level_symbol(const Node* item,
     } else if (item->kind == NK_GLOBAL_VAR) {
       symbol.kind = CanonicalSymbolKind::Object;
       symbol.source_name = item->name ? item->name : "<anon_global>";
+      symbol.name_identity = qualified_name_identity_from_node(item);
       symbol.type = std::make_shared<CanonicalType>(canonicalize_declarator_type(item));
     } else if (item->kind == NK_STRUCT_DEF) {
       symbol.kind = CanonicalSymbolKind::Type;
       symbol.source_name = item->name ? item->name : "<anon_struct>";
+      symbol.name_identity = qualified_name_identity_from_node(item);
       CanonicalType ct{};
       ct.kind = item->type.base == TB_UNION ? CanonicalTypeKind::Union
                                             : CanonicalTypeKind::Struct;
       ct.user_spelling = item->name ? item->name : "";
+      ct.identity = type_identity_from_typespec(item->type);
+      ct.identity.nominal_name = qualified_name_identity_from_node(item);
+      ct.identity.record_def = item;
       symbol.type = std::make_shared<CanonicalType>(std::move(ct));
     } else {
       // NK_ENUM_DEF
       symbol.kind = CanonicalSymbolKind::Type;
       symbol.source_name = item->name ? item->name : "<anon_enum>";
+      symbol.name_identity = qualified_name_identity_from_node(item);
       CanonicalType ct{};
       ct.kind = CanonicalTypeKind::Enum;
       ct.user_spelling = item->name ? item->name : "";
+      ct.identity = type_identity_from_typespec(item->type);
+      ct.identity.nominal_name = qualified_name_identity_from_node(item);
       symbol.type = std::make_shared<CanonicalType>(std::move(ct));
     }
 
@@ -1106,6 +1192,7 @@ CanonicalIdentity identity_of(const CanonicalSymbol& sym) {
   CanonicalIdentity id;
   id.kind = sym.kind;
   id.name = sym.source_name;
+  id.name_identity = sym.name_identity;
   id.linkage = sym.linkage;
   // For C++ function overloads, use the canonical type as discriminator.
   if (sym.linkage == LanguageLinkage::Cxx &&

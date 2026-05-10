@@ -25,9 +25,38 @@ enum class CanonicalScopeKind : uint8_t {
   Block,
 };
 
+struct CanonicalQualifiedNameIdentity {
+  int namespace_context_id = -1;
+  bool is_global_qualified = false;
+  TextId unqualified_text_id = kInvalidText;
+  std::vector<TextId> qualifier_text_ids;
+};
+
+struct CanonicalTemplateParamIdentity {
+  int owner_namespace_context_id = -1;
+  TextId owner_text_id = kInvalidText;
+  int index = -1;
+  TextId param_text_id = kInvalidText;
+  TemplateParamDomainKind domain = TemplateParamDomainKind::Unknown;
+  bool is_pack = false;
+  bool has_default = false;
+};
+
+struct CanonicalTypeIdentity {
+  CanonicalQualifiedNameIdentity nominal_name;
+  const Node* record_def = nullptr;
+
+  CanonicalTemplateParamIdentity template_param;
+
+  QualifiedNameKey template_struct_origin_key;
+  QualifiedNameKey deferred_member_type_owner_key;
+  TextId deferred_member_type_text_id = kInvalidText;
+};
+
 struct CanonicalScopeSegment {
   CanonicalScopeKind kind = CanonicalScopeKind::TranslationUnit;
   std::string name;
+  CanonicalQualifiedNameIdentity identity;
 };
 
 struct CanonicalScope {
@@ -76,6 +105,7 @@ struct CanonicalTemplateArg {
 
 struct CanonicalTemplateParam {
   std::string name;
+  CanonicalTemplateParamIdentity identity;
 };
 
 struct CanonicalFunctionSig {
@@ -89,6 +119,7 @@ struct CanonicalType {
   CanonicalTypeKind kind = CanonicalTypeKind::Void;
   std::string user_spelling;
   std::optional<TypeBase> source_base;
+  CanonicalTypeIdentity identity;
 
   bool is_const = false;
   bool is_volatile = false;
@@ -110,6 +141,7 @@ enum class CanonicalSymbolKind : uint8_t {
 struct CanonicalSymbol {
   CanonicalSymbolKind kind = CanonicalSymbolKind::Object;
   std::string source_name;
+  CanonicalQualifiedNameIdentity name_identity;
   CanonicalScope scope;
   LanguageLinkage linkage = LanguageLinkage::C;
   SourceProfile source_profile = SourceProfile::C;
@@ -221,6 +253,7 @@ std::string mangle_type(const CanonicalType& ct);
 struct CanonicalIdentity {
   CanonicalSymbolKind kind = CanonicalSymbolKind::Object;
   std::string name;
+  CanonicalQualifiedNameIdentity name_identity;
   LanguageLinkage linkage = LanguageLinkage::C;
   /// For C++ overload discrimination; unused for C linkage.
   std::shared_ptr<CanonicalType> discriminator_type;
