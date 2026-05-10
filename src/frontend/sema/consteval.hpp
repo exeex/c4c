@@ -50,6 +50,10 @@ struct ConstEvalResult {
 
 // ── Constant-evaluation environment ──────────────────────────────────────────
 
+// Rendered-name value map. Owner: legacy HIR/sema handoff and interpreter
+// compatibility paths that still lack TextId or structured name metadata.
+// Limitation: rendered strings are not semantic identity for metadata-rich
+// paths. Removal condition: all producers provide TextId/structured maps.
 using ConstMap = std::unordered_map<std::string, long long>;
 using ConstTextMap = std::unordered_map<TextId, long long>;
 
@@ -87,7 +91,10 @@ using ConstEvalFunctionTextMap = std::unordered_map<TextId, const Node*>;
 using ConstEvalFunctionStructuredMap =
     std::unordered_map<ConstEvalStructuredNameKey, const Node*, ConstEvalStructuredNameKeyHash>;
 
-// Map from template parameter name to concrete TypeSpec (for template-substituted evaluation).
+// Rendered-name template type binding map. Owner: call-env compatibility
+// mirror for template substitution sites without parameter TextId/key
+// metadata. Limitation: not authoritative when text/key binding metadata is
+// present. Removal condition: all template binding lookups carry metadata.
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
 using TypeBindingTextMap = std::unordered_map<TextId, TypeSpec>;
 
@@ -118,6 +125,9 @@ struct TypeBindingStructuredKeyHash {
 
 using TypeBindingStructuredMap =
     std::unordered_map<TypeBindingStructuredKey, TypeSpec, TypeBindingStructuredKeyHash>;
+// Rendered parameter spelling -> metadata bridges. These are not binding
+// authority; they let legacy rendered TypeSpec payloads enter text/key maps
+// until all TypeSpecs carry the parameter metadata directly.
 using TypeBindingNameTextMap = std::unordered_map<std::string, TextId>;
 using TypeBindingNameStructuredMap =
     std::unordered_map<std::string, TypeBindingStructuredKey>;
@@ -136,7 +146,9 @@ struct ConstEvalValueLookupResult {
 };
 
 struct ConstEvalEnv {
-  // Flat maps (used by hir.cpp where scoping is managed externally).
+  // Flat rendered maps are no-metadata compatibility fallbacks. TextId and
+  // structured maps below are the semantic authority when their metadata is
+  // available for the queried node.
   const ConstMap* enum_consts = nullptr;
   const ConstMap* named_consts = nullptr;
   const ConstMap* local_consts = nullptr;
@@ -148,8 +160,9 @@ struct ConstEvalEnv {
   const ConstStructuredMap* named_consts_by_key = nullptr;
   const ConstStructuredMap* local_consts_by_key = nullptr;
 
-  // Scoped maps (used by validate.cpp where block scoping uses vector-of-maps).
-  // Searched innermost (back) to outermost (front).
+  // Scoped rendered maps are compatibility mirrors for validate.cpp scope
+  // stacks. TextId/key scope stacks are authoritative when present. Searched
+  // innermost (back) to outermost (front).
   const std::vector<ConstMap>* enum_scopes = nullptr;
   const std::vector<ConstMap>* local_const_scopes = nullptr;
   const std::vector<ConstTextMap>* enum_scopes_by_text = nullptr;
@@ -157,14 +170,17 @@ struct ConstEvalEnv {
   const std::vector<ConstStructuredMap>* enum_scopes_by_key = nullptr;
   const std::vector<ConstStructuredMap>* local_const_scopes_by_key = nullptr;
 
-  // Template type substitution map (template param name → concrete type).
+  // Template type substitution. `type_bindings` is the rendered compatibility
+  // mirror; text/key maps are authority for metadata-rich paths. The
+  // name->metadata maps are bridge indexes, not semantic authority.
   const TypeBindings* type_bindings = nullptr;
   const TypeBindingTextMap* type_bindings_by_text = nullptr;
   const TypeBindingStructuredMap* type_bindings_by_key = nullptr;
   const TypeBindingNameTextMap* type_binding_text_ids_by_name = nullptr;
   const TypeBindingNameStructuredMap* type_binding_keys_by_name = nullptr;
 
-  // Non-type template parameter bindings (NTTP name → constant value).
+  // NTTP substitution. The rendered map is a no-metadata compatibility mirror;
+  // text/key maps are authoritative for forwarded NTTP metadata.
   const std::unordered_map<std::string, long long>* nttp_bindings = nullptr;
   const ConstTextMap* nttp_bindings_by_text = nullptr;
   const ConstStructuredMap* nttp_bindings_by_key = nullptr;
@@ -188,6 +204,8 @@ struct ConstEvalEnv {
   const void* template_struct_lookup_ctx = nullptr;
 
   std::optional<long long> lookup(const std::string& name) const {
+    // Rendered lookup is intentionally retained only for callers that provide
+    // no Node/TextId/key metadata. Node-based lookup below must gate entry here.
     // 1. Scoped enum constants (innermost first).
     if (enum_scopes) {
       for (auto it = enum_scopes->rbegin(); it != enum_scopes->rend(); ++it) {
@@ -308,6 +326,9 @@ struct ConstEvalEnv {
   }
 
   std::optional<long long> lookup_rendered_nttp(const std::string& name) const {
+    // Compatibility bridge for unqualified NTTP references after other value
+    // domains had metadata but the NTTP binding itself did not. Covered NTTP
+    // metadata misses must not reach this bridge.
     if (!nttp_bindings) return std::nullopt;
     auto it = nttp_bindings->find(name);
     return it != nttp_bindings->end() ? std::optional<long long>(it->second)
@@ -458,8 +479,10 @@ ConstEvalResult evaluate_constant_expr(const Node* n, const ConstEvalEnv& env);
 // Evaluate a consteval function call at compile time.
 // `func_def` must be an NK_FUNCTION node with is_consteval=true.
 // `args` are the constant values for each parameter.
-// `consteval_fns` maps function names to their NK_FUNCTION AST nodes,
-// allowing recursive/chained consteval calls.
+// `consteval_fns` maps rendered function names to NK_FUNCTION AST nodes for
+// no-metadata recursive/chained consteval calls. The optional TextId/key maps
+// are authority for metadata-rich call sites; the rendered map is removable
+// once all callers provide those maps.
 ConstEvalResult evaluate_consteval_call(
     const Node* func_def,
     const std::vector<ConstValue>& args,

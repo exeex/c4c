@@ -8,23 +8,39 @@ Current Step Title: Inventory rendered consteval authority
 
 ## Just Finished
 
-No executor packet has completed yet.
+Completed Step 1, "Inventory rendered consteval authority." Classified the
+rendered string-keyed consteval surfaces in `consteval.hpp`/`consteval.cpp`:
+`ConstMap`, `TypeBindings`, rendered NTTP maps, `type_binding_*_by_name`
+bridges, `ConstEvalEnv::lookup(std::string)`, `lookup_rendered_nttp`,
+`bind_consteval_call_env` mirrors, `lookup_consteval_function`, and
+`InterpreterBindings::by_name`. Added owner/limitation/removal or fallback
+comments for retained bridges without changing behavior.
 
 ## Suggested Next
 
-Start Step 1 from `plan.md`: inventory rendered consteval authority in
-`src/frontend/sema/consteval.hpp` and `src/frontend/sema/consteval.cpp`, then
-classify retained string-keyed surfaces before changing behavior.
+Start Step 2 from `plan.md`: make value and interpreter-local lookup
+structured/text-first, preserving rendered `ConstMap` and
+`InterpreterBindings::by_name` only as documented no-metadata compatibility
+fallbacks.
 
 ## Watchouts
 
-- Do not treat rendered string maps as authority for covered metadata-rich
-  paths.
+- `ConstEvalEnv::lookup(std::string)` remains the no-metadata rendered value
+  fallback; Node-based lookup must continue to gate metadata-rich misses before
+  entering it.
+- `lookup_rendered_nttp` is currently a narrow compatibility bridge for
+  unqualified NTTPs after other metadata channels were seen; covered NTTP
+  metadata misses must not reach it.
+- `InterpreterBindings::by_name` is still exposed through `env.local_consts`
+  beside `by_text` and `by_key`; Step 2 should verify metadata-rich local
+  misses cannot be reopened by rendered spelling.
 - Do not weaken tests, mark supported paths unsupported, or rely on
   testcase-shaped shortcuts.
-- Keep retained rendered maps documented as compatibility, diagnostic/display,
-  syntax payload, or no-metadata fallback bridges.
 
 ## Proof
 
-No validation has run yet; activation is lifecycle-only.
+Ran delegated proof:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^positive_sema_'; } > test_after.log 2>&1`
+
+Result: passed. `test_after.log` contains the successful build and 34/34
+passing `positive_sema_` tests.

@@ -103,6 +103,8 @@ struct TypeBindingLookupResult {
 
 TypeBindingLookupResult lookup_type_binding_by_text(const ConstEvalEnv& env,
                                                     const std::string& name) {
+  // Compatibility bridge from rendered TypeSpec tags into TextId binding
+  // authority. A present name->TextId mirror means a miss is authoritative.
   if (!env.type_bindings_by_text || !env.type_binding_text_ids_by_name) return {};
   auto text_it = env.type_binding_text_ids_by_name->find(name);
   if (text_it == env.type_binding_text_ids_by_name->end()) return {};
@@ -126,6 +128,8 @@ TypeBindingLookupResult lookup_type_binding_by_text_id(const ConstEvalEnv& env,
 
 TypeBindingLookupResult lookup_type_binding_by_key(const ConstEvalEnv& env,
                                                    const std::string& name) {
+  // Compatibility bridge from rendered TypeSpec tags into structured binding
+  // authority. The rendered spelling only selects the key mirror.
   if (!env.type_bindings_by_key || !env.type_binding_keys_by_name) return {};
   auto key_it = env.type_binding_keys_by_name->find(name);
   if (key_it == env.type_binding_keys_by_name->end()) return {};
@@ -318,6 +322,8 @@ TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (has_type_binding_metadata_channel(env)) return ts;
 
   const char* compatibility_tag = typespec_legacy_display_tag_if_present(ts, 0);
+  // Final no-metadata fallback for legacy typedef TypeSpecs. Once any binding
+  // metadata channel exists, rendered strings above are not reopened.
   if (!compatibility_tag || !compatibility_tag[0] || !env.type_bindings) return ts;
   const std::string name = compatibility_tag;
   auto it = env.type_bindings->find(name);
@@ -358,6 +364,8 @@ void record_type_binding_mirrors(
     TypeBindingStructuredMap* out_type_bindings_by_key,
     TypeBindingNameTextMap* out_type_binding_text_ids_by_name,
     TypeBindingNameStructuredMap* out_type_binding_keys_by_name) {
+  // Output string maps are call-env compatibility mirrors for older TypeSpec
+  // payloads. TextId/key maps carry the binding authority for covered paths.
   if (structured_key.param_text_id != kInvalidText) {
     if (out_type_bindings_by_text) {
       (*out_type_bindings_by_text)[structured_key.param_text_id] = arg_ts;
@@ -808,6 +816,8 @@ ConstEvalEnv bind_consteval_call_env(
         auto expr_value =
             evaluate_constant_expr(callee_expr->template_arg_exprs[i], outer_env);
         if (expr_value.ok()) {
+          // Rendered NTTP output is a compatibility mirror for callers that
+          // still lack the text/key metadata emitted beside it.
           (*out_nttp_bindings)[param_name] = expr_value.as_int();
           record_nttp_binding_mirrors(
               expr_value.as_int(), nttp_binding_key_for_param(func_def, i),
@@ -822,6 +832,8 @@ ConstEvalEnv bind_consteval_call_env(
       const ConstEvalValueLookupResult text_result =
           lookup_forwarded_nttp_arg_by_text(outer_env, forwarded_text_id);
       if (text_result.status == ConstEvalValueLookupStatus::Found) {
+        // Forwarded NTTPs use text/key lookup as authority; this rendered
+        // assignment mirrors the result into the legacy call environment.
         (*out_nttp_bindings)[param_name] = text_result.value;
         record_nttp_binding_mirrors(
             text_result.value, nttp_binding_key_for_param(func_def, i),
@@ -839,6 +851,8 @@ ConstEvalEnv bind_consteval_call_env(
       }
       if (callee_expr->template_arg_nttp_names && callee_expr->template_arg_nttp_names[i] &&
           outer_env.nttp_bindings) {
+        // No-metadata fallback for legacy forwarded NTTP spelling. A valid
+        // forwarded TextId miss above intentionally blocks this path.
         auto it = outer_env.nttp_bindings->find(callee_expr->template_arg_nttp_names[i]);
         if (it != outer_env.nttp_bindings->end()) {
           (*out_nttp_bindings)[param_name] = it->second;
@@ -849,6 +863,8 @@ ConstEvalEnv bind_consteval_call_env(
         }
       }
       if (callee_expr->template_arg_values) {
+        // Syntax payload fallback: parser-provided literal NTTP values do not
+        // depend on rendered lookup authority.
         (*out_nttp_bindings)[param_name] = callee_expr->template_arg_values[i];
         record_nttp_binding_mirrors(
             callee_expr->template_arg_values[i], nttp_binding_key_for_param(func_def, i),
@@ -860,6 +876,8 @@ ConstEvalEnv bind_consteval_call_env(
     if (!out_type_bindings || !callee_expr->template_arg_types) continue;
     TypeSpec arg_ts = callee_expr->template_arg_types[i];
     arg_ts = resolve_type(arg_ts, outer_env);
+    // Rendered type binding output is retained as a compatibility mirror; the
+    // adjacent text/key maps are the authoritative metadata-rich channels.
     (*out_type_bindings)[param_name] = arg_ts;
     record_type_binding_mirrors(
         param_name, arg_ts, type_binding_key_for_param(func_def, i),
@@ -878,6 +896,8 @@ ConstEvalEnv bind_consteval_call_env(
           func_def->template_param_is_nttp && func_def->template_param_is_nttp[i];
       if (is_nttp) {
         if (!out_nttp_bindings) continue;
+        // Template default values are syntax payloads mirrored into the legacy
+        // rendered NTTP map and the metadata maps when available.
         (*out_nttp_bindings)[param_name] = func_def->template_param_default_values[i];
         record_nttp_binding_mirrors(
             func_def->template_param_default_values[i], nttp_binding_key_for_param(func_def, i),
@@ -886,6 +906,8 @@ ConstEvalEnv bind_consteval_call_env(
         if (!out_type_bindings) continue;
         TypeSpec arg_ts = func_def->template_param_default_types[i];
         arg_ts = resolve_type(arg_ts, outer_env);
+        // Template default types are syntax payloads mirrored for compatibility
+        // while text/key maps remain the covered lookup authority.
         (*out_type_bindings)[param_name] = arg_ts;
         record_type_binding_mirrors(
             param_name, arg_ts, type_binding_key_for_param(func_def, i),
@@ -1000,6 +1022,9 @@ const Node* lookup_consteval_function(
     const ConstEvalFunctionTextMap* consteval_fns_by_text,
     const ConstEvalFunctionStructuredMap* consteval_fns_by_key) {
   if (!callee || !callee->name) return nullptr;
+  // `consteval_fns` is the legacy rendered compatibility map. TextId and
+  // structured function maps are authoritative when call metadata is present;
+  // only no-metadata calls fall back to the rendered spelling.
   auto it = consteval_fns.find(callee->name);
   const Node* legacy = it != consteval_fns.end() ? it->second : nullptr;
   const Node* text = lookup_consteval_function_by_text(consteval_fns_by_text, callee);
@@ -1033,6 +1058,9 @@ struct InterpreterBindingSnapshot {
 };
 
 struct InterpreterBindings {
+  // `by_name` is a compatibility mirror exposed through ConstEvalEnv for
+  // no-metadata local lookups. `by_text` and `by_key` carry interpreter-local
+  // authority whenever the AST node provides TextId/key metadata.
   ConstMap by_name;
   ConstTextMap by_text;
   ConstStructuredMap by_key;
