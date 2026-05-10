@@ -1010,6 +1010,9 @@ class Lowerer {
       const HirTemplateTypeBindings& structured_type_bindings,
       const NttpBindings& legacy_nttp_bindings,
       const HirTemplateNttpBindings& structured_nttp_bindings) const;
+  void observe_pending_template_type_structured_identity(
+      const PendingTemplateTypeKey& legacy_key,
+      const PendingTemplateTypeKey& structured_key) const;
 
   // Check if deduced bindings cover all required type parameters (those
   // without defaults).
@@ -1245,6 +1248,9 @@ class Lowerer {
   std::unordered_set<const Node*> rejected_template_calls_;
   mutable size_t template_call_binding_structured_parity_checks_ = 0;
   mutable size_t template_call_binding_structured_parity_mismatches_ = 0;
+  mutable size_t pending_template_structured_identity_observations_ = 0;
+  mutable size_t pending_template_structured_identity_incomplete_bindings_ = 0;
+  mutable size_t pending_template_structured_identity_static_mismatches_ = 0;
   // Constructor overloads per struct tag: tag → list of {mangled, method_node}.
   struct CtorOverload {
     std::string mangled_name;

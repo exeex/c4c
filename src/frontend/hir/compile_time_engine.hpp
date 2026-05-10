@@ -849,6 +849,70 @@ inline PendingTemplateTypeKey make_pending_template_type_key(
   return key;
 }
 
+inline PendingTemplateTypeKey make_pending_template_type_key(
+    PendingTemplateTypeKind kind, const TypeSpec& pending_type,
+    const Node* owner_primary_def,
+    const HirTemplateTypeBindings& type_bindings,
+    const HirTemplateNttpBindings& nttp_bindings,
+    const std::string& context_name, const SourceSpan& span) {
+  PendingTemplateTypeKey key;
+  key.kind = kind;
+  key.pending_type = pending_type;
+  key.owner = make_pending_template_type_owner_identity(owner_primary_def);
+  key.type_bindings =
+      make_pending_template_type_binding_identities(type_bindings);
+  key.nttp_bindings =
+      make_pending_template_nttp_binding_identities(nttp_bindings);
+  key.context_name = context_name;
+  key.span = span;
+  return key;
+}
+
+struct PendingTemplateStructuredIdentityObservation {
+  bool structured_key_constructed = false;
+  bool static_context_matches = false;
+  bool structured_key_differs_from_legacy_key = false;
+  size_t structured_type_bindings = 0;
+  size_t structured_nttp_bindings = 0;
+  size_t incomplete_structured_bindings = 0;
+
+  [[nodiscard]] bool structured_bindings_complete() const {
+    return incomplete_structured_bindings == 0;
+  }
+};
+
+inline PendingTemplateStructuredIdentityObservation
+observe_pending_template_type_structured_identity(
+    const PendingTemplateTypeKey& legacy_key,
+    const PendingTemplateTypeKey& structured_key) {
+  PendingTemplateStructuredIdentityObservation observation;
+  observation.structured_key_constructed = true;
+  observation.static_context_matches =
+      legacy_key.kind == structured_key.kind &&
+      specialization_type_identity_equal(legacy_key.pending_type,
+                                         structured_key.pending_type) &&
+      legacy_key.owner == structured_key.owner &&
+      legacy_key.context_name == structured_key.context_name &&
+      legacy_key.span.begin.line == structured_key.span.begin.line &&
+      legacy_key.span.end.line == structured_key.span.end.line;
+  observation.structured_key_differs_from_legacy_key =
+      !(legacy_key == structured_key);
+
+  observation.structured_type_bindings = structured_key.type_bindings.size();
+  observation.structured_nttp_bindings = structured_key.nttp_bindings.size();
+  for (const auto& binding : structured_key.type_bindings) {
+    if (!binding.has_complete_structured_parameter_identity()) {
+      ++observation.incomplete_structured_bindings;
+    }
+  }
+  for (const auto& binding : structured_key.nttp_bindings) {
+    if (!binding.has_complete_structured_parameter_identity()) {
+      ++observation.incomplete_structured_bindings;
+    }
+  }
+  return observation;
+}
+
 /// Render the structured pending-template identity for diagnostics only.
 /// `PendingTemplateTypeWorkItem::display_key` must not participate in dedup or
 /// resolved-progress checks.

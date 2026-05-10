@@ -8,38 +8,33 @@ Current Step Title: Use Structured Keys for Pending and Specialization Identity
 
 ## Just Finished
 
-Completed the first bounded Step 4 packet of `plan.md`: pending/specialization
-argument identity can now carry owner-aware structured template parameter
-identity while legacy rendered parameter names remain the fallback display and
-compatibility path. No reader authority, lookup authority, specialization dedup
-call site, materialization path, or lowerer path was switched.
+Completed the next bounded Step 4 packet of `plan.md`: structured binding
+identity is now fed into a read-only pending-template key construction
+observation at the template-call-result deduction boundary. The existing
+legacy `seed_and_resolve_pending_template_type_if_needed` call remains the only
+pending-template state mutation, so recorded dedup, lookup authority, reader
+authority, specialization materialization, and lowerer forwarding authority are
+unchanged.
 
 Concrete changes:
-- Added optional `HirTemplateParameterBindingKey` metadata to
-  `SpecializationArgumentIdentity`.
-- Updated argument identity equality, ordering, and hashing so complete
-  structured keys distinguish same-spelled parameters from different owners,
-  different parameter TextIds, and different pack element indices.
-- Fixed the structured identity consistency rule so complete structured
-  identities with the same `parameter_key` ignore differing display names for
-  equality, ordering, and hashing.
-- Kept fallback identities compatible: when structured metadata is absent or
-  incomplete, argument identity continues to use `parameter_name`.
-- Added structured overloads for
-  `make_pending_template_type_binding_identities` and
-  `make_pending_template_nttp_binding_identities` that consume
-  `HirTemplateTypeBindings` / `HirTemplateNttpBindings` and emit structured
-  `SpecializationArgumentIdentity` entries.
-- Extended `cpp_hir_template_parameter_binding_key_structured_metadata` with
-  focused tests for structured argument identity, hash/equality behavior,
-  legacy fallback behavior, and pending binding identity helper overloads.
+- Added a structured `make_pending_template_type_key` overload that consumes
+  `HirTemplateTypeBindings` / `HirTemplateNttpBindings` through the structured
+  binding identity helpers.
+- Added a read-only pending-template structured identity observation result
+  that reports static-context parity, expected legacy-vs-structured key
+  difference, structured binding counts, and incomplete structured identities.
+- Wired the `ctx-deduction-template-call-result` path to construct legacy and
+  structured pending keys side by side and observe them before the existing
+  legacy pending-template seed/resolve call.
+- Added focused tests proving the structured pending key helper emits complete
+  structured identities and remains distinct from the legacy/fallback key while
+  preserving the same pending static context.
 
 ## Suggested Next
 
-Continue Step 4 with a narrow wiring packet that feeds structured binding
-identity into one covered pending-template key construction path for parity or
-observation only. Keep legacy-map call sites authoritative until the supervisor
-chooses the specific dedup switch point.
+Continue Step 4 by choosing the first actual pending-template dedup switch
+point, or add one more observation point if the supervisor wants parity data
+from a non-call-result pending-template path before switching authority.
 
 ## Watchouts
 
@@ -51,13 +46,16 @@ chooses the specific dedup switch point.
 - `mangle_template_name`, `format_pending_template_type_key_for_display`,
   `encode_pending_type_ref`, and `SpecializationKey::canonical` are
   display/compatibility outputs; do not make them replacement semantic keys.
-- Existing `make_pending_template_type_key` call sites still pass legacy
-  `TypeBindings` / `NttpBindings`; this packet deliberately added structured
-  helper overloads without switching those call sites.
+- Existing pending-template state mutation still records the legacy
+  `TypeBindings` / `NttpBindings` key; the structured key is constructed only
+  for observation at `ctx-deduction-template-call-result`.
 - Structured `SpecializationArgumentIdentity` entries currently keep
   `parameter_name` as display/fallback data only; equality and hashing use the
   structured key when complete metadata is present, and ordering follows the
   same identity rule.
+- A structured-vs-legacy key difference is expected while legacy maps remain
+  authoritative; the useful signal here is that structured identities are
+  constructible, complete, and share the same pending static context.
 - `make_hir_template_parameter_binding_key` rejects incomplete owner/parameter
   metadata, but callers still own deciding whether the source owner is the
   correct semantic authority for a binding domain.

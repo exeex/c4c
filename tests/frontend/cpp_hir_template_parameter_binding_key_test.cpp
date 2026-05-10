@@ -432,6 +432,42 @@ void test_pending_template_binding_identity_helpers_accept_structured_maps() {
               "legacy type binding identity should preserve parameter display name");
   expect_true(!legacy_type_identities[0].has_complete_structured_parameter_identity(),
               "legacy type binding identity should not invent structured metadata");
+
+  c4c::Node pending_owner{};
+  pending_owner.name = const_cast<char*>("Box");
+  pending_owner.namespace_context_id = 4;
+  pending_owner.unqualified_text_id = 401;
+  c4c::TypeSpec pending_ts{};
+  pending_ts.base = c4c::TB_STRUCT;
+  pending_ts.tpl_struct_origin = "Box";
+  c4c::hir::SourceSpan span{};
+  span.begin.line = 12;
+  span.end.line = 12;
+
+  auto legacy_key = c4c::hir::make_pending_template_type_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, legacy_type_bindings, c4c::hir::NttpBindings{},
+      "test-structured-observation", span);
+  auto structured_key = c4c::hir::make_pending_template_type_key(
+      c4c::hir::PendingTemplateTypeKind::OwnerStruct, pending_ts,
+      &pending_owner, structured_type_bindings, structured_nttp_bindings,
+      "test-structured-observation", span);
+  auto observation =
+      c4c::hir::observe_pending_template_type_structured_identity(
+          legacy_key, structured_key);
+
+  expect_true(observation.structured_key_constructed,
+              "structured pending key observation should report construction");
+  expect_true(observation.static_context_matches,
+              "structured pending key observation should preserve static pending context");
+  expect_true(observation.structured_key_differs_from_legacy_key,
+              "structured pending key should stay distinct from legacy fallback identity while legacy remains authoritative");
+  expect_true(observation.structured_type_bindings == 2,
+              "structured pending key should report structured type bindings");
+  expect_true(observation.structured_nttp_bindings == 2,
+              "structured pending key should report structured NTTP bindings");
+  expect_true(observation.structured_bindings_complete(),
+              "structured pending key helper should emit complete structured identities");
 }
 
 }  // namespace
