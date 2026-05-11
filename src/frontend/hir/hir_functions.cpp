@@ -1119,8 +1119,21 @@ void Lowerer::append_explicit_callable_param(
   param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
   param.fn_ptr_sig = fn_ptr_sig_from_decl_node(param_node);
   param.span = make_span(param_node);
-  ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
-  if (param.fn_ptr_sig) ctx.param_fn_ptr_sigs[param.name] = *param.fn_ptr_sig;
+  const uint32_t param_index = static_cast<uint32_t>(fn.params.size());
+  ctx.params[param.name] = param_index;
+  const bool has_source_param_identity =
+      param_node && param_node->unqualified_text_id != kInvalidText &&
+      param_node->name && emitted_name == param_node->name;
+  if (has_source_param_identity) {
+    ctx.param_indices_by_text_id[param_node->unqualified_text_id] = param_index;
+  }
+  if (param.fn_ptr_sig) {
+    if (has_source_param_identity) {
+      ctx.param_fn_ptr_sigs_by_index[param_index] = *param.fn_ptr_sig;
+    }
+    // Compatibility for generated, synthetic, and no-metadata parameter names.
+    ctx.param_fn_ptr_sigs[param.name] = *param.fn_ptr_sig;
+  }
   fn.params.push_back(std::move(param));
 }
 

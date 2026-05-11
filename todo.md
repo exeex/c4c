@@ -1,42 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/165_hir_lowerer_function_context_textid_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory FunctionCtx String Maps
+Current Step ID: 3
+Current Step Title: Convert the First Source Lookup Group
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 1 inventory for the eight `Lowerer::FunctionCtx` string-keyed maps before any implementation or test edits.
+Completed plan Step 3 first source lookup conversion for `param_fn_ptr_sigs`.
 
-Map classification:
+Changed paths:
+- `src/frontend/hir/impl/lowerer.hpp`
+- `src/frontend/hir/hir_functions.cpp`
+- `src/frontend/hir/hir_types.cpp`
+- `tests/frontend/frontend_hir_lookup_tests.cpp`
 
-| Map | Semantic classification | Caller groups and metadata carried | Retained string boundary | First metadata-capable conversion target |
-| --- | --- | --- | --- | --- |
-| `locals` | Mixed source semantic lookup plus generated route-local handle table. | Source writes: `lower_local_decl_stmt` and range-for loop variable lowering have declaration `Node*` with `name`, `unqualified_text_id`, type, span, and `LocalId`; reads: `lower_var_expr` and generic type inference have `NK_VAR` `name`, `unqualified_text_id`, and resolve to `LocalId`/`local_types`; scope save/restore preserves block shadowing. Generated writes from call/operator/object/scalar helpers and range-for internals have `LocalId`/type but no honest source `TextId`. | Keep rendered strings for generated temporaries, internal range iterator locals such as `__range_begin`/`__range_end`, display names in `LocalDecl`, and no-metadata compatibility. Do not use this map as module/global authority. | Add source-local lookup side table keyed by source reference metadata plus active scope/domain, resolving to `LocalId`; retain `locals` for generated route-local names and compatibility. |
-| `params` | Source semantic parameter lookup with generated/implicit receiver entries. | Source writes: `append_explicit_callable_param` has parameter `Node*`, emitted name, source `unqualified_text_id`, type, span, `Param` index, and function context; reads: `lower_var_expr`, generic type inference, and method helper paths resolve `NK_VAR` names to `param_index`. Method lowering also inserts synthetic `this` with generated text identity. Pack expansion emits generated parameter names while retaining source pack name in `pack_params`. | Keep rendered strings for implicit `this`, generated pack element parameter names, and helper paths that explicitly probe `"this"`. | After locals, add source-param lookup by source parameter `TextId` plus function parameter index/domain; generated `this` remains a string/synthetic boundary. |
-| `static_globals` | Source semantic local static/local extern bridge to module `GlobalId`, with compatibility lookup by function-scope spelling. | Writes: local `extern` declaration resolves a structured `DeclRef` (`name_text_id`, namespace qualifier, link name) to a module global and erases shadowing locals; local `static` declaration has declaration `Node*`, source name/text metadata, and `lower_static_local_global` result. Reads: `lower_var_expr`, generic type inference, and function-pointer return inference map current function spelling to `GlobalId`. | Keep rendered map as a function-scope compatibility bridge from local spelling to generated/static module global identity and for no-metadata static-local access. The module global itself remains governed by existing structured/global authority from prior ideas. | Convert local static/extern insertion and lookup to a source declaration/reference metadata side table resolving to `GlobalId`, with rendered fallback only for missing text metadata. |
-| `local_fn_ptr_sigs` | Source semantic metadata side table for local function-pointer declarators. | Write: `lower_local_decl_stmt` has local declaration `Node*`, `LocalId`, `FnPtrSig`, source spelling/text metadata, and type. Read: `infer_call_result_type_from_callee` has callee `NK_VAR` name and source text metadata but currently checks this map before static/global function-pointer fallback. | Keep rendered lookup only as a bridge for generated/no-metadata callee expressions. Prefer tying signatures to resolved `LocalId` so local shadowing follows `locals` authority. | Good first conversion target if narrower than full `locals`: resolve callee through source-local lookup/`LocalId`, then read `FnPtrSig` by `LocalId`. |
-| `param_fn_ptr_sigs` | Source semantic metadata side table for function-pointer parameters. | Write: `append_explicit_callable_param` has parameter `Node*`, source `unqualified_text_id`, emitted name, `Param` index, and `FnPtrSig`; read: `infer_call_result_type_from_callee` has callee `NK_VAR` source metadata and currently checks parameter spelling before local signatures. | Keep rendered lookup for generated/no-metadata calls and synthetic parameter names. Prefer tying signatures to `param_index`. | Convert to `param_index -> FnPtrSig` plus source-param lookup; this is narrow and proofable with function-pointer parameter call tests. |
-| `local_const_bindings` | Source semantic constant-expression environment bridge. | Write: `lower_local_decl_stmt` records foldable const/constexpr local values with declaration `Node*`, source name/text metadata, initializer, and scope save/restore. Reads are indirect through `make_lowerer_consteval_env` in constexpr-if, switch case/range, ternary, consteval calls, and template value-arg evaluation; expression inputs generally carry `NK_VAR` `unqualified_text_id`, but `ConstEvalEnv` currently consumes only rendered local-const map. | Keep rendered fallback for consteval paths that lack a source `TextId` carrier in the evaluation API. Scope save/restore remains the local-domain boundary. | Convert after local lookup plumbing exists: add TextId/scope-aware local const map and thread structured lookup through `ConstEvalEnv`. |
-| `pack_params` | Compatibility bridge for source parameter-pack forwarding to generated route-local parameter handles. | Write: `append_callable_params` sees the source pack parameter `Node*`, pack template binding metadata (`template_param_text_id` when present), emitted generated parameter names, concrete type, and parameter index. Read: `try_lower_forward_pack_expansion_call` looks up a forwarded `NK_VAR` source pack name and expands generated elements. | Retain string key for the source pack parameter name until forwarding carries a structured pack binding key; retained values are generated route-local emitted names/indices. | Not first: only convert after pack forwarding has a structured pack binding key at the call site. |
-| `label_blocks` | Label control-flow handle, not source semantic value lookup. | Write: `NK_LABEL` lowers label spelling to a `BlockId`; read: `NK_GOTO` uses target spelling to resolve the already-created block when available. Label nodes carry source names/text metadata but labels are control-flow handles and plan non-goals exclude converting them. | Retain string key for label/goto spelling and `GotoTarget::user_name`; labels are not module symbols or source value authority. | No conversion target for this idea; fence as retained string map. |
+`append_explicit_callable_param` now records complete source parameters in `param_indices_by_text_id` and records function-pointer parameter signatures in `param_fn_ptr_sigs_by_index` by parameter index. Generated/no-metadata parameter names continue to populate the rendered `param_fn_ptr_sigs` compatibility map.
 
-First conversion recommendation: start with `param_fn_ptr_sigs` because both insertion and read paths already carry function parameter index/source parameter metadata, the value can be keyed by `param_index`, and the blast radius is smaller than replacing all local/param value lookup at once. Narrow proof recommendation after implementation: `cmake --build build --target c4c && ctest --test-dir build -R 'frontend_hir_tests|frontend_hir_lookup_tests|positive_sema_ok_local_fn_ptr_decl_c|backend_codegen_route_x86_64_function_pointer_param_direct_arg_observe_semantic_bir|cpp_positive_sema_c_style_cast_template_fn_ptr_param_type_parse_cpp' --output-on-failure`.
+`infer_call_result_type_from_callee` now resolves parameter function-pointer signatures by callee `unqualified_text_id -> param index -> FnPtrSig` before considering rendered fallback. Rendered parameter-signature lookup is only used when the callee has no source `TextId`.
+
+Focused coverage added to `frontend_hir_lookup_tests` for indexed/TextId lookup winning over rendered spelling, complete TextId miss rejecting rendered fallback, and explicit no-metadata rendered compatibility.
 
 ## Suggested Next
 
-Implement the first narrow conversion for `param_fn_ptr_sigs`: populate signature metadata by parameter index/source metadata, make callee return-type inference resolve parameter identity before consulting the rendered map, and leave rendered lookup as an explicit no-metadata fallback.
+Convert the next narrow lookup group only after supervisor selection; `local_fn_ptr_sigs` by resolved local identity is the closest adjacent target, but it needs local identity lookup plumbing and should stay separate from this completed parameter-signature slice.
 
 ## Watchouts
 
-- Do not reopen idea 161 template binding maps or idea 162 link-visible symbol authority.
-- `TextId` is spelling identity, not a unique local declaration identity; same-spelled locals still need active local scope/domain or resolved `LocalId`.
-- Keep route-local generated handles (`locals` temporaries, pack emitted names, synthetic `this`) separate from source semantic lookup authority.
-- `label_blocks` should stay string-keyed for control-flow labels under this idea.
-- `local_const_bindings` conversion likely needs `ConstEvalEnv` API work; do not treat the existing rendered env as source authority when complete metadata is present.
+- `param_indices_by_text_id` is function-context scoped; it intentionally does not try to solve same-spelled local shadowing.
+- Pack-expanded/generated parameters are not entered into the source `TextId` index because their emitted names are generated route-local handles; they retain rendered compatibility.
+- `local_fn_ptr_sigs` and ordinary `params`/`locals` lookups still use their existing rendered maps outside this packet.
 
 ## Proof
 
-Lifecycle/inventory-only packet; no build or ctest required by delegation. Ran `git diff --check -- todo.md`.
+Ran delegated proof: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests|positive_sema_ok_local_fn_ptr_decl_c|backend_codegen_route_x86_64_function_pointer_param_direct_arg_observe_semantic_bir|cpp_positive_sema_c_style_cast_template_fn_ptr_param_type_parse_cpp)$' > test_after.log`.
+
+Result: passed; `test_after.log` contains 5/5 tests passing.

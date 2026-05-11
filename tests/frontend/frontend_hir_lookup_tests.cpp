@@ -3277,6 +3277,83 @@ void test_lvalue_cast_structured_miss_rejects_stale_tag() {
               "lvalue cast should reject stale rendered tag after structured binding miss");
 }
 
+c4c::hir::FnPtrSig make_returning_fn_ptr_sig(c4c::TypeBase return_base) {
+  c4c::hir::FnPtrSig sig{};
+  sig.return_type.spec.base = return_base;
+  sig.return_type.spec.array_size = -1;
+  sig.return_type.spec.inner_rank = -1;
+  return sig;
+}
+
+void test_param_fn_ptr_sig_lookup_prefers_param_text_id_over_rendered_name() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId callback_text_id =
+      module.link_name_texts->intern("callback");
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.param_indices_by_text_id[callback_text_id] = 0;
+  ctx.param_fn_ptr_sigs_by_index[0] =
+      make_returning_fn_ptr_sig(c4c::TB_LONG);
+  ctx.param_fn_ptr_sigs["callback"] =
+      make_returning_fn_ptr_sig(c4c::TB_INT);
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "callback";
+  callee.unqualified_name = "callback";
+  callee.unqualified_text_id = callback_text_id;
+
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &callee);
+  expect_true(ret.has_value() && ret->base == c4c::TB_LONG,
+              "param fn-ptr return inference should prefer parameter TextId/index authority over rendered name");
+}
+
+void test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.param_fn_ptr_sigs["callback"] =
+      make_returning_fn_ptr_sig(c4c::TB_INT);
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "callback";
+  callee.unqualified_name = "callback";
+  callee.unqualified_text_id =
+      module.link_name_texts->intern("different_source_param");
+
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &callee);
+  expect_true(!ret.has_value(),
+              "complete param TextId miss should not reopen rendered param fn-ptr fallback");
+}
+
+void test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.param_fn_ptr_sigs["callback"] =
+      make_returning_fn_ptr_sig(c4c::TB_INT);
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "callback";
+  callee.unqualified_name = "callback";
+  callee.unqualified_text_id = c4c::kInvalidText;
+
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &callee);
+  expect_true(ret.has_value() && ret->base == c4c::TB_INT,
+              "no-metadata param fn-ptr calls should keep the rendered compatibility fallback");
+}
+
 void test_callable_zero_sized_return_structured_miss_rejects_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -4986,6 +5063,9 @@ int main() {
   test_builtin_query_type_no_metadata_keeps_compatibility_shape();
   test_lvalue_cast_uses_template_param_text_id_binding();
   test_lvalue_cast_structured_miss_rejects_stale_tag();
+  test_param_fn_ptr_sig_lookup_prefers_param_text_id_over_rendered_name();
+  test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback();
+  test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback();
   test_callable_zero_sized_return_structured_miss_rejects_stale_tag();
   test_layout_type_lookup_canonicalizes_record_def_parser_owner_ids();
   test_callable_zero_return_canonicalizes_record_def_parser_owner_ids();

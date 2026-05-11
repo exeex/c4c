@@ -1166,8 +1166,19 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
   }
   const std::string name = callee->name;
   if (ctx) {
-    const auto pit = ctx->param_fn_ptr_sigs.find(name);
-    if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second.return_type.spec;
+    if (callee->unqualified_text_id != kInvalidText) {
+      const auto param_it =
+          ctx->param_indices_by_text_id.find(callee->unqualified_text_id);
+      if (param_it != ctx->param_indices_by_text_id.end()) {
+        const auto sig_it = ctx->param_fn_ptr_sigs_by_index.find(param_it->second);
+        if (sig_it != ctx->param_fn_ptr_sigs_by_index.end()) {
+          return sig_it->second.return_type.spec;
+        }
+      }
+    } else {
+      const auto pit = ctx->param_fn_ptr_sigs.find(name);
+      if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second.return_type.spec;
+    }
     const auto lit = ctx->local_fn_ptr_sigs.find(name);
     if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
     const auto sit = ctx->static_globals.find(name);

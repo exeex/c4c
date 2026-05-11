@@ -285,6 +285,8 @@ class Lowerer {
     std::unordered_map<std::string, LocalId> locals;
     DenseIdMap<LocalId, TypeSpec> local_types;
     std::unordered_map<std::string, FnPtrSig> local_fn_ptr_sigs;
+    std::unordered_map<TextId, uint32_t> param_indices_by_text_id;
+    std::unordered_map<uint32_t, FnPtrSig> param_fn_ptr_sigs_by_index;
     std::unordered_map<std::string, FnPtrSig> param_fn_ptr_sigs;
     std::unordered_map<std::string, GlobalId> static_globals;
     std::unordered_map<std::string, uint32_t> params;
