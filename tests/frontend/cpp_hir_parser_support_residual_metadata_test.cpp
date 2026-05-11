@@ -128,11 +128,42 @@ void test_record_layout_resolution_uses_record_definition_before_stale_tag() {
               "structured incomplete record_def should not complete through parser rendered-tag map");
 }
 
+void test_const_int_eval_uses_structured_named_constants() {
+  c4c::Node ref = {};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "stale_rendered";
+  ref.unqualified_name = "Actual";
+  ref.unqualified_text_id = 31;
+  ref.namespace_context_id = -1;
+
+  std::unordered_map<c4c::TextId, long long> structured;
+  structured.emplace(ref.unqualified_text_id, 7);
+  std::unordered_map<std::string, long long> rendered;
+  rendered.emplace("stale_rendered", 99);
+
+  long long out = 0;
+  expect_true(c4c::eval_const_int(&ref, &out, nullptr, &structured),
+              "parser const-int eval should use TextId named constants");
+  expect_true(out == 7,
+              "TextId named constant should win over stale rendered spelling");
+
+  structured.clear();
+  expect_true(!c4c::eval_const_int(&ref, &out, nullptr, &structured),
+              "parser const-int eval should fail closed after a complete TextId miss");
+
+  expect_true(c4c::eval_const_int_with_rendered_named_const_compatibility(
+                  &ref, &out, nullptr, &rendered),
+              "rendered named-constant lookup remains explicit compatibility");
+  expect_true(out == 99,
+              "explicit rendered compatibility should preserve no-metadata behavior");
+}
+
 }  // namespace
 
 int main() {
   test_enum_sizeof_dependency_uses_structured_typedef_identity();
   test_record_layout_resolution_uses_record_definition_before_stale_tag();
+  test_const_int_eval_uses_structured_named_constants();
   std::cout << "PASS: cpp_hir_parser_support_residual_metadata_test\n";
   return 0;
 }

@@ -36,13 +36,13 @@ bool eval_const_int(Node* n, long long* out,
                         compatibility_tag_map = nullptr,
                     const std::unordered_map<TextId, long long>* structured_named_consts =
                         nullptr);
-// Compatibility bridge for legacy/HIR proof paths that only carry rendered
-// constant names. New parser-owned callers should use the TextId overload.
-// Remove this overload once those proof paths pass structured constant TextIds.
-bool eval_const_int(Node* n, long long* out,
-                    const std::unordered_map<std::string, Node*>*
-                        compatibility_tag_map,
-                    const std::unordered_map<std::string, long long>* compatibility_named_consts);
+// Explicit compatibility bridge for legacy/HIR template paths that only carry
+// rendered NTTP/constant names. New parser-owned callers should use the TextId
+// surface above, and ordinary overload resolution should not select this path.
+bool eval_const_int_with_rendered_named_const_compatibility(
+    Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* compatibility_tag_map,
+    const std::unordered_map<std::string, long long>* compatibility_named_consts);
 
 // Parser-owned typedef resolution should pass typedef names through the
 // TextId table. A miss in this structured domain is authoritative and must not

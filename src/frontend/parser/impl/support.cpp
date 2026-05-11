@@ -544,7 +544,8 @@ static bool type_record_context_matches_candidate(const TypeSpec& ts,
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
     const std::unordered_map<TextId, long long>* structured_named_consts);
-bool eval_const_int(Node* n, long long* out,
+bool eval_const_int_with_rendered_named_const_compatibility(
+    Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
     const std::unordered_map<std::string, long long>* compatibility_named_consts);
 
@@ -846,8 +847,9 @@ bool eval_const_int(Node* n, long long* out,
 
 // Compatibility bridge for callers that only have rendered names. Keep this
 // path behavior-identical until those non-parser surfaces gain structured IDs,
-// then remove the overload instead of adding new parser-owned callers.
-bool eval_const_int(Node* n, long long* out,
+// but force callers to opt into the compatibility boundary by name.
+bool eval_const_int_with_rendered_named_const_compatibility(
+    Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
     const std::unordered_map<std::string, long long>* compatibility_named_consts) {
     if (!n) return false;
@@ -866,8 +868,8 @@ bool eval_const_int(Node* n, long long* out,
         return false;
     }
     if (n->kind == NK_CAST && n->left) {
-        return eval_const_int(n->left, out, compatibility_tag_map,
-                              compatibility_named_consts);
+        return eval_const_int_with_rendered_named_const_compatibility(
+            n->left, out, compatibility_tag_map, compatibility_named_consts);
     }
     if (n->kind == NK_OFFSETOF) {
         if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
@@ -903,8 +905,9 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_UNARY && n->op && n->left) {
         long long v;
-        if (!eval_const_int(n->left, &v, compatibility_tag_map,
-                            compatibility_named_consts)) return false;
+        if (!eval_const_int_with_rendered_named_const_compatibility(
+                n->left, &v, compatibility_tag_map,
+                compatibility_named_consts)) return false;
         if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
         if (strcmp(n->op, "+") == 0) { *out = v; return true; }
         if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
@@ -912,10 +915,12 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_BINOP && n->op) {
         long long l, r;
-        if (!eval_const_int(n->left, &l, compatibility_tag_map,
-                            compatibility_named_consts)) return false;
-        if (!eval_const_int(n->right, &r, compatibility_tag_map,
-                            compatibility_named_consts)) return false;
+        if (!eval_const_int_with_rendered_named_const_compatibility(
+                n->left, &l, compatibility_tag_map,
+                compatibility_named_consts)) return false;
+        if (!eval_const_int_with_rendered_named_const_compatibility(
+                n->right, &r, compatibility_tag_map,
+                compatibility_named_consts)) return false;
         if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
         if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
         if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
@@ -937,11 +942,12 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
         long long c;
-        if (!eval_const_int(n->cond, &c, compatibility_tag_map,
-                            compatibility_named_consts)) return false;
-        return eval_const_int(c ? n->then_ : n->else_, out,
-                              compatibility_tag_map,
-                              compatibility_named_consts);
+        if (!eval_const_int_with_rendered_named_const_compatibility(
+                n->cond, &c, compatibility_tag_map,
+                compatibility_named_consts)) return false;
+        return eval_const_int_with_rendered_named_const_compatibility(
+            c ? n->then_ : n->else_, out, compatibility_tag_map,
+            compatibility_named_consts);
     }
     return false;
 }

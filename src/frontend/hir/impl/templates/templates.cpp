@@ -318,7 +318,7 @@ bool eval_struct_static_member_value_hir(
   // bridge. It has no local/block enum lifetime stack; do not use it as scoped
   // enum authority without adding an explicit carrier.
   static const std::unordered_map<std::string, Node*> kEmptyStructs;
-  static const std::unordered_map<std::string, long long> kEmptyConsts;
+  static const std::unordered_map<TextId, long long> kEmptyTextIdConsts;
 
   auto search_decl_array = [&](Node* const* decls, int count) -> bool {
     if (!decls) return false;
@@ -328,12 +328,14 @@ bool eval_struct_static_member_value_hir(
       if (member_name != f->name) continue;
       long long val = 0;
       if (f->init && nttp_bindings &&
-          eval_const_int(const_cast<Node*>(f->init), &val, &kEmptyStructs,
-                         nttp_bindings)) {
+          eval_const_int_with_rendered_named_const_compatibility(
+              const_cast<Node*>(f->init), &val, &kEmptyStructs,
+              nttp_bindings)) {
         *out = val;
         return true;
       }
-      if (f->init && eval_const_int(f->init, &val, &kEmptyStructs, &kEmptyConsts)) {
+      if (f->init &&
+          eval_const_int(f->init, &val, &kEmptyStructs, &kEmptyTextIdConsts)) {
         *out = val;
         return true;
       }
