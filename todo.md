@@ -8,68 +8,66 @@ Current Step Title: Classify Covered Structured Domains
 
 ## Just Finished
 
-Step 2 - Classify Covered Structured Domains completed the first frontend
-structured-domain classification packet for parser support/state, sema
-validate/consteval/type-utils/canonical-symbol, and HIR rendered-compatibility
-paths. No implementation or test files were edited.
+Step 2 - Classify Covered Structured Domains completed the LinkNameId/LIR/HIR-to-LIR
+covered-domain classification packet for `src/codegen/lir/ir.hpp`,
+`src/codegen/lir/verify.cpp`, and `src/codegen/lir/hir_to_lir/*.cpp`. No
+implementation or test files were edited.
 
-Frontend classification table:
+LIR/HIR-to-LIR classification table:
 
 | Owner/domain | File/local symbol or path | Class | Evidence | Bridge boundary / follow-up |
 |---|---|---|---|---|
-| Parser support record probes | `src/frontend/parser/parser_support.hpp`: `resolve_record_type_spec(... compatibility_tag_map)` | `CB` | Header states record lookup should prefer `TypeSpec::record_def` and structured metadata before rendered maps. | Compatibility-only parser-local record probes; remove when callers carry `record_def` or structured record keys. |
-| Parser constant evaluation | `src/frontend/parser/parser_support.hpp`: `eval_const_int` TextId overload vs rendered overload | `CB` | TextId overload accepts `std::unordered_map<TextId, long long>`; rendered overload is documented for legacy/HIR proof paths only. | Rendered `compatibility_named_consts` is legacy/HIR proof compatibility; new parser-owned callers should pass constant `TextId`s. |
-| Parser typedef resolution | `src/frontend/parser/parser_support.hpp`: `resolve_typedef_chain` / `types_compatible_p` TextId and string overloads | `CB` | TextId overload says structured miss is authoritative and must not recover through rendered fallback names; string overloads are compatibility bridges. | Rendered typedef maps are legacy/HIR proof compatibility; remove when proof paths pass typedef `TextId`s or typed HIR bindings. |
-| Parser state lookup tables | `src/frontend/parser/impl/parser_state.hpp`: `ParserBindingState` TextId/`QualifiedNameKey` maps | `CB` | `const_int_bindings`, `var_types_by_text_id`, `struct_typedefs`, and `value_bindings` are keyed by `TextId` or `QualifiedNameKey`. | Rendered companions such as `struct_tag_def_map` are mirrors only; semantic parser state is already structured. |
-| Parser state rendered record mirror | `src/frontend/parser/impl/parser_state.hpp`: `struct_tag_def_map`; `src/frontend/parser/impl/support.cpp`: `eval_const_int_with_parser_tables` | `CB` | `struct_tag_def_map` comment calls it a rendered-tag compatibility mirror and `support.cpp` passes it beside structured const bindings. | Boundary is parser-local legacy record probes; not ordinary record identity authority. |
-| Parser displayed/current names | `src/frontend/parser/impl/support.cpp`: `set_current_struct_tag`, `set_last_resolved_typedef`, `parser_text` | `DO/CB` | Stored strings are display fallbacks paired with `current_struct_tag_text_id` or `last_resolved_typedef_text_id`. | Display fallback when text table/id is absent; no complete structured miss was found reopening through these fields. |
-| Sema structured key construction | `src/frontend/sema/validate.cpp`: `sema_structured_name_key`, `sema_symbol_name_key`, `sema_function_lookup_key` | `SA` | AST-backed signature inspection confirmed these helpers construct `SemaStructuredNameKey` from namespace, qualifier `TextId`s, and base `TextId`. | This is the intended structured authority, not a follow-up bug. |
-| Sema globals/functions/overloads | `src/frontend/sema/validate.cpp`: `lookup_function_by_name`, `lookup_ref_overloads_by_name`, `lookup_cpp_overloads_by_name` | `CB` | Each lookup checks target/function structured keys first and returns `nullptr` after structured metadata misses before falling back to rendered maps. | Boundary is no-metadata references only; complete structured misses fail closed. |
-| Sema consteval function handoff | `src/frontend/sema/validate.cpp`: `lookup_consteval_function_by_name` | `CB` | Structured key and TextId maps are checked before `consteval_funcs_`; populated structured/text maps make misses authoritative. | Boundary is no-metadata recursive/chained consteval calls. |
-| Sema validator rendered inventory | `src/frontend/sema/validate.cpp`: `globals_`, `funcs_`, scope maps, `structured_*_by_name_` mirrors | `CB` | Local inventory comment explicitly separates rendered legacy tables from structured mirrors and says complete metadata misses fail closed. | Boundary is legacy carriers, diagnostics, and no-metadata parser comparison probes; no remaining `SA` follow-up found in this packet. |
-| Sema type-utils enum eval | `src/frontend/sema/type_utils.cpp`: `static_eval_lookup_enum`, `same_rendered_type_name_compatibility` | `CB` | Enum eval checks key map, then TextId map, and returns `Miss`; rendered map is labeled no-metadata compatibility. Rendered type-name equality refuses carriers with text metadata. | Boundary is no-metadata enum/type carriers only. |
-| Sema consteval type bindings | `src/frontend/sema/consteval.cpp`: `resolve_type`, `lookup_type_binding_by_*`, `record_type_binding_mirrors` | `CB` | Typespec key and TextId lookups return `Miss` and stop; rendered name maps only select TextId/key mirrors or final fallback when metadata channels are absent. | Boundary is legacy rendered `TypeSpec` tags without binding metadata. |
-| Sema consteval NTTP/value bindings | `src/frontend/sema/consteval.cpp`: `lookup_forwarded_nttp_arg_by_text`, `record_nttp_binding_mirrors`, `evaluate_constant_expr` environment maps | `CB` | Text/key maps are recorded with rendered mirrors; valid forwarded `TextId` miss blocks rendered NTTP fallback. | Boundary is no-metadata forwarded NTTP spelling. |
-| Sema/HIR record layout consteval | `src/frontend/sema/consteval.cpp`: `lookup_record_layout` | `CB` | Owner-key lookup is attempted first; canonical rendered tag only recovers a `TextId` and still ends at owner-index lookup; bare rendered fallback is disabled when owner index exists. | Boundary is legacy HIR layout handoff with no owner index. |
-| Sema canonical symbols | `src/frontend/sema/canonical_symbol.cpp`: `qualified_name_identity_*`, `type_identity_from_typespec`, `CanonicalSymbolTable::lookup` | `SA/DO` | Symbol identity is `CanonicalIdentity` with structured qualified-name and type identity; display spelling is used for formatting/source names and fallback name bindings. | No string-authority follow-up; fallback names are no-metadata template substitution compatibility, not symbol table authority. |
-| HIR compile-time registry | `src/frontend/hir/compile_time_engine.hpp`: `find_template_def`, `find_template_struct_def`, `find_consteval_def`, `find_enum_const`, `find_const_int_binding` | `CB` | Structured registry/value keys are checked first; complete key misses return `nullptr`/`nullopt` before rendered lookup. | Boundary is no-metadata declarations or incomplete registry keys. |
-| HIR compile-time registry key fallback | `src/frontend/hir/compile_time_engine.hpp`: `CompileTimeRegistryKey::declaration_fallback` | `CB` | Incomplete text identity stores declaration pointer fallback; complete keys require namespace/base/qualifier `TextId`s and no declaration fallback. | Boundary is invalid-id/incomplete metadata on declaration carriers. |
-| HIR type binding aliases | `src/frontend/hir/hir_ir.hpp`: `TypeBindings`, `NttpBindings`, `NttpTextBindings` | `CB` | Comments state rendered maps are migration compatibility and owner-aware lookups must prefer `HirTemplateParameterBindingKey` and fail closed on complete misses. | Boundary is no-metadata template binding creation/forwarding. |
-| HIR lowerer local/param/static maps | `src/frontend/hir/impl/lowerer.hpp`: `FunctionCtx` `locals`, `params`, `rendered_compat_*` sets | `RL/CB` | Local/param string maps are function-scope lowering state; `rendered_compat_*` sets fence fallback eligibility. | Route-local lowering identity plus explicit rendered-compatibility membership. |
-| HIR local/param type inference | `src/frontend/hir/hir_types.cpp`: `infer_generic_ctrl_type` local/param branches | `CB` | TextId maps are checked first; rendered lookup is reached only for names/text ids recorded in `rendered_compat_local_*` or `rendered_compat_param_*`. | Boundary is explicit rendered-compat set membership; otherwise no rendered fallback after a TextId miss. |
-| HIR static/global/function decl resolution | `src/frontend/hir/hir_types.cpp`: `make_global_lookup_decl_ref`, `make_function_lookup_decl_ref`; `src/frontend/hir/hir_ir.hpp`: `classify_*_decl_lookup` | `CB` | Decl refs carry structured fields; `hir_ir.hpp` blocks legacy rendered lookup after structured-text miss unless rendered compatibility is explicitly allowed or self-consistent. | Boundary is rendered qualified-decl compatibility or self-consistent rendered name only. |
-| HIR record layout lookup | `src/frontend/hir/hir_types.cpp`: `find_struct_def_for_layout_type`, `find_struct_def_by_layout_compatibility_tag` | `CB` | Complete owner key lookup returns `nullptr` on miss; rendered compatibility tag lookup is only after incomplete owner metadata. | Boundary is legacy `TypeSpec` producers lacking complete structured owner metadata. |
+| LIR model link-visible identity | `src/codegen/lir/ir.hpp`: `LirCallOp::direct_callee_link_name_id`, `LirExternDecl::link_name_id`, `LirFunction::link_name_id`, `LirGlobal::link_name_id`, `LirSpecEntry::mangled_link_name_id` | `SA/DO` | Link-visible identity is carried as `LinkNameId`; rendered names remain as final LLVM spelling or display payloads such as `name`, `callee`, `signature_text`, and `mangled_name`. | No `SA` follow-up for the id carriers. Rendered spelling is output/display unless explicitly listed as a compatibility fallback below. |
+| LIR extern declaration dedup | `src/codegen/lir/ir.hpp`: `extern_decl_link_name_map`, `extern_decl_name_map`, `record_extern_decl` | `SA/CB` | `record_extern_decl` keys by `LinkNameId` first, upgrades/migrates a prior raw-name entry when a semantic id appears, and uses `extern_decl_name_map` only when the caller has no `LinkNameId`. | `CB` boundary: unresolved external calls or legacy producers with `kInvalidLinkName`. Follow-up: retire `extern_decl_name_map` when all extern-call producers provide `LinkNameId`. |
+| LIR aggregate declarations | `src/codegen/lir/ir.hpp`: `LirStructDecl`, `struct_decl_index`, `record_struct_decl`, `find_struct_decl` | `SA` | Structured declarations are indexed by `StructNameId`; rendered `type_decls` are the legacy/printer shadow and verifier parity input. | No `SA` follow-up; the rendered declaration vector is a printer compatibility shadow. |
+| LIR aggregate type references | `src/codegen/lir/types.hpp`: `LirTypeRef::struct_type`, `struct_name_id`; `src/codegen/lir/ir.hpp`: `LirTypeRef` fields on globals, externs, calls, signatures, struct fields | `SA/CB` | `LirTypeRef` carries rendered LLVM type text plus optional `StructNameId`; struct references with a known declaration are expected to carry the id mirror. | `CB` boundary: non-aggregate, pointer/array/function fragments, ABI fragments such as `byval(...)`, or legacy rendered aggregate carriers that cannot be normalized to a declared `StructNameId`. |
+| LIR verifier struct mirror enforcement | `src/codegen/lir/verify.cpp`: `find_declared_struct_name_id`, `verify_known_struct_type_ref_mirror`, `verify_declared_struct_type_ref_mirror`, call/global/extern/signature mirror checks | `SA` | The verifier rejects known declared struct text without matching `StructNameId`, checks id resolution to a declared struct, and rejects mismatched id/text mirrors. | No bridge is opened after a known structured aggregate miss; text lookup is used to detect and reject missing mirrors. |
+| LIR verifier legacy shadows | `src/codegen/lir/verify.cpp`: `legacy_type_decl_name`, `verify_struct_decl_shadows`, `function_signature_line` | `CB` | `legacy_by_name` verifies `struct_decls` still match `type_decls`; `function_signature_line` comment says it only parses final-render payload while semantic signature facts are validated from structured fields. | `CB` boundary: printer shadow/parity checks and final header presence. Follow-up belongs to later bridge retirement once printer no longer needs legacy shadows. |
+| HIR-to-LIR aggregate name construction | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `lir_aggregate_structured_name_id`, `lir_field_type_ref`, `lir_global_type_ref`, `lir_signature_type_ref`, `build_type_decls` | `SA/CB` | Owner-key lookup via `typespec_aggregate_owner_key` and `find_struct_def_tag_by_owner` is preferred; compatibility/final spelling is used only when no owner key exists or to normalize rendered text to an existing declared id. | `CB` boundary: legacy `TypeSpec` producers without owner metadata or ABI/final-spelling text that must match a declared `StructNameId`. |
+| HIR-to-LIR global/function dedup | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `dedup_globals`, `dedup_functions` | `SA/CB` | Dedup maps prefer `LinkNameId`, then `TextId`, then raw `name` only when no stable ids exist. | `CB` boundary: HIR globals/functions with both `kInvalidLinkName` and `kInvalidText`. Follow-up: eliminate raw-name fallback after HIR materialization guarantees stable ids. |
+| HIR-to-LIR call target resolution | `src/codegen/lir/hir_to_lir/call/target.cpp`: `find_local_target_function`, `resolve_call_target_info`, `record_extern_call_decl` | `SA/CB` | Local calls resolve through `mod_.find_function(link_name_id)`; a non-invalid `LinkNameId` miss returns `nullptr` instead of falling back to name; legacy `find_function_by_name_legacy` is reached only when the id is invalid. | `CB` boundary: no-`LinkNameId` call references or builtin alias external names. No complete structured miss reopens rendered lookup. |
+| HIR-to-LIR direct call references | `src/codegen/lir/hir_to_lir/call/target.cpp`, `src/codegen/lir/ir.hpp`: `make_lir_call_op_with_return_type_ref`, `LirCallOp::direct_callee_link_name_id` | `SA/DO` | `resolve_call_target_info` propagates `callee_link_name_id` into emitted `LirCallOp`; `callee_val` is the final LLVM symbol spelling. | No `SA` follow-up for direct-call identity; rendered callee text remains printer payload and scan fallback where no id exists. |
+| HIR-to-LIR extern finalization | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `finalize_module` | `SA/CB` | Defined functions are filtered by `local_fn_link_names` when an extern decl has `LinkNameId`; fallback filtering through `hir_mod.fn_index.count(fallback_name)` is used only with `kInvalidLinkName`. Return type mirrors are finalized through `extern_return_type_ref`. | `CB` boundary: extern decl records lacking `LinkNameId`. Follow-up: retire fallback-name filtering with `extern_decl_name_map`. |
+| HIR-to-LIR global initializer function refs | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `collect_global_init_function_link_name_ids`; `LirGlobal::initializer_function_link_name_ids` | `SA/CB` | Structured initializer references collect `link_name_id`/`fn_link_name_id` and store them on `LirGlobal`; later reachability seeds from these ids. | `CB` boundary: `LirGlobal::init_text` is still scanned for legacy raw LLVM initializer payloads with no structured carrier. |
+| HIR-to-LIR discardable function reachability | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `scan_refs`, `collect_inst_refs`, `collect_fn_refs`, `eliminate_dead_internals` | `SA/CB` | Reachability indexes discardable functions by `LinkNameId` first and seeds structured references from `LirCallOp::direct_callee_link_name_id` and `initializer_function_link_name_ids`; comments mark scanned names as compatibility fallback. | `CB` boundary: final LLVM spelling payloads (`signature_text`, call args, operands, `init_text`) without structured reference carriers. Follow-up: add typed symbol-reference carriers for remaining scanned payload producers, then retire `discardable_by_name`/`scan_refs` semantic seeding. |
+| HIR-to-LIR aggregate call/vararg/lvalue helpers | `src/codegen/lir/hir_to_lir/call/args.cpp`, `call/target.cpp`, `call/vaarg.cpp`, `lvalue.cpp`, `types.cpp`, `core.cpp`: `*_aggregate_structured_name_id`, `normalize_lir_aggregate_struct_name_id`, `lookup_structured_layout` | `SA/CB` | Helpers derive `StructNameId` through owner keys and normalize only if rendered text matches a declared struct; legacy sites are explicitly named `*-legacy-compat`. | `CB` boundary: aggregate carriers with no owner key, legacy tag-only `TypeSpec`, or ABI layout fragments. No follow-up beyond bridge-retirement planning unless a complete owner-key miss reaches rendered lookup; current inspected paths fail closed or require declared-id normalization. |
 
 Remaining `SA` follow-up recommendation:
-- None for this frontend classification packet. The only `SA` rows above are
-  intended structured-authority keys/tables. Retained string maps are classified
-  as `CB`, `RL`, or `DO` with explicit no-metadata, invalid-id/incomplete-key,
-  or rendered-compatibility membership boundaries.
+- Retire `src/codegen/lir/ir.hpp` `extern_decl_name_map` and the matching
+  `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` `finalize_module` fallback once
+  extern-call producers reliably pass `LinkNameId`.
+- Retire `discardable_by_name`/`scan_refs` reachability seeding after LIR has
+  typed symbol-reference carriers for the remaining final-spelling payloads
+  currently documented at `signature_text`, call arguments, operands, and
+  `init_text`.
+- No ordinary rendered string path was found that reopens lookup after a
+  complete `LinkNameId` miss or a known declared `StructNameId` miss.
 
 ## Suggested Next
 
-Continue Step 2 with the LinkNameId/LIR/HIR-to-LIR covered-domain packet:
-classify `src/codegen/lir/ir.hpp`, `src/codegen/lir/verify.cpp`, and
-`src/codegen/lir/hir_to_lir/*.cpp` around extern declarations, functions,
-discardable functions, aggregate type references, `StructNameId`, and
-`LinkNameId` boundaries.
+Continue Step 2 with the next covered backend/BIR packet: classify BIR and
+backend LinkNameId transport, backend symbol registry/lowering, and any
+remaining link-visible rendered-name compatibility bridges.
 
 ## Watchouts
 
-- The frontend packet found no remaining ordinary rendered-name semantic
-  authority, but several bridges remain intentionally live for no-metadata
-  parser/HIR/consteval handoffs.
-- Do not retire the bridges during this audit packet; bridge retirement belongs
-  to a later follow-up lane.
-- HIR local/param rendered maps are route-local lowering state plus explicit
-  compatibility membership, not module/global source identity.
+- `scan_refs` and `discardable_by_name` are still semantic for dead internal
+  function retention when LIR references arrive only as final LLVM spelling.
+  This is a classified bridge, not display-only text.
+- `StructNameId` verifier checks intentionally use rendered text lookup to
+  detect missing mirrors; that lookup is rejection logic, not fallback
+  authority.
+- Do not remove LIR/HIR-to-LIR bridges in this audit step; bridge retirement
+  belongs to follow-up planning.
 
 ## Proof
 
 Audit replay command run:
-`rg -n --glob '!build*/**' --glob '!ideas/closed/**' --glob '!review/**' -e 'rendered_compat' -e 'complete.*miss' -e 'no-metadata' -e 'invalid-id' -e 'legacy.*fallback' src/frontend src/codegen src/backend`
+`rg -n --glob '!build*/**' --glob '!ideas/closed/**' --glob '!review/**' -e 'LinkNameId' -e 'StructNameId' -e 'link_name_id' -e 'struct_name_id' -e 'extern_decl' -e 'discardable' -e 'rendered_.*compat' -e 'legacy.*compat' -e 'by_name' -e 'signature_text' -e 'initializer_function_link_name_ids' src/codegen/lir/ir.hpp src/codegen/lir/verify.cpp src/codegen/lir/hir_to_lir`
 
-Frontend structured-domain tests run:
-`ctest --test-dir build -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|frontend_hir_lookup_tests|cpp_hir_parser_support_residual_structured_metadata|cpp_hir_parser_type_helper_residual_structured_metadata|cpp_hir_sema_canonical_symbol_structured_metadata|cpp_hir_sema_consteval_type_utils_structured_metadata)$' --output-on-failure > test_after.log 2>&1`
+AST-backed inspection used:
+`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/codegen/lir/hir_to_lir/hir_to_lir.cpp build/compile_commands.json`
 
-Result: passed, 7/7 tests. Proof log: `test_after.log`.
+Result: audit replay and AST function inventory completed. No tests were run
+because this packet only recorded classification and did not edit
+implementation or tests; `test_after.log` was not updated by this packet.
