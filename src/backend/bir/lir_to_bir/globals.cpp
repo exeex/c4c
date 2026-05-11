@@ -148,8 +148,11 @@ std::optional<GlobalAddress> resolve_known_global_address(std::string_view globa
   if (info.initializer_symbol_name.empty()) {
     return std::nullopt;
   }
-  if (is_known_function_link_name_id(info.initializer_function_link_name_id, function_symbols) ||
-      is_known_raw_function_symbol(info.initializer_symbol_name, function_symbols)) {
+  const bool initializer_names_known_function =
+      info.initializer_function_link_name_id != kInvalidLinkName
+          ? is_known_function_link_name_id(info.initializer_function_link_name_id, function_symbols)
+          : is_known_raw_function_symbol(info.initializer_symbol_name, function_symbols);
+  if (initializer_names_known_function) {
     if (info.initializer_offset_type != bir::TypeKind::Void || info.initializer_byte_offset != 0) {
       return std::nullopt;
     }

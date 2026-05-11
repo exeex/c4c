@@ -8,29 +8,30 @@ Current Step Title: Propagate LinkNameId Through LIR to BIR
 
 ## Just Finished
 
-Completed Step 4 LIR-to-BIR initializer-symbol authority fix in
-`src/backend/bir/lir_to_bir/module.cpp`.
+Completed Step 4 LIR-to-BIR known-global-address authority fix in
+`src/backend/bir/lir_to_bir/globals.cpp`.
 
-`resolve_initializer_symbol_link_name_id` now treats a present initializer
-function `LinkNameId` as authoritative for the function-designator path. If the
-ID misses the known function-symbol set, lowering records no BIR initializer
-symbol ID instead of falling through to raw global/function symbol lookup. The
-focused backend test adds a raw spelling collision and proves the raw function
-symbol cannot override a structured initializer ID miss.
+`resolve_known_global_address` now treats a present initializer function
+`LinkNameId` as authoritative when deciding whether a pointer initializer names
+a known function. If the ID is valid but misses the known function-symbol set,
+the route no longer falls back to raw function-symbol spelling. The focused
+backend test keeps raw compatibility green for no-ID metadata and proves a
+valid ID miss with the same raw function spelling does not lower.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining LIR-to-BIR function/global symbol
-consumers for any valid `LinkNameId` miss that still reopens raw spelling
-lookup.
+Continue Step 4 by auditing aggregate pointer-initializer offsets and runtime
+global-address provenance for any remaining raw function-symbol lookup that
+lacks structured `LinkNameId` authority.
 
 ## Watchouts
 
-- Compatibility raw symbol lookup remains available only when no initializer
+- Compatibility raw function lookup remains available when no initializer
   function `LinkNameId` metadata is present.
-- This packet intentionally leaves `resolve_known_global_address` raw function
-  compatibility behavior unchanged; the owned fix is the BIR
-  `initializer_symbol_name_id` resolution route.
+- This packet intentionally targets scalar pointer-global known-address
+  resolution; aggregate pointer offsets still use raw `GlobalAddress` spellings
+  and may need a separate metadata route before they can enforce the same
+  authority rule.
 
 ## Proof
 
