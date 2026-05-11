@@ -1,7 +1,8 @@
 # Whole-Codebase String Authority Final Audit
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-11
 
 Depends On:
 - `ideas/closed/166_hir_rendered_registry_mirror_retirement_audit.md`
@@ -73,6 +74,30 @@ on grep hits.
 - The audit distinguishes source identity, semantic domain identity,
   link-visible identity, route-local identity, and display text.
 - No broad refactor or testcase weakening is hidden inside the audit.
+
+## Closure Summary
+
+Closed after Step 6 final proof and closure-readiness review. The audit
+inventory was recorded during the active runbook and replay searches found no
+new unowned behavior-sensitive string-authority family.
+
+Remaining work is intentionally carried by follow-up source ideas:
+
+- `ideas/open/168_compatibility_bridge_retirement.md` covers retained rendered
+  compatibility bridges and fallback narrowing.
+- `ideas/open/169_route_local_identity_domain_cleanup.md` covers route-local
+  and generated-name identity cleanup.
+- `ideas/open/170_string_authority_regression_guard.md` covers repeatable
+  closed-miss and drift guard hardening.
+
+Close-time regression guard passed on 2026-05-11 with matching focused
+parser/HIR/string-authority scope:
+
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|frontend_hir_tests|frontend_hir_lookup_tests|cpp_hir_parser_support_residual_structured_metadata|cpp_hir_parser_type_helper_residual_structured_metadata|cpp_hir_sema_canonical_symbol_structured_metadata|cpp_hir_sema_consteval_type_utils_structured_metadata)$'`
+
+Result: before 8 passed, 0 failed; after 8 passed, 0 failed; regression guard
+PASS with non-decreasing pass count allowed because the closure slice is
+lifecycle-only.
 
 ## Reviewer Reject Signals
 
