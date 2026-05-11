@@ -1,7 +1,8 @@
 # Backend Semantic BIR Route Alignment
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-11
 
 Parent Ideas:
 - `ideas/closed/162_link_name_id_backend_symbol_authority.md`
@@ -96,6 +97,48 @@ harness fix, or real backend lowering bug.
   alignment.
 - The relevant backend route subset passes, and final validation updates the
   full-suite baseline to remove these failures.
+
+## Completion Summary
+
+The active runbook completed and the source idea is closed. The route restored
+all backend semantic BIR observations accepted from idea 162 without weakening
+the semantic observation contract, marking supported cases unsupported, or
+converting semantic BIR tests into LLVM-output tests.
+
+The Step 1 inventory classified the 31 baseline failures as follows:
+
+- Aggregate/byval/function pointer routes: tests `93`, `96`, `100`, `102`,
+  and `161`.
+- Global struct/array read/write routes: tests `105`, `106`, `107`, and
+  `108`.
+- Inline asm readwrite routes: tests `134` and `136`.
+- Builtin memcpy/memset aggregate and array routes: tests `139`, `140`, `141`,
+  `142`, `143`, `145`, `147`, `149`, `152`, `153`, `154`, and `155`.
+- Nested pointer/member/dynamic array routes: tests `162`, `163`, `164`,
+  `165`, `166`, `167`, `168`, and `169`.
+
+The route/lowering repairs generalized aggregate return and byval handling,
+global aggregate array addressing, builtin memory route lowering, and dynamic
+local aggregate array access through semantic BIR lowering paths rather than
+named-test shortcuts. Snippet updates were limited to semantically correct BIR
+drift, including temp-number churn and inline asm readwrite constraint shape
+changes, while retaining required loads, stores, calls, offsets, builtin
+lowering, direct-call/global symbol coverage, and forbidden LLVM-output guards.
+
+Close-time proof:
+
+- Final execution slice through commit `420f0af8e` resolved residual dynamic
+  semantic BIR route tests `163` through `168`.
+- The executor's delegated narrow residual route command for tests `163`
+  through `168` passed all six tests after the snippet update.
+- Close-scope guard passed with accepted `test_baseline.log` versus
+  `test_after.log`: before `3129/6/3135`, after `3135/0/3135`, resolving the
+  remaining six backend semantic BIR failures and introducing no new failures.
+- The latest full-suite validation in `test_after.log` reports `100% tests
+  passed, 0 tests failed out of 3135`.
+
+No residual backend semantic BIR route failure family was split into a new
+open idea.
 
 ## Reviewer Reject Signals
 
