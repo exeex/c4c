@@ -52,6 +52,14 @@ TypeSpec type_binding_lookup_carrier_with_valid_owner_text(
   return ts;
 }
 
+GlobalId lookup_template_global_by_rendered_mangled_name(const Module& module,
+                                                         std::string_view name) {
+  // Template-global instances are materialized under a synthesized rendered
+  // mangled name; keep this as an explicit legacy/rendered compatibility
+  // boundary rather than routing through the broad lookup_global_id alias.
+  return module.lookup_global_id_by_legacy_rendered_name(name);
+}
+
 }  // namespace
 
 void Lowerer::collect_template_global_definitions(
@@ -374,7 +382,8 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
     }
   }
 
-  const GlobalId existing_global = module_->lookup_global_id(mangled);
+  const GlobalId existing_global =
+      lookup_template_global_by_rendered_mangled_name(*module_, mangled);
   if (existing_global.valid()) {
     instantiated_template_globals_[instance_key] = existing_global;
     return existing_global;
@@ -426,7 +435,8 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
       build_call_nttp_text_bindings(nullptr, primary, selected.nttp_bindings);
   lower_global(chosen, &mangled, tpl_ptr, nttp_ptr,
                nttp_by_text.empty() ? nullptr : &nttp_by_text);
-  const GlobalId global_id = module_->lookup_global_id(mangled);
+  const GlobalId global_id =
+      lookup_template_global_by_rendered_mangled_name(*module_, mangled);
   if (!global_id.valid()) return std::nullopt;
   instantiated_template_globals_[instance_key] = global_id;
   return global_id;
