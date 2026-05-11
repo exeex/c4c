@@ -8,29 +8,34 @@ Current Step Title: Propagate LinkNameId Through HIR to LIR
 
 ## Just Finished
 
-Completed Step 3 continuation for the HIR-to-LIR runtime global rvalue route in
-`src/codegen/lir/hir_to_lir/expr/coordinator.cpp`.
+Completed Step 3 audit and fix for the HIR-to-LIR constant-initializer
+function-designator route in
+`src/codegen/lir/hir_to_lir/const_init_emitter.cpp`.
 
-Global rvalue load lowering now resolves a `DeclRef` with a concrete
-`GlobalId` through `select_global_object(r)`, preserving the original global's
-`LinkNameId` authority instead of reselecting by the rendered
-`GlobalVar::name`. The focused test corrupts both the HIR global spelling and
-the rvalue `DeclRef` spelling, then proves the generated LIR load still targets
-the semantic global symbol rather than a rendered-name collision.
+The scoped audit found that `resolve_function_decl_name` still fell back to the
+raw rendered `DeclRef::name` when a constant initializer carried a valid
+`LinkNameId` whose function lookup missed. That covered metadata path now uses
+the HIR link-name table spelling instead of raw text. The focused test mutates
+a global function-pointer initializer to carry a semantic external
+`LinkNameId` while the raw initializer spelling remains `rendered_shadow`, then
+proves the LIR initializer emits `@semantic_external_helper` and not the raw
+collision.
 
 ## Suggested Next
 
-Continue Step 3 on the next HIR-to-LIR route that still treats raw rendered
-symbol text as authority after structured metadata exists, with special focus
-on constant-initializer function designator spelling and any remaining
-extern-declaration bridge not already covered by `LinkNameId` dedup.
+Move to Step 4 on the LIR-to-BIR symbol authority target, starting with the
+backend route that consumes LIR function/global/extern `LinkNameId` metadata
+and must not reselect symbols by rendered text.
 
 ## Watchouts
 
 - Existing constant-initializer global-address selection already routes through
   `select_global_object(DeclRef)` or `select_global_object(GlobalId)`.
-- A valid `LinkNameId` miss for a covered known symbol must not reopen raw
-  string lookup silently in later backend/lowering paths.
+- `LirModule::record_extern_decl` already dedups by `LinkNameId`, and the LIR
+  printer resolves extern declaration spellings from `LinkNameId`; no scoped
+  `ir.hpp` change was needed for this packet.
+- A valid `LinkNameId` miss for a covered symbol must not reopen raw string
+  lookup silently in Step 4 backend/lowering paths.
 
 ## Proof
 

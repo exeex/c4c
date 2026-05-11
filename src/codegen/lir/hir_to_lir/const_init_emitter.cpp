@@ -622,7 +622,12 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                                               std::string_view name) -> std::optional<std::string> {
     const Function* fn =
         (id != kInvalidLinkName) ? mod_.find_function(id) : mod_.find_function_by_name_legacy(name);
-    if (!fn) return std::nullopt;
+    if (!fn) {
+      if (id == kInvalidLinkName) return std::nullopt;
+      const std::string_view spelling = mod_.link_names.spelling(id);
+      if (spelling.empty()) return std::nullopt;
+      return std::string(spelling);
+    }
     return emitted_link_name(mod_, fn->link_name_id, fn->name);
   };
   const auto resolve_function_link_name = [&](LinkNameId id,
