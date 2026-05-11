@@ -8,152 +8,210 @@ Current Step Title: Record Audit Artifact and Follow-Up Ideas
 
 ## Just Finished
 
-Step 4 - Classify Compatibility Bridges and Retirement Candidates is complete.
-No implementation, test, plan, source-idea, review, or closed-idea files were
-edited. The focused audit classified retained rendered-string bridges and
-retirement candidates from parser/sema support, HIR declaration/record indexes,
-template/specialization mirrors, final-output scan boundaries, and LIR/BIR/
-prealloc bridge candidates carried forward from Step 2.
+Step 5 - Record Audit Artifact and Follow-Up Ideas is complete. The Step 1-4
+audit packets were consolidated into this reviewer-readable artifact in
+canonical `todo.md`. No implementation, test, `plan.md`, source idea,
+`ideas/closed/`, or `review/` files were edited.
 
-Compatibility bridge inventory:
+Evidence source commits/packets:
 
-| Owner/domain | Bridge / files | Caller class | Exact compatibility boundary | Can complete structured miss reach it? | Retirement condition | Feed idea 168? |
-| --- | --- | --- | --- | --- | --- | --- |
-| Parser record/type support | `src/frontend/parser/parser_support.hpp`, `src/frontend/parser/impl/support.cpp`: `resolve_record_type_spec`, `eval_const_int` record-layout tag maps | Parser-local record layout probes, HIR proof paths, tests | Direct `record_def` and structured record metadata are preferred; rendered `compatibility_tag_map` is retained for callers without `record_def` or owner keys. | No for structured record carriers: direct `record_def`/metadata paths fail closed before rendered recovery. Yes only for no-metadata compatibility callers. | All parser/HIR callers carry `record_def`, owner key, or typed layout carrier into the helper. | Yes: production parser/HIR compatibility bridge, plus tests proving closed misses. |
-| Parser typedef/type equality support | `parser_support.hpp`, `support.cpp`: `resolve_typedef_chain` and `types_compatible_p` `TextId` vs rendered overloads | Parser-owned builtin type compatibility, HIR/template proof callers, tests | `TextId` overloads are authoritative; rendered `std::string` typedef overloads are explicitly legacy/HIR proof bridges. | No for `TextId` callers: header states structured typedef miss must not recover through rendered fallback. Rendered overload remains reachable only when caller chooses compatibility map. | Legacy/HIR proof paths pass typedef `TextId`s or typed HIR bindings. | Yes: production compatibility overloads should be narrowed/retired separately from parser diagnostics. |
-| Sema static integer enum lookup | `src/frontend/sema/type_utils.hpp`, `type_utils.cpp`: `StaticEvalIntEnumLookupInput::rendered_enum_consts`, `static_eval_int` | Static-eval enum constants from parser/HIR scalar evaluation | Lookup tries structured key, then `TextId`, then rendered map only when those carriers are absent; rendered map is global and has no local/block enum lifetime. | No: a structured-key or text miss returns `Miss` and does not continue into rendered lookup. | All static-eval enum callers provide scoped structured/text carriers where scope matters; remaining global-only wrapper is deleted or test-only. | Yes, if production callers still pass only rendered enum maps; otherwise regression-guard lane only. |
-| Sema canonical/template argument mirrors | `src/frontend/sema/canonical_symbol.cpp`: `fallback_name_bindings`, `canonical_leaf_display_spelling`, `format_canonical_type`, ABI mangling | Sema canonical symbol builder and ABI text renderer | Owner/index/text metadata is authority for template params; fallback name bindings and leaf display spellings cover incomplete metadata and display/ABI text. | No for complete template metadata; fallback is keyed by display spelling only when structured binding lookup is unavailable. | Canonical template args always carry owner/index/text metadata; ABI renderer remains output-only. | Partial: only `fallback_name_bindings` is a bridge candidate; display/ABI text is not. |
-| Sema/consteval template binding mirrors | `src/frontend/sema/consteval.cpp`: `lookup_type_binding_by_text`, `lookup_type_binding_by_key`, `*_bindings_by_text`, `*_binding_keys_by_name`, `bind_consteval_call_env` | Consteval call-env binding/substitution | Rendered parameter spelling selects a text/key mirror; authority lives in `TextId` or structured binding maps. Invalid text/key maps return `Miss`. | No: present mirrors with invalid/missing text/key return `Miss`, and complete metadata does not recover through rendered binding names. | Typedef/template TypeSpecs carry binding text/key metadata directly through consteval, so rendered-name mirrors are unnecessary. | Yes: production bridge, but likely grouped with template-binding cleanup rather than route-local idea 169. |
-| HIR module function/global declaration indexes | `src/frontend/hir/hir_ir.hpp`: `fn_index`, `global_index`, `find_*_by_name_legacy`, `classify_*_decl_lookup`, `resolve_*_decl` | HIR expression resolution, calls/operators/range-for methods, inspect printer | `LinkNameId`, `ConcreteGlobalId`, and structured `ModuleDeclLookupKey` win; rendered `fn_index`/`global_index` is the legacy fallback. | Mostly no: when a structured key exists, same declaration text is known, and rendered compatibility is not explicitly allowed, lookup returns null. Yes for self-consistent rendered names and rendered qualified import compatibility. | All module decl refs carry `LinkNameId`, concrete id, or complete qualifier/text metadata; import/raw rendered qualified compatibility is isolated or deleted. | Yes: central HIR rendered-registry bridge-retirement candidate. |
-| HIR record owner/definition indexes | `hir_ir.hpp`: `struct_defs`, `struct_def_owner_index`; `src/frontend/hir/hir_types.cpp`: `find_base_struct_def_for_layout`, `find_struct_def_by_layout_compatibility_tag`, `lookup_record_layout` | HIR layout, member/method lookup, consteval record layout, codegen/dumps | `HirRecordOwnerKey` and owner index are structured authority; `struct_defs` by rendered tag is retained for codegen/dumps and no-owner-index handoffs. | No where owner index exists: consteval layout returns null after owner-index miss; fallback rendered lookup is only for absent owner index or incomplete metadata. | Every layout/member/method path provides complete owner keys and the HIR module always has owner index at these call sites. | Yes: production record/layout bridge; keep dump/codegen ordering separate. |
-| HIR template definition and static-member rendered maps | `src/frontend/hir/impl/lowerer.hpp`, `templates/*`, `compile_time_engine.hpp`: `template_struct_defs_`, `template_defs`, `template_struct_defs_by_owner_`, deferred NTTP lookup maps | Template lowering, deferred instantiation, compile-time engine | Structured owner maps exist beside rendered template/struct maps; rendered maps support legacy template origin names and no-owner metadata. | No for complete owner-key paths that check `template_struct_defs_by_owner_`; yes for legacy origin/name paths and deferred static-member lookup that only carries rendered template names. | Template origins, deferred NTTP references, and static-member lookups always carry owner key plus parameter binding metadata. | Yes: production template bridge, probably same lane as idea 168/structured template retirement. |
-| HIR specialization display keys | `src/frontend/hir/hir_ir.hpp`: `SpecializationKey::canonical`, `SpecializationOwnerIdentity::display_name`, `make_specialization_key`, `canonical_type_str`; `struct_instantiation.cpp` owner identity mirrors | Template specialization identity/display | Structured owner/argument identity is present; `canonical` string and display name remain compatibility/display payloads until all record owners carry full structured specialization identity. | No for structured specialization identity comparisons; yes only where code still indexes or serializes by `canonical`/display key. | Specialization lookup and owner records use structured owner/argument identity end-to-end; canonical string remains dump-only. | Yes for any production lookup keyed by `canonical`; no for metadata/dump output. |
-| Final-output signature/global initializer payloads | `src/codegen/lir/ir.hpp`: `LirFunction::signature_text`, `LirGlobal::init_text`; `src/codegen/lir/lir_printer.cpp`; `src/codegen/lir/verify.cpp`; `src/backend/bir/lir_to_bir/{call_abi,aggregate,global_initializers}.cpp` | LIR printer/verifier, LIR-to-BIR ABI and initializer parsers | `LinkNameId`, structured signature params/type refs, and initializer function ids are authority when available; scans of final LLVM text are producer-boundary compatibility. | Not a structured semantic miss path; scans remain reachable because final LLVM text is still the payload for unstructured producer pieces. | Function headers, ABI params, aggregate types, and initializers are represented structurally through LIR-to-BIR; verifier only parity-checks text mirrors. | Yes: bridge-retirement lane should fence or retire production scans; output printing itself is not a bug. |
-| LIR struct declaration/type mirror verifier | `src/codegen/lir/verify.cpp`: `verify_struct_decl_shadows`, `legacy_type_decl_name`, signature type-ref mirror checks | LIR verifier/parity checks | Structured `LirStructDecl`/`StructNameId` must match legacy `type_decls` and signature text mirrors; mismatch is verifier failure. | Not a recovery path; it detects disagreement rather than falling back. | Legacy `type_decls` shadow is removed after structured struct declarations fully drive rendering. | Maybe: feed idea 168 only if retiring rendered registry mirrors includes verifier shadow removal. |
-| LIR extern/function identity fallback | `src/codegen/lir/ir.hpp`: `extern_decl_name_map`; `src/backend/bir/lir_to_bir.cpp`: `LirFunctionIdentityLookup::fallback_by_name` | Extern declaration dedup and post-lowering call/string rewrite matching | Dedup/matching uses `LinkNameId` first; raw name fallback exists only when the producer has not populated `LinkNameId`. | No if `LinkNameId` is present; yes for raw-only LIR functions/extern decls. | HIR-to-LIR and imported/raw LIR producers populate `LinkNameId` for every link-visible function/extern declaration. | Yes: production backend bridge from Step 2. |
-| BIR link-visible symbol fallback | `src/backend/bir/bir.hpp`, `src/backend/bir/bir_validate.cpp`: `Global/Function/CallInst` names plus `*_link_name_id`, `find_*_by_name`, initializer symbol validation | BIR validator and global/call lowering | Known symbols carry `LinkNameId`; raw names are retained for unresolved compatibility/display and for parity checks that name and id agree. | No when id is present and mismatched: validation fails. Yes when id is invalid by design for runtime/intrinsic/raw compatibility calls. | All user/extern/global symbol references have `LinkNameId`; runtime/intrinsic placeholders are separated into typed builtin/runtime ids or remain explicitly display-only. | Yes for user/extern/global fallback; no for runtime/intrinsic display tokens. |
-| BIR string constants and direct-call string rewrite | `src/backend/bir/lir_to_bir.cpp`: `LoweredStringConstantMetadata`, `bytes_by_name`, string alias collection; `src/backend/bir/bir.hpp`: `StringConstant::name` | LIR-to-BIR generated string-pool lowering and call argument rewrite | String-pool names are generated/private and intentionally not `LinkNameId`; TextId table narrows byte lookup, but addressable BIR values still use generated string names. | Not a source/link structured miss path; generated data labels remain route-local compatibility names. | Introduce typed/generated data-label ids or structured string-constant refs across LIR-to-BIR/prealloc. | No for idea 168 if scoped to rendered source-name bridges; feed idea 169 or generated-data cleanup. |
-| Prepared stack/value/slot bridges from Step 2 | `src/backend/prealloc/prealloc.hpp`, `prealloc.cpp`, `stack_layout/coordinator.cpp`, `alloca_coalescing.cpp`: `ValueNameId`, `SlotNameId`, `find_regalloc_value_by_name`, `find_direct_frame_slot`, symbol fallback resolver | Prealloc storage, regalloc, stack-layout, addressing, alloca coalescing | Prepared ids are authority after interning; helpers still resolve display/raw BIR names or generated slot slice strings at boundaries. Link symbols prefer `LinkNameId`; raw display names are accepted only with invalid ids. | No for link symbols with ids: mismatches fail. Yes for local value/slot/generated names because no complete typed local object id exists across all structures yet. | Prepared storage/regalloc/stack-layout APIs pass typed `ValueNameId`, `SlotNameId`, object ids, and link ids end-to-end; generated slot slices become typed offset records. | No for idea 168 except link-symbol fallback; main work feeds idea 169. |
-| Diagnostics, debug, parity, printers, dumps | Parser debug/render helpers, HIR `CompileTimeInfo::diagnostics`, parity mismatch vectors, HIR/LIR/BIR printers | Diagnostics, debug inspection, final output | Strings describe decisions or render final artifacts; they should not be parsed back into lookup authority. | Not applicable unless a future caller feeds diagnostic/printer text back into semantic lookup. | Keep output-only; add guard only if future audit finds feedback into authority. | No. |
+| Commit | Packet evidence used |
+| --- | --- |
+| `3fd483734` | Step 1 audit method, classification legend, search families, false-positive rules, and first candidate inventory. |
+| `b64711bbc` | Step 2 frontend parser/sema/HIR covered-domain classification and frontend closed-miss proof. |
+| `3f4f6643e` | Step 2 LIR/HIR-to-LIR `LinkNameId` and `StructNameId` bridge classification. |
+| `674a385a8` | Step 2 backend/BIR/prepared link-visible identity bridge classification. |
+| `e46c4a2e9` | Step 3 backend route-local/generated value, label, slot, string-pool, and prealloc-name classification. |
+| `7a2d2b220` | Step 3 frontend/midend route-local, generated, display, and bridge classification. |
+| `206043d74` | Step 4 retained compatibility bridge inventory and retirement-candidate grouping. |
+| `caab94523` | Supervisor packet handoff advancing the audit to Step 5 consolidation. |
+
+Audit method and classification:
+
+- Broad searches intentionally over-collected `std::string` maps, `find(name)`,
+  `lookup(name)`, `*_by_name`, `*_name_map`, `mangled_name`, `source_name`,
+  `qualified_name`, rendered helpers, and fallback helpers across `src`,
+  `tests`, docs, and top-level build metadata, excluding build outputs,
+  `ideas/closed/`, and `review/`.
+- Classification used the Step 1 legend: `SA` semantic authority, `CB`
+  compatibility bridge, `DO` display/output, `DD` diagnostic/debug, `RL`
+  route-local identity, `GT` generated temporary name, and `FP` false positive.
+- Later packets narrowed the noisy grep inventory by owner/domain and used
+  local source inspection plus targeted compile-database symbol queries where
+  ambiguity remained.
+- The audit rejected grep-count reasoning: strings were only treated as risky
+  when they selected semantic objects, recovered from structured lookup misses,
+  synchronized route-local structures, or parsed final-output text back into
+  production facts.
+
+Covered structured-domain result:
+
+| Domain | Structured authority confirmed | Retained string path classification | Complete structured miss behavior |
+| --- | --- | --- | --- |
+| Parser support/state | `TextId`, `QualifiedNameKey`, direct `record_def`, typed record metadata, parser binding maps. | Rendered typedef, const-int, and record-tag maps are `CB`; parser debug/current-name fields are `DO/DD/CB`. | `TextId`/record metadata paths fail closed; rendered overloads are only reached when callers choose no-metadata compatibility maps. |
+| Sema validate/type-utils | `SemaStructuredNameKey`, scoped keys, `TextId`, structured enum/static-eval carriers. | Legacy rendered globals/functions/enum maps are `CB`; display/type formatting is `DO/DD`. | Structured key/text misses stop rather than reopening rendered lookup. |
+| Sema consteval/canonical symbols | Structured template binding keys, `TextId`, owner/index metadata, canonical identities. | Rendered template/type/NTTP mirrors and fallback name bindings are `CB`; ABI/canonical display strings are `DO`. | Complete type/key/text metadata misses return `Miss`; fallback names cover incomplete metadata only. |
+| HIR declaration/record lookup | `LinkNameId`, concrete ids, `ModuleDeclLookupKey`, `HirRecordOwnerKey`, owner indexes. | `fn_index`, `global_index`, `struct_defs`, `template_defs`, and rendered specialization keys are `CB/DO` depending on lookup vs dump use. | Covered paths fail closed except explicit compatibility cases: self-consistent rendered names, rendered qualified imports, incomplete owner metadata, or absent owner index. |
+| LIR/HIR-to-LIR | `LinkNameId`, `StructNameId`, typed signature/type-ref mirrors, initializer function ids. | Extern raw-name maps, legacy struct shadows, final `signature_text`/`init_text` scans, and reachability scans are `CB`; emitted LLVM spelling is `DO`. | Known `LinkNameId` or declared `StructNameId` misses do not fall back to rendered names; verifier text lookups reject mirror drift. |
+| BIR/backend link-visible identity | BIR link-name ids, imported name tables, call/global/initializer id fields, prepared link tables. | Raw BIR/LIR names, runtime/intrinsic invalid-id placeholders, initializer text parsing, and raw symbol maps are `CB/DO`. | Present id mismatches fail validation or lowering; raw lookup remains only for invalid-id/raw producer boundaries. |
+
+Route-local and generated families:
+
+| Family | Classification | Follow-up lane |
+| --- | --- | --- |
+| LIR SSA values and block labels | `RL/GT`; function-local names generated by `fresh_tmp`/`fresh_lbl`, rendered to LLVM and consumed before BIR ids are assigned. | idea 169. |
+| LIR/BIR generated string-pool and private data labels | `GT/CB`; generated addressable data labels are intentionally not `LinkNameId`. | idea 169 or generated-data cleanup inside that lane. |
+| BIR values, params, block labels, local slots, and memory-address local bases | `RL/CB`; local validation and lowering still synchronize structures by raw spelling when ids are unavailable. | idea 169. |
+| LIR-to-BIR route-local maps | `RL`; compare, aggregate alias, and block lookup maps key by local SSA/block spellings before typed local ids are complete. | idea 169. |
+| Prepared/prealloc value, block, slot, stack, phi, and materialized names | `RL/GT/CB`; `ValueNameId`, `BlockLabelId`, and `SlotNameId` are good local ids, but raw fallback maps and generated name strings still coordinate passes. | idea 169. |
+| Sema consteval interpreter locals | `RL/CB`; `by_text`/`by_key` are authority, while `by_name` is no-metadata interpreter-local compatibility. | idea 169. |
+| HIR `FunctionCtx` locals, params, static locals, labels, hidden locals, and generated `.LBB` display labels | `RL/GT/CB`; ids/text maps carry authority where available, rendered maps fence compatibility or output. | idea 169 for raw local/label/generated-name cleanup; output labels remain display. |
+| Register names and ABI storage strings | `DO/RL`; target storage and final allocation/debug payloads, not source/link identity. | No idea 169 action except keeping them separate from value identity cleanup. |
+
+Retained compatibility bridge summary:
+
+| Owner/lane | Bridges retained | Boundary | Recommendation |
+| --- | --- | --- | --- |
+| Parser support | `resolve_record_type_spec`, `eval_const_int`, `resolve_typedef_chain`, `types_compatible_p` rendered overloads. | No `record_def`, owner key, `TextId`, or typed HIR binding. | Feed idea 168 plus regression guards for closed structured misses. |
+| Sema/type-utils/consteval | Rendered enum consts, template/type/NTTP binding mirrors, fallback canonical template names. | No scoped carrier, incomplete binding metadata, or display/ABI generation. | Feed idea 168 for production bridges; guard enum/template complete-miss behavior. |
+| HIR module/record/template/specialization | Rendered decl indexes, `struct_defs`, template maps, specialization canonical/display keys. | Explicit rendered compatibility, imports, incomplete owner metadata, no owner index, or dump/display output. | Feed idea 168; keep dump/diagnostic output out of bridge-retirement scope. |
+| LIR final-output and struct mirrors | `signature_text`, `init_text`, `type_decls`, legacy signature/type parsing, reachability scans. | Producer-boundary final LLVM text or parity verifier checks, not ordinary lookup fallback. | Feed idea 168 for production scans and mirror retirement; retain printer output as output. |
+| LIR/BIR link-symbol fallback | `extern_decl_name_map`, raw function/global symbol maps, invalid-id runtime/intrinsic placeholders. | Missing `LinkNameId`, raw-only imports, or explicit runtime/intrinsic display tokens. | Feed idea 168 for user/extern/global fallback; separate builtin/runtime display tokens if needed. |
+| Route-local/generated backend and frontend bridges | LIR/BIR/prealloc local names, generated string constants, HIR locals/labels, consteval `by_name`. | Local function/module/pass namespace before typed local ids are complete. | Feed idea 169, not idea 168. |
+
+False positives and retained non-action strings:
+
+- Diagnostics, debug text, parity mismatch records, AST/HIR/LIR/BIR printers,
+  dumps, final assembly/LLVM text, ABI decoration, and canonical display text
+  are not bugs unless a caller feeds them back into production lookup.
+- Tests that intentionally create stale rendered names or id/name drift are
+  regression witnesses, not evidence to weaken expectations.
+- Preprocessor/include maps, docs, `.cpp.md` notes, build metadata, and
+  variable names matching `name` patterns were classified as `FP` unless they
+  crossed into parser/sema/HIR/LIR/BIR/backend identity selection.
+- Register names and target ABI storage strings are allocation/output facts,
+  not source or link-visible semantic authority.
+
+Semantic-authority leftovers:
+
+- No uncovered production string family needs a new `ideas/open/` initiative
+  from this consolidation. The audit found retained compatibility bridges and
+  route-local/generated identity work, not a distinct unowned semantic-authority
+  string path.
+- Remaining production bridge work fits idea 168; route-local/generated
+  identity work fits idea 169; closed-miss proof hardening fits the regression
+  guard lane.
+- No tiny behavior-sensitive bug was discovered during consolidation, so no
+  implementation or test edit was made.
+
+Follow-up recommendations by owner and lane:
+
+| Owner | idea 168 bridge-retirement lane | idea 169 route-local/generated lane | Regression guard lane |
+| --- | --- | --- | --- |
+| Parser | Retire rendered record/typedef/const-int compatibility overloads once callers carry `record_def`, owner keys, `TextId`, or typed HIR bindings. | None. | Add/keep tests proving complete `TextId`/record metadata misses do not recover through rendered maps. |
+| Sema | Narrow rendered enum static-eval and template/NTTP/type binding mirrors; keep ABI/display strings output-only. | Retire consteval interpreter local `by_name` where `by_text`/`by_key` metadata is complete. | Guard enum scoped-carrier misses and consteval binding metadata misses. |
+| HIR | Retire/narrow `fn_index`, `global_index`, `struct_defs`, `template_defs`, specialization canonical lookup, and no-owner rendered handoffs. | Move `FunctionCtx` locals/params/static locals, labels, hidden locals, and generated local names toward typed local ids. | Guard module declaration, record owner, template binding, and specialization complete-miss behavior. |
+| LIR/HIR-to-LIR | Retire `extern_decl_name_map`, final-output scans, discardable reachability by rendered spelling, legacy struct shadows, and raw aggregate/type mirror bridges after typed carriers cover producers. | Replace LIR SSA/block/generated string-pool coordination by typed local/generated ids where later stages synchronize maps. | Guard `LinkNameId` and `StructNameId` parity/mismatch failure. |
+| BIR/backend/prealloc | Retire user/extern/global raw symbol fallback and initializer raw symbol parsing when ids are always carried; keep runtime/intrinsic display tokens separate. | Reduce raw BIR value/block/slot/string-pool and prepared value/block/slot/generated-name synchronization around `ValueNameId`, `BlockLabelId`, and `SlotNameId`. | Guard BIR validation id/name mismatch, invalid-id compatibility boundaries, and prepared link-name drift rejection. |
+
+Lifecycle confirmations:
+
+- New `ideas/open/` initiative needed: no.
+- Source idea intent changed: no; the audit findings fit the source idea's
+  requested inventory, retained-bridge list, and follow-up recommendation
+  output.
+- `plan.md` remains correct: yes. Step 5 was completed by recording the audit
+  artifact in `todo.md`; Step 6 remains the correct final proof and closure
+  readiness step.
 
 ## Suggested Next
 
-Step 5 - Record Audit Artifact and Follow-Up Ideas is ready to execute.
-Concrete consolidation packet:
+Proceed to Step 6 - Final Proof and Closure Readiness.
 
-1. Consolidate the Step 1-4 classifications into a reviewer-readable final
-   audit artifact in `todo.md`: audit method, covered structured domains,
-   route-local/generated families, retained compatibility bridges, false
-   positives, and any semantic-authority leftovers.
-2. Keep the Step 4 bridge table as the compatibility-bridge source of truth,
-   but compress duplicate evidence where the same owner/domain appears in
-   earlier steps.
-3. Convert remaining work into follow-up recommendations instead of starting
-   implementation. Preserve these primary lanes:
+Recommended Step 6 packet:
 
-   - idea 168: production rendered-name compatibility bridge retirement for
-     parser support overloads, HIR module decl/record indexes, sema/consteval
-     template mirrors, HIR template/specialization rendered maps, LIR
-     final-output scans, and BIR link-symbol fallback.
-   - idea 169: route-local/generated identity cleanup for LIR/BIR/prealloc
-     local values, labels, slots, generated string constants, HIR locals/
-     labels, and consteval interpreter local `by_name`.
-   - regression guard lane: tests that prove complete structured misses fail
-     closed for parser typedef/record helpers, sema enum static-eval, HIR
-     module declaration lookup, record owner lookup, and BIR/LIR link-name
-     parity.
-
-4. State explicitly whether any distinct new `ideas/open/` initiative is
-   needed. Current Step 4 evidence suggests no new source idea is required
-   beyond ideas 168, 169, and the regression-guard lane unless consolidation
-   finds an uncovered production semantic-authority string.
-5. Confirm no source-idea intent changed during the audit and that `plan.md`
-   remains the correct runbook.
-
-Acceptance for Step 5:
-
-- `todo.md` contains one consolidated audit artifact rather than only
-  per-packet fragments.
-- Follow-up recommendations are grouped by owner, existing idea lane, and
-  reason they are separate from the audit.
-- Any leftover semantic-authority string is named with owner, evidence, and
-  whether it requires a new idea or fits idea 168/169/regression guards.
-- No implementation, tests, `plan.md`, or source idea edits are made unless
-  consolidation proves the runbook or durable source intent is wrong.
+1. Re-run the audit replay searches used by Steps 1-5, with emphasis on
+   bridge-boundary patterns and route-local generated-name patterns.
+2. No implementation tests are required unless the replay discovers a
+   behavior-sensitive issue; otherwise document that the slice is audit-only.
+3. Verify ideas 168 and 169 plus the regression-guard lane still cover all
+   follow-up recommendations.
+4. Record closure readiness, retained risks, and exact proof commands in
+   `todo.md`.
 
 ## Watchouts
 
-- A complete structured miss is fenced in the audited core paths, but exceptions
-  are intentional compatibility cases: HIR self-consistent rendered names,
-  rendered qualified imports, raw-only LIR functions/externs, invalid-id BIR
-  runtime/intrinsic placeholders, and absent-owner-index record layout handoffs.
+- Do not create a new source idea for the current findings; consolidation found
+  no distinct unowned initiative beyond idea 168, idea 169, and regression
+  guards.
+- Keep idea 168 and idea 169 separate. Bridge retirement is about rendered
+  source/link compatibility boundaries; route-local cleanup is about local
+  SSA/label/slot/generated-name ids.
 - Keep final-output text separate from semantic lookup: `signature_text`,
   `init_text`, ABI/mangled strings, printer output, diagnostics, and parity
-  labels are only bridge candidates when production code scans them to recover
+  labels are bridge candidates only when production code scans them to recover
   semantic facts.
-- Do not merge idea 168 and 169. Bridge retirement is about rendered source/
-  link compatibility boundaries; route-local cleanup is about local SSA/label/
-  slot/generated-name ids.
+- Complete structured misses are fenced in the audited core paths, with known
+  compatibility exceptions: HIR self-consistent rendered names, rendered
+  qualified imports, raw-only LIR functions/externs, invalid-id BIR runtime/
+  intrinsic placeholders, and absent-owner-index record layout handoffs.
 - The untracked `review/166_compile_time_registry_fencing_route_review.md`
   pre-existed this packet and was not touched.
 
 ## Proof
 
-Focused audit replay only. No tests were required because this packet made no
-implementation or test changes and found no tiny behavior-sensitive issue.
-`test_after.log` was not updated.
+Audit consolidation only. No tests were required because this packet edited only
+`todo.md`, made no implementation or test changes, and discovered no
+behavior-sensitive issue. `test_after.log` was not updated.
 
 Commands run:
 
 `sed -n '1,240p' /workspaces/c4c/.codex/skills/c4c-executor/SKILL.md`
 
-`sed -n '1,220p' /workspaces/c4c/.codex/skills/c4c-clang-tools/SKILL.md`
-
 `git status --short`
+
+`sed -n '1,240p' AGENTS.md`
 
 `sed -n '1,260p' todo.md`
 
-`sed -n '1,220p' plan.md`
+`sed -n '1,260p' plan.md`
 
-`which c4c-clang-tool c4c-clang-tool-ccdb`
+`sed -n '1,220p' ideas/open/167_whole_codebase_string_authority_final_audit.md`
 
-`rg -n --glob '!build*/**' --glob '!ideas/closed/**' --glob '!review/**' -e 'legacy|compat|compatibility|rendered|fallback|no-metadata|invalid-id|structured miss|fail closed|find_.*_by_name|classify_.*lookup|struct_defs|fn_index|global_index|template_defs|struct_def_owner_index' src/frontend/parser src/frontend/sema src/frontend/hir src/codegen/lir src/backend/bir src/backend/prealloc`
+`git log --oneline --decorate -n 20 -- plan.md todo.md src tests include ideas/open/167_whole_codebase_string_authority_final_audit.md`
 
-`rg -n --glob '!build*/**' -e 'signature_text|init_text|mangled_name|canonical|display_name|SpecializationKey|format_type_for_specialization|TypeBindings|NttpBindings|NttpTextBindings|rendered_enum_consts|by_name|by_text|by_key|find_.*legacy|classify_.*decl_lookup' src/frontend src/codegen/lir src/backend/bir src/backend/prealloc`
+`git show --stat --oneline 3fd483734 -- todo.md`
 
-`rg -n --glob '!build*/**' -e 'resolve_record_type_spec\\(' -e 'eval_const_int\\(' -e 'resolve_typedef_chain\\(' -e 'types_compatible_p\\(' src tests`
+`git show 3fd483734:todo.md | sed -n '1,240p'`
 
-`rg -n --glob '!build*/**' -e 'find_.*_by_name_legacy|classify_.*decl_lookup|fn_index|global_index|struct_defs|template_defs|struct_def_owner_index' src/frontend/hir`
+`git show --stat --oneline b64711bbc -- todo.md`
 
-`rg -n --glob '!build*/**' -e 'fallback_name_bindings|TemplateArgBindings|canonical_leaf_display_spelling|format_canonical_type|mangled|display' src/frontend/sema/canonical_symbol.* src/frontend/sema/canonical_symbol.cpp`
+`git show b64711bbc:todo.md | sed -n '1,260p'`
 
-Targeted `nl -ba ... | sed -n ...` inspections were used for the audited
-sections of `parser_support.hpp`, `parser/impl/support.cpp`, `type_utils.hpp`,
-`type_utils.cpp`, `hir_ir.hpp`, `hir_types.cpp`, `sema/consteval.cpp`,
-`codegen/lir/ir.hpp`, `lir_printer.cpp`, `lir/verify.cpp`,
-`backend/bir/lir_to_bir.cpp`, `backend/bir/bir.hpp`,
-`backend/bir/bir_validate.cpp`, `backend/prealloc/prealloc.hpp`,
-`backend/prealloc/prealloc.cpp`, `stack_layout/coordinator.cpp`, and
-`stack_layout/alloca_coalescing.cpp`.
+`git show --stat --oneline 3f4f6643e -- todo.md`
 
-AST-backed inspections run:
+`git show 3f4f6643e:todo.md | sed -n '1,260p'`
 
-`c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/frontend/parser/impl/support.cpp resolve_record_type_spec build/compile_commands.json`
+`git show --stat --oneline 674a385a8 -- todo.md`
 
-`c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/frontend/parser/impl/support.cpp types_compatible_p build/compile_commands.json`
+`git show 674a385a8:todo.md | sed -n '1,260p'`
 
-Both caller queries returned `target not called in this translation unit`, so
-they were not used as positive proof; direct `rg` caller inspection was used
-instead.
+`git show --stat --oneline e46c4a2e9 -- todo.md`
 
-`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/frontend/hir/hir_types.cpp build/compile_commands.json`
+`git show e46c4a2e9:todo.md | sed -n '1,260p'`
 
-`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/frontend/sema/consteval.cpp build/compile_commands.json`
+`git show --stat --oneline 7a2d2b220 -- todo.md`
 
-`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/bir/lir_to_bir.cpp build/compile_commands.json`
+`git show 7a2d2b220:todo.md | sed -n '1,260p'`
 
-`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/prealloc/stack_layout/coordinator.cpp build/compile_commands.json`
+`git show --stat --oneline 206043d74 -- todo.md`
 
-The focused searches and successful compile-database symbol inspections
-completed. No root-level proof log was created because no tests were delegated
-or required for this docs/audit-only packet.
+`git show 206043d74:todo.md | sed -n '1,260p'`
+
+`nl -ba todo.md | sed -n '1,260p'`
+
+`git diff -- todo.md`
+
+`git diff --check -- todo.md`
+
+`git status --short`
