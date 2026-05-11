@@ -194,6 +194,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
         tmp.span = make_span(n);
         if (ctx) {
           ctx->locals[tmp.name] = tmp.id;
+          ctx->rendered_compat_local_names.insert(tmp.name);
           ctx->local_types.insert(tmp.id, tmp_ts);
           append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
           DeclRef tmp_ref{};
@@ -578,16 +579,36 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
   r.ns_qual = make_ns_qual(n, module_ ? module_->link_name_texts.get() : nullptr);
   bool has_local_binding = false;
   if (ctx) {
-    auto lit = ctx->locals.find(r.name);
-    if (lit != ctx->locals.end()) {
-      r.local = lit->second;
-      has_local_binding = true;
+    if (n->unqualified_text_id != kInvalidText) {
+      auto lit = ctx->local_ids_by_text_id.find(n->unqualified_text_id);
+      if (lit != ctx->local_ids_by_text_id.end()) {
+        r.local = lit->second;
+        has_local_binding = true;
+      } else if (ctx->rendered_compat_local_text_ids.find(
+                     n->unqualified_text_id) !=
+                     ctx->rendered_compat_local_text_ids.end() ||
+                 ctx->rendered_compat_local_names.find(r.name) !=
+                     ctx->rendered_compat_local_names.end()) {
+        auto rendered_lit = ctx->locals.find(r.name);
+        if (rendered_lit != ctx->locals.end()) {
+          r.local = rendered_lit->second;
+          has_local_binding = true;
+        }
+      }
+    } else {
+      auto lit = ctx->locals.find(r.name);
+      if (lit != ctx->locals.end()) {
+        r.local = lit->second;
+        has_local_binding = true;
+      }
     }
-    auto sit = ctx->static_globals.find(r.name);
-    if (sit != ctx->static_globals.end()) {
-      r.global = sit->second;
-      if (const GlobalVar* gv = module_->find_global(*r.global)) r.name = gv->name;
-      has_local_binding = true;
+    if (!has_local_binding) {
+      auto sit = ctx->static_globals.find(r.name);
+      if (sit != ctx->static_globals.end()) {
+        r.global = sit->second;
+        if (const GlobalVar* gv = module_->find_global(*r.global)) r.name = gv->name;
+        has_local_binding = true;
+      }
     }
     if (!has_local_binding) {
       if (n->unqualified_text_id != kInvalidText) {
@@ -918,6 +939,7 @@ ExprId Lowerer::lower_ternary_expr(FunctionCtx* ctx, const Node* n) {
     tmp.init = append_expr(n, IntLiteral{0, false}, zero_ts);
     const LocalId tmp_lid = tmp.id;
     ctx->locals[tmp.name] = tmp.id;
+    ctx->rendered_compat_local_names.insert(tmp.name);
     ctx->local_types.insert(tmp.id, result_ts);
     append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
     const Node* cond_n = n->cond ? n->cond : n->left;

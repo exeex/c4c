@@ -176,6 +176,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
       tmp.storage = StorageClass::Auto;
       tmp.span = make_span(n);
       ctx->locals[tmp.name] = tmp.id;
+      ctx->rendered_compat_local_names.insert(tmp.name);
       ctx->local_types.insert(tmp.id, tmp_ts);
       append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
 
@@ -270,6 +271,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
   tmp.storage = StorageClass::Auto;
   tmp.span = make_span(n);
   ctx->locals[tmp.name] = tmp.id;
+  ctx->rendered_compat_local_names.insert(tmp.name);
   ctx->local_types.insert(tmp.id, tmp_ts);
   append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
 
@@ -558,6 +560,7 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
   tmp.init = append_expr(list_node, IntLiteral{0, false}, int_ts);
   const LocalId tmp_lid = tmp.id;
   ctx->locals[tmp_name] = tmp.id;
+  ctx->rendered_compat_local_names.insert(tmp_name);
   ctx->local_types.insert(tmp.id, list_ts);
   append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(list_node)});
 

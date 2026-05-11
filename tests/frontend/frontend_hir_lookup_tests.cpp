@@ -3447,6 +3447,148 @@ void test_param_lookup_marked_generated_text_id_uses_rendered_fallback() {
               "marked generated parameter type inference should keep rendered compatibility fallback despite a valid TextId");
 }
 
+void test_local_lookup_prefers_local_text_id_over_rendered_name() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId value_text_id = module.link_name_texts->intern("value");
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  c4c::TypeSpec long_ts = int_ts;
+  long_ts.base = c4c::TB_LONG;
+
+  const c4c::hir::LocalId rendered_local{3};
+  const c4c::hir::LocalId source_local{4};
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.locals["value"] = rendered_local;
+  ctx.local_ids_by_text_id[value_text_id] = source_local;
+  ctx.local_types.insert(rendered_local, int_ts);
+  ctx.local_types.insert(source_local, long_ts);
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id = value_text_id;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && decl_ref->local &&
+                  decl_ref->local->value == source_local.value,
+              "source local value lookup should prefer TextId/LocalId authority over rendered name");
+
+  const c4c::TypeSpec inferred =
+      lowerer.infer_generic_ctrl_type(&ctx, &ref);
+  expect_true(inferred.base == c4c::TB_LONG,
+              "generic source local type inference should prefer TextId/LocalId authority over rendered name");
+}
+
+void test_local_lookup_text_miss_rejects_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  c4c::TypeSpec fallback_ts = int_ts;
+  fallback_ts.base = c4c::TB_CHAR;
+
+  const c4c::hir::LocalId rendered_local{5};
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.locals["value"] = rendered_local;
+  ctx.local_types.insert(rendered_local, int_ts);
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id =
+      module.link_name_texts->intern("different_source_local");
+  ref.type = fallback_ts;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && !decl_ref->local,
+              "complete source local TextId miss should not reopen rendered value lookup fallback");
+
+  const c4c::TypeSpec inferred =
+      lowerer.infer_generic_ctrl_type(&ctx, &ref);
+  expect_true(inferred.base == c4c::TB_CHAR,
+              "complete source local TextId miss should not reopen rendered type lookup fallback");
+}
+
+void test_local_lookup_no_metadata_and_marked_generated_use_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+  const c4c::hir::LocalId rendered_local{6};
+
+  c4c::hir::Lowerer::FunctionCtx no_metadata_ctx;
+  no_metadata_ctx.locals["value"] = rendered_local;
+  no_metadata_ctx.local_types.insert(rendered_local, int_ts);
+
+  c4c::Node no_metadata_ref{};
+  no_metadata_ref.kind = c4c::NK_VAR;
+  no_metadata_ref.name = "value";
+  no_metadata_ref.unqualified_name = "value";
+  no_metadata_ref.unqualified_text_id = c4c::kInvalidText;
+
+  const c4c::hir::ExprId no_metadata_expr_id =
+      lowerer.lower_var_expr(&no_metadata_ctx, &no_metadata_ref);
+  const c4c::hir::Expr* no_metadata_expr =
+      module.find_expr(no_metadata_expr_id);
+  const auto* no_metadata_decl_ref =
+      no_metadata_expr
+          ? std::get_if<c4c::hir::DeclRef>(&no_metadata_expr->payload)
+          : nullptr;
+  expect_true(no_metadata_decl_ref && no_metadata_decl_ref->local &&
+                  no_metadata_decl_ref->local->value == rendered_local.value,
+              "no-metadata local value lookup should keep rendered compatibility fallback");
+  expect_true(lowerer.infer_generic_ctrl_type(&no_metadata_ctx,
+                                              &no_metadata_ref).base == c4c::TB_INT,
+              "no-metadata local type inference should keep rendered compatibility fallback");
+
+  c4c::hir::Lowerer::FunctionCtx generated_ctx;
+  generated_ctx.locals["__generated_local"] = rendered_local;
+  generated_ctx.rendered_compat_local_names.insert("__generated_local");
+  generated_ctx.local_types.insert(rendered_local, int_ts);
+
+  c4c::Node generated_ref{};
+  generated_ref.kind = c4c::NK_VAR;
+  generated_ref.name = "__generated_local";
+  generated_ref.unqualified_name = "__generated_local";
+  generated_ref.unqualified_text_id =
+      module.link_name_texts->intern("generated_source_carrier");
+
+  const c4c::hir::ExprId generated_expr_id =
+      lowerer.lower_var_expr(&generated_ctx, &generated_ref);
+  const c4c::hir::Expr* generated_expr = module.find_expr(generated_expr_id);
+  const auto* generated_decl_ref =
+      generated_expr
+          ? std::get_if<c4c::hir::DeclRef>(&generated_expr->payload)
+          : nullptr;
+  expect_true(generated_decl_ref && generated_decl_ref->local &&
+                  generated_decl_ref->local->value == rendered_local.value,
+              "marked generated local value lookup should keep rendered compatibility fallback despite a valid TextId");
+  expect_true(lowerer.infer_generic_ctrl_type(&generated_ctx,
+                                              &generated_ref).base == c4c::TB_INT,
+              "marked generated local type inference should keep rendered compatibility fallback despite a valid TextId");
+}
+
 c4c::hir::FnPtrSig make_returning_fn_ptr_sig(c4c::TypeBase return_base) {
   c4c::hir::FnPtrSig sig{};
   sig.return_type.spec.base = return_base;
@@ -4075,6 +4217,128 @@ void test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered
   expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Global,
                            "stale_extern_global", 51, 50),
               "local extern structured global lookup should record legacy rendered parity mismatch");
+}
+
+void test_local_extern_clears_stale_source_local_identity() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId bridge_text = texts.intern("bridge_extern");
+  c4c::hir::NamespaceQualifier local_ns;
+  local_ns.context_id = 0;
+  add_global(module, c4c::hir::GlobalId{90}, "bridge_extern",
+             bridge_text, c4c::kInvalidLinkName, local_ns);
+
+  c4c::TypeSpec stale_ts{};
+  stale_ts.base = c4c::TB_LONG;
+  stale_ts.array_size = -1;
+  stale_ts.inner_rank = -1;
+
+  const c4c::hir::LocalId stale_local{12};
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.locals["bridge_extern"] = stale_local;
+  ctx.local_ids_by_text_id[bridge_text] = stale_local;
+  ctx.local_types.insert(stale_local, stale_ts);
+  ctx.local_fn_ptr_sigs_by_id.insert(
+      stale_local, make_returning_fn_ptr_sig(c4c::TB_LONG));
+  ctx.local_fn_ptr_sigs["bridge_extern"] =
+      make_returning_fn_ptr_sig(c4c::TB_LONG);
+
+  c4c::Node decl{};
+  decl.kind = c4c::NK_DECL;
+  decl.name = "bridge_extern";
+  decl.unqualified_name = "bridge_extern";
+  decl.unqualified_text_id = bridge_text;
+  decl.is_extern = true;
+
+  lowerer.lower_local_decl_stmt(ctx, &decl);
+  expect_true(ctx.local_ids_by_text_id.find(bridge_text) ==
+                  ctx.local_ids_by_text_id.end(),
+              "local extern bridge should clear stale source local identity");
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "bridge_extern";
+  ref.unqualified_name = "bridge_extern";
+  ref.unqualified_text_id = bridge_text;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && !decl_ref->local && decl_ref->global &&
+                  decl_ref->global->value == 90,
+              "local extern bridge should beat stale source local lookup");
+
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &ref);
+  expect_true(!ret.has_value(),
+              "local extern bridge should fence stale source local function-pointer signature lookup");
+}
+
+void test_local_static_clears_stale_source_local_identity() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId bridge_text = texts.intern("bridge_static");
+  c4c::TypeSpec stale_ts{};
+  stale_ts.base = c4c::TB_CHAR;
+  stale_ts.array_size = -1;
+  stale_ts.inner_rank = -1;
+  c4c::TypeSpec static_ts = stale_ts;
+  static_ts.base = c4c::TB_LONG;
+
+  c4c::hir::Function fn;
+  fn.name = "owner";
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.fn = &fn;
+  const c4c::hir::LocalId stale_local{13};
+  ctx.locals["bridge_static"] = stale_local;
+  ctx.local_ids_by_text_id[bridge_text] = stale_local;
+  ctx.local_types.insert(stale_local, stale_ts);
+  ctx.local_fn_ptr_sigs_by_id.insert(
+      stale_local, make_returning_fn_ptr_sig(c4c::TB_CHAR));
+
+  c4c::Node decl{};
+  decl.kind = c4c::NK_DECL;
+  decl.name = "bridge_static";
+  decl.unqualified_name = "bridge_static";
+  decl.unqualified_text_id = bridge_text;
+  decl.is_static = true;
+  decl.type = static_ts;
+
+  lowerer.lower_local_decl_stmt(ctx, &decl);
+  expect_true(ctx.local_ids_by_text_id.find(bridge_text) ==
+                  ctx.local_ids_by_text_id.end(),
+              "local static bridge should clear stale source local identity");
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "bridge_static";
+  ref.unqualified_name = "bridge_static";
+  ref.unqualified_text_id = bridge_text;
+
+  const auto static_it = ctx.static_globals.find("bridge_static");
+  expect_true(static_it != ctx.static_globals.end(),
+              "local static lowering should register the static/global bridge");
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && !decl_ref->local && decl_ref->global &&
+                  decl_ref->global->value == static_it->second.value,
+              "local static bridge should beat stale source local lookup");
+
+  const c4c::TypeSpec inferred =
+      lowerer.infer_generic_ctrl_type(&ctx, &ref);
+  expect_true(inferred.base == c4c::TB_LONG,
+              "local static bridge type should beat stale source local type lookup");
 }
 
 void test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name() {
@@ -5308,6 +5572,9 @@ int main() {
   test_param_lookup_text_miss_rejects_rendered_fallback();
   test_param_lookup_no_metadata_uses_rendered_fallback();
   test_param_lookup_marked_generated_text_id_uses_rendered_fallback();
+  test_local_lookup_prefers_local_text_id_over_rendered_name();
+  test_local_lookup_text_miss_rejects_rendered_fallback();
+  test_local_lookup_no_metadata_and_marked_generated_use_rendered_fallback();
   test_param_fn_ptr_sig_lookup_prefers_param_text_id_over_rendered_name();
   test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback();
   test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback();
@@ -5321,6 +5588,8 @@ int main() {
   test_global_aggregate_init_normalization_prefers_hir_owner_key_over_stale_tag();
   test_implicit_this_field_recovery_prefers_hir_owner_key_over_stale_tag();
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
+  test_local_extern_clears_stale_source_local_identity();
+  test_local_static_clears_stale_source_local_identity();
   test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name();
   test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_name();
   test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag();

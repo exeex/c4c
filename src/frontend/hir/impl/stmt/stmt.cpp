@@ -321,6 +321,10 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
       const bool new_scope = (n->ival != 1);
       const auto saved_locals = ctx.locals;
       const auto saved_local_ids_by_text_id = ctx.local_ids_by_text_id;
+      const auto saved_rendered_compat_local_text_ids =
+          ctx.rendered_compat_local_text_ids;
+      const auto saved_rendered_compat_local_names =
+          ctx.rendered_compat_local_names;
       const auto saved_local_fn_ptr_sigs_by_id = ctx.local_fn_ptr_sigs_by_id;
       const auto saved_local_fn_ptr_sigs = ctx.local_fn_ptr_sigs;
       const auto saved_static_globals = ctx.static_globals;
@@ -337,6 +341,10 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
         ctx.dtor_stack.resize(saved_dtor_depth);
         ctx.locals = saved_locals;
         ctx.local_ids_by_text_id = saved_local_ids_by_text_id;
+        ctx.rendered_compat_local_text_ids =
+            saved_rendered_compat_local_text_ids;
+        ctx.rendered_compat_local_names =
+            saved_rendered_compat_local_names;
         ctx.local_fn_ptr_sigs_by_id = saved_local_fn_ptr_sigs_by_id;
         ctx.local_fn_ptr_sigs = saved_local_fn_ptr_sigs;
         ctx.static_globals = saved_static_globals;
@@ -537,6 +545,10 @@ ExprId Lowerer::lower_stmt_expr_block(FunctionCtx& ctx,
   const bool new_scope = (block->ival != 1);
   const auto saved_locals = ctx.locals;
   const auto saved_local_ids_by_text_id = ctx.local_ids_by_text_id;
+  const auto saved_rendered_compat_local_text_ids =
+      ctx.rendered_compat_local_text_ids;
+  const auto saved_rendered_compat_local_names =
+      ctx.rendered_compat_local_names;
   const auto saved_local_fn_ptr_sigs_by_id = ctx.local_fn_ptr_sigs_by_id;
   const auto saved_local_fn_ptr_sigs = ctx.local_fn_ptr_sigs;
   const auto saved_static_globals = ctx.static_globals;
@@ -562,6 +574,8 @@ ExprId Lowerer::lower_stmt_expr_block(FunctionCtx& ctx,
   if (new_scope) {
     ctx.locals = saved_locals;
     ctx.local_ids_by_text_id = saved_local_ids_by_text_id;
+    ctx.rendered_compat_local_text_ids = saved_rendered_compat_local_text_ids;
+    ctx.rendered_compat_local_names = saved_rendered_compat_local_names;
     ctx.local_fn_ptr_sigs_by_id = saved_local_fn_ptr_sigs_by_id;
     ctx.local_fn_ptr_sigs = saved_local_fn_ptr_sigs;
     ctx.static_globals = saved_static_globals;

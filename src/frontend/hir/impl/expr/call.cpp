@@ -361,6 +361,7 @@ ExprId Lowerer::lower_call_arg(FunctionCtx* ctx,
     tmp.init = arg_val;
     const LocalId tmp_lid = tmp.id;
     ctx->locals[tmp.name] = tmp.id;
+    ctx->rendered_compat_local_names.insert(tmp.name);
     ctx->local_types.insert(tmp.id, val_ts);
     append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(arg_node)});
     DeclRef tmp_ref{};

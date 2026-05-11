@@ -3403,10 +3403,30 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
         if (find_struct_def_for_layout_type(tmp_ts)) return tmp_ts;
       }
       if (ctx) {
-        auto lit = ctx->locals.find(name);
-        if (lit != ctx->locals.end()) {
-          if (ctx->local_types.contains(lit->second)) {
-            return reference_value_ts(ctx->local_types.at(lit->second));
+        if (n->unqualified_text_id != kInvalidText) {
+          auto lit = ctx->local_ids_by_text_id.find(n->unqualified_text_id);
+          if (lit != ctx->local_ids_by_text_id.end()) {
+            if (ctx->local_types.contains(lit->second)) {
+              return reference_value_ts(ctx->local_types.at(lit->second));
+            }
+          } else if (ctx->rendered_compat_local_text_ids.find(
+                         n->unqualified_text_id) !=
+                         ctx->rendered_compat_local_text_ids.end() ||
+                     ctx->rendered_compat_local_names.find(name) !=
+                         ctx->rendered_compat_local_names.end()) {
+            auto rendered_lit = ctx->locals.find(name);
+            if (rendered_lit != ctx->locals.end() &&
+                ctx->local_types.contains(rendered_lit->second)) {
+              return reference_value_ts(
+                  ctx->local_types.at(rendered_lit->second));
+            }
+          }
+        } else {
+          auto lit = ctx->locals.find(name);
+          if (lit != ctx->locals.end()) {
+            if (ctx->local_types.contains(lit->second)) {
+              return reference_value_ts(ctx->local_types.at(lit->second));
+            }
           }
         }
         if (n->unqualified_text_id != kInvalidText) {

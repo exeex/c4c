@@ -49,6 +49,34 @@ std::optional<std::string> rendered_typespec_tag_for_decl_compatibility(
 }  // namespace
 
 void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
+  auto clear_shadowed_local_identity = [&](const char* name) {
+    if (!name || !name[0]) return;
+    std::optional<LocalId> rendered_local;
+    if (auto lit = ctx.locals.find(name); lit != ctx.locals.end()) {
+      rendered_local = lit->second;
+    }
+    ctx.locals.erase(name);
+    ctx.rendered_compat_local_names.erase(name);
+    ctx.local_fn_ptr_sigs.erase(name);
+    if (n && n->unqualified_text_id != kInvalidText) {
+      ctx.rendered_compat_local_text_ids.erase(n->unqualified_text_id);
+    }
+    for (auto it = ctx.local_ids_by_text_id.begin();
+         it != ctx.local_ids_by_text_id.end();) {
+      const bool same_rendered_local =
+          rendered_local.has_value() &&
+          it->second.value == rendered_local->value;
+      const bool same_source_text =
+          n && n->unqualified_text_id != kInvalidText &&
+          it->first == n->unqualified_text_id;
+      if (same_rendered_local || same_source_text) {
+        it = ctx.local_ids_by_text_id.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  };
+
   // Local function prototype (e.g. `int f1(char *);` inside a function body):
   // if the name is already registered as a known function, skip creating a
   // local alloca; later references will resolve directly to the global function.
@@ -79,7 +107,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     global_ref.link_name_id =
         module_ ? module_->link_names.find(global_ref.name) : kInvalidLinkName;
     if (const GlobalVar* global = module_->resolve_global_decl(global_ref)) {
-      ctx.locals.erase(n->name);
+      clear_shadowed_local_identity(n->name);
       ctx.static_globals[n->name] = global->id;
     }
     return;
@@ -87,7 +115,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
 
   if (n->is_static) {
     if (n->name && n->name[0]) {
-      ctx.static_globals[n->name] = lower_static_local_global(ctx, n);
+      const GlobalId static_global = lower_static_local_global(ctx, n);
+      clear_shadowed_local_identity(n->name);
+      ctx.static_globals[n->name] = static_global;
     }
     return;
   }
@@ -452,6 +482,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       tmp.init = init_val;
       const LocalId tmp_lid = tmp.id;
       ctx.locals[tmp.name] = tmp.id;
+      ctx.rendered_compat_local_names.insert(tmp.name);
       ctx.local_types.insert(tmp.id, val_ts);
       append_stmt(ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
       // Take address of temporary
