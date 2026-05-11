@@ -215,8 +215,14 @@ inline std::optional<CompileTimeRegistryKey> make_compile_time_registry_key(
 
 inline bool is_complete_compile_time_registry_key(
     const CompileTimeRegistryKey& key) {
-  return key.unqualified_text_id != kInvalidText &&
-         key.declaration_fallback == nullptr;
+  if (key.namespace_context_id < 0 || key.unqualified_text_id == kInvalidText ||
+      key.declaration_fallback != nullptr) {
+    return false;
+  }
+  for (TextId segment : key.qualifier_segment_text_ids) {
+    if (segment == kInvalidText) return false;
+  }
+  return true;
 }
 
 // ── Structured compile-time value-binding identity types ────────────────────
@@ -1655,9 +1661,26 @@ struct CompileTimeState {
   /// structured misses fail closed; no-metadata calls may use rendered names.
   const Node* find_consteval_def(const Node* declaration,
                                  const std::string& rendered_name = {}) const {
-    return find_structured_node_entry(
-        CompileTimeRegistryKeyKind::ConstevalFunction, declaration,
-        rendered_name, consteval_fn_defs_by_key_, consteval_fn_defs_);
+    if (auto key = make_consteval_function_key(declaration)) {
+      auto structured_it = consteval_fn_defs_by_consteval_key_.find(*key);
+      if (structured_it != consteval_fn_defs_by_consteval_key_.end()) {
+        return structured_it->second;
+      }
+      return nullptr;
+    }
+    if (declaration && declaration->unqualified_text_id != kInvalidText &&
+        !declaration->is_global_qualified &&
+        declaration->n_qualifier_segments == 0) {
+      auto text_it =
+          consteval_fn_defs_by_text_.find(declaration->unqualified_text_id);
+      if (text_it != consteval_fn_defs_by_text_.end()) return text_it->second;
+      if (!consteval_fn_defs_by_text_.empty()) return nullptr;
+    }
+    if (!rendered_name.empty()) {
+      auto rendered_it = consteval_fn_defs_.find(rendered_name);
+      if (rendered_it != consteval_fn_defs_.end()) return rendered_it->second;
+    }
+    return nullptr;
   }
 
   /// Const reference to the internal consteval function definition map.

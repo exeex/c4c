@@ -71,6 +71,7 @@ c4c::Node make_compile_time_state_registry_node(
   node.name = name;
   node.unqualified_name = name;
   node.unqualified_text_id = unqualified_text_id;
+  node.namespace_context_id = 0;
   return node;
 }
 
@@ -208,6 +209,12 @@ void test_hir_compile_time_state_complete_structured_misses_fail_closed() {
                                        "stale_consteval") ==
                   &structured_consteval,
               "consteval lookup should use complete structured identity before rendered names");
+  c4c::Node structured_consteval_ref = make_compile_time_state_registry_node(
+      c4c::NK_VAR, "structured_consteval", texts.intern("structured_consteval"));
+  expect_true(state.find_consteval_def(&structured_consteval_ref,
+                                       "stale_consteval") ==
+                  &structured_consteval,
+              "consteval call-reference lookup should use symbol identity across AST node kinds");
   c4c::Node missing_consteval = make_compile_time_state_registry_node(
       c4c::NK_FUNCTION, "missing_consteval",
       texts.intern("missing_consteval"));
@@ -270,6 +277,24 @@ void test_hir_compile_time_state_complete_structured_misses_fail_closed() {
   const_value = state.find_const_int_binding(nullptr, "stale_const_int");
   expect_true(const_value && *const_value == 33,
               "global const-int lookup should keep rendered compatibility without metadata");
+}
+
+void test_hir_compile_time_state_no_domain_consteval_keeps_rendered_compatibility() {
+  c4c::TextTable texts;
+  c4c::hir::CompileTimeState state;
+
+  c4c::Node def = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "rendered_consteval",
+      texts.intern("rendered_consteval"));
+  def.is_consteval = true;
+  state.register_consteval_def("rendered_consteval", &def);
+
+  c4c::Node call_ref = make_compile_time_state_registry_node(
+      c4c::NK_VAR, "rendered_consteval", texts.intern("rendered_consteval"));
+  call_ref.namespace_context_id = -1;
+
+  expect_true(state.find_consteval_def(&call_ref, "rendered_consteval") == &def,
+              "consteval lookup should keep rendered compatibility when namespace metadata is absent");
 }
 
 c4c::Node* make_hir_ref_overload_record(
@@ -6388,6 +6413,7 @@ int call_helper(int value) { return helper(value); }
 
 int main() {
   test_hir_compile_time_state_complete_structured_misses_fail_closed();
+  test_hir_compile_time_state_no_domain_consteval_keeps_rendered_compatibility();
   test_dense_id_map_tracks_assigned_dense_ids();
   test_optional_dense_id_map_supports_sparse_occupancy();
   test_dense_id_map_supports_local_type_storage();

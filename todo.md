@@ -8,34 +8,32 @@ Current Step Title: Process Remaining Module and Compile-Time Registries
 
 ## Just Finished
 
-Completed plan Step 4 for `CompileTimeState` value-binding registries:
-global enum-constant and global const-int lookups now have structured helper
-entry points that prefer complete value-binding keys and fail closed after
-complete structured misses instead of reopening rendered name maps. Explicit
-no-metadata/rendered compatibility calls still use the rendered maps.
+Completed plan Step 4 regression repair for compile-time consteval lookup:
+`CompileTimeState::find_consteval_def` now uses consteval symbol identity for
+definition/reference lookup, so `NK_VAR` call references match registered
+`NK_FUNCTION` consteval definitions without reopening rendered fallback after
+complete structured misses.
 
-Extended focused frontend HIR coverage proving stale rendered enum/const-int
-maps are not used after complete structured misses while no-metadata calls
-retain compatibility behavior.
+Tightened compile-time registry completeness so TextId-only keys without
+namespace metadata remain explicit compatibility cases, and extended
+`frontend_hir_tests` coverage for consteval call-reference identity plus
+no-domain consteval compatibility.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining module-level compile-time registry
-handoffs for any direct raw-map consumers that should move behind the fenced
-structured helper entry points.
+Supervisor can review and commit this Step 4 regression slice, then continue
+with the next remaining module-level compile-time registry handoff.
 
 ## Watchouts
 
-The new `CompileTimeState` helpers fence value-binding lookups, but existing
-consteval environment construction still passes raw rendered and structured maps
-because `ConstEvalEnv` already performs per-domain miss fencing. Keep lowerer
-route-local maps, ctor/dtor maps, and overload maps out of this packet unless a
-future Step 4 handoff explicitly owns them.
+The fix intentionally keeps complete consteval symbol misses fenced: rendered
+lookup is reached only when structured key metadata is absent and the TextId
+compatibility map does not authoritatively miss.
 
 ## Proof
 
 Ran the delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$' > test_after.log 2>&1`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_positive_sema_static_assert_consteval_runtime_cpp)$' > test_after.log 2>&1`.
 
-Result: passed. `test_after.log` contains the focused `frontend_hir_tests`
-ctest pass.
+Result: passed. `test_after.log` contains passing `frontend_hir_tests` and
+`cpp_positive_sema_static_assert_consteval_runtime_cpp` ctest results.
