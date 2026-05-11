@@ -78,6 +78,21 @@ std::optional<std::string> unique_pack_template_binding_base(
   return out;
 }
 
+std::optional<HirTemplateParameterBindingKey>
+make_signature_template_type_binding_key_from_carrier(const TypeSpec& ts) {
+  HirTemplateParameterBindingKey key;
+  key.parameter_kind = HirTemplateParameterBindingKind::Type;
+  key.owner_namespace_context_id =
+      ts.template_param_owner_namespace_context_id;
+  key.owner_template_text_id = ts.template_param_owner_text_id;
+  key.parameter_index = ts.template_param_index;
+  key.parameter_text_id = ts.template_param_text_id;
+  if (!hir_template_parameter_binding_key_has_complete_metadata(key)) {
+    return std::nullopt;
+  }
+  return key;
+}
+
 bool has_member_typedef_owner_metadata_or_legacy_name(const TypeSpec& ts) {
   return ts.record_def || (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) ||
          ts.tag_text_id != kInvalidText;
@@ -176,15 +191,42 @@ void apply_signature_template_concrete(TypeSpec& target,
 
 bool apply_signature_template_binding_by_text(
     TypeSpec& ts,
-    const std::unordered_map<TextId, TypeSpec>* tpl_bindings_by_text) {
-  if (!tpl_bindings_by_text ||
+    const TypeBindings* tpl_bindings,
+    const HirTemplateTypeBindings* structured_tpl_bindings,
+    const std::unordered_map<TextId, TypeSpec>* tpl_bindings_by_text,
+    const Module* module) {
+  if (auto structured_key =
+          make_signature_template_type_binding_key_from_carrier(ts)) {
+    if (structured_tpl_bindings) {
+      auto structured_it = structured_tpl_bindings->find(*structured_key);
+      if (structured_it != structured_tpl_bindings->end()) {
+        apply_signature_template_concrete(ts, structured_it->second);
+        return true;
+      }
+    }
+    return false;
+  }
+  if (!tpl_bindings || tpl_bindings->empty() ||
       ts.template_param_text_id == kInvalidText) {
     return false;
   }
-  auto text_it = tpl_bindings_by_text->find(ts.template_param_text_id);
-  if (text_it == tpl_bindings_by_text->end()) return false;
-  apply_signature_template_concrete(ts, text_it->second);
-  return true;
+  if (tpl_bindings_by_text) {
+    auto text_it = tpl_bindings_by_text->find(ts.template_param_text_id);
+    if (text_it != tpl_bindings_by_text->end()) {
+      apply_signature_template_concrete(ts, text_it->second);
+      return true;
+    }
+  }
+  if (module && module->link_name_texts) {
+    const std::string key(
+        module->link_name_texts->lookup(ts.template_param_text_id));
+    auto it = tpl_bindings->find(key);
+    if (it != tpl_bindings->end()) {
+      apply_signature_template_concrete(ts, it->second);
+      return true;
+    }
+  }
+  return false;
 }
 
 bool apply_signature_template_binding_by_text_spelling(
@@ -997,7 +1039,8 @@ void Lowerer::append_explicit_callable_param(
   if (!(param_ts.base == TB_TYPEDEF &&
         param_ts.template_param_text_id != kInvalidText &&
         apply_signature_template_binding_by_text(
-            param_ts, &ctx.tpl_bindings_by_text))) {
+            param_ts, tpl_bindings, &ctx.structured_tpl_bindings,
+            &ctx.tpl_bindings_by_text, module_))) {
     param_ts = substitute_signature_template_type(param_ts, tpl_bindings);
   }
   const std::string* current_struct_tag =

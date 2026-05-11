@@ -8,28 +8,28 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 ## Just Finished
 
-Completed the delegated Step 5 template-global argument lookup-authority repair
-from `plan.md`. The remaining `tpl_bindings_by_text` probes inside
-`ensure_template_global_instance` in `global.cpp` now route through
-`find_template_type_binding_for_call`, so complete structured type-parameter
-keys bind through shared authority and complete structured misses do not fall
-through to raw TextId lookup. Empty owner-text metadata is still treated as
-incomplete so the existing compatibility path remains available for
-legacy/incomplete carriers.
+Completed the delegated Step 5 explicit callable-parameter lookup-authority
+repair from `plan.md`. `append_explicit_callable_param` now routes its early
+signature-template binding through structured-aware binding authority: complete
+structured type-parameter carriers bind through `ctx.structured_tpl_bindings`
+and complete structured misses fail closed instead of falling through to raw
+TextId lookup. Incomplete carriers still use the existing TextId/name mirror
+compatibility path.
 
 ## Suggested Next
 
-Supervisor should review and commit this coherent Step 5 template-global lookup
-authority slice, then choose the next packet only if more forwarding/lowerer
-lookup bypasses remain.
+Supervisor should review and commit this coherent Step 5 explicit callable
+parameter lookup-authority slice, then choose the next packet only if more
+forwarding/lowerer lookup bypasses remain.
 
 ## Watchouts
 
-- `global.cpp` now depends on `ctx->structured_tpl_bindings` for complete
-  structured carriers; stale complete structured misses fail closed inside
-  `find_template_type_binding_for_call`.
-- Some template-global argument carriers can arrive with an owner TextId that
-  resolves to empty text; those remain compatibility/incomplete metadata cases.
+- The local helper in `hir_functions.cpp` mirrors the structured-key policy
+  from callable lookup because `find_template_type_binding_for_call` is private
+  to `Lowerer`.
+- Complete structured callable parameter carriers now depend on
+  `ctx.structured_tpl_bindings`; stale complete structured misses intentionally
+  do not use the TextId mirror.
 - Do not weaken tests or convert capability work into expectation-only changes.
 
 ## Proof
