@@ -378,16 +378,16 @@ int defined_void_params(void) {
   const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
   expect_true(llvm_ir.find("declare %struct.Pair @declared_pair(%struct.Pair)") !=
                   std::string::npos,
-              "printer should keep using declaration signature_text");
+              "printer should preserve declaration signature_text as final output spelling");
   expect_true(llvm_ir.find("define %struct.Pair @defined_pair(%struct.Pair %p.input)") !=
                   std::string::npos,
-              "printer should keep using definition signature_text");
+              "printer should preserve definition signature_text as final output spelling");
   expect_true(llvm_ir.find("declare i32 @declared_big(ptr byval(%struct.Big) align 8)") !=
                   std::string::npos,
-              "printer should keep using byval declaration signature_text");
+              "printer should preserve byval declaration signature_text as final output spelling");
   expect_true(llvm_ir.find("define i32 @defined_big(ptr byval(%struct.Big) align 8 %p.input)") !=
                   std::string::npos,
-              "printer should keep using byval definition signature_text");
+              "printer should preserve byval definition signature_text as final output spelling");
 
   const c4c::StructNameId pair_id = lir_module.struct_names.find("%struct.Pair");
   const c4c::StructNameId big_id = lir_module.struct_names.find("%struct.Big");

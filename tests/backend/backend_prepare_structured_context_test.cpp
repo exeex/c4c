@@ -319,7 +319,7 @@ int check_lir_to_bir_signature_lowering_prefers_structured_metadata() {
   const bir::Function& function = lowered.module->functions.front();
   if (function.return_type != bir::TypeKind::I32 || !function.return_abi.has_value() ||
       function.return_abi->type != bir::TypeKind::I32) {
-    return fail("BIR declaration lowering used drifted signature_text return spelling");
+    return fail("BIR declaration lowering used final-output signature_text over structured return metadata");
   }
   if (!function.is_variadic) {
     return fail("BIR declaration lowering ignored structured variadic metadata");

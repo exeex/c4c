@@ -518,8 +518,11 @@ struct LirFunction {
   std::vector<LirStackObject> stack_objects;
   LirBlockId entry{};
 
-  // Final LLVM spelling for the function header plus compatibility payload for
-  // template comments. Type identity mirrors live in signature_*_type_refs.
+  // Final LLVM/output spelling for the function header plus legacy
+  // no-metadata compatibility payload. Type identity mirrors live in
+  // signature_return_type_ref, signature_params, and
+  // signature_param_type_refs; backend/verifier code should prefer those
+  // structured fields before consulting this text.
   // Function references embedded in this text have no structured producer
   // carrier yet, so any reachability scan of this field is an unresolved
   // producer-boundary compatibility fallback, not semantic authority.

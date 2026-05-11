@@ -131,6 +131,9 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_param_type(const c4c::Typ
 
 std::optional<std::vector<BirFunctionLowerer::ParsedFunctionSignatureParam>>
 BirFunctionLowerer::parse_function_signature_params(std::string_view signature_text) {
+  // Legacy no-metadata fallback: generated LIR should populate structured
+  // signature params/type refs, so ordinary backend lowering should not depend
+  // on parsing this final-output spelling.
   const auto paren_open = signature_text.find('(');
   const auto paren_close = signature_text.rfind(')');
   if (paren_open == std::string_view::npos || paren_close == std::string_view::npos ||
@@ -266,7 +269,8 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_s
   }
 
   // Compatibility fallback for hand-built legacy LIR that predates structured
-  // signature metadata. Generated LIR should provide signature_return_type_ref.
+  // signature metadata. Generated LIR should provide signature_return_type_ref;
+  // when present, that mirror is the backend authority over signature_text.
   const auto line = c4c::codegen::lir::trim_lir_arg_text(function.signature_text);
   const auto first_space = line.find(' ');
   const auto at_pos = line.find('@');
@@ -306,8 +310,9 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
   }
 
   const bool structured_params_available = has_structured_signature_params(function);
-  // Generated LIR carries structured signature params. The text parser remains
-  // only for legacy hand-built LIR fixtures that do not populate those fields.
+  // Generated LIR carries structured signature params/type refs. The
+  // signature_text parser remains only for legacy hand-built LIR fixtures that
+  // do not populate those fields.
   const auto parsed_params = structured_params_available
                                  ? structured_signature_params(function)
                                  : parse_function_signature_params(function.signature_text);

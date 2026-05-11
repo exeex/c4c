@@ -644,8 +644,9 @@ void verify_global_type_ref_shadows(const LirModule& mod) {
 
 std::string_view function_signature_line(const LirFunction& fn) {
   // Verifier compatibility parser for signature_text. This only confirms that
-  // the final-render payload still contains a function header; semantic
-  // signature facts are validated from structured LIR metadata below.
+  // the final LLVM/output payload still contains a function header for legacy
+  // hand-built/no-metadata LIR; semantic signature facts are validated from
+  // structured LIR metadata below.
   std::string_view signature = fn.signature_text;
   while (!signature.empty()) {
     const size_t line_end = signature.find('\n');
@@ -817,6 +818,8 @@ void verify_function_signature_structured_param_shape(const LirFunction& fn) {
 }
 
 void verify_function_signature_type_ref_shadows(const LirModule& mod) {
+  // Despite the historical "shadow" name, structured signature mirrors are the
+  // authority here. signature_text is only checked as retained output spelling.
   for (const auto& fn : mod.functions) {
     const std::string_view line = function_signature_line(fn);
     if (line.empty()) {
