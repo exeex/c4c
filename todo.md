@@ -8,42 +8,55 @@ Current Step Title: Final Proof and Closure Readiness
 
 ## Just Finished
 
-Plan Step 5 is exhausted after the committed lowerer ref-overload registry
-fencing slice at `c248bb69f`. The recent lowerer packets covered template
-struct specialization fallback, static-member decl fallback, static-member
-const fallback, struct-method fallback, constructor/destructor fallback, and
-ref-overload fallback. The reviewer-requested remaining overload packet from
-`review/166_step5_lowerer_registry_route_review.md` is now committed, and no
-additional lowerer registry family from plan Step 5 remains unprocessed.
+Plan Step 6 final proof and closure-readiness recording is complete. The
+focused HIR proof was refreshed in canonical `test_after.log`, and the broader
+`^frontend_` proof passed after the build.
+
+Final registry coverage recorded for closure review:
+- Compile-time registries were fenced or narrowed across structured misses,
+  value binding lookups, and consteval structured lookup repair. Rendered
+  template, specialization, enum/const, and consteval paths now keep rendered
+  lookup behind explicit compatibility/no-metadata boundaries instead of
+  ordinary fallback after complete structured misses.
+- HIR module declaration and struct-definition lookups were fenced so
+  structured keys remain authoritative when metadata is complete, while retained
+  rendered indexes are compatibility/display/order bridges.
+- Lowerer registries were processed through template struct specialization,
+  static-member declaration, static-member const, struct-method,
+  constructor/destructor, and ref-overload fallback fencing. Retained rendered
+  maps are compatibility bridges for no-metadata or legacy lowerer routes, not
+  ordinary semantic authority for complete structured callers.
+- Route-local generated names, display spellings, diagnostics, and insertion
+  order storage were retained only as explicit non-semantic bridges.
+
+Ideas 161 and 162 were not reopened. Their completed template binding
+domain-key and `LinkNameId` backend symbol authority work remained parent
+context/out-of-scope for this route.
 
 ## Suggested Next
 
-Proceed with plan Step 6 final proof and closure-readiness review.
-
-Expected focused proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests)$' > test_after.log 2>&1`.
-
-Expected broader proof before closure handoff, because shared HIR module,
-compile-time, and lowerer registry lookup behavior changed across multiple
-packets:
-`ctest --test-dir build -j --output-on-failure -R '^frontend_'`.
-
-After proof, record final retired mirrors, narrowed APIs, retained
-compatibility bridges, proof commands, and any residual blockers here before
-asking for lifecycle closure.
+Supervisor can request lifecycle closure review for
+`ideas/open/166_hir_rendered_registry_mirror_retirement_audit.md`.
 
 ## Watchouts
 
-Do not close the source idea from Step 5 completion alone. Step 6 still needs
-fresh proof that the full converted/fenced registry set preserves structured
-domain separation, and it should explicitly confirm ideas 161 and 162 were not
-reopened.
+No current executor blocker. Closure should still be a plan-owner decision:
+this packet records proof and readiness evidence only, and does not close the
+source idea.
 
 ## Proof
 
-Latest Step 5 delegated proof command:
+Focused proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests)$' > test_after.log 2>&1`.
 
-Result: passed before Step 6 handoff. Step 6 should refresh canonical
-`test_after.log` with the focused command above and add broader frontend proof
-before closure readiness is accepted.
+Result: passed. `test_after.log` contains the refreshed focused proof with
+`frontend_hir_tests` and `frontend_hir_lookup_tests` passing, 0 failures.
+
+Broader frontend proof command:
+`ctest --test-dir build -j --output-on-failure -R '^frontend_'`.
+
+Result: passed. The broader subset ran 10 tests with 0 failures:
+`frontend_hir_tests`, `frontend_hir_lookup_tests`,
+`frontend_parser_lookup_authority_tests`, `frontend_parser_tests`,
+`frontend_lexer_tests`, `frontend_cxx_preprocessor_tests`, and the four
+frontend LIR type-ref tests.
