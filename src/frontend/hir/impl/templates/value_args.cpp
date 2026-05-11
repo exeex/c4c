@@ -20,6 +20,23 @@ bool is_generated_anonymous_record_tag(const char* name) {
   return name && std::strncmp(name, "_anon_", 6) == 0;
 }
 
+std::optional<HirTemplateParameterBindingKey>
+make_nttp_binding_key_from_owner_text_id(const Node* owner,
+                                         TextId parameter_text_id) {
+  if (!owner || parameter_text_id == kInvalidText ||
+      owner->n_template_params <= 0 || !owner->template_param_name_text_ids ||
+      !owner->template_param_is_nttp) {
+    return std::nullopt;
+  }
+  for (int i = 0; i < owner->n_template_params; ++i) {
+    if (!owner->template_param_is_nttp[i]) continue;
+    if (owner->template_param_name_text_ids[i] != parameter_text_id) continue;
+    return make_hir_template_parameter_binding_key(
+        owner, i, HirTemplateParameterBindingKind::NonType);
+  }
+  return std::nullopt;
+}
+
 template <typename T>
 auto typespec_legacy_tag_if_present(const T& ts, int)
     -> decltype(ts.tag, static_cast<const char*>(nullptr)) {
@@ -756,13 +773,10 @@ bool Lowerer::resolve_ast_template_value_arg(
         ref->template_arg_nttp_text_ids ? ref->template_arg_nttp_text_ids[index]
                                         : kInvalidText;
     if (forwarded_text_id != kInvalidText) {
-      std::optional<HirTemplateParameterBindingKey> query_key;
-      if (owner_tpl && index < owner_tpl->n_template_params &&
-          owner_tpl->template_param_is_nttp &&
-          owner_tpl->template_param_is_nttp[index]) {
-        query_key = make_hir_template_parameter_binding_key(
-            owner_tpl, index, HirTemplateParameterBindingKind::NonType);
-      }
+      (void)owner_tpl;
+      std::optional<HirTemplateParameterBindingKey> query_key =
+          make_nttp_binding_key_from_owner_text_id(
+              ctx->template_binding_owner_node, forwarded_text_id);
       if (auto nttp_value = lookup_nttp_binding(
               ctx, nullptr, nttp_name, forwarded_text_id,
               false /* allow_rendered_mirror_fallback */,
@@ -889,7 +903,18 @@ bool Lowerer::try_eval_template_value_arg_expr(
     }
     case NK_VAR: {
       if (!expr->name || !expr->name[0]) return false;
-      if (auto nttp_value = lookup_nttp_binding(ctx, expr, expr->name)) {
+      const std::optional<HirTemplateParameterBindingKey> query_key =
+          ctx ? make_nttp_binding_key_from_owner_text_id(
+                    ctx->template_binding_owner_node,
+                    expr->unqualified_text_id)
+              : std::nullopt;
+      if (auto nttp_value = query_key
+                                ? lookup_nttp_binding(
+                                      ctx, expr, expr->name,
+                                      expr->unqualified_text_id,
+                                      false /* allow_rendered_mirror_fallback */,
+                                      &*query_key)
+                                : lookup_nttp_binding(ctx, expr, expr->name)) {
         *out_value = *nttp_value;
         return true;
       }

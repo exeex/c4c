@@ -6358,6 +6358,7 @@ void test_hir_template_value_arg_text_id_miss_blocks_rendered_lookup() {
 
   c4c::hir::Lowerer lowerer;
   c4c::hir::Lowerer::FunctionCtx ctx{};
+  ctx.template_binding_owner_node = owner;
   ctx.nttp_bindings["RenderedN"] = 42;
 
   long long value = 0;

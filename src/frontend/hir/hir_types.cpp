@@ -23,6 +23,23 @@ namespace c4c::hir {
 
 namespace {
 
+std::optional<HirTemplateParameterBindingKey>
+make_nttp_binding_key_from_owner_text_id(const Node* owner,
+                                         TextId parameter_text_id) {
+  if (!owner || parameter_text_id == kInvalidText ||
+      owner->n_template_params <= 0 || !owner->template_param_name_text_ids ||
+      !owner->template_param_is_nttp) {
+    return std::nullopt;
+  }
+  for (int i = 0; i < owner->n_template_params; ++i) {
+    if (!owner->template_param_is_nttp[i]) continue;
+    if (owner->template_param_name_text_ids[i] != parameter_text_id) continue;
+    return make_hir_template_parameter_binding_key(
+        owner, i, HirTemplateParameterBindingKind::NonType);
+  }
+  return std::nullopt;
+}
+
 bool init_list_has_field_designator(const InitListItem& item) {
   return item.field_designator_text_id != kInvalidText || item.field_designator.has_value();
 }
@@ -3227,7 +3244,14 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
     case NK_VAR: {
       const std::string name = n->name ? n->name : "";
       if (ctx && !name.empty()) {
-        if (lookup_nttp_binding(ctx, n, name.c_str())) {
+        const std::optional<HirTemplateParameterBindingKey> query_key =
+            make_nttp_binding_key_from_owner_text_id(
+                ctx->template_binding_owner_node, n->unqualified_text_id);
+        if (query_key
+                ? lookup_nttp_binding(
+                      ctx, n, name.c_str(), n->unqualified_text_id,
+                      false /* allow_rendered_mirror_fallback */, &*query_key)
+                : lookup_nttp_binding(ctx, n, name.c_str())) {
           TypeSpec ts{};
           ts.base = TB_INT;
           ts.array_size = -1;

@@ -10,6 +10,23 @@ namespace c4c::hir {
 
 namespace {
 
+std::optional<HirTemplateParameterBindingKey>
+make_nttp_binding_key_from_owner_text_id(const Node* owner,
+                                         TextId parameter_text_id) {
+  if (!owner || parameter_text_id == kInvalidText ||
+      owner->n_template_params <= 0 || !owner->template_param_name_text_ids ||
+      !owner->template_param_is_nttp) {
+    return std::nullopt;
+  }
+  for (int i = 0; i < owner->n_template_params; ++i) {
+    if (!owner->template_param_is_nttp[i]) continue;
+    if (owner->template_param_name_text_ids[i] != parameter_text_id) continue;
+    return make_hir_template_parameter_binding_key(
+        owner, i, HirTemplateParameterBindingKind::NonType);
+  }
+  return std::nullopt;
+}
+
 template <typename T>
 auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
     -> decltype(ts.tag = tag, void()) {
@@ -527,7 +544,15 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       return append_expr(n, IntLiteral{it->second, false}, ts);
     }
     if (ctx) {
-      if (auto nttp_value = lookup_nttp_binding(ctx, n, n->name)) {
+      const std::optional<HirTemplateParameterBindingKey> query_key =
+          make_nttp_binding_key_from_owner_text_id(
+              ctx->template_binding_owner_node, n->unqualified_text_id);
+      if (auto nttp_value =
+              query_key
+                  ? lookup_nttp_binding(
+                        ctx, n, n->name, n->unqualified_text_id,
+                        false /* allow_rendered_mirror_fallback */, &*query_key)
+                  : lookup_nttp_binding(ctx, n, n->name)) {
         TypeSpec ts{};
         ts.base = TB_INT;
         ts.array_size = -1;

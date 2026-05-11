@@ -1033,6 +1033,69 @@ void test_lowerer_nttp_lookup_rejects_same_spelled_foreign_owner_key() {
               "same-spelled raw TextId/rendered lookup must fail closed without owner/index authority");
 }
 
+void test_forwarded_nttp_value_arg_uses_source_owner_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const char* source_names[] = {"M"};
+  c4c::TextId source_name_text_ids[] = {module.link_name_texts->intern("M")};
+  bool source_is_nttp[] = {true};
+  c4c::Node source_owner{};
+  source_owner.name = "Outer";
+  source_owner.unqualified_text_id = module.link_name_texts->intern("Outer");
+  source_owner.namespace_context_id = 31;
+  source_owner.n_template_params = 1;
+  source_owner.template_param_names = source_names;
+  source_owner.template_param_name_text_ids = source_name_text_ids;
+  source_owner.template_param_is_nttp = source_is_nttp;
+
+  const char* target_names[] = {"N"};
+  c4c::TextId target_name_text_ids[] = {module.link_name_texts->intern("N")};
+  bool target_is_nttp[] = {true};
+  c4c::Node target_owner{};
+  target_owner.name = "Inner";
+  target_owner.unqualified_text_id = module.link_name_texts->intern("Inner");
+  target_owner.namespace_context_id = 32;
+  target_owner.n_template_params = 1;
+  target_owner.template_param_names = target_names;
+  target_owner.template_param_name_text_ids = target_name_text_ids;
+  target_owner.template_param_is_nttp = target_is_nttp;
+
+  auto source_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &source_owner, 0, c4c::hir::HirTemplateParameterBindingKind::NonType);
+  auto target_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &target_owner, 0, c4c::hir::HirTemplateParameterBindingKind::NonType);
+  expect_true(source_key.has_value() && target_key.has_value(),
+              "fixture should produce complete source and target NTTP keys");
+
+  c4c::hir::Lowerer::FunctionCtx ctx{};
+  ctx.template_binding_owner_node = &source_owner;
+  ctx.structured_nttp_bindings[*source_key] = 64;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "Inner";
+  ref.has_template_args = true;
+  ref.n_template_args = 1;
+  const char* nttp_names[] = {"M"};
+  c4c::TextId nttp_text_ids[] = {source_name_text_ids[0]};
+  ref.template_arg_nttp_names = nttp_names;
+  ref.template_arg_nttp_text_ids = nttp_text_ids;
+
+  long long value = 0;
+  const bool resolved = lowerer.resolve_ast_template_value_arg(
+      &target_owner, &ref, 0, &ctx, &value);
+  expect_true(resolved && value == 64,
+              "forwarded NTTP value args should query the source owner key, not the target template parameter key");
+
+  auto target_owner_result = lowerer.lookup_nttp_binding(
+      &ctx, nullptr, "M", source_name_text_ids[0],
+      false /* allow_rendered_mirror_fallback */, &*target_key);
+  expect_true(!target_owner_result,
+              "fixture should prove the target owner key would be a structured miss");
+}
+
 }  // namespace
 
 int main() {
@@ -1056,6 +1119,7 @@ int main() {
   test_lowerer_nttp_lookup_prefers_complete_structured_binding();
   test_lowerer_nttp_lookup_rejects_legacy_after_complete_structured_miss();
   test_lowerer_nttp_lookup_rejects_same_spelled_foreign_owner_key();
+  test_forwarded_nttp_value_arg_uses_source_owner_key();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;
 }

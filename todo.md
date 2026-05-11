@@ -8,29 +8,32 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 ## Just Finished
 
-Completed the delegated Step 5 lvalue cast template-binding lookup-authority
-repair from `plan.md`. `Lowerer::is_ast_lvalue` now routes typedef cast
-classification through structured-aware type-binding authority: complete
-structured type-parameter carriers bind through `ctx.structured_tpl_bindings`
-and complete structured misses fail closed instead of falling through to raw
-TextId lookup. Incomplete carriers still use the existing TextId/name mirror
-compatibility path.
+Completed the delegated Step 5 NTTP value-argument forwarding repair from
+`plan.md`. `resolve_ast_template_value_arg` now derives forwarded NTTP query
+keys from `ctx.template_binding_owner_node` plus the forwarded `TextId` instead
+of from the target template owner. Direct NTTP lookup bridges in scalar
+lowering, value-arg expression evaluation, and generic control type inference
+now use complete source-owner keys when the `FunctionCtx` owner and expression
+`TextId` can identify the source NTTP parameter, while incomplete-metadata cases
+remain on the existing compatibility path.
 
 ## Suggested Next
 
-Supervisor should review and commit this coherent Step 5 lvalue cast
-lookup-authority slice, then choose the next packet only if more
-forwarding/lowerer lookup bypasses remain.
+Supervisor should review and commit this coherent Step 5 NTTP forwarding and
+direct-lookup authority slice, then decide whether Step 5 is ready for Step 6
+validation.
 
 ## Watchouts
 
-- The local helper in `expr.cpp` mirrors the structured-key policy from
-  callable lookup because `is_ast_lvalue` has no `Module*` and only needs the
-  structured map plus existing TextId compatibility mirror.
-- Complete structured lvalue cast type-parameter carriers now depend on
-  `ctx.structured_tpl_bindings`; stale complete structured misses intentionally
-  do not use the TextId mirror.
-- Do not weaken tests or convert capability work into expectation-only changes.
+- The focused `cpp_hir_template_parameter_binding_key_test` case proves a
+  forwarded source-owner NTTP binding resolves even when the target owner key
+  would be a structured miss.
+- The existing lookup-authority test fixture now explicitly installs
+  `ctx.template_binding_owner_node` for structured HIR value materialization;
+  this keeps complete-key behavior source-owned instead of restoring target
+  owner fallback.
+- No direct NTTP site was converted without a complete source owner plus
+  expression `TextId`; those remain compatibility bridges.
 
 ## Proof
 
