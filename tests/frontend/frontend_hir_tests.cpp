@@ -1904,6 +1904,94 @@ void test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback() {
                 "false forwarded NTTP refs should keep the zero binding");
 }
 
+void test_hir_template_struct_instance_identity_uses_structured_parameter_owner() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId box_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Box");
+  const c4c::TextId t_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "T");
+
+  auto make_primary = [&](int namespace_context_id) {
+    c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+    primary->name = arena.strdup("Box");
+    primary->unqualified_name = arena.strdup("Box");
+    primary->unqualified_text_id = box_text_id;
+    primary->namespace_context_id = namespace_context_id;
+    primary->n_template_params = 1;
+    primary->template_param_names = arena.alloc_array<const char*>(1);
+    primary->template_param_names[0] = arena.strdup("T");
+    primary->template_param_name_text_ids =
+        arena.alloc_array<c4c::TextId>(1);
+    primary->template_param_name_text_ids[0] = t_text_id;
+    primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+    primary->template_param_is_nttp[0] = false;
+    return primary;
+  };
+
+  c4c::Node* outer_primary = make_primary(101);
+  c4c::Node* inner_primary = make_primary(202);
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.array_size = -1;
+  int_type.inner_rank = -1;
+
+  c4c::TypeSpec owner{};
+  owner.array_size = -1;
+  owner.inner_rank = -1;
+  owner.base = c4c::TB_STRUCT;
+  owner.tpl_struct_origin = arena.strdup("Box");
+  owner.tpl_struct_args.size = 1;
+  owner.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
+  owner.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
+  owner.tpl_struct_args.data[0].type = int_type;
+  owner.tpl_struct_args.data[0].debug_text = arena.strdup("int");
+
+  c4c::hir::Lowerer lowerer;
+  const c4c::hir::ResolvedTemplateArgs outer_resolved =
+      lowerer.materialize_template_args(outer_primary, owner, {}, {});
+  const c4c::hir::ResolvedTemplateArgs inner_resolved =
+      lowerer.materialize_template_args(inner_primary, owner, {}, {});
+
+  expect_true(outer_resolved.structured_type_bindings.size() == 1 &&
+                  inner_resolved.structured_type_bindings.size() == 1,
+              "explicit struct args should materialize structured type binding mirrors");
+
+  const c4c::hir::PreparedTemplateStructInstance outer_prepared =
+      lowerer.prepare_template_struct_instance(
+          outer_primary, owner.tpl_struct_origin, outer_resolved);
+  const c4c::hir::PreparedTemplateStructInstance inner_prepared =
+      lowerer.prepare_template_struct_instance(
+          inner_primary, owner.tpl_struct_origin, inner_resolved);
+
+  const c4c::hir::SpecializationKey& outer_key =
+      outer_prepared.instance_key.spec_key;
+  const c4c::hir::SpecializationKey& inner_key =
+      inner_prepared.instance_key.spec_key;
+
+  expect_true(outer_prepared.instance_key != inner_prepared.instance_key,
+              "struct template instance identity should separate same-spelled primaries by structured owner metadata");
+  expect_eq(outer_key.canonical, inner_key.canonical,
+            "structured struct specialization keys should preserve legacy display canonical compatibility");
+  expect_true(outer_key.arguments.size() == 1 && inner_key.arguments.size() == 1,
+              "structured struct specialization keys should retain the explicit argument identity");
+  expect_true(outer_key.arguments[0].has_complete_structured_parameter_identity() &&
+                  inner_key.arguments[0].has_complete_structured_parameter_identity(),
+              "struct specialization arguments should carry complete structured parameter identity");
+  expect_true(outer_key.arguments[0] != inner_key.arguments[0],
+              "same-spelled template parameters from different owners should not compare equal");
+  expect_true(*outer_key.arguments[0].parameter_key !=
+                  *inner_key.arguments[0].parameter_key,
+              "structured parameter keys should encode the owning template metadata");
+  expect_eq(outer_key.arguments[0].parameter_name,
+            inner_key.arguments[0].parameter_name,
+            "structured parameter identity should keep the legacy display parameter spelling");
+}
+
 void test_hir_pending_type_ref_keeps_legacy_zero_value_debug_text() {
   c4c::Arena arena;
 
@@ -5824,6 +5912,7 @@ int main() {
   test_hir_direct_call_builtin_alias_fallback_keeps_invalid_link_name_ids();
   test_hir_template_arg_materialization_prefers_structured_value_payload();
   test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback();
+  test_hir_template_struct_instance_identity_uses_structured_parameter_owner();
   test_hir_pending_type_ref_keeps_legacy_zero_value_debug_text();
   test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag();
   test_hir_resolve_typedef_to_struct_prefers_record_def_over_stale_tag();

@@ -8,28 +8,18 @@ Current Step Title: Use Structured Keys for Pending and Specialization Identity
 
 ## Just Finished
 
-Completed the delegated Step 4 packet of `plan.md`: struct template argument
-materialization now propagates structured type/NTTP mirrors into
-`PreparedTemplateStructInstance`, and struct template instance identity uses
-`try_make_structured_specialization_key` when the structured mirrors are
-complete and count-compatible.
-
-Concrete changes:
-- `ResolvedTemplateArgs` and `PreparedTemplateStructInstance` carry structured
-  type/NTTP binding maps alongside the legacy binding maps.
-- `HirTemplateArgMaterializer` records explicit and default type/NTTP bindings
-  through helper functions that maintain both the legacy maps and the
-  structured mirrors.
-- `prepare_template_struct_instance` copies the structured mirrors into the
-  prepared instance and builds `TemplateStructInstanceKey` from a
-  structured-first specialization key, with the existing legacy key as fallback.
-- Mangled names and display canonical text remain driven by the legacy maps.
+Completed the delegated Step 4 packet of `plan.md`: added a focused
+`frontend_hir_tests.cpp` regression proving that two `Box<T>` struct template
+primaries with the same rendered template and parameter spelling but different
+owner metadata materialize structured explicit type-argument mirrors, prepare
+different `TemplateStructInstanceKey` / structured specialization argument
+identities, and still preserve equal legacy display canonical text.
 
 ## Suggested Next
 
-Have the supervisor decide whether Step 4 needs a focused end-to-end collision
-test for same-spelled struct template owners before moving to the next plan
-step.
+Have the supervisor decide whether Step 4 is complete enough to move to the
+next plan step or whether another narrowly scoped identity collision regression
+is still needed.
 
 ## Watchouts
 
