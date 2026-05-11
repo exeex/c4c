@@ -3,37 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/169_route_local_identity_domain_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Introduce Or Reuse A Route-Local Id Domain
+Current Step ID: 3
+Current Step Title: Add Route-Local Validation Or Lookup Tests
 
 ## Just Finished
 
-Step 2 integration fix completed: `backend_prepare_stack_layout_test.cpp` now
-passes a `bir::NameTables` to the updated
-`prepare::stack_layout::collect_function_stack_objects` signature.
+Step 3 focused validation tests completed: `backend_lir_to_bir_notes_test.cpp`
+now proves BIR local-slot ids are semantic authority and fail closed before
+falling back to spelling on id/name mismatches.
 
 Completed work:
-- Added a test-local helper that interns direct fixture `LocalSlot::slot_id`
-  values through `bir::NameTables::slot_names`.
-- Updated the four direct stack-object collection helpers to pass the BIR name
-  table into `collect_function_stack_objects`.
-- Preserved the existing output spelling and assertions while exercising the
-  new slot-id authority path for local-slot fixtures.
+- Added direct BIR verifier coverage for duplicate `LocalSlot::slot_id` values
+  in one function.
+- Added `LoadLocalInst` and `StoreLocalInst` mismatch cases where a present
+  `slot_id` is paired with a different `slot_name`.
+- Added a local-slot `MemoryAddress::base_slot_id` mismatch case where the
+  address spelling points at a different declared local slot.
+- Preserved no-id compatibility by proving raw spelling still validates when an
+  existing declared local slot is named.
 
 Files changed:
-- `tests/backend/backend_prepare_stack_layout_test.cpp`
+- `tests/backend/backend_lir_to_bir_notes_test.cpp`
 - `todo.md`
 
 ## Suggested Next
 
-Step 3 can proceed with focused validation/lookup tests for mismatched or
-ambiguous BIR local-slot spellings with ids present.
+Step 4 can proceed by removing or tightening any remaining route-local string
+lookup fallback that is now covered by semantic id validation.
 
 ## Watchouts
 
-- This packet only repairs the missed test integration with the new
-  `collect_function_stack_objects` signature; it does not add the Step 3
-  validation cases.
+- This packet did not require production changes; the existing Step 2
+  implementation already rejects the tested mismatch classes.
+- The new tests live inside `backend_lir_to_bir_notes` because that target
+  already links `bir_validate.cpp` and is part of the delegated proof subset.
 - `review/168_step4_hir_bridge_route_review.md` remains unrelated dirty state
   if present.
 

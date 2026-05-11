@@ -69,6 +69,7 @@ int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_pointer_initializer_symbol_names_carry_link_name_id();
 int expect_pointer_value_symbol_identity_carrier();
 int expect_bir_verifier_rejects_known_link_name_mismatches();
+int expect_bir_verifier_rejects_local_slot_id_mismatches();
 int expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
 
 int expect_failure_notes(std::string_view case_name,
@@ -968,6 +969,11 @@ bool validate_rejects_with_message(const c4c::backend::bir::Module& module,
   return error.find(needle) != std::string::npos;
 }
 
+bool validate_accepts(const c4c::backend::bir::Module& module) {
+  std::string error;
+  return c4c::backend::bir::validate(module, &error);
+}
+
 int expect_bir_verifier_rejects_known_link_name_mismatches() {
   namespace bir = c4c::backend::bir;
 
@@ -1369,6 +1375,121 @@ int expect_bir_verifier_rejects_known_link_name_mismatches() {
             "bir global initializer symbol @actual_global must not pair LinkNameId with a different declared global name")) {
       return fail(
           "BIR verifier should reject initializer symbols whose raw name only matches by name");
+    }
+  }
+
+  return 0;
+}
+
+c4c::backend::bir::Module make_local_slot_id_verifier_module() {
+  namespace bir = c4c::backend::bir;
+
+  bir::Module module;
+  const c4c::SlotNameId alpha_id = module.names.slot_names.intern("slot.alpha");
+  const c4c::SlotNameId beta_id = module.names.slot_names.intern("slot.beta");
+
+  bir::Function function;
+  function.name = "slot_user";
+  function.return_type = bir::TypeKind::Void;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "slot.alpha",
+      .slot_id = alpha_id,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "slot.beta",
+      .slot_id = beta_id,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_bir_verifier_rejects_local_slot_id_mismatches() {
+  namespace bir = c4c::backend::bir;
+
+  {
+    auto module = make_local_slot_id_verifier_module();
+    auto& slots = module.functions.back().local_slots;
+    slots[1].slot_id = slots[0].slot_id;
+    if (!validate_rejects_with_message(
+            module, "bir local slot in @slot_user must not reuse an existing SlotNameId")) {
+      return fail("BIR verifier should reject duplicate LocalSlot SlotNameId in one function");
+    }
+  }
+
+  {
+    auto module = make_local_slot_id_verifier_module();
+    const c4c::SlotNameId alpha_id = module.functions.back().local_slots[0].slot_id;
+    module.functions.back().blocks.front().insts.push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "loaded"),
+        .slot_name = "slot.beta",
+        .slot_id = alpha_id,
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir local load in @slot_user must not pair SlotNameId with a different local slot name")) {
+      return fail("BIR verifier should reject LoadLocal SlotNameId/display-name mismatch");
+    }
+  }
+
+  {
+    auto module = make_local_slot_id_verifier_module();
+    const c4c::SlotNameId alpha_id = module.functions.back().local_slots[0].slot_id;
+    module.functions.back().blocks.front().insts.push_back(bir::StoreLocalInst{
+        .slot_name = "slot.beta",
+        .slot_id = alpha_id,
+        .value = bir::Value::immediate_i32(7),
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir local store in @slot_user must not pair SlotNameId with a different local slot name")) {
+      return fail("BIR verifier should reject StoreLocal SlotNameId/display-name mismatch");
+    }
+  }
+
+  {
+    auto module = make_local_slot_id_verifier_module();
+    const c4c::SlotNameId alpha_id = module.functions.back().local_slots[0].slot_id;
+    module.functions.back().blocks.front().insts.push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "loaded"),
+        .slot_name = "slot.alpha",
+        .slot_id = alpha_id,
+        .address = bir::MemoryAddress{
+            .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+            .base_name = "slot.beta",
+            .size_bytes = 4,
+            .align_bytes = 4,
+            .base_slot_id = alpha_id,
+        },
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir local load address in @slot_user must not pair SlotNameId with a different local slot name")) {
+      return fail("BIR verifier should reject local MemoryAddress SlotNameId/display-name mismatch");
+    }
+  }
+
+  {
+    auto module = make_local_slot_id_verifier_module();
+    module.functions.back().blocks.front().insts.push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "loaded"),
+        .slot_name = "slot.alpha",
+    });
+    if (!validate_accepts(module)) {
+      return fail("BIR verifier should preserve no-id local-slot spelling compatibility");
     }
   }
 
@@ -3783,6 +3904,12 @@ int main() {
           expect_bir_verifier_rejects_known_link_name_mismatches();
       link_name_mismatch_status != 0) {
     return link_name_mismatch_status;
+  }
+
+  if (const int local_slot_id_mismatch_status =
+          expect_bir_verifier_rejects_local_slot_id_mismatches();
+      local_slot_id_mismatch_status != 0) {
+    return local_slot_id_mismatch_status;
   }
 
   if (const int aggregate_pointer_field_global_status =
