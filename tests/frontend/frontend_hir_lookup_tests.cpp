@@ -2806,6 +2806,33 @@ void test_layout_type_lookup_structured_owner_miss_rejects_stale_tag() {
               "layout TypeSpec lookup should reject stale rendered tag after structured owner miss");
 }
 
+void test_layout_type_lookup_no_owner_uses_tag_text_id_compatibility() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef compat_def;
+  compat_def.tag = "CompatLayoutOwner";
+  compat_def.tag_text_id = module.link_name_texts->intern("CompatLayoutOwner");
+  compat_def.size_bytes = 48;
+  compat_def.align_bytes = 16;
+  module.struct_defs[compat_def.tag] = compat_def;
+
+  c4c::TypeSpec query{};
+  query.base = c4c::TB_STRUCT;
+  set_legacy_tag_if_present(query, "StaleRenderedLayoutCompat", 0);
+  query.tag_text_id = compat_def.tag_text_id;
+  query.namespace_context_id = -1;
+  query.array_size = -1;
+  query.inner_rank = -1;
+
+  const c4c::hir::HirStructDef* layout =
+      lowerer.find_struct_def_for_layout_type(query);
+  expect_true(layout && layout->tag == "CompatLayoutOwner" &&
+                  layout->size_bytes == 48,
+              "layout TypeSpec no-owner compatibility should use tag_text_id, not rendered tag");
+}
+
 void test_compute_struct_layout_field_uses_record_def_before_stale_tag() {
   c4c::hir::Module module;
   c4c::Arena arena;
@@ -6043,6 +6070,7 @@ int main() {
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_layout_type_lookup_prefers_structured_owner_over_stale_tag();
   test_layout_type_lookup_structured_owner_miss_rejects_stale_tag();
+  test_layout_type_lookup_no_owner_uses_tag_text_id_compatibility();
   test_compute_struct_layout_field_uses_record_def_before_stale_tag();
   test_compute_struct_layout_field_structured_miss_rejects_stale_tag();
   test_builtin_record_layout_prefers_hir_owner_key_over_stale_tag();

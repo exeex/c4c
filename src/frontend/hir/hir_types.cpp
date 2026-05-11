@@ -258,7 +258,7 @@ std::string_view typespec_legacy_tag_if_present(const T&, long) {
   return {};
 }
 
-const HirStructDef* find_struct_def_by_layout_compatibility_tag(
+const HirStructDef* find_struct_def_by_no_owner_layout_compatibility_tag(
     const Module& module,
     const TypeSpec& ts) {
   if (ts.tag_text_id != kInvalidText && module.link_name_texts) {
@@ -1560,9 +1560,10 @@ const HirStructDef* Lowerer::find_struct_def_for_layout_type(const TypeSpec& ts)
       return nullptr;
     }
   }
-  // Compatibility bridge for legacy TypeSpec producers that still lack
-  // complete structured owner metadata.
-  return find_struct_def_by_layout_compatibility_tag(*module_, ts);
+  // No-owner compatibility bridge for legacy TypeSpec producers that still
+  // lack complete structured owner metadata. Complete owner-key misses above
+  // are intentionally closed before this rendered/tag-text fallback.
+  return find_struct_def_by_no_owner_layout_compatibility_tag(*module_, ts);
 }
 
 const HirStructField* Lowerer::find_struct_instance_field_including_bases(

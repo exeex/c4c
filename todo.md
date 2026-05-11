@@ -9,37 +9,34 @@ Current Step Title: Retire HIR Rendered Declaration and Template Bridges
 ## Just Finished
 
 Step 4 - Retire HIR Rendered Declaration and Template Bridges:
-template-struct specialization rendered-primary lookup is fenced as explicit
-compatibility/no-owner behavior.
+HIR `struct_defs` layout lookup rendered/tag-text fallback is fenced as
+explicit no-owner/no-metadata compatibility without reopening complete owner
+misses.
 
 Changed files:
 
 | File | Result |
 | --- | --- |
-| `src/frontend/hir/compile_time_engine.hpp` | Renamed the rendered primary-name registration/lookup surface to `*_no_metadata_compat`; owner-key lookup now spells out that complete `CompileTimeRegistryKey` misses return `nullptr` before consulting rendered compatibility. |
-| `src/frontend/hir/impl/lowerer.hpp` | Added a `find_template_struct_specializations_no_owner_compat` declaration and documented the lowerer rendered specialization map as a no-owner compatibility mirror. |
-| `src/frontend/hir/impl/templates/templates.cpp` | Split the lowerer no-owner fallback into the named compatibility helper; complete owner-key hits still win, and complete owner-key misses return before fallback. |
-| `tests/frontend/frontend_hir_tests.cpp` | Updated the compile-time-state closed-miss test to register and query rendered fallback through the explicit no-metadata compatibility API. |
-| `tests/frontend/frontend_hir_lookup_tests.cpp` | Updated the HIR lookup authority test to use the explicit no-metadata compatibility API while keeping the complete owner-key miss closed. |
+| `src/frontend/hir/hir_types.cpp` | Renamed the retained layout fallback helper to `find_struct_def_by_no_owner_layout_compatibility_tag` and documented that complete structured owner misses return before rendered/tag-text `struct_defs` lookup. |
+| `src/frontend/hir/impl/expr/builtin.cpp` | Renamed the builtin layout fallback name helper to `no_owner_layout_compat_name_from_text` and documented the same no-owner boundary for `sizeof`/`alignof` layout queries. |
+| `tests/frontend/frontend_hir_lookup_tests.cpp` | Added direct no-owner layout TypeSpec compatibility coverage while retaining the existing complete-owner miss and builtin closed-miss coverage. |
 | `test_after.log` | Updated with the delegated build and focused HIR test proof. |
 
 ## Suggested Next
 
 Continue Step 4 with one separate HIR rendered declaration/template bridge
-family, such as `fn_index`, `global_index`, `struct_defs`, `template_defs`,
-rendered qualified imports, or no-owner handoffs. Keep that packet separate
-from template-struct specialization lookup.
+family, such as `fn_index`, `global_index`, `template_defs`, rendered
+qualified imports, or no-owner handoffs. Keep that packet separate from
+`struct_defs` layout compatibility.
 
 ## Watchouts
 
-- `CompileTimeState::template_struct_specializations_` and
-  `Lowerer::template_struct_specializations_` still exist as retained rendered
-  compatibility mirrors; their removal condition is that all callers can supply
-  complete primary owner metadata or an explicitly structured import/handoff
-  carrier.
-- `Lowerer::eval_deferred_nttp_expr_hir` still reads the lowerer rendered
-  specialization mirror through `DeferredNttpTemplateLookup`; that use remains
-  no-owner compatibility and was not widened in this packet.
+- The retained `struct_defs` layout fallback is still intentionally available
+  only after no complete `HirRecordOwnerKey`/TypeSpec owner metadata can be
+  formed.
+- Complete owner-key miss coverage remains closed for both direct layout lookup
+  and builtin layout queries; this packet added only no-owner compatibility
+  coverage, not a new fallback path.
 - Keep HIR `FunctionCtx` local/label/generated-name cleanup out of this plan;
   idea 169 owns route-local identity domains.
 - The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`

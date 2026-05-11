@@ -105,7 +105,8 @@ class LayoutQueries {
       }
       return nullptr;
     }
-    const auto it = module_.struct_defs.find(layout_compat_name_from_text(ts));
+    const auto it =
+        module_.struct_defs.find(no_owner_layout_compat_name_from_text(ts));
     return it == module_.struct_defs.end() ? nullptr : &it->second;
   }
 
@@ -119,7 +120,10 @@ class LayoutQueries {
     return elem;
   }
 
-  std::string layout_compat_name_from_text(const TypeSpec& ts) const {
+  std::string no_owner_layout_compat_name_from_text(const TypeSpec& ts) const {
+    // No-owner compatibility for legacy builtin query TypeSpecs. Complete
+    // structured owner misses return from find_struct_layout before this
+    // rendered/tag-text lookup can consult module_.struct_defs.
     if (module_.link_name_texts) {
       if (ts.tag_text_id != kInvalidText) {
         std::string text(module_.link_name_texts->lookup(ts.tag_text_id));
