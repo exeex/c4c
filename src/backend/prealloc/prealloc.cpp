@@ -133,13 +133,66 @@ namespace {
   return nullptr;
 }
 
-[[nodiscard]] PreparedCallWrapperKind classify_call_wrapper_kind(const bir::Module& module,
-                                                                 const bir::CallInst& call) {
+[[nodiscard]] const bir::Function* find_module_function_by_link_name_id(
+    const bir::Module& module,
+    LinkNameId link_name_id) {
+  if (link_name_id == kInvalidLinkName) {
+    return nullptr;
+  }
+  for (const auto& function : module.functions) {
+    if (function.link_name_id == link_name_id) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+struct DirectCalleeResolution {
+  std::optional<std::string_view> name;
+  const bir::Function* function = nullptr;
+};
+
+[[nodiscard]] DirectCalleeResolution resolve_direct_callee(const bir::Module& module,
+                                                           const bir::CallInst& call) {
+  if (call.is_indirect) {
+    return {};
+  }
+
+  if (call.callee_link_name_id != kInvalidLinkName) {
+    const std::string_view semantic_name =
+        module.names.link_names.spelling(call.callee_link_name_id);
+    if (semantic_name.empty()) {
+      return {};
+    }
+    if (!call.callee.empty() && call.callee != semantic_name) {
+      return {};
+    }
+    return DirectCalleeResolution{
+        .name = semantic_name,
+        .function = find_module_function_by_link_name_id(module, call.callee_link_name_id),
+    };
+  }
+
+  if (call.callee.empty()) {
+    return {};
+  }
+  return DirectCalleeResolution{
+      .name = call.callee,
+      .function = find_module_function(module, call.callee),
+  };
+}
+
+[[nodiscard]] PreparedCallWrapperKind classify_call_wrapper_kind(
+    const bir::CallInst& call,
+    const DirectCalleeResolution& direct_callee) {
   if (call.is_indirect) {
     return PreparedCallWrapperKind::Indirect;
   }
+  if (!direct_callee.name.has_value()) {
+    return PreparedCallWrapperKind::Indirect;
+  }
 
-  if (const auto* callee = find_module_function(module, call.callee); callee != nullptr) {
+  if (const auto* callee = direct_callee.function; callee != nullptr) {
     if (!callee->is_declaration) {
       return PreparedCallWrapperKind::SameModule;
     }
@@ -869,14 +922,17 @@ void populate_call_plans(PreparedBirModule& prepared) {
           continue;
         }
 
+        const DirectCalleeResolution direct_callee = resolve_direct_callee(prepared.module, *call);
         PreparedCallPlan call_plan{
             .block_index = block_index,
             .instruction_index = instruction_index,
-            .wrapper_kind = classify_call_wrapper_kind(prepared.module, *call),
+            .wrapper_kind = classify_call_wrapper_kind(*call, direct_callee),
             .variadic_fpr_arg_register_count = variadic_fpr_arg_register_count(*call),
             .is_indirect = call->is_indirect,
-            .direct_callee_name = call->is_indirect ? std::nullopt
-                                                    : std::optional<std::string>{call->callee},
+            .direct_callee_name =
+                direct_callee.name.has_value()
+                    ? std::optional<std::string>{std::string{*direct_callee.name}}
+                    : std::nullopt,
             .indirect_callee =
                 build_indirect_callee_plan(prepared.names, regalloc_function, value_locations, *call),
             .memory_return =

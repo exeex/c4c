@@ -1781,6 +1781,58 @@ bir::Module make_call_wrapper_kind_contract_module() {
   return module;
 }
 
+bir::Module make_call_wrapper_link_name_id_contract_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  const c4c::LinkNameId same_module_link_name_id =
+      module.names.link_names.intern("same_module_id_target");
+
+  bir::Function same_module_callee;
+  same_module_callee.name = "same_module_id_target";
+  same_module_callee.link_name_id = same_module_link_name_id;
+  same_module_callee.return_type = bir::TypeKind::Void;
+  bir::Block same_module_entry;
+  same_module_entry.label = "entry";
+  same_module_entry.terminator = bir::ReturnTerminator{};
+  same_module_callee.blocks.push_back(std::move(same_module_entry));
+  module.functions.push_back(std::move(same_module_callee));
+
+  bir::Function raw_compat_extern;
+  raw_compat_extern.name = "raw_compat_extern";
+  raw_compat_extern.is_declaration = true;
+  raw_compat_extern.return_type = bir::TypeKind::Void;
+  module.functions.push_back(std::move(raw_compat_extern));
+
+  bir::Function caller;
+  caller.name = "call_wrapper_link_name_id_contract";
+  caller.return_type = bir::TypeKind::Void;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee_link_name_id = same_module_link_name_id,
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "raw_compat_extern",
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "raw_compat_extern",
+      .callee_link_name_id = same_module_link_name_id,
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 bir::Module make_dynamic_stack_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2869,6 +2921,41 @@ int check_call_wrapper_kind_contract() {
       !indirect_call.arguments.front().source_literal.has_value() ||
       indirect_call.arguments.front().source_literal->immediate != 5) {
     return fail("call-wrapper contract: indirect call lost explicit wrapper classification");
+  }
+
+  return 0;
+}
+
+int check_call_wrapper_link_name_id_authority_contract() {
+  const auto prepared = prepare_module(make_call_wrapper_link_name_id_contract_module());
+  const auto* call_plans =
+      find_call_plans_function(prepared, "call_wrapper_link_name_id_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 3) {
+    return fail("call-wrapper LinkNameId contract: missing prepared call plans");
+  }
+
+  const auto& id_only_call = call_plans->calls[0];
+  if (id_only_call.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
+      id_only_call.is_indirect || id_only_call.indirect_callee.has_value() ||
+      id_only_call.direct_callee_name !=
+          std::optional<std::string>{"same_module_id_target"}) {
+    return fail("call-wrapper LinkNameId contract: ID-only call did not publish semantic callee authority");
+  }
+
+  const auto& raw_compat_call = call_plans->calls[1];
+  if (raw_compat_call.wrapper_kind !=
+          prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
+      raw_compat_call.is_indirect || raw_compat_call.indirect_callee.has_value() ||
+      raw_compat_call.direct_callee_name !=
+          std::optional<std::string>{"raw_compat_extern"}) {
+    return fail("call-wrapper LinkNameId contract: raw-only compatibility call stopped resolving");
+  }
+
+  const auto& mismatch_call = call_plans->calls[2];
+  if (mismatch_call.wrapper_kind != prepare::PreparedCallWrapperKind::Indirect ||
+      mismatch_call.is_indirect || mismatch_call.direct_callee_name.has_value() ||
+      mismatch_call.indirect_callee.has_value()) {
+    return fail("call-wrapper LinkNameId contract: mismatched ID/raw callee did not fail closed");
   }
 
   return 0;
@@ -4812,6 +4899,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_call_wrapper_kind_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_call_wrapper_link_name_id_authority_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_call_argument_source_shape_contract(); rc != 0) {

@@ -8,44 +8,48 @@ Current Step Title: Make BIR Validation and Backend Preparation LinkNameId-Autho
 
 ## Just Finished
 
-Step 6 backend-preparation stack-layout addressing slice is implemented.
+Step 6 prepared-call direct-callee slice is implemented.
 
-`build_direct_symbol_backed_address()` now consumes covered
-`MemoryAddress::base_link_name_id` and `LoadGlobalInst`/`StoreGlobalInst`
-`global_name_id` metadata before raw display spellings. Valid IDs resolve
-through the BIR link-name table into the prepared link-name table; raw spelling
-remains a compatibility fallback only when the covered ID is absent. Covered
-ID/display mismatches fail closed by not publishing a direct-symbol prepared
-memory access.
+`populate_call_plans()` now resolves direct callees through
+`CallInst::callee_link_name_id` before raw `callee` spelling. Valid IDs publish
+the semantic link-name spelling into `PreparedCallPlan::direct_callee_name` and
+wrapper classification looks up same-module/extern declarations by
+`Function::link_name_id`. Raw spelling remains the compatibility fallback only
+when no callee ID is present.
 
-`backend_prepare_stack_layout_test` now proves ID-only global addressing
-resolves to the canonical `LinkNameId` spelling, drifted raw global spelling
-cannot override that ID on the stack-layout prepared-addressing route, and
-raw-only compatibility global stores still resolve by spelling.
+Covered callee ID/display mismatches now fail closed for prepared call plans:
+they do not publish the raw spelling as the direct callee and do not classify
+the call as a different same-module or direct extern target by string.
+`backend_prepare_frame_stack_call_contract_test` covers ID-only direct calls,
+raw-only compatibility calls, and mismatch fail-closed behavior.
+`backend_prepared_printer_test` now proves prepared dumps print the semantic ID
+callee spelling even when the raw direct-callee spelling is absent.
 
 ## Suggested Next
 
-Continue Step 6 by moving another prepared/backend route off raw display names,
-preferably a call-plan source-symbol or storage-plan symbol path that already
-receives `LinkNameId` metadata from BIR.
+Continue Step 6 by moving prepared call argument/source-symbol publication off
+raw symbol strings where BIR already carries `LinkNameId` metadata, or by adding
+a diagnostic/note surface for fail-closed prepared-call mismatches if the
+supervisor wants explicit reporting instead of silent omission.
 
 ## Watchouts
 
-- This packet fail-closes mismatches by omitting the prepared direct-symbol
-  access rather than emitting a diagnostic. That matches the current
-  stack-layout addressing API shape; a later validation/reporting packet may
-  want an explicit prepare note or error surface.
-- String constants still intentionally use raw spellings because BIR string
-  constants do not carry semantic `LinkNameId`.
-- Local-slot pointer-value addressing still records route-local value names,
-  not module-level link-name authority.
+- `PreparedCallPlan::direct_callee_name` is still a string field. This packet
+  makes its contents semantic-ID-derived when possible, but it does not add a
+  prepared `LinkNameId` field.
+- Mismatched direct calls use the existing `Indirect` wrapper enum as the
+  fail-closed prepared state while keeping `is_indirect == false` and no
+  indirect callee plan. There is still no dedicated invalid/diagnostic wrapper
+  channel.
+- Dynamic-stack intrinsic detection still intentionally reads raw callee text;
+  those synthesized runtime/intrinsic calls keep `callee_link_name_id` invalid.
 
 ## Proof
 
 Passed:
 
 ```sh
-{ cmake --build --preset default --target backend_prepare_stack_layout_test backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$'; } > test_after.log 2>&1
+{ cmake --build --preset default --target backend_prepare_liveness_test backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$'; } > test_after.log 2>&1
 ```
 
 Proof log: `test_after.log`. Result: build succeeded and 3/3 selected tests

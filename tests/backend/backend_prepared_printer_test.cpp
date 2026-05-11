@@ -428,8 +428,12 @@ prepare::PreparedBirModule prepare_call_wrapper_dump_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
 
+  const c4c::LinkNameId same_module_link_name_id =
+      module.names.link_names.intern("same_module_i32");
+
   bir::Function same_module_callee;
   same_module_callee.name = "same_module_i32";
+  same_module_callee.link_name_id = same_module_link_name_id;
   same_module_callee.return_type = bir::TypeKind::I32;
   same_module_callee.params.push_back(bir::Param{
       .type = bir::TypeKind::I32,
@@ -511,7 +515,7 @@ prepare::PreparedBirModule prepare_call_wrapper_dump_module() {
   entry.label = "entry";
   entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::I32, "tmp.same_module"),
-      .callee = "same_module_i32",
+      .callee_link_name_id = same_module_link_name_id,
       .args = {bir::Value::immediate_i32(1)},
       .arg_types = {bir::TypeKind::I32},
       .arg_abi = {bir::CallArgAbiInfo{
