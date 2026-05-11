@@ -1,21 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/164_sema_type_utils_static_eval_structured_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Collision Coverage
+Current Step ID: 6
+Current Step Title: Final Proof and Closure Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 5 collision coverage slice: added
-`test_static_eval_int_keeps_same_spelled_enum_domains_distinct` to
-`tests/frontend/cpp_hir_sema_consteval_type_utils_metadata_test.cpp`.
+Completed `plan.md` Step 6 final proof and closure-readiness ledger for idea
+164.
 
-The new test uses two enum constants with the same rendered spelling and
-`TextId` base name in distinct structured qualifier domains, verifies that each
-domain resolves to its own value, and verifies that a structured miss does not
-recover through the shared TextId or rendered spelling fallback.
+Closure ledger:
+
+- Structured enum lookup input exists for `static_eval_int`, with structured
+  key lookup and TextId lookup taking authority over rendered-name lookup when
+  metadata is complete.
+- Covered callers converted: non-template `static constexpr` struct member
+  initializer evaluation in `src/frontend/hir/hir_types.cpp`, static member
+  declaration initializer fallback in
+  `src/frontend/hir/impl/expr/scalar_control.cpp`, and
+  `Lowerer::eval_const_int_with_nttp_bindings` including recursive evaluation
+  and both NTTP-backed static member evaluation call sites.
+- Step 5 collision coverage exists in
+  `tests/frontend/cpp_hir_sema_consteval_type_utils_metadata_test.cpp` via
+  `test_static_eval_int_keeps_same_spelled_enum_domains_distinct`, which proves
+  same-spelled enum constants in distinct structured domains resolve to
+  distinct values and do not collapse through shared TextId or rendered
+  spelling.
+- Retained rendered compatibility boundaries: the legacy
+  `static_eval_int(Node*, const std::unordered_map<std::string, long long>&)`
+  overload remains the no-metadata bridge, and the NTTP evaluator keeps
+  rendered enum lookup only when no structured/TextId carrier can be built for
+  the queried enum node.
+- Removal conditions: remove rendered enum compatibility only after all
+  producers/callers provide structured or TextId enum metadata, including any
+  local/block enum-scope mirrors that currently depend on mutable
+  `enum_consts_` save/restore behavior.
+- Residual blocker: none for the covered Step 4/5/6 scope. Local/block
+  enum-scope structured mirrors are a separate plan-owner decision if the
+  source idea should be extended beyond the covered global/static-member paths.
 
 ## Step 1 Inventory Ledger
 
@@ -53,20 +77,21 @@ was required and no `test_after.log` was written for that inventory-only slice.
 
 ## Suggested Next
 
-Have the supervisor decide whether Step 5 coverage is sufficient or whether
-additional collision coverage is needed for local/block enum-scope mirrors.
+Have the supervisor call the plan owner to decide whether idea 164 can close or
+whether local/block enum-scope structured mirrors should split into a separate
+idea.
 
 ## Watchouts
 
-- This packet changed only the focused metadata unit test and `todo.md`.
-- The new collision case intentionally supplies wrong TextId/rendered fallback
-  values so a collapse to base spelling would fail the test.
-- Local/block enum-scope conversion remains outside this packet.
+- This Step 6 packet changed only `todo.md` and refreshed `test_after.log`.
+- No implementation or test files were touched during final proof.
+- Local/block enum-scope conversion remains outside the covered closure scope
+  unless the plan owner chooses to split or extend the work.
 
 ## Proof
 
 Ran the supervisor-selected proof exactly:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_sema_consteval_type_utils_structured_metadata$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_expr_scalar_control_helper|cpp_hir_template_deferred_nttp_static_member_expr|cpp_hir_template_deferred_nttp_cast_static_member_expr|cpp_hir_template_alias_deferred_nttp_static_member|cpp_positive_sema_template_constexpr_member_runtime_cpp)$' > test_after.log`
 
-Result: passed. `test_after.log` contains 1/1 passing tests.
+Result: passed. `test_after.log` contains 7/7 passing tests.
