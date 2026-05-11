@@ -5712,6 +5712,94 @@ void test_struct_def_owner_key_interns_first_use_spelling_carriers() {
               "first-use node owner registration should reject raw parser ids");
 }
 
+void test_lower_struct_def_owner_miss_rejects_stale_rendered_existing_def() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "stale_field";
+  stale_field.elem_type.base = c4c::TB_INT;
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "RenderedCollisionOwner";
+  stale_def.tag_text_id =
+      module.link_name_texts->intern("RenderedCollisionOwner");
+  stale_def.ns_qual.context_id = 91;
+  stale_def.fields.push_back(stale_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node real{};
+  real.kind = c4c::NK_STRUCT_DEF;
+  real.name = "RenderedCollisionOwner";
+  real.unqualified_name = "RealCollisionOwner";
+  real.unqualified_text_id =
+      module.link_name_texts->intern("RealCollisionOwner");
+  real.namespace_context_id = 92;
+
+  c4c::hir::NamespaceQualifier real_ns;
+  real_ns.context_id = real.namespace_context_id;
+  const c4c::hir::HirRecordOwnerKey real_key =
+      c4c::hir::make_hir_record_owner_key(real_ns, real.unqualified_text_id);
+  expect_true(module.find_struct_def_by_owner_structured(real_key) == nullptr,
+              "fixture should start with a complete owner-key miss");
+
+  lowerer.lower_struct_def(&real);
+
+  const c4c::hir::HirStructDef* structured =
+      module.find_struct_def_by_owner_structured(real_key);
+  expect_true(structured != nullptr &&
+                  structured->tag == "RenderedCollisionOwner",
+              "lower_struct_def should index the complete owner key instead of treating a stale rendered struct_defs hit as the existing definition");
+  expect_true(structured->fields.empty(),
+              "stale rendered struct_defs payload must not make the complete owner-key miss look already populated");
+}
+
+void test_lower_struct_def_base_owner_miss_rejects_stale_rendered_base_tag() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef stale_base;
+  stale_base.tag = "StaleRenderedBase";
+  stale_base.tag_text_id = module.link_name_texts->intern("StaleRenderedBase");
+  stale_base.ns_qual.context_id = 101;
+  module.struct_defs[stale_base.tag] = stale_base;
+
+  c4c::Node unresolved_base{};
+  unresolved_base.kind = c4c::NK_STRUCT_DEF;
+  unresolved_base.name = "RealBase";
+  unresolved_base.unqualified_name = "RealBase";
+  unresolved_base.unqualified_text_id =
+      module.link_name_texts->intern("RealBase");
+  unresolved_base.namespace_context_id = 102;
+
+  c4c::TypeSpec base_ts{};
+  base_ts.base = c4c::TB_STRUCT;
+  base_ts.array_size = -1;
+  base_ts.inner_rank = -1;
+  base_ts.tag_text_id = stale_base.tag_text_id;
+  base_ts.record_def = &unresolved_base;
+
+  c4c::Node derived{};
+  derived.kind = c4c::NK_STRUCT_DEF;
+  derived.name = "DerivedAfterBaseMiss";
+  derived.unqualified_name = "DerivedAfterBaseMiss";
+  derived.unqualified_text_id =
+      module.link_name_texts->intern("DerivedAfterBaseMiss");
+  derived.namespace_context_id = 103;
+  derived.n_bases = 1;
+  derived.base_types = &base_ts;
+
+  lowerer.lower_struct_def(&derived);
+
+  const auto derived_it = module.struct_defs.find("DerivedAfterBaseMiss");
+  expect_true(derived_it != module.struct_defs.end(),
+              "fixture should lower the derived struct");
+  expect_true(!derived_it->second.base_tags.empty() &&
+                  derived_it->second.base_tags[0] != "StaleRenderedBase",
+              "complete base owner-key misses must not recover a base through a stale rendered struct_defs tag");
+}
+
 void test_out_of_class_nested_method_attach_uses_structured_owner_key() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6016,6 +6104,8 @@ int main() {
   test_struct_def_owner_key_prefers_complete_text_ids_over_stale_spelling();
   test_struct_def_owner_key_canonicalizes_parser_qualifier_text_ids();
   test_struct_def_owner_key_interns_first_use_spelling_carriers();
+  test_lower_struct_def_owner_miss_rejects_stale_rendered_existing_def();
+  test_lower_struct_def_base_owner_miss_rejects_stale_rendered_base_tag();
   test_out_of_class_nested_method_attach_uses_structured_owner_key();
   test_out_of_class_method_attach_rejects_rendered_name_without_structured_key();
   test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback();

@@ -2639,10 +2639,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
   }
   auto find_existing_struct_def = [&]() -> const HirStructDef* {
     if (has_struct_owner_key) {
-      if (const HirStructDef* structured =
-              module_->find_struct_def_by_owner_structured(struct_owner_key)) {
-        return structured;
-      }
+      return module_->find_struct_def_by_owner_structured(struct_owner_key);
     }
     const auto rendered = module_->struct_defs.find(tag);
     return rendered == module_->struct_defs.end() ? nullptr : &rendered->second;
@@ -2703,20 +2700,41 @@ void Lowerer::lower_struct_def(const Node* sd) {
         module_ ? rendered_typespec_tag_for_compatibility(*module_, base)
                 : std::nullopt;
     std::optional<std::string> base_tag;
-    if (rendered_base_tag && !rendered_base_tag->empty() &&
+    const HirStructDef* base_layout = find_struct_def_for_layout_type(base);
+    if (base_layout) {
+      base_tag = base_layout->tag;
+    }
+    const auto base_has_complete_owner_metadata = [&]() {
+      if (base.record_def && base.record_def->kind == NK_STRUCT_DEF) {
+        return make_struct_def_node_owner_key(base.record_def).has_value();
+      }
+      if (base.namespace_context_id >= 0 && base.tag_text_id != kInvalidText) {
+        NamespaceQualifier ns_qual;
+        ns_qual.context_id = base.namespace_context_id;
+        ns_qual.is_global_qualified = base.is_global_qualified;
+        if (base.qualifier_text_ids && base.n_qualifier_segments > 0) {
+          ns_qual.segment_text_ids.assign(
+              base.qualifier_text_ids,
+              base.qualifier_text_ids + base.n_qualifier_segments);
+        }
+        return hir_record_owner_key_has_complete_metadata(
+            make_hir_record_owner_key(ns_qual, base.tag_text_id));
+      }
+      return false;
+    }();
+    if ((!base_tag || base_tag->empty()) &&
+        !base_has_complete_owner_metadata &&
+        rendered_base_tag && !rendered_base_tag->empty() &&
         module_->struct_defs.count(*rendered_base_tag)) {
       base_tag = rendered_base_tag;
-    }
-    const HirStructDef* base_layout = find_struct_def_for_layout_type(base);
-    if ((!base_tag || base_tag->empty()) && base_layout) {
-      base_tag = base_layout->tag;
     }
     if ((!base_tag || base_tag->empty()) && base.record_def &&
         base.record_def->kind == NK_STRUCT_DEF && base.record_def->name &&
         base.record_def->name[0]) {
       base_tag = base.record_def->name;
     }
-    if ((!base_tag || base_tag->empty()) && rendered_base_tag &&
+    if ((!base_tag || base_tag->empty()) &&
+        !base_has_complete_owner_metadata && rendered_base_tag &&
         !rendered_base_tag->empty()) {
       base_tag = rendered_base_tag;
     }
