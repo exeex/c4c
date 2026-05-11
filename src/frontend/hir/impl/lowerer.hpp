@@ -416,6 +416,7 @@ class Lowerer {
   std::optional<long long> try_eval_instantiated_struct_static_member_const(
       const std::string& tag, const std::string& member) const;
 
+  void register_local_enum_const_metadata(const Node* ed, int variant_index);
   long long eval_const_int_with_nttp_bindings(
       const Node* n,
       const NttpBindings& nttp_bindings,
@@ -1177,7 +1178,12 @@ class Lowerer {
                                                const Node* node);
 
   Module* module_ = nullptr;
+  // No-metadata compatibility mirror for enum values visible during HIR
+  // lowering. Local/block enum authority is carried by the scoped TextId/key
+  // maps below when AST metadata is available.
   std::unordered_map<std::string, long long> enum_consts_;
+  std::vector<ConstTextMap> enum_const_scopes_by_text_;
+  std::vector<ConstStructuredMap> enum_const_scopes_by_key_;
   std::unordered_map<std::string, long long> const_int_bindings_;
   std::unordered_set<std::string> weak_symbols_;
   // Engine-owned compile-time state.  Shared with the pipeline so

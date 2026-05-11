@@ -316,6 +316,8 @@ ConstEvalEnv Lowerer::make_lowerer_consteval_env(
                    include_named_consts ? &const_int_bindings_ : nullptr,
                    local_consts};
   env.enum_consts_by_key = &maps.enum_consts_by_key;
+  env.enum_scopes_by_text = &enum_const_scopes_by_text_;
+  env.enum_scopes_by_key = &enum_const_scopes_by_key_;
   if (include_named_consts) env.named_consts_by_key = &maps.named_consts_by_key;
   if (module_) {
     env.struct_defs = &module_->struct_defs;

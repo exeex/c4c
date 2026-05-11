@@ -322,6 +322,8 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
       const auto saved_locals = ctx.locals;
       const auto saved_static_globals = ctx.static_globals;
       const auto saved_enum_consts = enum_consts_;
+      const size_t saved_enum_text_scope_depth = enum_const_scopes_by_text_.size();
+      const size_t saved_enum_key_scope_depth = enum_const_scopes_by_key_.size();
       const auto saved_local_consts = ctx.local_const_bindings;
       const size_t saved_dtor_depth = ctx.dtor_stack.size();
       for (int i = 0; i < n->n_children; ++i) {
@@ -332,6 +334,8 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
         ctx.dtor_stack.resize(saved_dtor_depth);
         ctx.locals = saved_locals;
         ctx.static_globals = saved_static_globals;
+        enum_const_scopes_by_text_.resize(saved_enum_text_scope_depth);
+        enum_const_scopes_by_key_.resize(saved_enum_key_scope_depth);
         enum_consts_ = saved_enum_consts;
         ctx.local_const_bindings = saved_local_consts;
       }
@@ -527,6 +531,10 @@ ExprId Lowerer::lower_stmt_expr_block(FunctionCtx& ctx,
   const bool new_scope = (block->ival != 1);
   const auto saved_locals = ctx.locals;
   const auto saved_static_globals = ctx.static_globals;
+  const auto saved_enum_consts = enum_consts_;
+  const size_t saved_enum_text_scope_depth = enum_const_scopes_by_text_.size();
+  const size_t saved_enum_key_scope_depth = enum_const_scopes_by_key_.size();
+  const auto saved_local_consts = ctx.local_const_bindings;
 
   ExprId result{};
   bool have_result = false;
@@ -545,6 +553,10 @@ ExprId Lowerer::lower_stmt_expr_block(FunctionCtx& ctx,
   if (new_scope) {
     ctx.locals = saved_locals;
     ctx.static_globals = saved_static_globals;
+    enum_const_scopes_by_text_.resize(saved_enum_text_scope_depth);
+    enum_const_scopes_by_key_.resize(saved_enum_key_scope_depth);
+    enum_consts_ = saved_enum_consts;
+    ctx.local_const_bindings = saved_local_consts;
   }
 
   if (have_result) return result;

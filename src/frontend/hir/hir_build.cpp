@@ -316,9 +316,34 @@ void Lowerer::collect_weak_symbol_names(const std::vector<const Node*>& items) {
   }
 }
 
+void Lowerer::register_local_enum_const_metadata(const Node* ed,
+                                                 int variant_index) {
+  if (!ed || ed->kind != NK_ENUM_DEF || variant_index < 0 ||
+      variant_index >= ed->n_enum_variants || !ed->enum_name_text_ids ||
+      !ed->enum_vals) {
+    return;
+  }
+  if (enum_const_scopes_by_text_.empty() || enum_const_scopes_by_key_.empty()) {
+    return;
+  }
+  const TextId text_id = ed->enum_name_text_ids[variant_index];
+  if (text_id == kInvalidText) return;
+  const long long value = ed->enum_vals[variant_index];
+  enum_const_scopes_by_text_.back()[text_id] = value;
+  ConstEvalStructuredNameKey key;
+  key.base_text_id = text_id;
+  enum_const_scopes_by_key_.back()[key] = value;
+}
+
 void Lowerer::collect_enum_def(const Node* ed, bool register_structured_globals) {
   if (!ed || ed->kind != NK_ENUM_DEF || ed->n_enum_variants <= 0) return;
   if (!ed->enum_names || !ed->enum_vals) return;
+  const bool register_scoped_local_metadata =
+      !register_structured_globals && ed->enum_name_text_ids;
+  if (register_scoped_local_metadata) {
+    enum_const_scopes_by_text_.emplace_back();
+    enum_const_scopes_by_key_.emplace_back();
+  }
   for (int i = 0; i < ed->n_enum_variants; ++i) {
     const char* name = ed->enum_names[i];
     if (!name || !name[0]) continue;
@@ -328,9 +353,17 @@ void Lowerer::collect_enum_def(const Node* ed, bool register_structured_globals)
                          : std::nullopt;
     if (key) {
       ct_state_->register_enum_const(*key, name, ed->enum_vals[i]);
-    } else {
+    } else if (register_structured_globals) {
       ct_state_->register_enum_const(name, ed->enum_vals[i]);
+    } else {
+      register_local_enum_const_metadata(ed, i);
     }
+  }
+  if (register_scoped_local_metadata &&
+      enum_const_scopes_by_text_.back().empty() &&
+      enum_const_scopes_by_key_.back().empty()) {
+    enum_const_scopes_by_text_.pop_back();
+    enum_const_scopes_by_key_.pop_back();
   }
 }
 

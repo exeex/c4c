@@ -1,132 +1,82 @@
 Status: Active
 Source Idea Path: ideas/open/167_local_block_enum_scope_static_eval_structured_mirrors.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Local and Block Enum Static-Eval Paths
+Current Step ID: 2/3
+Current Step Title: Define the Local/Block Enum Lookup Carrier and Prefer Structured Lookup for the First Covered Path
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 1 inventory for idea 167 is recorded. No implementation, test, plan,
-idea, review, or proof-log files were edited.
+Plan Step 2/3 implemented the first HIR lowerer local/block enum structured
+mirror path. `Lowerer` now carries scoped enum `TextId` and local-key maps
+beside the rendered `enum_consts_` compatibility mirror, non-global
+`collect_enum_def(n)` populates those scoped maps from `enum_name_text_ids`,
+and `make_lowerer_consteval_env` passes them into `ConstEvalEnv`.
 
-Inventory and classifications:
+The scoped maps are created only when declaration metadata exists, so
+rendered-only callers keep the explicit no-metadata compatibility bridge.
+Block and statement-expression exits restore the scoped map depth together
+with `enum_consts_`; local/block enum definitions are no longer registered
+into `CompileTimeState` as unscoped rendered globals.
 
-- Parser block enum scope table:
-  `src/frontend/parser/impl/statements.cpp:33` saves
-  `parser.binding_state_.enum_consts` on block entry and restores it at
-  `src/frontend/parser/impl/statements.cpp:85`.
-  `src/frontend/parser/impl/types/struct.cpp:2999` copies that table for enum
-  initializer evaluation, `src/frontend/parser/impl/types/struct.cpp:3035`
-  adds earlier enumerators by `TextId`, and
-  `src/frontend/parser/impl/types/struct.cpp:3062` publishes unscoped enum
-  constants back to the parser binding state. Consumer:
-  `src/frontend/parser/impl/support.cpp:323` / `:342` resolves enum
-  initializer expressions by `unqualified_text_id`.
-  Classification: scoped-`TextId` capable. It is parser-local enum initializer
-  static evaluation, not the main HIR consteval route; the spelling branch at
-  `support.cpp:335` is documented compatibility only and currently returns
-  false.
+Step 1 inventory ledger, preserved for route context:
 
-- Sema scoped local/block enum static-eval stack:
-  `src/frontend/sema/validate.cpp:1178`-`:1180` creates rendered, `TextId`,
-  and structured scoped enum value stacks; `:1190`-`:1192` pops them.
-  `bind_enum_constants_local` at `:1486` writes rendered values at `:1495`,
-  `TextId` values at `:1499`, and local structured keys at `:1504`.
-  `populate_const_eval_env` at `:1369`-`:1379` passes all scoped enum maps to
-  `ConstEvalEnv`. Consumers include sema static assertions and foldable local
-  const initializers through `evaluate_constant_expr`.
-  Classification: scoped-`TextId` capable with a scoped local-key map. It is
-  not a complete structured-domain carrier because `enum_variant_local_key`
-  has only the enumerator `TextId`; the scope-stack position supplies the
-  disambiguating domain.
-
-- Shared `ConstEvalEnv` scoped enum lookup:
-  `src/frontend/sema/consteval.hpp:152`-`:177` defines rendered enum maps as
-  compatibility and scoped `TextId`/key maps as authority.
-  `lookup_by_text` searches `enum_scopes_by_text` at `:467`-`:475`, and
-  `lookup_by_key` searches `enum_scopes_by_key` at `:538`-`:547` before
-  global enum maps.
-  Classification: structured/scoped-`TextId` capable when callers provide the
-  scoped maps; rendered-compatibility only when callers provide only
-  `enum_consts`.
-
-- HIR lowerer mutable enum mirror:
-  `src/frontend/hir/hir_build.cpp:325` writes every collected enumerator into
-  `Lowerer::enum_consts_`. Top-level collection calls
-  `collect_enum_def(item, true)` at `hir_build.cpp:389`, which can also write
-  structured global keys into `CompileTimeState`. Block/local lowering calls
-  `collect_enum_def(n)` at `src/frontend/hir/impl/stmt/stmt.cpp:503`, which
-  writes only rendered names. Block lowering saves/restores `enum_consts_` at
-  `src/frontend/hir/impl/stmt/stmt.cpp:324` and `:335`.
-  Classification: rendered-compatibility only for local/block enums; structured
-  global-capable only for top-level enums.
-
-- HIR lowerer consteval environment consumers:
-  `src/frontend/hir/hir_types.cpp:315` passes `&enum_consts_` into
-  `ConstEvalEnv`, and `:318` attaches only refreshed global structured enum
-  maps. This feeds local/block-sensitive consumers such as constexpr-if
-  lowering, ternary folding, switch case/range folding, local const binding
-  folding, template value argument evaluation, and consteval call argument
-  evaluation through `make_lowerer_consteval_env`.
-  Classification: rendered-compatibility only for local/block enum constants.
-  This is the main residual path from idea 167.
-
-- HIR `eval_const_int_with_nttp_bindings` and static-member helpers:
-  `src/frontend/hir/hir_types.cpp:504`-`:510` can use a structured enum key,
-  then falls back to `enum_consts_` at `:514`-`:515`. Static-member initializer
-  evaluation in `src/frontend/hir/impl/expr/scalar_control.cpp:535`-`:538`
-  uses `static_eval_int` with rendered `enum_consts_` plus global structured
-  maps. The direct enum-expression lowerer at `scalar_control.cpp:546`-`:548`
-  still reads rendered `enum_consts_`.
-  Classification: global/static-member structured-domain capable but unrelated
-  to local/block conversion except as a compatibility boundary; the direct
-  lowerer read is rendered-compatibility only for local/block enum values.
-
-- `CompileTimeState` enum map:
-  `src/frontend/hir/compile_time_engine.hpp:1773` stores rendered enum
-  constants, and `:1778`-`:1785` stores structured mirrors only for
-  `GlobalEnumConstant`. Engine env construction at
-  `src/frontend/hir/impl/compile_time/engine.cpp:102` passes the rendered map
-  plus global structured mirrors. Because block `collect_enum_def(n)` currently
-  calls the rendered registration path, local/block enum constants can enter a
-  global compile-time rendered mirror without scoped identity.
-  Classification: rendered-compatibility only for local/block enums; global
-  structured-domain capable for top-level enums.
+- Parser block enum scope table: block entry saves and restores
+  `parser.binding_state_.enum_consts`; enum initializer evaluation uses copied
+  scoped tables and publishes unscoped constants back to parser binding state.
+  Classification: scoped-`TextId` capable for parser-local enum initializer
+  static evaluation; rendered spelling compatibility is not the main HIR
+  consteval route.
+- Sema scoped local/block enum static-eval stack: `validate.cpp` maintains
+  rendered, `TextId`, and structured scoped enum value stacks and passes them
+  to `ConstEvalEnv`. Classification: scoped-`TextId` capable with a scoped
+  local-key map; stack position supplies the local/block domain.
+- Shared `ConstEvalEnv` scoped enum lookup: scoped TextId/key maps are searched
+  innermost to outermost before global maps, and complete metadata misses use
+  the existing fail-closed behavior. Classification: structured/scoped-`TextId`
+  capable when callers provide scoped maps; rendered compatibility only when
+  callers provide no metadata.
+- HIR lowerer mutable enum mirror before this packet: top-level
+  `collect_enum_def(item, true)` could register structured globals, while
+  block/local `collect_enum_def(n)` wrote only rendered `enum_consts_`.
+  Classification before Step 2/3: rendered compatibility only for local/block
+  enums.
+- HIR lowerer consteval environment consumers: `make_lowerer_consteval_env`
+  feeds constexpr-if, switch case/range folding, ternary folding, local const
+  folding, template value arguments, and consteval-call argument evaluation.
+  Classification before Step 2/3: rendered compatibility only for local/block
+  enum constants; this was the selected first implementation target.
+- HIR static-member and direct enum-expression helpers: global/static-member
+  paths can use structured global maps, while direct rendered reads remain
+  compatibility boundaries. Classification: related boundary, not converted by
+  this local/block packet.
+- `CompileTimeState` enum map: structured enum mirrors exist only for global
+  enum constants and the flat rendered map has no local/block lifetime.
+  Classification: rendered compatibility only for local/block enums; do not use
+  it as local/block authority without scoped metadata.
 
 ## Suggested Next
 
-First implementation target: HIR lowerer local/block enum handoff. Add scoped
-local/block enum `TextId` and/or local-key maps beside `Lowerer::enum_consts_`
-and preserve them with the same block lifetime as `enum_consts_`; populate
-those maps from `collect_enum_def(n)` for non-global enum definitions; pass
-them through `make_lowerer_consteval_env` so HIR constexpr-if, switch case,
-ternary, local const, template value argument, and consteval-call argument
-folding can use `ConstEvalEnv` scoped enum metadata. Keep the current rendered
-`enum_consts_` lookup as the explicit no-metadata compatibility bridge, and
-avoid registering local/block enums into `CompileTimeState` as unscoped
-rendered globals unless the implementation also gives them scoped metadata.
-
-Recommended focused proof command for that target:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_expr_scalar_control_helper|cpp_positive_sema_ok_enum_scope_local_over_global_c|positive_sema_ok_enum_scope_no_leak_after_block_c)$'`
+Plan Step 4: add focused HIR collision coverage for same-spelled local/block
+enum constants that are statically evaluated through the converted lowerer
+path, including a statement-expression or nested-block case if available.
 
 ## Watchouts
 
-- Keep the route focused on local/block enum ownership and lifetime.
-- Do not reopen the global/static-member conversion completed by idea 164
-  unless only documenting a compatibility boundary.
-- Treat rendered enum mirrors as compatibility only when structured or scoped
-  `TextId` metadata is incomplete.
-- A raw local enumerator `TextId` is not enough by itself for same-spelled
-  block enums. The current sema route gets separation from the scope-stack
-  position; the HIR route needs an equivalent scoped carrier or a stronger
-  local-domain key.
-- `CompileTimeState` currently has no local/block enum scope lifetime, so using
-  it for block enums as a rendered global mirror is the riskiest leak/collision
-  path.
+- The local/block structured key is intentionally the local enumerator key;
+  declaration-stack position supplies the scope domain, matching the existing
+  `ConstEvalEnv` scoped lookup model.
+- `enum_consts_` is still used by direct rendered lowerer compatibility paths;
+  do not claim those are converted until their call sites pass metadata.
+- `CompileTimeState` still has no local/block enum scope lifetime; keep
+  local/block enum constants out of its flat rendered enum map unless a future
+  packet adds scoped metadata there too.
 
 ## Proof
 
-Inventory-only packet. Per delegation, no build/test command was run and
-`test_after.log` was not written.
+Passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_expr_scalar_control_helper|positive_sema_ok_enum_scope_local_over_global_c|positive_sema_ok_enum_scope_no_leak_after_block_c)$' > test_after.log`
+
+Proof result: supervisor reran the corrected command successfully. Proof log:
+`test_after.log`.
