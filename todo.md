@@ -1,15 +1,17 @@
 Status: Active
 Source Idea Path: ideas/open/167_whole_codebase_string_authority_final_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Classify Route-Local and Generated Names
+Current Step ID: 4
+Current Step Title: Classify Compatibility Bridges and Retirement Candidates
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Classify Route-Local and Generated Names second packet is complete.
-No implementation or test files were edited.
+Step 3 - Classify Route-Local and Generated Names is complete enough to advance.
+Backend route-local classification landed in `e46c4a2e9`; frontend/midend
+route-local classification landed in `7a2d2b220`. No implementation or test
+files were edited.
 
 Backend route-local classification table from the first packet remains below,
 followed by the frontend/midend table added by this packet.
@@ -58,10 +60,31 @@ Frontend/midend route-local, generated, display, and bridge classification table
 
 ## Suggested Next
 
-Move to Step 4 with a compatibility-bridge retirement packet focused on the
-remaining rendered bridges that are not route-local: parser support overloads,
-HIR module declaration/record indexes, template/specialization rendered mirrors,
-and final-output scan boundaries.
+Start Step 4 with a compatibility-bridge classification packet focused on
+rendered bridges that were explicitly identified during Step 3 but are not
+route-local identity cleanup:
+
+1. Parser support overloads and parser/sema compatibility helpers:
+   `src/frontend/parser/parser_support.hpp`,
+   `src/frontend/parser/impl/support.cpp`, and sema static-eval rendered enum
+   lookup paths.
+2. HIR module declaration/record compatibility indexes and legacy lookup
+   helpers: `fn_index`, `global_index`, `struct_defs`, `template_defs`,
+   `struct_def_owner_index`, `find_*_by_name_legacy`, and
+   `classify_*_decl_lookup`.
+3. Template and specialization rendered mirrors that are compatibility or
+   display payloads rather than route-local names: `TypeBindings`,
+   `NttpBindings`, `NttpTextBindings`, specialization canonical/display keys,
+   and consteval call-env template mirrors.
+4. Final-output scan boundaries: HIR/LIR signature text, initializer text,
+   ABI/mangled-name payloads, BIR/HIR/LIR printer-only names, diagnostics, and
+   parity/debug labels.
+
+For each bridge, record owner/domain, caller class, exact compatibility
+boundary, whether a complete structured miss can still reach it, and the
+retirement condition. Mark candidates for idea 168 when they are production
+rendered-name bridges rather than tests, raw-input import, diagnostics, or
+output-only formatting.
 
 ## Watchouts
 
@@ -78,6 +101,9 @@ and final-output scan boundaries.
   lookup.
 - This packet found compatibility bridges and route-local raw maps but no new
   parser/sema/HIR `SA` string family that should be fixed inside Step 3.
+- Step 4 is classification and retirement planning only. Do not start idea 168,
+  169, or 170 implementation work from this packet, and do not treat output or
+  diagnostics as bugs unless a caller feeds them back into lookup authority.
 
 ## Proof
 
