@@ -496,6 +496,8 @@ std::string_view legacy_type_decl_name(std::string_view decl) {
 }
 
 void verify_struct_decl_shadows(const LirModule& mod) {
+  // Parse legacy `type_decls` only to prove the compatibility shadow still
+  // matches the structured declarations that printer/backend paths consume.
   std::unordered_map<std::string_view, std::string_view> legacy_by_name;
   for (const auto& decl : mod.type_decls) {
     const std::string_view decl_view(decl);

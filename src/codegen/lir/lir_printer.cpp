@@ -529,7 +529,8 @@ std::string print_llvm(const LirModule& mod) {
   if (!target_triple.empty()) out << "target triple = \"" << target_triple << "\"\n";
   if (!mod.data_layout.empty() || !target_triple.empty()) out << "\n";
 
-  // Type declarations (struct/union definitions).
+  // Structured type declarations are the printed authority; legacy
+  // `type_decls` lines are verifier shadows when structured declarations exist.
   for (const auto& decl : mod.struct_decls) {
     out << render_struct_decl_llvm(mod, decl) << "\n";
   }

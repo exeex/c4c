@@ -705,13 +705,13 @@ struct LirModule {
     merge_extern_decl_info(it->second, name, ret_ty, ret_type, link_name_id);
   }
 
-  // Type declarations (struct definitions) needed by the output.
-  // For now, these are stored as pre-formatted text lines (LLVM syntax).
-  // Stage 1+ will replace with structured type defs.
+  // Legacy type declaration shadow kept for compatibility with older output
+  // producers and verifier parity checks. When `struct_decls` is populated,
+  // structured declarations are the printer/backend authority.
   std::vector<std::string> type_decls;
 
-  // Structured mirror for struct declarations. This is intentionally inert
-  // until HIR lowering starts populating it and the printer is taught to use it.
+  // Structured struct declarations used by the printer and backend layout
+  // path. Matching `type_decls` lines are retained only as legacy shadows.
   std::vector<LirStructDecl> struct_decls;
   std::unordered_map<StructNameId, std::size_t> struct_decl_index;
   mutable std::vector<LirStructuredLayoutObservation> structured_layout_observations;

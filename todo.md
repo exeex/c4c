@@ -9,36 +9,33 @@ Current Step Title: Retire LIR and HIR-to-LIR Final-Output Bridges
 ## Just Finished
 
 Step 5 - Retire LIR and HIR-to-LIR Final-Output Bridges:
-Fenced dead-internal global-initializer reachability so complete
-`LirGlobal::initializer_function_link_name_ids` metadata closes the raw
-`init_text` fallback. `eliminate_dead_internals` now seeds from valid
-initializer `LinkNameId`s and scans final initializer spelling only when a
-global has no valid structured initializer function IDs.
-
-Added focused LIR coverage proving stale `init_text` does not keep a
-rendered-name shadow alive when structured initializer IDs exist, while
-legacy/no-metadata initializer payloads still scan raw `init_text`.
+Fenced LIR `type_decls` as a legacy output/verifier compatibility shadow in
+comments and test-visible wording. `struct_decls` are now documented as the
+printer/backend authority when populated, and verifier parsing of
+`type_decls` is documented as a shadow-parity check only.
 
 Changed files:
 
 | File | Result |
 | --- | --- |
-| `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` | Made valid initializer function `LinkNameId`s authoritative before raw initializer text scanning in dead-internal elimination. |
-| `tests/frontend/frontend_hir_tests.cpp` | Added direct LIR reachability coverage for stale `init_text` fencing and legacy no-metadata fallback preservation. |
+| `src/codegen/lir/ir.hpp` | Reworded `type_decls` as the legacy compatibility shadow and `struct_decls` as the structured printer/backend path. |
+| `src/codegen/lir/verify.cpp` | Documented `verify_struct_decl_shadows` as parsing legacy declarations only for shadow parity. |
+| `src/codegen/lir/lir_printer.cpp` | Clarified that printed type declarations come from structured `struct_decls` when present. |
+| `tests/frontend/frontend_lir_extern_decl_type_ref_test.cpp` | Updated the focused assertion message to name `struct_decls` as the emitted declaration source. |
 | `todo.md` | Recorded this Step 5 packet result and proof. |
 
 ## Suggested Next
 
-Continue Step 5 by inspecting the next LIR/HIR-to-LIR final-output bridge that
-still recovers semantic reachability or identity from rendered LLVM text despite
-available structured IDs or typed mirrors.
+Continue Step 5 by inspecting the remaining HIR-to-LIR final-output bridge
+comments or compatibility names that could still imply rendered LLVM text is
+semantic authority when structured IDs or typed mirrors are present.
 
 ## Watchouts
 
-- `LirGlobal::init_text` remains final output payload and is still scanned for
-  legacy initializer producers with no valid structured function IDs.
-- The focused test exposes `eliminate_dead_internals` to the test TU through a
-  namespace-local forward declaration rather than a public header declaration.
+- This packet intentionally preserved output spelling, verifier diagnostics,
+  and legacy `type_decls` storage.
+- No behavior changed; this was a boundary/documentation slice for the retained
+  compatibility shadow.
 - The pre-existing untracked `review/168_step4_hir_bridge_route_review.md`
   remains transient and was not modified.
 - No current blockers.
@@ -46,7 +43,7 @@ available structured IDs or typed mirrors.
 ## Proof
 
 Proof command:
-`cmake --build build --target frontend_hir_tests && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
+`cmake --build build --target frontend_lir_extern_decl_type_ref_test backend_prepare_structured_context_test && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_extern_decl_type_ref|backend_prepare_structured_context)$'`
 
 Result: passed. Output was written to `test_after.log`.
 

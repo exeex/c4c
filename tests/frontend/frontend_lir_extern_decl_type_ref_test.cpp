@@ -102,7 +102,7 @@ int main() {
   c4c::codegen::lir::verify_module(module);
   const std::string llvm_ir = c4c::codegen::lir::print_llvm(module);
   expect_true(llvm_ir.find("%struct.Pair = type { i32 }") != std::string::npos,
-              "printer should emit matching struct_decls/type_decls declaration");
+              "printer should emit the structured struct_decls declaration");
   expect_true(llvm_ir.find("declare %struct.Pair @extern_pair(...)") !=
                   std::string::npos,
               "printer should keep using return_type_str for extern declarations");
