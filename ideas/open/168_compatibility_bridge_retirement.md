@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-05-11
 
 Depends On:
-- `ideas/open/167_whole_codebase_string_authority_final_audit.md`
+- `ideas/closed/167_whole_codebase_string_authority_final_audit.md`
 
 Parent Ideas:
 - `ideas/closed/158_sema_validate_string_authority_audit.md`

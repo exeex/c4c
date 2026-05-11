@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-05-11
 
 Depends On:
-- `ideas/open/167_whole_codebase_string_authority_final_audit.md`
+- `ideas/closed/167_whole_codebase_string_authority_final_audit.md`
 - `ideas/open/168_compatibility_bridge_retirement.md`
 
 Parent Ideas:
