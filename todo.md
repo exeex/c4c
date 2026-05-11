@@ -8,9 +8,9 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 ## Just Finished
 
-Completed the delegated Step 5 explicit callable-parameter lookup-authority
-repair from `plan.md`. `append_explicit_callable_param` now routes its early
-signature-template binding through structured-aware binding authority: complete
+Completed the delegated Step 5 lvalue cast template-binding lookup-authority
+repair from `plan.md`. `Lowerer::is_ast_lvalue` now routes typedef cast
+classification through structured-aware type-binding authority: complete
 structured type-parameter carriers bind through `ctx.structured_tpl_bindings`
 and complete structured misses fail closed instead of falling through to raw
 TextId lookup. Incomplete carriers still use the existing TextId/name mirror
@@ -18,16 +18,16 @@ compatibility path.
 
 ## Suggested Next
 
-Supervisor should review and commit this coherent Step 5 explicit callable
-parameter lookup-authority slice, then choose the next packet only if more
+Supervisor should review and commit this coherent Step 5 lvalue cast
+lookup-authority slice, then choose the next packet only if more
 forwarding/lowerer lookup bypasses remain.
 
 ## Watchouts
 
-- The local helper in `hir_functions.cpp` mirrors the structured-key policy
-  from callable lookup because `find_template_type_binding_for_call` is private
-  to `Lowerer`.
-- Complete structured callable parameter carriers now depend on
+- The local helper in `expr.cpp` mirrors the structured-key policy from
+  callable lookup because `is_ast_lvalue` has no `Module*` and only needs the
+  structured map plus existing TextId compatibility mirror.
+- Complete structured lvalue cast type-parameter carriers now depend on
   `ctx.structured_tpl_bindings`; stale complete structured misses intentionally
   do not use the TextId mirror.
 - Do not weaken tests or convert capability work into expectation-only changes.

@@ -3,6 +3,7 @@
 
 #include "expr.hpp"
 #include <cctype>
+#include <optional>
 #include <sstream>
 #include <string_view>
 
@@ -36,9 +37,36 @@ void apply_lvalue_template_concrete(TypeSpec& target, const TypeSpec& concrete) 
   target.is_volatile = target.is_volatile || outer_volatile;
 }
 
+std::optional<HirTemplateParameterBindingKey>
+make_lvalue_template_type_binding_key_from_carrier(const TypeSpec& ts) {
+  HirTemplateParameterBindingKey key;
+  key.parameter_kind = HirTemplateParameterBindingKind::Type;
+  key.owner_namespace_context_id =
+      ts.template_param_owner_namespace_context_id;
+  key.owner_template_text_id = ts.template_param_owner_text_id;
+  key.parameter_index = ts.template_param_index;
+  key.parameter_text_id = ts.template_param_text_id;
+  if (!hir_template_parameter_binding_key_has_complete_metadata(key)) {
+    return std::nullopt;
+  }
+  return key;
+}
+
 bool apply_lvalue_template_binding_by_text(
     TypeSpec& ts,
+    const HirTemplateTypeBindings* structured_tpl_bindings,
     const std::unordered_map<TextId, TypeSpec>& tpl_bindings_by_text) {
+  if (auto structured_key =
+          make_lvalue_template_type_binding_key_from_carrier(ts)) {
+    if (structured_tpl_bindings) {
+      auto structured_it = structured_tpl_bindings->find(*structured_key);
+      if (structured_it != structured_tpl_bindings->end()) {
+        apply_lvalue_template_concrete(ts, structured_it->second);
+        return true;
+      }
+    }
+    return false;
+  }
   if (ts.template_param_text_id != kInvalidText) {
     auto it = tpl_bindings_by_text.find(ts.template_param_text_id);
     if (it != tpl_bindings_by_text.end()) {
@@ -89,7 +117,8 @@ bool Lowerer::is_ast_lvalue(const Node* n, const FunctionCtx* ctx) {
       TypeSpec cast_ts = n->type;
       if (ctx && cast_ts.base == TB_TYPEDEF) {
         if (!apply_lvalue_template_binding_by_text(
-                cast_ts, ctx->tpl_bindings_by_text) &&
+                cast_ts, &ctx->structured_tpl_bindings,
+                ctx->tpl_bindings_by_text) &&
             !has_lvalue_template_binding_text_carrier(cast_ts)) {
           apply_lvalue_template_binding_by_compatibility_tag(
               cast_ts, ctx->tpl_bindings);
