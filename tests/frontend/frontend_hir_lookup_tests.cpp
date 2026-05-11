@@ -495,6 +495,88 @@ void test_complete_decl_lookup_miss_rejects_stale_rendered_indexes() {
               "complete global declaration-key miss must not record legacy rendered authority");
 }
 
+void test_complete_decl_lookup_miss_uses_named_rendered_compatibility_only() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId compat_fn_text = texts.intern("self_consistent_fn");
+  const c4c::TextId compat_global_text = texts.intern("self_consistent_global");
+  const c4c::TextId qualified_fn_text = texts.intern("rendered_qualified_fn");
+  const c4c::TextId qualified_global_text =
+      texts.intern("rendered_qualified_global");
+  const c4c::hir::NamespaceQualifier other_ns = make_ns(texts, "other");
+
+  add_function(module, c4c::hir::FunctionId{50}, "self_consistent_fn",
+               c4c::kInvalidText);
+  add_function(module, c4c::hir::FunctionId{51}, "other::self_consistent_fn",
+               compat_fn_text, c4c::kInvalidLinkName, other_ns);
+  add_function(module, c4c::hir::FunctionId{52}, "api::rendered_qualified_fn",
+               c4c::kInvalidText);
+  add_function(module, c4c::hir::FunctionId{53}, "other::rendered_qualified_fn",
+               qualified_fn_text, c4c::kInvalidLinkName, other_ns);
+
+  add_global(module, c4c::hir::GlobalId{60}, "self_consistent_global",
+             c4c::kInvalidText);
+  add_global(module, c4c::hir::GlobalId{61}, "other::self_consistent_global",
+             compat_global_text, c4c::kInvalidLinkName, other_ns);
+  add_global(module, c4c::hir::GlobalId{62}, "api::rendered_qualified_global",
+             c4c::kInvalidText);
+  add_global(module, c4c::hir::GlobalId{63},
+             "other::rendered_qualified_global", qualified_global_text,
+             c4c::kInvalidLinkName, other_ns);
+
+  c4c::hir::DeclRef self_consistent_fn_ref;
+  self_consistent_fn_ref.name = "self_consistent_fn";
+  self_consistent_fn_ref.name_text_id = compat_fn_text;
+  const c4c::hir::Function* self_consistent_fn =
+      module.resolve_function_decl(self_consistent_fn_ref);
+  expect_true(self_consistent_fn != nullptr &&
+                  self_consistent_fn->id.value == 50,
+              "self-consistent complete function miss may use rendered compatibility");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "self_consistent_fn", 50),
+              "self-consistent function compatibility should record legacy rendered authority");
+
+  c4c::hir::DeclRef qualified_fn_ref;
+  qualified_fn_ref.name = "api::rendered_qualified_fn";
+  qualified_fn_ref.name_text_id = qualified_fn_text;
+  const c4c::hir::Function* qualified_fn =
+      module.resolve_function_decl(qualified_fn_ref);
+  expect_true(qualified_fn != nullptr && qualified_fn->id.value == 52,
+              "rendered-qualified complete function miss may use rendered compatibility");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "api::rendered_qualified_fn", 52),
+              "rendered-qualified function compatibility should record legacy rendered authority");
+
+  c4c::hir::DeclRef self_consistent_global_ref;
+  self_consistent_global_ref.name = "self_consistent_global";
+  self_consistent_global_ref.name_text_id = compat_global_text;
+  const c4c::hir::GlobalVar* self_consistent_global =
+      module.resolve_global_decl(self_consistent_global_ref);
+  expect_true(self_consistent_global != nullptr &&
+                  self_consistent_global->id.value == 60,
+              "self-consistent complete global miss may use rendered compatibility");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "self_consistent_global", 60),
+              "self-consistent global compatibility should record legacy rendered authority");
+
+  c4c::hir::DeclRef qualified_global_ref;
+  qualified_global_ref.name = "api::rendered_qualified_global";
+  qualified_global_ref.name_text_id = qualified_global_text;
+  const c4c::hir::GlobalVar* qualified_global =
+      module.resolve_global_decl(qualified_global_ref);
+  expect_true(qualified_global != nullptr && qualified_global->id.value == 62,
+              "rendered-qualified complete global miss may use rendered compatibility");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "api::rendered_qualified_global", 62),
+              "rendered-qualified global compatibility should record legacy rendered authority");
+}
+
 void test_direct_call_callee_lookup_uses_authoritative_decl_identity() {
   c4c::hir::Module module;
   module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
@@ -6024,6 +6106,7 @@ int main() {
   test_module_decl_lookup_records_each_authority();
   test_stale_rendered_names_do_not_override_authoritative_decl_lookup();
   test_complete_decl_lookup_miss_rejects_stale_rendered_indexes();
+  test_complete_decl_lookup_miss_uses_named_rendered_compatibility_only();
   test_direct_call_callee_lookup_uses_authoritative_decl_identity();
   test_operator_callee_lookup_uses_authoritative_decl_identity();
   test_range_for_method_callee_lookup_uses_authoritative_decl_identity();

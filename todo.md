@@ -9,34 +9,34 @@ Current Step Title: Retire HIR Rendered Declaration and Template Bridges
 ## Just Finished
 
 Step 4 - Retire HIR Rendered Declaration and Template Bridges:
-HIR `struct_defs` layout lookup rendered/tag-text fallback is fenced as
-explicit no-owner/no-metadata compatibility without reopening complete owner
-misses.
+HIR module declaration lookup through `fn_index`/`global_index` is fenced as
+explicit legacy rendered compatibility while preserving LinkNameId, concrete
+GlobalId, and `ModuleDeclLookupKey` authority.
 
 Changed files:
 
 | File | Result |
 | --- | --- |
-| `src/frontend/hir/hir_types.cpp` | Renamed the retained layout fallback helper to `find_struct_def_by_no_owner_layout_compatibility_tag` and documented that complete structured owner misses return before rendered/tag-text `struct_defs` lookup. |
-| `src/frontend/hir/impl/expr/builtin.cpp` | Renamed the builtin layout fallback name helper to `no_owner_layout_compat_name_from_text` and documented the same no-owner boundary for `sizeof`/`alignof` layout queries. |
-| `tests/frontend/frontend_hir_lookup_tests.cpp` | Added direct no-owner layout TypeSpec compatibility coverage while retaining the existing complete-owner miss and builtin closed-miss coverage. |
+| `src/frontend/hir/hir_ir.hpp` | Added explicitly named rendered declaration compatibility helpers for retained `fn_index`/`global_index` lookup and renamed the structured-miss compatibility predicate wording. Source-compatible legacy wrappers remain for rendered-name-only callers outside this packet. |
+| `tests/frontend/frontend_hir_lookup_tests.cpp` | Added complete structured-miss coverage for the intentionally allowed self-consistent and rendered-qualified compatibility predicates, alongside the existing no-metadata, incomplete-metadata, closed-miss, LinkNameId, concrete-id, and structured-authority assertions. |
+| `todo.md` | Recorded this executor packet and proof. |
 | `test_after.log` | Updated with the delegated build and focused HIR test proof. |
 
 ## Suggested Next
 
-Continue Step 4 with one separate HIR rendered declaration/template bridge
-family, such as `fn_index`, `global_index`, `template_defs`, rendered
-qualified imports, or no-owner handoffs. Keep that packet separate from
-`struct_defs` layout compatibility.
+Continue Step 4 with a separate HIR rendered template bridge packet, such as
+`template_defs`, or another rendered-qualified/no-owner handoff family. Keep it
+separate from the completed `struct_defs` layout and declaration
+`fn_index`/`global_index` compatibility slices.
 
 ## Watchouts
 
-- The retained `struct_defs` layout fallback is still intentionally available
-  only after no complete `HirRecordOwnerKey`/TypeSpec owner metadata can be
-  formed.
-- Complete owner-key miss coverage remains closed for both direct layout lookup
-  and builtin layout queries; this packet added only no-owner compatibility
-  coverage, not a new fallback path.
+- The retained declaration rendered fallback is still intentionally available
+  for missing/incomplete metadata and for the named rendered-qualified or
+  self-consistent compatibility predicates after a structured miss.
+- Complete structured declaration-key misses remain closed before
+  `fn_index`/`global_index` unless those named compatibility predicates allow
+  the rendered bridge.
 - Keep HIR `FunctionCtx` local/label/generated-name cleanup out of this plan;
   idea 169 owns route-local identity domains.
 - The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`

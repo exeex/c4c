@@ -2406,8 +2406,11 @@ struct Module {
   std::vector<GlobalVar> globals;
   std::vector<Expr> expr_pool;
 
-  // Step 5 classification: rendered-name compatibility indexes. Structured
-  // declaration/link-name lookup is authoritative when its metadata is present.
+  // Step 5 classification: legacy rendered-name compatibility indexes.
+  // LinkNameId, concrete IDs, and ModuleDeclLookupKey lookup remain
+  // authoritative when their metadata is present; fn_index/global_index are
+  // retained only as rendered compatibility bridges for incomplete legacy
+  // declaration seams.
   std::unordered_map<SymbolName, FunctionId> fn_index;
   std::unordered_map<SymbolName, GlobalId> global_index;
   std::unordered_map<ModuleDeclLookupKey, FunctionId, ModuleDeclLookupKeyHash>
@@ -2576,14 +2579,28 @@ struct Module {
     next_expr_id = std::max(next_expr_id, max_expr);
   }
 
-  [[nodiscard]] FunctionId lookup_function_id(std::string_view name) const {
+  [[nodiscard]] FunctionId lookup_function_id_by_legacy_rendered_name(
+      std::string_view name) const {
     const auto it = fn_index.find(std::string(name));
     return it == fn_index.end() ? FunctionId::invalid() : it->second;
   }
 
-  [[nodiscard]] GlobalId lookup_global_id(std::string_view name) const {
+  [[nodiscard]] GlobalId lookup_global_id_by_legacy_rendered_name(
+      std::string_view name) const {
     const auto it = global_index.find(std::string(name));
     return it == global_index.end() ? GlobalId::invalid() : it->second;
+  }
+
+  [[nodiscard]] FunctionId lookup_function_id(std::string_view name) const {
+    // Source-compatible legacy bridge for rendered-name-only callers; new
+    // declaration lookup code should use the explicit compatibility helper.
+    return lookup_function_id_by_legacy_rendered_name(name);
+  }
+
+  [[nodiscard]] GlobalId lookup_global_id(std::string_view name) const {
+    // Source-compatible legacy bridge for rendered-name-only callers; new
+    // declaration lookup code should use the explicit compatibility helper.
+    return lookup_global_id_by_legacy_rendered_name(name);
   }
 
   Function* find_function(FunctionId id) {
@@ -2612,14 +2629,28 @@ struct Module {
     return it == functions.end() ? nullptr : &(*it);
   }
 
-  Function* find_function_by_name_legacy(std::string_view name) {
-    const FunctionId id = lookup_function_id(name);
+  Function* find_function_by_rendered_decl_compatibility_name(
+      std::string_view name) {
+    const FunctionId id = lookup_function_id_by_legacy_rendered_name(name);
     return id.valid() ? find_function(id) : nullptr;
   }
 
-  const Function* find_function_by_name_legacy(std::string_view name) const {
-    const FunctionId id = lookup_function_id(name);
+  const Function* find_function_by_rendered_decl_compatibility_name(
+      std::string_view name) const {
+    const FunctionId id = lookup_function_id_by_legacy_rendered_name(name);
     return id.valid() ? find_function(id) : nullptr;
+  }
+
+  Function* find_function_by_name_legacy(std::string_view name) {
+    // Source-compatible legacy bridge for rendered-name-only callers; new
+    // declaration lookup code should use the explicit compatibility helper.
+    return find_function_by_rendered_decl_compatibility_name(name);
+  }
+
+  const Function* find_function_by_name_legacy(std::string_view name) const {
+    // Source-compatible legacy bridge for rendered-name-only callers; new
+    // declaration lookup code should use the explicit compatibility helper.
+    return find_function_by_rendered_decl_compatibility_name(name);
   }
 
   [[nodiscard]] std::optional<ModuleDeclLookupKey> make_decl_ref_lookup_key(
@@ -2677,16 +2708,16 @@ struct Module {
            !ref.ns_qual.is_global_qualified;
   }
 
-  [[nodiscard]] bool has_self_consistent_rendered_decl_name(
+  [[nodiscard]] bool has_self_consistent_rendered_decl_compatibility_name(
       const DeclRef& ref) const {
     if (ref.name_text_id == kInvalidText || !link_name_texts) return false;
     return link_name_texts->lookup(ref.name_text_id) == ref.name;
   }
 
-  [[nodiscard]] bool allows_decl_rendered_compatibility_after_structured_miss(
+  [[nodiscard]] bool allows_legacy_rendered_decl_compatibility_after_structured_miss(
       const DeclRef& ref) const {
     return allows_rendered_qualified_decl_compatibility(ref) ||
-           has_self_consistent_rendered_decl_name(ref);
+           has_self_consistent_rendered_decl_compatibility_name(ref);
   }
 
   void record_function_decl_lookup_parity_mismatch(
@@ -2703,7 +2734,8 @@ struct Module {
           ModuleDeclKind::Function, ModuleDeclLookupAuthority::LinkNameId, ref.name, fn->id.value};
     }
     const Function* structured = find_function_by_decl_ref_structured(ref);
-    const Function* legacy = find_function_by_name_legacy(ref.name);
+    const Function* legacy =
+        find_function_by_rendered_decl_compatibility_name(ref.name);
     if (structured && legacy && structured->id.value != legacy->id.value) {
       return ModuleDeclLookupHit{
           ModuleDeclKind::Function, ModuleDeclLookupAuthority::Structured, ref.name,
@@ -2716,7 +2748,7 @@ struct Module {
     }
     const auto key = make_function_decl_lookup_key(ref);
     if (key && has_function_decl_structured_text(key->declaration_text_id) &&
-        !allows_decl_rendered_compatibility_after_structured_miss(ref)) {
+        !allows_legacy_rendered_decl_compatibility_after_structured_miss(ref)) {
       return std::nullopt;
     }
     if (legacy) {
@@ -2733,14 +2765,16 @@ struct Module {
     record_decl_lookup_hit(*hit);
     if (hit->authority == ModuleDeclLookupAuthority::LinkNameId) {
       const Function* authoritative = find_function(FunctionId{hit->resolved_id});
-      const Function* legacy = find_function_by_name_legacy(ref.name);
+      const Function* legacy =
+          find_function_by_rendered_decl_compatibility_name(ref.name);
       if (authoritative && legacy && authoritative->id.value != legacy->id.value) {
         record_function_decl_lookup_parity_mismatch(ref, *authoritative, *legacy);
       }
       return authoritative;
     }
     const Function* structured = find_function_by_decl_ref_structured(ref);
-    const Function* legacy = find_function_by_name_legacy(ref.name);
+    const Function* legacy =
+        find_function_by_rendered_decl_compatibility_name(ref.name);
     if (structured && legacy && structured->id.value != legacy->id.value) {
       record_function_decl_lookup_parity_mismatch(ref, *structured, *legacy);
       return structured;
@@ -2786,14 +2820,28 @@ struct Module {
     return it == globals.end() ? nullptr : &(*it);
   }
 
-  GlobalVar* find_global_by_name_legacy(std::string_view name) {
-    const GlobalId id = lookup_global_id(name);
+  GlobalVar* find_global_by_rendered_decl_compatibility_name(
+      std::string_view name) {
+    const GlobalId id = lookup_global_id_by_legacy_rendered_name(name);
     return id.valid() ? find_global(id) : nullptr;
   }
 
-  const GlobalVar* find_global_by_name_legacy(std::string_view name) const {
-    const GlobalId id = lookup_global_id(name);
+  const GlobalVar* find_global_by_rendered_decl_compatibility_name(
+      std::string_view name) const {
+    const GlobalId id = lookup_global_id_by_legacy_rendered_name(name);
     return id.valid() ? find_global(id) : nullptr;
+  }
+
+  GlobalVar* find_global_by_name_legacy(std::string_view name) {
+    // Source-compatible legacy bridge for rendered-name-only callers; new
+    // declaration lookup code should use the explicit compatibility helper.
+    return find_global_by_rendered_decl_compatibility_name(name);
+  }
+
+  const GlobalVar* find_global_by_name_legacy(std::string_view name) const {
+    // Source-compatible legacy bridge for rendered-name-only callers; new
+    // declaration lookup code should use the explicit compatibility helper.
+    return find_global_by_rendered_decl_compatibility_name(name);
   }
 
   GlobalVar* find_global_by_decl_ref_structured(const DeclRef& ref) {
@@ -2840,7 +2888,8 @@ struct Module {
           ModuleDeclKind::Global, ModuleDeclLookupAuthority::LinkNameId, ref.name, gv->id.value};
     }
     const GlobalVar* structured = find_global_by_decl_ref_structured(ref);
-    const GlobalVar* legacy = find_global_by_name_legacy(ref.name);
+    const GlobalVar* legacy =
+        find_global_by_rendered_decl_compatibility_name(ref.name);
     if (structured && legacy && structured->id.value != legacy->id.value) {
       return ModuleDeclLookupHit{
           ModuleDeclKind::Global, ModuleDeclLookupAuthority::Structured, ref.name,
@@ -2853,7 +2902,7 @@ struct Module {
     }
     const auto key = make_global_decl_lookup_key(ref);
     if (key && has_global_decl_structured_text(key->declaration_text_id) &&
-        !allows_decl_rendered_compatibility_after_structured_miss(ref)) {
+        !allows_legacy_rendered_decl_compatibility_after_structured_miss(ref)) {
       return std::nullopt;
     }
     if (legacy) {
@@ -2871,14 +2920,16 @@ struct Module {
     if (hit->authority == ModuleDeclLookupAuthority::ConcreteGlobalId ||
         hit->authority == ModuleDeclLookupAuthority::LinkNameId) {
       const GlobalVar* authoritative = find_global(GlobalId{hit->resolved_id});
-      const GlobalVar* legacy = find_global_by_name_legacy(ref.name);
+      const GlobalVar* legacy =
+          find_global_by_rendered_decl_compatibility_name(ref.name);
       if (authoritative && legacy && authoritative->id.value != legacy->id.value) {
         record_global_decl_lookup_parity_mismatch(ref, *authoritative, *legacy);
       }
       return authoritative;
     }
     const GlobalVar* structured = find_global_by_decl_ref_structured(ref);
-    const GlobalVar* legacy = find_global_by_name_legacy(ref.name);
+    const GlobalVar* legacy =
+        find_global_by_rendered_decl_compatibility_name(ref.name);
     if (structured && legacy && structured->id.value != legacy->id.value) {
       record_global_decl_lookup_parity_mismatch(ref, *structured, *legacy);
       return structured;
