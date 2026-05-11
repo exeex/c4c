@@ -928,23 +928,30 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
     return std::nullopt;
   }
 
-  if (gep.indices.size() != 2) {
+  if (gep.indices.empty() || gep.indices.size() > 2) {
     return false;
   }
 
-  const auto base_index = parse_typed_operand(gep.indices[0]);
-  const auto elem_index = parse_typed_operand(gep.indices[1]);
-  if (!base_index.has_value() || !elem_index.has_value()) {
-    return false;
+  std::size_t index_pos = 0;
+  if (gep.indices.size() == 2) {
+    const auto base_index = parse_typed_operand(gep.indices[0]);
+    if (!base_index.has_value()) {
+      return false;
+    }
+    const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+    if (!base_imm.has_value() || *base_imm != 0) {
+      return false;
+    }
+    index_pos = 1;
   }
 
-  const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
-  const auto elem_imm = resolve_index_operand(elem_index->operand, value_aliases);
-  if (!base_imm.has_value() || *base_imm != 0) {
+  const auto elem_index = parse_typed_operand(gep.indices[index_pos]);
+  if (!elem_index.has_value()) {
     return false;
   }
 
   const std::string result_name(gep.result.str());
+  const auto elem_imm = resolve_index_operand(elem_index->operand, value_aliases);
   if (elem_imm.has_value()) {
     if (*elem_imm < 0 ||
         static_cast<std::size_t>(*elem_imm) >= array_it->second.element_slots.size()) {

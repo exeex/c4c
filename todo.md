@@ -8,21 +8,19 @@ Current Step Title: Align Semantically Correct Stale BIR Snippets
 
 ## Just Finished
 
-Step 3 aligned the stale semantic BIR snippets for tests `134` and `136`: `backend_codegen_route_x86_64_inline_asm_output_readwrite_i32_observe_semantic_bir` and `backend_codegen_route_x86_64_inline_asm_output_readwrite_ptr_observe_semantic_bir`. The updates are semantic-only: regenerated BIR now spells readwrite inline asm constraints as the tied output/input pair `constraints="=r,0"` instead of the frontend shorthand `+r`, while preserving the empty asm text, sideeffect marker, one input operand, call result type, store-back behavior, and return semantics for both the `i32` and `ptr` cases.
-
-The Step 1 31-failure inventory remains available in committed `todo.md` at `86ba9f59b` (`[todo_only] Inventory backend semantic BIR route failures`); this packet keeps that inventory referenced rather than duplicating it over the current execution state.
+Step 3 aligned the stale semantic BIR snippets for tests `139`, `141`, and `142`: `backend_codegen_route_x86_64_builtin_memcpy_local_i32_array_observe_semantic_bir`, `backend_codegen_route_x86_64_builtin_memcpy_local_i32_array_to_pair_observe_semantic_bir`, and `backend_codegen_route_x86_64_builtin_memcpy_local_pair_to_i32_array_observe_semantic_bir`. The updates are semantic-only: the required snippets now match the regenerated semantic BIR temp numbering and local slot names from the Step 4 scalar-array GEP lowering repair while preserving copy source slots, destination slots, byte offsets, and return value computation.
 
 ## Suggested Next
 
-Return to the supervisor for commit-boundary selection for this two-test inline asm readwrite semantic snippet alignment, or delegate the next narrow family from the committed Step 1 inventory if this slice is accepted.
+Return to the supervisor for commit-boundary selection for the Step 4 lowering repair plus this three-test Step 3 semantic snippet alignment, or delegate the next narrow stale-snippet family from the active route inventory if this slice is accepted.
 
 ## Watchouts
 
-- The snippet update preserves the same required semantic operations and forbidden guards; it does not mark the route unsupported, remove forbidden snippets, or broaden matching.
-- This packet touches only the delegated inline asm readwrite `i32` and `ptr` semantic BIR snippets and leaves unrelated route snippets unchanged.
+- The snippet update preserves required semantic copy operations and forbidden guards; it does not mark routes unsupported, remove forbidden snippets, or broaden matching.
+- This packet touches only the delegated builtin memcpy local-array/local-pair semantic BIR snippets and leaves unrelated route snippets unchanged.
 
 ## Proof
 
-Ran the delegated proof into `test_after.log`; build succeeded and both route tests passed:
+Ran the delegated proof into `test_after.log`; build succeeded and all three route tests passed:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_x86_64_inline_asm_output_readwrite_(i32|ptr)_observe_semantic_bir$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_x86_64_builtin_memcpy_(local_i32_array|local_i32_array_to_pair|local_pair_to_i32_array)_observe_semantic_bir$'`
