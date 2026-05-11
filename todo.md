@@ -8,20 +8,20 @@ Current Step Title: Align Semantically Correct Stale BIR Snippets
 
 ## Just Finished
 
-Step 3 aligned the stale semantic BIR snippets for dynamic/member routes in tests `162` and `169` after the Step 4 lowering repair regenerated semantic BIR. Test `162` now requires the repaired pointer/member load from `addr %t1+4`, the direct `get_second` call, its regenerated return temp, and the surfaced local-array add/return temps. Test `169` now requires the regenerated local index load, sext, dynamic pointer select, direct `get_y` call, and return temp.
+Step 3 aligned stale semantic BIR snippets for residual dynamic/member tests `163` through `168` after regenerated semantic BIR changed only temp numbering. The snippets now match the regenerated temps while preserving pointer/member loads, packed offsets, dynamic select chains, dynamic store fanout, direct calls/returns, dual-test local-array add/return snippets, and the existing forbidden LLVM guards.
 
 ## Suggested Next
 
-Return to the supervisor for commit-boundary selection for the Step 4 lowering repair plus this Step 3 stale-snippet alignment, or delegate the next narrow stale-snippet family from the active route inventory if this slice is accepted.
+Return to the supervisor for commit-boundary selection for the Step 3 stale-snippet alignment across tests `163` through `168`, or delegate the next narrow stale-snippet family from the active route inventory if this slice is accepted.
 
 ## Watchouts
 
-- This packet only updates required snippet temp numbering for tests `162` and `169`; it preserves pointer/member loads, array offsets, dynamic pointer selection, direct calls, returns, and forbidden LLVM guards.
-- The second half of dual test `162` surfaced after the first required-snippet fix; its local-array snippet was aligned to `%t10 = bir.add i32 %t6, %t9` and `bir.ret i32 %t10`.
-- No route snippets were weakened, marked unsupported, broadened, or updated outside the delegated tests.
+- This packet only updates required snippets for tests `163`, `164`, `165`, `166`, `167`, and `168`; it does not touch implementation files, forbidden snippets, route matching, unsupported status, or unrelated route snippets.
+- Dual tests `164`, `165`, `166`, and `167` needed their second snippets aligned where the regenerated local-array or neighbor BIR surfaced after the first snippet refresh.
+- Test `168` still requires the packed member offsets at `%lv.p.1`, `%lv.p.5`, and `%lv.p.9` and now also names the regenerated `%t15` dynamic select before return.
 
 ## Proof
 
-Ran the delegated proof into `test_after.log`; build succeeded and both delegated route tests passed:
+Ran the delegated proof into `test_after.log`; build succeeded and all six delegated route tests passed:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_x86_64_(nested_member_pointer_array|local_direct_dynamic_struct_array_call)_observe_semantic_bir$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_x86_64_(nested_pointer_param_dynamic_member_array_load|local_dynamic_member_array|local_dynamic_member_array_store|local_direct_dynamic_member_array_store|local_direct_dynamic_member_array_load|packed_local_member_offsets)_observe_semantic_bir$'`
