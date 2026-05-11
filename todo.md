@@ -1,17 +1,17 @@
 Status: Active
 Source Idea Path: ideas/open/167_whole_codebase_string_authority_final_audit.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Record Audit Artifact and Follow-Up Ideas
+Current Step ID: 6
+Current Step Title: Final Proof and Closure Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 - Record Audit Artifact and Follow-Up Ideas is complete. The Step 1-4
-audit packets were consolidated into this reviewer-readable artifact in
-canonical `todo.md`. No implementation, test, `plan.md`, source idea,
-`ideas/closed/`, or `review/` files were edited.
+Step 5 - Record Audit Artifact and Follow-Up Ideas is complete and accepted for
+advancement. The Step 1-4 audit packets were consolidated into this
+reviewer-readable artifact in canonical `todo.md`. No implementation, test,
+`plan.md`, source idea, `ideas/closed/`, or `review/` files were edited.
 
 Evidence source commits/packets:
 
@@ -123,21 +123,45 @@ Lifecycle confirmations:
 - `plan.md` remains correct: yes. Step 5 was completed by recording the audit
   artifact in `todo.md`; Step 6 remains the correct final proof and closure
   readiness step.
+- Plan-owner advancement decision: Step 5 consolidation is sufficiently
+  recorded, so active execution state now points to Step 6.
 
 ## Suggested Next
 
-Proceed to Step 6 - Final Proof and Closure Readiness.
-
 Recommended Step 6 packet:
 
-1. Re-run the audit replay searches used by Steps 1-5, with emphasis on
-   bridge-boundary patterns and route-local generated-name patterns.
-2. No implementation tests are required unless the replay discovers a
-   behavior-sensitive issue; otherwise document that the slice is audit-only.
-3. Verify ideas 168 and 169 plus the regression-guard lane still cover all
-   follow-up recommendations.
-4. Record closure readiness, retained risks, and exact proof commands in
-   `todo.md`.
+1. Re-run broad replay searches for string-keyed semantic-authority candidates:
+
+   `rg -n --glob '!build*/**' --glob '!ideas/closed/**' --glob '!review/**' -e 'unordered_map<[^;\n>]*std::string' -e 'map<[^;\n>]*std::string' -e '\b(find|lookup)\s*\(\s*name\b' -e '(_by_name|_name_map|mangled_name|source_name|qualified_name)' -e '(rendered|legacy|compat|fallback)' src tests docs scripts ideas/open plan.md todo.md`
+
+2. Re-run bridge-boundary replay searches for retained compatibility paths:
+
+   `rg -n --glob '!build*/**' --glob '!ideas/closed/**' --glob '!review/**' -e '(no_metadata|no-metadata|invalid.?id|compatibility|legacy|fallback|rendered)' -e '(LinkNameId|StructNameId|TextId|ValueNameId|BlockLabelId|SlotNameId)' src tests ideas/open plan.md todo.md`
+
+3. Re-run route-local/generated-name replay searches:
+
+   `rg -n --glob '!build*/**' --glob '!ideas/closed/**' --glob '!review/**' -e '(fresh_tmp|fresh_lbl|string_pool|stack_slot|local_slot|block_label|Value::name|\\.LBB|prealloc|materialized)' -e '(by_name|name_map|raw.*name|generated.*name)' src tests ideas/open plan.md todo.md`
+
+4. Check follow-up coverage:
+
+   `sed -n '1,220p' ideas/open/168_*.md`
+
+   `sed -n '1,220p' ideas/open/169_*.md`
+
+   If either idea is absent or does not cover the Step 5 recommendations,
+   record the exact closure blocker instead of closing idea 167.
+
+5. Run `git status --short` and `git diff --check -- todo.md`.
+
+6. No implementation tests are required unless replay discovers a
+   behavior-sensitive issue or a tiny fix is made. If no code/test files
+   changed, record that Step 6 is audit/lifecycle-only and that `test_after.log`
+   was intentionally not updated.
+
+7. Record closure readiness in `todo.md`: replay commands run, whether the
+   source idea acceptance criteria are satisfied, retained risks, changed
+   files, and a recommendation for supervisor lifecycle closure or exact
+   blocker.
 
 ## Watchouts
 
@@ -160,9 +184,10 @@ Recommended Step 6 packet:
 
 ## Proof
 
-Audit consolidation only. No tests were required because this packet edited only
-`todo.md`, made no implementation or test changes, and discovered no
-behavior-sensitive issue. `test_after.log` was not updated.
+Audit consolidation and plan-owner advancement only. No tests were required
+because this packet edited only `todo.md`, made no implementation or test
+changes, and discovered no behavior-sensitive issue. `test_after.log` was not
+updated.
 
 Commands run:
 
@@ -209,6 +234,34 @@ Commands run:
 `git show 206043d74:todo.md | sed -n '1,260p'`
 
 `nl -ba todo.md | sed -n '1,260p'`
+
+`git diff -- todo.md`
+
+`git diff --check -- todo.md`
+
+`git status --short`
+
+Plan-owner advancement commands:
+
+`sed -n '1,220p' /workspaces/c4c/.codex/skills/c4c-plan-owner/SKILL.md && sed -n '1,220p' /workspaces/c4c/.codex/skills/plan-lifecycle/SKILL.md`
+
+`sed -n '221,520p' /workspaces/c4c/.codex/skills/plan-lifecycle/SKILL.md`
+
+`git status --short`
+
+`sed -n '1,260p' AGENTS.md`
+
+`sed -n '1,260p' plan.md`
+
+`sed -n '1,260p' todo.md`
+
+`git show --stat --oneline 80c86e13d`
+
+`sed -n '1,220p' ideas/open/167_whole_codebase_string_authority_final_audit.md`
+
+`git log --oneline --decorate -n 12 -- plan.md todo.md ideas/open/167_whole_codebase_string_authority_final_audit.md`
+
+`ls ideas/open/168_*.md ideas/open/169_*.md 2>/dev/null || true`
 
 `git diff -- todo.md`
 
