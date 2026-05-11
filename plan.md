@@ -140,7 +140,40 @@ Completion check:
 - BIR for covered calls, globals, memory addresses, and initializer symbols contains valid `LinkNameId`.
 - Targeted BIR lowering tests and build proof pass.
 
-### Step 5: Make BIR Validation and Backend Preparation LinkNameId-Authoritative
+### Step 5: Add BIR Pointer Value Identity for Symbol-Carrying Values
+
+Goal: close the remaining raw pointer-value bridges that cannot be fixed by
+validation or backend preparation alone.
+
+Primary targets:
+- `src/backend/bir/bir.hpp`
+- `src/backend/bir/lir_to_bir/`
+- `src/backend/bir/bir_validate.cpp`
+- `src/backend/prealloc/`
+
+Actions:
+- Add a structured identity carrier for BIR pointer values that represent
+  link-visible function or global addresses, or add an equivalent address /
+  provenance field consumed before backend preparation.
+- Preserve `LinkNameId` for direct function pointer arguments, direct pointer
+  stores, aggregate initializer pointer elements, byval aggregate pointer
+  arguments, and synthesized pointer-array selections when complete metadata is
+  available.
+- Keep plain pointer values for route-local pointers, locals, slots, nulls, and
+  unresolved compatibility/no-metadata paths.
+- Avoid making printed `@symbol` text the semantic lookup key for covered
+  pointer-valued symbol references.
+- Add focused proof for at least one pointer-valued function reference and one
+  aggregate or byval pointer route that previously only carried raw spelling.
+
+Completion check:
+- Covered pointer-valued symbol references either carry structured identity or
+  are explicitly classified as compatibility/no-metadata paths.
+- Step 6 can validate/backend-prepare these routes without needing raw symbol
+  spelling as the normal authority.
+- Targeted BIR lowering or backend tests and build proof pass.
+
+### Step 6: Make BIR Validation and Backend Preparation LinkNameId-Authoritative
 
 Goal: validate and prepare covered known symbols by `LinkNameId` first and fail closed on complete metadata mismatches.
 
@@ -160,7 +193,7 @@ Completion check:
 - Backend preparation still emits expected final spelling by resolving through the name table.
 - Targeted backend tests and build proof pass.
 
-### Step 6: Add Focused Identity Tests and Broader Proof
+### Step 7: Add Focused Identity Tests and Broader Proof
 
 Goal: prove structured identity survives the final backend route and raw-name compatibility cannot override it.
 
@@ -174,7 +207,7 @@ Completion check:
 - Focused tests fail for raw-string authority and pass with `LinkNameId` authority.
 - Broader validation passes with no unsupported expectation downgrades or output-only proof.
 
-### Step 7: Document Retained Compatibility Bridges
+### Step 8: Document Retained Compatibility Bridges
 
 Goal: make remaining raw-name bridges explicit and reviewable.
 
