@@ -9,19 +9,19 @@ Current Step Title: Retire HIR Rendered Declaration and Template Bridges
 ## Just Finished
 
 Step 4 - Retire HIR Rendered Declaration and Template Bridges:
-HIR static-member rendered declaration and const-value maps are now explicitly
-documented and tested as no-owner/rendered compatibility mirrors while
-preserving owner-key authority, base/template trait fallback paths, and
-fail-closed complete owner-key misses.
+HIR struct member-symbol rendered lookup is now explicitly fenced as no-owner
+rendered compatibility while preserving `HirStructMemberLookupKey` authority,
+structured field member-symbol ids, and closed complete record_def/text-key
+misses.
 
 Changed files:
 
 | File | Result |
 | --- | --- |
-| `src/frontend/hir/impl/lowerer.hpp` | Marked retained `struct_static_member_decls_` and `struct_static_member_const_values_` as no-owner rendered compatibility mirrors and documented the helper contract. |
-| `src/frontend/hir/hir_types.cpp` | Annotated rendered static-member lookup branches so complete owner-key misses remain closed except structured base/template trait paths. |
-| `tests/frontend/frontend_hir_tests.cpp` | Renamed focused rendered fallback tests/messages to no-owner rendered compatibility while keeping owner-key win and miss-closed coverage intact. |
-| `tests/frontend/frontend_hir_lookup_tests.cpp` | Tightened owner-key stale-rendered static-member assertions to call the rendered maps compatibility data, not authority. |
+| `src/frontend/hir/impl/lowerer.hpp` | Documented member-symbol rendered tag/member lookup as no-owner compatibility and `struct_member_symbol_ids_by_owner_` plus field ids as authority. |
+| `src/frontend/hir/hir_types.cpp` | Annotated the no-owner rendered member-symbol fallback, field-id authority path, and owner-key parity-only rendered comparison. |
+| `tests/frontend/frontend_hir_tests.cpp` | Renamed focused member-symbol tests/messages to no-owner rendered compatibility and added field member-id authority coverage after an owner-map miss. |
+| `tests/frontend/frontend_hir_lookup_tests.cpp` | No changes needed; existing lookup coverage remains focused on adjacent static/member and rendered-bridge families. |
 | `todo.md` | Recorded this executor packet and proof. |
 | `test_after.log` | Updated with the delegated build and focused HIR test proof. |
 
@@ -29,16 +29,16 @@ Changed files:
 
 Continue Step 4 with the next rendered-qualified/no-owner handoff family after
 the completed `struct_defs`, declaration `fn_index`/`global_index`,
-`template_defs`, and static-member declaration/const compatibility slices.
+`template_defs`, static-member declaration/const compatibility, and
+member-symbol compatibility slices.
 
 ## Watchouts
 
-- `struct_static_member_decls_` and `struct_static_member_const_values_` remain
-  rendered tag/member maps only for no-owner compatibility; the
-  `HirStructMemberLookupKey` maps are lookup authority.
-- Complete static-member owner-key misses still fail closed before rendered map
-  lookup, except existing structured base fallback and const template-trait
-  evaluation paths.
+- `struct_member_symbol_ids_by_owner_` and `HirStructDef::fields[*].member_symbol_id`
+  are the member-symbol authority; rendered `module_->member_symbols` lookup is
+  retained only for no-owner compatibility.
+- Complete member-symbol record_def/text-key misses still fail closed before
+  rendered owner tag lookup, while structured base lookup remains intentional.
 - `template_defs` remains intentionally rendered-name keyed for HIR
   preservation/bookkeeping; do not treat it as AST template-definition
   authority.

@@ -425,6 +425,10 @@ class Lowerer {
       const HirStructMemberLookupKey& key,
       const std::string* rendered_tag = nullptr,
       const std::string* rendered_member = nullptr) const;
+  // Rendered tag/member member-symbol lookup is retained only for no-owner
+  // compatibility. Complete owner/member keys use struct_member_symbol_ids_by_owner_
+  // and structured field member ids as authority, and closed misses do not
+  // consult stale rendered owner tags.
   MemberSymbolId find_struct_member_symbol_id(
       const std::string& tag, const std::string& member) const;
   MemberSymbolId find_struct_member_symbol_id(
@@ -1284,6 +1288,9 @@ class Lowerer {
       struct_static_member_const_values_by_owner_;
   mutable size_t struct_static_member_const_value_lookup_parity_checks_ = 0;
   mutable size_t struct_static_member_const_value_lookup_parity_mismatches_ = 0;
+  // Member symbols keyed by semantic owner/member identity. This map and the
+  // member ids already stored on HirStructDef fields are the authoritative HIR
+  // lookup sources; rendered tag/member lookup is no-owner compatibility only.
   std::unordered_map<HirStructMemberLookupKey, MemberSymbolId, HirStructMemberLookupKeyHash>
       struct_member_symbol_ids_by_owner_;
   mutable size_t struct_member_symbol_id_lookup_parity_checks_ = 0;

@@ -3379,7 +3379,7 @@ void test_hir_static_member_decl_lookup_keeps_owner_key_base_fallback() {
               "static member decl owner-key miss should still search structured bases");
 }
 
-void test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spelling() {
+void test_hir_member_symbol_lookup_prefers_owner_key_over_no_owner_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -3411,11 +3411,11 @@ void test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spellin
           member_key, &stale_owner, &stale_member);
 
   expect_true(direct_id == structured_id && direct_id != stale_id,
-              "direct member-symbol lookup should prefer owner/member keys over stale rendered spelling");
+              "direct member-symbol lookup should prefer owner/member keys over no-owner rendered compatibility");
   expect_true(lowerer.struct_member_symbol_id_lookup_parity_checks_ == 1,
               "direct member-symbol owner-key lookup should record rendered parity");
   expect_true(lowerer.struct_member_symbol_id_lookup_parity_mismatches_ == 1,
-              "direct member-symbol owner-key lookup should detect stale rendered spelling");
+              "direct member-symbol owner-key lookup should detect stale no-owner rendered compatibility");
 
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
@@ -3430,7 +3430,51 @@ void test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spellin
   expect_true(lowerer.struct_member_symbol_id_lookup_parity_checks_ == 2,
               "TypeSpec-carried member-symbol lookup should also record rendered parity");
   expect_true(lowerer.struct_member_symbol_id_lookup_parity_mismatches_ == 2,
-              "TypeSpec-carried member-symbol lookup should also detect stale rendered spelling");
+              "TypeSpec-carried member-symbol lookup should also detect stale no-owner rendered compatibility");
+}
+
+void test_hir_member_symbol_lookup_uses_field_member_id_authority_after_owner_map_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId owner_text_id =
+      module.link_name_texts->intern("RealSymbolOwner");
+  const c4c::TextId field_text_id = module.link_name_texts->intern("field");
+  c4c::hir::NamespaceQualifier ns;
+  ns.context_id = 6;
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(ns, owner_text_id);
+
+  const c4c::MemberSymbolId field_id =
+      module.member_symbols.intern("RealSymbolOwner::field");
+  const c4c::MemberSymbolId stale_id =
+      module.member_symbols.intern("StaleRenderedOwner::field");
+
+  c4c::hir::HirStructField field;
+  field.name = "field";
+  field.field_text_id = field_text_id;
+  field.member_symbol_id = field_id;
+
+  c4c::hir::HirStructDef def;
+  def.tag = "RealSymbolOwner";
+  def.tag_text_id = owner_text_id;
+  def.ns_qual = ns;
+  def.fields.push_back(field);
+  module.struct_defs[def.tag] = def;
+  module.index_struct_def_owner(owner_key, def.tag, true);
+
+  c4c::hir::HirStructMemberLookupKey member_key;
+  member_key.owner_key = owner_key;
+  member_key.member_text_id = field_text_id;
+
+  const std::string stale_owner = "StaleRenderedOwner";
+  const std::string member = "field";
+  const c4c::MemberSymbolId id =
+      lowerer.find_struct_member_symbol_id(member_key, &stale_owner, &member);
+
+  expect_true(id == field_id && id != stale_id,
+              "member-symbol lookup should use structured field member ids before no-owner rendered compatibility");
 }
 
 void test_hir_member_symbol_lookup_rejects_stale_rendered_after_record_def_miss() {
@@ -3507,7 +3551,7 @@ void test_hir_member_symbol_lookup_keeps_rendered_fallback_without_structured_ke
       owner_ts, "LegacyRendered", "field", c4c::kInvalidText);
 
   expect_true(id == rendered_id,
-              "member-symbol lookup should keep rendered fallback when complete structured metadata is absent");
+              "member-symbol lookup should keep no-owner rendered compatibility when complete structured metadata is absent");
 }
 
 void test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag() {
@@ -7113,7 +7157,8 @@ int main() {
   test_hir_static_member_decl_lookup_keeps_no_owner_rendered_compatibility();
   test_hir_static_member_decl_lookup_rejects_rendered_fallback_after_owner_key_miss();
   test_hir_static_member_decl_lookup_keeps_owner_key_base_fallback();
-  test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spelling();
+  test_hir_member_symbol_lookup_prefers_owner_key_over_no_owner_rendered_compatibility();
+  test_hir_member_symbol_lookup_uses_field_member_id_authority_after_owner_map_miss();
   test_hir_member_symbol_lookup_rejects_stale_rendered_after_record_def_miss();
   test_hir_member_symbol_lookup_rejects_stale_rendered_after_text_key_miss();
   test_hir_member_symbol_lookup_keeps_rendered_fallback_without_structured_key();

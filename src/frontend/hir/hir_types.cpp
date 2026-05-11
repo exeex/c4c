@@ -2333,6 +2333,8 @@ MemberSymbolId Lowerer::find_struct_member_symbol_id(
     }
     return kInvalidMemberSymbol;
   }
+  // Explicit no-owner rendered compatibility: only callers that cannot form a
+  // complete owner/member key may read the rendered member-symbol table.
   const MemberSymbolId direct_id =
       module_->member_symbols.find(tag + "::" + member);
   if (direct_id != kInvalidMemberSymbol) {
@@ -2366,6 +2368,8 @@ MemberSymbolId Lowerer::find_struct_member_symbol_id(
     const HirStructDef* structured =
         module_->find_struct_def_by_owner_structured(key.owner_key);
     if (!structured) return kInvalidMemberSymbol;
+    // Field member ids are the structured authority when the explicit owner
+    // member-symbol mirror has not been populated yet.
     for (const auto& field : structured->fields) {
       const bool field_matches =
           (field.field_text_id != kInvalidText &&
@@ -2382,6 +2386,8 @@ MemberSymbolId Lowerer::find_struct_member_symbol_id(
     }
     return kInvalidMemberSymbol;
   }
+  // Complete owner/member-key hits may compare against rendered compatibility
+  // data for diagnostics, but the rendered id never wins authority here.
   if (rendered_tag && rendered_member) {
     const MemberSymbolId rendered_id =
         module_->member_symbols.find(*rendered_tag + "::" + *rendered_member);
