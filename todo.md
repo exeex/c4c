@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/167_whole_codebase_string_authority_final_audit.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish Audit Method and Initial Inventory
+Current Step ID: 2
+Current Step Title: Classify Covered Structured Domains
 
 # Current Packet
 
@@ -127,10 +127,42 @@ Regions needing AST-backed or local call-chain inspection:
 
 ## Suggested Next
 
-Begin Step 2 by classifying the covered frontend structured domains first:
-parser support, sema validate/consteval/type-utils, and HIR
-`rendered_compat_*` lookup paths. Keep the packet audit-only unless a tiny
-semantic-authority bug is obvious and separately approved by the supervisor.
+Step 2 - Classify Covered Structured Domains should begin with a frontend
+structured-domain classification packet.
+
+First classification packet:
+- Scope:
+  - parser support and parser state compatibility maps:
+    `src/frontend/parser/parser_support.hpp`,
+    `src/frontend/parser/impl/support.cpp`,
+    `src/frontend/parser/impl/parser_state.hpp`, and nearby parser
+    type/expression files that carry `compatibility_tag_map`,
+    `compatibility_named_consts`, rendered typedef helpers, `qualified_name`,
+    or source spelling fields
+  - sema validate/consteval/type-utils/canonical-symbol lookup paths:
+    `src/frontend/sema/validate.cpp`, `src/frontend/sema/consteval.*`,
+    `src/frontend/sema/type_utils.*`, and
+    `src/frontend/sema/canonical_symbol.cpp`
+  - HIR frontend rendered-compatibility paths:
+    `src/frontend/hir/impl/lowerer.hpp`, `src/frontend/hir/hir_ir.hpp`,
+    `src/frontend/hir/hir_types.cpp`,
+    `src/frontend/hir/compile_time_engine.hpp`, and HIR
+    template/materialization files that use `rendered_compat_*`
+- Classification output required in `todo.md`:
+  - owner/domain
+  - file and local symbol or lookup path
+  - class from the Step 1 legend (`SA`, `CB`, `DO`, `DD`, `RL`, `GT`, `FP`)
+  - evidence for the classification
+  - for `CB`, the exact no-metadata, invalid-id, raw-only, or
+    compatibility-only boundary
+  - for `SA`, owner, failure mode, and whether the recommendation is a tiny
+    fix or a follow-up idea
+- Required inspection focus:
+  - prove TextId/structured overloads fail closed on complete structured miss
+  - prove string overloads are fenced as compatibility bridges instead of
+    ordinary semantic authority
+  - preserve tests that intentionally witness stale rendered-name behavior
+    unless the supervisor explicitly approves a test-contract change
 
 ## Watchouts
 
@@ -150,6 +182,8 @@ semantic-authority bug is obvious and separately approved by the supervisor.
 
 Audit-only Step 1. No build or test proof was required, and no
 `test_after.log` was produced for this recording-only packet.
+
+Step 1 completion was committed as `3fd483734`.
 
 Suggested proof commands for the first classification packet:
 - Audit replay:
