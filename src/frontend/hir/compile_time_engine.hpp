@@ -1768,6 +1768,9 @@ struct CompileTimeState {
   // enum definitions (see NK_BLOCK handling in lower_stmt_node).
   // The CompileTimeState copies accumulate the final global state and
   // are used exclusively during the engine normalization phase.
+  // Do not treat this registry as local/block enum authority: scoped enum
+  // lifetimes remain in lowerer-owned scope stacks unless a pending work item
+  // grows an explicit lifetime carrier.
 
   /// Register an enum constant value.
   void register_enum_const(const std::string& name, long long value) {

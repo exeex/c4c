@@ -69,6 +69,9 @@ std::vector<uint32_t> decode_wide_string(const char* sval);
 
 int infer_array_size_from_init(Node* init);
 struct StaticEvalIntEnumLookupInput {
+  // Static-eval integer enum lookup is global/compatibility-only. These maps
+  // do not carry local/block enum scope lifetime; callers that need that
+  // authority must use an explicit scoped carrier such as ConstEvalEnv.
   const std::unordered_map<std::string, long long>* rendered_enum_consts = nullptr;
   const hir::ConstTextMap* enum_consts_by_text = nullptr;
   const hir::ConstStructuredMap* enum_consts_by_key = nullptr;

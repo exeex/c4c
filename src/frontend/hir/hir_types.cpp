@@ -2710,6 +2710,9 @@ void Lowerer::lower_struct_def(const Node* sd) {
   }
   LowererConstEvalStructuredMaps static_member_consteval_maps;
   refresh_global_consteval_structured_maps(static_member_consteval_maps);
+  // Static member initializers are evaluated against global enum mirrors and
+  // rendered compatibility only. Local/block enum authority requires scoped
+  // lifetime metadata, which this layout path does not carry.
   StaticEvalIntEnumLookupInput static_member_enum_lookup;
   static_member_enum_lookup.rendered_enum_consts = &enum_consts_;
   static_member_enum_lookup.enum_consts_by_key =

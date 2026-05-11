@@ -94,6 +94,9 @@ void copy_consteval_structured_bindings(const SourceMap& source,
 ConstEvalEnv make_engine_consteval_env(
     const CompileTimeState& ct_state,
     EngineConstEvalStructuredMaps& structured_maps) {
+  // Engine normalization consumes CompileTimeState's global registries only.
+  // Local/block enum authority requires an explicit scoped lifetime carrier;
+  // copying lowerer scope stacks here would outlive the source block.
   copy_consteval_structured_bindings(ct_state.enum_consts_by_key(),
                                      structured_maps.enum_consts_by_key);
   copy_consteval_structured_bindings(ct_state.const_int_bindings_by_key(),

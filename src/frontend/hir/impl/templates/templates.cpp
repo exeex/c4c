@@ -314,6 +314,9 @@ bool eval_struct_static_member_value_hir(
     const NttpBindings* nttp_bindings,
     long long* out) {
   if (!sdef) return false;
+  // Static-member initializer probing is a template/static-member compatibility
+  // bridge. It has no local/block enum lifetime stack; do not use it as scoped
+  // enum authority without adding an explicit carrier.
   static const std::unordered_map<std::string, Node*> kEmptyStructs;
   static const std::unordered_map<std::string, long long> kEmptyConsts;
 

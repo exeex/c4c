@@ -344,6 +344,8 @@ void Lowerer::record_instantiated_template_struct_field_metadata(
   if (orig_f->is_static && orig_f->is_constexpr && orig_f->init) {
     LowererConstEvalStructuredMaps static_member_consteval_maps;
     refresh_global_consteval_structured_maps(static_member_consteval_maps);
+    // Instantiated static-member evaluation has NTTP bindings plus global enum
+    // mirrors only; it is not local/block enum lifetime authority.
     static_const_value =
         eval_const_int_with_nttp_bindings(
             orig_f->init, selected_nttp_bindings_map,
