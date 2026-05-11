@@ -1,23 +1,21 @@
 Status: Active
 Source Idea Path: ideas/open/164_sema_type_utils_static_eval_structured_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Convert Covered Callers
+Current Step ID: 5
+Current Step Title: Add Collision Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 4 NTTP evaluator slice: converted
-`Lowerer::eval_const_int_with_nttp_bindings` so enum constants use a structured
-`ConstEvalStructuredNameKey` map when the queried node has complete metadata,
-returning closed on structured misses instead of falling through to rendered
-enum lookup.
+Completed `plan.md` Step 5 collision coverage slice: added
+`test_static_eval_int_keeps_same_spelled_enum_domains_distinct` to
+`tests/frontend/cpp_hir_sema_consteval_type_utils_metadata_test.cpp`.
 
-Preserved NTTP binding priority: the evaluator still checks
-`NttpTextBindings` first and explicit rendered NTTP bindings second, before
-enum lookup. Both NTTP-backed static member evaluation sites now pass refreshed
-lowerer structured enum maps through the evaluator and its recursive calls.
+The new test uses two enum constants with the same rendered spelling and
+`TextId` base name in distinct structured qualifier domains, verifies that each
+domain resolves to its own value, and verifies that a structured miss does not
+recover through the shared TextId or rendered spelling fallback.
 
 ## Step 1 Inventory Ledger
 
@@ -55,24 +53,20 @@ was required and no `test_after.log` was written for that inventory-only slice.
 
 ## Suggested Next
 
-Have the supervisor decide whether Step 4 is complete or whether local/block
-enum-scope structured mirrors need a separate plan-review packet.
+Have the supervisor decide whether Step 5 coverage is sufficient or whether
+additional collision coverage is needed for local/block enum-scope mirrors.
 
 ## Watchouts
 
-- `Lowerer::eval_const_int_with_nttp_bindings` still allows rendered enum
-  lookup only when no structured/TextId carrier can be built for the queried
-  node; complete structured misses fail closed.
-- Explicit rendered NTTP bindings remain compatibility authority after
-  `NttpTextBindings`, as required by the packet.
-- Local/block enum-scope conversion still needs a separate packet if the plan
-  wants to cover mutable `enum_consts_` save/restore behavior beyond the global
-  structured metadata mirrored by `ct_state_`.
+- This packet changed only the focused metadata unit test and `todo.md`.
+- The new collision case intentionally supplies wrong TextId/rendered fallback
+  values so a collapse to base spelling would fail the test.
+- Local/block enum-scope conversion remains outside this packet.
 
 ## Proof
 
 Ran the supervisor-selected proof exactly:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_template_deferred_nttp_static_member_expr|cpp_hir_template_deferred_nttp_cast_static_member_expr|cpp_hir_template_alias_deferred_nttp_static_member|cpp_positive_sema_template_constexpr_member_runtime_cpp)$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_sema_consteval_type_utils_structured_metadata$' > test_after.log`
 
-Result: passed. `test_after.log` contains 6/6 passing tests.
+Result: passed. `test_after.log` contains 1/1 passing tests.

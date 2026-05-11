@@ -248,6 +248,60 @@ void test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge() {
                 "TextId enum metadata miss should not recover through rendered lookup");
 }
 
+void test_static_eval_int_keeps_same_spelled_enum_domains_distinct() {
+  constexpr int kNamespaceContext = 11;
+  c4c::TextTable texts;
+  const c4c::TextId value_text = texts.intern("Value");
+  const c4c::TextId first_domain_text = texts.intern("FirstEnum");
+  const c4c::TextId second_domain_text = texts.intern("SecondEnum");
+  const c4c::TextId missing_domain_text = texts.intern("MissingEnum");
+
+  c4c::hir::ConstEvalStructuredNameKey first_key;
+  first_key.namespace_context_id = kNamespaceContext;
+  first_key.qualifier_text_ids.push_back(first_domain_text);
+  first_key.base_text_id = value_text;
+
+  c4c::hir::ConstEvalStructuredNameKey second_key;
+  second_key.namespace_context_id = kNamespaceContext;
+  second_key.qualifier_text_ids.push_back(second_domain_text);
+  second_key.base_text_id = value_text;
+
+  c4c::hir::ConstStructuredMap structured_enums;
+  structured_enums.emplace(first_key, 101);
+  structured_enums.emplace(second_key, 202);
+  c4c::hir::ConstTextMap text_enums;
+  text_enums.emplace(value_text, 303);
+  std::unordered_map<std::string, long long> rendered_enums;
+  rendered_enums.emplace("Value", 404);
+
+  c4c::StaticEvalIntEnumLookupInput lookup;
+  lookup.rendered_enum_consts = &rendered_enums;
+  lookup.enum_consts_by_text = &text_enums;
+  lookup.enum_consts_by_key = &structured_enums;
+
+  c4c::TextId first_qualifier[] = {first_domain_text};
+  c4c::Node first_ref = var_ref("Value", "Value", value_text, kNamespaceContext);
+  first_ref.n_qualifier_segments = 1;
+  first_ref.qualifier_text_ids = first_qualifier;
+
+  c4c::TextId second_qualifier[] = {second_domain_text};
+  c4c::Node second_ref = var_ref("Value", "Value", value_text, kNamespaceContext);
+  second_ref.n_qualifier_segments = 1;
+  second_ref.qualifier_text_ids = second_qualifier;
+
+  c4c::TextId missing_qualifier[] = {missing_domain_text};
+  c4c::Node missing_ref = var_ref("Value", "Value", value_text, kNamespaceContext);
+  missing_ref.n_qualifier_segments = 1;
+  missing_ref.qualifier_text_ids = missing_qualifier;
+
+  expect_eq_int(static_cast<int>(c4c::static_eval_int(&first_ref, lookup)), 101,
+                "first structured enum domain should select its own value");
+  expect_eq_int(static_cast<int>(c4c::static_eval_int(&second_ref, lookup)), 202,
+                "second structured enum domain should select its own value");
+  expect_eq_int(static_cast<int>(c4c::static_eval_int(&missing_ref, lookup)), 0,
+                "structured enum miss must not recover through shared TextId or rendered spelling");
+}
+
 }  // namespace
 
 int main() {
@@ -258,6 +312,7 @@ int main() {
   test_static_eval_int_prefers_structured_enum_metadata();
   test_static_eval_int_structured_enum_miss_rejects_rendered_bridge();
   test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge();
+  test_static_eval_int_keeps_same_spelled_enum_domains_distinct();
   std::cout << "PASS: cpp_hir_sema_consteval_type_utils_metadata_test\n";
   return 0;
 }
