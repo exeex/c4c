@@ -24,19 +24,56 @@ bool validate_link_name_id(const Module& module,
 const Function* find_function(const Module& module,
                               std::string_view function_name,
                               LinkNameId function_name_id);
+const Global* find_global(const Module& module,
+                          std::string_view global_name,
+                          LinkNameId global_name_id);
 const Global* find_global_by_name(const Module& module, std::string_view global_name);
 const Function* find_function_by_name(const Module& module, std::string_view function_name);
 
-bool validate_named_value(const Value& value,
+bool validate_named_value(const Module& module,
+                          const Value& value,
                           std::string_view context,
                           std::string* error) {
   if (value.kind == Value::Kind::Named && value.name.empty()) {
     return fail(error, std::string(context) + " must not use an empty name");
   }
+  if (value.pointer_symbol_link_name_id == kInvalidLinkName) {
+    return true;
+  }
+  if (value.kind != Value::Kind::Named || value.type != TypeKind::Ptr || value.name.empty()) {
+    return fail(error, std::string(context) +
+                           " must not carry LinkNameId without a symbol name");
+  }
+  if (!validate_link_name_id(module, value.pointer_symbol_link_name_id, context, error)) {
+    return false;
+  }
+
+  std::string_view symbol_name = value.name;
+  if (!symbol_name.empty() && symbol_name.front() == '@') {
+    symbol_name.remove_prefix(1);
+  }
+  if (const auto* named_global = find_global_by_name(module, symbol_name);
+      named_global != nullptr && named_global->link_name_id != kInvalidLinkName &&
+      named_global->link_name_id != value.pointer_symbol_link_name_id) {
+    return fail(error, std::string(context) +
+                           " must not pair LinkNameId with a different declared global name");
+  }
+  if (const auto* named_function = find_function_by_name(module, symbol_name);
+      named_function != nullptr && named_function->link_name_id != kInvalidLinkName &&
+      named_function->link_name_id != value.pointer_symbol_link_name_id) {
+    return fail(error, std::string(context) +
+                           " must not pair LinkNameId with a different declared function name");
+  }
+  if (find_global(module, symbol_name, value.pointer_symbol_link_name_id) == nullptr &&
+      find_function(module, symbol_name, value.pointer_symbol_link_name_id) == nullptr) {
+    return fail(error, std::string(context) +
+                           " must reference a declared global or function by LinkNameId");
+  }
   return true;
 }
 
-bool validate_binary(const Function& function,
+bool validate_binary(const Module& module,
+                     const Function& function,
                      const BinaryInst& inst,
                      std::vector<std::string>* defined_names,
                      std::string* error) {
@@ -44,15 +81,16 @@ bool validate_binary(const Function& function,
     return fail(error, "bir binary result in @" + function.name +
                            " must use a non-empty named value");
   }
-  if (!validate_named_value(inst.lhs, "bir binary lhs in @" + function.name, error) ||
-      !validate_named_value(inst.rhs, "bir binary rhs in @" + function.name, error)) {
+  if (!validate_named_value(module, inst.lhs, "bir binary lhs in @" + function.name, error) ||
+      !validate_named_value(module, inst.rhs, "bir binary rhs in @" + function.name, error)) {
     return false;
   }
   defined_names->push_back(inst.result.name);
   return true;
 }
 
-bool validate_select(const Function& function,
+bool validate_select(const Module& module,
+                     const Function& function,
                      const SelectInst& inst,
                      std::vector<std::string>* defined_names,
                      std::string* error) {
@@ -60,12 +98,14 @@ bool validate_select(const Function& function,
     return fail(error, "bir select result in @" + function.name +
                            " must use a non-empty named value");
   }
-  if (!validate_named_value(inst.lhs, "bir select compare lhs in @" + function.name, error) ||
-      !validate_named_value(inst.rhs, "bir select compare rhs in @" + function.name, error) ||
-      !validate_named_value(inst.true_value,
+  if (!validate_named_value(module, inst.lhs, "bir select compare lhs in @" + function.name, error) ||
+      !validate_named_value(module, inst.rhs, "bir select compare rhs in @" + function.name, error) ||
+      !validate_named_value(module,
+                            inst.true_value,
                             "bir select true value in @" + function.name,
                             error) ||
-      !validate_named_value(inst.false_value,
+      !validate_named_value(module,
+                            inst.false_value,
                             "bir select false value in @" + function.name,
                             error)) {
     return false;
@@ -74,7 +114,8 @@ bool validate_select(const Function& function,
   return true;
 }
 
-bool validate_cast(const Function& function,
+bool validate_cast(const Module& module,
+                   const Function& function,
                    const CastInst& inst,
                    std::vector<std::string>* defined_names,
                    std::string* error) {
@@ -82,14 +123,15 @@ bool validate_cast(const Function& function,
     return fail(error, "bir cast result in @" + function.name +
                            " must use a non-empty named value");
   }
-  if (!validate_named_value(inst.operand, "bir cast operand in @" + function.name, error)) {
+  if (!validate_named_value(module, inst.operand, "bir cast operand in @" + function.name, error)) {
     return false;
   }
   defined_names->push_back(inst.result.name);
   return true;
 }
 
-bool validate_phi(const Function& function,
+bool validate_phi(const Module& module,
+                  const Function& function,
                   const std::vector<std::string>& block_labels,
                   const std::vector<BlockLabelId>& block_label_ids,
                   const PhiInst& inst,
@@ -134,7 +176,8 @@ bool validate_phi(const Function& function,
       return fail(error, "bir phi in @" + function.name +
                              " must not repeat an incoming label");
     }
-    if (!validate_named_value(incoming.value, "bir phi incoming value in @" + function.name, error)) {
+    if (!validate_named_value(
+            module, incoming.value, "bir phi incoming value in @" + function.name, error)) {
       return false;
     }
     if (incoming.label_id != kInvalidBlockLabel) {
@@ -185,12 +228,13 @@ bool validate_call(const Module& module,
     defined_names->push_back(inst.result->name);
   }
   for (const auto& arg : inst.args) {
-    if (!validate_named_value(arg, "bir call arg in @" + function.name, error)) {
+    if (!validate_named_value(module, arg, "bir call arg in @" + function.name, error)) {
       return false;
     }
   }
   if (inst.callee_value.has_value() &&
-      !validate_named_value(*inst.callee_value,
+      !validate_named_value(module,
+                            *inst.callee_value,
                             "bir call callee value in @" + function.name,
                             error)) {
     return false;
@@ -374,7 +418,8 @@ bool validate_load_global(const Module& module,
   return true;
 }
 
-bool validate_store_local(const Function& function,
+bool validate_store_local(const Module& module,
+                          const Function& function,
                           const StoreLocalInst& inst,
                           const std::vector<std::string>& defined_names,
                           std::string* error) {
@@ -382,7 +427,7 @@ bool validate_store_local(const Function& function,
     return fail(error, "bir local store in @" + function.name +
                            " must reference a declared local slot");
   }
-  if (!validate_named_value(inst.value, "bir local store value in @" + function.name, error)) {
+  if (!validate_named_value(module, inst.value, "bir local store value in @" + function.name, error)) {
     return false;
   }
   if (inst.value.kind == Value::Kind::Named &&
@@ -415,7 +460,7 @@ bool validate_store_global(const Module& module,
           error)) {
     return false;
   }
-  if (!validate_named_value(inst.value, "bir global store value in @" + function.name, error)) {
+  if (!validate_named_value(module, inst.value, "bir global store value in @" + function.name, error)) {
     return false;
   }
   if (inst.value.kind == Value::Kind::Named &&
@@ -445,7 +490,8 @@ bool validate_params(const Function& function,
   return true;
 }
 
-bool validate_return(const Function& function,
+bool validate_return(const Module& module,
+                     const Function& function,
                      const Block& block,
                      const std::vector<std::string>& defined_names,
                      std::string* error) {
@@ -454,7 +500,7 @@ bool validate_return(const Function& function,
       !block.terminator.value.has_value()) {
     return true;
   }
-  if (!validate_named_value(*block.terminator.value, "bir return value", error)) {
+  if (!validate_named_value(module, *block.terminator.value, "bir return value", error)) {
     return false;
   }
   if (block.terminator.value->kind == Value::Kind::Named &&
@@ -465,7 +511,8 @@ bool validate_return(const Function& function,
   return true;
 }
 
-bool validate_terminator(const Function& function,
+bool validate_terminator(const Module& module,
+                         const Function& function,
                          const Block& block,
                          const std::vector<std::string>& block_labels,
                          const std::vector<BlockLabelId>& block_label_ids,
@@ -473,7 +520,7 @@ bool validate_terminator(const Function& function,
                          std::string* error) {
   switch (block.terminator.kind) {
     case TerminatorKind::Return:
-      return validate_return(function, block, defined_names, error);
+      return validate_return(module, function, block, defined_names, error);
     case TerminatorKind::Branch:
       if (block.terminator.target_label.empty()) {
         return fail(error, "bir branch in @" + function.name + " must name a target");
@@ -493,7 +540,8 @@ bool validate_terminator(const Function& function,
       }
       return true;
     case TerminatorKind::CondBranch:
-      if (!validate_named_value(block.terminator.condition,
+      if (!validate_named_value(module,
+                                block.terminator.condition,
                                 "bir cond_br condition in @" + function.name,
                                 error)) {
         return false;
@@ -575,10 +623,9 @@ bool validate(const Module& module, std::string* error) {
       return false;
     }
     if (global.initializer.has_value()) {
-      if (global.initializer->kind == Value::Kind::Named &&
-          global.initializer->name.empty()) {
-        return fail(error, "bir global initializer @" + global.name +
-                               " must not use an empty name");
+      if (!validate_named_value(
+              module, *global.initializer, "bir global initializer @" + global.name, error)) {
+        return false;
       }
       if (global.initializer->kind == Value::Kind::Named &&
           global.initializer->type != TypeKind::Ptr) {
@@ -592,9 +639,9 @@ bool validate(const Module& module, std::string* error) {
       }
     }
     for (const auto& element : global.initializer_elements) {
-      if (element.kind == Value::Kind::Named && element.name.empty()) {
-        return fail(error, "bir global initializer element @" + global.name +
-                               " must not use an empty name");
+      if (!validate_named_value(
+              module, element, "bir global initializer element @" + global.name, error)) {
+        return false;
       }
       if (element.kind == Value::Kind::Named && element.type != TypeKind::Ptr) {
         return fail(error, "bir global initializer element @" + global.name +
@@ -682,14 +729,20 @@ bool validate(const Module& module, std::string* error) {
             [&](const auto& lowered) {
               using T = std::decay_t<decltype(lowered)>;
               if constexpr (std::is_same_v<T, BinaryInst>) {
-                return validate_binary(function, lowered, &defined_names, error);
+                return validate_binary(module, function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, SelectInst>) {
-                return validate_select(function, lowered, &defined_names, error);
+                return validate_select(module, function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, CastInst>) {
-                return validate_cast(function, lowered, &defined_names, error);
+                return validate_cast(module, function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, PhiInst>) {
                 return validate_phi(
-                    function, block_labels, block_label_ids, lowered, &defined_names, error);
+                    module,
+                    function,
+                    block_labels,
+                    block_label_ids,
+                    lowered,
+                    &defined_names,
+                    error);
               } else if constexpr (std::is_same_v<T, CallInst>) {
                 return validate_call(module, function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
@@ -699,7 +752,7 @@ bool validate(const Module& module, std::string* error) {
               } else if constexpr (std::is_same_v<T, StoreGlobalInst>) {
                 return validate_store_global(module, function, lowered, defined_names, error);
               } else if constexpr (std::is_same_v<T, StoreLocalInst>) {
-                return validate_store_local(function, lowered, defined_names, error);
+                return validate_store_local(module, function, lowered, defined_names, error);
               }
             },
             inst);
@@ -709,7 +762,7 @@ bool validate(const Module& module, std::string* error) {
       }
 
       if (!validate_terminator(
-              function, block, block_labels, block_label_ids, defined_names, error)) {
+              module, function, block, block_labels, block_label_ids, defined_names, error)) {
         return false;
       }
     }

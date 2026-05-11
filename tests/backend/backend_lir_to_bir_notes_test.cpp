@@ -973,6 +973,110 @@ int expect_bir_verifier_rejects_known_link_name_mismatches() {
 
   {
     auto module = make_link_name_mismatch_verifier_module();
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee = "actual_callee",
+        .args = {bir::Value::named(bir::TypeKind::Ptr, "@compat_unknown")},
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail("BIR verifier should preserve compatibility pointer values without LinkNameId");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee = "actual_callee",
+        .args = {bir::Value::named_symbol_pointer("@actual_global", 9999)},
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    if (!validate_rejects_with_message(
+            module, "bir call arg in @user must reference a known LinkNameId")) {
+      return fail("BIR verifier should reject pointer values with unknown LinkNameId");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee = "actual_callee",
+        .args = {bir::Value::named_symbol_pointer("", actual_id)},
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    if (!validate_rejects_with_message(module, "bir call arg in @user must not use an empty name")) {
+      return fail("BIR verifier should reject pointer values with empty symbol names");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee = "actual_callee",
+        .args = {bir::Value::named_symbol_pointer("@stale_global_display", actual_id)},
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail("BIR verifier should allow drifted pointer displays when LinkNameId is declared");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee = "actual_callee",
+        .args = {bir::Value::named_symbol_pointer("@other_global", actual_id)},
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir call arg in @user must not pair LinkNameId with a different declared global name")) {
+      return fail("BIR verifier should reject pointer-value global LinkNameId/display-name mismatch");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_callee");
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee = "actual_callee",
+        .args = {bir::Value::named_symbol_pointer("@other_callee", actual_id)},
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir call arg in @user must not pair LinkNameId with a different declared function name")) {
+      return fail(
+          "BIR verifier should reject pointer-value function LinkNameId/display-name mismatch");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.globals.front().is_extern = false;
+    module.globals.front().initializer_elements = {
+        bir::Value::named_symbol_pointer("@other_global", actual_id)};
+    if (!validate_rejects_with_message(
+            module,
+            "bir global initializer element @actual_global must not pair LinkNameId with a different declared global name")) {
+      return fail(
+          "BIR verifier should reject initializer element pointer-value LinkNameId/display-name mismatch");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
     const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
     module.functions.back().blocks.front().insts.push_back(bir::StoreGlobalInst{
         .global_name = "other_global",

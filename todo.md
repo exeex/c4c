@@ -8,32 +8,36 @@ Current Step Title: Add BIR Pointer Value Identity for Symbol-Carrying Values
 
 ## Just Finished
 
-Step 5 aggregate/store pointer-value identity slice is implemented.
+Step 5 BIR verifier pointer-value identity slice is implemented.
 
-Aggregate pointer initializer element values now reuse the resolved
-`GlobalAddress::link_name_id` through a byte-offset to initializer-element index
-bridge, so covered function and global pointer fields publish an ID-backed
-`bir::Value` instead of remaining display-only `@symbol` values. Direct pointer
-stores of known function and global symbols now build ID-backed stored pointer
-values before local/global/provenance store routes consume them, and local
-pointer-slot reload aliases recover the same carrier for subsequent pointer
-value uses.
+`bir::validate()` now validates `Value::pointer_symbol_link_name_id` on every
+named-value validation path, including call args/callee values, local and
+global store values, phi/select/cast operands, terminator values, and global
+initializer values/elements. ID-backed pointer values must be named pointer
+symbol values, reference a known `LinkNameId`, resolve to a declared global or
+function by that ID, and must not pair the ID with a different declared
+global/function visible name when the display spelling names one. Raw
+compatibility pointer values without metadata still pass.
 
-`backend_lir_to_bir_notes_test` now covers aggregate initializer element
-carriers for one function pointer field and one global pointer field, direct
-local pointer stores for function and global symbols, and store/load recovery
-into a later call argument. The assertions include equality checks proving these
-values are not equivalent to raw display-only pointer values.
+`backend_lir_to_bir_notes_test` now covers compatibility/no-metadata pointer
+values, unknown `LinkNameId`, empty symbol names, drifted but undeclared display
+spelling with a valid ID, declared global/function display-name mismatches, and
+initializer element pointer-value mismatches.
 
 ## Suggested Next
 
-Continue Step 5 by adding verifier coverage for pointer-value
-`LinkNameId`/display-name mismatches on ID-backed `bir::Value` carriers, then
-decide whether any remaining compatibility bridges are narrow enough to carry
-into Step 6 backend preparation.
+Review whether Step 5 has any remaining pointer-value identity surfaces outside
+BIR validation; if not, prepare the Step 6 backend handoff around replacing the
+remaining raw LIR global/function operand compatibility bridges with structured
+symbol identity.
 
 ## Watchouts
 
+- BIR validation now rejects an ID-backed pointer `bir::Value` if the ID is
+  valid in the module name table but no declared global/function carries it.
+  That is intentional for symbol-carrying values, but the supervisor should
+  check future string-pool or runtime placeholder work before attaching
+  `LinkNameId` to non-module-declared values.
 - Compatibility bridge: direct `LirOperandKind::Global` function operands used
   as pointer argument values now produce ID-backed BIR pointer values when the
   raw operand resolves through `FunctionSymbolSet`. Limitation: the LIR operand
