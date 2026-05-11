@@ -2438,12 +2438,12 @@ int use_template_call_nttp() { return outer<39>(); }
     expect_true(!std::holds_alternative<c4c::hir::PendingConstevalExpr>(expr.payload),
                 "TextId NTTP env data should let deferred inner consteval calls reduce");
   }
-  const auto tdef_it = initial.module->template_defs.find("inner");
-  expect_true(tdef_it != initial.module->template_defs.end() &&
-                  !tdef_it->second.instances.empty(),
+  const c4c::hir::HirTemplateDef* tdef =
+      initial.module->find_template_def_by_rendered_preservation_name("inner");
+  expect_true(tdef != nullptr && !tdef->instances.empty(),
               "compile-time engine should record the deferred inner instantiation");
   bool found_text_instance = false;
-  for (const auto& inst : tdef_it->second.instances) {
+  for (const auto& inst : tdef->instances) {
     const auto inst_text_it = inst.nttp_bindings_by_text.find(inner_param_text_id);
     if (inst_text_it != inst.nttp_bindings_by_text.end() &&
         inst_text_it->second == 39) {

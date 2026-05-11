@@ -2431,7 +2431,10 @@ struct Module {
   mutable std::vector<HirStructDefOwnerParityMismatch>
       struct_def_owner_parity_mismatches;
 
-  // Template function definitions (populated by build_hir)
+  // Template function definitions (populated by build_hir). `template_defs`
+  // is a rendered HIR preservation map for dumps and deferred-instantiation
+  // bookkeeping; CompileTimeState structured/template definition lookup remains
+  // the authority for AST template definitions.
   std::unordered_map<SymbolName, HirTemplateDef> template_defs;
 
   // Consteval call records (populated by build_hir)
@@ -2533,6 +2536,18 @@ struct Module {
     if (!tag) return nullptr;
     const auto it = struct_defs.find(*tag);
     return it == struct_defs.end() ? nullptr : &it->second;
+  }
+
+  HirTemplateDef* find_template_def_by_rendered_preservation_name(
+      std::string_view name) {
+    const auto it = template_defs.find(std::string(name));
+    return it == template_defs.end() ? nullptr : &it->second;
+  }
+
+  const HirTemplateDef* find_template_def_by_rendered_preservation_name(
+      std::string_view name) const {
+    const auto it = template_defs.find(std::string(name));
+    return it == template_defs.end() ? nullptr : &it->second;
   }
 
   [[nodiscard]] bool struct_def_owner_matches_rendered(

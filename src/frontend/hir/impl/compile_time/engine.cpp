@@ -317,16 +317,19 @@ struct TemplateInstantiationStep {
         }
 
         // Attempt deferred instantiation: reconstruct TypeBindings from
-        // TemplateCallInfo + HirTemplateDef parameter names.
-        auto tdef_it = module.template_defs.find(tci.source_template);
-        if (tdef_it != module.template_defs.end()) {
-          const auto& tdef = tdef_it->second;
+        // TemplateCallInfo plus preserved rendered HIR template metadata.
+        // CompileTimeState remains the authoritative AST definition registry;
+        // Module::template_defs is read here only as a preservation map for
+        // output spelling and deferred-instantiation bookkeeping.
+        HirTemplateDef* tdef =
+            module.find_template_def_by_rendered_preservation_name(tci.source_template);
+        if (tdef) {
           TypeBindings bindings;
-          size_t count = std::min(tdef.template_params.size(), tci.template_args.size());
+          size_t count = std::min(tdef->template_params.size(), tci.template_args.size());
           for (size_t i = 0; i < count; ++i) {
             // Skip NTTP params in type bindings (they use dummy TypeSpec).
-            if (i < tdef.param_is_nttp.size() && tdef.param_is_nttp[i]) continue;
-            bindings[tdef.template_params[i]] = tci.template_args[i];
+            if (i < tdef->param_is_nttp.size() && tdef->param_is_nttp[i]) continue;
+            bindings[tdef->template_params[i]] = tci.template_args[i];
           }
           NttpBindings nttp_bindings = tci.nttp_args;
           NttpTextBindings nttp_bindings_by_text = tci.nttp_args_by_text;
@@ -350,10 +353,10 @@ struct TemplateInstantiationStep {
                            : nullptr;
               new_fn.spec_key = nttp_bindings.empty()
                   ? make_specialization_key(
-                      tci.source_template, tdef.template_params, bindings,
+                      tci.source_template, tdef->template_params, bindings,
                       primary_def)
                   : make_specialization_key(
-                      tci.source_template, tdef.template_params, bindings,
+                      tci.source_template, tdef->template_params, bindings,
                       nttp_bindings, primary_def);
             }
             // Record in engine-owned state and update module metadata.
@@ -361,8 +364,8 @@ struct TemplateInstantiationStep {
               auto hi = ct_state->record_deferred_instance(
                   tci.source_template, bindings, nttp_bindings,
                   nttp_bindings_by_text,
-                  target_name, tdef.template_params);
-              tdef_it->second.instances.push_back(std::move(hi));
+                  target_name, tdef->template_params);
+              tdef->instances.push_back(std::move(hi));
             }
           } else {
             ++pending;

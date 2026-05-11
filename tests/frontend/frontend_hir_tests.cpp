@@ -504,26 +504,27 @@ int use_template() { return id<int>(add_one(global_value)); }
   expect_eq(module.link_names.spelling(function->link_name_id), function->name,
             "function LinkNameId should resolve back to the emitted function spelling");
 
-  const auto tpl_it = module.template_defs.find("id");
-  expect_true(tpl_it != module.template_defs.end(),
+  const c4c::hir::HirTemplateDef* tpl =
+      module.find_template_def_by_rendered_preservation_name("id");
+  expect_true(tpl != nullptr,
               "template metadata should still be recorded in HIR");
-  expect_true(tpl_it->second.name_text_id != c4c::kInvalidText,
+  expect_true(tpl->name_text_id != c4c::kInvalidText,
               "template metadata should materialize a stable TextId for the template name");
-  expect_eq(module.link_name_texts->lookup(tpl_it->second.name_text_id), tpl_it->second.name,
+  expect_eq(module.link_name_texts->lookup(tpl->name_text_id), tpl->name,
             "template metadata TextId should resolve through the HIR module text table");
-  expect_true(tpl_it->second.template_param_text_ids.size() ==
-                  tpl_it->second.template_params.size(),
+  expect_true(tpl->template_param_text_ids.size() ==
+                  tpl->template_params.size(),
               "template metadata should preserve one parallel TextId per template parameter");
-  expect_true(!tpl_it->second.template_param_text_ids.empty(),
+  expect_true(!tpl->template_param_text_ids.empty(),
               "template metadata should materialize TextIds for preserved template parameter spellings");
-  expect_true(tpl_it->second.template_param_text_ids.front() != c4c::kInvalidText,
+  expect_true(tpl->template_param_text_ids.front() != c4c::kInvalidText,
               "template parameter metadata should preserve a valid TextId");
-  expect_eq(module.link_name_texts->lookup(tpl_it->second.template_param_text_ids.front()),
-            tpl_it->second.template_params.front(),
+  expect_eq(module.link_name_texts->lookup(tpl->template_param_text_ids.front()),
+            tpl->template_params.front(),
             "template parameter TextIds should resolve through the HIR module text table");
-  expect_true(!tpl_it->second.instances.empty(),
+  expect_true(!tpl->instances.empty(),
               "template metadata should capture realized instantiations");
-  const c4c::hir::HirTemplateInstantiation& instance = tpl_it->second.instances.front();
+  const c4c::hir::HirTemplateInstantiation& instance = tpl->instances.front();
   expect_true(instance.mangled_link_name_id != c4c::kInvalidLinkName,
               "materialized template instantiations should record a LinkNameId");
   expect_eq(module.link_names.spelling(instance.mangled_link_name_id),

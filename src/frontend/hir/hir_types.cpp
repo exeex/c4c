@@ -120,9 +120,10 @@ LinkNameId find_template_instantiation_link_name_id(
     const Module& module, std::string_view template_name,
     const SpecializationKey& spec_key,
     const SpecializationKey* legacy_spec_key) {
-  const auto tdef_it = module.template_defs.find(std::string(template_name));
-  if (tdef_it == module.template_defs.end()) return kInvalidLinkName;
-  const auto& instances = tdef_it->second.instances;
+  const HirTemplateDef* tdef =
+      module.find_template_def_by_rendered_preservation_name(template_name);
+  if (!tdef) return kInvalidLinkName;
+  const auto& instances = tdef->instances;
   for (const auto& inst : instances) {
     if (inst.mangled_link_name_id == kInvalidLinkName) continue;
     if (inst.spec_key == spec_key ||
