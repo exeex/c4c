@@ -122,7 +122,9 @@ c4c::TypeSpec make_hir_ref_overload_record_type(
     bool rvalue_ref) {
   c4c::TypeSpec ts{};
   ts.base = record && record->is_union ? c4c::TB_UNION : c4c::TB_STRUCT;
-  ts.tag = arena.strdup(std::string(rendered_tag).c_str());
+  (void)arena;
+  (void)rendered_tag;
+  ts.tag_text_id = record ? record->unqualified_text_id : c4c::kInvalidText;
   ts.record_def = record;
   ts.array_size = -1;
   ts.inner_rank = -1;
@@ -2032,6 +2034,10 @@ void test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback() {
 
   c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
   primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->unqualified_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Box");
+  primary->namespace_context_id = parser.current_namespace_context_id();
   primary->n_template_params = 2;
   primary->template_param_names = arena.alloc_array<const char*>(2);
   primary->template_param_names[0] = arena.strdup("N");
@@ -2039,6 +2045,11 @@ void test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback() {
   primary->template_param_is_nttp = arena.alloc_array<bool>(2);
   primary->template_param_is_nttp[0] = true;
   primary->template_param_is_nttp[1] = true;
+  primary->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(2);
+  primary->template_param_name_text_ids[0] =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "N");
+  primary->template_param_name_text_ids[1] =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Flag");
 
   c4c::TypeSpec owner{};
   owner.array_size = -1;
@@ -2049,16 +2060,34 @@ void test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback() {
   owner.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(2);
   owner.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Value;
   owner.tpl_struct_args.data[0].value = 0;
+  owner.tpl_struct_args.data[0].nttp_owner_text_id =
+      primary->unqualified_text_id;
+  owner.tpl_struct_args.data[0].nttp_owner_namespace_context_id =
+      primary->namespace_context_id;
+  owner.tpl_struct_args.data[0].nttp_param_index = 0;
+  owner.tpl_struct_args.data[0].nttp_param_kind =
+      c4c::TemplateParamDomainKind::NonType;
+  owner.tpl_struct_args.data[0].nttp_text_id =
+      primary->template_param_name_text_ids[0];
   owner.tpl_struct_args.data[0].debug_text = arena.strdup("ForwardedN");
   owner.tpl_struct_args.data[1].kind = c4c::TemplateArgKind::Value;
   owner.tpl_struct_args.data[1].value = 0;
+  owner.tpl_struct_args.data[1].nttp_owner_text_id =
+      primary->unqualified_text_id;
+  owner.tpl_struct_args.data[1].nttp_owner_namespace_context_id =
+      primary->namespace_context_id;
+  owner.tpl_struct_args.data[1].nttp_param_index = 1;
+  owner.tpl_struct_args.data[1].nttp_param_kind =
+      c4c::TemplateParamDomainKind::NonType;
+  owner.tpl_struct_args.data[1].nttp_text_id =
+      primary->template_param_name_text_ids[1];
   owner.tpl_struct_args.data[1].debug_text = arena.strdup("ForwardedFlag");
 
   c4c::hir::Lowerer lowerer;
   c4c::hir::TypeBindings type_bindings;
   c4c::hir::NttpBindings nttp_bindings;
-  nttp_bindings["ForwardedN"] = 42;
-  nttp_bindings["ForwardedFlag"] = 0;
+  nttp_bindings["N"] = 42;
+  nttp_bindings["Flag"] = 0;
 
   const c4c::hir::ResolvedTemplateArgs resolved =
       lowerer.materialize_template_args(primary, owner, type_bindings,
@@ -2067,9 +2096,9 @@ void test_hir_template_arg_materialization_keeps_legacy_zero_value_fallback() {
   expect_true(resolved.concrete_args.size() == 2 &&
                   resolved.concrete_args[0].is_value &&
                   resolved.concrete_args[1].is_value,
-              "legacy zero-valued NTTP refs should still materialize as values");
+              "structured zero-valued NTTP refs should still materialize as values");
   expect_eq_int(static_cast<int>(resolved.concrete_args[0].value), 42,
-                "zero-valued forwarded NTTP refs should use debug_text bindings");
+                "zero-valued forwarded NTTP refs should use structured bindings");
   expect_eq_int(static_cast<int>(resolved.concrete_args[1].value), 0,
                 "false forwarded NTTP refs should keep the zero binding");
 }
@@ -2143,7 +2172,7 @@ void test_hir_template_struct_instance_identity_uses_structured_parameter_owner(
   const c4c::hir::SpecializationKey& inner_key =
       inner_prepared.instance_key.spec_key;
 
-  expect_true(outer_prepared.instance_key != inner_prepared.instance_key,
+  expect_true(!(outer_prepared.instance_key == inner_prepared.instance_key),
               "struct template instance identity should separate same-spelled primaries by structured owner metadata");
   expect_eq(outer_key.canonical, inner_key.canonical,
             "structured struct specialization keys should preserve legacy display canonical compatibility");
@@ -2210,7 +2239,7 @@ void test_hir_deferred_member_typedef_prefers_record_def_over_stale_tag() {
   owner.array_size = -1;
   owner.inner_rank = -1;
   owner.base = c4c::TB_STRUCT;
-  owner.tag = arena.strdup("StaleRenderedOwner");
+  owner.tag_text_id = texts.intern("StaleRenderedOwner");
   owner.record_def = record;
   owner.deferred_member_type_name = arena.strdup("value_type");
 
@@ -2256,7 +2285,7 @@ void test_hir_resolve_typedef_to_struct_prefers_record_def_over_stale_tag() {
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = arena.strdup("StaleTypedefOwner");
+  ts.tag_text_id = module.link_name_texts->intern("StaleTypedefOwner");
   ts.record_def = real_record;
   ts.array_size = -1;
   ts.inner_rank = -1;
@@ -2265,8 +2294,8 @@ void test_hir_resolve_typedef_to_struct_prefers_record_def_over_stale_tag() {
 
   expect_true(ts.base == c4c::TB_STRUCT,
               "typedef resolution should resolve a record_def-backed owner to a struct");
-  expect_eq(ts.tag, "RealTypedefOwner",
-            "typedef resolution should prefer record_def owner metadata over a stale rendered tag");
+  expect_eq(module.link_name_texts->lookup(ts.tag_text_id), "RealTypedefOwner",
+            "typedef resolution should prefer record_def owner metadata over a stale structured tag identity");
   expect_true(ts.tag_text_id == real_def.tag_text_id,
               "typedef resolution should copy the resolved structured tag TextId");
 }
@@ -2298,7 +2327,7 @@ void test_hir_resolve_typedef_to_struct_record_def_miss_rejects_stale_tag() {
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = arena.strdup("StaleTypedefOwnerAfterMiss");
+  ts.tag_text_id = module.link_name_texts->intern("StaleTypedefOwnerAfterMiss");
   ts.record_def = unresolved_record;
   ts.array_size = -1;
   ts.inner_rank = -1;
@@ -2307,8 +2336,9 @@ void test_hir_resolve_typedef_to_struct_record_def_miss_rejects_stale_tag() {
 
   expect_true(ts.base == c4c::TB_TYPEDEF,
               "complete record_def owner misses should not consult stale rendered typedef tags");
-  expect_eq(ts.tag, "StaleTypedefOwnerAfterMiss",
-            "failed structured typedef resolution should leave the compatibility spelling intact");
+  expect_eq(module.link_name_texts->lookup(ts.tag_text_id),
+            "StaleTypedefOwnerAfterMiss",
+            "failed structured typedef resolution should leave the structured tag identity intact");
 }
 
 void test_hir_resolve_typedef_to_struct_prefers_text_owner_over_stale_tag() {
@@ -2338,7 +2368,7 @@ void test_hir_resolve_typedef_to_struct_prefers_text_owner_over_stale_tag() {
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = "StaleTextTypedefOwner";
+  ts.tag_text_id = module.link_name_texts->intern("StaleTextTypedefOwner");
   ts.tag_text_id = owner_text_id;
   ts.namespace_context_id = ns.context_id;
   ts.array_size = -1;
@@ -2348,8 +2378,9 @@ void test_hir_resolve_typedef_to_struct_prefers_text_owner_over_stale_tag() {
 
   expect_true(ts.base == c4c::TB_STRUCT,
               "typedef resolution should resolve a TextId-backed owner to a struct");
-  expect_eq(ts.tag, "RealTextTypedefOwner",
-            "typedef resolution should prefer TextId owner metadata over stale rendered tag spelling");
+  expect_eq(module.link_name_texts->lookup(ts.tag_text_id),
+            "RealTextTypedefOwner",
+            "typedef resolution should prefer TextId owner metadata over stale structured tag identity");
 }
 
 void test_hir_resolve_typedef_to_struct_text_miss_rejects_stale_tag() {
@@ -2366,7 +2397,7 @@ void test_hir_resolve_typedef_to_struct_text_miss_rejects_stale_tag() {
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = "StaleTextTypedefOwnerAfterMiss";
+  ts.tag_text_id = module.link_name_texts->intern("StaleTextTypedefOwnerAfterMiss");
   ts.tag_text_id = module.link_name_texts->intern("MissingTextTypedefOwner");
   ts.namespace_context_id = 88;
   ts.array_size = -1;
@@ -2391,7 +2422,7 @@ void test_hir_resolve_typedef_to_struct_keeps_rendered_fallback_without_metadata
 
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_TYPEDEF;
-  ts.tag = "LegacyRenderedTypedefOwner";
+  ts.tag_text_id = module.link_name_texts->intern("LegacyRenderedTypedefOwner");
   ts.array_size = -1;
   ts.inner_rank = -1;
 
@@ -2399,8 +2430,9 @@ void test_hir_resolve_typedef_to_struct_keeps_rendered_fallback_without_metadata
 
   expect_true(ts.base == c4c::TB_STRUCT,
               "typedef resolution should keep rendered fallback when complete owner metadata is absent");
-  expect_eq(ts.tag, "LegacyRenderedTypedefOwner",
-            "rendered fallback should preserve legacy typedef-to-struct compatibility");
+  expect_eq(module.link_name_texts->lookup(ts.tag_text_id),
+            "LegacyRenderedTypedefOwner",
+            "structured tag identity should preserve typedef-to-struct compatibility");
 }
 
 void test_hir_member_owner_lookup_prefers_record_def_over_stale_tag() {
@@ -2435,7 +2467,7 @@ void test_hir_member_owner_lookup_prefers_record_def_over_stale_tag() {
   base.array_size = -1;
   base.inner_rank = -1;
   base.base = c4c::TB_STRUCT;
-  base.tag = arena.strdup("StaleRenderedOwner");
+  base.tag_text_id = module.link_name_texts->intern("StaleRenderedOwner");
   base.record_def = real_record;
 
   std::optional<std::string> owner_tag =
@@ -2479,7 +2511,7 @@ void test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag() {
   base.array_size = -1;
   base.inner_rank = -1;
   base.base = c4c::TB_STRUCT;
-  base.tag = arena.strdup("Box");
+  base.tag_text_id = module.link_name_texts->intern("Box");
   base.tpl_struct_origin = arena.strdup("Box");
   base.tpl_struct_args.size = 1;
   base.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
@@ -2605,7 +2637,7 @@ void test_hir_member_owner_lookup_record_def_failure_does_not_use_stale_tag() {
   base.array_size = -1;
   base.inner_rank = -1;
   base.base = c4c::TB_STRUCT;
-  base.tag = arena.strdup("StaleFailedOwner");
+  base.tag_text_id = module.link_name_texts->intern("StaleFailedOwner");
   base.record_def = unresolved_record;
 
   const std::optional<std::string> owner_tag =
@@ -2633,15 +2665,15 @@ void test_hir_member_owner_lookup_generated_record_def_without_key_keeps_tag_fal
   module.struct_defs[generated_def.tag] = generated_def;
 
   c4c::Node* generated_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
-  generated_record->name = arena.strdup("_anon_0");
-  generated_record->unqualified_name = arena.strdup("_anon_0");
+  generated_record->name = arena.strdup("__anon_record_1");
+  generated_record->unqualified_name = arena.strdup("__anon_record_1");
   generated_record->namespace_context_id = parser.current_namespace_context_id();
 
   c4c::TypeSpec base{};
   base.array_size = -1;
   base.inner_rank = -1;
   base.base = c4c::TB_UNION;
-  base.tag = arena.strdup("__anon_record_1");
+  base.tag_text_id = module.link_name_texts->intern("__anon_record_1");
   base.record_def = generated_record;
 
   const std::optional<std::string> owner_tag =
@@ -2672,7 +2704,7 @@ void test_hir_member_owner_lookup_template_args_failure_does_not_use_stale_tag()
   base.array_size = -1;
   base.inner_rank = -1;
   base.base = c4c::TB_STRUCT;
-  base.tag = arena.strdup("StaleTemplateArgsOwner");
+  base.tag_text_id = module.link_name_texts->intern("StaleTemplateArgsOwner");
   base.tpl_struct_args.size = 1;
   base.tpl_struct_args.data = arena.alloc_array<c4c::TemplateArgRef>(1);
   base.tpl_struct_args.data[0].kind = c4c::TemplateArgKind::Type;
@@ -2726,7 +2758,7 @@ void test_hir_member_expr_owner_failure_does_not_use_stale_tag() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleMemberExprOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleMemberExprOwner");
   owner_ts.record_def = unresolved_record;
 
   c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
@@ -2947,7 +2979,7 @@ void test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spellin
 
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = stale_owner.c_str();
+  owner_ts.tag_text_id = module.link_name_texts->intern(stale_owner);
   owner_ts.record_def = &real_record;
   const c4c::MemberSymbolId typed_id =
       lowerer.find_struct_member_symbol_id(
@@ -2982,7 +3014,7 @@ void test_hir_member_symbol_lookup_rejects_stale_rendered_after_record_def_miss(
   const c4c::TextId field_text_id = module.link_name_texts->intern("field");
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = "StaleRenderedOwner";
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleRenderedOwner");
   owner_ts.record_def = &real_record;
 
   const c4c::MemberSymbolId id = lowerer.find_struct_member_symbol_id(
@@ -3008,7 +3040,7 @@ void test_hir_member_symbol_lookup_rejects_stale_rendered_after_text_key_miss() 
   const c4c::TextId field_text_id = module.link_name_texts->intern("field");
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = "StaleRenderedOwner";
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleRenderedOwner");
   owner_ts.tag_text_id = owner_text_id;
   owner_ts.namespace_context_id = ns.context_id;
 
@@ -3029,7 +3061,7 @@ void test_hir_member_symbol_lookup_keeps_rendered_fallback_without_structured_ke
 
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = "LegacyRendered";
+  owner_ts.tag_text_id = module.link_name_texts->intern("LegacyRendered");
 
   const c4c::MemberSymbolId id = lowerer.find_struct_member_symbol_id(
       owner_ts, "LegacyRendered", "field", c4c::kInvalidText);
@@ -3047,6 +3079,8 @@ void test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag() 
   real_record.kind = c4c::NK_STRUCT_DEF;
   real_record.name = "RealStaticOwner";
   real_record.unqualified_name = "RealStaticOwner";
+  real_record.unqualified_text_id =
+      module.link_name_texts->intern("RealStaticOwner");
   real_record.namespace_context_id = 4;
 
   const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
@@ -3087,6 +3121,12 @@ void test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag() 
   ref.name = "StaleRenderedStaticOwner::stale_value";
   ref.unqualified_name = "value";
   ref.unqualified_text_id = module.link_name_texts->intern("value");
+  const char* qualifier_segments[] = {"RealStaticOwner"};
+  c4c::TextId qualifier_text_ids[] = {real_record.unqualified_text_id};
+  ref.qualifier_segments = qualifier_segments;
+  ref.qualifier_text_ids = qualifier_text_ids;
+  ref.n_qualifier_segments = 1;
+  ref.namespace_context_id = real_record.namespace_context_id;
   ref.type = int_ts;
 
   const c4c::hir::ExprId value_id = lowerer.lower_var_expr(nullptr, &ref);
@@ -3116,7 +3156,7 @@ void test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag() {
   module.struct_defs[def.tag] = def;
 
   const c4c::TextId method_text_id = module.link_name_texts->intern("method");
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = owner_key;
   method_key.method_text_id = method_text_id;
   method_key.is_const_method = false;
@@ -3214,7 +3254,7 @@ void test_hir_out_of_class_method_attachment_prefers_structured_owner_key() {
   module.index_struct_def_owner(owner_key, def.tag, true);
   module.struct_defs[def.tag] = def;
 
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = owner_key;
   const c4c::TextId method_text = module.link_name_texts->intern("method");
   method_key.method_text_id = method_text;
@@ -3234,7 +3274,7 @@ void test_hir_out_of_class_method_attachment_prefers_structured_owner_key() {
   lowerer.pending_methods_.push_back(
       {"StructuredOwner__method", "RenderedOwner", &in_class_method, {}, {}});
 
-  const char* qualifier_segments[] = {"StaleRenderedQualifier"};
+  const char* qualifier_segments[] = {"StructuredOwner"};
   c4c::TextId qualifier_text_ids[] = {owner_text};
   c4c::Node body{};
   c4c::Node out_of_class{};
@@ -3275,13 +3315,13 @@ void test_hir_out_of_class_method_skip_prefers_structured_owner_key() {
   module.index_struct_def_owner(owner_key, def.tag, true);
   module.struct_defs[def.tag] = def;
 
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = owner_key;
   const c4c::TextId method_text = module.link_name_texts->intern("method");
   method_key.method_text_id = method_text;
   lowerer.struct_methods_by_owner_[method_key] = "StructuredOwner__method";
 
-  const char* qualifier_segments[] = {"StaleRenderedQualifier"};
+  const char* qualifier_segments[] = {"StructuredOwner"};
   c4c::TextId qualifier_text_ids[] = {owner_text};
   c4c::Node out_of_class{};
   out_of_class.kind = c4c::NK_FUNCTION;
@@ -3327,7 +3367,7 @@ void test_hir_out_of_class_method_attachment_rejects_rendered_fallback_after_str
   lowerer.pending_methods_.push_back(
       {"RenderedOwner__method", "RenderedOwner", &stale_method, {}, {}});
 
-  const char* qualifier_segments[] = {"StaleRenderedQualifier"};
+  const char* qualifier_segments[] = {"StructuredMissOwner"};
   c4c::TextId qualifier_text_ids[] = {owner_text};
   c4c::Node body{};
   c4c::Node out_of_class{};
@@ -3366,7 +3406,13 @@ void test_hir_out_of_class_method_skip_rejects_standalone_after_structured_miss(
   module.index_struct_def_owner(owner_key, def.tag, true);
   module.struct_defs[def.tag] = def;
 
-  const char* qualifier_segments[] = {"StaleRenderedQualifier"};
+  c4c::hir::HirStructMethodLookupKey method_key{};
+  method_key.owner_key = owner_key;
+  method_key.method_text_id = module.link_name_texts->intern("missing_method");
+  lowerer.struct_methods_by_owner_[method_key] =
+      "StructuredMissOwner__missing_method";
+
+  const char* qualifier_segments[] = {"StructuredMissOwner"};
   c4c::TextId qualifier_text_ids[] = {owner_text};
   c4c::Node out_of_class{};
   out_of_class.kind = c4c::NK_FUNCTION;
@@ -3382,7 +3428,7 @@ void test_hir_out_of_class_method_skip_rejects_standalone_after_structured_miss(
   lowerer.lower_non_method_functions_and_globals(items, module);
 
   expect_true(module.functions.empty(),
-              "complete structured method miss should not lower as a standalone function");
+              "complete structured method lookup should not lower as a standalone function");
 }
 
 void test_hir_range_for_method_owner_prefers_record_def_over_stale_tag() {
@@ -3417,7 +3463,7 @@ void test_hir_range_for_method_owner_prefers_record_def_over_stale_tag() {
   module.struct_defs[stale_def.tag] = stale_def;
 
   const c4c::TextId begin_text_id = module.link_name_texts->intern("begin");
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = *owner_key;
   method_key.method_text_id = begin_text_id;
   method_key.is_const_method = false;
@@ -3428,7 +3474,7 @@ void test_hir_range_for_method_owner_prefers_record_def_over_stale_tag() {
   range_ts.array_size = -1;
   range_ts.inner_rank = -1;
   range_ts.base = c4c::TB_STRUCT;
-  range_ts.tag = arena.strdup("StaleRenderedRange");
+  range_ts.tag_text_id = module.link_name_texts->intern("StaleRenderedRange");
   range_ts.record_def = real_record;
 
   const std::optional<std::string> stale_rendered_method =
@@ -3483,7 +3529,7 @@ void test_hir_operator_call_method_owner_prefers_record_def_over_stale_tag() {
 
   const c4c::TextId operator_text_id =
       module.link_name_texts->intern("operator_deref");
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = *owner_key;
   method_key.method_text_id = operator_text_id;
   method_key.is_const_method = false;
@@ -3503,7 +3549,7 @@ void test_hir_operator_call_method_owner_prefers_record_def_over_stale_tag() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleRenderedOperatorOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleRenderedOperatorOwner");
   owner_ts.record_def = real_record;
 
   c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
@@ -3572,7 +3618,7 @@ void test_hir_operator_call_method_owner_keeps_rendered_fallback() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("LegacyRenderedOperatorOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("LegacyRenderedOperatorOwner");
 
   c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
   obj->name = arena.strdup("obj");
@@ -3637,7 +3683,7 @@ void test_hir_generic_ctrl_deref_method_owner_prefers_record_def_over_stale_tag(
   stale_def.ns_qual.context_id = parser.current_namespace_context_id();
   module.struct_defs[stale_def.tag] = stale_def;
 
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = *owner_key;
   method_key.method_text_id = module.link_name_texts->intern("operator_deref");
   method_key.is_const_method = false;
@@ -3653,7 +3699,7 @@ void test_hir_generic_ctrl_deref_method_owner_prefers_record_def_over_stale_tag(
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleGenericDerefOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleGenericDerefOwner");
   owner_ts.record_def = real_record;
 
   c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
@@ -3703,7 +3749,7 @@ void test_hir_generic_ctrl_operator_call_method_owner_prefers_record_def_over_st
   stale_def.ns_qual.context_id = parser.current_namespace_context_id();
   module.struct_defs[stale_def.tag] = stale_def;
 
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = *owner_key;
   method_key.method_text_id = module.link_name_texts->intern("operator_call");
   method_key.is_const_method = false;
@@ -3719,7 +3765,7 @@ void test_hir_generic_ctrl_operator_call_method_owner_prefers_record_def_over_st
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleGenericCallOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleGenericCallOwner");
   owner_ts.record_def = real_record;
 
   c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
@@ -3785,7 +3831,7 @@ void test_hir_generic_ctrl_member_inference_prefers_record_def_over_stale_tag() 
 
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleGenericMemberOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleGenericMemberOwner");
   owner_ts.record_def = real_record;
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
@@ -3852,7 +3898,7 @@ void test_hir_generic_ctrl_member_inference_prefers_text_owner_over_stale_tag() 
 
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleTextGenericMemberOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleTextGenericMemberOwner");
   owner_ts.tag_text_id = real_owner_text;
   owner_ts.namespace_context_id = parser.current_namespace_context_id();
   owner_ts.array_size = -1;
@@ -3899,7 +3945,7 @@ void test_hir_generic_ctrl_member_inference_rejects_stale_tag_after_text_miss() 
 
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleMissGenericMemberOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleMissGenericMemberOwner");
   owner_ts.tag_text_id = module.link_name_texts->intern("UnresolvedGenericMemberOwner");
   owner_ts.namespace_context_id = parser.current_namespace_context_id();
   owner_ts.array_size = -1;
@@ -3954,7 +4000,7 @@ void test_hir_member_call_method_owner_prefers_record_def_over_stale_tag() {
   stale_def.ns_qual.context_id = parser.current_namespace_context_id();
   module.struct_defs[stale_def.tag] = stale_def;
 
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = *owner_key;
   method_key.method_text_id = module.link_name_texts->intern("method");
   method_key.is_const_method = false;
@@ -3966,7 +4012,7 @@ void test_hir_member_call_method_owner_prefers_record_def_over_stale_tag() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleMemberCallOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleMemberCallOwner");
   owner_ts.record_def = real_record;
 
   c4c::Node* obj = parser.make_node(c4c::NK_VAR, 1);
@@ -4070,7 +4116,7 @@ void test_hir_direct_constructor_call_prefers_record_def_over_stale_tag() {
 
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleDirectCtorOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleDirectCtorOwner");
   owner_ts.record_def = real_record;
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
@@ -4142,7 +4188,7 @@ void test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag() {
   stale_def.ns_qual.context_id = parser.current_namespace_context_id();
   module.struct_defs[stale_def.tag] = stale_def;
 
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = *owner_key;
   method_key.method_text_id = module.link_name_texts->intern("operator_new");
   method_key.is_const_method = false;
@@ -4153,7 +4199,7 @@ void test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleNewOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleNewOwner");
   owner_ts.record_def = real_record;
 
   c4c::Node* new_node = parser.make_node(c4c::NK_NEW_EXPR, 1);
@@ -4231,7 +4277,7 @@ void test_hir_delete_expr_method_owner_prefers_record_def_over_stale_tag() {
   stale_def.ns_qual.context_id = parser.current_namespace_context_id();
   module.struct_defs[stale_def.tag] = stale_def;
 
-  c4c::hir::HirStructMethodLookupKey method_key;
+  c4c::hir::HirStructMethodLookupKey method_key{};
   method_key.owner_key = *owner_key;
   method_key.method_text_id = module.link_name_texts->intern("operator_delete");
   method_key.is_const_method = false;
@@ -4243,7 +4289,7 @@ void test_hir_delete_expr_method_owner_prefers_record_def_over_stale_tag() {
   pointer_ts.array_size = -1;
   pointer_ts.inner_rank = -1;
   pointer_ts.base = c4c::TB_STRUCT;
-  pointer_ts.tag = arena.strdup("StaleDeleteOwner");
+  pointer_ts.tag_text_id = module.link_name_texts->intern("StaleDeleteOwner");
   pointer_ts.record_def = real_record;
   pointer_ts.ptr_level = 1;
 
@@ -4321,6 +4367,18 @@ void test_hir_init_list_member_symbol_prefers_record_def_over_stale_tag() {
   real_def.tag = "RealInitListOwner";
   real_def.tag_text_id = module.link_name_texts->intern("RealInitListOwner");
   real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  c4c::hir::HirStructField real_array_field;
+  real_array_field.name = "_M_array";
+  real_array_field.field_text_id = module.link_name_texts->intern("_M_array");
+  real_array_field.elem_type = int_ptr_ts;
+  real_array_field.member_symbol_id = real_array_id;
+  real_def.fields.push_back(real_array_field);
+  c4c::hir::HirStructField real_len_field;
+  real_len_field.name = "_M_len";
+  real_len_field.field_text_id = module.link_name_texts->intern("_M_len");
+  real_len_field.elem_type = int_ts;
+  real_len_field.member_symbol_id = real_len_id;
+  real_def.fields.push_back(real_len_field);
   module.index_struct_def_owner(*owner_key, real_def.tag, true);
   module.struct_defs[real_def.tag] = real_def;
 
@@ -4346,7 +4404,7 @@ void test_hir_init_list_member_symbol_prefers_record_def_over_stale_tag() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleInitListOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleInitListOwner");
   owner_ts.record_def = real_record;
 
   c4c::Node* list_node = parser.make_node(c4c::NK_INIT_LIST, 1);
@@ -4481,6 +4539,12 @@ void test_hir_ctor_init_member_symbol_prefers_record_def_over_stale_tag() {
   real_def.tag = "RealCtorOwner";
   real_def.tag_text_id = module.link_name_texts->intern("RealCtorOwner");
   real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  c4c::hir::HirStructField real_field;
+  real_field.name = "field";
+  real_field.field_text_id = module.link_name_texts->intern("field");
+  real_field.elem_type = int_ts;
+  real_field.member_symbol_id = real_id;
+  real_def.fields.push_back(real_field);
   module.index_struct_def_owner(*owner_key, real_def.tag, true);
   module.struct_defs[real_def.tag] = real_def;
 
@@ -4602,7 +4666,7 @@ void test_hir_ctor_init_field_constructor_prefers_record_def_over_stale_tag() {
   field_ts.array_size = -1;
   field_ts.inner_rank = -1;
   field_ts.base = c4c::TB_STRUCT;
-  field_ts.tag = arena.strdup("StaleFieldCtor");
+  field_ts.tag_text_id = module.link_name_texts->intern("StaleFieldCtor");
   field_ts.record_def = real_field_record;
 
   c4c::hir::HirStructField field;
@@ -4716,7 +4780,7 @@ void test_hir_local_decl_direct_constructor_prefers_record_def_over_stale_tag() 
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleLocalDirectCtor");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleLocalDirectCtor");
   owner_ts.record_def = real_record;
 
   c4c::Node* arg = parser.make_node(c4c::NK_INT_LIT, 1);
@@ -4801,7 +4865,7 @@ void test_hir_local_decl_default_constructor_prefers_record_def_over_stale_tag()
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleLocalDefaultCtor");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleLocalDefaultCtor");
   owner_ts.record_def = real_record;
 
   c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
@@ -4868,7 +4932,7 @@ void test_hir_local_decl_copy_constructor_prefers_record_def_over_stale_tag() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleLocalCopyCtor");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleLocalCopyCtor");
   owner_ts.record_def = real_record;
 
   c4c::TypeSpec copy_param_ts = owner_ts;
@@ -4977,7 +5041,7 @@ void test_hir_local_decl_destructor_prefers_record_def_over_stale_tag() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleLocalDtor");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleLocalDtor");
   owner_ts.record_def = real_record;
 
   c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
@@ -5019,12 +5083,15 @@ void test_hir_local_decl_member_dtor_tracking_prefers_record_def_over_stale_tag(
   field_ts.array_size = -1;
   field_ts.inner_rank = -1;
   field_ts.base = c4c::TB_STRUCT;
-  field_ts.tag = arena.strdup("InnerLocalDtor");
+  field_ts.tag_text_id = module.link_name_texts->intern("InnerLocalDtor");
+  field_ts.namespace_context_id = parser.current_namespace_context_id();
 
   c4c::hir::HirStructDef inner_def;
   inner_def.tag = "InnerLocalDtor";
   inner_def.tag_text_id = module.link_name_texts->intern("InnerLocalDtor");
   inner_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(c4c::hir::make_hir_record_owner_key(inner_def),
+                                inner_def.tag, true);
   module.struct_defs[inner_def.tag] = inner_def;
   c4c::Node* inner_dtor = parser.make_node(c4c::NK_FUNCTION, 1);
   inner_dtor->is_destructor = true;
@@ -5056,7 +5123,7 @@ void test_hir_local_decl_member_dtor_tracking_prefers_record_def_over_stale_tag(
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleLocalMemberDtor");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleLocalMemberDtor");
   owner_ts.record_def = real_record;
 
   c4c::Node* decl = parser.make_node(c4c::NK_DECL, 1);
@@ -5106,6 +5173,12 @@ void test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag() {
   real_def.tag = "RealDefaultedOwner";
   real_def.tag_text_id = module.link_name_texts->intern("RealDefaultedOwner");
   real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  c4c::hir::HirStructField real_field;
+  real_field.name = "field";
+  real_field.field_text_id = module.link_name_texts->intern("field");
+  real_field.elem_type = int_ts;
+  real_field.member_symbol_id = real_id;
+  real_def.fields.push_back(real_field);
   module.index_struct_def_owner(*owner_key, real_def.tag, true);
   module.struct_defs[real_def.tag] = real_def;
 
@@ -5123,7 +5196,8 @@ void test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag() {
 
   c4c::TypeSpec owner_ts{};
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleDefaultedOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleDefaultedOwner");
+  owner_ts.record_def = real_record;
   owner_ts.ptr_level = 1;
   c4c::Node* param = parser.make_node(c4c::NK_DECL, 1);
   param->name = arena.strdup("other");
@@ -5180,7 +5254,8 @@ void test_hir_member_dtor_member_symbol_prefers_record_def_over_stale_tag() {
 
   c4c::TypeSpec field_ts{};
   field_ts.base = c4c::TB_STRUCT;
-  field_ts.tag = arena.strdup("InnerDtor");
+  field_ts.tag_text_id = module.link_name_texts->intern("InnerDtor");
+  field_ts.namespace_context_id = parser.current_namespace_context_id();
   const c4c::MemberSymbolId real_id =
       module.member_symbols.intern("RealDtorOwner::field");
   const c4c::MemberSymbolId stale_id =
@@ -5190,6 +5265,8 @@ void test_hir_member_dtor_member_symbol_prefers_record_def_over_stale_tag() {
   inner_def.tag = "InnerDtor";
   inner_def.tag_text_id = module.link_name_texts->intern("InnerDtor");
   inner_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(c4c::hir::make_hir_record_owner_key(inner_def),
+                                inner_def.tag, true);
   module.struct_defs[inner_def.tag] = inner_def;
   lowerer.struct_destructors_["InnerDtor"] = {"InnerDtor__dtor", nullptr};
 
@@ -5197,6 +5274,12 @@ void test_hir_member_dtor_member_symbol_prefers_record_def_over_stale_tag() {
   real_def.tag = "RealDtorOwner";
   real_def.tag_text_id = module.link_name_texts->intern("RealDtorOwner");
   real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  c4c::hir::HirStructField real_field;
+  real_field.name = "field";
+  real_field.field_text_id = module.link_name_texts->intern("field");
+  real_field.elem_type = field_ts;
+  real_field.member_symbol_id = real_id;
+  real_def.fields.push_back(real_field);
   module.index_struct_def_owner(*owner_key, real_def.tag, true);
   module.struct_defs[real_def.tag] = real_def;
 
@@ -5295,7 +5378,7 @@ void test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleDeclOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleDeclOwner");
   owner_ts.record_def = real_record;
 
   c4c::Node* value = parser.make_node(c4c::NK_INT_LIT, 1);
@@ -5385,7 +5468,7 @@ void test_hir_local_decl_structured_owner_failure_does_not_use_stale_tag() {
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleFailedDeclOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleFailedDeclOwner");
   owner_ts.record_def = unresolved_record;
 
   c4c::Node* value = parser.make_node(c4c::NK_INT_LIT, 1);
@@ -5509,7 +5592,7 @@ void test_hir_compound_literal_member_symbol_prefers_record_def_over_stale_tag()
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleCompoundOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleCompoundOwner");
   owner_ts.record_def = real_record;
 
   c4c::Node* value = parser.make_node(c4c::NK_INT_LIT, 1);
@@ -5586,7 +5669,7 @@ void test_hir_compound_literal_structured_owner_failure_does_not_use_stale_tag()
   owner_ts.array_size = -1;
   owner_ts.inner_rank = -1;
   owner_ts.base = c4c::TB_STRUCT;
-  owner_ts.tag = arena.strdup("StaleFailedCompoundOwner");
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleFailedCompoundOwner");
   owner_ts.record_def = unresolved_record;
 
   c4c::Node* value = parser.make_node(c4c::NK_INT_LIT, 1);

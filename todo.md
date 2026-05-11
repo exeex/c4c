@@ -8,38 +8,35 @@ Current Step Title: Make BIR Validation and Backend Preparation LinkNameId-Autho
 
 ## Just Finished
 
-Step 6 BIR direct-call validation is now explicitly
-`LinkNameId`-authoritative for ID-bearing non-indirect calls.
+Step 6 validation blocker repaired stale owned test fixtures that still wrote
+or asserted removed `TypeSpec::tag` compatibility payloads.
 
-The verifier resolves `CallInst::callee_link_name_id` through the BIR
-link-name table and declared function IDs, accepts an empty raw callee when the
-ID names a declared function, rejects raw/ID mismatches against declared
-function names, and does not fall back to a matching raw callee spelling when
-the semantic ID names no declared function.
-
-`backend_lir_to_bir_notes_test` now covers the no-raw-fallback direct-call case
-where `callee = "actual_callee"` but `callee_link_name_id` resolves to an
-undeclared `missing_callee` ID.
+`backend_prepare_structured_context_test` now seeds `TypeSpec::tag_text_id` for
+the structured signature drift parameter. `frontend_hir_tests` now builds its
+record, typedef, member lookup, template, destructor, constructor, and
+out-of-class-method fixtures through current structured owner/member metadata
+instead of retired rendered-tag carriers, while preserving the stale-vs-real
+owner assertions.
 
 ## Suggested Next
 
-Supervisor review or the next Step 6 packet can decide whether any remaining
-diagnostic/note surface is needed beyond validator fail-closed behavior and the
-prepared-call behavior already landed.
+Resume Step 6 proof or supervisor review now that the default build blocker in
+the owned test fixtures is cleared.
 
 ## Watchouts
 
-- Raw-only direct calls remain compatibility-accepted when
-  `callee_link_name_id` is invalid.
-- Runtime/intrinsic placeholder calls still intentionally keep
-  `callee_link_name_id` invalid and validate through raw compatibility spelling.
+- The frontend fixture repairs intentionally keep stale rendered names present
+  where useful, but move the authoritative lookup path to `tag_text_id`,
+  `record_def`, owner keys, qualifier TextIds, member fields, and structured
+  NTTP metadata.
+- No production files or tests outside the delegated owned set were touched.
 
 ## Proof
 
 Passed:
 
 ```sh
-{ cmake --build --preset default --target backend_lir_to_bir_notes_test backend_prepare_frame_stack_call_contract_test && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_prepare_frame_stack_call_contract)$'; } > test_after.log 2>&1
+{ cmake --build --preset default --target backend_prepare_structured_context_test frontend_hir_tests && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_structured_context|frontend_hir_tests)$'; } > test_after.log 2>&1
 ```
 
 Proof log: `test_after.log`. Result: build succeeded and 2/2 selected tests

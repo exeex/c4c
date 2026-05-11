@@ -298,9 +298,10 @@ int check_lir_to_bir_signature_lowering_prefers_structured_metadata() {
   decl.signature_text = "declare void @structured_sig(void)";
   decl.return_type = c4c::TypeSpec{.base = c4c::TB_VOID};
   decl.signature_return_type_ref = lir::LirTypeRef("i32");
+  c4c::TypeSpec pair_param_type{.base = c4c::TB_STRUCT};
+  pair_param_type.tag_text_id = module.link_name_texts->intern("Pair");
   decl.signature_params.push_back(
-      lir::LirSignatureParam{.name = "%pair", .type = c4c::TypeSpec{.base = c4c::TB_STRUCT,
-                                                                     .tag = "Pair"}});
+      lir::LirSignatureParam{.name = "%pair", .type = pair_param_type});
   decl.signature_param_type_refs.push_back(
       lir::LirTypeRef::struct_type("ptr byval(%struct.Pair) align 8", pair_id));
   decl.signature_is_variadic = true;
