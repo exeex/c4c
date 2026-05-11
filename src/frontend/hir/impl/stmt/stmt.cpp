@@ -327,6 +327,12 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
           ctx.rendered_compat_local_names;
       const auto saved_local_fn_ptr_sigs_by_id = ctx.local_fn_ptr_sigs_by_id;
       const auto saved_local_fn_ptr_sigs = ctx.local_fn_ptr_sigs;
+      const auto saved_static_global_ids_by_text_id =
+          ctx.static_global_ids_by_text_id;
+      const auto saved_rendered_compat_static_global_text_ids =
+          ctx.rendered_compat_static_global_text_ids;
+      const auto saved_rendered_compat_static_global_names =
+          ctx.rendered_compat_static_global_names;
       const auto saved_static_globals = ctx.static_globals;
       const auto saved_enum_consts = enum_consts_;
       const size_t saved_enum_text_scope_depth = enum_const_scopes_by_text_.size();
@@ -347,6 +353,12 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
             saved_rendered_compat_local_names;
         ctx.local_fn_ptr_sigs_by_id = saved_local_fn_ptr_sigs_by_id;
         ctx.local_fn_ptr_sigs = saved_local_fn_ptr_sigs;
+        ctx.static_global_ids_by_text_id =
+            saved_static_global_ids_by_text_id;
+        ctx.rendered_compat_static_global_text_ids =
+            saved_rendered_compat_static_global_text_ids;
+        ctx.rendered_compat_static_global_names =
+            saved_rendered_compat_static_global_names;
         ctx.static_globals = saved_static_globals;
         enum_const_scopes_by_text_.resize(saved_enum_text_scope_depth);
         enum_const_scopes_by_key_.resize(saved_enum_key_scope_depth);
@@ -551,6 +563,12 @@ ExprId Lowerer::lower_stmt_expr_block(FunctionCtx& ctx,
       ctx.rendered_compat_local_names;
   const auto saved_local_fn_ptr_sigs_by_id = ctx.local_fn_ptr_sigs_by_id;
   const auto saved_local_fn_ptr_sigs = ctx.local_fn_ptr_sigs;
+  const auto saved_static_global_ids_by_text_id =
+      ctx.static_global_ids_by_text_id;
+  const auto saved_rendered_compat_static_global_text_ids =
+      ctx.rendered_compat_static_global_text_ids;
+  const auto saved_rendered_compat_static_global_names =
+      ctx.rendered_compat_static_global_names;
   const auto saved_static_globals = ctx.static_globals;
   const auto saved_enum_consts = enum_consts_;
   const size_t saved_enum_text_scope_depth = enum_const_scopes_by_text_.size();
@@ -578,6 +596,11 @@ ExprId Lowerer::lower_stmt_expr_block(FunctionCtx& ctx,
     ctx.rendered_compat_local_names = saved_rendered_compat_local_names;
     ctx.local_fn_ptr_sigs_by_id = saved_local_fn_ptr_sigs_by_id;
     ctx.local_fn_ptr_sigs = saved_local_fn_ptr_sigs;
+    ctx.static_global_ids_by_text_id = saved_static_global_ids_by_text_id;
+    ctx.rendered_compat_static_global_text_ids =
+        saved_rendered_compat_static_global_text_ids;
+    ctx.rendered_compat_static_global_names =
+        saved_rendered_compat_static_global_names;
     ctx.static_globals = saved_static_globals;
     enum_const_scopes_by_text_.resize(saved_enum_text_scope_depth);
     enum_const_scopes_by_key_.resize(saved_enum_key_scope_depth);

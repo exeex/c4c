@@ -603,9 +603,9 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       }
     }
     if (!has_local_binding) {
-      auto sit = ctx->static_globals.find(r.name);
-      if (sit != ctx->static_globals.end()) {
-        r.global = sit->second;
+      if (const std::optional<GlobalId> static_global =
+              lookup_static_global_bridge(*ctx, n, r.name)) {
+        r.global = *static_global;
         if (const GlobalVar* gv = module_->find_global(*r.global)) r.name = gv->name;
         has_local_binding = true;
       }

@@ -294,6 +294,9 @@ class Lowerer {
     std::unordered_set<std::string> rendered_compat_param_names;
     std::unordered_map<uint32_t, FnPtrSig> param_fn_ptr_sigs_by_index;
     std::unordered_map<std::string, FnPtrSig> param_fn_ptr_sigs;
+    std::unordered_map<TextId, GlobalId> static_global_ids_by_text_id;
+    std::unordered_set<TextId> rendered_compat_static_global_text_ids;
+    std::unordered_set<std::string> rendered_compat_static_global_names;
     std::unordered_map<std::string, GlobalId> static_globals;
     std::unordered_map<std::string, uint32_t> params;
     BlockId current_block{};
@@ -374,6 +377,9 @@ class Lowerer {
 
   std::optional<TypeSpec> infer_call_result_type_from_callee(
       const FunctionCtx* ctx, const Node* callee);
+
+  std::optional<GlobalId> lookup_static_global_bridge(
+      const FunctionCtx& ctx, const Node* n, const std::string& name) const;
 
   std::optional<TypeSpec> infer_call_result_type(
       const FunctionCtx* ctx, const Node* call);

@@ -4262,6 +4262,11 @@ void test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered
   expect_true(static_it != ctx.static_globals.end() &&
                   static_it->second.value == 51,
               "local extern lowering should prefer structured global metadata over stale rendered name");
+  const auto structured_static_it =
+      ctx.static_global_ids_by_text_id.find(structured_text);
+  expect_true(structured_static_it != ctx.static_global_ids_by_text_id.end() &&
+                  structured_static_it->second.value == 51,
+              "local extern lowering should register the structured static/global bridge");
   expect_true(ctx.locals.find("stale_extern_global") == ctx.locals.end(),
               "local extern lowering should erase the shadowing local binding after global resolution");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
@@ -4381,6 +4386,11 @@ void test_local_static_clears_stale_source_local_identity() {
   const auto static_it = ctx.static_globals.find("bridge_static");
   expect_true(static_it != ctx.static_globals.end(),
               "local static lowering should register the static/global bridge");
+  const auto structured_static_it =
+      ctx.static_global_ids_by_text_id.find(bridge_text);
+  expect_true(structured_static_it != ctx.static_global_ids_by_text_id.end() &&
+                  structured_static_it->second.value == static_it->second.value,
+              "local static lowering should register the source TextId static/global bridge");
   const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
   const c4c::hir::Expr* expr = module.find_expr(expr_id);
   const auto* decl_ref =
@@ -4393,6 +4403,115 @@ void test_local_static_clears_stale_source_local_identity() {
       lowerer.infer_generic_ctrl_type(&ctx, &ref);
   expect_true(inferred.base == c4c::TB_LONG,
               "local static bridge type should beat stale source local type lookup");
+}
+
+void test_static_global_bridge_source_text_id_beats_rendered_map() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId structured_text = texts.intern("structured_static_bridge");
+  const c4c::TextId stale_text = texts.intern("stale_static_bridge");
+  add_global(module, c4c::hir::GlobalId{100}, "stale_static_bridge",
+             stale_text);
+  module.globals.back().type.spec.base = c4c::TB_CHAR;
+  module.globals.back().fn_ptr_sig = make_returning_fn_ptr_sig(c4c::TB_CHAR);
+  add_global(module, c4c::hir::GlobalId{101}, "structured_static_bridge",
+             structured_text);
+  module.globals.back().type.spec.base = c4c::TB_LONG;
+  module.globals.back().fn_ptr_sig = make_returning_fn_ptr_sig(c4c::TB_INT);
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.static_globals["stale_static_bridge"] = c4c::hir::GlobalId{100};
+  ctx.static_global_ids_by_text_id[structured_text] = c4c::hir::GlobalId{101};
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "stale_static_bridge";
+  ref.unqualified_name = "structured_static_bridge";
+  ref.unqualified_text_id = structured_text;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && decl_ref->global &&
+                  decl_ref->global->value == 101,
+              "static/global bridge value lookup should prefer source TextId over rendered map");
+  expect_true(lowerer.infer_generic_ctrl_type(&ctx, &ref).base == c4c::TB_LONG,
+              "static/global bridge type lookup should prefer source TextId over rendered map");
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &ref);
+  expect_true(ret && ret->base == c4c::TB_INT,
+              "static/global bridge function-pointer lookup should prefer source TextId over rendered map");
+}
+
+void test_static_global_bridge_text_miss_rejects_rendered_map() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.static_globals["stale_static_bridge"] = c4c::hir::GlobalId{100};
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "stale_static_bridge";
+  ref.unqualified_name = "missing_static_bridge";
+  ref.unqualified_text_id = texts.intern("missing_static_bridge");
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && !decl_ref->global,
+              "complete static/global bridge miss should not use rendered map for value lookup");
+  expect_true(lowerer.infer_generic_ctrl_type(&ctx, &ref).base != c4c::TB_LONG,
+              "complete static/global bridge miss should not use rendered map for type lookup");
+  expect_true(!lowerer.infer_call_result_type_from_callee(&ctx, &ref),
+              "complete static/global bridge miss should not use rendered map for function-pointer lookup");
+}
+
+void test_static_global_bridge_rendered_compat_uses_rendered_map() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId generated_text = texts.intern("generated_static_carrier");
+  add_global(module, c4c::hir::GlobalId{110}, "__generated_static",
+             generated_text);
+  module.globals.back().type.spec.base = c4c::TB_SHORT;
+  module.globals.back().fn_ptr_sig = make_returning_fn_ptr_sig(c4c::TB_LONG);
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.static_globals["__generated_static"] = c4c::hir::GlobalId{110};
+  ctx.rendered_compat_static_global_names.insert("__generated_static");
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "__generated_static";
+  ref.unqualified_name = "__generated_static";
+  ref.unqualified_text_id = generated_text;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && decl_ref->global &&
+                  decl_ref->global->value == 110,
+              "explicit static/global rendered compatibility should use rendered map for value lookup");
+  expect_true(lowerer.infer_generic_ctrl_type(&ctx, &ref).base == c4c::TB_SHORT,
+              "explicit static/global rendered compatibility should use rendered map for type lookup");
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &ref);
+  expect_true(ret && ret->base == c4c::TB_LONG,
+              "explicit static/global rendered compatibility should use rendered map for function-pointer lookup");
 }
 
 void test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name() {
@@ -5646,6 +5765,9 @@ int main() {
   test_local_extern_global_lookup_prefers_structured_decl_over_stale_rendered_name();
   test_local_extern_clears_stale_source_local_identity();
   test_local_static_clears_stale_source_local_identity();
+  test_static_global_bridge_source_text_id_beats_rendered_map();
+  test_static_global_bridge_text_miss_rejects_rendered_map();
+  test_static_global_bridge_rendered_compat_uses_rendered_map();
   test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name();
   test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_name();
   test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag();

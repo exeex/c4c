@@ -108,6 +108,12 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         module_ ? module_->link_names.find(global_ref.name) : kInvalidLinkName;
     if (const GlobalVar* global = module_->resolve_global_decl(global_ref)) {
       clear_shadowed_local_identity(n->name);
+      if (n->unqualified_text_id != kInvalidText) {
+        ctx.static_global_ids_by_text_id[n->unqualified_text_id] = global->id;
+        ctx.rendered_compat_static_global_text_ids.erase(
+            n->unqualified_text_id);
+        ctx.rendered_compat_static_global_names.erase(n->name);
+      }
       ctx.static_globals[n->name] = global->id;
     }
     return;
@@ -117,6 +123,13 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     if (n->name && n->name[0]) {
       const GlobalId static_global = lower_static_local_global(ctx, n);
       clear_shadowed_local_identity(n->name);
+      if (n->unqualified_text_id != kInvalidText) {
+        ctx.static_global_ids_by_text_id[n->unqualified_text_id] =
+            static_global;
+        ctx.rendered_compat_static_global_text_ids.erase(
+            n->unqualified_text_id);
+        ctx.rendered_compat_static_global_names.erase(n->name);
+      }
       ctx.static_globals[n->name] = static_global;
     }
     return;

@@ -1188,9 +1188,9 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
       const auto lit = ctx->local_fn_ptr_sigs.find(name);
       if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
     }
-    const auto sit = ctx->static_globals.find(name);
-    if (sit != ctx->static_globals.end()) {
-      if (const GlobalVar* gv = module_->find_global(sit->second)) {
+    if (const std::optional<GlobalId> static_global =
+            lookup_static_global_bridge(*ctx, callee, name)) {
+      if (const GlobalVar* gv = module_->find_global(*static_global)) {
         if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
       }
     }
@@ -1223,6 +1223,27 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
   if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
     return fn->return_type.spec;
   }
+  return std::nullopt;
+}
+
+std::optional<GlobalId> Lowerer::lookup_static_global_bridge(
+    const FunctionCtx& ctx, const Node* n, const std::string& name) const {
+  if (n && n->unqualified_text_id != kInvalidText) {
+    const auto structured_it =
+        ctx.static_global_ids_by_text_id.find(n->unqualified_text_id);
+    if (structured_it != ctx.static_global_ids_by_text_id.end()) {
+      return structured_it->second;
+    }
+    if (ctx.rendered_compat_static_global_text_ids.find(
+            n->unqualified_text_id) ==
+            ctx.rendered_compat_static_global_text_ids.end() &&
+        ctx.rendered_compat_static_global_names.find(name) ==
+            ctx.rendered_compat_static_global_names.end()) {
+      return std::nullopt;
+    }
+  }
+  const auto rendered_it = ctx.static_globals.find(name);
+  if (rendered_it != ctx.static_globals.end()) return rendered_it->second;
   return std::nullopt;
 }
 
@@ -3464,9 +3485,9 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
             return reference_value_ts(ctx->fn->params[pit->second].type.spec);
           }
         }
-        auto sit = ctx->static_globals.find(name);
-        if (sit != ctx->static_globals.end()) {
-          if (const GlobalVar* gv = module_->find_global(sit->second)) {
+        if (const std::optional<GlobalId> static_global =
+                lookup_static_global_bridge(*ctx, n, name)) {
+          if (const GlobalVar* gv = module_->find_global(*static_global)) {
             return reference_value_ts(gv->type.spec);
           }
         }

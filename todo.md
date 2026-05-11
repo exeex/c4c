@@ -8,39 +8,44 @@ Current Step Title: Convert Remaining Metadata-Capable Paths
 
 ## Just Finished
 
-Completed plan Step 5 reviewer-blocker repair for
-`infer_call_result_type_from_callee` local-over-param function-pointer
-shadowing.
+Completed plan Step 5 static/global bridge conversion for
+`FunctionCtx::static_globals`.
 
 Changed paths:
+- `src/frontend/hir/impl/lowerer.hpp`
 - `src/frontend/hir/hir_types.cpp`
+- `src/frontend/hir/impl/expr/scalar_control.cpp`
+- `src/frontend/hir/impl/stmt/decl.cpp`
+- `src/frontend/hir/impl/stmt/stmt.cpp`
 - `tests/frontend/frontend_hir_lookup_tests.cpp`
 
-`infer_call_result_type_from_callee` now checks active local TextId/LocalId
-function-pointer signatures before parameter signatures, matching the existing
-local-over-param value/type lookup authority. A complete local binding without
-a function-pointer signature now stops inference instead of reopening a
-same-spelled parameter fallback, while rendered compatibility remains fenced to
-the existing rendered local/param compatibility sets and no-metadata path.
+Local extern/static bridge insertions now populate
+`static_global_ids_by_text_id` when the declaration carries complete source
+TextId metadata. `lower_var_expr`, `infer_generic_ctrl_type`, and
+`infer_call_result_type_from_callee` consult the structured static/global bridge
+before the rendered `static_globals` map, and complete source TextId misses no
+longer silently reopen the rendered map. Rendered lookup remains available for
+no-metadata references and for explicit generated/rendered compatibility marks.
 
-Focused `frontend_hir_lookup_tests` coverage now proves a same-spelled active
-local function pointer shadows the parameter signature, and that a complete
-local shadow without a function-pointer signature blocks parameter fallback.
+Focused `frontend_hir_lookup_tests` coverage now proves source TextId hits beat
+stale rendered static/global entries, complete source TextId misses reject the
+rendered map across value/type/function-pointer lookup, and explicit rendered
+compatibility still works.
 
 ## Suggested Next
 
-Supervisor can hand the fixed slice to reviewer/supervisor acceptance, or choose
-the next narrow Step 5 metadata-capable lookup path if more reviewer blockers
-remain.
+Supervisor can hand this Step 5 static/global bridge slice to reviewer or
+acceptance, or choose the next narrow metadata-capable lookup path if any Step 5
+blockers remain.
 
 ## Watchouts
 
-- The fix intentionally treats a complete local TextId hit as authoritative
-  even when no local function-pointer signature is present; that preserves
-  shadowing and prevents a stale same-name parameter signature from leaking
-  through.
-- Existing param/local complete miss and no-metadata rendered compatibility
-  tests still pass under the delegated subset.
+- `static_globals` is still retained as the rendered compatibility map and for
+  existing inspection/test fixtures; source references with complete TextId
+  metadata route through `static_global_ids_by_text_id` first.
+- No metadata/generated compatibility is explicit: invalid TextId references
+  use the rendered map, while valid TextId references require a structured hit
+  unless marked in the rendered static/global compatibility sets.
 
 ## Proof
 
