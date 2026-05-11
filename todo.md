@@ -8,65 +8,71 @@ Current Step Title: Classify Covered Structured Domains
 
 ## Just Finished
 
-Step 2 - Classify Covered Structured Domains completed the LinkNameId/LIR/HIR-to-LIR
-covered-domain classification packet for `src/codegen/lir/ir.hpp`,
-`src/codegen/lir/verify.cpp`, and `src/codegen/lir/hir_to_lir/*.cpp`. No
-implementation or test files were edited.
+Step 2 - Classify Covered Structured Domains completed the backend/BIR
+LinkNameId transport and link-visible rendered-name bridge classification
+packet for `src/backend/bir/**`, backend symbol registry/lowering paths, and
+the inspected prepared/x86 link-facing bridges. No implementation or test files
+were edited.
 
-LIR/HIR-to-LIR classification table:
+Backend/BIR classification table:
 
 | Owner/domain | File/local symbol or path | Class | Evidence | Bridge boundary / follow-up |
 |---|---|---|---|---|
-| LIR model link-visible identity | `src/codegen/lir/ir.hpp`: `LirCallOp::direct_callee_link_name_id`, `LirExternDecl::link_name_id`, `LirFunction::link_name_id`, `LirGlobal::link_name_id`, `LirSpecEntry::mangled_link_name_id` | `SA/DO` | Link-visible identity is carried as `LinkNameId`; rendered names remain as final LLVM spelling or display payloads such as `name`, `callee`, `signature_text`, and `mangled_name`. | No `SA` follow-up for the id carriers. Rendered spelling is output/display unless explicitly listed as a compatibility fallback below. |
-| LIR extern declaration dedup | `src/codegen/lir/ir.hpp`: `extern_decl_link_name_map`, `extern_decl_name_map`, `record_extern_decl` | `SA/CB` | `record_extern_decl` keys by `LinkNameId` first, upgrades/migrates a prior raw-name entry when a semantic id appears, and uses `extern_decl_name_map` only when the caller has no `LinkNameId`. | `CB` boundary: unresolved external calls or legacy producers with `kInvalidLinkName`. Follow-up: retire `extern_decl_name_map` when all extern-call producers provide `LinkNameId`. |
-| LIR aggregate declarations | `src/codegen/lir/ir.hpp`: `LirStructDecl`, `struct_decl_index`, `record_struct_decl`, `find_struct_decl` | `SA` | Structured declarations are indexed by `StructNameId`; rendered `type_decls` are the legacy/printer shadow and verifier parity input. | No `SA` follow-up; the rendered declaration vector is a printer compatibility shadow. |
-| LIR aggregate type references | `src/codegen/lir/types.hpp`: `LirTypeRef::struct_type`, `struct_name_id`; `src/codegen/lir/ir.hpp`: `LirTypeRef` fields on globals, externs, calls, signatures, struct fields | `SA/CB` | `LirTypeRef` carries rendered LLVM type text plus optional `StructNameId`; struct references with a known declaration are expected to carry the id mirror. | `CB` boundary: non-aggregate, pointer/array/function fragments, ABI fragments such as `byval(...)`, or legacy rendered aggregate carriers that cannot be normalized to a declared `StructNameId`. |
-| LIR verifier struct mirror enforcement | `src/codegen/lir/verify.cpp`: `find_declared_struct_name_id`, `verify_known_struct_type_ref_mirror`, `verify_declared_struct_type_ref_mirror`, call/global/extern/signature mirror checks | `SA` | The verifier rejects known declared struct text without matching `StructNameId`, checks id resolution to a declared struct, and rejects mismatched id/text mirrors. | No bridge is opened after a known structured aggregate miss; text lookup is used to detect and reject missing mirrors. |
-| LIR verifier legacy shadows | `src/codegen/lir/verify.cpp`: `legacy_type_decl_name`, `verify_struct_decl_shadows`, `function_signature_line` | `CB` | `legacy_by_name` verifies `struct_decls` still match `type_decls`; `function_signature_line` comment says it only parses final-render payload while semantic signature facts are validated from structured fields. | `CB` boundary: printer shadow/parity checks and final header presence. Follow-up belongs to later bridge retirement once printer no longer needs legacy shadows. |
-| HIR-to-LIR aggregate name construction | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `lir_aggregate_structured_name_id`, `lir_field_type_ref`, `lir_global_type_ref`, `lir_signature_type_ref`, `build_type_decls` | `SA/CB` | Owner-key lookup via `typespec_aggregate_owner_key` and `find_struct_def_tag_by_owner` is preferred; compatibility/final spelling is used only when no owner key exists or to normalize rendered text to an existing declared id. | `CB` boundary: legacy `TypeSpec` producers without owner metadata or ABI/final-spelling text that must match a declared `StructNameId`. |
-| HIR-to-LIR global/function dedup | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `dedup_globals`, `dedup_functions` | `SA/CB` | Dedup maps prefer `LinkNameId`, then `TextId`, then raw `name` only when no stable ids exist. | `CB` boundary: HIR globals/functions with both `kInvalidLinkName` and `kInvalidText`. Follow-up: eliminate raw-name fallback after HIR materialization guarantees stable ids. |
-| HIR-to-LIR call target resolution | `src/codegen/lir/hir_to_lir/call/target.cpp`: `find_local_target_function`, `resolve_call_target_info`, `record_extern_call_decl` | `SA/CB` | Local calls resolve through `mod_.find_function(link_name_id)`; a non-invalid `LinkNameId` miss returns `nullptr` instead of falling back to name; legacy `find_function_by_name_legacy` is reached only when the id is invalid. | `CB` boundary: no-`LinkNameId` call references or builtin alias external names. No complete structured miss reopens rendered lookup. |
-| HIR-to-LIR direct call references | `src/codegen/lir/hir_to_lir/call/target.cpp`, `src/codegen/lir/ir.hpp`: `make_lir_call_op_with_return_type_ref`, `LirCallOp::direct_callee_link_name_id` | `SA/DO` | `resolve_call_target_info` propagates `callee_link_name_id` into emitted `LirCallOp`; `callee_val` is the final LLVM symbol spelling. | No `SA` follow-up for direct-call identity; rendered callee text remains printer payload and scan fallback where no id exists. |
-| HIR-to-LIR extern finalization | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `finalize_module` | `SA/CB` | Defined functions are filtered by `local_fn_link_names` when an extern decl has `LinkNameId`; fallback filtering through `hir_mod.fn_index.count(fallback_name)` is used only with `kInvalidLinkName`. Return type mirrors are finalized through `extern_return_type_ref`. | `CB` boundary: extern decl records lacking `LinkNameId`. Follow-up: retire fallback-name filtering with `extern_decl_name_map`. |
-| HIR-to-LIR global initializer function refs | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `collect_global_init_function_link_name_ids`; `LirGlobal::initializer_function_link_name_ids` | `SA/CB` | Structured initializer references collect `link_name_id`/`fn_link_name_id` and store them on `LirGlobal`; later reachability seeds from these ids. | `CB` boundary: `LirGlobal::init_text` is still scanned for legacy raw LLVM initializer payloads with no structured carrier. |
-| HIR-to-LIR discardable function reachability | `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`: `scan_refs`, `collect_inst_refs`, `collect_fn_refs`, `eliminate_dead_internals` | `SA/CB` | Reachability indexes discardable functions by `LinkNameId` first and seeds structured references from `LirCallOp::direct_callee_link_name_id` and `initializer_function_link_name_ids`; comments mark scanned names as compatibility fallback. | `CB` boundary: final LLVM spelling payloads (`signature_text`, call args, operands, `init_text`) without structured reference carriers. Follow-up: add typed symbol-reference carriers for remaining scanned payload producers, then retire `discardable_by_name`/`scan_refs` semantic seeding. |
-| HIR-to-LIR aggregate call/vararg/lvalue helpers | `src/codegen/lir/hir_to_lir/call/args.cpp`, `call/target.cpp`, `call/vaarg.cpp`, `lvalue.cpp`, `types.cpp`, `core.cpp`: `*_aggregate_structured_name_id`, `normalize_lir_aggregate_struct_name_id`, `lookup_structured_layout` | `SA/CB` | Helpers derive `StructNameId` through owner keys and normalize only if rendered text matches a declared struct; legacy sites are explicitly named `*-legacy-compat`. | `CB` boundary: aggregate carriers with no owner key, legacy tag-only `TypeSpec`, or ABI layout fragments. No follow-up beyond bridge-retirement planning unless a complete owner-key miss reaches rendered lookup; current inspected paths fail closed or require declared-id normalization. |
+| BIR model link-visible identity | `src/backend/bir/bir.hpp`: `Global::link_name_id`, `Function::link_name_id`, `CallInst::callee_link_name_id`, `LoadGlobalInst::global_name_id`, `StoreGlobalInst::global_name_id`, `Value::pointer_symbol_link_name_id`, `MemoryAddress::base_link_name_id`, `Global::initializer_symbol_name_id` | `SA/DO` | BIR stores link-visible globals, functions, direct calls, global memory references, symbol pointers, and initializer targets as `LinkNameId` when known; adjacent string fields are documented as final/display or compatibility spelling. | No `SA` follow-up for the id carriers. Rendered `name`, `callee`, `global_name`, `base_name`, and `initializer_symbol_name` remain final spelling or no-id bridge payloads. |
+| BIR validation fences | `src/backend/bir/bir_validate.cpp`: `validate_link_name_id`, `find_global`, `find_function`, `validate_named_value`, `validate_call`, `validate_load_global`, `validate_store_global`, `validate_initializer_symbol_link_name` | `SA/CB` | If a `LinkNameId` is present, lookup resolves by id and mismatched rendered names are rejected; by-name lookup is used only when the corresponding id is invalid or to reject an id/name mismatch. | `CB` boundary: raw-only BIR payloads with `kInvalidLinkName`. No complete id miss reopens rendered lookup; unknown id fails validation. |
+| BIR module name tables | `src/backend/bir/bir.hpp`: `NameTables::import_link_names`; `src/backend/bir/lir_to_bir/module.cpp`: module setup | `SA` | BIR imports LIR link-name tables before lowering, so ids crossing from LIR to BIR preserve their table authority rather than being rederived from rendered strings. | No `SA` follow-up. |
+| LIR-to-BIR function/global/extern registry | `src/backend/bir/lir_to_bir/module.cpp`: `function_symbols`, `global_types`, `function_name_for_reporting`, `global_name_for_identity`, `extern_decl_name_for_identity`; `src/backend/bir/lir_to_bir/lowering.hpp`: `FunctionSymbolSet` | `SA/CB` | Function and extern registry stores a `LinkNameId` set plus a raw-symbol map; globals are keyed by resolved identity spelling while each `GlobalInfo` carries `link_name_id`. | `CB` boundary: LIR declarations with `kInvalidLinkName` and textual pointer initializers not yet normalized at parse boundary. Follow-up: retire `FunctionSymbolSet::raw_symbol_link_name_ids` once all pointer-initializer/function-symbol producers carry ids. |
+| LIR-to-BIR direct call lowering | `src/backend/bir/lir_to_bir/calling.cpp`: `lower_call`, `lower_extern_decl`, `lower_decl_function`, `parse_direct_global_typed_call` | `SA/CB` | Lowering copies `LirCallOp::direct_callee_link_name_id` into `bir::CallInst::callee_link_name_id` and copies function/extern declaration ids into BIR declarations; runtime/intrinsic placeholders intentionally keep invalid ids. | `CB` boundary: runtime/intrinsic synthesized calls and direct-call text when LIR did not provide `LinkNameId`. No complete id miss is repaired through text. |
+| LIR-to-BIR global and pointer initializer lowering | `src/backend/bir/lir_to_bir/globals.cpp`, `module.cpp`: `lower_minimal_global_impl`, `resolve_initializer_symbol_link_name_id`, `resolve_pointer_initializer_offsets`, `apply_resolved_pointer_initializer_value_ids` | `SA/CB` | Global definitions copy `global.link_name_id`; initializer function ids flow through `initializer_function_link_name_ids` to `initializer_symbol_name_id` and `Value::pointer_symbol_link_name_id`. Textual initializer parsing is retained only to import legacy LIR final spelling. | `CB` boundary: LIR `init_text` and aggregate pointer fields whose symbol names are parsed before full normalization. Follow-up: add typed initializer symbol carriers earlier and retire raw initializer symbol lookup. |
+| BIR memory/provenance lowering | `src/backend/bir/lir_to_bir/memory/*.cpp`: `GlobalAddress::link_name_id`, `link_name_id_for_global`, `try_lower_*global*`, `named_symbol_pointer`, `global_name_id` stores | `SA/CB` | Provenance and memory helpers propagate known global/function ids into `MemoryAddress`, `Value`, `LoadGlobalInst`, and `StoreGlobalInst`; raw-name probes are used only when resolving legacy textual operands or no-id global addresses. | `CB` boundary: LIR memory operands and parsed pointer text with no structured id at the boundary. Follow-up aligns with typed initializer/global-address carriers. |
+| LIR-to-BIR string constants | `src/backend/bir/lir_to_bir.cpp`: `collect_lowered_string_constants`, `rewrite_direct_call_string_pointer_args`; `src/backend/bir/lir_to_bir/globals.cpp`: `lower_string_constant_global` | `CB/DO` | String-pool names are tracked by `TextId`/display spelling and explicitly do not carry `LinkNameId`; rewrite logic maps string pointer args to private data labels, not source/link semantic identity. | `CB` boundary: string-pool constants are addressable data labels. Potential follow-up belongs to route-local/string-pool identity cleanup, not Step 2 source/link authority. |
+| BIR printer and dumps | `src/backend/bir/bir_printer.cpp`: `render_value`, `render_call_target`, `render_block_label`, `render_memory_address`, `render_function` | `DO/CB` | Printer renders already-lowered BIR payloads and prefers structured block labels when available; call-target and address text is dump/final spelling after semantic lookup. | `CB` boundary: raw-only BIR payloads lacking ids. No lookup authority is created by printing. |
+| Prepared-stage LinkNameId transfer | `src/backend/prealloc/prealloc.cpp`: `resolve_symbol_pointer_name`, `resolve_direct_callee`; `src/backend/prealloc/prealloc.hpp`: `PreparedNameTables::link_names`, `resolve_prepared_bir_link_name_ref`, `bir_link_name_or_raw`, materialized global ref helpers; `src/backend/prealloc/stack_layout/coordinator.cpp`: `build_direct_symbol_backed_address` | `SA/CB` | Prepared lowering resolves BIR ids through BIR link-name tables, interns authoritative names into prepared link tables, and rejects id/name drift; raw names are accepted only when the BIR id is invalid. | `CB` boundary: BIR payloads with `kInvalidLinkName` and string-pool/private-label paths. No complete id miss falls back to raw spelling. |
+| x86 link-visible final rendering | `src/backend/mir/x86/abi/abi.cpp`: `render_asm_symbol_name`; `src/backend/mir/x86/module/data.cpp`, `module.cpp`: `.globl`, `.type`, labels, direct calls, data initializers | `DO/CB` | x86 emission receives logical names already chosen by BIR/prepared layers and applies target ABI spelling, e.g. Darwin underscore decoration; same-module checks use rendered names only as final backend contract checks. | `CB` boundary: final object/assembly spelling and same-module compatibility checks. Follow-up: keep `LinkNameId` available up to prepared/module contracts where supported; do not treat ABI rendering as semantic source authority. |
 
 Remaining `SA` follow-up recommendation:
-- Retire `src/codegen/lir/ir.hpp` `extern_decl_name_map` and the matching
-  `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` `finalize_module` fallback once
-  extern-call producers reliably pass `LinkNameId`.
-- Retire `discardable_by_name`/`scan_refs` reachability seeding after LIR has
-  typed symbol-reference carriers for the remaining final-spelling payloads
-  currently documented at `signature_text`, call arguments, operands, and
-  `init_text`.
-- No ordinary rendered string path was found that reopens lookup after a
-  complete `LinkNameId` miss or a known declared `StructNameId` miss.
+- Retire `FunctionSymbolSet::raw_symbol_link_name_ids` and the matching raw
+  function-symbol probes in `src/backend/bir/lir_to_bir/**` after LIR/BIR
+  pointer-initializer and global-address producers provide typed `LinkNameId`
+  carriers at the parse/lowering boundary.
+- Add typed initializer/global-address symbol carriers before retiring
+  `GlobalInfo::initializer_symbol_name`, `Global::initializer_symbol_name`,
+  and raw parsed pointer-initializer lookups.
+- Consider a later string-pool/private-label identity follow-up for BIR string
+  constants; it is separate from source/link-visible semantic authority.
+- No backend/BIR path inspected here reopens rendered-name lookup after a
+  complete `LinkNameId` miss; id/name mismatch paths fail closed or return no
+  prepared/lowered result.
 
 ## Suggested Next
 
-Continue Step 2 with the next covered backend/BIR packet: classify BIR and
-backend LinkNameId transport, backend symbol registry/lowering, and any
-remaining link-visible rendered-name compatibility bridges.
+Continue Step 2 with the next covered-domain audit packet chosen by the
+supervisor, likely any remaining parser/sema/HIR surfaces not yet recorded in
+the Step 2 classification or a consolidation pass before Step 3.
 
 ## Watchouts
 
-- `scan_refs` and `discardable_by_name` are still semantic for dead internal
-  function retention when LIR references arrive only as final LLVM spelling.
-  This is a classified bridge, not display-only text.
-- `StructNameId` verifier checks intentionally use rendered text lookup to
-  detect missing mirrors; that lookup is rejection logic, not fallback
-  authority.
-- Do not remove LIR/HIR-to-LIR bridges in this audit step; bridge retirement
-  belongs to follow-up planning.
+- `FunctionSymbolSet::raw_symbol_link_name_ids` is a real compatibility bridge,
+  not display-only text; it remains semantic for raw LIR pointer/function
+  symbol payloads that lack `LinkNameId`.
+- BIR validators intentionally use rendered by-name lookup to reject
+  id/display mismatches and support raw-only payloads. That lookup should not
+  be counted as fallback after a complete id miss.
+- x86 `render_asm_symbol_name` is final ABI spelling, not source identity.
+  Same-module rendering checks should remain classified as final backend
+  contract checks unless they feed new lookup authority.
+- Do not edit implementation/tests for this audit-only packet; bridge
+  retirement belongs to follow-up planning.
 
 ## Proof
 
 Audit replay command run:
-`rg -n --glob '!build*/**' --glob '!ideas/closed/**' --glob '!review/**' -e 'LinkNameId' -e 'StructNameId' -e 'link_name_id' -e 'struct_name_id' -e 'extern_decl' -e 'discardable' -e 'rendered_.*compat' -e 'legacy.*compat' -e 'by_name' -e 'signature_text' -e 'initializer_function_link_name_ids' src/codegen/lir/ir.hpp src/codegen/lir/verify.cpp src/codegen/lir/hir_to_lir`
+`rg -n --glob '!build*/**' --glob '!ideas/closed/**' --glob '!review/**' -e 'LinkNameId' -e 'link_name_id' -e 'pointer_symbol_link_name_id' -e 'callee_link_name_id' -e 'global_name_id' -e 'initializer_symbol_name_id' -e 'FunctionSymbolSet' -e 'raw_symbol_link_name_ids' -e 'resolve_direct_callee' -e 'resolve_prepared_bir_link_name_ref' -e 'render_asm_symbol_name' -e 'find_.*by_name' -e 'fallback_by_name' src/backend/bir src/backend/prealloc src/backend/mir/x86`
 
 AST-backed inspection used:
-`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/codegen/lir/hir_to_lir/hir_to_lir.cpp build/compile_commands.json`
+`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/bir/lir_to_bir.cpp build/compile_commands.json`
+`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/bir/lir_to_bir/module.cpp build/compile_commands.json`
+`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/bir/lir_to_bir/globals.cpp build/compile_commands.json`
 
 Result: audit replay and AST function inventory completed. No tests were run
 because this packet only recorded classification and did not edit
