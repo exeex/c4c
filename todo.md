@@ -8,23 +8,21 @@ Current Step Title: Propagate LinkNameId Through LIR to BIR
 
 ## Just Finished
 
-Continued Step 4 by auditing direct pointer argument/value alias routes where
-LIR still exposes raw `@symbol` operands.
+Continued Step 4 by auditing remaining non-direct pointer `@symbol` carriers in
+aggregate copy/materialization and pointer aggregate initializer routes.
 
-Known-global provenance records now keep the resolved global `LinkNameId` when
-direct raw LIR operands are admitted through local pointer slots, global
-provenance stores, pointer-object aliases, direct global GEPs, pointer-to-int
-address aliases, and linear addressed global scalar accesses. Direct function
-pointer argument/value aliases remain compatibility bridges because the LIR
-operand and BIR pointer value carriers do not have per-value `LinkNameId`
-metadata.
+No additional local repair was available inside the Step 4 carrier shape:
+aggregate initializer parsing already records `GlobalAddress` in
+`pointer_initializer_offsets`, but the public BIR pointer value carriers for
+aggregate initializer elements, byval aggregate call arguments, and synthesized
+dynamic pointer-array selections are still plain `bir::Value::named(ptr,
+"@symbol")` values with no per-value `LinkNameId` field.
 
 ## Suggested Next
 
-Continue Step 4 by auditing remaining non-direct pointer carriers that build
-`bir::Value::named(ptr, "@symbol")`, especially aggregate copy/materialization
-paths, and either thread existing `GlobalAddress` identity through them or
-record the no-metadata bridge.
+Continue Step 4 by checking whether the remaining raw pointer-value bridges can
+be deferred to Step 5 validation/backend preparation unchanged, or whether the
+runbook needs a later BIR value identity extension before closure.
 
 ## Watchouts
 
@@ -54,6 +52,30 @@ record the no-metadata bridge.
   metadata before raw spelling can be fully removed. Removal condition:
   introduce offset-aligned initializer function IDs and consume them when
   populating `pointer_initializer_offsets`.
+- Compatibility bridge: aggregate initializer element values still render
+  pointer fields as `bir::Value::named(TypeKind::Ptr, "@symbol")` even when
+  `lower_aggregate_initializer_recursive()` records the same field in
+  `pointer_initializer_offsets`. Owner: BIR aggregate initializer value model.
+  Limitation: semantic identity is preserved in the `GlobalAddress` side table
+  used by lowering/provenance, but the public initializer element carrier has no
+  per-element `LinkNameId`. Removal condition: add structured pointer identity
+  to BIR initializer elements or replace raw pointer initializer values with an
+  ID-backed carrier consumed by validation and backend preparation.
+- Compatibility bridge: byval aggregate call arguments that pass an addressable
+  global still lower to `bir::Value::named(TypeKind::Ptr, "@global")` after
+  validating the global through `global_types`. Owner: BIR call argument value
+  model. Limitation: the call arg `bir::Value` has no slot for the target
+  global `LinkNameId`, and byval ABI metadata only describes the copied bytes.
+  Removal condition: add ID-backed pointer values or an address/provenance field
+  to call arguments, then consume `GlobalInfo::link_name_id` for byval globals.
+- Compatibility bridge: dynamic pointer-array materialization from aggregate
+  pointer initializer offsets selects among raw `@symbol` pointer values even
+  though each element was first resolved from `GlobalAddress`. Owner: synthesized
+  pointer-array select/BIR value model. Limitation: `synthesize_pointer_array_selects()`
+  and the resulting `ValueMap` alias carry only `bir::Value`, so per-arm
+  `LinkNameId` provenance cannot survive the selected pointer value. Removal
+  condition: represent pointer selects with structured per-arm symbol identity
+  or a first-class `GlobalAddress` result that later lowering can consume.
 
 ## Proof
 
