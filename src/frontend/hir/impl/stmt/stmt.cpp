@@ -588,6 +588,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   if (owner_it != struct_def_nodes_.end() && owner_it->second) {
     structured_binding_owner = owner_it->second;
   }
+  ctx.template_binding_owner_node = structured_binding_owner;
   if (tpl_bindings) {
     for (const auto& [name, ts] : *tpl_bindings) {
       const bool recorded = add_hir_template_type_binding_by_legacy_name(

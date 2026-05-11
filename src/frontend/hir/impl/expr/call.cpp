@@ -150,6 +150,23 @@ make_template_type_binding_key_from_carrier(const TypeSpec& ts) {
   return key;
 }
 
+std::optional<HirTemplateParameterBindingKey>
+make_nttp_binding_key_from_owner_text_id(const Node* owner,
+                                         TextId parameter_text_id) {
+  if (!owner || parameter_text_id == kInvalidText ||
+      owner->n_template_params <= 0 || !owner->template_param_name_text_ids ||
+      !owner->template_param_is_nttp) {
+    return std::nullopt;
+  }
+  for (int i = 0; i < owner->n_template_params; ++i) {
+    if (!owner->template_param_is_nttp[i]) continue;
+    if (owner->template_param_name_text_ids[i] != parameter_text_id) continue;
+    return make_hir_template_parameter_binding_key(
+        owner, i, HirTemplateParameterBindingKind::NonType);
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 const TypeSpec* Lowerer::find_template_type_binding_for_call(
@@ -828,10 +845,14 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
                     ? n->left->template_arg_nttp_text_ids[i]
                     : kInvalidText;
             if (forwarded_text_id != kInvalidText) {
+              const std::optional<HirTemplateParameterBindingKey> query_key =
+                  make_nttp_binding_key_from_owner_text_id(
+                      ctx->template_binding_owner_node, forwarded_text_id);
               if (auto nttp_value = lookup_nttp_binding(
                       ctx, nullptr, n->left->template_arg_nttp_names[i],
                       forwarded_text_id,
-                      false /* allow_rendered_mirror_fallback */)) {
+                      false /* allow_rendered_mirror_fallback */,
+                      query_key ? &*query_key : nullptr)) {
                 ce_nttp_bindings[fn_def->template_param_names[i]] = *nttp_value;
                 record_nttp_text_binding(
                     fn_def, i, *nttp_value, &ce_nttp_bindings_by_text);

@@ -300,6 +300,7 @@ class Lowerer {
     NttpBindings nttp_bindings; // non-type template param → constant value
     HirTemplateNttpBindings structured_nttp_bindings;
     NttpTextBindings nttp_bindings_by_text; // non-type template param TextId → value
+    const Node* template_binding_owner_node = nullptr;
     std::unordered_map<std::string, std::vector<PackParamElem>> pack_params;
     std::string method_struct_tag; // non-empty when lowering a struct method body
     std::optional<HirRecordOwnerKey> method_struct_owner_key;

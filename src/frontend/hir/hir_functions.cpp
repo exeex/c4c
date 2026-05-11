@@ -576,6 +576,7 @@ void Lowerer::lower_function(const Node* fn_node,
   if (nttp_text_override) {
     ctx.nttp_bindings_by_text = *nttp_text_override;
   }
+  ctx.template_binding_owner_node = fn_node;
   populate_structured_template_binding_mirrors(
       ctx, fn_node, tpl_override, nttp_override);
   append_callable_params(

@@ -9,26 +9,26 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 ## Just Finished
 
 Completed the delegated Step 5 NTTP forwarding lookup-authority repair from
-`plan.md`. `Lowerer::lookup_nttp_binding` now accepts an optional complete
-structured NTTP query key and only selects complete structured NTTP bindings
-through exact owner/index metadata. Raw TextId/rendered lookup no longer
-selects complete structured bindings; it can still use compatibility mirrors
-where the raw TextId belongs to the structured domain, while stale/mismatched
-complete-key misses fail closed. `resolve_ast_template_value_arg` now passes a
-complete owner/index key when its template owner and argument index provide one.
-Focused same-spelled different-owner lookup coverage was added.
+`plan.md`. Function lowering now records the AST owner used to populate
+structured template bindings in `FunctionCtx`, and consteval NTTP forwarding
+uses that owner plus the forwarded parameter `TextId` to pass a complete
+owner/index query key into `lookup_nttp_binding` when available. Focused
+coverage now verifies that lowerer consteval forwarding prefers the complete
+structured NTTP binding over stale TextId/rendered mirrors, while stale
+structured misses still fail closed.
 
 ## Suggested Next
 
-Supervisor should review and commit this coherent Step 5 NTTP lookup-authority
-slice, then choose the next packet only if more forwarding/lowerer lookup
-bypasses remain.
+Supervisor should review and commit this coherent Step 5 consteval NTTP
+forwarding metadata slice, then choose the next packet only if more
+forwarding/lowerer lookup bypasses remain.
 
 ## Watchouts
 
-- AST consteval forwarding still lacks source-owner/index metadata at the call
-  site, so it uses matching TextId compatibility mirrors but no longer selects
-  complete structured NTTP bindings by raw spelling alone.
+- `template_binding_owner_node` must stay aligned with the owner used to
+  populate `ctx.structured_nttp_bindings`; function lowering uses the function
+  node and struct-method lowering uses the structured owner selected for method
+  template bindings.
 - Explicit complete structured query-key misses fail closed before TextId or
   rendered mirror fallback.
 - Do not weaken tests or convert capability work into expectation-only changes.
