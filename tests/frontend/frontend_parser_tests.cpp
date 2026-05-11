@@ -9979,6 +9979,67 @@ void test_hir_template_call_type_arg_lookup_prefers_structured_key() {
               "to rendered-name or TextId fallback maps");
 }
 
+void test_hir_builtin_query_type_lookup_prefers_structured_key() {
+  c4c::hir::Module module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  const c4c::TextId owner_text =
+      module.link_name_texts->intern("BuiltinOwner");
+  const c4c::TextId param_text = module.link_name_texts->intern("BuiltinT");
+  const c4c::TextId rendered_text =
+      module.link_name_texts->intern("RenderedBuiltinT");
+
+  c4c::TypeSpec real_type{};
+  real_type.base = c4c::TB_LONG;
+  real_type.array_size = -1;
+  real_type.inner_rank = -1;
+
+  c4c::TypeSpec stale_type{};
+  stale_type.base = c4c::TB_CHAR;
+  stale_type.array_size = -1;
+  stale_type.inner_rank = -1;
+
+  c4c::hir::HirTemplateParameterBindingKey key;
+  key.parameter_kind = c4c::hir::HirTemplateParameterBindingKind::Type;
+  key.owner_namespace_context_id = 23;
+  key.owner_template_text_id = owner_text;
+  key.parameter_index = 0;
+  key.parameter_text_id = param_text;
+  expect_true(c4c::hir::hir_template_parameter_binding_key_has_complete_metadata(key),
+              "fixture builtin structured key should carry complete owner metadata");
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  c4c::hir::Lowerer::FunctionCtx ctx{};
+  ctx.tpl_bindings["BuiltinT"] = stale_type;
+  ctx.tpl_bindings["RenderedBuiltinT"] = stale_type;
+  ctx.tpl_bindings_by_text[param_text] = stale_type;
+  ctx.tpl_bindings_by_text[rendered_text] = stale_type;
+  ctx.structured_tpl_bindings[key] = real_type;
+
+  c4c::TypeSpec carrier{};
+  carrier.base = c4c::TB_TYPEDEF;
+  carrier.array_size = -1;
+  carrier.inner_rank = -1;
+  set_legacy_tag_if_present(carrier, "RenderedBuiltinT", 0);
+  carrier.tag_text_id = rendered_text;
+  carrier.template_param_owner_namespace_context_id = 23;
+  carrier.template_param_owner_text_id = owner_text;
+  carrier.template_param_index = 0;
+  carrier.template_param_text_id = param_text;
+
+  c4c::TypeSpec resolved =
+      lowerer.resolve_builtin_query_type(&ctx, carrier);
+  expect_true(resolved.base == c4c::TB_LONG,
+              "builtin sizeof/alignof type-query lookup should prefer complete "
+              "structured parameter keys over stale rendered/text bindings");
+
+  ctx.structured_tpl_bindings.clear();
+  resolved = lowerer.resolve_builtin_query_type(&ctx, carrier);
+  expect_true(resolved.base == c4c::TB_TYPEDEF,
+              "complete structured builtin query misses must not fall through "
+              "to rendered-name or TextId fallback maps");
+}
+
 void test_parser_support_typedef_helpers_reject_stale_rendered_maps_after_text_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -10615,6 +10676,7 @@ int main() {
   test_consteval_type_binding_lookup_uses_typespec_structured_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
   test_hir_template_call_type_arg_lookup_prefers_structured_key();
+  test_hir_builtin_query_type_lookup_prefers_structured_key();
   test_parser_support_typedef_helpers_reject_stale_rendered_maps_after_text_miss();
   test_consteval_type_binding_lookup_rejects_no_metadata_rendered_compatibility();
   test_consteval_function_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();

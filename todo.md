@@ -8,18 +8,18 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 ## Just Finished
 
-Completed the delegated Step 5 packet of `plan.md`: converted the template-call
-type-argument lookup helper used by consteval/template call lowering to derive
-a complete `HirTemplateParameterBindingKey` from `TypeSpec` carrier metadata,
-consult `FunctionCtx::structured_tpl_bindings` before legacy mirrors, and reject
-rendered/TextId fallback when that complete structured lookup misses. Added a
-focused `frontend_parser_tests.cpp` regression covering stale rendered and
-TextId maps losing to the structured binding and staying rejected after a
-structured miss.
+Completed the delegated Step 5 packet of `plan.md`: converted builtin
+`sizeof`/`alignof` type-query resolution to reuse the structured-aware
+`Lowerer::find_template_type_binding_for_call` path, so complete `TypeSpec`
+template-parameter owner metadata consults `FunctionCtx::structured_tpl_bindings`
+before stale TextId/rendered mirrors and complete structured misses do not fall
+through to those legacy maps. Added a focused `frontend_parser_tests.cpp`
+regression for builtin query resolution covering both the structured hit and the
+authoritative structured miss.
 
 ## Suggested Next
 
-Continue Step 5 by checking the remaining forwarding/lowerer lookup paths that
+Continue Step 5 by checking any remaining forwarding/lowerer lookup paths that
 still consume enclosing type bindings through legacy-only maps, using the same
 complete-key-before-rendered-fallback rule.
 
@@ -67,6 +67,9 @@ complete-key-before-rendered-fallback rule.
 - Direct template-call and call-result type lookup are structured-first, but
   still compare against a legacy key for compatibility with older or incomplete
   seed paths.
+- Builtin `sizeof`/`alignof` type-query lookup now shares that structured-first
+  helper; future changes should keep complete owner metadata authoritative
+  rather than reintroducing ad hoc TextId/rendered fallback in builtin paths.
 - `try_make_structured_specialization_key` intentionally rejects missing or
   mismatched structured mirrors by returning `nullopt`; callers should keep
   using the legacy key in that case instead of fabricating partial identity.
