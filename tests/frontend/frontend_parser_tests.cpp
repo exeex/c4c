@@ -11,10 +11,21 @@
 #include <functional>
 #include <initializer_list>
 #include <iostream>
+#include <memory>
+#include <optional>
+#include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
+
+#define private public
+#include "hir/impl/lowerer.hpp"
+#undef private
 
 namespace {
 
@@ -9902,6 +9913,72 @@ void test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_ove
               "consteval type binding lookup should reject stale rendered names after metadata misses");
 }
 
+void test_hir_template_call_type_arg_lookup_prefers_structured_key() {
+  c4c::hir::Module module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  const c4c::TextId owner_text =
+      module.link_name_texts->intern("OuterTemplate");
+  const c4c::TextId param_text = module.link_name_texts->intern("OuterT");
+  const c4c::TextId rendered_text =
+      module.link_name_texts->intern("RenderedOuterT");
+
+  c4c::TypeSpec real_type{};
+  real_type.base = c4c::TB_LONG;
+  real_type.array_size = -1;
+  real_type.inner_rank = -1;
+
+  c4c::TypeSpec stale_type{};
+  stale_type.base = c4c::TB_CHAR;
+  stale_type.array_size = -1;
+  stale_type.inner_rank = -1;
+
+  c4c::hir::TypeBindings legacy_bindings;
+  legacy_bindings["OuterT"] = stale_type;
+  legacy_bindings["RenderedOuterT"] = stale_type;
+  std::unordered_map<c4c::TextId, c4c::TypeSpec> text_bindings;
+  text_bindings[param_text] = stale_type;
+  text_bindings[rendered_text] = stale_type;
+
+  c4c::hir::HirTemplateParameterBindingKey key;
+  key.parameter_kind = c4c::hir::HirTemplateParameterBindingKind::Type;
+  key.owner_namespace_context_id = 17;
+  key.owner_template_text_id = owner_text;
+  key.parameter_index = 0;
+  key.parameter_text_id = param_text;
+  expect_true(c4c::hir::hir_template_parameter_binding_key_has_complete_metadata(key),
+              "fixture structured key should carry complete owner metadata");
+
+  c4c::hir::HirTemplateTypeBindings structured_bindings;
+  structured_bindings[key] = real_type;
+
+  c4c::TypeSpec carrier{};
+  carrier.base = c4c::TB_TYPEDEF;
+  carrier.array_size = -1;
+  carrier.inner_rank = -1;
+  set_legacy_tag_if_present(carrier, "RenderedOuterT", 0);
+  carrier.tag_text_id = rendered_text;
+  carrier.template_param_owner_namespace_context_id = 17;
+  carrier.template_param_owner_text_id = owner_text;
+  carrier.template_param_index = 0;
+  carrier.template_param_text_id = param_text;
+
+  const c4c::TypeSpec* resolved =
+      c4c::hir::Lowerer::find_template_type_binding_for_call(
+          &legacy_bindings, &structured_bindings, &text_bindings, &module,
+          carrier);
+  expect_true(resolved && resolved->base == c4c::TB_LONG,
+              "template-call type-argument lookup should prefer complete "
+              "structured parameter keys over stale rendered/text bindings");
+
+  structured_bindings.clear();
+  resolved = c4c::hir::Lowerer::find_template_type_binding_for_call(
+      &legacy_bindings, &structured_bindings, &text_bindings, &module,
+      carrier);
+  expect_true(resolved == nullptr,
+              "complete structured type-argument misses must not fall through "
+              "to rendered-name or TextId fallback maps");
+}
+
 void test_parser_support_typedef_helpers_reject_stale_rendered_maps_after_text_miss() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -10537,6 +10614,7 @@ int main() {
   test_consteval_type_binding_lookup_uses_typespec_text_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_uses_typespec_structured_metadata_without_name_mirrors();
   test_consteval_type_binding_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();
+  test_hir_template_call_type_arg_lookup_prefers_structured_key();
   test_parser_support_typedef_helpers_reject_stale_rendered_maps_after_text_miss();
   test_consteval_type_binding_lookup_rejects_no_metadata_rendered_compatibility();
   test_consteval_function_lookup_prefers_structured_and_text_metadata_over_stale_rendered_name();

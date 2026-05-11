@@ -135,11 +135,38 @@ bool same_call_storage_type(const TypeSpec& a, const TypeSpec& b) {
   return a_tag == b_tag;
 }
 
-const TypeSpec* find_template_type_binding_for_call(
+std::optional<HirTemplateParameterBindingKey>
+make_template_type_binding_key_from_carrier(const TypeSpec& ts) {
+  HirTemplateParameterBindingKey key;
+  key.parameter_kind = HirTemplateParameterBindingKind::Type;
+  key.owner_namespace_context_id =
+      ts.template_param_owner_namespace_context_id;
+  key.owner_template_text_id = ts.template_param_owner_text_id;
+  key.parameter_index = ts.template_param_index;
+  key.parameter_text_id = ts.template_param_text_id;
+  if (!hir_template_parameter_binding_key_has_complete_metadata(key)) {
+    return std::nullopt;
+  }
+  return key;
+}
+
+}  // namespace
+
+const TypeSpec* Lowerer::find_template_type_binding_for_call(
     const TypeBindings* tpl_bindings,
+    const HirTemplateTypeBindings* structured_tpl_bindings,
     const std::unordered_map<TextId, TypeSpec>* tpl_bindings_by_text,
     const Module* module,
     const TypeSpec& ts) {
+  if (auto structured_key = make_template_type_binding_key_from_carrier(ts)) {
+    if (structured_tpl_bindings) {
+      auto structured_it = structured_tpl_bindings->find(*structured_key);
+      if (structured_it != structured_tpl_bindings->end()) {
+        return &structured_it->second;
+      }
+    }
+    return nullptr;
+  }
   if (!tpl_bindings || tpl_bindings->empty()) return nullptr;
   if (ts.template_param_text_id != kInvalidText) {
     if (tpl_bindings_by_text) {
@@ -163,6 +190,8 @@ const TypeSpec* find_template_type_binding_for_call(
   auto it = tpl_bindings->find(std::string(legacy_tag));
   return it == tpl_bindings->end() ? nullptr : &it->second;
 }
+
+namespace {
 
 bool typespec_has_template_binding_carrier(const TypeSpec& ts) {
   return ts.template_param_text_id != kInvalidText ||
@@ -831,6 +860,7 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
         if (const TypeSpec* resolved =
                 find_template_type_binding_for_call(
                     ctx ? &ctx->tpl_bindings : nullptr,
+                    ctx ? &ctx->structured_tpl_bindings : nullptr,
                     ctx ? &ctx->tpl_bindings_by_text : nullptr,
                     module_,
                     arg_ts)) {

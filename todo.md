@@ -1,25 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/161_hir_template_binding_domain_key_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Use Structured Keys for Pending and Specialization Identity
+Current Step ID: 5
+Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 # Current Packet
 
 ## Just Finished
 
-Completed the delegated Step 4 packet of `plan.md`: added a focused
-`frontend_hir_tests.cpp` regression proving that two `Box<T>` struct template
-primaries with the same rendered template and parameter spelling but different
-owner metadata materialize structured explicit type-argument mirrors, prepare
-different `TemplateStructInstanceKey` / structured specialization argument
-identities, and still preserve equal legacy display canonical text.
+Completed the delegated Step 5 packet of `plan.md`: converted the template-call
+type-argument lookup helper used by consteval/template call lowering to derive
+a complete `HirTemplateParameterBindingKey` from `TypeSpec` carrier metadata,
+consult `FunctionCtx::structured_tpl_bindings` before legacy mirrors, and reject
+rendered/TextId fallback when that complete structured lookup misses. Added a
+focused `frontend_parser_tests.cpp` regression covering stale rendered and
+TextId maps losing to the structured binding and staying rejected after a
+structured miss.
 
 ## Suggested Next
 
-Have the supervisor decide whether Step 4 is complete enough to move to the
-next plan step or whether another narrowly scoped identity collision regression
-is still needed.
+Continue Step 5 by checking the remaining forwarding/lowerer lookup paths that
+still consume enclosing type bindings through legacy-only maps, using the same
+complete-key-before-rendered-fallback rule.
 
 ## Watchouts
 
@@ -28,6 +30,12 @@ is still needed.
 - Do not weaken tests or convert capability work into expectation-only changes.
 - Keep routine implementation progress in this file rather than rewriting the
   source idea.
+- `frontend_hir_tests` is not enabled in the default build preset, so focused
+  regression coverage for this packet lives in `frontend_parser_tests.cpp`.
+- The template-call type-argument lookup now treats complete `TypeSpec`
+  template-parameter owner metadata as covered structured metadata; stale
+  `tag`, `tag_text_id`, `template_param_text_id`, or rendered-name maps must not
+  be consulted after that structured miss.
 - `mangle_template_name`, `format_pending_template_type_key_for_display`,
   `encode_pending_type_ref`, and `SpecializationKey::canonical` are
   display/compatibility outputs; do not make them replacement semantic keys.
@@ -76,3 +84,8 @@ Ran delegated proof command:
 
 Result: command exited 0 and `test_after.log` was written. The selected subset
 ran 322 tests with 100% passing after the build.
+
+Also ran the focused regression target directly:
+`ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+
+Result: command exited 0 with 1/1 test passing.

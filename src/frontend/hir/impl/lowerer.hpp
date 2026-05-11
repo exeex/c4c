@@ -732,6 +732,13 @@ class Lowerer {
   std::optional<ExprId> try_lower_consteval_call_expr(FunctionCtx* ctx,
                                                       const Node* n);
 
+  static const TypeSpec* find_template_type_binding_for_call(
+      const TypeBindings* tpl_bindings,
+      const HirTemplateTypeBindings* structured_tpl_bindings,
+      const std::unordered_map<TextId, TypeSpec>* tpl_bindings_by_text,
+      const Module* module,
+      const TypeSpec& ts);
+
   // Check if an AST expression is an lvalue (variable, subscript, deref, member).
   static bool is_ast_lvalue(const Node* n, const FunctionCtx* ctx = nullptr);
 
