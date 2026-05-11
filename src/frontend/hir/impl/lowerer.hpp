@@ -1295,19 +1295,22 @@ class Lowerer {
       struct_member_symbol_ids_by_owner_;
   mutable size_t struct_member_symbol_id_lookup_parity_checks_ = 0;
   mutable size_t struct_member_symbol_id_lookup_parity_mismatches_ = 0;
-  // Struct method map: "struct_tag::method_name" → mangled function name.
+  // No-owner rendered compatibility maps keyed as "struct_tag::method_name".
+  // `HirStructMethodLookupKey` mirrors below are authoritative whenever a
+  // complete owner/method key can be formed; complete owner-key misses fail
+  // closed before consulting these rendered maps.
   std::unordered_map<std::string, std::string> struct_methods_;
   std::unordered_map<HirStructMethodLookupKey, std::string, HirStructMethodLookupKeyHash>
       struct_methods_by_owner_;
   mutable size_t struct_method_mangled_lookup_parity_checks_ = 0;
   mutable size_t struct_method_mangled_lookup_parity_mismatches_ = 0;
-  // Struct method map: "struct_tag::method_name" → link-visible symbol id.
+  // No-owner rendered compatibility map to link-visible symbol ids.
   std::unordered_map<std::string, LinkNameId> struct_method_link_name_ids_;
   std::unordered_map<HirStructMethodLookupKey, LinkNameId, HirStructMethodLookupKeyHash>
       struct_method_link_name_ids_by_owner_;
   mutable size_t struct_method_link_name_lookup_parity_checks_ = 0;
   mutable size_t struct_method_link_name_lookup_parity_mismatches_ = 0;
-  // Struct method return types: "struct_tag::method_name" → return TypeSpec.
+  // No-owner rendered compatibility map to method return TypeSpecs.
   std::unordered_map<std::string, TypeSpec> struct_method_ret_types_;
   std::unordered_map<HirStructMethodLookupKey, TypeSpec, HirStructMethodLookupKeyHash>
       struct_method_ret_types_by_owner_;

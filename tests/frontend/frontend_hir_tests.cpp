@@ -3759,7 +3759,7 @@ void test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag() {
               "stale rendered method return types should be detected when structured lookup wins");
 }
 
-void test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key() {
+void test_hir_struct_method_lookup_keeps_no_owner_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -3776,20 +3776,20 @@ void test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key() {
   const std::optional<std::string> mangled =
       lowerer.find_struct_method_mangled("LegacyRendered", "method", false);
   expect_true(mangled.has_value() && *mangled == "legacy_method_mangled",
-              "method mangled lookup should preserve rendered fallback when no owner key exists");
+              "method mangled lookup should preserve no-owner rendered compatibility");
 
   const std::optional<c4c::LinkNameId> link_name =
       lowerer.find_struct_method_link_name_id("LegacyRendered", "method", false);
   expect_true(link_name.has_value() && *link_name == legacy_link_name,
-              "method link-name lookup should preserve rendered fallback when no owner key exists");
+              "method link-name lookup should preserve no-owner rendered compatibility");
 
   const std::optional<c4c::TypeSpec> return_type =
       lowerer.find_struct_method_return_type("LegacyRendered", "method", false);
   expect_true(return_type.has_value() && return_type->base == c4c::TB_INT,
-              "method return-type lookup should preserve rendered fallback when no owner key exists");
+              "method return-type lookup should preserve no-owner rendered compatibility");
 }
 
-void test_hir_struct_method_lookup_rejects_rendered_fallback_after_owner_key_miss() {
+void test_hir_struct_method_lookup_closes_complete_owner_key_miss_before_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -3819,21 +3819,21 @@ void test_hir_struct_method_lookup_rejects_rendered_fallback_after_owner_key_mis
   const std::optional<std::string> mangled =
       lowerer.find_struct_method_mangled(def.tag, "method", false);
   expect_true(!mangled.has_value(),
-              "method mangled lookup should reject rendered fallback after complete owner-key miss");
+              "method mangled lookup should reject no-owner rendered compatibility after complete owner-key miss");
   expect_true(lowerer.struct_method_mangled_lookup_parity_checks_ == 0,
               "owner-key method mangled misses should not consult rendered maps for parity");
 
   const std::optional<c4c::LinkNameId> link_name =
       lowerer.find_struct_method_link_name_id(def.tag, "method", false);
   expect_true(!link_name.has_value(),
-              "method link-name lookup should reject rendered fallback after complete owner-key miss");
+              "method link-name lookup should reject no-owner rendered compatibility after complete owner-key miss");
   expect_true(lowerer.struct_method_link_name_lookup_parity_checks_ == 0,
               "owner-key method link-name misses should not consult rendered maps for parity");
 
   const std::optional<c4c::TypeSpec> return_type =
       lowerer.find_struct_method_return_type(def.tag, "method", false);
   expect_true(!return_type.has_value(),
-              "method return-type lookup should reject rendered fallback after complete owner-key miss");
+              "method return-type lookup should reject no-owner rendered compatibility after complete owner-key miss");
   expect_true(lowerer.struct_method_return_type_lookup_parity_checks_ == 0,
               "owner-key method return-type misses should not consult rendered maps for parity");
 }
@@ -7166,8 +7166,8 @@ int main() {
   test_hir_local_block_enum_consteval_scopes_keep_same_spelled_values_distinct();
   test_hir_direct_enum_expr_scopes_keep_same_spelled_values_distinct();
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
-  test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
-  test_hir_struct_method_lookup_rejects_rendered_fallback_after_owner_key_miss();
+  test_hir_struct_method_lookup_keeps_no_owner_rendered_compatibility();
+  test_hir_struct_method_lookup_closes_complete_owner_key_miss_before_rendered_compatibility();
   test_hir_ref_overload_method_lookup_prefers_owner_key_over_stale_rendered_key();
   test_hir_ref_overload_method_lookup_rejects_rendered_fallback_after_owner_key_miss();
   test_hir_ref_overload_method_lookup_keeps_rendered_fallback_without_owner_key();

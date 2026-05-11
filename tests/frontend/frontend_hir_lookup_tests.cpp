@@ -845,31 +845,31 @@ void test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps(
   const std::optional<std::string> rendered_method =
       lowerer.find_struct_method_mangled("RenderedOwner", "method", false);
   expect_true(rendered_method && *rendered_method == "structured_method_mangled",
-              "method lookup should prefer owner-key authority over stale rendered maps");
+              "method lookup should prefer owner-key authority over stale no-owner rendered compatibility maps");
   expect_true(lowerer.struct_method_mangled_lookup_parity_checks_ == 1,
               "method owner-key lookup should run a parity check");
   expect_true(lowerer.struct_method_mangled_lookup_parity_mismatches_ == 1,
-              "method owner-key lookup should detect stale rendered authority");
+              "method owner-key lookup should detect stale no-owner rendered compatibility data");
 
   const std::optional<c4c::LinkNameId> rendered_method_link_name =
       lowerer.find_struct_method_link_name_id("RenderedOwner", "method", false);
   expect_true(rendered_method_link_name &&
                   *rendered_method_link_name == structured_method_link_name,
-              "method link-name lookup should prefer owner-key authority over stale rendered maps");
+              "method link-name lookup should prefer owner-key authority over stale no-owner rendered compatibility maps");
   expect_true(lowerer.struct_method_link_name_lookup_parity_checks_ == 1,
               "method link-name owner-key lookup should run a parity check");
   expect_true(lowerer.struct_method_link_name_lookup_parity_mismatches_ == 1,
-              "method link-name owner-key lookup should detect stale rendered authority");
+              "method link-name owner-key lookup should detect stale no-owner rendered compatibility data");
 
   const std::optional<c4c::TypeSpec> rendered_method_return_type =
       lowerer.find_struct_method_return_type("RenderedOwner", "method", false);
   expect_true(rendered_method_return_type &&
                   rendered_method_return_type->base == c4c::TB_LONG,
-              "method return-type lookup should prefer owner-key authority over stale rendered maps");
+              "method return-type lookup should prefer owner-key authority over stale no-owner rendered compatibility maps");
   expect_true(lowerer.struct_method_return_type_lookup_parity_checks_ == 1,
               "method return-type owner-key lookup should run a parity check");
   expect_true(lowerer.struct_method_return_type_lookup_parity_mismatches_ == 1,
-              "method return-type owner-key lookup should detect stale rendered authority");
+              "method return-type owner-key lookup should detect stale no-owner rendered compatibility data");
 }
 
 c4c::Node make_compile_time_registry_node(c4c::NodeKind kind,
