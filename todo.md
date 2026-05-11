@@ -1,37 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/166_hir_rendered_registry_mirror_retirement_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2/3
-Current Step Title: Define Retirement and Fence Policy; Retire or Narrow the First Complete Registry Family
+Current Step ID: 4
+Current Step Title: Process Remaining Module and Compile-Time Registries
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 2 / Step 3 for the first complete registry family:
-`CompileTimeState` structured lookups now fail closed after complete structured
-misses instead of reopening rendered registries. The fenced helpers cover
-template functions, primary template structs, template-struct specializations,
-and consteval functions. Rendered registry access remains available for
-string-only and explicit no-metadata compatibility calls.
+Completed plan Step 4 for `CompileTimeState` value-binding registries:
+global enum-constant and global const-int lookups now have structured helper
+entry points that prefer complete value-binding keys and fail closed after
+complete structured misses instead of reopening rendered name maps. Explicit
+no-metadata/rendered compatibility calls still use the rendered maps.
 
-Added focused frontend HIR coverage proving complete structured misses reject
-stale rendered names and no-metadata calls still use rendered compatibility.
-Updated the existing lookup-focused coverage to match the fenced policy.
+Extended focused frontend HIR coverage proving stale rendered enum/const-int
+maps are not used after complete structured misses while no-metadata calls
+retain compatibility behavior.
 
 ## Suggested Next
 
-Pick the next rendered registry family from the Step 1 inventory and fence its
-complete-structured lookup path without deleting display/order/payload storage.
+Continue Step 4 by auditing the remaining module-level compile-time registry
+handoffs for any direct raw-map consumers that should move behind the fenced
+structured helper entry points.
 
 ## Watchouts
 
-`is_complete_compile_time_registry_key` currently treats complete text identity
-as `unqualified_text_id != kInvalidText` with no declaration pointer fallback;
-calls with incomplete declaration metadata or `nullptr` remain rendered
-compatibility boundaries. Do not extend this packet into lowerer
-`template_global_defs_`, ctor/dtor maps, or overload maps; Step 1 identified
-those as not having complete structured replacements yet.
+The new `CompileTimeState` helpers fence value-binding lookups, but existing
+consteval environment construction still passes raw rendered and structured maps
+because `ConstEvalEnv` already performs per-domain miss fencing. Keep lowerer
+route-local maps, ctor/dtor maps, and overload maps out of this packet unless a
+future Step 4 handoff explicitly owns them.
 
 ## Proof
 

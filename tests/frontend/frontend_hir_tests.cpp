@@ -74,6 +74,18 @@ c4c::Node make_compile_time_state_registry_node(
   return node;
 }
 
+c4c::hir::CompileTimeValueBindingKey make_compile_time_state_value_key(
+    c4c::hir::CompileTimeValueBindingKeyKind kind,
+    c4c::NodeKind declaration_kind,
+    c4c::TextId unqualified_text_id) {
+  c4c::hir::CompileTimeValueBindingKey key;
+  key.binding_kind = kind;
+  key.declaration_kind = declaration_kind;
+  key.namespace_context_id = 0;
+  key.unqualified_text_id = unqualified_text_id;
+  return key;
+}
+
 c4c::hir::Module lower_hir_module(std::string_view source,
                                   c4c::SourceProfile source_profile =
                                       c4c::SourceProfile::CppSubset) {
@@ -206,6 +218,58 @@ void test_hir_compile_time_state_complete_structured_misses_fail_closed() {
   expect_true(state.find_consteval_def(nullptr, "stale_consteval") ==
                   &stale_consteval,
               "consteval lookup should keep rendered compatibility without metadata");
+
+  c4c::hir::CompileTimeValueBindingKey stale_enum_key =
+      make_compile_time_state_value_key(
+          c4c::hir::CompileTimeValueBindingKeyKind::GlobalEnumConstant,
+          c4c::NK_ENUM_DEF, texts.intern("stale_enum_value"));
+  c4c::hir::CompileTimeValueBindingKey structured_enum_key =
+      make_compile_time_state_value_key(
+          c4c::hir::CompileTimeValueBindingKeyKind::GlobalEnumConstant,
+          c4c::NK_ENUM_DEF, texts.intern("structured_enum_value"));
+  state.register_enum_const(stale_enum_key, "stale_enum_value", 11);
+  state.register_enum_const(structured_enum_key, "structured_enum_value", 22);
+  std::optional<long long> enum_value =
+      state.find_enum_const(structured_enum_key, "stale_enum_value");
+  expect_true(enum_value && *enum_value == 22,
+              "global enum-constant lookup should use complete structured identity before rendered names");
+  c4c::hir::CompileTimeValueBindingKey missing_enum_key =
+      make_compile_time_state_value_key(
+          c4c::hir::CompileTimeValueBindingKeyKind::GlobalEnumConstant,
+          c4c::NK_ENUM_DEF, texts.intern("missing_enum_value"));
+  enum_value = state.find_enum_const(missing_enum_key, "stale_enum_value");
+  expect_true(!enum_value,
+              "global enum-constant lookup should fail closed after a complete structured miss");
+  enum_value = state.find_enum_const(nullptr, "stale_enum_value");
+  expect_true(enum_value && *enum_value == 11,
+              "global enum-constant lookup should keep rendered compatibility without metadata");
+
+  c4c::hir::CompileTimeValueBindingKey stale_const_key =
+      make_compile_time_state_value_key(
+          c4c::hir::CompileTimeValueBindingKeyKind::GlobalConstInt,
+          c4c::NK_GLOBAL_VAR, texts.intern("stale_const_int"));
+  c4c::hir::CompileTimeValueBindingKey structured_const_key =
+      make_compile_time_state_value_key(
+          c4c::hir::CompileTimeValueBindingKeyKind::GlobalConstInt,
+          c4c::NK_GLOBAL_VAR, texts.intern("structured_const_int"));
+  state.register_const_int_binding(stale_const_key, "stale_const_int", 33);
+  state.register_const_int_binding(structured_const_key,
+                                   "structured_const_int", 44);
+  std::optional<long long> const_value =
+      state.find_const_int_binding(structured_const_key, "stale_const_int");
+  expect_true(const_value && *const_value == 44,
+              "global const-int lookup should use complete structured identity before rendered names");
+  c4c::hir::CompileTimeValueBindingKey missing_const_key =
+      make_compile_time_state_value_key(
+          c4c::hir::CompileTimeValueBindingKeyKind::GlobalConstInt,
+          c4c::NK_GLOBAL_VAR, texts.intern("missing_const_int"));
+  const_value = state.find_const_int_binding(missing_const_key,
+                                             "stale_const_int");
+  expect_true(!const_value,
+              "global const-int lookup should fail closed after a complete structured miss");
+  const_value = state.find_const_int_binding(nullptr, "stale_const_int");
+  expect_true(const_value && *const_value == 33,
+              "global const-int lookup should keep rendered compatibility without metadata");
 }
 
 c4c::Node* make_hir_ref_overload_record(

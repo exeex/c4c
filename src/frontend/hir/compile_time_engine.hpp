@@ -315,6 +315,15 @@ make_global_enum_const_value_binding_key(const Node* enum_def,
   return key;
 }
 
+inline bool is_complete_compile_time_value_binding_key(
+    const CompileTimeValueBindingKey& key) {
+  if (!key.valid()) return false;
+  for (TextId segment : key.qualifier_segment_text_ids) {
+    if (segment == kInvalidText) return false;
+  }
+  return true;
+}
+
 enum class PendingTemplateTypeKind {
   DeclarationType,
   OwnerStruct,
@@ -1670,6 +1679,22 @@ struct CompileTimeState {
     return enum_consts_;
   }
 
+  /// Look up an enum constant by global value-binding identity. Complete
+  /// structured misses fail closed; no-metadata calls may use rendered names.
+  std::optional<long long> find_enum_const(
+      const CompileTimeValueBindingKey* key,
+      const std::string& rendered_name = {}) const {
+    return find_structured_value_entry(
+        key, rendered_name, CompileTimeValueBindingKeyKind::GlobalEnumConstant,
+        enum_consts_by_key_, enum_consts_);
+  }
+
+  std::optional<long long> find_enum_const(
+      const CompileTimeValueBindingKey& key,
+      const std::string& rendered_name = {}) const {
+    return find_enum_const(&key, rendered_name);
+  }
+
   /// Structured mirror of registered enum constants.
   const std::unordered_map<CompileTimeValueBindingKey, long long,
                            CompileTimeValueBindingKeyHash>&
@@ -1680,6 +1705,22 @@ struct CompileTimeState {
   /// Const reference to registered global const-int bindings used during consteval.
   const std::unordered_map<std::string, long long>& const_int_bindings() const {
     return const_int_bindings_;
+  }
+
+  /// Look up a global const-integer binding by value-binding identity. Complete
+  /// structured misses fail closed; no-metadata calls may use rendered names.
+  std::optional<long long> find_const_int_binding(
+      const CompileTimeValueBindingKey* key,
+      const std::string& rendered_name = {}) const {
+    return find_structured_value_entry(
+        key, rendered_name, CompileTimeValueBindingKeyKind::GlobalConstInt,
+        const_int_bindings_by_key_, const_int_bindings_);
+  }
+
+  std::optional<long long> find_const_int_binding(
+      const CompileTimeValueBindingKey& key,
+      const std::string& rendered_name = {}) const {
+    return find_const_int_binding(&key, rendered_name);
   }
 
   /// Structured mirror of registered global const-int bindings.
@@ -1981,6 +2022,30 @@ struct CompileTimeState {
       if (rendered_it != rendered_map.end()) return &rendered_it->second;
     }
     return nullptr;
+  }
+
+  static std::optional<long long> find_structured_value_entry(
+      const CompileTimeValueBindingKey* key,
+      const std::string& rendered_name,
+      CompileTimeValueBindingKeyKind binding_kind,
+      const std::unordered_map<CompileTimeValueBindingKey, long long,
+                               CompileTimeValueBindingKeyHash>& structured_map,
+      const std::unordered_map<std::string, long long>& rendered_map) {
+    if (key && key->binding_kind != binding_kind) {
+      return std::nullopt;
+    }
+    if (key) {
+      auto structured_it = structured_map.find(*key);
+      if (structured_it != structured_map.end()) return structured_it->second;
+      if (is_complete_compile_time_value_binding_key(*key)) {
+        return std::nullopt;
+      }
+    }
+    if (!rendered_name.empty()) {
+      auto rendered_it = rendered_map.find(rendered_name);
+      if (rendered_it != rendered_map.end()) return rendered_it->second;
+    }
+    return std::nullopt;
   }
 
   static std::optional<ConstEvalStructuredNameKey> make_consteval_function_key(
