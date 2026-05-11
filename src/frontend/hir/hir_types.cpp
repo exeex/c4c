@@ -310,6 +310,8 @@ void Lowerer::refresh_global_consteval_structured_maps(
 ConstEvalEnv Lowerer::make_lowerer_consteval_env(
     LowererConstEvalStructuredMaps& maps,
     const ConstMap* local_consts,
+    const ConstTextMap* local_consts_by_text,
+    const ConstStructuredMap* local_consts_by_key,
     bool include_named_consts) const {
   refresh_global_consteval_structured_maps(maps);
   ConstEvalEnv env{&enum_consts_,
@@ -318,6 +320,8 @@ ConstEvalEnv Lowerer::make_lowerer_consteval_env(
   env.enum_consts_by_key = &maps.enum_consts_by_key;
   env.enum_scopes_by_text = &enum_const_scopes_by_text_;
   env.enum_scopes_by_key = &enum_const_scopes_by_key_;
+  env.local_consts_by_text = local_consts_by_text;
+  env.local_consts_by_key = local_consts_by_key;
   if (include_named_consts) env.named_consts_by_key = &maps.named_consts_by_key;
   if (module_) {
     env.struct_defs = &module_->struct_defs;

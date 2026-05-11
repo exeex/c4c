@@ -751,7 +751,9 @@ bool Lowerer::resolve_ast_template_value_arg(
   if (ref->template_arg_exprs && ref->template_arg_exprs[index]) {
     LowererConstEvalStructuredMaps structured_maps;
     ConstEvalEnv env = make_lowerer_consteval_env(
-        structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
+        structured_maps, ctx ? &ctx->local_const_bindings : nullptr,
+        ctx ? &ctx->local_const_bindings_by_text : nullptr,
+        ctx ? &ctx->local_const_bindings_by_key : nullptr);
     if (ctx) {
       env.nttp_bindings = &ctx->nttp_bindings;
       if (!ctx->nttp_bindings_by_text.empty()) {
@@ -802,7 +804,9 @@ bool Lowerer::try_eval_template_value_arg_expr(
   if (!expr || !out_value) return false;
   LowererConstEvalStructuredMaps structured_maps;
   ConstEvalEnv env = make_lowerer_consteval_env(
-      structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
+      structured_maps, ctx ? &ctx->local_const_bindings : nullptr,
+      ctx ? &ctx->local_const_bindings_by_text : nullptr,
+      ctx ? &ctx->local_const_bindings_by_key : nullptr);
   if (ctx) {
     env.nttp_bindings = &ctx->nttp_bindings;
     if (!ctx->nttp_bindings_by_text.empty()) {

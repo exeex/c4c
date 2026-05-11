@@ -548,7 +548,8 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
     }
     LowererConstEvalStructuredMaps enum_consteval_maps;
     ConstEvalEnv enum_env =
-        make_lowerer_consteval_env(enum_consteval_maps, nullptr, false);
+        make_lowerer_consteval_env(enum_consteval_maps, nullptr, nullptr,
+                                   nullptr, false);
     if (auto enum_value = enum_env.lookup(n)) {
       TypeSpec ts{};
       ts.base = TB_INT;
@@ -922,7 +923,9 @@ ExprId Lowerer::lower_ternary_expr(FunctionCtx* ctx, const Node* n) {
   if (const Node* cond = (n->cond ? n->cond : n->left)) {
     LowererConstEvalStructuredMaps structured_maps;
     ConstEvalEnv env = make_lowerer_consteval_env(
-        structured_maps, ctx ? &ctx->local_const_bindings : nullptr, false);
+        structured_maps, ctx ? &ctx->local_const_bindings : nullptr,
+        ctx ? &ctx->local_const_bindings_by_text : nullptr,
+        ctx ? &ctx->local_const_bindings_by_key : nullptr, false);
     if (auto r = evaluate_constant_expr(cond, env); r.ok()) {
       return lower_expr(ctx, (r.as_int() != 0) ? n->then_ : n->else_);
     }

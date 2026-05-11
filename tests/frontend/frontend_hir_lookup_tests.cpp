@@ -4514,6 +4514,138 @@ void test_static_global_bridge_rendered_compat_uses_rendered_map() {
               "explicit static/global rendered compatibility should use rendered map for function-pointer lookup");
 }
 
+void test_local_const_binding_insertion_populates_source_maps() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.is_const = true;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  c4c::Node init{};
+  init.kind = c4c::NK_INT_LIT;
+  init.ival = 37;
+  init.type = int_ts;
+
+  const c4c::TextId local_text = texts.intern("local_const");
+  c4c::Node decl{};
+  decl.kind = c4c::NK_DECL;
+  decl.name = "local_const";
+  decl.unqualified_name = "local_const";
+  decl.unqualified_text_id = local_text;
+  decl.type = int_ts;
+  decl.init = &init;
+  decl.is_constexpr = true;
+
+  c4c::hir::Function fn;
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.fn = &fn;
+
+  lowerer.lower_local_decl_stmt(ctx, &decl);
+
+  const auto rendered_it = ctx.local_const_bindings.find("local_const");
+  expect_true(rendered_it != ctx.local_const_bindings.end() &&
+                  rendered_it->second == 37,
+              "foldable local const insertion should retain rendered compatibility map");
+  const auto text_it = ctx.local_const_bindings_by_text.find(local_text);
+  expect_true(text_it != ctx.local_const_bindings_by_text.end() &&
+                  text_it->second == 37,
+              "foldable local const insertion should populate source TextId map");
+  c4c::hir::ConstEvalStructuredNameKey key;
+  key.base_text_id = local_text;
+  const auto key_it = ctx.local_const_bindings_by_key.find(key);
+  expect_true(key_it != ctx.local_const_bindings_by_key.end() &&
+                  key_it->second == 37,
+              "foldable local const insertion should populate source key map");
+}
+
+void test_local_const_binding_source_text_id_beats_rendered_map() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId structured_text = texts.intern("structured_local_const");
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.local_const_bindings["stale_local_const"] = 11;
+  ctx.local_const_bindings_by_text[structured_text] = 29;
+  c4c::hir::ConstEvalStructuredNameKey key;
+  key.base_text_id = structured_text;
+  ctx.local_const_bindings_by_key[key] = 29;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "stale_local_const";
+  ref.unqualified_name = "structured_local_const";
+  ref.unqualified_text_id = structured_text;
+
+  c4c::hir::Lowerer::LowererConstEvalStructuredMaps structured_maps;
+  c4c::hir::ConstEvalEnv env = lowerer.make_lowerer_consteval_env(
+      structured_maps, &ctx.local_const_bindings,
+      &ctx.local_const_bindings_by_text, &ctx.local_const_bindings_by_key);
+  const c4c::hir::ConstEvalResult result =
+      c4c::hir::evaluate_constant_expr(&ref, env);
+  expect_true(result.ok() && result.as_int() == 29,
+              "local const lookup should prefer source TextId/key over stale rendered map");
+}
+
+void test_local_const_binding_text_miss_rejects_rendered_map() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.local_const_bindings["stale_local_const"] = 11;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "stale_local_const";
+  ref.unqualified_name = "missing_local_const";
+  ref.unqualified_text_id = texts.intern("missing_local_const");
+
+  c4c::hir::Lowerer::LowererConstEvalStructuredMaps structured_maps;
+  c4c::hir::ConstEvalEnv env = lowerer.make_lowerer_consteval_env(
+      structured_maps, &ctx.local_const_bindings,
+      &ctx.local_const_bindings_by_text, &ctx.local_const_bindings_by_key);
+  const c4c::hir::ConstEvalResult result =
+      c4c::hir::evaluate_constant_expr(&ref, env);
+  expect_true(!result.ok(),
+              "complete local const source miss should not use rendered fallback");
+}
+
+void test_local_const_binding_no_metadata_uses_rendered_map() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.local_const_bindings["__generated_local_const"] = 41;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "__generated_local_const";
+  ref.unqualified_name = "__generated_local_const";
+  ref.unqualified_text_id = c4c::kInvalidText;
+
+  c4c::hir::Lowerer::LowererConstEvalStructuredMaps structured_maps;
+  c4c::hir::ConstEvalEnv env = lowerer.make_lowerer_consteval_env(
+      structured_maps, &ctx.local_const_bindings,
+      &ctx.local_const_bindings_by_text, &ctx.local_const_bindings_by_key);
+  const c4c::hir::ConstEvalResult result =
+      c4c::hir::evaluate_constant_expr(&ref, env);
+  expect_true(result.ok() && result.as_int() == 41,
+              "no-metadata local const lookup should retain rendered compatibility");
+}
+
 void test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name() {
   c4c::hir::Module module;
   module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
@@ -5768,6 +5900,10 @@ int main() {
   test_static_global_bridge_source_text_id_beats_rendered_map();
   test_static_global_bridge_text_miss_rejects_rendered_map();
   test_static_global_bridge_rendered_compat_uses_rendered_map();
+  test_local_const_binding_insertion_populates_source_maps();
+  test_local_const_binding_source_text_id_beats_rendered_map();
+  test_local_const_binding_text_miss_rejects_rendered_map();
+  test_local_const_binding_no_metadata_uses_rendered_map();
   test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name();
   test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_name();
   test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag();

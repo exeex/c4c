@@ -7,8 +7,9 @@ void Lowerer::lower_if_stmt(FunctionCtx& ctx, const Node* n) {
   if (n->is_constexpr) {
     const Node* cond_node = n->cond ? n->cond : n->left;
     LowererConstEvalStructuredMaps structured_maps;
-    ConstEvalEnv cenv =
-        make_lowerer_consteval_env(structured_maps, &ctx.local_const_bindings);
+    ConstEvalEnv cenv = make_lowerer_consteval_env(
+        structured_maps, &ctx.local_const_bindings,
+        &ctx.local_const_bindings_by_text, &ctx.local_const_bindings_by_key);
     auto cr = evaluate_constant_expr(cond_node, cenv);
     if (cr.ok()) {
       if (cr.as_int()) {

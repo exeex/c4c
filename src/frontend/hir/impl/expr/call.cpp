@@ -811,7 +811,9 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
 
   LowererConstEvalStructuredMaps structured_maps;
   ConstEvalEnv arg_env = make_lowerer_consteval_env(
-      structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
+      structured_maps, ctx ? &ctx->local_const_bindings : nullptr,
+      ctx ? &ctx->local_const_bindings_by_text : nullptr,
+      ctx ? &ctx->local_const_bindings_by_key : nullptr);
   if (ctx && !ctx->nttp_bindings_by_text.empty()) {
     arg_env.nttp_bindings_by_text = &ctx->nttp_bindings_by_text;
   }

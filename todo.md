@@ -8,47 +8,50 @@ Current Step Title: Convert Remaining Metadata-Capable Paths
 
 ## Just Finished
 
-Completed plan Step 5 static/global bridge conversion for
-`FunctionCtx::static_globals`.
+Completed plan Step 5 local const binding conversion for
+`FunctionCtx::local_const_bindings`.
 
 Changed paths:
 - `src/frontend/hir/impl/lowerer.hpp`
 - `src/frontend/hir/hir_types.cpp`
+- `src/frontend/hir/impl/expr/call.cpp`
 - `src/frontend/hir/impl/expr/scalar_control.cpp`
+- `src/frontend/hir/impl/stmt/control_flow.cpp`
 - `src/frontend/hir/impl/stmt/decl.cpp`
 - `src/frontend/hir/impl/stmt/stmt.cpp`
+- `src/frontend/hir/impl/stmt/switch.cpp`
+- `src/frontend/hir/impl/templates/value_args.cpp`
 - `tests/frontend/frontend_hir_lookup_tests.cpp`
 
-Local extern/static bridge insertions now populate
-`static_global_ids_by_text_id` when the declaration carries complete source
-TextId metadata. `lower_var_expr`, `infer_generic_ctrl_type`, and
-`infer_call_result_type_from_callee` consult the structured static/global bridge
-before the rendered `static_globals` map, and complete source TextId misses no
-longer silently reopen the rendered map. Rendered lookup remains available for
-no-metadata references and for explicit generated/rendered compatibility marks.
+Foldable local constexpr/const integer declarations now retain the rendered
+`local_const_bindings` compatibility map while also populating source
+`TextId`/structured-key maps when the declaration has complete local source
+metadata. `make_lowerer_consteval_env` passes those local const metadata maps
+into `ConstEvalEnv`, and HIR local-const evaluation call sites now hand through
+the current `FunctionCtx` metadata maps. Block and statement-expression scope
+rollback preserves/restores the rendered and source local const maps together.
 
-Focused `frontend_hir_lookup_tests` coverage now proves source TextId hits beat
-stale rendered static/global entries, complete source TextId misses reject the
-rendered map across value/type/function-pointer lookup, and explicit rendered
-compatibility still works.
+Focused `frontend_hir_lookup_tests` coverage now proves local const insertion
+populates source maps, source TextId/key lookup beats a stale rendered name,
+complete source misses fail closed instead of reopening the rendered local const
+map, and invalid/no-metadata compatibility still uses the rendered map.
 
 ## Suggested Next
 
-Supervisor can hand this Step 5 static/global bridge slice to reviewer or
+Supervisor can hand this Step 5 `local_const_bindings` slice to reviewer or
 acceptance, or choose the next narrow metadata-capable lookup path if any Step 5
-blockers remain.
+items remain.
 
 ## Watchouts
 
-- `static_globals` is still retained as the rendered compatibility map and for
-  existing inspection/test fixtures; source references with complete TextId
-  metadata route through `static_global_ids_by_text_id` first.
-- No metadata/generated compatibility is explicit: invalid TextId references
-  use the rendered map, while valid TextId references require a structured hit
-  unless marked in the rendered static/global compatibility sets.
+- `local_const_bindings` remains the rendered no-metadata compatibility map.
+  Source references with complete local TextId metadata now fail closed for the
+  local-const domain when the source maps miss.
+- This packet intentionally did not expand into pack parameters or broader
+  consteval rewrites.
 
 ## Proof
 
-Ran delegated proof: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_template_struct_body_instantiation|llvm_gcc_c_torture_src_20000112_1_c|frontend_hir_tests|frontend_hir_lookup_tests|positive_sema_ok_local_fn_ptr_decl_c|backend_codegen_route_x86_64_function_pointer_param_direct_arg_observe_semantic_bir|cpp_positive_sema_c_style_cast_template_fn_ptr_param_type_parse_cpp|cpp_positive_sema_operator_this_out_of_class_runtime_cpp|cpp_positive_sema_template_deferred_method_cpp|cpp_positive_sema_template_struct_method_cpp|eastl_cpp_external_piecewise_construct_frontend_basic_cpp|eastl_cpp_external_utility_frontend_basic_cpp)$' > test_after.log`.
+Ran delegated proof: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_template_struct_body_instantiation|llvm_gcc_c_torture_src_20000112_1_c|frontend_hir_tests|frontend_hir_lookup_tests|positive_sema_ok_local_fn_ptr_decl_c|backend_codegen_route_x86_64_function_pointer_param_direct_arg_observe_semantic_bir|cpp_positive_sema_c_style_cast_template_fn_ptr_param_type_parse_cpp|cpp_positive_sema_operator_this_out_of_class_runtime_cpp|cpp_positive_sema_template_deferred_method_cpp|cpp_positive_sema_template_struct_method_cpp|eastl_cpp_external_piecewise_construct_frontend_basic_cpp|eastl_cpp_external_utility_frontend_basic_cpp|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_static_member_base_structured_metadata|cpp_hir_template_value_arg_static_member_trait)$' > test_after.log`.
 
-Result: passed; `test_after.log` contains 12/12 selected tests passing.
+Result: passed; `test_after.log` contains 15/15 selected tests passing.

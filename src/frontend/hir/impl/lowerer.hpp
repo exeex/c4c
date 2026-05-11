@@ -305,6 +305,8 @@ class Lowerer {
     std::unordered_map<std::string, BlockId> label_blocks;
     std::vector<SwitchCtx> switch_stack;
     std::unordered_map<std::string, long long> local_const_bindings;
+    ConstTextMap local_const_bindings_by_text;
+    ConstStructuredMap local_const_bindings_by_key;
     TypeBindings tpl_bindings;  // template param → concrete type for enclosing template fn
     HirTemplateTypeBindings structured_tpl_bindings;
     std::unordered_map<TextId, TypeSpec> tpl_bindings_by_text;
@@ -1290,6 +1292,8 @@ class Lowerer {
   ConstEvalEnv make_lowerer_consteval_env(
       LowererConstEvalStructuredMaps& maps,
       const ConstMap* local_consts = nullptr,
+      const ConstTextMap* local_consts_by_text = nullptr,
+      const ConstStructuredMap* local_consts_by_key = nullptr,
       bool include_named_consts = true) const;
   std::vector<PendingMethod> pending_methods_;
   // Deduced template call info: call_node → mangled name + bindings.

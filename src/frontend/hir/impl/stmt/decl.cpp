@@ -537,10 +537,18 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       !effective_decl_ts.is_lvalue_ref && !effective_decl_ts.is_rvalue_ref &&
       effective_decl_ts.ptr_level == 0 && effective_decl_ts.array_rank == 0) {
     LowererConstEvalStructuredMaps structured_maps;
-    ConstEvalEnv cenv =
-        make_lowerer_consteval_env(structured_maps, &ctx.local_const_bindings);
+    ConstEvalEnv cenv = make_lowerer_consteval_env(
+        structured_maps, &ctx.local_const_bindings,
+        &ctx.local_const_bindings_by_text, &ctx.local_const_bindings_by_key);
     if (auto cr = evaluate_constant_expr(n->init, cenv); cr.ok()) {
       ctx.local_const_bindings[n->name] = cr.as_int();
+      if (!n->is_global_qualified && n->n_qualifier_segments == 0 &&
+          n->unqualified_text_id != kInvalidText) {
+        ctx.local_const_bindings_by_text[n->unqualified_text_id] = cr.as_int();
+        ConstEvalStructuredNameKey key;
+        key.base_text_id = n->unqualified_text_id;
+        ctx.local_const_bindings_by_key[key] = cr.as_int();
+      }
     }
   }
   append_stmt(ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});

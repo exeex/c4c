@@ -338,6 +338,8 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
       const size_t saved_enum_text_scope_depth = enum_const_scopes_by_text_.size();
       const size_t saved_enum_key_scope_depth = enum_const_scopes_by_key_.size();
       const auto saved_local_consts = ctx.local_const_bindings;
+      const auto saved_local_consts_by_text = ctx.local_const_bindings_by_text;
+      const auto saved_local_consts_by_key = ctx.local_const_bindings_by_key;
       const size_t saved_dtor_depth = ctx.dtor_stack.size();
       for (int i = 0; i < n->n_children; ++i) {
         lower_stmt_node(ctx, n->children[i]);
@@ -364,6 +366,8 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
         enum_const_scopes_by_key_.resize(saved_enum_key_scope_depth);
         enum_consts_ = saved_enum_consts;
         ctx.local_const_bindings = saved_local_consts;
+        ctx.local_const_bindings_by_text = saved_local_consts_by_text;
+        ctx.local_const_bindings_by_key = saved_local_consts_by_key;
       }
       return;
     }
@@ -574,6 +578,8 @@ ExprId Lowerer::lower_stmt_expr_block(FunctionCtx& ctx,
   const size_t saved_enum_text_scope_depth = enum_const_scopes_by_text_.size();
   const size_t saved_enum_key_scope_depth = enum_const_scopes_by_key_.size();
   const auto saved_local_consts = ctx.local_const_bindings;
+  const auto saved_local_consts_by_text = ctx.local_const_bindings_by_text;
+  const auto saved_local_consts_by_key = ctx.local_const_bindings_by_key;
 
   ExprId result{};
   bool have_result = false;
@@ -606,6 +612,8 @@ ExprId Lowerer::lower_stmt_expr_block(FunctionCtx& ctx,
     enum_const_scopes_by_key_.resize(saved_enum_key_scope_depth);
     enum_consts_ = saved_enum_consts;
     ctx.local_const_bindings = saved_local_consts;
+    ctx.local_const_bindings_by_text = saved_local_consts_by_text;
+    ctx.local_const_bindings_by_key = saved_local_consts_by_key;
   }
 
   if (have_result) return result;
