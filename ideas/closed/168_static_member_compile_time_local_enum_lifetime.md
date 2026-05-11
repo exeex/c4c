@@ -1,7 +1,8 @@
 # Static Member Compile-Time Local Enum Lifetime
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-11
 
 Parent Ideas:
 - `ideas/closed/167_local_block_enum_scope_static_eval_structured_mirrors.md`
@@ -65,6 +66,44 @@ enum authority in static-member or compile-time-engine contexts.
 - Focused tests cover same-spelled local/block enum constants for each converted
   static-member or compile-time-engine path, or the inventory documents why no
   such path is currently reachable.
+
+## Closure Summary
+
+Completed as a documented compatibility-boundary outcome rather than a behavior
+conversion.
+
+The final inventory found no reachable static-member initializer or
+compile-time-engine enum lookup path that currently carries enough scoped
+local/block enum lifetime metadata to convert honestly. The lowerer-owned
+`ConstEvalEnv` scoped enum stacks from idea 167 remain the only observed
+scoped-lifetime capable local/block enum route.
+
+Retained boundaries are fenced as compatibility, not local/block enum
+authority:
+
+- `StaticEvalIntEnumLookupInput` remains global/static-eval compatibility until
+  a caller needing local/block enum authority routes through `ConstEvalEnv` or
+  carries an explicit scoped stack.
+- `CompileTimeState::enum_consts_` and `enum_consts_by_key_` remain rendered and
+  global structured registries until engine work items carry explicit
+  local/block enum lifetime metadata.
+- `make_engine_consteval_env` remains a global registry projection into
+  `ConstEvalEnv` until engine-side pending work can prove scoped lifetime
+  without extending lowerer block scopes past their source lifetime.
+- `eval_struct_static_member_value_hir` remains a static-member/template
+  compatibility bridge until callers pass honest enum scope lifetime metadata.
+- Static-member rendered maps remain compatibility mirrors; owner/member keyed
+  maps are static-member authority only, not local/block enum authority.
+
+No residual blocker remains for this idea. Any future conversion requires a new
+source initiative that introduces a real scoped lifetime carrier for a reachable
+static-member or compile-time-engine path.
+
+Final proof:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_sema_consteval_type_utils_structured_metadata|frontend_hir_tests|frontend_hir_lookup_tests|cpp_hir_static_member_base_structured_metadata|cpp_hir_template_value_arg_static_member_trait)$' > test_after.log`
+
+`test_after.log` reported 5/5 tests passed. The accepted full-suite baseline
+remains 3135/0.
 
 ## Reviewer Reject Signals
 
