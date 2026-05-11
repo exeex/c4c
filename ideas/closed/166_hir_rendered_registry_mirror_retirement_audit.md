@@ -1,7 +1,8 @@
 # HIR Rendered Registry Mirror Retirement Audit
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-11
 
 Parent Ideas:
 - `ideas/closed/161_hir_template_binding_domain_key_authority.md`
@@ -68,6 +69,22 @@ Candidate rendered registries include:
 - Retained mirrors have owner, limitation, and removal condition documented.
 - Tests prove structured-domain separation for at least records/templates and
   function/global lookup paths still using rendered mirrors.
+
+## Closure Summary
+
+The active runbook completed registry classification, retirement, narrowing,
+and fencing across HIR module registries, compile-time registries, and lowerer
+registries. Retained rendered maps are documented as compatibility,
+display/order, diagnostic, no-metadata, or route-local generated-name bridges
+rather than ordinary semantic authority for complete structured callers.
+
+Final closure proof used the focused HIR registry coverage in
+`test_before.log` and regenerated `test_after.log` with:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests)$' > test_after.log 2>&1`.
+Both logs passed `frontend_hir_tests` and `frontend_hir_lookup_tests` with no
+failures. The close-time regression guard passed with
+`--allow-non-decreasing-passed` because the focused baseline was already fully
+green.
 
 ## Reviewer Reject Signals
 
