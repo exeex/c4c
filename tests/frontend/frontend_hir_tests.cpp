@@ -3173,7 +3173,7 @@ void test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_t
               "stale rendered static member const values should be detected when structured lookup wins");
 }
 
-void test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key() {
+void test_hir_static_member_const_lookup_keeps_no_owner_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -3184,7 +3184,7 @@ void test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_k
       lowerer.find_struct_static_member_const_value("LegacyRendered", "value");
 
   expect_true(value.has_value() && *value == 31,
-              "static member const lookup should preserve rendered fallback when no owner key exists");
+              "static member const lookup should preserve no-owner rendered compatibility");
 }
 
 void test_hir_static_member_const_lookup_structured_miss_keeps_base_fallback() {
@@ -3294,7 +3294,7 @@ void test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_ta
               "stale rendered static member decls should be detected when structured lookup wins");
 }
 
-void test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key() {
+void test_hir_static_member_decl_lookup_keeps_no_owner_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -3308,7 +3308,7 @@ void test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_ke
       lowerer.find_struct_static_member_decl("LegacyRendered", "value");
 
   expect_true(decl == &rendered_decl,
-              "static member decl lookup should preserve rendered fallback when no owner key exists");
+              "static member decl lookup should preserve no-owner rendered compatibility");
 }
 
 void test_hir_static_member_decl_lookup_rejects_rendered_fallback_after_owner_key_miss() {
@@ -7106,11 +7106,11 @@ int main() {
   test_hir_member_owner_lookup_template_args_failure_does_not_use_stale_tag();
   test_hir_member_expr_owner_failure_does_not_use_stale_tag();
   test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_tag();
-  test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_static_member_const_lookup_keeps_no_owner_rendered_compatibility();
   test_hir_static_member_const_lookup_structured_miss_keeps_base_fallback();
   test_hir_static_member_const_lookup_rejects_rendered_fallback_after_owner_key_miss();
   test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag();
-  test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_static_member_decl_lookup_keeps_no_owner_rendered_compatibility();
   test_hir_static_member_decl_lookup_rejects_rendered_fallback_after_owner_key_miss();
   test_hir_static_member_decl_lookup_keeps_owner_key_base_fallback();
   test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spelling();

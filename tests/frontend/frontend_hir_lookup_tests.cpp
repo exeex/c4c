@@ -836,11 +836,11 @@ void test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps(
   const c4c::Node* rendered_member =
       lowerer.find_struct_static_member_decl("RenderedOwner", "value");
   expect_true(rendered_member == &structured_member,
-              "static-member lookup should prefer owner-key authority over stale rendered maps");
+              "static-member lookup should prefer owner-key authority over stale no-owner rendered compatibility maps");
   expect_true(lowerer.struct_static_member_decl_lookup_parity_checks_ == 1,
               "static-member owner-key lookup should run a parity check");
   expect_true(lowerer.struct_static_member_decl_lookup_parity_mismatches_ == 1,
-              "static-member owner-key lookup should detect stale rendered authority");
+              "static-member owner-key lookup should detect stale rendered compatibility data");
 
   const std::optional<std::string> rendered_method =
       lowerer.find_struct_method_mangled("RenderedOwner", "method", false);

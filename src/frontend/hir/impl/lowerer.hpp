@@ -406,6 +406,9 @@ class Lowerer {
 
   void append_stmt(FunctionCtx& ctx, Stmt stmt);
 
+  // Rendered tag/member compatibility entry point for callers that do not
+  // carry a complete owner key. Complete owner-key misses fail closed in the
+  // overload below before this rendered map path is considered.
   const Node* find_struct_static_member_decl(const std::string& tag,
                                              const std::string& member) const;
   const Node* find_struct_static_member_decl(
@@ -413,6 +416,9 @@ class Lowerer {
       const std::string* rendered_tag = nullptr,
       const std::string* rendered_member = nullptr) const;
 
+  // Rendered tag/member compatibility entry point for callers that do not
+  // carry a complete owner key. Complete owner-key misses fail closed in the
+  // overload below except for structured base/template trait paths.
   std::optional<long long> find_struct_static_member_const_value(
       const std::string& tag, const std::string& member) const;
   std::optional<long long> find_struct_static_member_const_value(
@@ -1262,7 +1268,11 @@ class Lowerer {
   // (primary template + concrete bindings), not by printed/mangled name.
   std::unordered_set<TemplateStructInstanceKey, TemplateStructInstanceKeyHash>
       instantiated_tpl_struct_keys_;
-  // Static data members indexed by owning struct tag and member name.
+  // Static data members indexed by rendered owner tag and rendered member name.
+  // These are no-owner compatibility mirrors only. Authoritative lookup uses
+  // the HirStructMemberLookupKey maps below, and complete owner-key misses must
+  // fail closed before consulting these rendered maps, except for structured
+  // base/template trait fallback paths.
   std::unordered_map<std::string, std::unordered_map<std::string, const Node*>> struct_static_member_decls_;
   std::unordered_map<std::string, std::unordered_map<std::string, long long>>
       struct_static_member_const_values_;

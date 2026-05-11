@@ -2034,6 +2034,8 @@ const Node* Lowerer::find_struct_static_member_decl(
     }
     return nullptr;
   }
+  // No-owner rendered compatibility: only callers without complete owner/member
+  // metadata may read the rendered static-member declaration map directly.
   auto sit = struct_static_member_decls_.find(tag);
   if (sit != struct_static_member_decls_.end()) {
     auto mit = sit->second.find(member);
@@ -2058,6 +2060,9 @@ const Node* Lowerer::find_struct_static_member_decl(
     const HirStructMemberLookupKey& key,
     const std::string* rendered_tag,
     const std::string* rendered_member) const {
+  // Complete keys remain authoritative and do not fall through to rendered
+  // tag/member lookup. Static-member declarations keep no-owner rendered
+  // compatibility through the tag/member overload above.
   if (!hir_struct_member_lookup_key_has_complete_metadata(key)) return nullptr;
   const auto owner_it = struct_static_member_decls_by_owner_.find(key);
   if (owner_it != struct_static_member_decls_by_owner_.end() &&
@@ -2236,6 +2241,8 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
     }
     return std::nullopt;
   }
+  // No-owner rendered compatibility: only callers without complete owner/member
+  // metadata may read the rendered static-member const-value map directly.
   auto sit = struct_static_member_const_values_.find(tag);
   if (sit != struct_static_member_const_values_.end()) {
     auto mit = sit->second.find(member);
@@ -2262,6 +2269,9 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
     const HirStructMemberLookupKey& key,
     const std::string* rendered_tag,
     const std::string* rendered_member) const {
+  // Explicit no-owner rendered compatibility. Complete keys remain
+  // authoritative, with only structured base/template trait paths below allowed
+  // after an owner-key miss.
   if (!hir_struct_member_lookup_key_has_complete_metadata(key)) {
     if (rendered_tag && rendered_member) {
       return find_struct_static_member_const_value(*rendered_tag, *rendered_member);
