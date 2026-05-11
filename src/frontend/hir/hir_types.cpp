@@ -2004,6 +2004,116 @@ const Node* Lowerer::find_struct_static_member_decl(
 
 std::optional<long long> Lowerer::find_struct_static_member_const_value(
     const std::string& tag, const std::string& member) const {
+  auto try_selected_template_pattern = [&]() -> std::optional<long long> {
+    const auto node_it = struct_def_nodes_.find(tag);
+    if (node_it == struct_def_nodes_.end() || !node_it->second) {
+      return std::nullopt;
+    }
+    const Node* owner = node_it->second;
+    const char* origin =
+        (owner->template_origin_name && owner->template_origin_name[0])
+            ? owner->template_origin_name
+            : nullptr;
+    if (!origin || owner->n_template_args <= 0) return std::nullopt;
+    std::vector<HirTemplateArg> actual_args;
+    actual_args.reserve(owner->n_template_args);
+    for (int i = 0; i < owner->n_template_args; ++i) {
+      HirTemplateArg arg{};
+      arg.is_value =
+          owner->template_arg_is_value && owner->template_arg_is_value[i];
+      if (arg.is_value) {
+        arg.value = owner->template_arg_values ? owner->template_arg_values[i] : 0;
+      } else if (owner->template_arg_types) {
+        arg.type = owner->template_arg_types[i];
+      }
+      actual_args.push_back(arg);
+    }
+    const Node* primary = find_template_struct_primary(origin);
+    if (!primary) {
+      const auto primary_it = struct_def_nodes_.find(origin);
+      if (primary_it != struct_def_nodes_.end()) primary = primary_it->second;
+    }
+    if (!primary) return std::nullopt;
+    TemplateStructEnv env = build_template_struct_env(primary);
+    SelectedTemplateStructPattern selected =
+        select_template_struct_pattern_hir(actual_args, env);
+    if (!selected.selected_pattern) return std::nullopt;
+    long long value = 0;
+    if (eval_struct_static_member_value_hir(
+            selected.selected_pattern, struct_def_nodes_, member,
+            &selected.nttp_bindings, &value)) {
+      return value;
+    }
+    if (selected.selected_pattern == primary) return std::nullopt;
+    for (int bi = 0; bi < selected.selected_pattern->n_bases; ++bi) {
+      const TypeSpec& base_ts = selected.selected_pattern->base_types[bi];
+      if (!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) continue;
+      const Node* base_primary = find_template_struct_primary(base_ts.tpl_struct_origin);
+      if (!base_primary) {
+        const auto base_primary_it =
+            struct_def_nodes_.find(base_ts.tpl_struct_origin);
+        if (base_primary_it != struct_def_nodes_.end()) {
+          base_primary = base_primary_it->second;
+        }
+      }
+      if (!base_primary) continue;
+      ResolvedTemplateArgs resolved_base;
+      const int base_arg_count =
+          base_ts.tpl_struct_args.data ? base_ts.tpl_struct_args.size : 0;
+      resolved_base.concrete_args.reserve(base_arg_count);
+      for (int ai = 0; ai < base_arg_count; ++ai) {
+        const TemplateArgRef& ref = base_ts.tpl_struct_args.data[ai];
+        HirTemplateArg arg{};
+        arg.is_value = ref.kind == TemplateArgKind::Value;
+        if (arg.is_value) {
+          arg.value = ref.value;
+          if (ref.nttp_param_kind == TemplateParamDomainKind::NonType &&
+              ref.debug_text && ref.debug_text[0]) {
+            auto bound = selected.nttp_bindings.find(ref.debug_text);
+            if (bound != selected.nttp_bindings.end()) arg.value = bound->second;
+          }
+        } else {
+          arg.type = ref.type;
+          if (arg.type.template_param_text_id != kInvalidText) {
+            for (const auto& [name, bound] : selected.type_bindings) {
+              if (ref.debug_text && name == ref.debug_text) {
+                arg.type = bound;
+                break;
+              }
+            }
+          }
+        }
+        resolved_base.concrete_args.push_back(arg);
+      }
+      for (int pi = 0; pi < base_primary->n_template_params &&
+                       pi < static_cast<int>(resolved_base.concrete_args.size());
+           ++pi) {
+        if (!base_primary->template_param_names ||
+            !base_primary->template_param_names[pi]) {
+          continue;
+        }
+        const char* param_name = base_primary->template_param_names[pi];
+        const HirTemplateArg& arg = resolved_base.concrete_args[pi];
+        if (base_primary->template_param_is_nttp &&
+            base_primary->template_param_is_nttp[pi]) {
+          resolved_base.nttp_bindings.push_back({param_name, arg.value});
+        } else {
+          resolved_base.type_bindings.push_back({param_name, arg.type});
+        }
+      }
+      TemplateStructEnv base_env = build_template_struct_env(base_primary);
+      SelectedTemplateStructPattern selected_base =
+          select_template_struct_pattern_hir(resolved_base.concrete_args, base_env);
+      const Node* base_pattern =
+          selected_base.selected_pattern ? selected_base.selected_pattern : base_primary;
+      const std::string base_tag = build_template_mangled_name(
+          base_primary, base_pattern, base_ts.tpl_struct_origin, resolved_base);
+      if (auto inherited = find_struct_static_member_const_value(base_tag, member)) {
+        return inherited;
+      }
+    }
+    return std::nullopt;
+  };
   const auto owner_key = make_struct_member_lookup_key(tag, member);
   if (owner_key) {
     const auto owner_it = struct_static_member_const_values_by_owner_.find(*owner_key);
@@ -2018,6 +2128,9 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
       }
       return owner_it->second;
     }
+    if (auto selected_value = try_selected_template_pattern()) {
+      return selected_value;
+    }
     if (module_) {
       if (const HirStructDef* structured =
               module_->find_struct_def_by_owner_structured(owner_key->owner_key)) {
@@ -2028,6 +2141,10 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
           }
         }
       }
+    }
+    if (auto trait_value =
+            try_eval_instantiated_struct_static_member_const(tag, member)) {
+      return trait_value;
     }
     return std::nullopt;
   }
@@ -2090,6 +2207,12 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
   for (const auto& base_tag : structured->base_tags) {
     if (auto from_base = find_struct_static_member_const_value(base_tag, member)) {
       return from_base;
+    }
+  }
+  if (rendered_tag && *rendered_tag == structured->tag) {
+    if (auto trait_value =
+            try_eval_instantiated_struct_static_member_const(*rendered_tag, member)) {
+      return trait_value;
     }
   }
   return std::nullopt;
