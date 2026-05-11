@@ -97,7 +97,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
   }
 
   const std::string callee_name = n->left->name;
-  std::optional<std::string> structured_callee_tag;
+  std::optional<std::string> lookup_callee_tag;
   {
     TypeSpec owner_ts = n->left->type;
     bool has_structured_owner = false;
@@ -148,18 +148,19 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
           primary_tpl);
       const std::string* current_struct_tag =
           (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
-      structured_callee_tag = resolve_member_lookup_owner_tag(
+      lookup_callee_tag = resolve_lowerer_registry_struct_tag(
           owner_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
           ctx ? &ctx->nttp_bindings : nullptr, current_struct_tag, n->left,
-          "direct-ctor-owner");
+          "direct-ctor-owner", &callee_name);
+    } else {
+      lookup_callee_tag = callee_name;
     }
   }
-  const std::string lookup_callee_tag =
-      structured_callee_tag.value_or(callee_name);
+  if (!lookup_callee_tag || lookup_callee_tag->empty()) return std::nullopt;
 
   if (n->n_children == 0) {
-    auto sit = module_->struct_defs.find(lookup_callee_tag);
-    auto cit = struct_constructors_.find(lookup_callee_tag);
+    auto sit = module_->struct_defs.find(*lookup_callee_tag);
+    auto cit = struct_constructors_.find(*lookup_callee_tag);
     if (sit != module_->struct_defs.end() &&
         (cit == struct_constructors_.end() || cit->second.empty())) {
       TypeSpec tmp_ts{};
@@ -187,8 +188,8 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
     }
   }
 
-  auto cit = struct_constructors_.find(lookup_callee_tag);
-  auto sit = module_->struct_defs.find(lookup_callee_tag);
+  auto cit = struct_constructors_.find(*lookup_callee_tag);
+  auto sit = module_->struct_defs.find(*lookup_callee_tag);
   if (cit == struct_constructors_.end() || sit == module_->struct_defs.end()) {
     return std::nullopt;
   }
@@ -250,12 +251,12 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
   if (!best) return std::nullopt;
   if (best->method_node->is_deleted) {
     std::string diag = "error: call to deleted constructor '";
-    diag += lookup_callee_tag;
+    diag += *lookup_callee_tag;
     diag += "'";
     throw std::runtime_error(diag);
   }
   const std::string ctor_mangled = ensure_constructor_overload_lowered(
-      *best, lookup_callee_tag, ctx, n->children, n->n_children);
+      *best, *lookup_callee_tag, ctx, n->children, n->n_children);
 
   TypeSpec tmp_ts{};
   populate_struct_owner_typespec(tmp_ts, sit->second.tag, 0);
@@ -1027,6 +1028,12 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
     }
   }
   if (op_fn.empty()) op_fn = is_array ? "operator_new_array" : "operator_new";
+  const std::optional<std::string> alloc_ctor_owner_tag =
+      alloc_ts.base == TB_STRUCT
+          ? resolve_lowerer_registry_struct_tag(
+                alloc_ts, false, tpl_bindings, nttp_bindings, current_struct_tag,
+                n, "new-expression-constructor-owner")
+          : std::nullopt;
   TypeSpec void_ptr_ts{};
   void_ptr_ts.base = TB_VOID;
   void_ptr_ts.ptr_level = 1;
@@ -1059,8 +1066,9 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
   cast.to_type = qtype_from(result_ts, ValueCategory::RValue);
   cast.expr = raw_ptr;
   ExprId typed_ptr = append_expr(n, cast, result_ts);
-  if (n->n_children > 0 && !alloc_owner_tag.empty()) {
-    auto cit = struct_constructors_.find(alloc_owner_tag);
+  if (n->n_children > 0 && alloc_ctor_owner_tag &&
+      !alloc_ctor_owner_tag->empty()) {
+    auto cit = struct_constructors_.find(*alloc_ctor_owner_tag);
     if (cit != struct_constructors_.end() && !cit->second.empty()) {
       const CtorOverload* best = nullptr;
       if (cit->second.size() == 1) {

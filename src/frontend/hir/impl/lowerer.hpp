@@ -460,6 +460,15 @@ class Lowerer {
       const std::string* current_struct_tag,
       const Node* span_node,
       const std::string& context_name);
+  std::optional<std::string> resolve_lowerer_registry_struct_tag(
+      TypeSpec owner_ts,
+      bool is_arrow,
+      const TypeBindings* tpl_bindings,
+      const NttpBindings* nttp_bindings,
+      const std::string* current_struct_tag,
+      const Node* span_node,
+      const std::string& context_name,
+      const std::string* rendered_compat_tag = nullptr);
   std::optional<HirStructMethodLookupKey> make_struct_method_lookup_key(
       const std::string& tag,
       const std::string& method,

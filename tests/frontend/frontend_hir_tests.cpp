@@ -4712,6 +4712,124 @@ void test_hir_direct_constructor_call_prefers_record_def_over_stale_tag() {
               "direct constructor routing should not select the stale rendered constructor when record_def identity is available");
 }
 
+void test_hir_direct_constructor_call_rejects_stale_rendered_after_owner_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* unresolved_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  unresolved_record->name = arena.strdup("UnresolvedDirectCtorOwner");
+  unresolved_record->unqualified_name =
+      arena.strdup("UnresolvedDirectCtorOwner");
+  unresolved_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(unresolved_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a complete owner key for direct constructor miss");
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleDirectCtorMiss";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleDirectCtorMiss");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* stale_ctor = parser.make_node(c4c::NK_FUNCTION, 0);
+  stale_ctor->name = arena.strdup("StaleDirectCtorMiss");
+  stale_ctor->is_constructor = true;
+  stale_ctor->n_params = 0;
+  lowerer.struct_constructors_["StaleDirectCtorMiss"].push_back(
+      {"StaleDirectCtorMiss__ctor", stale_ctor});
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag_text_id = module.link_name_texts->intern("StaleDirectCtorMiss");
+  owner_ts.record_def = unresolved_record;
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 0);
+  callee->name = arena.strdup("StaleDirectCtorMiss");
+  callee->type = owner_ts;
+  c4c::Node* call_node = parser.make_node(c4c::NK_CALL, 1);
+  call_node->left = callee;
+  call_node->n_children = 0;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+
+  const std::optional<c4c::hir::ExprId> result =
+      lowerer.try_lower_direct_struct_constructor_call(&ctx, call_node);
+  expect_true(!result.has_value(),
+              "complete structured direct constructor miss must not use stale rendered constructor");
+}
+
+void test_hir_direct_constructor_call_keeps_rendered_fallback_without_owner_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef compat_def;
+  compat_def.tag = "CompatDirectCtor";
+  compat_def.tag_text_id = module.link_name_texts->intern("CompatDirectCtor");
+  module.struct_defs[compat_def.tag] = compat_def;
+
+  c4c::Node* ctor = parser.make_node(c4c::NK_FUNCTION, 0);
+  ctor->name = arena.strdup("CompatDirectCtor");
+  ctor->is_constructor = true;
+  ctor->n_params = 0;
+  lowerer.struct_constructors_["CompatDirectCtor"].push_back(
+      {"CompatDirectCtor__ctor", ctor});
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 0);
+  callee->name = arena.strdup("CompatDirectCtor");
+  callee->type = owner_ts;
+  c4c::Node* call_node = parser.make_node(c4c::NK_CALL, 1);
+  call_node->left = callee;
+  call_node->n_children = 0;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+
+  const std::optional<c4c::hir::ExprId> result =
+      lowerer.try_lower_direct_struct_constructor_call(&ctx, call_node);
+  expect_true(result.has_value() && result->valid(),
+              "direct constructor without owner metadata should keep rendered compatibility");
+
+  const c4c::hir::CallExpr* ctor_call = nullptr;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    if (const auto* call = std::get_if<c4c::hir::CallExpr>(&expr.payload)) {
+      ctor_call = call;
+      break;
+    }
+  }
+  expect_true(ctor_call != nullptr,
+              "rendered compatibility constructor should emit a call");
+  const c4c::hir::Expr* callee_expr = module.find_expr(ctor_call->callee);
+  expect_true(callee_expr != nullptr,
+              "rendered compatibility constructor should have a callee");
+  const c4c::hir::DeclRef* ctor_ref =
+      std::get_if<c4c::hir::DeclRef>(&callee_expr->payload);
+  expect_true(ctor_ref != nullptr && ctor_ref->name == "CompatDirectCtor__ctor",
+              "rendered compatibility constructor should use rendered map entry");
+}
+
 void test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -5696,6 +5814,86 @@ void test_hir_local_decl_member_dtor_tracking_prefers_record_def_over_stale_tag(
               "local declaration with member dtors should be tracked for scope exit");
   expect_eq(ctx.dtor_stack.back().struct_tag, "RealLocalMemberDtor",
             "local member-dtor tracking should use structured owner before stale rendered tag");
+}
+
+void test_hir_member_dtor_lookup_rejects_stale_rendered_after_owner_miss() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* unresolved_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  unresolved_record->name = arena.strdup("UnresolvedMemberDtor");
+  unresolved_record->unqualified_name = arena.strdup("UnresolvedMemberDtor");
+  unresolved_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(unresolved_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a complete owner key for member destructor miss");
+
+  c4c::TypeSpec field_ts{};
+  field_ts.base = c4c::TB_STRUCT;
+  field_ts.tag_text_id = module.link_name_texts->intern("StaleMemberDtorMiss");
+  field_ts.record_def = unresolved_record;
+  field_ts.array_size = -1;
+  field_ts.inner_rank = -1;
+
+  c4c::hir::HirStructField field;
+  field.name = "field";
+  field.field_text_id = module.link_name_texts->intern("field");
+  field.elem_type = field_ts;
+  c4c::hir::HirStructDef outer_def;
+  outer_def.tag = "OuterMemberDtorMiss";
+  outer_def.tag_text_id = module.link_name_texts->intern("OuterMemberDtorMiss");
+  outer_def.fields.push_back(field);
+  module.struct_defs[outer_def.tag] = outer_def;
+
+  c4c::Node* stale_dtor = parser.make_node(c4c::NK_FUNCTION, 1);
+  stale_dtor->is_destructor = true;
+  stale_dtor->type.base = c4c::TB_VOID;
+  lowerer.struct_destructors_["StaleMemberDtorMiss"] = {
+      "StaleMemberDtorMiss__dtor", stale_dtor};
+
+  expect_true(!lowerer.struct_has_member_dtors("OuterMemberDtorMiss"),
+              "complete structured member destructor miss must not use stale rendered destructor");
+}
+
+void test_hir_member_dtor_lookup_keeps_rendered_fallback_without_owner_key() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec field_ts{};
+  field_ts.base = c4c::TB_STRUCT;
+  field_ts.tag_text_id = module.link_name_texts->intern("CompatMemberDtor");
+  field_ts.array_size = -1;
+  field_ts.inner_rank = -1;
+
+  c4c::hir::HirStructField field;
+  field.name = "field";
+  field.field_text_id = module.link_name_texts->intern("field");
+  field.elem_type = field_ts;
+  c4c::hir::HirStructDef outer_def;
+  outer_def.tag = "OuterCompatMemberDtor";
+  outer_def.tag_text_id = module.link_name_texts->intern("OuterCompatMemberDtor");
+  outer_def.fields.push_back(field);
+  module.struct_defs[outer_def.tag] = outer_def;
+
+  c4c::Node* dtor = parser.make_node(c4c::NK_FUNCTION, 1);
+  dtor->is_destructor = true;
+  dtor->type.base = c4c::TB_VOID;
+  lowerer.struct_destructors_["CompatMemberDtor"] = {
+      "CompatMemberDtor__dtor", dtor};
+
+  expect_true(lowerer.struct_has_member_dtors("OuterCompatMemberDtor"),
+              "member destructor without owner metadata should keep rendered compatibility");
 }
 
 void test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag() {
@@ -6776,6 +6974,8 @@ int main() {
   test_hir_generic_ctrl_member_inference_rejects_stale_tag_after_text_miss();
   test_hir_member_call_method_owner_prefers_record_def_over_stale_tag();
   test_hir_direct_constructor_call_prefers_record_def_over_stale_tag();
+  test_hir_direct_constructor_call_rejects_stale_rendered_after_owner_miss();
+  test_hir_direct_constructor_call_keeps_rendered_fallback_without_owner_key();
   test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag();
   test_hir_delete_expr_method_owner_prefers_record_def_over_stale_tag();
   test_hir_init_list_member_symbol_prefers_record_def_over_stale_tag();
@@ -6787,6 +6987,8 @@ int main() {
   test_hir_local_decl_copy_constructor_prefers_record_def_over_stale_tag();
   test_hir_local_decl_destructor_prefers_record_def_over_stale_tag();
   test_hir_local_decl_member_dtor_tracking_prefers_record_def_over_stale_tag();
+  test_hir_member_dtor_lookup_rejects_stale_rendered_after_owner_miss();
+  test_hir_member_dtor_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_defaulted_copy_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_member_dtor_member_symbol_prefers_record_def_over_stale_tag();
   test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag();

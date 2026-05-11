@@ -95,7 +95,9 @@ bool Lowerer::struct_has_member_dtors(const std::string& tag) {
   auto sit = module_->struct_defs.find(tag);
   if (sit == module_->struct_defs.end()) return false;
   for (auto it = sit->second.fields.rbegin(); it != sit->second.fields.rend(); ++it) {
-    if (auto ftag = resolve_struct_type_tag_from_metadata(it->elem_type)) {
+    if (auto ftag = resolve_lowerer_registry_struct_tag(
+            it->elem_type, false, nullptr, nullptr, nullptr, nullptr,
+            "member-dtor-presence-owner")) {
       if (struct_destructors_.count(*ftag) || struct_has_member_dtors(*ftag)) return true;
     }
   }
@@ -216,7 +218,10 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
   const auto& fields = sit->second.fields;
   for (auto it = fields.rbegin(); it != fields.rend(); ++it) {
     const auto& field = *it;
-    std::optional<std::string> ftag = resolve_struct_type_tag_from_metadata(field.elem_type);
+    std::optional<std::string> ftag = resolve_lowerer_registry_struct_tag(
+        field.elem_type, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
+        &ctx.method_struct_tag, span_node,
+        std::string("member-dtor-field-owner:") + field.name);
     if (!ftag) continue;
     bool has_explicit_dtor = struct_destructors_.count(*ftag) > 0;
     bool has_member_dtors = struct_has_member_dtors(*ftag);
@@ -956,16 +961,11 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       bool did_ctor_call = false;
       std::string field_ctor_tag;
       if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0) {
-        const bool has_structured_field_owner =
-            field_ts.record_def || field_ts.tpl_struct_origin ||
-            (field_ts.tpl_struct_args.data && field_ts.tpl_struct_args.size > 0);
-        if (has_structured_field_owner) {
-          if (auto owner_tag = resolve_member_lookup_owner_tag(
-                  field_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
-                  &ctx.method_struct_tag, method_node,
-                  std::string("ctor-init-field-constructor-owner:") + mem_name)) {
-            field_ctor_tag = *owner_tag;
-          }
+        if (auto owner_tag = resolve_lowerer_registry_struct_tag(
+                field_ts, false, &ctx.tpl_bindings, &ctx.nttp_bindings,
+                &ctx.method_struct_tag, method_node,
+                std::string("ctor-init-field-constructor-owner:") + mem_name)) {
+          field_ctor_tag = *owner_tag;
         }
       }
       if (!field_ctor_tag.empty()) {

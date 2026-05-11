@@ -799,6 +799,80 @@ std::string Lowerer::resolve_struct_method_lookup_owner_tag(
   return legacy_tag.empty() ? std::string{} : std::string(legacy_tag);
 }
 
+std::optional<std::string> Lowerer::resolve_lowerer_registry_struct_tag(
+    TypeSpec owner_ts,
+    bool is_arrow,
+    const TypeBindings* tpl_bindings,
+    const NttpBindings* nttp_bindings,
+    const std::string* current_struct_tag,
+    const Node* span_node,
+    const std::string& context_name,
+    const std::string* rendered_compat_tag) {
+  if (!module_) return std::nullopt;
+  if (is_arrow && owner_ts.ptr_level > 0) owner_ts.ptr_level--;
+  if (!is_arrow && (owner_ts.is_lvalue_ref || owner_ts.is_rvalue_ref)) {
+    owner_ts.is_lvalue_ref = false;
+    owner_ts.is_rvalue_ref = false;
+    if (owner_ts.ptr_level > 0) owner_ts.ptr_level--;
+  }
+  while (resolve_struct_member_typedef_if_ready(&owner_ts)) {
+  }
+  resolve_typedef_to_struct(owner_ts);
+  if ((owner_ts.base != TB_STRUCT && owner_ts.base != TB_UNION) ||
+      owner_ts.ptr_level != 0 || owner_ts.array_rank != 0) {
+    return std::nullopt;
+  }
+
+  if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
+    if (const std::optional<HirRecordOwnerKey> owner_key =
+            make_struct_def_node_owner_key(owner_ts.record_def)) {
+      if (hir_record_owner_key_has_complete_metadata(*owner_key)) {
+        if (const SymbolName* owner_tag =
+                module_->find_struct_def_tag_by_owner(*owner_key);
+            owner_tag && module_->struct_defs.count(*owner_tag)) {
+          return std::string(*owner_tag);
+        }
+        return std::nullopt;
+      }
+    }
+    return std::nullopt;
+  }
+
+  if (owner_ts.namespace_context_id >= 0 &&
+      owner_ts.tag_text_id != kInvalidText) {
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = owner_ts.namespace_context_id;
+    ns_qual.is_global_qualified = owner_ts.is_global_qualified;
+    if (owner_ts.qualifier_text_ids && owner_ts.n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          owner_ts.qualifier_text_ids,
+          owner_ts.qualifier_text_ids + owner_ts.n_qualifier_segments);
+    }
+    const HirRecordOwnerKey owner_key =
+        make_hir_record_owner_key(ns_qual, owner_ts.tag_text_id);
+    if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+      if (const SymbolName* owner_tag =
+              module_->find_struct_def_tag_by_owner(owner_key);
+          owner_tag && module_->struct_defs.count(*owner_tag)) {
+        return std::string(*owner_tag);
+      }
+      return std::nullopt;
+    }
+  }
+
+  if ((owner_ts.tpl_struct_origin && owner_ts.tpl_struct_origin[0]) ||
+      (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0)) {
+    return resolve_member_lookup_owner_tag(
+        owner_ts, false, tpl_bindings, nttp_bindings, current_struct_tag,
+        span_node, context_name);
+  }
+
+  if (rendered_compat_tag && !rendered_compat_tag->empty()) {
+    return *rendered_compat_tag;
+  }
+  return rendered_typespec_tag_for_compatibility(*module_, owner_ts);
+}
+
 void Lowerer::record_struct_method_mangled_lookup_parity(
     const std::string& tag,
     const std::string& method,
