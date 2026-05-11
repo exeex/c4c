@@ -3669,6 +3669,128 @@ void test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key() {
               "method return-type lookup should preserve rendered fallback when no owner key exists");
 }
 
+void test_hir_struct_method_lookup_rejects_rendered_fallback_after_owner_key_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 21;
+  const c4c::TextId owner_text =
+      module.link_name_texts->intern("StructuredMethodOwner");
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+
+  c4c::hir::HirStructDef def;
+  def.tag = "RenderedMethodOwner";
+  def.tag_text_id = owner_text;
+  def.ns_qual = owner_ns;
+  module.index_struct_def_owner(owner_key, def.tag, true);
+  module.struct_defs[def.tag] = def;
+
+  module.link_name_texts->intern("method");
+  lowerer.struct_methods_[def.tag + "::method"] = "stale_method_mangled";
+  lowerer.struct_method_link_name_ids_[def.tag + "::method"] =
+      module.link_names.intern("stale_method_mangled");
+  c4c::TypeSpec stale_return_type{};
+  stale_return_type.base = c4c::TB_INT;
+  lowerer.struct_method_ret_types_[def.tag + "::method"] = stale_return_type;
+
+  const std::optional<std::string> mangled =
+      lowerer.find_struct_method_mangled(def.tag, "method", false);
+  expect_true(!mangled.has_value(),
+              "method mangled lookup should reject rendered fallback after complete owner-key miss");
+  expect_true(lowerer.struct_method_mangled_lookup_parity_checks_ == 0,
+              "owner-key method mangled misses should not consult rendered maps for parity");
+
+  const std::optional<c4c::LinkNameId> link_name =
+      lowerer.find_struct_method_link_name_id(def.tag, "method", false);
+  expect_true(!link_name.has_value(),
+              "method link-name lookup should reject rendered fallback after complete owner-key miss");
+  expect_true(lowerer.struct_method_link_name_lookup_parity_checks_ == 0,
+              "owner-key method link-name misses should not consult rendered maps for parity");
+
+  const std::optional<c4c::TypeSpec> return_type =
+      lowerer.find_struct_method_return_type(def.tag, "method", false);
+  expect_true(!return_type.has_value(),
+              "method return-type lookup should reject rendered fallback after complete owner-key miss");
+  expect_true(lowerer.struct_method_return_type_lookup_parity_checks_ == 0,
+              "owner-key method return-type misses should not consult rendered maps for parity");
+}
+
+void test_hir_struct_method_lookup_structured_miss_keeps_base_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::NamespaceQualifier derived_ns;
+  derived_ns.context_id = 23;
+  const c4c::TextId derived_text =
+      module.link_name_texts->intern("StructuredDerivedMethodOwner");
+  const c4c::hir::HirRecordOwnerKey derived_owner_key =
+      c4c::hir::make_hir_record_owner_key(derived_ns, derived_text);
+  c4c::hir::HirStructDef derived_def;
+  derived_def.tag = "RenderedDerivedMethodOwner";
+  derived_def.tag_text_id = derived_text;
+  derived_def.ns_qual = derived_ns;
+  derived_def.base_tags.push_back("RenderedBaseMethodOwner");
+  module.index_struct_def_owner(derived_owner_key, derived_def.tag, true);
+  module.struct_defs[derived_def.tag] = derived_def;
+
+  c4c::hir::NamespaceQualifier base_ns;
+  base_ns.context_id = 23;
+  const c4c::TextId base_text =
+      module.link_name_texts->intern("StructuredBaseMethodOwner");
+  const c4c::hir::HirRecordOwnerKey base_owner_key =
+      c4c::hir::make_hir_record_owner_key(base_ns, base_text);
+  c4c::hir::HirStructDef base_def;
+  base_def.tag = "RenderedBaseMethodOwner";
+  base_def.tag_text_id = base_text;
+  base_def.ns_qual = base_ns;
+  module.index_struct_def_owner(base_owner_key, base_def.tag, true);
+  module.struct_defs[base_def.tag] = base_def;
+
+  const c4c::TextId method_text = module.link_name_texts->intern("method");
+  c4c::hir::HirStructMethodLookupKey base_method_key{};
+  base_method_key.owner_key = base_owner_key;
+  base_method_key.method_text_id = method_text;
+  base_method_key.is_const_method = false;
+
+  const c4c::LinkNameId base_link_name =
+      module.link_names.intern("structured_base_method_mangled");
+  c4c::TypeSpec base_return_type{};
+  base_return_type.base = c4c::TB_LONG;
+  lowerer.struct_methods_by_owner_[base_method_key] =
+      "structured_base_method_mangled";
+  lowerer.struct_method_link_name_ids_by_owner_[base_method_key] =
+      base_link_name;
+  lowerer.struct_method_ret_types_by_owner_[base_method_key] = base_return_type;
+
+  lowerer.struct_methods_[derived_def.tag + "::method"] =
+      "stale_derived_method_mangled";
+  lowerer.struct_method_link_name_ids_[derived_def.tag + "::method"] =
+      module.link_names.intern("stale_derived_method_mangled");
+  c4c::TypeSpec stale_return_type{};
+  stale_return_type.base = c4c::TB_INT;
+  lowerer.struct_method_ret_types_[derived_def.tag + "::method"] =
+      stale_return_type;
+
+  const std::optional<std::string> mangled =
+      lowerer.find_struct_method_mangled(derived_def.tag, "method", false);
+  expect_true(mangled.has_value() && *mangled == "structured_base_method_mangled",
+              "method mangled owner-key miss should still search structured bases");
+
+  const std::optional<c4c::LinkNameId> link_name =
+      lowerer.find_struct_method_link_name_id(derived_def.tag, "method", false);
+  expect_true(link_name.has_value() && *link_name == base_link_name,
+              "method link-name owner-key miss should still search structured bases");
+
+  const std::optional<c4c::TypeSpec> return_type =
+      lowerer.find_struct_method_return_type(derived_def.tag, "method", false);
+  expect_true(return_type.has_value() && return_type->base == c4c::TB_LONG,
+              "method return-type owner-key miss should still search structured bases");
+}
+
 void test_hir_out_of_class_method_attachment_prefers_structured_owner_key() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6638,6 +6760,8 @@ int main() {
   test_hir_direct_enum_expr_scopes_keep_same_spelled_values_distinct();
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_struct_method_lookup_rejects_rendered_fallback_after_owner_key_miss();
+  test_hir_struct_method_lookup_structured_miss_keeps_base_fallback();
   test_hir_out_of_class_method_attachment_prefers_structured_owner_key();
   test_hir_out_of_class_method_skip_prefers_structured_owner_key();
   test_hir_out_of_class_method_attachment_rejects_rendered_fallback_after_structured_miss();

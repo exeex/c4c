@@ -966,10 +966,12 @@ std::optional<std::string> Lowerer::find_struct_method_mangled(
   auto rendered_key_for = [&](bool is_const_method) -> const std::string& {
     return is_const_method ? const_key : base_key;
   };
+  bool rendered_fallback_allowed = true;
   auto try_owner = [&](bool is_const_method) -> std::optional<std::string> {
     const auto owner_key =
         make_struct_method_lookup_key(tag, method, is_const_method);
     if (!owner_key) return std::nullopt;
+    rendered_fallback_allowed = false;
     const auto owner_it = struct_methods_by_owner_.find(*owner_key);
     if (owner_it == struct_methods_by_owner_.end()) return std::nullopt;
     const auto rendered_it = struct_methods_.find(rendered_key_for(is_const_method));
@@ -992,8 +994,10 @@ std::optional<std::string> Lowerer::find_struct_method_mangled(
   const bool alternate_const = !is_const_obj;
   if (auto local = try_owner(preferred_const)) return local;
   if (auto local = try_owner(alternate_const)) return local;
-  if (auto local = try_rendered(preferred_const)) return local;
-  if (auto local = try_rendered(alternate_const)) return local;
+  if (rendered_fallback_allowed) {
+    if (auto local = try_rendered(preferred_const)) return local;
+    if (auto local = try_rendered(alternate_const)) return local;
+  }
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
     for (const auto& base_tag : dit->second.base_tags) {
@@ -1015,10 +1019,12 @@ std::optional<LinkNameId> Lowerer::find_struct_method_link_name_id(
   auto rendered_key_for = [&](bool is_const_method) -> const std::string& {
     return is_const_method ? const_key : base_key;
   };
+  bool rendered_fallback_allowed = true;
   auto try_owner = [&](bool is_const_method) -> std::optional<LinkNameId> {
     const auto owner_key =
         make_struct_method_lookup_key(tag, method, is_const_method);
     if (!owner_key) return std::nullopt;
+    rendered_fallback_allowed = false;
     const auto owner_it = struct_method_link_name_ids_by_owner_.find(*owner_key);
     if (owner_it == struct_method_link_name_ids_by_owner_.end()) {
       return std::nullopt;
@@ -1044,8 +1050,10 @@ std::optional<LinkNameId> Lowerer::find_struct_method_link_name_id(
   const bool alternate_const = !is_const_obj;
   if (auto local = try_owner(preferred_const)) return local;
   if (auto local = try_owner(alternate_const)) return local;
-  if (auto local = try_rendered(preferred_const)) return local;
-  if (auto local = try_rendered(alternate_const)) return local;
+  if (rendered_fallback_allowed) {
+    if (auto local = try_rendered(preferred_const)) return local;
+    if (auto local = try_rendered(alternate_const)) return local;
+  }
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
     for (const auto& base_tag : dit->second.base_tags) {
@@ -1067,10 +1075,12 @@ std::optional<TypeSpec> Lowerer::find_struct_method_return_type(
   auto rendered_key_for = [&](bool is_const_method) -> const std::string& {
     return is_const_method ? const_key : base_key;
   };
+  bool rendered_fallback_allowed = true;
   auto try_owner = [&](bool is_const_method) -> std::optional<TypeSpec> {
     const auto owner_key =
         make_struct_method_lookup_key(tag, method, is_const_method);
     if (!owner_key) return std::nullopt;
+    rendered_fallback_allowed = false;
     const auto owner_it = struct_method_ret_types_by_owner_.find(*owner_key);
     if (owner_it == struct_method_ret_types_by_owner_.end()) return std::nullopt;
     const auto rendered_it =
@@ -1094,8 +1104,10 @@ std::optional<TypeSpec> Lowerer::find_struct_method_return_type(
   const bool alternate_const = !is_const_obj;
   if (auto local = try_owner(preferred_const)) return local;
   if (auto local = try_owner(alternate_const)) return local;
-  if (auto local = try_rendered(preferred_const)) return local;
-  if (auto local = try_rendered(alternate_const)) return local;
+  if (rendered_fallback_allowed) {
+    if (auto local = try_rendered(preferred_const)) return local;
+    if (auto local = try_rendered(alternate_const)) return local;
+  }
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
     for (const auto& base_tag : dit->second.base_tags) {
