@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/162_link_name_id_backend_symbol_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Propagate LinkNameId Through HIR to LIR
+Current Step ID: 4
+Current Step Title: Propagate LinkNameId Through LIR to BIR
 
 # Current Packet
 
