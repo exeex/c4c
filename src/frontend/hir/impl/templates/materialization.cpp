@@ -181,6 +181,8 @@ struct HirTemplateArgMaterializer {
   bool resolve_any_arg_ref(const std::string& ref, HirTemplateArg* out_arg);
   bool resolve_explicit_string_arg(int pi, const std::string& ref, HirTemplateArg* out_arg);
   bool resolve_explicit_typed_arg(int pi, const TemplateArgRef& ref, HirTemplateArg* out_arg);
+  void record_type_binding(const std::string& name, const TypeSpec& type);
+  void record_nttp_binding(const std::string& name, long long value);
   void append_default_arg(int pi, const char* param_name);
   ResolvedTemplateArgs materialize_from_strings(const std::vector<std::string>& arg_refs);
   ResolvedTemplateArgs materialize_from_typed(const TypeSpec& owner_ts);
@@ -779,6 +781,20 @@ bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
   return false;
 }
 
+void HirTemplateArgMaterializer::record_type_binding(
+    const std::string& name, const TypeSpec& type) {
+  result.type_bindings.push_back({name, type});
+  (void)add_hir_template_type_binding_by_legacy_name(
+      primary_tpl, name, type, &result.structured_type_bindings);
+}
+
+void HirTemplateArgMaterializer::record_nttp_binding(
+    const std::string& name, long long value) {
+  result.nttp_bindings.push_back({name, value});
+  (void)add_hir_template_nttp_binding_by_legacy_name(
+      primary_tpl, name, value, &result.structured_nttp_bindings);
+}
+
 void HirTemplateArgMaterializer::append_default_arg(int pi, const char* param_name) {
   const bool is_nttp =
       primary_tpl->template_param_is_nttp &&
@@ -799,11 +815,11 @@ void HirTemplateArgMaterializer::append_default_arg(int pi, const char* param_na
       arg.value = eval_val;
     }
     if (!has_nttp_binding(param_name))
-      result.nttp_bindings.push_back({param_name, arg.value});
+      record_nttp_binding(param_name, arg.value);
   } else {
     arg.type = primary_tpl->template_param_default_types[pi];
     if (!has_type_binding(param_name))
-      result.type_bindings.push_back({param_name, arg.type});
+      record_type_binding(param_name, arg.type);
   }
   result.concrete_args.push_back(arg);
 }
@@ -857,8 +873,8 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_strings(
         if (!resolve_explicit_string_arg(pi, arg_refs[ai], &arg)) break;
         result.concrete_args.push_back(arg);
         const std::string packed_name = make_pack_name(param_name, pack_index);
-        if (arg.is_value) result.nttp_bindings.push_back({packed_name, arg.value});
-        else result.type_bindings.push_back({packed_name, arg.type});
+        if (arg.is_value) record_nttp_binding(packed_name, arg.value);
+        else record_type_binding(packed_name, arg.type);
       }
       continue;
     }
@@ -872,8 +888,8 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_strings(
         if (resolve_explicit_string_arg(pi, arg_refs[ai], &arg)) {
           ++ai;
           result.concrete_args.push_back(arg);
-          if (arg.is_value) result.nttp_bindings.push_back({param_name, arg.value});
-          else result.type_bindings.push_back({param_name, arg.type});
+          if (arg.is_value) record_nttp_binding(param_name, arg.value);
+          else record_type_binding(param_name, arg.type);
           continue;
         }
       }
@@ -923,7 +939,7 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
               result.concrete_args.push_back(arg);
               const std::string packed_name =
                   make_pack_name(param_name, pack_index++);
-              result.type_bindings.push_back({packed_name, arg.type});
+              record_type_binding(packed_name, arg.type);
             }
             continue;
           }
@@ -935,8 +951,8 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
         ++ai;
         result.concrete_args.push_back(arg);
         const std::string packed_name = make_pack_name(param_name, pack_index++);
-        if (arg.is_value) result.nttp_bindings.push_back({packed_name, arg.value});
-        else result.type_bindings.push_back({packed_name, arg.type});
+        if (arg.is_value) record_nttp_binding(packed_name, arg.value);
+        else record_type_binding(packed_name, arg.type);
       }
       continue;
     }
@@ -947,8 +963,8 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
       if (resolve_explicit_typed_arg(pi, typed_ref, &arg)) {
         ++ai;
         result.concrete_args.push_back(arg);
-        if (arg.is_value) result.nttp_bindings.push_back({param_name, arg.value});
-        else result.type_bindings.push_back({param_name, arg.type});
+        if (arg.is_value) record_nttp_binding(param_name, arg.value);
+        else record_type_binding(param_name, arg.type);
         continue;
       }
       if (is_nttp && typed_ref.kind == TemplateArgKind::Value &&
@@ -1013,6 +1029,8 @@ PreparedTemplateStructInstance Lowerer::prepare_template_struct_instance(
     const char* origin,
     const ResolvedTemplateArgs& resolved) {
   PreparedTemplateStructInstance prepared;
+  prepared.structured_type_bindings = resolved.structured_type_bindings;
+  prepared.structured_nttp_bindings = resolved.structured_nttp_bindings;
   std::vector<std::string> primary_param_order;
   primary_param_order.reserve(primary_tpl->n_template_params);
   for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
@@ -1070,12 +1088,21 @@ PreparedTemplateStructInstance Lowerer::prepare_template_struct_instance(
   const std::string primary_name =
       primary_tpl->name ? primary_tpl->name
                         : std::string(origin ? origin : "");
-  SpecializationKey instance_spec_key = prepared.nttp_bindings.empty()
-      ? make_specialization_key(primary_name, primary_param_order,
-                                prepared.type_bindings, primary_tpl)
-      : make_specialization_key(primary_name, primary_param_order,
-                                prepared.type_bindings,
-                                prepared.nttp_bindings, primary_tpl);
+  const SpecializationKey legacy_instance_spec_key =
+      prepared.nttp_bindings.empty()
+          ? make_specialization_key(primary_name, primary_param_order,
+                                    prepared.type_bindings, primary_tpl)
+          : make_specialization_key(primary_name, primary_param_order,
+                                    prepared.type_bindings,
+                                    prepared.nttp_bindings, primary_tpl);
+  const std::optional<SpecializationKey> structured_instance_spec_key =
+      try_make_structured_specialization_key(
+          primary_name, primary_param_order, prepared.type_bindings,
+          prepared.structured_type_bindings, prepared.nttp_bindings,
+          prepared.structured_nttp_bindings, primary_tpl);
+  const SpecializationKey instance_spec_key =
+      structured_instance_spec_key ? *structured_instance_spec_key
+                                   : legacy_instance_spec_key;
   prepared.instance_key = TemplateStructInstanceKey{primary_tpl, instance_spec_key};
   return prepared;
 }

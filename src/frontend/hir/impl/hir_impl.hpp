@@ -77,11 +77,15 @@ struct ResolvedTemplateArgs {
   std::vector<HirTemplateArg> concrete_args;
   std::vector<std::pair<std::string, TypeSpec>> type_bindings;
   std::vector<std::pair<std::string, long long>> nttp_bindings;
+  HirTemplateTypeBindings structured_type_bindings;
+  HirTemplateNttpBindings structured_nttp_bindings;
 };
 
 struct PreparedTemplateStructInstance {
   TypeBindings type_bindings;
   NttpBindings nttp_bindings;
+  HirTemplateTypeBindings structured_type_bindings;
+  HirTemplateNttpBindings structured_nttp_bindings;
   TemplateStructInstanceKey instance_key;
 };
 

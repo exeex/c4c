@@ -8,33 +8,28 @@ Current Step Title: Use Structured Keys for Pending and Specialization Identity
 
 ## Just Finished
 
-Completed the next bounded Step 4 packet of `plan.md`: function-template seed
-and instance production can now record structured `SpecializationKey` identity
-when complete structured type/NTTP binding mirrors are available, and
-`infer_call_result_type` uses the same structured-first lookup policy as direct
-call lowering.
+Completed the delegated Step 4 packet of `plan.md`: struct template argument
+materialization now propagates structured type/NTTP mirrors into
+`PreparedTemplateStructInstance`, and struct template instance identity uses
+`try_make_structured_specialization_key` when the structured mirrors are
+complete and count-compatible.
 
 Concrete changes:
-- Added structured type/NTTP binding mirrors to `TemplateSeedWorkItem` and
-  `TemplateInstance`.
-- Extended `InstantiationRegistry::record_seed` to build a structured
-  specialization key through `try_make_structured_specialization_key` when the
-  supplied mirrors are complete and count-compatible; incomplete metadata keeps
-  the legacy specialization key path.
-- Threaded structured maps from the main direct, deduced, enclosing, and
-  consteval template seed collection paths.
-- Updated `infer_call_result_type` to prefer structured instance lookup and
-  retain the same legacy fallback used by direct call lowering.
-- Added focused registry coverage proving realized instances born from
-  structured seed metadata carry structured specialization argument keys while
-  preserving legacy display canonical text.
+- `ResolvedTemplateArgs` and `PreparedTemplateStructInstance` carry structured
+  type/NTTP binding maps alongside the legacy binding maps.
+- `HirTemplateArgMaterializer` records explicit and default type/NTTP bindings
+  through helper functions that maintain both the legacy maps and the
+  structured mirrors.
+- `prepare_template_struct_instance` copies the structured mirrors into the
+  prepared instance and builds `TemplateStructInstanceKey` from a
+  structured-first specialization key, with the existing legacy key as fallback.
+- Mangled names and display canonical text remain driven by the legacy maps.
 
 ## Suggested Next
 
-Continue Step 4 by auditing remaining struct/global specialization materialize
-paths that still construct `SpecializationKey` only from legacy rendered maps,
-or add an end-to-end same-spelled-owner collision test before deciding whether
-Step 4 is ready to move on.
+Have the supervisor decide whether Step 4 needs a focused end-to-end collision
+test for same-spelled struct template owners before moving to the next plan
+step.
 
 ## Watchouts
 
@@ -80,6 +75,9 @@ Step 4 is ready to move on.
 - `InstantiationRegistry::record_seed` still preserves `mangled_name` output
   from legacy binding maps; structured specialization keys affect dedup and
   lookup identity only when complete.
+- `prepare_template_struct_instance` now follows the same complete-metadata
+  requirement; incomplete struct argument mirrors still use the legacy
+  specialization identity.
 
 ## Proof
 
@@ -87,5 +85,4 @@ Ran delegated proof command:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_|cpp_positive_sema_.*template|cpp_positive_sema_.*qualified_.*template)'; } > test_after.log 2>&1`
 
 Result: command exited 0 and `test_after.log` was written. The selected subset
-ran 322 tests with 100% passing after the build, including the updated
-`cpp_hir_template_parameter_binding_key_structured_metadata`.
+ran 322 tests with 100% passing after the build.
