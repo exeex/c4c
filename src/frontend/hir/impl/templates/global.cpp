@@ -37,6 +37,21 @@ bool resolve_template_global_record_member_typedef(const Node* record_def,
   return false;
 }
 
+TypeSpec type_binding_lookup_carrier_with_valid_owner_text(
+    TypeSpec ts,
+    const Module* module) {
+  if (ts.template_param_owner_text_id == kInvalidText || !module ||
+      !module->link_name_texts) {
+    return ts;
+  }
+  if (!module->link_name_texts->lookup(ts.template_param_owner_text_id).empty()) {
+    return ts;
+  }
+  ts.template_param_owner_text_id = kInvalidText;
+  ts.template_param_owner_namespace_context_id = -1;
+  return ts;
+}
+
 }  // namespace
 
 void Lowerer::collect_template_global_definitions(
@@ -243,17 +258,12 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
           ts.deferred_member_type_text_id != kInvalidText ||
           (ts.deferred_member_type_name && ts.deferred_member_type_name[0]);
       if (ctx && ts.base == TB_TYPEDEF) {
-        if (ts.template_param_text_id != kInvalidText) {
-          auto it = ctx->tpl_bindings_by_text.find(ts.template_param_text_id);
-          if (it != ctx->tpl_bindings_by_text.end()) {
-            apply_template_global_arg_binding(ts, it->second);
-          }
-        }
-        if (ts.base == TB_TYPEDEF && ts.tag_text_id != kInvalidText) {
-          auto it = ctx->tpl_bindings_by_text.find(ts.tag_text_id);
-          if (it != ctx->tpl_bindings_by_text.end()) {
-            apply_template_global_arg_binding(ts, it->second);
-          }
+        const TypeSpec lookup_candidate =
+            type_binding_lookup_carrier_with_valid_owner_text(ts, module_);
+        if (const TypeSpec* bound = find_template_type_binding_for_call(
+                &ctx->tpl_bindings, &ctx->structured_tpl_bindings,
+                &ctx->tpl_bindings_by_text, module_, lookup_candidate)) {
+          apply_template_global_arg_binding(ts, *bound);
         }
       }
       TypeBindings tpl_empty;

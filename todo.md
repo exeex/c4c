@@ -8,27 +8,27 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 ## Just Finished
 
-Completed the delegated Step 5 value/type-argument forwarding lookup-authority
-repair from `plan.md`. The remaining `tpl_bindings_by_text` probes in
-`value_args.cpp` now route through `find_template_type_binding_for_call` with
-owner-scoped structured binding overlays, so complete structured type-parameter
-keys bind through shared authority and complete misses do not fall through to
-raw TextId lookup. Empty owner-text metadata is treated as incomplete so the
-existing compatibility path still handles legacy/incomplete carriers.
+Completed the delegated Step 5 template-global argument lookup-authority repair
+from `plan.md`. The remaining `tpl_bindings_by_text` probes inside
+`ensure_template_global_instance` in `global.cpp` now route through
+`find_template_type_binding_for_call`, so complete structured type-parameter
+keys bind through shared authority and complete structured misses do not fall
+through to raw TextId lookup. Empty owner-text metadata is still treated as
+incomplete so the existing compatibility path remains available for
+legacy/incomplete carriers.
 
 ## Suggested Next
 
-Supervisor should review and commit this coherent Step 5 value/type-argument
-forwarding metadata slice, then choose the next packet only if more
-forwarding/lowerer lookup bypasses remain.
+Supervisor should review and commit this coherent Step 5 template-global lookup
+authority slice, then choose the next packet only if more forwarding/lowerer
+lookup bypasses remain.
 
 ## Watchouts
 
-- The owner-scoped overlay is built from the current legacy type bindings only
-  to seed structured owner/index authority for the delegated forwarding lookup;
-  stale complete structured misses still fail closed inside
+- `global.cpp` now depends on `ctx->structured_tpl_bindings` for complete
+  structured carriers; stale complete structured misses fail closed inside
   `find_template_type_binding_for_call`.
-- Some inherited/member-typedef carriers can arrive with an owner TextId that
+- Some template-global argument carriers can arrive with an owner TextId that
   resolves to empty text; those remain compatibility/incomplete metadata cases.
 - Do not weaken tests or convert capability work into expectation-only changes.
 
