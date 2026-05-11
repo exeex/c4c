@@ -1123,6 +1123,48 @@ int expect_bir_verifier_rejects_known_link_name_mismatches() {
 
   {
     auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_callee");
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee_link_name_id = actual_id,
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail("BIR verifier should allow ID-only direct calls to declared functions");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee_link_name_id = 9999,
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    if (!validate_rejects_with_message(
+            module, "bir call in @user must reference a known LinkNameId")) {
+      return fail("BIR verifier should reject direct calls with unknown LinkNameId");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId missing_id = module.names.link_names.intern("missing_callee");
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee_link_name_id = missing_id,
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir call in @user must reference a declared function by LinkNameId")) {
+      return fail("BIR verifier should reject ID-only direct calls to undeclared functions");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
     const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
     module.globals.front().is_extern = false;
     module.globals.front().initializer_symbol_name = "other_global";

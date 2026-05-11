@@ -200,22 +200,22 @@ bool validate_call(const Module& module,
       return fail(error, "bir indirect call in @" + function.name +
                              " must carry a callee value");
     }
-  } else if (inst.callee.empty()) {
+  } else if (inst.callee.empty() && inst.callee_link_name_id == kInvalidLinkName) {
     return fail(error, "bir call in @" + function.name + " must name a callee");
   }
   if (!validate_link_name_id(
           module, inst.callee_link_name_id, "bir call in @" + function.name, error)) {
     return false;
   }
-  if (!inst.is_indirect && inst.callee_link_name_id != kInvalidLinkName &&
-      find_function(module, inst.callee, inst.callee_link_name_id) == nullptr) {
-    return fail(error, "bir call in @" + function.name +
-                           " must reference a declared function by LinkNameId");
-  }
   if (!inst.is_indirect && inst.callee_link_name_id != kInvalidLinkName) {
-    const auto* named_function = find_function_by_name(module, inst.callee);
-    if (named_function != nullptr && named_function->link_name_id != kInvalidLinkName &&
-        named_function->link_name_id != inst.callee_link_name_id) {
+    const auto* linked_function = find_function(module, inst.callee, inst.callee_link_name_id);
+    if (linked_function == nullptr) {
+      return fail(error, "bir call in @" + function.name +
+                             " must reference a declared function by LinkNameId");
+    }
+    const auto* named_function =
+        inst.callee.empty() ? nullptr : find_function_by_name(module, inst.callee);
+    if (named_function != nullptr && named_function != linked_function) {
       return fail(error, "bir call in @" + function.name +
                              " must not pair LinkNameId with a different declared function name");
     }
