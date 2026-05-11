@@ -3,93 +3,67 @@
 Status: Active
 Source Idea Path: ideas/open/170_string_authority_regression_guard.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Classification Data
+Current Step ID: 3
+Current Step Title: Implement The Local Guard
 
 ## Just Finished
 
-Step 2 added `scripts/string_authority_classifications.json` as the
-reviewable classification artifact for the Step 1 declaration-level guard
-surface.
+Step 3 implemented and tightened the local string-authority guard that consumes
+`scripts/string_authority_classifications.json` and scans only the configured
+roots for the Step 1 declaration-level surface.
 
 Changed files:
 
+- `scripts/string_authority_guard.py`
+- `scripts/test_string_authority_guard.py`
 - `scripts/string_authority_classifications.json`
 - `todo.md`
 
-Data shape:
+Implementation notes:
 
-- top-level `version`
-- top-level `roots` matching the Step 1 source roots:
-  `src/frontend/parser`, `src/frontend/sema`, `src/frontend/hir`,
-  `src/codegen/lir`, `src/backend`, and `src/codegen/shared`
-- top-level `classifications` array
-- each classification entry has `path`, `symbol`, `pattern`, `owner`,
-  `domain`, `category`, `reason`, `removal_condition`, and `evidence`
-
-Seeded coverage summary:
-
-- parser: parser record and named-constant compatibility helpers plus
-  parser-local rendered record tag state
-- sema: rendered enum/consteval/template binding compatibility maps,
-  rendered-to-TextId/key bridge helpers, record-key mirrors, and a structured
-  field TextId bridge partitioned by `SemaStructuredNameKey`
-- HIR: template binding/NTTP compatibility aliases, function-local lowering
-  maps, rendered compatibility names, labels, static globals, and record
-  definition mirrors kept beside owner-key tables
-- LIR/shared: extern declaration rendered-name fallback, string-pool output,
-  legacy verifier shadow maps, shared function-local labels, no-stable-id
-  dedup fallbacks, and generated temporary name counters
-- BIR/backend: route-local SSA/slot/provenance maps, raw-symbol compatibility,
-  LinkNameId fallback lookup, regalloc/prealloc local lookup helpers, BIR
-  validation diagnostics, target assembler/linker ABI spelling maps, and
-  target route-local stack/value maps
-
-The seed intentionally uses exact file + symbol entries. It does not add broad
-directory allowlists, and every entry records a category, owner, domain, reason,
-removal condition, and evidence for review.
+- the guard validates required classification fields, duplicate exact entries,
+  and every detected current hit by exact `path` + `symbol`
+- the scanner is intentionally local and text-based, using Python stdlib only
+- unclassified declaration-level string-keyed containers and aliases now fail
+  even when their names are generic, such as `unexpected_cache`
+- unclassified `*_by_name` / `*_name_map` members and selected raw, rendered,
+  legacy, fallback, or explicit by-name lookup helpers fail unless classified
+- diagnostics report file, line, symbol, pattern, and the instruction to
+  classify the exact path+symbol or replace the use with structured authority
+- the self-test builds a temporary covered root and proves both semantic and
+  generic unclassified `std::unordered_map<std::string, ...>` members fail,
+  while exact classified entries pass
+- the classification inventory was expanded with exact current hits exposed by
+  the stricter declaration-level scanner so the repo guard stays green
 
 ## Suggested Next
 
-Step 3 should implement the narrow local guard script that reads
-`scripts/string_authority_classifications.json`, scans only the configured
-`roots`, and reports declaration-level hits matching the Step 1 surface:
-string-keyed map/set declarations or aliases, `*_by_name`/`*_name_map`
-members, and helper declarations/definitions whose names contain
-`find|lookup` plus `name|raw_symbol|rendered|legacy|fallback`.
-
-Expected Step 3 behavior:
-
-- accept current hits only when their `path` + `symbol` are classified and the
-  required fields are present
-- fail an unclassified suspicious `std::unordered_map<std::string, ...>` or
-  broad rendered-name lookup helper under a covered root
-- avoid scanning implementation expressions such as ordinary `.find(name)`
-  call sites in the first guard
-- treat this JSON as reviewable classification data, not as a directory-level
-  suppressions file
-- add a focused script self-test or fixture proving one unclassified semantic
-  map fails while representative classified categories pass
+Step 4 should integrate `python3 scripts/string_authority_guard.py` into the
+developer workflow without widening the scanner surface. A good next packet is
+to add a documented local command or CTest/script hook, plus reviewer guidance
+for adding a new exact classification entry with owner, domain, category,
+reason, removal condition, and evidence.
 
 ## Watchouts
 
-- This Step 2 seed is representative and reviewable; Step 3 should keep its
-  first scanner narrow enough that these declaration-level classifications are
-  the expected accepted surface.
-- If Step 3 broadens beyond declaration-level hits, it should first add more
-  exact classifications or split the expansion into a separate packet.
-- Do not classify new semantic string authority as display/output or
-  diagnostic/debug just to make the guard green.
-- Keep generated files, docs, `.md` compatibility notes, and tests out of the
-  initial root scan unless the supervisor explicitly widens scope.
+- The current guard reports 235 classified declaration-level hits after the
+  stricter Step 3 inventory expansion.
+- The first implementation deliberately avoids ordinary `.find(name)` call-site
+  scanning; widening into expression use sites should be a separate
+  re-inventory packet with new exact classifications.
+- The scanner is still a local text scanner, not a full C++ parser; it now uses
+  accumulated statement text for multi-line function/type scope detection so
+  function-local scratch declarations are not treated as new top-level hits.
+- Keep fixtures out of production roots; the self-test uses a temporary tree.
 
 ## Proof
 
-Step 2 data proof:
+Step 3 proof:
 
-- `python3 -m json.tool scripts/string_authority_classifications.json >/tmp/string_authority_classifications.pretty.json`
-- `git diff --check -- scripts/string_authority_classifications.json todo.md`
+- `python3 scripts/string_authority_guard.py > test_after.log 2>&1`
+- `python3 scripts/test_string_authority_guard.py`
+- `python3 -m py_compile scripts/string_authority_guard.py scripts/test_string_authority_guard.py`
+- `git diff --check`
 
-Both commands passed. The delegated proof commands write to `/tmp` or stdout
-and do not themselves create `test_after.log`; no root-level proof log was
-created for this data-only packet.
+All commands passed. The guard proof writes the canonical executor proof log to
+`test_after.log`.
