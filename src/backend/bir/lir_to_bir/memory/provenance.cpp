@@ -107,8 +107,8 @@ std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_global_array_
         !is_known_function_global_address(init_it->second, function_symbols)) {
       return std::nullopt;
     }
-    element_values.push_back(
-        bir::Value::named(bir::TypeKind::Ptr, "@" + init_it->second.global_name));
+    element_values.push_back(bir::Value::named_symbol_pointer(
+        "@" + init_it->second.global_name, init_it->second.link_name_id));
   }
   return element_values;
 }
@@ -223,10 +223,11 @@ std::optional<bir::Value> BirFunctionLowerer::resolve_local_aggregate_pointer_va
   }
 
   const std::string symbol_name = operand.str().substr(1);
-  if (!is_known_raw_function_symbol(symbol_name, function_symbols)) {
+  const auto function_link_name_id = function_symbols.find_raw_symbol_link_name_id(symbol_name);
+  if (!function_link_name_id.has_value()) {
     return std::nullopt;
   }
-  return bir::Value::named(bir::TypeKind::Ptr, "@" + symbol_name);
+  return bir::Value::named_symbol_pointer("@" + symbol_name, *function_link_name_id);
 }
 
 std::optional<bir::Value> BirFunctionLowerer::lower_call_pointer_arg_value(
@@ -246,11 +247,15 @@ std::optional<bir::Value> BirFunctionLowerer::lower_call_pointer_arg_value(
   }
 
   const std::string symbol_name = operand.str().substr(1);
-  if (!is_known_raw_function_symbol(symbol_name, function_symbols) &&
-      global_types.find(symbol_name) == global_types.end()) {
+  const auto function_link_name_id = function_symbols.find_raw_symbol_link_name_id(symbol_name);
+  if (function_link_name_id.has_value()) {
+    return bir::Value::named_symbol_pointer("@" + symbol_name, *function_link_name_id);
+  }
+  const auto global_it = global_types.find(symbol_name);
+  if (global_it == global_types.end()) {
     return std::nullopt;
   }
-  return bir::Value::named(bir::TypeKind::Ptr, "@" + symbol_name);
+  return bir::Value::named_symbol_pointer("@" + symbol_name, global_it->second.link_name_id);
 }
 
 std::optional<GlobalAddress> BirFunctionLowerer::resolve_honest_pointer_base(

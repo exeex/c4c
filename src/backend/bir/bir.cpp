@@ -71,6 +71,12 @@ Value Value::named(TypeKind type, std::string value_name) {
   return result;
 }
 
+Value Value::named_symbol_pointer(std::string value_name, LinkNameId link_name_id) {
+  Value result = named(TypeKind::Ptr, std::move(value_name));
+  result.pointer_symbol_link_name_id = link_name_id;
+  return result;
+}
+
 const StructuredTypeDeclSpelling* StructuredTypeSpellingContext::find_struct_decl(
     std::string_view name) const {
   for (const auto& declaration : declarations) {

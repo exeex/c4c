@@ -119,6 +119,10 @@ struct Value {
   // Display/final spelling for SSA-like values; BIR does not use this as
   // cross-object semantic identity.
   std::string name;
+  // Semantic identity for named pointer values that denote link-visible
+  // globals or functions. Route-local pointers, locals, slots, nulls, and
+  // unresolved compatibility values keep this invalid.
+  LinkNameId pointer_symbol_link_name_id = kInvalidLinkName;
 
   static Value immediate_i1(bool value);
   static Value immediate_i8(std::int8_t value);
@@ -128,11 +132,13 @@ struct Value {
   static Value immediate_f32_bits(std::uint32_t bits);
   static Value immediate_f64_bits(std::uint64_t bits);
   static Value named(TypeKind type, std::string name);
+  static Value named_symbol_pointer(std::string name, LinkNameId link_name_id);
 };
 
 inline bool operator==(const Value& lhs, const Value& rhs) {
   return lhs.kind == rhs.kind && lhs.type == rhs.type && lhs.immediate == rhs.immediate &&
-         lhs.immediate_bits == rhs.immediate_bits && lhs.name == rhs.name;
+         lhs.immediate_bits == rhs.immediate_bits && lhs.name == rhs.name &&
+         lhs.pointer_symbol_link_name_id == rhs.pointer_symbol_link_name_id;
 }
 
 inline bool operator!=(const Value& lhs, const Value& rhs) {

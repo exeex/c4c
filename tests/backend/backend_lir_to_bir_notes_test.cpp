@@ -67,6 +67,7 @@ LirModule make_dynamic_indexed_gep_global_member_array_module();
 int expect_link_name_id_symbol_identity_survives_drifted_display_names();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_pointer_initializer_symbol_names_carry_link_name_id();
+int expect_pointer_value_symbol_identity_carrier();
 int expect_bir_verifier_rejects_known_link_name_mismatches();
 int expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
 
@@ -654,6 +655,113 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   if (!c4c::backend::bir::validate(compatibility_module, &error) ||
       compatibility_module.globals.front().initializer_symbol_name_id != c4c::kInvalidLinkName) {
     return fail("unknown compatibility initializer symbols should remain valid only without LinkNameId");
+  }
+
+  return 0;
+}
+
+int expect_pointer_value_symbol_identity_carrier() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.payload = type { i32 }");
+
+  const c4c::LinkNameId sink_id = module.link_names.intern("semantic_pointer_sink");
+  const c4c::LinkNameId fn_arg_id = module.link_names.intern("semantic_function_arg");
+  const c4c::LinkNameId byval_global_id = module.link_names.intern("semantic_byval_payload");
+  const c4c::LinkNameId user_id = module.link_names.intern("semantic_pointer_user");
+
+  c4c::codegen::lir::LirExternDecl sink;
+  sink.name = "drifted_sink_display";
+  sink.link_name_id = sink_id;
+  sink.return_type_str = "void";
+  sink.return_type = c4c::codegen::lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(sink));
+
+  c4c::codegen::lir::LirExternDecl fn_arg;
+  fn_arg.name = "drifted_function_arg_display";
+  fn_arg.link_name_id = fn_arg_id;
+  fn_arg.return_type_str = "void";
+  fn_arg.return_type = c4c::codegen::lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(fn_arg));
+
+  LirGlobal byval_global;
+  byval_global.name = "drifted_byval_payload_display";
+  byval_global.link_name_id = byval_global_id;
+  byval_global.llvm_type = "%struct.payload";
+  byval_global.init_text = "{ i32 42 }";
+  byval_global.align_bytes = 4;
+  module.globals.push_back(std::move(byval_global));
+
+  LirFunction function;
+  function.name = "drifted_pointer_user_display";
+  function.link_name_id = user_id;
+  function.signature_text = "define void @drifted_pointer_user_display()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@semantic_pointer_sink"),
+      .direct_callee_link_name_id = sink_id,
+      .callee_type_suffix = "(ptr, ptr)",
+      .args_str =
+          "ptr @semantic_function_arg, ptr byval(%struct.payload) @semantic_byval_payload",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("pointer-value LinkNameId carrier fixture should lower to BIR");
+  }
+
+  const c4c::backend::bir::Function* lowered_user = nullptr;
+  for (const auto& lowered_function : result.module->functions) {
+    if (lowered_function.link_name_id == user_id) {
+      lowered_user = &lowered_function;
+      break;
+    }
+  }
+  if (lowered_user == nullptr || lowered_user->blocks.empty() ||
+      lowered_user->blocks.front().insts.empty()) {
+    return fail("pointer-value carrier fixture should lower the user call");
+  }
+
+  const auto* call =
+      std::get_if<c4c::backend::bir::CallInst>(&lowered_user->blocks.front().insts.front());
+  if (call == nullptr || call->args.size() != 2) {
+    return fail("pointer-value carrier fixture should lower both pointer arguments");
+  }
+
+  if (call->args[0].name != "@semantic_function_arg" ||
+      call->args[0].pointer_symbol_link_name_id != fn_arg_id) {
+    return fail("direct function pointer values should carry LinkNameId identity");
+  }
+  if (call->args[0].pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
+    return fail("direct function pointer value identity must not be raw display spelling only");
+  }
+
+  if (call->args[1].name != "@semantic_byval_payload" ||
+      call->args[1].pointer_symbol_link_name_id != byval_global_id) {
+    return fail("byval global pointer values should carry the global LinkNameId");
+  }
+  if (call->args[1].pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
+    return fail("byval global pointer value identity must not be raw display spelling only");
+  }
+
+  if (call->args[0] ==
+          c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_function_arg") ||
+      call->args[1] ==
+          c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_byval_payload")) {
+    return fail("symbol pointer values should not compare equal to raw display-only values");
   }
 
   return 0;
@@ -3397,6 +3505,11 @@ int main() {
           expect_pointer_initializer_symbol_names_carry_link_name_id();
       pointer_initializer_identity_status != 0) {
     return pointer_initializer_identity_status;
+  }
+
+  if (const int pointer_value_identity_status = expect_pointer_value_symbol_identity_carrier();
+      pointer_value_identity_status != 0) {
+    return pointer_value_identity_status;
   }
 
   if (const int store_status = expect_failure_notes(

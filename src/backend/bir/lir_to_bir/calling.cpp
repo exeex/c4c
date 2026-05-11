@@ -511,7 +511,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         global_it->second.storage_size_bytes < aggregate_layout.size_bytes) {
       return std::nullopt;
     }
-    return bir::Value::named(bir::TypeKind::Ptr, "@" + global_name);
+    return bir::Value::named_symbol_pointer("@" + global_name, global_it->second.link_name_id);
   };
 
   const auto maybe_resolve_direct_calloc_pointer_address =

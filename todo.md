@@ -8,43 +8,33 @@ Current Step Title: Add BIR Pointer Value Identity for Symbol-Carrying Values
 
 ## Just Finished
 
-Plan-owner review after the committed pointer-provenance and bridge-audit
-slices decided that Step 4 is complete enough for ordinary LIR-to-BIR carriers,
-but not enough to advance directly to validation/backend preparation.
+Step 5 first narrow slice is implemented.
 
-The remaining raw pointer-value bridges are a runbook gap, not just Step 5
-validation work: aggregate initializer parsing can record `GlobalAddress` in
-`pointer_initializer_offsets`, but public BIR pointer value carriers for
-direct pointer arguments/stores, aggregate initializer elements, byval aggregate
-call arguments, and synthesized dynamic pointer-array selections can still be
-plain `bir::Value::named(ptr, "@symbol")` values with no structured identity
-slot.
+`bir::Value` now has `pointer_symbol_link_name_id` plus
+`Value::named_symbol_pointer()` for named pointer values that denote
+link-visible globals/functions. Direct function pointer call arguments now set
+the carrier from `FunctionSymbolSet`, byval global aggregate call arguments set
+it from `GlobalInfo::link_name_id`, and synthesized dynamic global pointer-array
+values preserve the `GlobalAddress::link_name_id` they were resolved from.
+
+`backend_lir_to_bir_notes_test` now covers one direct function pointer value and
+one byval global pointer route, including equality checks that prove the
+structured carrier is not equivalent to raw display-only `@symbol` spelling.
 
 ## Suggested Next
 
-Execute new Step 5 by adding structured identity for BIR pointer values that
-represent link-visible function/global addresses, or an equivalent
-address/provenance carrier consumed before backend preparation.
-
-Start with the narrowest route that proves the model end to end, preferably one
-function pointer value path and one aggregate or byval pointer path. Keep
-route-local pointers, locals, slots, nulls, and unresolved no-metadata paths as
-plain pointer values. Once covered pointer-valued symbol references no longer
-depend on raw `@symbol` spelling as their normal authority, advance to Step 6
-validation/backend preparation.
+Continue Step 5 by extending the new pointer-value carrier into aggregate
+initializer element values and pointer stores, then add verifier coverage for
+pointer-value `LinkNameId` mismatches before moving to Step 6 backend
+preparation.
 
 ## Watchouts
 
 - Compatibility bridge: direct `LirOperandKind::Global` function operands used
-  as pointer argument values still enter LIR-to-BIR as raw `@symbol` text.
-  Owner: LIR operand metadata and BIR pointer-value identity. Limitation:
-  `lower_call_pointer_arg_value()` and
-  `resolve_local_aggregate_pointer_value_alias()` can validate the symbol
-  against function tables, but `bir::Value::named(TypeKind::Ptr, "@symbol")`
-  has no field for `LinkNameId`, so the lowered argument value remains spelling
-  carried. Removal condition: add structured symbol identity to LIR global
-  operands or BIR pointer values, then consume it in direct pointer argument
-  lowering.
+  as pointer argument values now produce ID-backed BIR pointer values when the
+  raw operand resolves through `FunctionSymbolSet`. Limitation: the LIR operand
+  still enters as textual `@symbol`; drifted raw operand names are not fixed
+  until LIR operands carry `LinkNameId` directly.
 - Compatibility bridge: direct pointer stores of function operands still use
   raw LIR global spelling as the lookup key before recording `GlobalAddress`.
   Owner: LIR operand metadata. Limitation: LIR-to-BIR now records the recovered
@@ -71,20 +61,14 @@ validation/backend preparation.
   to BIR initializer elements or replace raw pointer initializer values with an
   ID-backed carrier consumed by validation and backend preparation.
 - Compatibility bridge: byval aggregate call arguments that pass an addressable
-  global still lower to `bir::Value::named(TypeKind::Ptr, "@global")` after
-  validating the global through `global_types`. Owner: BIR call argument value
-  model. Limitation: the call arg `bir::Value` has no slot for the target
-  global `LinkNameId`, and byval ABI metadata only describes the copied bytes.
-  Removal condition: add ID-backed pointer values or an address/provenance field
-  to call arguments, then consume `GlobalInfo::link_name_id` for byval globals.
+  global now lower to `bir::Value::named_symbol_pointer()` with the target
+  global `LinkNameId`. Limitation: this is proven for direct byval global
+  arguments; local aggregate aliases and byval copies remain route-local
+  handles by design.
 - Compatibility bridge: dynamic pointer-array materialization from aggregate
-  pointer initializer offsets selects among raw `@symbol` pointer values even
-  though each element was first resolved from `GlobalAddress`. Owner: synthesized
-  pointer-array select/BIR value model. Limitation: `synthesize_pointer_array_selects()`
-  and the resulting `ValueMap` alias carry only `bir::Value`, so per-arm
-  `LinkNameId` provenance cannot survive the selected pointer value. Removal
-  condition: represent pointer selects with structured per-arm symbol identity
-  or a first-class `GlobalAddress` result that later lowering can consume.
+  pointer initializer offsets now materializes ID-backed arm values from
+  `GlobalAddress::link_name_id`. Limitation: the selected value is still a
+  plain `SelectInst` result without per-arm semantic validation in the verifier.
 
 ## Proof
 
