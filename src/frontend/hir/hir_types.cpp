@@ -1192,12 +1192,6 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
       const auto lit = ctx->local_fn_ptr_sigs.find(name);
       if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
     }
-    if (const std::optional<GlobalId> static_global =
-            lookup_static_global_bridge(*ctx, callee, name)) {
-      if (const GlobalVar* gv = module_->find_global(*static_global)) {
-        if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
-      }
-    }
     if (callee->unqualified_text_id != kInvalidText) {
       const auto param_it =
           ctx->param_indices_by_text_id.find(callee->unqualified_text_id);
@@ -1206,6 +1200,7 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
         if (sig_it != ctx->param_fn_ptr_sigs_by_index.end()) {
           return sig_it->second.return_type.spec;
         }
+        return std::nullopt;
       } else if (ctx->rendered_compat_param_text_ids.find(
                      callee->unqualified_text_id) !=
                      ctx->rendered_compat_param_text_ids.end() ||
@@ -1217,6 +1212,12 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
     } else {
       const auto pit = ctx->param_fn_ptr_sigs.find(name);
       if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second.return_type.spec;
+    }
+    if (const std::optional<GlobalId> static_global =
+            lookup_static_global_bridge(*ctx, callee, name)) {
+      if (const GlobalVar* gv = module_->find_global(*static_global)) {
+        if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
+      }
     }
   }
   DeclRef global_ref = make_global_lookup_decl_ref(*module_, name, callee);

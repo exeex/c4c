@@ -3645,6 +3645,44 @@ void test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback() {
               "complete param TextId miss should not reopen rendered param fn-ptr fallback");
 }
 
+void test_param_fn_ptr_sig_hit_without_signature_rejects_all_fallbacks() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId callback_text_id = texts.intern("callback");
+  add_global(module, c4c::hir::GlobalId{120}, "callback", callback_text_id);
+  module.globals.back().fn_ptr_sig =
+      make_returning_fn_ptr_sig(c4c::TB_SHORT);
+  add_global(module, c4c::hir::GlobalId{121}, "global_callback",
+             texts.intern("global_callback"));
+  module.globals.back().fn_ptr_sig =
+      make_returning_fn_ptr_sig(c4c::TB_CHAR);
+  add_function(module, c4c::hir::FunctionId{120}, "callback",
+               callback_text_id, c4c::kInvalidLinkName, {}, c4c::TB_LONG);
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.param_indices_by_text_id[callback_text_id] = 0;
+  ctx.param_fn_ptr_sigs["callback"] =
+      make_returning_fn_ptr_sig(c4c::TB_INT);
+  ctx.static_globals["callback"] = c4c::hir::GlobalId{120};
+  ctx.static_global_ids_by_text_id[callback_text_id] =
+      c4c::hir::GlobalId{121};
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "callback";
+  callee.unqualified_name = "callback";
+  callee.unqualified_text_id = callback_text_id;
+
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &callee);
+  expect_true(!ret.has_value(),
+              "complete param TextId hit without fn-ptr signature should not fall through to rendered, static, global, or function lookup");
+}
+
 void test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -5882,6 +5920,7 @@ int main() {
   test_local_lookup_no_metadata_and_marked_generated_use_rendered_fallback();
   test_param_fn_ptr_sig_lookup_prefers_param_text_id_over_rendered_name();
   test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback();
+  test_param_fn_ptr_sig_hit_without_signature_rejects_all_fallbacks();
   test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback();
   test_local_fn_ptr_sig_lookup_prefers_local_text_id_over_rendered_name();
   test_local_fn_ptr_sig_lookup_shadows_same_spelled_param_sig();
