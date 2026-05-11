@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <iostream>
+#include <string_view>
+#include <unordered_map>
 
 namespace {
 
@@ -627,6 +629,193 @@ int check_authoritative_parallel_copy_bundle_lookup_requires_published_edge_owne
   return 0;
 }
 
+int check_materialized_compare_join_global_link_name_authority() {
+  prepare::PreparedNameTables names;
+  bir::NameTables bir_names;
+  static_cast<void>(bir_names.link_names.intern("bir.domain.seed.a"));
+  static_cast<void>(bir_names.link_names.intern("bir.domain.seed.b"));
+  const c4c::LinkNameId global_id =
+      bir_names.link_names.intern("same.module.global");
+  const c4c::LinkNameId pointer_root_id =
+      bir_names.link_names.intern("same.module.pointer");
+  const c4c::LinkNameId other_global_id =
+      bir_names.link_names.intern("other.module.global");
+  const c4c::LinkNameId prepared_global_id =
+      names.link_names.intern("same.module.global");
+  if (prepared_global_id == global_id) {
+    return fail("expected test fixture to keep BIR and prepared LinkNameId domains distinct");
+  }
+
+  bir::Function function;
+  const std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
+
+  bir::LoadGlobalInst direct_load{
+      .result = bir::Value::named(bir::TypeKind::I32, "%direct"),
+      .global_name = "same.module.global",
+      .global_name_id = global_id,
+  };
+  std::unordered_map<std::string_view, const bir::LoadGlobalInst*> named_global_loads{
+      {direct_load.result.name, &direct_load},
+  };
+  const auto direct_computed = prepare::classify_computed_value(
+      names, bir_names, direct_load.result, function, named_binaries, named_global_loads);
+  if (!direct_computed.has_value() ||
+      direct_computed->base.kind != prepare::PreparedComputedBaseKind::GlobalI32Load ||
+      direct_computed->base.global_name_id != prepared_global_id ||
+      direct_computed->base.global_name != "same.module.global") {
+    return fail("expected computed global load classification to resolve BIR LinkNameId authority into a prepared ID");
+  }
+  if (direct_computed->base.global_name.data() !=
+      prepare::prepared_link_name(names, prepared_global_id).data()) {
+    return fail("expected computed global load spelling to point into prepared name storage");
+  }
+  if (direct_computed->base.global_name.data() ==
+      bir_names.link_names.spelling(global_id).data()) {
+    return fail("expected computed global load spelling not to point into BIR name storage");
+  }
+
+  bir::LoadGlobalInst pointer_backed_load{
+      .result = bir::Value::named(bir::TypeKind::I32, "%pointer_backed"),
+      .global_name = "same.module.global",
+      .global_name_id = global_id,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+          .base_name = "same.module.pointer",
+          .base_link_name_id = pointer_root_id,
+      },
+  };
+  named_global_loads = {
+      {pointer_backed_load.result.name, &pointer_backed_load},
+  };
+  const auto pointer_backed_computed = prepare::classify_computed_value(
+      names, bir_names, pointer_backed_load.result, function, named_binaries, named_global_loads);
+  const c4c::LinkNameId prepared_pointer_root_id =
+      names.link_names.find("same.module.pointer");
+  if (!pointer_backed_computed.has_value() ||
+      pointer_backed_computed->base.kind !=
+          prepare::PreparedComputedBaseKind::PointerBackedGlobalI32Load ||
+      pointer_backed_computed->base.global_name_id != prepared_global_id ||
+      pointer_backed_computed->base.pointer_root_global_name_id != prepared_pointer_root_id ||
+      pointer_backed_computed->base.pointer_root_global_name != "same.module.pointer") {
+    return fail("expected pointer-backed computed global load classification to resolve address LinkNameId authority into prepared IDs");
+  }
+  if (pointer_backed_computed->base.pointer_root_global_name.data() !=
+      prepare::prepared_link_name(names, prepared_pointer_root_id).data()) {
+    return fail("expected pointer-root spelling to point into prepared name storage");
+  }
+  if (pointer_backed_computed->base.pointer_root_global_name.data() ==
+      bir_names.link_names.spelling(pointer_root_id).data()) {
+    return fail("expected pointer-root spelling not to point into BIR name storage");
+  }
+
+  bir::LoadGlobalInst mismatched_direct_load = direct_load;
+  mismatched_direct_load.result = bir::Value::named(bir::TypeKind::I32, "%mismatch");
+  mismatched_direct_load.global_name = "stale.raw.global";
+  named_global_loads = {
+      {mismatched_direct_load.result.name, &mismatched_direct_load},
+  };
+  if (prepare::classify_computed_value(
+          names,
+          bir_names,
+          mismatched_direct_load.result,
+          function,
+          named_binaries,
+          named_global_loads)
+          .has_value()) {
+    return fail("expected computed global load classification to reject LinkNameId/raw name disagreement");
+  }
+
+  bir::LoadGlobalInst mismatched_pointer_load = pointer_backed_load;
+  mismatched_pointer_load.result =
+      bir::Value::named(bir::TypeKind::I32, "%pointer_mismatch");
+  mismatched_pointer_load.address->base_name = "stale.raw.pointer";
+  named_global_loads = {
+      {mismatched_pointer_load.result.name, &mismatched_pointer_load},
+  };
+  if (prepare::classify_computed_value(
+          names,
+          bir_names,
+          mismatched_pointer_load.result,
+          function,
+          named_binaries,
+          named_global_loads)
+          .has_value()) {
+    return fail("expected pointer-backed computed global load classification to reject address LinkNameId/raw name disagreement");
+  }
+
+  bir::Module module;
+  module.names = bir_names;
+  module.globals.push_back(bir::Global{
+      .name = "same.module.global",
+      .link_name_id = global_id,
+      .type = bir::TypeKind::I32,
+  });
+  module.globals.push_back(bir::Global{
+      .name = "same.module.pointer",
+      .link_name_id = pointer_root_id,
+      .type = bir::TypeKind::Ptr,
+  });
+
+  prepare::PreparedMaterializedCompareJoinRenderContract render_contract;
+  render_contract.same_module_global_names = {"same.module.global"};
+  render_contract.same_module_global_refs = {
+      prepare::PreparedSameModuleGlobalRef{
+          .name = "same.module.global",
+          .name_id = prepared_global_id,
+      },
+  };
+  const auto resolved_globals =
+      prepare::resolve_prepared_materialized_compare_join_same_module_globals(
+          names, module, render_contract);
+  if (!resolved_globals.has_value() || resolved_globals->size() != 1 ||
+      (*resolved_globals)[0] == nullptr || (*resolved_globals)[0]->link_name_id != global_id) {
+    return fail("expected same-module global resolution to consume LinkNameId authority");
+  }
+
+  bir::Module mismatched_module;
+  mismatched_module.names = bir_names;
+  mismatched_module.globals.push_back(bir::Global{
+      .name = "same.module.global",
+      .link_name_id = other_global_id,
+      .type = bir::TypeKind::I32,
+  });
+  if (prepare::resolve_prepared_materialized_compare_join_same_module_globals(
+          names, mismatched_module, render_contract)
+          .has_value()) {
+    return fail("expected same-module global resolution to reject LinkNameId/raw name mismatch");
+  }
+
+  prepare::PreparedMaterializedCompareJoinRenderContract raw_compat_contract;
+  raw_compat_contract.same_module_global_names = {"legacy.raw.global"};
+  bir::Module raw_compat_module;
+  raw_compat_module.names = bir_names;
+  raw_compat_module.globals.push_back(bir::Global{
+      .name = "legacy.raw.global",
+      .type = bir::TypeKind::I32,
+  });
+  if (!prepare::resolve_prepared_materialized_compare_join_same_module_globals(
+           names, raw_compat_module, raw_compat_contract)
+           .has_value()) {
+    return fail("expected raw same-module global name compatibility when LinkNameId is invalid");
+  }
+
+  prepare::PreparedMaterializedCompareJoinReturnArm pointer_return_arm;
+  pointer_return_arm.context.selected_value = *pointer_backed_computed;
+  pointer_return_arm.shape =
+      prepare::classify_prepared_materialized_compare_join_return_shape(
+          pointer_return_arm.context);
+  const auto resolved_return = prepare::resolve_prepared_materialized_compare_join_return_arm(
+      names, module, pointer_return_arm);
+  if (!resolved_return.has_value() || resolved_return->global == nullptr ||
+      resolved_return->pointer_root_global == nullptr ||
+      resolved_return->global->link_name_id != global_id ||
+      resolved_return->pointer_root_global->link_name_id != pointer_root_id) {
+    return fail("expected materialized compare-join return-arm resolution to consume global LinkNameIds");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -683,6 +872,10 @@ int main() {
     return status;
   }
   if (const int status = check_authoritative_join_continuation_targets(); status != 0) {
+    return status;
+  }
+  if (const int status = check_materialized_compare_join_global_link_name_authority();
+      status != 0) {
     return status;
   }
 

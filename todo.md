@@ -8,34 +8,36 @@ Current Step Title: Validate and Tighten Compatibility Boundaries
 
 ## Just Finished
 
-Step 6 combined validation proof reran the backend LinkNameId authority,
-prealloc call contract, repaired structured-context fixture, and frontend HIR
-fixture coverage after the fixture repair and reviewer follow-up.
-
-The fresh combined proof cleared the stale fixture-only proof caveat from the
-post-fixture review for this Step 6 subset.
+Step 6 Validate and Tighten Compatibility Boundaries repaired materialized
+compare-join same-module global handling so BIR
+`LoadGlobalInst::global_name_id` and `MemoryAddress::base_link_name_id` are
+resolved through BIR name tables, semantic spellings are interned into
+`PreparedNameTables`, and downstream prepared refs use prepared IDs with
+stable prepared-table spellings.
 
 ## Suggested Next
 
-Supervisor should decide whether this combined subset is enough for the current
-Step 6 slice or whether to escalate to broader backend/full-suite validation
-before any milestone or closure decision.
+Supervisor should decide whether to continue with the next Step 6 tightening
+packet or escalate to broader backend validation before a milestone decision.
 
 ## Watchouts
 
-- Reviewer still classified validation sufficiency as needing broader proof for
-  an acceptance boundary; this packet only proves the supervisor-selected
-  combined Step 6 subset.
-- No production files, tests, plan files, source ideas, or review artifacts were
-  touched in this validation-only packet.
+- Raw same-module global names remain accepted only for compatibility contracts
+  where the prepared reference has an invalid `LinkNameId`.
+- Legacy overloads still preserve existing callers by importing prepared names
+  into a BIR-name view owned by the returned context; the materialized
+  render-contract path now passes `module.names` explicitly.
+- The focused ownership test now checks that classified LinkNameId-backed
+  spellings point into prepared name storage rather than BIR name storage.
+- The untracked `review/` artifacts were not touched.
 
 ## Proof
 
 Passed:
 
 ```sh
-{ cmake --build --preset default --target backend_lir_to_bir_notes_test backend_prepare_frame_stack_call_contract_test backend_prepare_structured_context_test frontend_hir_tests && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_prepare_frame_stack_call_contract|backend_prepare_structured_context|frontend_hir_tests)$'; } > test_after.log 2>&1
+{ cmake --build --preset default --target backend_lir_to_bir_notes_test backend_prepare_frame_stack_call_contract_test backend_prepare_structured_context_test backend_prepare_authoritative_join_ownership_test frontend_hir_tests && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_prepare_frame_stack_call_contract|backend_prepare_structured_context|backend_prepare_authoritative_join_ownership|frontend_hir_tests)$'; } > test_after.log 2>&1
 ```
 
-Proof log: `test_after.log`. Result: build succeeded and 4/4 selected tests
+Proof log: `test_after.log`. Result: build succeeded and 5/5 selected tests
 passed.

@@ -1376,8 +1376,10 @@ struct PreparedComputedBase {
   PreparedComputedBaseKind kind = PreparedComputedBaseKind::ImmediateI32;
   std::int64_t immediate = 0;
   ValueNameId param_name_id = kInvalidValueName;
+  std::string_view global_name;
   LinkNameId global_name_id = kInvalidLinkName;
   std::size_t global_byte_offset = 0;
+  std::string_view pointer_root_global_name;
   LinkNameId pointer_root_global_name_id = kInvalidLinkName;
 };
 
@@ -1390,6 +1392,7 @@ struct PreparedMaterializedCompareJoinContext {
   const PreparedJoinTransfer* join_transfer = nullptr;
   const PreparedEdgeValueTransfer* true_transfer = nullptr;
   const PreparedEdgeValueTransfer* false_transfer = nullptr;
+  bir::NameTables bir_names;
   const bir::Function* function = nullptr;
   const bir::Block* true_predecessor = nullptr;
   const bir::Block* false_predecessor = nullptr;
@@ -1780,11 +1783,17 @@ struct PreparedMaterializedCompareJoinReturnBinaryPlan {
   std::optional<PreparedSupportedImmediateBinary> trailing_binary;
 };
 
+struct PreparedSameModuleGlobalRef {
+  std::string_view name;
+  LinkNameId name_id = kInvalidLinkName;
+};
+
 struct PreparedMaterializedCompareJoinRenderContract {
   PreparedMaterializedCompareJoinBranchPlan branch_plan;
   PreparedMaterializedCompareJoinReturnArm true_return;
   PreparedMaterializedCompareJoinReturnArm false_return;
   std::vector<std::string_view> same_module_global_names;
+  std::vector<PreparedSameModuleGlobalRef> same_module_global_refs;
 };
 
 struct PreparedResolvedMaterializedCompareJoinReturnArm {
@@ -1800,22 +1809,94 @@ struct PreparedResolvedMaterializedCompareJoinRenderContract {
   std::vector<const bir::Global*> same_module_globals;
 };
 
-[[nodiscard]] inline std::vector<std::string_view> collect_prepared_computed_value_same_module_globals(
+[[nodiscard]] inline std::optional<PreparedSameModuleGlobalRef>
+resolve_prepared_bir_link_name_ref(PreparedNameTables& names,
+                                   const bir::NameTables& bir_names,
+                                   std::string_view display_name,
+                                   LinkNameId name_id) {
+  if (name_id != kInvalidLinkName) {
+    const std::string_view authoritative_name = bir_names.link_names.spelling(name_id);
+    if (authoritative_name.empty()) {
+      return std::nullopt;
+    }
+    if (!display_name.empty() && display_name != authoritative_name) {
+      return std::nullopt;
+    }
+    const LinkNameId prepared_name_id = names.link_names.intern(authoritative_name);
+    return PreparedSameModuleGlobalRef{
+        .name = prepared_link_name(names, prepared_name_id),
+        .name_id = prepared_name_id,
+    };
+  }
+  if (display_name.empty()) {
+    return std::nullopt;
+  }
+  return PreparedSameModuleGlobalRef{
+      .name = display_name,
+      .name_id = kInvalidLinkName,
+  };
+}
+
+[[nodiscard]] inline PreparedSameModuleGlobalRef prepared_computed_base_global_ref(
+    const PreparedNameTables& names,
+    const PreparedComputedBase& base) {
+  if (base.global_name_id != kInvalidLinkName) {
+    return PreparedSameModuleGlobalRef{
+        .name = prepared_link_name(names, base.global_name_id),
+        .name_id = base.global_name_id,
+    };
+  }
+  return PreparedSameModuleGlobalRef{
+      .name = base.global_name,
+      .name_id = kInvalidLinkName,
+  };
+}
+
+[[nodiscard]] inline PreparedSameModuleGlobalRef prepared_computed_base_pointer_root_ref(
+    const PreparedNameTables& names,
+    const PreparedComputedBase& base) {
+  if (base.pointer_root_global_name_id != kInvalidLinkName) {
+    return PreparedSameModuleGlobalRef{
+        .name = prepared_link_name(names, base.pointer_root_global_name_id),
+        .name_id = base.pointer_root_global_name_id,
+    };
+  }
+  return PreparedSameModuleGlobalRef{
+      .name = base.pointer_root_global_name,
+      .name_id = kInvalidLinkName,
+  };
+}
+
+[[nodiscard]] inline std::vector<PreparedSameModuleGlobalRef>
+collect_prepared_computed_value_same_module_global_refs(
     const PreparedNameTables& names,
     const PreparedComputedValue& computed_value) {
-  std::vector<std::string_view> global_names;
+  std::vector<PreparedSameModuleGlobalRef> global_refs;
   switch (computed_value.base.kind) {
     case PreparedComputedBaseKind::ImmediateI32:
     case PreparedComputedBaseKind::ParamValue:
       break;
     case PreparedComputedBaseKind::GlobalI32Load:
-      global_names.push_back(prepared_link_name(names, computed_value.base.global_name_id));
+      global_refs.push_back(
+          prepared_computed_base_global_ref(names, computed_value.base));
       break;
     case PreparedComputedBaseKind::PointerBackedGlobalI32Load:
-      global_names.push_back(
-          prepared_link_name(names, computed_value.base.pointer_root_global_name_id));
-      global_names.push_back(prepared_link_name(names, computed_value.base.global_name_id));
+      global_refs.push_back(
+          prepared_computed_base_pointer_root_ref(names, computed_value.base));
+      global_refs.push_back(
+          prepared_computed_base_global_ref(names, computed_value.base));
       break;
+  }
+  return global_refs;
+}
+
+[[nodiscard]] inline std::vector<std::string_view> collect_prepared_computed_value_same_module_globals(
+    const PreparedNameTables& names,
+    const PreparedComputedValue& computed_value) {
+  std::vector<std::string_view> global_names;
+  for (const auto ref :
+       collect_prepared_computed_value_same_module_global_refs(names, computed_value)) {
+    global_names.push_back(ref.name);
   }
   return global_names;
 }
@@ -1896,6 +1977,11 @@ find_prepared_materialized_compare_join_return_binary_plan(
 
 [[nodiscard]] inline std::vector<std::string_view>
 collect_prepared_materialized_compare_join_same_module_globals(
+    const PreparedNameTables& names,
+    const PreparedMaterializedCompareJoinBranches& prepared_join_branches);
+
+[[nodiscard]] inline std::vector<PreparedSameModuleGlobalRef>
+collect_prepared_materialized_compare_join_same_module_global_refs(
     const PreparedNameTables& names,
     const PreparedMaterializedCompareJoinBranches& prepared_join_branches);
 
@@ -2682,6 +2768,7 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
 
 [[nodiscard]] inline std::optional<PreparedComputedValue> classify_computed_value(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const bir::Value& value,
     const bir::Function& function,
     const std::unordered_map<std::string_view, const bir::BinaryInst*>& named_binaries,
@@ -2729,23 +2816,42 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
       }
       if (load_global->address.has_value()) {
         if (load_global->address->base_kind != bir::MemoryAddress::BaseKind::GlobalSymbol ||
-            load_global->address->base_name.empty() || load_global->address->byte_offset != 0) {
+            (load_global->address->base_name.empty() &&
+             load_global->address->base_link_name_id == kInvalidLinkName) ||
+            load_global->address->byte_offset != 0) {
+          return std::nullopt;
+        }
+        const auto global_ref = resolve_prepared_bir_link_name_ref(
+            names, bir_names, load_global->global_name, load_global->global_name_id);
+        const auto pointer_root_ref = resolve_prepared_bir_link_name_ref(
+            names,
+            bir_names,
+            load_global->address->base_name,
+            load_global->address->base_link_name_id);
+        if (!global_ref.has_value() || !pointer_root_ref.has_value()) {
           return std::nullopt;
         }
         return PreparedComputedValue{
             .base = PreparedComputedBase{
                 .kind = PreparedComputedBaseKind::PointerBackedGlobalI32Load,
-                .global_name_id = names.link_names.intern(load_global->global_name),
+                .global_name = global_ref->name,
+                .global_name_id = global_ref->name_id,
                 .global_byte_offset = load_global->byte_offset,
-                .pointer_root_global_name_id =
-                    names.link_names.intern(load_global->address->base_name),
+                .pointer_root_global_name = pointer_root_ref->name,
+                .pointer_root_global_name_id = pointer_root_ref->name_id,
             },
         };
+      }
+      const auto global_ref = resolve_prepared_bir_link_name_ref(
+          names, bir_names, load_global->global_name, load_global->global_name_id);
+      if (!global_ref.has_value()) {
+        return std::nullopt;
       }
       return PreparedComputedValue{
           .base = PreparedComputedBase{
               .kind = PreparedComputedBaseKind::GlobalI32Load,
-              .global_name_id = names.link_names.intern(load_global->global_name),
+              .global_name = global_ref->name,
+              .global_name_id = global_ref->name_id,
               .global_byte_offset = load_global->byte_offset,
           },
       };
@@ -2775,8 +2881,13 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
       return std::nullopt;
     }
     auto computed_value =
-        classify_computed_value(
-            names, source_value, function, named_binaries, named_global_loads, recursion_stack);
+        classify_computed_value(names,
+                                bir_names,
+                                source_value,
+                                function,
+                                named_binaries,
+                                named_global_loads,
+                                recursion_stack);
     if (!computed_value.has_value()) {
       return std::nullopt;
     }
@@ -2801,9 +2912,23 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
   return std::nullopt;
 }
 
+[[nodiscard]] inline std::optional<PreparedComputedValue> classify_computed_value(
+    PreparedNameTables& names,
+    const bir::Value& value,
+    const bir::Function& function,
+    const std::unordered_map<std::string_view, const bir::BinaryInst*>& named_binaries,
+    const std::unordered_map<std::string_view, const bir::LoadGlobalInst*>& named_global_loads,
+    std::vector<std::string_view>* active_names = nullptr) {
+  bir::NameTables bir_names;
+  bir_names.import_link_names(names.texts, names.link_names);
+  return classify_computed_value(
+      names, bir_names, value, function, named_binaries, named_global_loads, active_names);
+}
+
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinContext>
 find_materialized_compare_join_context(
     const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const PreparedAuthoritativeBranchJoinTransfer& authoritative_join_transfer,
     const bir::Function& function,
     const bir::Block& entry_block,
@@ -2863,6 +2988,7 @@ find_materialized_compare_join_context(
       .join_transfer = join_transfer,
       .true_transfer = join_sources->true_transfer,
       .false_transfer = join_sources->false_transfer,
+      .bir_names = bir_names,
       .function = &function,
       .true_predecessor = join_sources->true_predecessor,
       .false_predecessor = join_sources->false_predecessor,
@@ -2877,6 +3003,7 @@ find_materialized_compare_join_context(
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinContext>
 find_materialized_compare_join_context(
     const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const PreparedAuthoritativeBranchJoinTransfer& authoritative_join_transfer,
     const bir::Function& function,
     const bir::Block& entry_block,
@@ -2889,6 +3016,7 @@ find_materialized_compare_join_context(
   }
   return find_materialized_compare_join_context(
       names,
+      bir_names,
       authoritative_join_transfer,
       function,
       entry_block,
@@ -3384,7 +3512,12 @@ find_prepared_materialized_compare_join_return_context(
   }
 
   const auto computed_selected_value = classify_computed_value(
-      names, selected_value, *compare_join_context.function, named_binaries, named_global_loads);
+      names,
+      compare_join_context.bir_names,
+      selected_value,
+      *compare_join_context.function,
+      named_binaries,
+      named_global_loads);
   if (!computed_selected_value.has_value()) {
     return std::nullopt;
   }
@@ -3414,6 +3547,7 @@ find_prepared_materialized_compare_join_return_context(
 [[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinContext>
 find_prepared_param_zero_materialized_compare_join_context(
     const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const PreparedControlFlowFunction& function_cf,
     const bir::Function& function,
     BlockLabelId source_block_label_id,
@@ -3434,6 +3568,7 @@ find_prepared_param_zero_materialized_compare_join_context(
 
   const auto compare_join_context = find_materialized_compare_join_context(
       names,
+      bir_names,
       *authoritative_join_transfer,
       function,
       source_block,
@@ -3452,6 +3587,7 @@ find_prepared_param_zero_materialized_compare_join_context(
 [[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinContext>
 find_prepared_param_zero_materialized_compare_join_context(
     const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const PreparedControlFlowFunction& function_cf,
     const bir::Function& function,
     const bir::Block& source_block,
@@ -3465,6 +3601,7 @@ find_prepared_param_zero_materialized_compare_join_context(
   }
   return find_prepared_param_zero_materialized_compare_join_context(
       names,
+      bir_names,
       function_cf,
       function,
       *source_block_label_id,
@@ -3473,9 +3610,32 @@ find_prepared_param_zero_materialized_compare_join_context(
       require_label_match);
 }
 
+[[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinContext>
+find_prepared_param_zero_materialized_compare_join_context(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function_cf,
+    const bir::Function& function,
+    BlockLabelId source_block_label_id,
+    const bir::Block& source_block,
+    ValueNameId param_name_id,
+    bool require_label_match) {
+  bir::NameTables bir_names;
+  bir_names.import_link_names(names.texts, names.link_names);
+  return find_prepared_param_zero_materialized_compare_join_context(
+      names,
+      bir_names,
+      function_cf,
+      function,
+      source_block_label_id,
+      source_block,
+      param_name_id,
+      require_label_match);
+}
+
 [[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinBranches>
 find_prepared_param_zero_materialized_compare_join_branches(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const PreparedControlFlowFunction& function_cf,
     const bir::Function& function,
     const bir::Block& source_block,
@@ -3483,7 +3643,7 @@ find_prepared_param_zero_materialized_compare_join_branches(
     bool require_label_match) {
   const auto prepared_compare_join_context =
       find_prepared_param_zero_materialized_compare_join_context(
-          names, function_cf, function, source_block, param, require_label_match);
+          names, bir_names, function_cf, function, source_block, param, require_label_match);
   if (!prepared_compare_join_context.has_value()) {
     return std::nullopt;
   }
@@ -3498,6 +3658,20 @@ find_prepared_param_zero_materialized_compare_join_branches(
       .prepared_branch = prepared_compare_join_context->prepared_branch,
       .prepared_join_branches = std::move(*prepared_join_branches),
   };
+}
+
+[[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinBranches>
+find_prepared_param_zero_materialized_compare_join_branches(
+    PreparedNameTables& names,
+    const PreparedControlFlowFunction& function_cf,
+    const bir::Function& function,
+    const bir::Block& source_block,
+    const bir::Param& param,
+    bool require_label_match) {
+  bir::NameTables bir_names;
+  bir_names.import_link_names(names.texts, names.link_names);
+  return find_prepared_param_zero_materialized_compare_join_branches(
+      names, bir_names, function_cf, function, source_block, param, require_label_match);
 }
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinBranchPlan>
@@ -3546,6 +3720,10 @@ find_prepared_materialized_compare_join_render_contract(
           collect_prepared_materialized_compare_join_same_module_globals(
               names,
               prepared_compare_join_branches.prepared_join_branches),
+      .same_module_global_refs =
+          collect_prepared_materialized_compare_join_same_module_global_refs(
+              names,
+              prepared_compare_join_branches.prepared_join_branches),
   };
 }
 
@@ -3554,20 +3732,45 @@ collect_prepared_materialized_compare_join_same_module_globals(
     const PreparedNameTables& names,
     const PreparedMaterializedCompareJoinBranches& prepared_join_branches) {
   std::vector<std::string_view> global_names;
+  for (const auto ref : collect_prepared_materialized_compare_join_same_module_global_refs(
+           names, prepared_join_branches)) {
+    global_names.push_back(ref.name);
+  }
+  return global_names;
+}
+
+[[nodiscard]] inline std::vector<PreparedSameModuleGlobalRef>
+collect_prepared_materialized_compare_join_same_module_global_refs(
+    const PreparedNameTables& names,
+    const PreparedMaterializedCompareJoinBranches& prepared_join_branches) {
+  std::vector<PreparedSameModuleGlobalRef> global_refs;
   std::unordered_set<std::string_view> seen_names;
   const auto append_names =
       [&](const PreparedMaterializedCompareJoinReturnContext& return_context) {
-        for (const auto name :
-             collect_prepared_computed_value_same_module_globals(names,
-                                                                return_context.selected_value)) {
-          if (seen_names.insert(name).second) {
-            global_names.push_back(name);
+        for (const auto ref :
+             collect_prepared_computed_value_same_module_global_refs(
+                 names, return_context.selected_value)) {
+          if (seen_names.insert(ref.name).second) {
+            global_refs.push_back(ref);
           }
         }
       };
   append_names(prepared_join_branches.true_return_context);
   append_names(prepared_join_branches.false_return_context);
-  return global_names;
+  return global_refs;
+}
+
+[[nodiscard]] inline std::string_view bir_link_name_or_raw(
+    const bir::NameTables& bir_names,
+    const bir::Global& global) {
+  if (global.link_name_id == kInvalidLinkName) {
+    return global.name;
+  }
+  const std::string_view semantic_name = bir_names.link_names.spelling(global.link_name_id);
+  if (semantic_name.empty() || (!global.name.empty() && global.name != semantic_name)) {
+    return {};
+  }
+  return semantic_name;
 }
 
 [[nodiscard]] inline std::optional<std::vector<const bir::Global*>>
@@ -3576,9 +3779,28 @@ resolve_prepared_materialized_compare_join_same_module_globals(
     const bir::Module& module,
     const PreparedMaterializedCompareJoinRenderContract& render_contract) {
   const auto find_same_module_global =
-      [&](std::string_view global_name) -> const bir::Global* {
+      [&](PreparedSameModuleGlobalRef global_ref) -> const bir::Global* {
+    if (global_ref.name_id != kInvalidLinkName) {
+      if (global_ref.name.empty() ||
+          prepared_link_name(names, global_ref.name_id) != global_ref.name) {
+        return nullptr;
+      }
+      for (const auto& global : module.globals) {
+        if (bir_link_name_or_raw(module.names, global) != global_ref.name) {
+          continue;
+        }
+        if (global.is_extern || global.is_thread_local) {
+          return nullptr;
+        }
+        return &global;
+      }
+      return nullptr;
+    }
+    if (global_ref.name.empty()) {
+      return nullptr;
+    }
     for (const auto& global : module.globals) {
-      if (global.name != global_name) {
+      if (bir_link_name_or_raw(module.names, global) != global_ref.name) {
         continue;
       }
       if (global.is_extern || global.is_thread_local) {
@@ -3589,10 +3811,24 @@ resolve_prepared_materialized_compare_join_same_module_globals(
     return nullptr;
   };
 
+  const auto global_refs = render_contract.same_module_global_refs.empty()
+                               ? [&]() {
+                                   std::vector<PreparedSameModuleGlobalRef> refs;
+                                   refs.reserve(render_contract.same_module_global_names.size());
+                                   for (const auto name :
+                                        render_contract.same_module_global_names) {
+                                     refs.push_back(PreparedSameModuleGlobalRef{
+                                         .name = name,
+                                         .name_id = kInvalidLinkName,
+                                     });
+                                   }
+                                   return refs;
+                                 }()
+                               : render_contract.same_module_global_refs;
   std::vector<const bir::Global*> globals;
-  globals.reserve(render_contract.same_module_global_names.size());
-  for (const auto global_name : render_contract.same_module_global_names) {
-    const auto* resolved_global = find_same_module_global(global_name);
+  globals.reserve(global_refs.size());
+  for (const auto global_ref : global_refs) {
+    const auto* resolved_global = find_same_module_global(global_ref);
     if (resolved_global == nullptr) {
       return std::nullopt;
     }
@@ -3607,9 +3843,28 @@ resolve_prepared_materialized_compare_join_return_arm(
     const bir::Module& module,
     const PreparedMaterializedCompareJoinReturnArm& return_arm) {
   const auto find_same_module_global =
-      [&](std::string_view global_name) -> const bir::Global* {
+      [&](PreparedSameModuleGlobalRef global_ref) -> const bir::Global* {
+    if (global_ref.name_id != kInvalidLinkName) {
+      if (global_ref.name.empty() ||
+          prepared_link_name(names, global_ref.name_id) != global_ref.name) {
+        return nullptr;
+      }
+      for (const auto& global : module.globals) {
+        if (bir_link_name_or_raw(module.names, global) != global_ref.name) {
+          continue;
+        }
+        if (global.is_extern || global.is_thread_local) {
+          return nullptr;
+        }
+        return &global;
+      }
+      return nullptr;
+    }
+    if (global_ref.name.empty()) {
+      return nullptr;
+    }
     for (const auto& global : module.globals) {
-      if (global.name != global_name) {
+      if (bir_link_name_or_raw(module.names, global) != global_ref.name) {
         continue;
       }
       if (global.is_extern || global.is_thread_local) {
@@ -3630,17 +3885,19 @@ resolve_prepared_materialized_compare_join_return_arm(
       break;
     case PreparedComputedBaseKind::GlobalI32Load:
       resolved_return.global =
-          find_same_module_global(prepared_link_name(names, selected_value.base.global_name_id));
+          find_same_module_global(
+              prepared_computed_base_global_ref(names, selected_value.base));
       if (resolved_return.global == nullptr) {
         return std::nullopt;
       }
       break;
     case PreparedComputedBaseKind::PointerBackedGlobalI32Load:
       resolved_return.pointer_root_global =
-          find_same_module_global(prepared_link_name(names,
-                                                     selected_value.base.pointer_root_global_name_id));
+          find_same_module_global(
+              prepared_computed_base_pointer_root_ref(names, selected_value.base));
       resolved_return.global =
-          find_same_module_global(prepared_link_name(names, selected_value.base.global_name_id));
+          find_same_module_global(
+              prepared_computed_base_global_ref(names, selected_value.base));
       if (resolved_return.pointer_root_global == nullptr ||
           resolved_return.pointer_root_global->type != bir::TypeKind::Ptr ||
           resolved_return.global == nullptr) {
@@ -3703,6 +3960,7 @@ find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
     bool require_label_match) {
   const auto prepared_compare_join_branches =
       find_prepared_param_zero_materialized_compare_join_branches(names,
+                                                                  module.names,
                                                                   function_cf,
                                                                   function,
                                                                   source_block,
