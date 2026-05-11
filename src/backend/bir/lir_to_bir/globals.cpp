@@ -82,10 +82,10 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
         if (!initializer_address.has_value()) {
           return std::nullopt;
         }
-        // Pointer-initializer targets are still parsed from compatibility LIR
-        // text here, so keep the display spelling explicit. Module lowering
-        // resolves initializer_symbol_name_id from the structured
-        // global/function symbol tables once every declaration is known.
+        // Pointer-initializer targets still retain the raw LIR spelling as a
+        // compatibility/display payload. When initializer LinkNameId metadata
+        // is present, module lowering resolves initializer_symbol_name_id from
+        // that id and must not fall back to this spelling on a miss.
         lowered.initializer_symbol_name = initializer_address->global_name;
       }
     } else {
@@ -335,6 +335,9 @@ std::optional<bir::Global> lower_minimal_global_impl(
       }
       info->initializer_symbol_name = initializer_address->global_name;
       if (global.initializer_function_link_name_ids.size() == 1) {
+        // The raw initializer parser above only provides compatibility display
+        // text and offsets. A present initializer function id is the semantic
+        // authority and later resolution fails closed if it is unknown.
         info->initializer_function_link_name_id =
             global.initializer_function_link_name_ids.front();
       }
@@ -427,6 +430,8 @@ std::optional<bir::Global> lower_minimal_global_impl(
     }
     aggregate.initializer_elements = *initializer_elements;
     if (pointer_offsets.size() == 1 && global.initializer_function_link_name_ids.size() == 1) {
+      // Preserve raw-only aggregate pointer initializer compatibility, but
+      // fence present function ids as authoritative metadata for the target.
       pointer_offsets.begin()->second.link_name_id =
           global.initializer_function_link_name_ids.front();
     }

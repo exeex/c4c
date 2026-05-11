@@ -60,8 +60,9 @@ struct GlobalInfo {
   // Compatibility LIR type text retained for aggregate layout parsing.
   std::string type_text;
   std::optional<GlobalAddress> known_global_address;
-  // Compatibility/final spelling parsed from textual initializers. Known
-  // function targets also carry initializer_function_link_name_id.
+  // Compatibility/display spelling parsed from textual initializers. When a
+  // known function target carries initializer_function_link_name_id, that id is
+  // authoritative and raw spelling remains display-only.
   std::string initializer_symbol_name;
   LinkNameId initializer_function_link_name_id = kInvalidLinkName;
   bir::TypeKind initializer_offset_type = bir::TypeKind::Void;

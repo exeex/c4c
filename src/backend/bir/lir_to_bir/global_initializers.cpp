@@ -182,6 +182,10 @@ std::optional<GlobalAddress> parse_global_address_initializer_impl(
     std::string_view text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
+  // Legacy compatibility parser for raw/no-id initializer payloads. When the
+  // LIR producer supplies initializer LinkNameId metadata, module lowering must
+  // treat that id as authoritative and fail closed on misses rather than
+  // interpreting this raw spelling as semantic identity.
   if (const auto symbol_name = parse_global_symbol_initializer(text); symbol_name.has_value()) {
     return GlobalAddress{
         .global_name = *symbol_name,

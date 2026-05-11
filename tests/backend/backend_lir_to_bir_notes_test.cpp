@@ -532,14 +532,14 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   if (lowered_ptr_to_function == nullptr ||
       lowered_ptr_to_function->initializer_symbol_name != "drifted_callee_display" ||
       lowered_ptr_to_function->initializer_symbol_name_id != callee_id) {
-    return fail("pointer initializer with structured function id should not depend on raw display spelling");
+    return fail("pointer initializer with LinkNameId metadata should keep the id authoritative over raw display spelling");
   }
 
   const auto* lowered_ptr_to_raw_function = find_global("semantic_ptr_to_raw_function");
   if (lowered_ptr_to_raw_function == nullptr ||
       lowered_ptr_to_raw_function->initializer_symbol_name != "rendered_shadow" ||
       lowered_ptr_to_raw_function->initializer_symbol_name_id != raw_shadow_id) {
-    return fail("raw function compatibility should remain available without LinkNameId metadata");
+    return fail("raw-only function initializer compatibility should remain available without LinkNameId metadata");
   }
 
   LirModule conflict_module;
@@ -572,7 +572,7 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
 
   auto conflict_result = try_lower_to_bir_with_options(conflict_module, BirLoweringOptions{});
   if (conflict_result.module.has_value()) {
-    return fail("valid initializer function LinkNameId miss should not fall back to raw symbol lookup");
+    return fail("present initializer function LinkNameId miss should fail closed instead of falling back to raw symbol lookup");
   }
 
   LirModule aggregate_module;
@@ -708,7 +708,7 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   auto aggregate_conflict_result =
       try_lower_to_bir_with_options(aggregate_conflict_module, BirLoweringOptions{});
   if (aggregate_conflict_result.module.has_value()) {
-    return fail("aggregate pointer initializer LinkNameId miss should not fall back to raw spelling");
+    return fail("aggregate pointer initializer LinkNameId miss should fail closed instead of falling back to raw spelling");
   }
 
   c4c::backend::bir::Module compatibility_module;
@@ -722,7 +722,7 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   std::string error;
   if (!c4c::backend::bir::validate(compatibility_module, &error) ||
       compatibility_module.globals.front().initializer_symbol_name_id != c4c::kInvalidLinkName) {
-    return fail("unknown compatibility initializer symbols should remain valid only without LinkNameId");
+    return fail("unknown raw-only compatibility initializer symbols should remain valid only without LinkNameId");
   }
 
   return 0;
