@@ -448,6 +448,7 @@ struct DirectCalleeResolution {
 
 [[nodiscard]] std::optional<PreparedMemoryReturnPlan> build_memory_return_plan(
     const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const PreparedStackLayout& stack_layout,
     FunctionNameId function_name,
     const bir::CallInst& call) {
@@ -475,7 +476,11 @@ struct DirectCalleeResolution {
     }
   }
 
-  const SlotNameId slot_name_id = names.slot_names.find(*call.sret_storage_name);
+  const std::string_view sret_storage_spelling =
+      call.sret_storage_name_id == kInvalidSlotName
+          ? std::string_view(*call.sret_storage_name)
+          : bir_names.slot_names.spelling(call.sret_storage_name_id);
+  const SlotNameId slot_name_id = names.slot_names.find(sret_storage_spelling);
   if (slot_name_id == kInvalidSlotName) {
     return plan;
   }
@@ -981,7 +986,11 @@ void populate_call_plans(PreparedBirModule& prepared) {
             .indirect_callee =
                 build_indirect_callee_plan(prepared.names, regalloc_function, value_locations, *call),
             .memory_return =
-                build_memory_return_plan(prepared.names, prepared.stack_layout, function_name_id, *call),
+                build_memory_return_plan(prepared.names,
+                                         prepared.module.names,
+                                         prepared.stack_layout,
+                                         function_name_id,
+                                         *call),
             .arguments = {},
             .result = std::nullopt,
             .preserved_values = build_call_preserved_values(

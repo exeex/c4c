@@ -18,14 +18,18 @@ struct NameTables {
   NameTables() { reattach(); }
 
   NameTables(const NameTables& other)
-      : texts(other.texts), link_names(other.link_names), block_labels(other.block_labels) {
+      : texts(other.texts),
+        link_names(other.link_names),
+        block_labels(other.block_labels),
+        slot_names(other.slot_names) {
     reattach();
   }
 
   NameTables(NameTables&& other) noexcept
       : texts(std::move(other.texts)),
         link_names(std::move(other.link_names)),
-        block_labels(std::move(other.block_labels)) {
+        block_labels(std::move(other.block_labels)),
+        slot_names(std::move(other.slot_names)) {
     reattach();
   }
 
@@ -36,6 +40,7 @@ struct NameTables {
     texts = other.texts;
     link_names = other.link_names;
     block_labels = other.block_labels;
+    slot_names = other.slot_names;
     reattach();
     return *this;
   }
@@ -47,6 +52,7 @@ struct NameTables {
     texts = std::move(other.texts);
     link_names = std::move(other.link_names);
     block_labels = std::move(other.block_labels);
+    slot_names = std::move(other.slot_names);
     reattach();
     return *this;
   }
@@ -61,11 +67,13 @@ struct NameTables {
   TextTable texts;
   LinkNameTable link_names{&texts};
   BlockLabelTable block_labels{&texts};
+  SlotNameTable slot_names{&texts};
 
  private:
   void reattach() {
     link_names.attach_text_table(&texts);
     block_labels.attach_text_table(&texts);
+    slot_names.attach_text_table(&texts);
   }
 };
 
@@ -195,9 +203,10 @@ enum class LocalSlotStorageKind : unsigned char {
 };
 
 struct LocalSlot {
-  // Route-local slot handle used within one lowered function. This remains a
-  // local storage/provenance key, not module-level semantic identity.
+  // Display/compatibility spelling for a route-local slot. slot_id is the
+  // semantic route-local slot reference when present.
   std::string name;
+  SlotNameId slot_id = kInvalidSlotName;
   TypeKind type = TypeKind::Void;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
@@ -267,8 +276,8 @@ struct MemoryAddress {
   };
 
   BaseKind base_kind = BaseKind::None;
-  // Display/compatibility spelling for address dumps. Global and label bases
-  // carry LinkNameId or BlockLabelId when semantic identity is known.
+  // Display/compatibility spelling for address dumps. Global, label, and local
+  // slot bases carry ids when semantic identity is known.
   std::string base_name;
   Value base_value;
   std::int64_t byte_offset = 0;
@@ -278,6 +287,7 @@ struct MemoryAddress {
   bool is_volatile = false;
   LinkNameId base_link_name_id = kInvalidLinkName;
   BlockLabelId base_label_id = kInvalidBlockLabel;
+  SlotNameId base_slot_id = kInvalidSlotName;
 };
 
 enum class BinaryOpcode : unsigned char {
@@ -383,12 +393,15 @@ struct CallInst {
   std::optional<InlineAsmMetadata> inline_asm;
   // Route-local sret storage spelling used to relate generated local slots.
   std::optional<std::string> sret_storage_name;
+  SlotNameId sret_storage_name_id = kInvalidSlotName;
 };
 
 struct LoadLocalInst {
   Value result;
-  // Route-local slot handle. Slot validation is function-local by LocalSlot.
+  // Compatibility slot spelling for dumps and raw-only BIR; slot_id is the
+  // semantic local-slot reference when present.
   std::string slot_name;
+  SlotNameId slot_id = kInvalidSlotName;
   std::size_t byte_offset = 0;
   std::size_t align_bytes = 0;
   std::optional<MemoryAddress> address;
@@ -421,8 +434,10 @@ struct StoreGlobalInst {
 };
 
 struct StoreLocalInst {
-  // Route-local slot handle. Slot validation is function-local by LocalSlot.
+  // Compatibility slot spelling for dumps and raw-only BIR; slot_id is the
+  // semantic local-slot reference when present.
   std::string slot_name;
+  SlotNameId slot_id = kInvalidSlotName;
   Value value;
   std::size_t byte_offset = 0;
   std::size_t align_bytes = 0;

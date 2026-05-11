@@ -223,6 +223,44 @@ void intern_known_block_labels(bir::Module* module, bir::Function* function) {
   }
 }
 
+void intern_known_local_slots(bir::Module* module, bir::Function* function) {
+  std::unordered_map<std::string_view, c4c::SlotNameId> known_slots;
+  known_slots.reserve(function->local_slots.size());
+  for (auto& slot : function->local_slots) {
+    slot.slot_id = module->names.slot_names.intern(slot.name);
+    if (slot.slot_id != c4c::kInvalidSlotName) {
+      known_slots.emplace(slot.name, slot.slot_id);
+    }
+  }
+
+  const auto find_known_slot = [&](std::string_view slot_name) {
+    const auto it = known_slots.find(slot_name);
+    return it == known_slots.end() ? c4c::kInvalidSlotName : it->second;
+  };
+  const auto assign_local_address_slot = [&](std::optional<bir::MemoryAddress>* address) {
+    if (!address->has_value() ||
+        (*address)->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
+      return;
+    }
+    (*address)->base_slot_id = find_known_slot((*address)->base_name);
+  };
+
+  for (auto& block : function->blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
+        load->slot_id = find_known_slot(load->slot_name);
+        assign_local_address_slot(&load->address);
+      } else if (auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
+        store->slot_id = find_known_slot(store->slot_name);
+        assign_local_address_slot(&store->address);
+      } else if (auto* call = std::get_if<bir::CallInst>(&inst);
+                 call != nullptr && call->sret_storage_name.has_value()) {
+        call->sret_storage_name_id = find_known_slot(*call->sret_storage_name);
+      }
+    }
+  }
+}
+
 }  // namespace
 
 BirFunctionLowerer::BirFunctionLowerer(BirLoweringContext& context,
@@ -1063,6 +1101,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       return std::nullopt;
     }
     intern_known_block_labels(&module, &*lowered_function);
+    intern_known_local_slots(&module, &*lowered_function);
     module.functions.push_back(std::move(*lowered_function));
   }
 

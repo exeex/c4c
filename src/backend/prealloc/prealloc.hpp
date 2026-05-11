@@ -144,6 +144,20 @@ struct PreparedBirModule;
   return names.slot_names.spelling(id);
 }
 
+[[nodiscard]] inline SlotNameId intern_prepared_slot_name(
+    PreparedNameTables& names,
+    const c4c::backend::bir::NameTables& bir_names,
+    SlotNameId bir_slot_id,
+    std::string_view spelling) {
+  if (bir_slot_id != kInvalidSlotName) {
+    const std::string_view id_spelling = bir_names.slot_names.spelling(bir_slot_id);
+    if (!id_spelling.empty()) {
+      return names.slot_names.intern(id_spelling);
+    }
+  }
+  return names.slot_names.intern(spelling);
+}
+
 [[nodiscard]] inline std::string_view prepared_link_name(
     const PreparedNameTables& names,
     LinkNameId id) {
@@ -497,6 +511,7 @@ struct FunctionInlineAsmSummary {
 };
 
 std::vector<PreparedStackObject> collect_function_stack_objects(PreparedNameTables& names,
+                                                                const bir::NameTables& bir_names,
                                                                 const bir::Function& function,
                                                                 PreparedObjectId& next_object_id);
 

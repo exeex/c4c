@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 namespace c4c::backend::bir {
@@ -30,6 +31,13 @@ const Global* find_global(const Module& module,
 const Global* find_global_by_name(const Module& module, std::string_view global_name);
 const Function* find_function_by_name(const Module& module, std::string_view function_name);
 const Function* find_function_by_link_name_id(const Module& module, LinkNameId function_name_id);
+struct LocalSlotLookup;
+const LocalSlot* find_local_slot(const Module& module,
+                                 const LocalSlotLookup& lookup,
+                                 std::string_view slot_name,
+                                 SlotNameId slot_id,
+                                 std::string_view context,
+                                 std::string* error);
 
 bool validate_named_value(const Module& module,
                           const Value& value,
@@ -193,6 +201,7 @@ bool validate_phi(const Module& module,
 
 bool validate_call(const Module& module,
                    const Function& function,
+                   const LocalSlotLookup& local_slots,
                    const CallInst& inst,
                    std::vector<std::string>* defined_names,
                    std::string* error) {
@@ -241,12 +250,49 @@ bool validate_call(const Module& module,
                             error)) {
     return false;
   }
+  if (inst.sret_storage_name_id != kInvalidSlotName && !inst.sret_storage_name.has_value()) {
+    return fail(error, "bir call sret storage in @" + function.name +
+                           " must not carry SlotNameId without a storage name");
+  }
+  if (inst.sret_storage_name.has_value()) {
+    if (find_local_slot(module,
+                        local_slots,
+                        *inst.sret_storage_name,
+                        inst.sret_storage_name_id,
+                        "bir call sret storage in @" + function.name,
+                        error) == nullptr) {
+      return false;
+    }
+  }
   return true;
 }
 
-bool validate_local_slot_names(const Function& function, std::string* error) {
+bool validate_slot_name_id(const Module& module,
+                           SlotNameId id,
+                           std::string_view context,
+                           std::string* error) {
+  if (id == kInvalidSlotName) {
+    return true;
+  }
+  if (module.names.slot_names.spelling(id).empty()) {
+    return fail(error, std::string(context) + " must reference a known SlotNameId");
+  }
+  return true;
+}
+
+struct LocalSlotLookup {
+  std::unordered_map<SlotNameId, const LocalSlot*> by_id;
+  std::unordered_map<std::string_view, const LocalSlot*> by_name;
+};
+
+bool validate_local_slot_names(const Module& module,
+                               const Function& function,
+                               LocalSlotLookup* lookup,
+                               std::string* error) {
   std::vector<std::string_view> slot_names;
+  std::vector<SlotNameId> slot_ids;
   slot_names.reserve(function.local_slots.size());
+  slot_ids.reserve(function.local_slots.size());
   for (const auto& slot : function.local_slots) {
     if (slot.name.empty()) {
       return fail(error, "bir local slot in @" + function.name +
@@ -260,7 +306,27 @@ bool validate_local_slot_names(const Function& function, std::string* error) {
       return fail(error, "bir local slot in @" + function.name +
                              " must not reuse an existing slot name");
     }
+    if (!validate_slot_name_id(module,
+                               slot.slot_id,
+                               "bir local slot in @" + function.name,
+                               error)) {
+      return false;
+    }
+    if (slot.slot_id != kInvalidSlotName) {
+      if (std::find(slot_ids.begin(), slot_ids.end(), slot.slot_id) != slot_ids.end()) {
+        return fail(error, "bir local slot in @" + function.name +
+                               " must not reuse an existing SlotNameId");
+      }
+      const std::string_view slot_id_spelling = module.names.slot_names.spelling(slot.slot_id);
+      if (slot_id_spelling != slot.name) {
+        return fail(error, "bir local slot in @" + function.name +
+                               " must not pair SlotNameId with a different slot name");
+      }
+      slot_ids.push_back(slot.slot_id);
+      lookup->by_id.emplace(slot.slot_id, &slot);
+    }
     slot_names.push_back(slot.name);
+    lookup->by_name.emplace(slot.name, &slot);
   }
   return true;
 }
@@ -372,14 +438,56 @@ bool validate_initializer_symbol_link_name(const Module& module,
   return true;
 }
 
-const LocalSlot* find_local_slot(const Function& function, std::string_view slot_name) {
-  const auto it = std::find_if(function.local_slots.begin(),
-                               function.local_slots.end(),
-                               [&](const LocalSlot& slot) { return slot.name == slot_name; });
-  return it == function.local_slots.end() ? nullptr : &*it;
+const LocalSlot* find_local_slot(const Module& module,
+                                 const LocalSlotLookup& lookup,
+                                 std::string_view slot_name,
+                                 SlotNameId slot_id,
+                                 std::string_view context,
+                                 std::string* error) {
+  if (!validate_slot_name_id(module, slot_id, context, error)) {
+    return nullptr;
+  }
+  if (slot_id != kInvalidSlotName) {
+    const auto id_it = lookup.by_id.find(slot_id);
+    if (id_it == lookup.by_id.end()) {
+      fail(error, std::string(context) +
+                      " must reference a local slot in the same function by SlotNameId");
+      return nullptr;
+    }
+    if (id_it->second->name != slot_name) {
+      fail(error, std::string(context) +
+                      " must not pair SlotNameId with a different local slot name");
+      return nullptr;
+    }
+    return id_it->second;
+  }
+  const auto name_it = lookup.by_name.find(slot_name);
+  if (name_it == lookup.by_name.end()) {
+    fail(error, std::string(context) + " must reference a declared local slot");
+    return nullptr;
+  }
+  return name_it->second;
 }
 
-bool validate_load_local(const Function& function,
+bool validate_local_slot_address(const Module& module,
+                                 const LocalSlotLookup& lookup,
+                                 const std::optional<MemoryAddress>& address,
+                                 std::string_view context,
+                                 std::string* error) {
+  if (!address.has_value() || address->base_kind != MemoryAddress::BaseKind::LocalSlot) {
+    return true;
+  }
+  return find_local_slot(module,
+                         lookup,
+                         address->base_name,
+                         address->base_slot_id,
+                         context,
+                         error) != nullptr;
+}
+
+bool validate_load_local(const Module& module,
+                         const Function& function,
+                         const LocalSlotLookup& local_slots,
                          const LoadLocalInst& inst,
                          std::vector<std::string>* defined_names,
                          std::string* error) {
@@ -387,9 +495,20 @@ bool validate_load_local(const Function& function,
     return fail(error, "bir local load result in @" + function.name +
                            " must use a non-empty named value");
   }
-  if (find_local_slot(function, inst.slot_name) == nullptr) {
-    return fail(error, "bir local load in @" + function.name +
-                           " must reference a declared local slot");
+  if (find_local_slot(module,
+                      local_slots,
+                      inst.slot_name,
+                      inst.slot_id,
+                      "bir local load in @" + function.name,
+                      error) == nullptr) {
+    return false;
+  }
+  if (!validate_local_slot_address(module,
+                                   local_slots,
+                                   inst.address,
+                                   "bir local load address in @" + function.name,
+                                   error)) {
+    return false;
   }
   defined_names->push_back(inst.result.name);
   return true;
@@ -426,12 +545,24 @@ bool validate_load_global(const Module& module,
 
 bool validate_store_local(const Module& module,
                           const Function& function,
+                          const LocalSlotLookup& local_slots,
                           const StoreLocalInst& inst,
                           const std::vector<std::string>& defined_names,
                           std::string* error) {
-  if (find_local_slot(function, inst.slot_name) == nullptr) {
-    return fail(error, "bir local store in @" + function.name +
-                           " must reference a declared local slot");
+  if (find_local_slot(module,
+                      local_slots,
+                      inst.slot_name,
+                      inst.slot_id,
+                      "bir local store in @" + function.name,
+                      error) == nullptr) {
+    return false;
+  }
+  if (!validate_local_slot_address(module,
+                                   local_slots,
+                                   inst.address,
+                                   "bir local store address in @" + function.name,
+                                   error)) {
+    return false;
   }
   if (!validate_named_value(module, inst.value, "bir local store value in @" + function.name, error)) {
     return false;
@@ -692,7 +823,10 @@ bool validate(const Module& module, std::string* error) {
       return fail(error, "bir function @" + function.name +
                              " must contain at least one block");
     }
-    if (!validate_local_slot_names(function, error)) {
+    LocalSlotLookup local_slot_lookup;
+    local_slot_lookup.by_id.reserve(function.local_slots.size());
+    local_slot_lookup.by_name.reserve(function.local_slots.size());
+    if (!validate_local_slot_names(module, function, &local_slot_lookup, error)) {
       return false;
     }
 
@@ -750,15 +884,18 @@ bool validate(const Module& module, std::string* error) {
                     &defined_names,
                     error);
               } else if constexpr (std::is_same_v<T, CallInst>) {
-                return validate_call(module, function, lowered, &defined_names, error);
+                return validate_call(
+                    module, function, local_slot_lookup, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
-                return validate_load_local(function, lowered, &defined_names, error);
+                return validate_load_local(
+                    module, function, local_slot_lookup, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, LoadGlobalInst>) {
                 return validate_load_global(module, function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, StoreGlobalInst>) {
                 return validate_store_global(module, function, lowered, defined_names, error);
               } else if constexpr (std::is_same_v<T, StoreLocalInst>) {
-                return validate_store_local(module, function, lowered, defined_names, error);
+                return validate_store_local(
+                    module, function, local_slot_lookup, lowered, defined_names, error);
               }
             },
             inst);

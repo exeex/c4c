@@ -31,6 +31,7 @@ namespace {
 
 [[nodiscard]] PreparedStackObject make_local_slot_object(const bir::Function& function,
                                                          PreparedNameTables& names,
+                                                         const bir::NameTables& bir_names,
                                                          const bir::LocalSlot& slot,
                                                          PreparedObjectId object_id) {
   const std::string_view source_kind = local_slot_source_kind(slot);
@@ -39,7 +40,7 @@ namespace {
   return PreparedStackObject{
       .object_id = object_id,
       .function_name = names.function_names.intern(function.name),
-      .slot_name = names.slot_names.intern(slot.name),
+      .slot_name = intern_prepared_slot_name(names, bir_names, slot.slot_id, slot.name),
       .source_kind = std::string(source_kind),
       .type = slot.type,
       .size_bytes = slot.size_bytes,
@@ -96,13 +97,14 @@ namespace {
 }  // namespace
 
 std::vector<PreparedStackObject> collect_function_stack_objects(PreparedNameTables& names,
+                                                                const bir::NameTables& bir_names,
                                                                 const bir::Function& function,
                                                                 PreparedObjectId& next_object_id) {
   std::vector<PreparedStackObject> objects;
   objects.reserve(function.local_slots.size() + function.params.size());
 
   for (const auto& slot : function.local_slots) {
-    objects.push_back(make_local_slot_object(function, names, slot, next_object_id++));
+    objects.push_back(make_local_slot_object(function, names, bir_names, slot, next_object_id++));
   }
 
   for (const auto& param : function.params) {

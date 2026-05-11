@@ -76,22 +76,28 @@ struct ResolvedFrameSlot {
 
 [[nodiscard]] ResolvedFrameSlot find_direct_frame_slot(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     std::string_view slot_name,
+    SlotNameId slot_id,
     const std::optional<bir::MemoryAddress>& address,
     std::int64_t access_byte_offset,
     std::size_t access_size_bytes,
     const FrameSlotMap& frame_slots_by_name) {
   std::string_view requested_slot_name = slot_name;
+  SlotNameId requested_slot_id = slot_id;
   if (address.has_value()) {
     if (address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot ||
         address->base_name.empty()) {
       return {};
     }
     requested_slot_name = address->base_name;
+    requested_slot_id = address->base_slot_id;
   }
 
   ResolvedFrameSlot resolved;
-  if (const auto slot_it = frame_slots_by_name.find(names.slot_names.find(requested_slot_name));
+  const SlotNameId prepared_slot_id =
+      intern_prepared_slot_name(names, bir_names, requested_slot_id, requested_slot_name);
+  if (const auto slot_it = frame_slots_by_name.find(prepared_slot_id);
       slot_it != frame_slots_by_name.end()) {
     resolved.frame_slot = slot_it->second;
   }
@@ -136,6 +142,7 @@ struct ResolvedFrameSlot {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_frame_slot_access(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -155,7 +162,14 @@ struct ResolvedFrameSlot {
       (inst.address.has_value() ? inst.address->byte_offset : 0);
   const auto resolved_frame_slot =
       find_direct_frame_slot(
-          names, inst.slot_name, inst.address, access_byte_offset, size_bytes, frame_slots_by_name);
+          names,
+          bir_names,
+          inst.slot_name,
+          inst.slot_id,
+          inst.address,
+          access_byte_offset,
+          size_bytes,
+          frame_slots_by_name);
   if (resolved_frame_slot.frame_slot == nullptr) {
     return std::nullopt;
   }
@@ -180,6 +194,7 @@ struct ResolvedFrameSlot {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_frame_slot_access(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -199,7 +214,14 @@ struct ResolvedFrameSlot {
       (inst.address.has_value() ? inst.address->byte_offset : 0);
   const auto resolved_frame_slot =
       find_direct_frame_slot(
-          names, inst.slot_name, inst.address, access_byte_offset, size_bytes, frame_slots_by_name);
+          names,
+          bir_names,
+          inst.slot_name,
+          inst.slot_id,
+          inst.address,
+          access_byte_offset,
+          size_bytes,
+          frame_slots_by_name);
   if (resolved_frame_slot.frame_slot == nullptr) {
     return std::nullopt;
   }
@@ -626,8 +648,13 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           function_addressing.accesses.push_back(std::move(*access));
           continue;
         }
-        if (auto access = build_direct_frame_slot_access(
-                names, function_name_id, block_label_id, inst_index, *load_local, frame_slots_by_name);
+        if (auto access = build_direct_frame_slot_access(names,
+                                                         bir_names,
+                                                         function_name_id,
+                                                         block_label_id,
+                                                         inst_index,
+                                                         *load_local,
+                                                         frame_slots_by_name);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -647,8 +674,13 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           function_addressing.accesses.push_back(std::move(*access));
           continue;
         }
-        if (auto access = build_direct_frame_slot_access(
-                names, function_name_id, block_label_id, inst_index, *store_local, frame_slots_by_name);
+        if (auto access = build_direct_frame_slot_access(names,
+                                                         bir_names,
+                                                         function_name_id,
+                                                         block_label_id,
+                                                         inst_index,
+                                                         *store_local,
+                                                         frame_slots_by_name);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -702,7 +734,8 @@ void BirPreAlloc::run_stack_layout() {
     }
 
     auto function_objects =
-        stack_layout::collect_function_stack_objects(prepared_.names, function, next_object_id);
+        stack_layout::collect_function_stack_objects(
+            prepared_.names, prepared_.module.names, function, next_object_id);
     stack_layout::apply_alloca_coalescing_hints(prepared_.names, function, function_objects);
     stack_layout::apply_copy_coalescing_hints(prepared_.names, function, function_objects);
 
