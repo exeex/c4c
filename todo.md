@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/167_whole_codebase_string_authority_final_audit.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Classify Compatibility Bridges and Retirement Candidates
+Current Step ID: 5
+Current Step Title: Record Audit Artifact and Follow-Up Ideas
 
 # Current Packet
 
@@ -38,19 +38,48 @@ Compatibility bridge inventory:
 
 ## Suggested Next
 
-Start Step 5 by consolidating the audit artifact and follow-up recommendations
-from Steps 1-4. Preserve these primary lanes:
+Step 5 - Record Audit Artifact and Follow-Up Ideas is ready to execute.
+Concrete consolidation packet:
 
-1. idea 168: production rendered-name compatibility bridge retirement for
-   parser support overloads, HIR module decl/record indexes, sema/consteval
-   template mirrors, HIR template/specialization rendered maps, LIR final-output
-   scans, and BIR link-symbol fallback.
-2. idea 169: route-local/generated identity cleanup for LIR/BIR/prealloc local
-   values, labels, slots, generated string constants, HIR locals/labels, and
-   consteval interpreter local `by_name`.
-3. regression guard lane: tests that prove complete structured misses fail
-   closed for parser typedef/record helpers, sema enum static-eval, HIR module
-   declaration lookup, record owner lookup, and BIR/LIR link-name parity.
+1. Consolidate the Step 1-4 classifications into a reviewer-readable final
+   audit artifact in `todo.md`: audit method, covered structured domains,
+   route-local/generated families, retained compatibility bridges, false
+   positives, and any semantic-authority leftovers.
+2. Keep the Step 4 bridge table as the compatibility-bridge source of truth,
+   but compress duplicate evidence where the same owner/domain appears in
+   earlier steps.
+3. Convert remaining work into follow-up recommendations instead of starting
+   implementation. Preserve these primary lanes:
+
+   - idea 168: production rendered-name compatibility bridge retirement for
+     parser support overloads, HIR module decl/record indexes, sema/consteval
+     template mirrors, HIR template/specialization rendered maps, LIR
+     final-output scans, and BIR link-symbol fallback.
+   - idea 169: route-local/generated identity cleanup for LIR/BIR/prealloc
+     local values, labels, slots, generated string constants, HIR locals/
+     labels, and consteval interpreter local `by_name`.
+   - regression guard lane: tests that prove complete structured misses fail
+     closed for parser typedef/record helpers, sema enum static-eval, HIR
+     module declaration lookup, record owner lookup, and BIR/LIR link-name
+     parity.
+
+4. State explicitly whether any distinct new `ideas/open/` initiative is
+   needed. Current Step 4 evidence suggests no new source idea is required
+   beyond ideas 168, 169, and the regression-guard lane unless consolidation
+   finds an uncovered production semantic-authority string.
+5. Confirm no source-idea intent changed during the audit and that `plan.md`
+   remains the correct runbook.
+
+Acceptance for Step 5:
+
+- `todo.md` contains one consolidated audit artifact rather than only
+  per-packet fragments.
+- Follow-up recommendations are grouped by owner, existing idea lane, and
+  reason they are separate from the audit.
+- Any leftover semantic-authority string is named with owner, evidence, and
+  whether it requires a new idea or fits idea 168/169/regression guards.
+- No implementation, tests, `plan.md`, or source idea edits are made unless
+  consolidation proves the runbook or durable source intent is wrong.
 
 ## Watchouts
 
