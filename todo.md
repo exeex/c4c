@@ -8,20 +8,22 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 ## Just Finished
 
-Completed the delegated Step 5 packet of `plan.md`: converted builtin
-`sizeof`/`alignof` type-query resolution to reuse the structured-aware
-`Lowerer::find_template_type_binding_for_call` path, so complete `TypeSpec`
-template-parameter owner metadata consults `FunctionCtx::structured_tpl_bindings`
-before stale TextId/rendered mirrors and complete structured misses do not fall
-through to those legacy maps. Added a focused `frontend_parser_tests.cpp`
-regression for builtin query resolution covering both the structured hit and the
-authoritative structured miss.
+Completed the delegated Step 5 packet of `plan.md`: converted
+`Lowerer::lookup_nttp_binding` to consult
+`FunctionCtx::structured_nttp_bindings` before `nttp_bindings_by_text` and
+rendered `nttp_bindings` when complete structured NTTP metadata is present.
+Structured NTTP hits now win over stale legacy mirrors, and complete structured
+misses for legacy-identified NTTP candidates do not fall through to the
+TextId/rendered maps. Added focused coverage in
+`cpp_hir_template_parameter_binding_key_test.cpp` for the structured hit and
+authoritative structured miss behavior.
 
 ## Suggested Next
 
-Continue Step 5 by checking any remaining forwarding/lowerer lookup paths that
-still consume enclosing type bindings through legacy-only maps, using the same
-complete-key-before-rendered-fallback rule.
+Continue Step 5 by reviewing any remaining NTTP forwarding/evaluation paths
+that still make direct `nttp_bindings_by_text` or rendered-map decisions outside
+`Lowerer::lookup_nttp_binding`, especially paths that build temporary
+consteval environments.
 
 ## Watchouts
 
@@ -30,8 +32,6 @@ complete-key-before-rendered-fallback rule.
 - Do not weaken tests or convert capability work into expectation-only changes.
 - Keep routine implementation progress in this file rather than rewriting the
   source idea.
-- `frontend_hir_tests` is not enabled in the default build preset, so focused
-  regression coverage for this packet lives in `frontend_parser_tests.cpp`.
 - The template-call type-argument lookup now treats complete `TypeSpec`
   template-parameter owner metadata as covered structured metadata; stale
   `tag`, `tag_text_id`, `template_param_text_id`, or rendered-name maps must not
@@ -79,6 +79,10 @@ complete-key-before-rendered-fallback rule.
 - `prepare_template_struct_instance` now follows the same complete-metadata
   requirement; incomplete struct argument mirrors still use the legacy
   specialization identity.
+- `Lowerer::lookup_nttp_binding` still uses the legacy TextId/rendered mirrors
+  to identify that a query is an NTTP candidate before applying structured
+  authority; raw structured `parameter_text_id` alone is not sufficient because
+  instantiated method bodies can carry unrelated `TextId` domains.
 
 ## Proof
 
@@ -87,8 +91,3 @@ Ran delegated proof command:
 
 Result: command exited 0 and `test_after.log` was written. The selected subset
 ran 322 tests with 100% passing after the build.
-
-Also ran the focused regression target directly:
-`ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
-
-Result: command exited 0 with 1/1 test passing.

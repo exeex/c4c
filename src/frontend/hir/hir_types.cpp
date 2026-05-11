@@ -1187,14 +1187,65 @@ std::optional<long long> Lowerer::lookup_nttp_binding(
     const FunctionCtx* ctx, const Node* name_node, const char* rendered_name) const {
   if (!ctx) return std::nullopt;
   const TextId text_id = name_node ? name_node->unqualified_text_id : kInvalidText;
+  std::optional<long long> text_mirror_value;
   if (text_id != kInvalidText && !ctx->nttp_bindings_by_text.empty()) {
     auto text_it = ctx->nttp_bindings_by_text.find(text_id);
-    if (text_it != ctx->nttp_bindings_by_text.end()) return text_it->second;
+    if (text_it != ctx->nttp_bindings_by_text.end()) {
+      text_mirror_value = text_it->second;
+    }
   }
+  std::optional<long long> rendered_mirror_value;
   if (rendered_name && rendered_name[0]) {
-    auto it = ctx->nttp_bindings.find(rendered_name);
-    if (it != ctx->nttp_bindings.end()) return it->second;
+    auto rendered_it = ctx->nttp_bindings.find(rendered_name);
+    if (rendered_it != ctx->nttp_bindings.end()) {
+      rendered_mirror_value = rendered_it->second;
+    }
   }
+
+  bool has_complete_structured_nttp_bindings = false;
+  std::optional<long long> structured_value;
+  bool structured_match_is_ambiguous = false;
+  for (const auto& [key, value] : ctx->structured_nttp_bindings) {
+    if (key.parameter_kind != HirTemplateParameterBindingKind::NonType ||
+        !hir_template_parameter_binding_key_has_complete_metadata(key)) {
+      continue;
+    }
+    has_complete_structured_nttp_bindings = true;
+
+    bool matches = text_mirror_value && key.pack_element_index < 0 &&
+                   key.parameter_text_id == text_id;
+    if (!matches && rendered_mirror_value && module_ && module_->link_name_texts) {
+      const std::string_view parameter_name =
+          module_->link_name_texts->lookup(key.parameter_text_id);
+      if (!parameter_name.empty()) {
+        if (key.pack_element_index >= 0) {
+          const auto rendered_pack_index =
+              hir_template_pack_element_index_from_legacy_name(
+                  rendered_name, parameter_name);
+          matches = rendered_pack_index &&
+                    *rendered_pack_index == key.pack_element_index;
+        } else {
+          matches = parameter_name == std::string_view(rendered_name);
+        }
+      }
+    }
+    if (!matches) continue;
+
+    if (structured_value) {
+      structured_match_is_ambiguous = true;
+    } else {
+      structured_value = value;
+    }
+  }
+  if (structured_value && !structured_match_is_ambiguous) {
+    return structured_value;
+  }
+  if (has_complete_structured_nttp_bindings &&
+      (text_mirror_value || rendered_mirror_value)) {
+    return std::nullopt;
+  }
+  if (text_mirror_value) return *text_mirror_value;
+  if (rendered_mirror_value) return *rendered_mirror_value;
   return std::nullopt;
 }
 
