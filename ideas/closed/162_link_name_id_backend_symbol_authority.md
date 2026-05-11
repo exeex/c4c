@@ -1,7 +1,8 @@
 # LinkNameId Backend Symbol Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-11
 
 Parent Ideas:
 - `ideas/closed/161_hir_template_binding_domain_key_authority.md`
@@ -155,6 +156,50 @@ BIR/backend own ABI and target preparation:
   route-local names, or explicitly documented compatibility bridges.
 - Focused tests prove symbol identity survives HIR→LIR→BIR and that raw-name
   compatibility cannot override a valid `LinkNameId`.
+
+## Closure Note
+
+Closed after Step 8 closure review in
+`review/link_name_id_step8_closure_review.md`. The retained raw-name paths are
+classified as output, diagnostics, route-local names, or documented
+invalid-id/no-metadata compatibility bridges with owner, limitation, and
+removal condition in the final `todo.md` Step 8 ledger. Close-time regression
+guard compared the full-suite `test_baseline.log` and `test_after.log` with
+`--allow-non-decreasing-passed`: 3104 passed, 31 failed, 3135 total before and
+after, with zero new failures.
+
+## Retained Compatibility Bridges
+
+- Output and diagnostics still print function/global/value names as text.
+  Owner: reporting sites. Limitation: text is user-facing context only and must
+  not reopen lookup when a valid `LinkNameId` is present. Removal condition:
+  none for diagnostics/output.
+- Route-local BIR and prealloc names remain strings for SSA values,
+  params/results, block labels, local slots, prepared function-name ids,
+  register/slot/addressing handles, string-pool labels, and type spellings.
+  Owner: BIR and prealloc route-local storage flows. Limitation: these identify
+  local compiler artifacts, not module-level link-visible symbols. Removal
+  condition: a separate route-local-id cleanup, not this idea.
+- BIR validation uses raw names only when the reference has
+  `kInvalidLinkName`. Owner: `src/backend/bir/bir_validate.cpp`. Limitation:
+  valid ids resolve by id first and mismatch checks reject conflicting raw
+  names. Removal condition: legacy/raw-only BIR inputs are retired or all
+  covered BIR producers always provide complete `LinkNameId`.
+- Backend direct-call, symbol-pointer, and direct-address preparation retain
+  raw fallback spelling only when the corresponding callee, pointer-symbol, or
+  address/base `LinkNameId` is invalid. Owners:
+  `src/backend/prealloc/prealloc.cpp` and
+  `src/backend/prealloc/stack_layout/coordinator.cpp`. Limitation: valid ids
+  resolve through the module/BIR link-name table and reject mismatched display
+  text. Removal condition: raw-only direct-call, symbol-pointer, and
+  global-address BIR compatibility is removed.
+- LIR-to-BIR raw `@symbol` maps and initializer parsing remain boundary
+  bridges when source metadata has no valid id. Owner:
+  `src/backend/bir/lir_to_bir/*`. Limitation: known functions/globals are
+  reattached to `LinkNameId` when available, and a provided but unknown
+  initializer-function id fails closed instead of falling back to raw spelling.
+  Removal condition: LIR operands and initializer metadata expose structured
+  symbol ids directly for all aggregate/byval/pointer initializer routes.
 
 ## Reviewer Reject Signals
 
