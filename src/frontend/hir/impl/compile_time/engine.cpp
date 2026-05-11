@@ -24,6 +24,21 @@ CompileTimeDiagnostic make_diag(CompileTimeDiagnostic::Kind kind,
   return diag;
 }
 
+std::optional<CompileTimeValueBindingKey> make_global_const_int_value_binding_key(
+    const GlobalVar& global) {
+  if (global.ns_qual.context_id < 0 || global.name_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+  CompileTimeValueBindingKey key;
+  key.binding_kind = CompileTimeValueBindingKeyKind::GlobalConstInt;
+  key.declaration_kind = NK_GLOBAL_VAR;
+  key.namespace_context_id = global.ns_qual.context_id;
+  key.is_global_qualified = global.ns_qual.is_global_qualified;
+  key.qualifier_segment_text_ids = global.ns_qual.segment_text_ids;
+  key.unqualified_text_id = global.name_text_id;
+  return key;
+}
+
 void sync_global_const_bindings(Module& module, CompileTimeState* ct_state) {
   if (!ct_state) return;
   for (const auto& global : module.globals) {
@@ -33,9 +48,17 @@ void sync_global_const_bindings(Module& module, CompileTimeState* ct_state) {
     const Expr* expr = module.find_expr(scalar->expr);
     if (!expr) continue;
     if (const auto* lit = std::get_if<IntLiteral>(&expr->payload)) {
-      ct_state->register_const_int_binding(global.name, lit->value);
+      if (auto key = make_global_const_int_value_binding_key(global)) {
+        ct_state->register_const_int_binding(*key, global.name, lit->value);
+      } else {
+        ct_state->register_const_int_binding(global.name, lit->value);
+      }
     } else if (const auto* ch = std::get_if<CharLiteral>(&expr->payload)) {
-      ct_state->register_const_int_binding(global.name, ch->value);
+      if (auto key = make_global_const_int_value_binding_key(global)) {
+        ct_state->register_const_int_binding(*key, global.name, ch->value);
+      } else {
+        ct_state->register_const_int_binding(global.name, ch->value);
+      }
     }
   }
 }

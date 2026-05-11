@@ -8,22 +8,20 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 ## Just Finished
 
-Completed the delegated Step 5 packet of `plan.md`: converted
-`Lowerer::lookup_nttp_binding` to consult
-`FunctionCtx::structured_nttp_bindings` before `nttp_bindings_by_text` and
-rendered `nttp_bindings` when complete structured NTTP metadata is present.
-Structured NTTP hits now win over stale legacy mirrors, and complete structured
-misses for legacy-identified NTTP candidates do not fall through to the
-TextId/rendered maps. Added focused coverage in
-`cpp_hir_template_parameter_binding_key_test.cpp` for the structured hit and
-authoritative structured miss behavior.
+Completed the delegated Step 5 full-suite regression repair of `plan.md`.
+The remaining `llvm_gcc_c_torture_src_20011008_3_c` abort came from folding
+the runtime `flags` parameter through an enum-domain canonical spelling bridge.
+`ConstEvalEnv` now keeps enum structured lookups on their source structured
+keys only, while preserving the `link_name_texts` bridge needed for named
+const-int globals. Present structured-map channels also keep miss authority
+for complete keys instead of reopening rendered fallback just because a map is
+empty.
 
 ## Suggested Next
 
-Continue Step 5 by reviewing any remaining NTTP forwarding/evaluation paths
-that still make direct `nttp_bindings_by_text` or rendered-map decisions outside
-`Lowerer::lookup_nttp_binding`, especially paths that build temporary
-consteval environments.
+Supervisor should review and commit this coherent Step 5 repair slice, then
+choose the next Step 5 forwarding/lowerer packet if more direct rendered/TextId
+lookup paths remain.
 
 ## Watchouts
 
@@ -79,15 +77,32 @@ consteval environments.
 - `prepare_template_struct_instance` now follows the same complete-metadata
   requirement; incomplete struct argument mirrors still use the legacy
   specialization identity.
-- `Lowerer::lookup_nttp_binding` still uses the legacy TextId/rendered mirrors
-  to identify that a query is an NTTP candidate before applying structured
-  authority; raw structured `parameter_text_id` alone is not sufficient because
-  instantiated method bodies can carry unrelated `TextId` domains.
+- `Lowerer::lookup_nttp_binding` no longer requires legacy mirrors for a
+  complete structured hit when the query carries matching `TextId` metadata.
+- `ConstEvalEnv` still treats rendered maps as no-metadata compatibility only;
+  the new key bridge converts through `link_name_texts` and still ends in a
+  structured map lookup.
+- Deferred compile-time global sync now preserves structured global const-int
+  authority for reduced globals such as `tile` and `cost`, so static-assert
+  verification does not depend on flat rendered fallback.
+- Do not use the `link_name_texts` canonical spelling bridge for enum
+  constants; enum names can collide with locals, parameters, and fields in C,
+  and those collisions must not recover through global enum maps.
+- Empty structured maps retain covered miss authority for complete structured
+  keys. This keeps a present structured channel from silently falling through
+  to rendered/TextId compatibility after domain setup.
+- The C torture case now keeps `(!(flags & 1) ? 1 : elp->u.l.ntxns)` dynamic
+  instead of folding `flags` through an unrelated enum constant.
 
 ## Proof
 
 Ran delegated proof command:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_|cpp_positive_sema_.*template|cpp_positive_sema_.*qualified_.*template)'; } > test_after.log 2>&1`
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_20011008_3_c|frontend_parser_lookup_authority_tests|cpp_c4_static_assert_if_constexpr_branch_unlocks_later|cpp_c4_static_assert_multistage_shape_chain|cpp_hir_.*|cpp_positive_sema_.*template.*|cpp_positive_sema_.*qualified_.*template.*)$'; } > test_after.log 2>&1`
 
-Result: command exited 0 and `test_after.log` was written. The selected subset
-ran 322 tests with 100% passing after the build.
+Result: command exited 0 and `test_after.log` was written. The delegated proof
+passed all 326 selected tests, including `llvm_gcc_c_torture_src_20011008_3_c`,
+the lookup-authority tests, the consteval/static-assert tests, the `cpp_hir_.*`
+coverage, and the positive template/qualified-template sema coverage. Also ran
+the focused check
+`ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_20011008_3_c|frontend_parser_lookup_authority_tests|cpp_c4_static_assert_if_constexpr_branch_unlocks_later|cpp_c4_static_assert_multistage_shape_chain|cpp_hir_template_parameter_binding_key_structured_metadata)$'`,
+which passed all five selected tests.

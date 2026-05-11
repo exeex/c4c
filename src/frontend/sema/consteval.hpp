@@ -268,6 +268,8 @@ struct ConstEvalEnv {
         has_authoritative_metadata ||
         text.status == ConstEvalValueLookupStatus::Miss;
     if (has_authoritative_metadata) {
+      const bool allow_rendered_nttp_compat =
+          !n->is_global_qualified && n->n_qualifier_segments == 0;
       return lookup_rendered_compatibility(
           n->name,
           structured.enum_binding_metadata_miss ||
@@ -277,7 +279,8 @@ struct ConstEvalEnv {
           structured.named_binding_metadata_miss ||
               text.named_binding_metadata_miss,
           structured.nttp_binding_metadata_miss ||
-              text.nttp_binding_metadata_miss);
+              text.nttp_binding_metadata_miss ||
+              !allow_rendered_nttp_compat);
     }
 
     return lookup(n->name);
@@ -325,11 +328,81 @@ struct ConstEvalEnv {
 
   static ConstEvalValueLookupResult lookup_key_map_status(
       const ConstStructuredMap* map,
-      const std::optional<ConstEvalStructuredNameKey>& key) {
-    if (!map || !key.has_value() || !key->valid()) return {};
-    auto it = map->find(*key);
-    if (it == map->end()) return {ConstEvalValueLookupStatus::Miss, 0};
-    return {ConstEvalValueLookupStatus::Found, it->second};
+      const std::optional<ConstEvalStructuredNameKey>& key,
+      const std::optional<ConstEvalStructuredNameKey>& alternate_key = std::nullopt) {
+    if (!map) return {};
+    bool saw_valid_key = false;
+    auto try_key = [&](const std::optional<ConstEvalStructuredNameKey>& candidate)
+        -> ConstEvalValueLookupResult {
+      if (!candidate.has_value() || !candidate->valid()) return {};
+      saw_valid_key = true;
+      auto it = map->find(*candidate);
+      if (it == map->end()) return {};
+      return {ConstEvalValueLookupStatus::Found, it->second};
+    };
+    if (auto result = try_key(key);
+        result.status == ConstEvalValueLookupStatus::Found) {
+      return result;
+    }
+    if (alternate_key.has_value() &&
+        (!key.has_value() || !(alternate_key.value() == key.value()))) {
+      if (auto result = try_key(alternate_key);
+          result.status == ConstEvalValueLookupStatus::Found) {
+        return result;
+      }
+    }
+    if (!saw_valid_key) return {};
+    return {ConstEvalValueLookupStatus::Miss, 0};
+  }
+
+  std::optional<ConstEvalStructuredNameKey> canonical_local_key(
+      const Node* n) const {
+    if (!n || !link_name_texts || n->unqualified_text_id == kInvalidText) {
+      return std::nullopt;
+    }
+    if (n->is_global_qualified || n->n_qualifier_segments > 0) {
+      return std::nullopt;
+    }
+    const char* spelling = n->unqualified_name && n->unqualified_name[0]
+                               ? n->unqualified_name
+                               : n->name;
+    if (!spelling || !spelling[0]) return std::nullopt;
+    const TextId base_text_id = link_name_texts->find(spelling);
+    if (base_text_id == kInvalidText) return std::nullopt;
+    ConstEvalStructuredNameKey key;
+    key.base_text_id = base_text_id;
+    return key;
+  }
+
+  std::optional<ConstEvalStructuredNameKey> canonical_symbol_key(
+      const Node* n) const {
+    if (!n || !link_name_texts || n->namespace_context_id < 0 ||
+        n->unqualified_text_id == kInvalidText) {
+      return std::nullopt;
+    }
+    if (n->n_qualifier_segments < 0) return std::nullopt;
+    if (n->n_qualifier_segments > 0 && !n->qualifier_segments) {
+      return std::nullopt;
+    }
+    const char* spelling = n->unqualified_name && n->unqualified_name[0]
+                               ? n->unqualified_name
+                               : n->name;
+    if (!spelling || !spelling[0]) return std::nullopt;
+    const TextId base_text_id = link_name_texts->find(spelling);
+    if (base_text_id == kInvalidText) return std::nullopt;
+    ConstEvalStructuredNameKey key;
+    key.namespace_context_id = n->namespace_context_id;
+    key.is_global_qualified = n->is_global_qualified;
+    key.base_text_id = base_text_id;
+    key.qualifier_text_ids.reserve(static_cast<std::size_t>(n->n_qualifier_segments));
+    for (int i = 0; i < n->n_qualifier_segments; ++i) {
+      const char* segment = n->qualifier_segments[i];
+      if (!segment || !segment[0]) return std::nullopt;
+      const TextId segment_text_id = link_name_texts->find(segment);
+      if (segment_text_id == kInvalidText) return std::nullopt;
+      key.qualifier_text_ids.push_back(segment_text_id);
+    }
+    return key;
   }
 
   std::optional<long long> lookup_rendered_nttp(const std::string& name) const {
@@ -458,11 +531,14 @@ struct ConstEvalEnv {
   ConstEvalValueLookupResult lookup_by_key(const Node* n) const {
     const auto local = local_key(n);
     const auto symbol = symbol_key(n);
+    const auto canonical_local = canonical_local_key(n);
+    const auto canonical_symbol = canonical_symbol_key(n);
     bool saw_metadata = false;
     ConstEvalValueLookupResult miss;
     if (enum_scopes_by_key) {
       for (auto it = enum_scopes_by_key->rbegin(); it != enum_scopes_by_key->rend(); ++it) {
-        ConstEvalValueLookupResult result = lookup_key_map_status(&*it, local);
+        ConstEvalValueLookupResult result =
+            lookup_key_map_status(&*it, local);
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
         if (result.status == ConstEvalValueLookupStatus::Miss) {
           saw_metadata = true;
@@ -470,7 +546,8 @@ struct ConstEvalEnv {
         }
       }
     }
-    if (auto result = lookup_key_map_status(enum_consts_by_key, symbol);
+    if (auto result =
+            lookup_key_map_status(enum_consts_by_key, symbol);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
@@ -482,7 +559,8 @@ struct ConstEvalEnv {
     if (local_const_scopes_by_key) {
       for (auto it = local_const_scopes_by_key->rbegin();
            it != local_const_scopes_by_key->rend(); ++it) {
-        ConstEvalValueLookupResult result = lookup_key_map_status(&*it, local);
+        ConstEvalValueLookupResult result =
+            lookup_key_map_status(&*it, local, canonical_local);
         if (result.status == ConstEvalValueLookupStatus::Found) return result;
         if (result.status == ConstEvalValueLookupStatus::Miss) {
           saw_metadata = true;
@@ -490,7 +568,8 @@ struct ConstEvalEnv {
         }
       }
     }
-    if (auto result = lookup_key_map_status(local_consts_by_key, local);
+    if (auto result =
+            lookup_key_map_status(local_consts_by_key, local, canonical_local);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
@@ -499,7 +578,8 @@ struct ConstEvalEnv {
         miss.local_binding_metadata_miss = true;
       }
     }
-    if (auto result = lookup_key_map_status(named_consts_by_key, symbol);
+    if (auto result =
+            lookup_key_map_status(named_consts_by_key, symbol, canonical_symbol);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {
@@ -508,7 +588,8 @@ struct ConstEvalEnv {
         miss.named_binding_metadata_miss = true;
       }
     }
-    if (auto result = lookup_key_map_status(nttp_bindings_by_key, local);
+    if (auto result =
+            lookup_key_map_status(nttp_bindings_by_key, local, canonical_local);
         result.status == ConstEvalValueLookupStatus::Found) {
       return result;
     } else {

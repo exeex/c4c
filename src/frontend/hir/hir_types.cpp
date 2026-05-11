@@ -1202,6 +1202,7 @@ std::optional<long long> Lowerer::lookup_nttp_binding(
     }
   }
 
+  const bool has_text_identity = text_id != kInvalidText;
   bool has_complete_structured_nttp_bindings = false;
   std::optional<long long> structured_value;
   bool structured_match_is_ambiguous = false;
@@ -1212,9 +1213,25 @@ std::optional<long long> Lowerer::lookup_nttp_binding(
     }
     has_complete_structured_nttp_bindings = true;
 
-    bool matches = text_mirror_value && key.pack_element_index < 0 &&
-                   key.parameter_text_id == text_id;
-    if (!matches && rendered_mirror_value && module_ && module_->link_name_texts) {
+    bool matches = false;
+    if (has_text_identity && key.parameter_text_id == text_id) {
+      matches = key.pack_element_index < 0;
+      if (!matches && rendered_name && rendered_name[0]) {
+        const std::string_view parameter_name =
+            module_ && module_->link_name_texts
+                ? module_->link_name_texts->lookup(key.parameter_text_id)
+                : std::string_view{};
+        if (!parameter_name.empty()) {
+          const auto rendered_pack_index =
+              hir_template_pack_element_index_from_legacy_name(
+                  rendered_name, parameter_name);
+          matches = rendered_pack_index &&
+                    *rendered_pack_index == key.pack_element_index;
+        }
+      }
+    }
+    if (!matches && !has_text_identity && rendered_name && rendered_name[0] &&
+        module_ && module_->link_name_texts) {
       const std::string_view parameter_name =
           module_->link_name_texts->lookup(key.parameter_text_id);
       if (!parameter_name.empty()) {

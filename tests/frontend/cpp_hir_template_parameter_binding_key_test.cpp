@@ -908,15 +908,20 @@ void test_lowerer_nttp_lookup_prefers_complete_structured_binding() {
 
   c4c::hir::Lowerer::FunctionCtx ctx{};
   ctx.structured_nttp_bindings[*key] = 17;
-  ctx.nttp_bindings_by_text[name_text_ids[0]] = 91;
-  ctx.nttp_bindings["N"] = 92;
 
   c4c::Node ref{};
   ref.kind = c4c::NK_VAR;
   ref.name = "N";
   ref.unqualified_text_id = name_text_ids[0];
 
-  const auto resolved = lowerer.lookup_nttp_binding(&ctx, &ref, "N");
+  auto resolved = lowerer.lookup_nttp_binding(&ctx, &ref, "N");
+  expect_true(resolved && *resolved == 17,
+              "complete structured NTTP binding should not require legacy mirrors");
+
+  ctx.nttp_bindings_by_text[name_text_ids[0]] = 91;
+  ctx.nttp_bindings["N"] = 92;
+
+  resolved = lowerer.lookup_nttp_binding(&ctx, &ref, "N");
   expect_true(resolved && *resolved == 17,
               "complete structured NTTP binding should win over stale TextId/rendered mirrors");
 }
