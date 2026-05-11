@@ -1,23 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/167_local_block_enum_scope_static_eval_structured_mirrors.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Local/Block Collision Coverage
+Current Step ID: 5
+Current Step Title: Convert Remaining Metadata-Capable Paths
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 4 added focused HIR coverage for same-spelled local/block enum
-constants statically evaluated through the converted lowerer path.
-`frontend_hir_tests` now lowers a function with an outer local enum and an
-inner block enum that both define `Same`, then verifies HIR constexpr-if
-lowering keeps only the branches selected by the correct scoped values.
+Plan Step 5 converted the direct enum-expression lowering path in
+`src/frontend/hir/impl/expr/scalar_control.cpp`. `lower_var_expr` now builds a
+lowerer `ConstEvalEnv` for enum lookup and calls `lookup(n)`, so scoped
+TextId/key enum metadata is checked before the rendered `enum_consts_`
+compatibility mirror. Complete scoped enum metadata misses close the enum
+domain through existing `ConstEvalEnv` behavior instead of falling back to
+rendered spelling as ordinary authority.
 
-The test checks that the outer value is used before and after the inner block,
-that the inner value is used inside the block, and that stale failure-return
-literals from the wrong branches are absent from the lowered HIR. This observes
-lowerer static-evaluation branch selection rather than sema diagnostics.
+Step 5 follow-up strengthened the metadata proof:
+`cpp_hir_sema_consteval_type_utils_metadata_test` now builds a local/block-like
+scoped enum metadata stack where scoped `Same` values are `17` and `29` while
+the rendered compatibility mirror contains stale `Same = 404`. The test
+requires `ConstEvalEnv::lookup(Node*)` to select the innermost scoped metadata
+value, restore the outer scoped value after popping the inner frame, and fail
+closed on a complete scoped metadata miss instead of recovering through the
+stale rendered mirror.
+
+Focused coverage now includes direct enum-expression lowering:
+`frontend_hir_tests` lowers a function with same-spelled `Same` enum constants
+in outer and inner block scopes and checks that direct `return Same;`
+expressions lower to the inner value while scoped and to the restored outer
+value after the block exits.
+
+Step 4 coverage ledger:
+
+- HIR constexpr-if coverage lowers a function with an outer local enum and an
+  inner block enum that both define `Same`, then verifies HIR constexpr-if
+  lowering keeps only the branches selected by the correct scoped values.
+- The Step 4 test observes lowerer static-evaluation branch selection rather
+  than sema diagnostics by checking the absence of stale wrong-branch return
+  literals in lowered HIR.
 
 Step 2/3 implementation ledger:
 
@@ -70,9 +91,10 @@ Step 1 inventory ledger, preserved for route context:
 
 ## Suggested Next
 
-Plan Step 5: convert the next metadata-capable local/block static-eval path, or
-explicitly fence a remaining rendered-only boundary if the next path lacks
-complete scope/domain metadata.
+Plan review or Step 5 continuation: inventory any remaining local/block enum
+static-eval consumers that still read `enum_consts_` directly and either route
+metadata-capable callers through `ConstEvalEnv` or document why they remain
+rendered-only compatibility.
 
 ## Watchouts
 
@@ -84,14 +106,17 @@ complete scope/domain metadata.
 - `CompileTimeState` still has no local/block enum scope lifetime; keep
   local/block enum constants out of its flat rendered enum map unless a future
   packet adds scoped metadata there too.
-- Nearby same-feature cases examined: HIR constexpr-if exercises
-  `make_lowerer_consteval_env` and scoped enum lookup directly; direct enum
-  expression lowering still uses the rendered compatibility mirror and is out
-  of reach for this coverage packet until that call site is converted.
+- Rendered `enum_consts_` remains the no-metadata compatibility mirror for
+  enum references whose AST nodes lack complete TextId/key metadata.
+- The metadata-level scoped enum test is the authority guard for stale rendered
+  mirror rejection; the source-level HIR direct enum test primarily guards the
+  lowerer call path and scope lifetime.
+- Static-member initializer evaluation still uses its separate rendered/static
+  member bridge and was not reopened in this packet.
 
 ## Proof
 
 Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_expr_scalar_control_helper|positive_sema_ok_enum_scope_local_over_global_c|positive_sema_ok_enum_scope_no_leak_after_block_c)$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_expr_scalar_control_helper|positive_sema_ok_enum_scope_local_over_global_c|positive_sema_ok_enum_scope_no_leak_after_block_c)$' > test_after.log`
 
 Proof log: `test_after.log`.

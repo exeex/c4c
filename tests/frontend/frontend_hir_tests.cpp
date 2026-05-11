@@ -3195,6 +3195,33 @@ int enum_scope_collision() {
               "HIR constexpr-if should not let the inner block enum overwrite the outer enum after scope exit");
 }
 
+void test_hir_direct_enum_expr_scopes_keep_same_spelled_values_distinct() {
+  const c4c::hir::Module module = lower_hir_module(R"cpp(
+int enum_direct_collision(int flag) {
+  enum { Same = 17 };
+  {
+    enum { Same = 29 };
+    if (flag) {
+      return Same;
+    }
+  }
+  return Same;
+}
+)cpp");
+
+  const auto fn_it = module.fn_index.find("enum_direct_collision");
+  expect_true(fn_it != module.fn_index.end(),
+              "direct local/block enum fixture should lower a function");
+  const c4c::hir::Function* fn = module.find_function(fn_it->second);
+  expect_true(fn != nullptr,
+              "direct local/block enum fixture should resolve the lowered function");
+
+  expect_true(function_has_return_int_literal(module, *fn, 29),
+              "direct enum-expression lowering should use the inner block enum value while scoped");
+  expect_true(function_has_return_int_literal(module, *fn, 17),
+              "direct enum-expression lowering should restore the outer enum value after the inner block");
+}
+
 void test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6252,6 +6279,7 @@ int main() {
   test_hir_member_symbol_lookup_keeps_rendered_fallback_without_structured_key();
   test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag();
   test_hir_local_block_enum_consteval_scopes_keep_same_spelled_values_distinct();
+  test_hir_direct_enum_expr_scopes_keep_same_spelled_values_distinct();
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_out_of_class_method_attachment_prefers_structured_owner_key();

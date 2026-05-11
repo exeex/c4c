@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -302,6 +303,55 @@ void test_static_eval_int_keeps_same_spelled_enum_domains_distinct() {
                 "structured enum miss must not recover through shared TextId or rendered spelling");
 }
 
+void test_consteval_env_scoped_enum_metadata_beats_stale_rendered_mirror() {
+  c4c::TextTable texts;
+  const c4c::TextId same_text = texts.intern("Same");
+  const c4c::TextId other_text = texts.intern("Other");
+
+  std::unordered_map<std::string, long long> rendered_enums;
+  rendered_enums.emplace("Same", 404);
+
+  std::vector<c4c::hir::ConstTextMap> enum_scopes_by_text;
+  enum_scopes_by_text.emplace_back();
+  enum_scopes_by_text.back().emplace(same_text, 17);
+  enum_scopes_by_text.emplace_back();
+  enum_scopes_by_text.back().emplace(same_text, 29);
+
+  c4c::hir::ConstEvalStructuredNameKey same_key;
+  same_key.base_text_id = same_text;
+  std::vector<c4c::hir::ConstStructuredMap> enum_scopes_by_key;
+  enum_scopes_by_key.emplace_back();
+  enum_scopes_by_key.back().emplace(same_key, 17);
+  enum_scopes_by_key.emplace_back();
+  enum_scopes_by_key.back().emplace(same_key, 29);
+
+  c4c::hir::ConstEvalEnv env{};
+  env.enum_consts = &rendered_enums;
+  env.enum_scopes_by_text = &enum_scopes_by_text;
+  env.enum_scopes_by_key = &enum_scopes_by_key;
+  env.link_name_texts = &texts;
+
+  c4c::Node inner_ref = var_ref("Same", "Same", same_text, -1);
+  const std::optional<long long> inner_value = env.lookup(&inner_ref);
+  expect_true(inner_value.has_value(),
+              "scoped enum metadata lookup should find the innermost value");
+  expect_eq_int(static_cast<int>(*inner_value), 29,
+                "scoped enum metadata must beat stale rendered enum mirror authority");
+
+  enum_scopes_by_text.pop_back();
+  enum_scopes_by_key.pop_back();
+  const std::optional<long long> outer_value = env.lookup(&inner_ref);
+  expect_true(outer_value.has_value(),
+              "scoped enum metadata lookup should find the restored outer value");
+  expect_eq_int(static_cast<int>(*outer_value), 17,
+                "scoped enum metadata should track local/block scope lifetime");
+
+  c4c::Node missing_ref = var_ref("Same", "Same", other_text, -1);
+  const std::optional<long long> missing_value = env.lookup(&missing_ref);
+  expect_true(!missing_value.has_value(),
+              "complete scoped enum metadata miss must not recover through stale rendered mirror");
+}
+
 }  // namespace
 
 int main() {
@@ -313,6 +363,7 @@ int main() {
   test_static_eval_int_structured_enum_miss_rejects_rendered_bridge();
   test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge();
   test_static_eval_int_keeps_same_spelled_enum_domains_distinct();
+  test_consteval_env_scoped_enum_metadata_beats_stale_rendered_mirror();
   std::cout << "PASS: cpp_hir_sema_consteval_type_utils_metadata_test\n";
   return 0;
 }

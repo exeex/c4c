@@ -543,11 +543,13 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
         }
       }
     }
-    auto it = enum_consts_.find(n->name);
-    if (it != enum_consts_.end()) {
+    LowererConstEvalStructuredMaps enum_consteval_maps;
+    ConstEvalEnv enum_env =
+        make_lowerer_consteval_env(enum_consteval_maps, nullptr, false);
+    if (auto enum_value = enum_env.lookup(n)) {
       TypeSpec ts{};
       ts.base = TB_INT;
-      return append_expr(n, IntLiteral{it->second, false}, ts);
+      return append_expr(n, IntLiteral{*enum_value, false}, ts);
     }
     if (ctx) {
       const std::optional<HirTemplateParameterBindingKey> query_key =
