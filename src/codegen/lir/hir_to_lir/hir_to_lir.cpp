@@ -1306,7 +1306,7 @@ static LirGlobalRefs collect_fn_refs(const LirFunction& fn) {
   return refs;
 }
 
-static void eliminate_dead_internals(LirModule& mod) {
+void eliminate_dead_internals(LirModule& mod) {
   std::unordered_map<LinkNameId, size_t> discardable_by_link_name;
   // Compatibility fallback for legacy reference payloads that have not been
   // paired with a LinkNameId. Structured references seed through
@@ -1361,10 +1361,16 @@ static void eliminate_dead_internals(LirModule& mod) {
   // Seed from global initializers.
   for (const auto& g : mod.globals) {
     LirGlobalRefs grefs;
+    bool has_structured_initializer_function_ids = false;
     for (const LinkNameId id : g.initializer_function_link_name_ids) {
-      if (id != kInvalidLinkName) grefs.link_name_ids.insert(id);
+      if (id != kInvalidLinkName) {
+        grefs.link_name_ids.insert(id);
+        has_structured_initializer_function_ids = true;
+      }
     }
-    scan_refs(g.init_text, grefs.names);
+    if (!has_structured_initializer_function_ids) {
+      scan_refs(g.init_text, grefs.names);
+    }
     seed(grefs);
   }
 

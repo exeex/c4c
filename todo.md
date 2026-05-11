@@ -9,44 +9,36 @@ Current Step Title: Retire LIR and HIR-to-LIR Final-Output Bridges
 ## Just Finished
 
 Step 5 - Retire LIR and HIR-to-LIR Final-Output Bridges:
-Fenced the LIR extern declaration raw/rendered-name map as a legacy
-compatibility and output boundary. `LirModule::record_extern_decl` now resolves
-an already-known `LinkNameId` before falling back to `extern_decl_name_map`, so
-complete link-name metadata remains authoritative when a later caller records
-the same declaration through the raw spelling path.
+Fenced dead-internal global-initializer reachability so complete
+`LirGlobal::initializer_function_link_name_ids` metadata closes the raw
+`init_text` fallback. `eliminate_dead_internals` now seeds from valid
+initializer `LinkNameId`s and scans final initializer spelling only when a
+global has no valid structured initializer function IDs.
 
-The retained `extern_decl_name_map` path is now documented as legacy
-raw/rendered compatibility in `src/codegen/lir/ir.hpp` and at the HIR-to-LIR
-finalization boundary. The focused extern-decl test now proves that a known
-`LinkNameId` preempts legacy raw-name fallback while preserving return-type
-metadata and output spelling behavior.
+Added focused LIR coverage proving stale `init_text` does not keep a
+rendered-name shadow alive when structured initializer IDs exist, while
+legacy/no-metadata initializer payloads still scan raw `init_text`.
 
 Changed files:
 
 | File | Result |
 | --- | --- |
-| `src/codegen/lir/ir.hpp` | Documented the raw/rendered extern map as legacy compatibility and routed known raw-name records back through existing `LinkNameId` entries. |
-| `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` | Documented final extern-decl vectorization as a printer/output boundary with `LinkNameId` authority first. |
-| `tests/frontend/frontend_lir_extern_decl_type_ref_test.cpp` | Added focused proof that `LinkNameId` extern declarations preempt legacy raw-name fallback. |
+| `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` | Made valid initializer function `LinkNameId`s authoritative before raw initializer text scanning in dead-internal elimination. |
+| `tests/frontend/frontend_hir_tests.cpp` | Added direct LIR reachability coverage for stale `init_text` fencing and legacy no-metadata fallback preservation. |
 | `todo.md` | Recorded this Step 5 packet result and proof. |
 
 ## Suggested Next
 
-Continue Step 5 by inspecting the next LIR/HIR-to-LIR final-output bridge:
-prefer a narrow packet around any printer/verifier or final LLVM text path that
-still recovers semantic facts from rendered strings instead of using structured
-ids or typed mirrors.
+Continue Step 5 by inspecting the next LIR/HIR-to-LIR final-output bridge that
+still recovers semantic reachability or identity from rendered LLVM text despite
+available structured IDs or typed mirrors.
 
 ## Watchouts
 
-- Preserve final emitted spelling and diagnostics unless the Step 5 packet
-  explicitly documents an intentional rendering change.
-- `extern_decl_name_map` remains intentionally present for declarations that
-  arrive without complete `LinkNameId` metadata; do not treat it as ordinary
-  semantic lookup in later packets.
-- This packet touched both LIR data structure behavior and the HIR-to-LIR
-  final-output boundary comment; supervisor may choose whether this narrow
-  proof is enough or whether Step 5 needs a broader acceptance subset later.
+- `LirGlobal::init_text` remains final output payload and is still scanned for
+  legacy initializer producers with no valid structured function IDs.
+- The focused test exposes `eliminate_dead_internals` to the test TU through a
+  namespace-local forward declaration rather than a public header declaration.
 - The pre-existing untracked `review/168_step4_hir_bridge_route_review.md`
   remains transient and was not modified.
 - No current blockers.
@@ -54,7 +46,7 @@ ids or typed mirrors.
 ## Proof
 
 Proof command:
-`cmake --build build --target frontend_lir_extern_decl_type_ref_test && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_extern_decl_type_ref$'`
+`cmake --build build --target frontend_hir_tests && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
 
 Result: passed. Output was written to `test_after.log`.
 

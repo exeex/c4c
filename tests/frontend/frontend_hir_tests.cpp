@@ -36,6 +36,10 @@
 #include "hir/impl/lowerer.hpp"
 #undef private
 
+namespace c4c::codegen::lir {
+void eliminate_dead_internals(LirModule& mod);
+}
+
 namespace {
 
 [[noreturn]] void fail(const std::string& msg) {
@@ -1455,6 +1459,77 @@ int call_pick(int value) { return global_pick(value); }
       });
   expect_true(lir_shadow_it == lir_module.functions.end(),
               "dead-internal elimination should not keep the rendered-name collision");
+}
+
+void test_lir_dead_internal_initializer_ids_close_raw_init_text_fallback() {
+  c4c::codegen::lir::LirModule module = make_link_name_aware_lir_module();
+  const c4c::LinkNameId semantic_helper_id =
+      module.link_names.intern("semantic_helper");
+  const c4c::LinkNameId rendered_shadow_id =
+      module.link_names.intern("rendered_shadow");
+  expect_true(semantic_helper_id != c4c::kInvalidLinkName &&
+                  rendered_shadow_id != c4c::kInvalidLinkName,
+              "fixture should allocate stable function LinkNameIds");
+
+  c4c::codegen::lir::LirFunction semantic_helper;
+  semantic_helper.name = "semantic_helper";
+  semantic_helper.link_name_id = semantic_helper_id;
+  semantic_helper.is_internal = true;
+  semantic_helper.can_elide_if_unreferenced = true;
+  module.functions.push_back(std::move(semantic_helper));
+
+  c4c::codegen::lir::LirFunction rendered_shadow;
+  rendered_shadow.name = "rendered_shadow";
+  rendered_shadow.link_name_id = rendered_shadow_id;
+  rendered_shadow.is_internal = true;
+  rendered_shadow.can_elide_if_unreferenced = true;
+  module.functions.push_back(std::move(rendered_shadow));
+
+  c4c::codegen::lir::LirGlobal stale_initializer_global;
+  stale_initializer_global.name = "global_pick";
+  stale_initializer_global.init_text = "ptr @rendered_shadow";
+  stale_initializer_global.initializer_function_link_name_ids.push_back(
+      semantic_helper_id);
+  module.globals.push_back(std::move(stale_initializer_global));
+
+  c4c::codegen::lir::eliminate_dead_internals(module);
+
+  const auto semantic_it = std::find_if(
+      module.functions.begin(), module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id == semantic_helper_id;
+      });
+  expect_true(semantic_it != module.functions.end(),
+              "structured initializer LinkNameId should keep the semantic helper");
+
+  const auto shadow_it = std::find_if(
+      module.functions.begin(), module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id == rendered_shadow_id;
+      });
+  expect_true(shadow_it == module.functions.end(),
+              "stale init_text should not keep the rendered-name shadow when structured ids exist");
+  expect_true(module.globals.front().init_text.find("@rendered_shadow") !=
+                  std::string::npos,
+              "fixture should preserve stale init_text spelling as output payload");
+
+  c4c::codegen::lir::LirModule legacy_module = make_link_name_aware_lir_module();
+  c4c::codegen::lir::LirFunction legacy_shadow;
+  legacy_shadow.name = "rendered_shadow";
+  legacy_shadow.link_name_id = legacy_module.link_names.intern("rendered_shadow");
+  legacy_shadow.is_internal = true;
+  legacy_shadow.can_elide_if_unreferenced = true;
+  legacy_module.functions.push_back(std::move(legacy_shadow));
+
+  c4c::codegen::lir::LirGlobal legacy_global;
+  legacy_global.name = "legacy_global_pick";
+  legacy_global.init_text = "ptr @rendered_shadow";
+  legacy_module.globals.push_back(std::move(legacy_global));
+
+  c4c::codegen::lir::eliminate_dead_internals(legacy_module);
+  expect_true(!legacy_module.functions.empty() &&
+                  legacy_module.functions.front().name == "rendered_shadow",
+              "legacy initializer payloads without structured ids should still scan init_text");
 }
 
 void test_hir_to_lir_global_initializer_function_designator_prefers_link_name_id_after_function_miss() {
@@ -7118,6 +7193,7 @@ int main() {
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_dead_internal_reachability_prefers_link_name_ids();
   test_hir_to_lir_global_initializer_reachability_prefers_structured_function_ids();
+  test_lir_dead_internal_initializer_ids_close_raw_init_text_fallback();
   test_hir_to_lir_global_initializer_function_designator_prefers_link_name_id_after_function_miss();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_direct_call_lookup_rejects_rendered_name_collision_after_link_name_miss();
