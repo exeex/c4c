@@ -1,7 +1,8 @@
 # Compatibility Bridge Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-11
 
 Depends On:
 - `ideas/closed/167_whole_codebase_string_authority_final_audit.md`
@@ -73,3 +74,24 @@ which bridges are still live, this idea converts the safe subset from
 - A bridge is removed by weakening tests or removing supported behavior.
 - The implementation is based on grep count rather than the idea 167
   classification.
+
+## Closure Notes
+
+Idea 168 completed the compatibility bridge retirement route by retiring or
+fencing parser, sema/consteval, HIR, LIR/HIR-to-LIR, BIR, and backend rendered
+or raw-symbol fallback surfaces identified from the idea 167 audit inventory.
+Retained bridges are explicit compatibility, no-metadata, raw-import,
+invalid-id, diagnostic, display, or parity boundaries with documented removal
+conditions.
+
+Follow-up ownership is split out of this closed scope:
+
+- Idea 169 owns route-local value, block, slot, prepared-value, prepared-label,
+  generated-name, and other local identity cleanup.
+- Idea 170 owns string-authority regression guard and allowlist work.
+
+Closure proof used the full CTest suite twice against the code-identical tree
+after the last code-changing idea 168 commit, then compared the canonical logs
+with the regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
+The guard passed with 3135/3135 before and 3135/3135 after.
