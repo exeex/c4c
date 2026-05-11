@@ -101,12 +101,14 @@ struct TypeBindingLookupResult {
   const TypeSpec* type = nullptr;
 };
 
-TypeBindingLookupResult lookup_type_binding_by_text(const ConstEvalEnv& env,
-                                                    const std::string& name) {
+TypeBindingLookupResult lookup_type_binding_by_legacy_rendered_text_bridge(
+    const ConstEvalEnv& env,
+    const std::string& name) {
   // Owner: type-substitution compatibility for legacy rendered TypeSpec tags.
   // Limitation: this bridge only enters TextId binding authority; a present
-  // name->TextId mirror makes a miss authoritative. Removal condition: typedef
-  // TypeSpecs carry binding TextIds directly.
+  // name->TextId mirror makes a miss authoritative and must not reopen
+  // `type_bindings`. Removal condition: all typedef TypeSpecs carry binding
+  // TextIds directly and no legacy display-tag build remains.
   if (!env.type_bindings_by_text || !env.type_binding_text_ids_by_name) return {};
   auto text_it = env.type_binding_text_ids_by_name->find(name);
   if (text_it == env.type_binding_text_ids_by_name->end()) return {};
@@ -128,12 +130,14 @@ TypeBindingLookupResult lookup_type_binding_by_text_id(const ConstEvalEnv& env,
   return {TypeBindingLookupStatus::Found, &it->second};
 }
 
-TypeBindingLookupResult lookup_type_binding_by_key(const ConstEvalEnv& env,
-                                                   const std::string& name) {
+TypeBindingLookupResult lookup_type_binding_by_legacy_rendered_key_bridge(
+    const ConstEvalEnv& env,
+    const std::string& name) {
   // Owner: type-substitution compatibility for legacy rendered TypeSpec tags.
   // Limitation: rendered spelling only selects the structured key mirror; the
-  // key map remains authority. Removal condition: typedef TypeSpecs carry
-  // structured binding owner metadata directly.
+  // key map remains authority and a key-mirror miss must not reopen
+  // `type_bindings`. Removal condition: all typedef TypeSpecs carry structured
+  // binding owner metadata directly and no legacy display-tag build remains.
   if (!env.type_bindings_by_key || !env.type_binding_keys_by_name) return {};
   auto key_it = env.type_binding_keys_by_name->find(name);
   if (key_it == env.type_binding_keys_by_name->end()) return {};
@@ -326,12 +330,12 @@ TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (compatibility_tag && compatibility_tag[0]) {
     const std::string name = compatibility_tag;
     const TypeBindingLookupResult named_key =
-        lookup_type_binding_by_key(env, name);
+        lookup_type_binding_by_legacy_rendered_key_bridge(env, name);
     if (named_key.status == TypeBindingLookupStatus::Found) return *named_key.type;
     if (named_key.status == TypeBindingLookupStatus::Miss) return ts;
 
     const TypeBindingLookupResult named_text =
-        lookup_type_binding_by_text(env, name);
+        lookup_type_binding_by_legacy_rendered_text_bridge(env, name);
     if (named_text.status == TypeBindingLookupStatus::Found) return *named_text.type;
     if (named_text.status == TypeBindingLookupStatus::Miss) return ts;
   }
@@ -383,9 +387,11 @@ void record_type_binding_mirrors(
     TypeBindingNameTextMap* out_type_binding_text_ids_by_name,
     TypeBindingNameStructuredMap* out_type_binding_keys_by_name) {
   // Owner: consteval call-env construction for older TypeSpec payloads.
-  // Limitation: output string maps are compatibility mirrors; TextId/key maps
-  // carry binding authority for covered paths. Removal condition: all
-  // call-site type substitutions consume parameter metadata directly.
+  // Limitation: rendered output and name->metadata maps are compatibility
+  // mirrors only. TextId/key maps carry binding authority for covered paths,
+  // and legacy name mirrors may only bridge an explicit rendered display tag
+  // into that authority. Removal condition: all call-site type substitutions
+  // consume parameter metadata directly.
   if (structured_key.param_text_id != kInvalidText) {
     if (out_type_bindings_by_text) {
       (*out_type_bindings_by_text)[structured_key.param_text_id] = arg_ts;

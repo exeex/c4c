@@ -47,6 +47,20 @@ c4c::Node alignof_type_node(const c4c::TypeSpec& ts) {
   return n;
 }
 
+c4c::TypeSpec scalar_type(c4c::TypeBase base) {
+  c4c::TypeSpec ts{};
+  ts.base = base;
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  return ts;
+}
+
+c4c::TypeSpec typedef_ref(c4c::TextId text_id = c4c::kInvalidText) {
+  c4c::TypeSpec ts = scalar_type(c4c::TB_TYPEDEF);
+  ts.tag_text_id = text_id;
+  return ts;
+}
+
 c4c::Node var_ref(const char* rendered_name,
                   const char* unqualified_name,
                   c4c::TextId text_id,
@@ -174,6 +188,108 @@ void test_type_binding_equivalence_keeps_no_metadata_rendered_compatibility() {
 
   expect_true(c4c::type_binding_values_equivalent(lhs, rhs),
               "rendered tags remain a no-metadata compatibility fallback");
+}
+
+void test_consteval_type_binding_intrinsic_metadata_fails_closed() {
+  c4c::TextTable texts;
+  const c4c::TextId owner_text = texts.intern("TemplateOwner");
+  const c4c::TextId param_text = texts.intern("T");
+  const c4c::TextId missing_text = texts.intern("MissingT");
+
+  c4c::hir::TypeBindingStructuredKey key;
+  key.namespace_context_id = 9;
+  key.template_text_id = owner_text;
+  key.param_index = 0;
+  key.param_text_id = param_text;
+
+  c4c::hir::TypeBindings rendered;
+  rendered.emplace("T", scalar_type(c4c::TB_INT));
+  c4c::hir::TypeBindingTextMap by_text;
+  by_text.emplace(param_text, scalar_type(c4c::TB_LONGLONG));
+  c4c::hir::TypeBindingStructuredMap by_key;
+  by_key.emplace(key, scalar_type(c4c::TB_CHAR));
+  c4c::hir::TypeBindingNameTextMap text_ids_by_name;
+  text_ids_by_name.emplace("T", param_text);
+  c4c::hir::TypeBindingNameStructuredMap keys_by_name;
+  keys_by_name.emplace("T", key);
+
+  c4c::hir::ConstEvalEnv env{};
+  env.type_bindings = &rendered;
+  env.type_bindings_by_text = &by_text;
+  env.type_bindings_by_key = &by_key;
+  env.type_binding_text_ids_by_name = &text_ids_by_name;
+  env.type_binding_keys_by_name = &keys_by_name;
+
+  c4c::TypeSpec structured_ref = typedef_ref(param_text);
+  structured_ref.template_param_owner_namespace_context_id =
+      key.namespace_context_id;
+  structured_ref.template_param_owner_text_id = key.template_text_id;
+  structured_ref.template_param_index = key.param_index;
+  structured_ref.template_param_text_id = key.param_text_id;
+
+  c4c::Node structured_node = sizeof_type_node(structured_ref);
+  const c4c::hir::ConstEvalResult structured =
+      c4c::hir::evaluate_constant_expr(&structured_node, env);
+  expect_true(structured.ok(),
+              "consteval type binding should resolve through complete structured metadata");
+  expect_eq_int(static_cast<int>(structured.as_int()), 1,
+                "structured type binding metadata should beat text and rendered mirrors");
+
+  by_key.clear();
+  const c4c::hir::ConstEvalResult structured_miss =
+      c4c::hir::evaluate_constant_expr(&structured_node, env);
+  expect_true(!structured_miss.ok(),
+              "complete structured type binding miss must not recover through text or rendered mirrors");
+
+  env.type_bindings_by_key = nullptr;
+  c4c::Node text_miss_node = sizeof_type_node(typedef_ref(missing_text));
+  const c4c::hir::ConstEvalResult text_miss =
+      c4c::hir::evaluate_constant_expr(&text_miss_node, env);
+  expect_true(!text_miss.ok(),
+              "complete TextId type binding miss must not recover through rendered mirrors");
+}
+
+void test_consteval_type_binding_name_mirrors_are_legacy_bridge_only() {
+  c4c::TextTable texts;
+  const c4c::TextId param_text = texts.intern("T");
+
+  c4c::hir::TypeBindingStructuredKey key;
+  key.namespace_context_id = 4;
+  key.template_text_id = texts.intern("TemplateOwner");
+  key.param_index = 0;
+  key.param_text_id = param_text;
+
+  c4c::hir::TypeBindings rendered;
+  rendered.emplace("T", scalar_type(c4c::TB_INT));
+  c4c::hir::TypeBindingTextMap by_text;
+  by_text.emplace(param_text, scalar_type(c4c::TB_LONGLONG));
+  c4c::hir::TypeBindingStructuredMap by_key;
+  by_key.emplace(key, scalar_type(c4c::TB_CHAR));
+  c4c::hir::TypeBindingNameTextMap text_ids_by_name;
+  text_ids_by_name.emplace("T", param_text);
+  c4c::hir::TypeBindingNameStructuredMap keys_by_name;
+  keys_by_name.emplace("T", key);
+
+  c4c::hir::ConstEvalEnv env{};
+  env.type_bindings = &rendered;
+  env.type_bindings_by_text = &by_text;
+  env.type_bindings_by_key = &by_key;
+  env.type_binding_text_ids_by_name = &text_ids_by_name;
+  env.type_binding_keys_by_name = &keys_by_name;
+
+  c4c::Node no_metadata_node = sizeof_type_node(typedef_ref());
+  const c4c::hir::ConstEvalResult no_metadata =
+      c4c::hir::evaluate_constant_expr(&no_metadata_node, env);
+  expect_true(!no_metadata.ok(),
+              "type binding name mirrors must not act as ordinary lookup authority");
+
+  c4c::Node text_node = sizeof_type_node(typedef_ref(param_text));
+  const c4c::hir::ConstEvalResult text =
+      c4c::hir::evaluate_constant_expr(&text_node, env);
+  expect_true(text.ok(),
+              "direct TextId type binding metadata should still resolve with name mirrors present");
+  expect_eq_int(static_cast<int>(text.as_int()), 8,
+                "name mirrors should not override direct TextId type binding authority");
 }
 
 void test_static_eval_int_prefers_structured_enum_metadata() {
@@ -382,6 +498,8 @@ int main() {
   test_consteval_sizeof_metadata_miss_rejects_stale_rendered_tag();
   test_type_binding_equivalence_rejects_rendered_name_when_metadata_exists();
   test_type_binding_equivalence_keeps_no_metadata_rendered_compatibility();
+  test_consteval_type_binding_intrinsic_metadata_fails_closed();
+  test_consteval_type_binding_name_mirrors_are_legacy_bridge_only();
   test_static_eval_int_prefers_structured_enum_metadata();
   test_static_eval_int_structured_enum_miss_rejects_rendered_bridge();
   test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge();

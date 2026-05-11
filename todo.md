@@ -8,33 +8,34 @@ Current Step Title: Narrow Sema and Consteval Rendered Mirrors
 
 ## Just Finished
 
-Step 3 - Narrow Sema and Consteval Rendered Mirrors: completed the first
-rendered enum-constant mirror packet around `static_eval_int`.
+Step 3 - Narrow Sema and Consteval Rendered Mirrors: completed the
+template/type binding mirror packet in `ConstEvalEnv`.
 
 Implementation notes:
 
-- Inspected all production callers of `static_eval_int` and all assignments to
-  `StaticEvalIntEnumLookupInput::rendered_enum_consts`.
-- Removed the broad ordinary rendered-map overload
-  `static_eval_int(Node*, const std::unordered_map<std::string, long long>&)`
-  from the public surface and replaced it with the explicitly named
-  `static_eval_int_with_rendered_enum_compatibility`.
-- Added `StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility` so HIR
-  static-member initializer paths opt into the rendered enum mirror by name
-  while still passing `enum_consts_by_key` as structured authority.
-- Kept direct `static_eval_int(Node*, StaticEvalIntEnumLookupInput)` callers
-  working. Complete structured key/text misses still fail closed before any
-  rendered compatibility lookup.
-- Updated `cpp_hir_sema_consteval_type_utils_metadata_test` to use the named
-  compatibility boundary and to prove ordinary no-compatibility lookup does
-  not infer rendered enum authority.
+- Inspected production construction and lookup of
+  `type_bindings_by_text`, `type_bindings_by_key`,
+  `type_binding_text_ids_by_name`, and `type_binding_keys_by_name`.
+- Renamed the internal rendered-name lookup helpers to
+  `lookup_type_binding_by_legacy_rendered_text_bridge` and
+  `lookup_type_binding_by_legacy_rendered_key_bridge` so the only rendered-name
+  entry point is marked as a legacy display-tag bridge.
+- Tightened comments on the `ConstEvalEnv` type-binding fields and
+  `record_type_binding_mirrors`: text/key maps remain authority; name mirrors
+  only bridge an explicit legacy rendered display tag into that authority and
+  must not act as ordinary lookup.
+- Preserved structured lookup ordering in `resolve_type`: complete key hits
+  win over TextId/rendered mirrors, complete key misses fail closed, TextId
+  hits remain authoritative when no complete key carrier exists, and TextId
+  misses do not recover through rendered maps.
+- Added focused `cpp_hir_sema_consteval_type_utils_metadata_test` coverage for
+  complete key/text misses and for name mirrors remaining inert when a
+  `TypeSpec` has no direct metadata or legacy display tag.
 
 Changed files:
 
-- `src/frontend/sema/type_utils.hpp`
-- `src/frontend/sema/type_utils.cpp`
-- `src/frontend/hir/hir_types.cpp`
-- `src/frontend/hir/impl/expr/scalar_control.cpp`
+- `src/frontend/sema/consteval.hpp`
+- `src/frontend/sema/consteval.cpp`
 - `tests/frontend/cpp_hir_sema_consteval_type_utils_metadata_test.cpp`
 - `todo.md`
 - `test_after.log`
@@ -42,10 +43,9 @@ Changed files:
 ## Suggested Next
 
 Continue Step 3 with the next narrow sema/consteval mirror family from the
-idea 167 inventory, likely template/type/NTTP binding mirrors or fallback
-canonical template names. Inspect production callers first, then fence or
-delete one rendered bridge family and add closed-miss proof for its structured
-carrier.
+idea 167 inventory, likely NTTP binding mirrors or fallback canonical template
+names. Inspect production callers first, then fence or delete one rendered
+bridge family and add closed-miss proof for its structured carrier.
 
 ## Watchouts
 
@@ -53,12 +53,14 @@ carrier.
   not remove visible text just to reduce rendered-string grep count.
 - Do not fold route-local generated-name cleanup into this plan; idea 169 owns
   route-local identity domains.
-- `StaticEvalIntEnumLookupInput::rendered_enum_consts` remains as a retained
-  no-metadata compatibility mirror. New ordinary callers should use structured
-  key/text metadata and should not assign the field directly.
-- The rendered enum compatibility API preserves source/link compatibility for
-  no-metadata callers only; complete structured key/text misses must continue
-  to fail closed.
+- `type_binding_text_ids_by_name` and `type_binding_keys_by_name` remain
+  retained legacy display-tag bridge indexes. They are not authority by
+  themselves; complete misses in the mapped text/key tables must continue to
+  fail closed.
+- Current `TypeSpec` has no legacy `tag` member, so the rendered display-tag
+  bridge is effectively dormant in this build. The retained helper names and
+  comments document the owner and removal condition without deleting the
+  compatibility surface.
 - The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`
   was not touched.
 - No current blockers.

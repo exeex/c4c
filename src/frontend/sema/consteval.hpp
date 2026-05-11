@@ -178,7 +178,8 @@ struct ConstEvalEnv {
 
   // Template type substitution. `type_bindings` is the rendered compatibility
   // mirror; text/key maps are authority for metadata-rich paths. The
-  // name->metadata maps are bridge indexes, not semantic authority.
+  // name->metadata maps are legacy display-tag bridge indexes only, not
+  // ordinary lookup authority.
   const TypeBindings* type_bindings = nullptr;
   const TypeBindingTextMap* type_bindings_by_text = nullptr;
   const TypeBindingStructuredMap* type_bindings_by_key = nullptr;
