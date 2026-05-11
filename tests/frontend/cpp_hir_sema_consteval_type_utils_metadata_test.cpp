@@ -292,6 +292,150 @@ void test_consteval_type_binding_name_mirrors_are_legacy_bridge_only() {
                 "name mirrors should not override direct TextId type binding authority");
 }
 
+void test_consteval_nttp_binding_mirrors_are_metadata_authority() {
+  c4c::TextTable texts;
+  const c4c::TextId param_text = texts.intern("N");
+  const c4c::TextId other_text = texts.intern("OtherN");
+
+  c4c::hir::ConstMap rendered;
+  rendered.emplace("RenderedN", 42);
+  c4c::hir::ConstTextMap by_text;
+  by_text.emplace(param_text, 5);
+  c4c::hir::ConstEvalStructuredNameKey param_key;
+  param_key.base_text_id = param_text;
+  c4c::hir::ConstStructuredMap by_key;
+  by_key.emplace(param_key, 7);
+
+  c4c::hir::ConstEvalEnv env{};
+  env.nttp_bindings = &rendered;
+  env.nttp_bindings_by_text = &by_text;
+  env.nttp_bindings_by_key = &by_key;
+
+  c4c::Node ref = var_ref("RenderedN", "N", param_text, -1);
+  std::optional<long long> value = env.lookup(&ref);
+  expect_true(value.has_value(),
+              "complete NTTP key metadata should resolve the binding");
+  expect_eq_int(static_cast<int>(*value), 7,
+                "complete NTTP key metadata should beat TextId and rendered mirrors");
+
+  by_key.clear();
+  value = env.lookup(&ref);
+  expect_true(value.has_value(),
+              "complete NTTP TextId metadata should resolve the binding");
+  expect_eq_int(static_cast<int>(*value), 5,
+                "complete NTTP TextId metadata should beat rendered mirrors");
+
+  by_text.clear();
+  c4c::hir::ConstEvalStructuredNameKey other_key;
+  other_key.base_text_id = other_text;
+  by_key.emplace(other_key, 9);
+  by_text.emplace(other_text, 11);
+  value = env.lookup(&ref);
+  expect_true(!value.has_value(),
+              "complete NTTP key/text misses must not recover through rendered mirrors");
+
+  env.nttp_bindings_by_text = nullptr;
+  env.nttp_bindings_by_key = nullptr;
+  value = env.lookup(&ref);
+  expect_true(value.has_value(),
+              "no-metadata NTTP compatibility should keep rendered lookup available");
+  expect_eq_int(static_cast<int>(*value), 42,
+                "rendered NTTP map should remain a no-metadata compatibility bridge");
+}
+
+void test_consteval_forwarded_nttp_binding_fallback_is_metadata_fenced() {
+  c4c::TextTable texts;
+  const c4c::TextId inner_text = texts.intern("InnerN");
+  const c4c::TextId outer_text = texts.intern("OuterN");
+  const c4c::TextId other_text = texts.intern("OtherN");
+
+  c4c::Node func_def{};
+  func_def.kind = c4c::NK_FUNCTION;
+  func_def.name = "fn";
+  func_def.unqualified_name = "fn";
+  func_def.unqualified_text_id = texts.intern("fn");
+  func_def.n_template_params = 1;
+  const char* param_names[] = {"InnerN"};
+  c4c::TextId param_text_ids[] = {inner_text};
+  bool param_is_nttp[] = {true};
+  func_def.template_param_names = param_names;
+  func_def.template_param_name_text_ids = param_text_ids;
+  func_def.template_param_is_nttp = param_is_nttp;
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "fn";
+  callee.has_template_args = true;
+  callee.n_template_args = 1;
+  bool arg_is_value[] = {true};
+  long long arg_values[] = {0};
+  const char* nttp_names[] = {"RenderedOuter"};
+  c4c::TextId arg_text_ids[] = {outer_text};
+  callee.template_arg_is_value = arg_is_value;
+  callee.template_arg_values = arg_values;
+  callee.template_arg_nttp_names = nttp_names;
+  callee.template_arg_nttp_text_ids = arg_text_ids;
+
+  c4c::hir::ConstMap rendered_outer;
+  rendered_outer.emplace("RenderedOuter", 44);
+  c4c::hir::ConstTextMap text_outer;
+  text_outer.emplace(outer_text, 5);
+  c4c::hir::ConstEvalStructuredNameKey outer_key;
+  outer_key.base_text_id = outer_text;
+  c4c::hir::ConstStructuredMap key_outer;
+  key_outer.emplace(outer_key, 7);
+
+  c4c::hir::ConstEvalEnv outer_env{};
+  outer_env.nttp_bindings = &rendered_outer;
+  outer_env.nttp_bindings_by_text = &text_outer;
+  outer_env.nttp_bindings_by_key = &key_outer;
+
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::ConstMap nttp_bindings;
+  c4c::hir::ConstTextMap nttp_bindings_by_text;
+  c4c::hir::ConstStructuredMap nttp_bindings_by_key;
+  (void)c4c::hir::bind_consteval_call_env(
+      &callee, &func_def, outer_env, &type_bindings, &nttp_bindings, nullptr,
+      nullptr, nullptr, nullptr, &nttp_bindings_by_text,
+      &nttp_bindings_by_key);
+
+  expect_true(nttp_bindings.count("InnerN") == 1 &&
+                  nttp_bindings.at("InnerN") == 5,
+              "forwarded NTTP TextId metadata should beat rendered fallback");
+  expect_true(nttp_bindings_by_text.count(inner_text) == 1 &&
+                  nttp_bindings_by_text.at(inner_text) == 5,
+              "forwarded NTTP binding should record downstream TextId mirrors");
+
+  text_outer.clear();
+  text_outer.emplace(other_text, 17);
+  key_outer.clear();
+  c4c::hir::ConstEvalStructuredNameKey other_key;
+  other_key.base_text_id = other_text;
+  key_outer.emplace(other_key, 19);
+  nttp_bindings.clear();
+  nttp_bindings_by_text.clear();
+  nttp_bindings_by_key.clear();
+  (void)c4c::hir::bind_consteval_call_env(
+      &callee, &func_def, outer_env, &type_bindings, &nttp_bindings, nullptr,
+      nullptr, nullptr, nullptr, &nttp_bindings_by_text,
+      &nttp_bindings_by_key);
+  expect_true(nttp_bindings.empty() && nttp_bindings_by_text.empty() &&
+                  nttp_bindings_by_key.empty(),
+              "forwarded NTTP key/text misses must not recover through rendered mirrors");
+
+  arg_text_ids[0] = c4c::kInvalidText;
+  nttp_bindings.clear();
+  nttp_bindings_by_text.clear();
+  nttp_bindings_by_key.clear();
+  (void)c4c::hir::bind_consteval_call_env(
+      &callee, &func_def, outer_env, &type_bindings, &nttp_bindings, nullptr,
+      nullptr, nullptr, nullptr, &nttp_bindings_by_text,
+      &nttp_bindings_by_key);
+  expect_true(nttp_bindings.count("InnerN") == 1 &&
+                  nttp_bindings.at("InnerN") == 44,
+              "no-metadata forwarded NTTP compatibility should keep rendered lookup available");
+}
+
 void test_static_eval_int_prefers_structured_enum_metadata() {
   constexpr int kNamespaceContext = 7;
   c4c::TextTable texts;
@@ -500,6 +644,8 @@ int main() {
   test_type_binding_equivalence_keeps_no_metadata_rendered_compatibility();
   test_consteval_type_binding_intrinsic_metadata_fails_closed();
   test_consteval_type_binding_name_mirrors_are_legacy_bridge_only();
+  test_consteval_nttp_binding_mirrors_are_metadata_authority();
+  test_consteval_forwarded_nttp_binding_fallback_is_metadata_fenced();
   test_static_eval_int_prefers_structured_enum_metadata();
   test_static_eval_int_structured_enum_miss_rejects_rendered_bridge();
   test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge();

@@ -8,29 +8,31 @@ Current Step Title: Narrow Sema and Consteval Rendered Mirrors
 
 ## Just Finished
 
-Step 3 - Narrow Sema and Consteval Rendered Mirrors: completed the
-template/type binding mirror packet in `ConstEvalEnv`.
+Step 3 - Narrow Sema and Consteval Rendered Mirrors: completed the NTTP
+binding mirror packet in `ConstEvalEnv`.
 
 Implementation notes:
 
 - Inspected production construction and lookup of
-  `type_bindings_by_text`, `type_bindings_by_key`,
-  `type_binding_text_ids_by_name`, and `type_binding_keys_by_name`.
-- Renamed the internal rendered-name lookup helpers to
-  `lookup_type_binding_by_legacy_rendered_text_bridge` and
-  `lookup_type_binding_by_legacy_rendered_key_bridge` so the only rendered-name
-  entry point is marked as a legacy display-tag bridge.
-- Tightened comments on the `ConstEvalEnv` type-binding fields and
-  `record_type_binding_mirrors`: text/key maps remain authority; name mirrors
-  only bridge an explicit legacy rendered display tag into that authority and
-  must not act as ordinary lookup.
-- Preserved structured lookup ordering in `resolve_type`: complete key hits
-  win over TextId/rendered mirrors, complete key misses fail closed, TextId
-  hits remain authoritative when no complete key carrier exists, and TextId
-  misses do not recover through rendered maps.
+  `nttp_bindings`, `nttp_bindings_by_text`, `nttp_bindings_by_key`,
+  `record_nttp_binding_mirrors`, and forwarded NTTP binding lookup in
+  `bind_consteval_call_env`.
+- Renamed the private rendered NTTP helper to
+  `lookup_nttp_binding_by_legacy_rendered_no_metadata_bridge` so the retained
+  rendered map entry point is explicitly marked as a no-metadata compatibility
+  bridge.
+- Tightened comments on the rendered `nttp_bindings` field, the rendered
+  lookup helper, `record_nttp_binding_mirrors`, and
+  `lookup_forwarded_nttp_arg_by_text`: TextId/key maps remain binding
+  authority for covered NTTP paths, rendered maps remain only legacy
+  no-metadata mirrors, and complete key/text misses must not reopen rendered
+  lookup.
+- Preserved structured lookup ordering in `ConstEvalEnv::lookup`: complete
+  key hits beat TextId/rendered mirrors, TextId hits beat rendered mirrors when
+  no key hit exists, and complete NTTP key/text misses fail closed.
 - Added focused `cpp_hir_sema_consteval_type_utils_metadata_test` coverage for
-  complete key/text misses and for name mirrors remaining inert when a
-  `TypeSpec` has no direct metadata or legacy display tag.
+  NTTP key/text mirror authority, closed misses, forwarded NTTP miss fencing,
+  and the retained no-metadata forwarded rendered fallback.
 
 Changed files:
 
@@ -43,9 +45,10 @@ Changed files:
 ## Suggested Next
 
 Continue Step 3 with the next narrow sema/consteval mirror family from the
-idea 167 inventory, likely NTTP binding mirrors or fallback canonical template
-names. Inspect production callers first, then fence or delete one rendered
-bridge family and add closed-miss proof for its structured carrier.
+idea 167 inventory, likely fallback canonical template names or another
+remaining sema rendered mirror. Inspect production callers first, then fence or
+delete one rendered bridge family and add closed-miss proof for its structured
+carrier.
 
 ## Watchouts
 
@@ -53,14 +56,14 @@ bridge family and add closed-miss proof for its structured carrier.
   not remove visible text just to reduce rendered-string grep count.
 - Do not fold route-local generated-name cleanup into this plan; idea 169 owns
   route-local identity domains.
-- `type_binding_text_ids_by_name` and `type_binding_keys_by_name` remain
-  retained legacy display-tag bridge indexes. They are not authority by
-  themselves; complete misses in the mapped text/key tables must continue to
-  fail closed.
-- Current `TypeSpec` has no legacy `tag` member, so the rendered display-tag
-  bridge is effectively dormant in this build. The retained helper names and
-  comments document the owner and removal condition without deleting the
-  compatibility surface.
+- `nttp_bindings` remains retained for no-metadata consteval compatibility and
+  for legacy forwarded spellings when the call-site supplies no TextId/key
+  carrier. Any valid forwarded TextId plus present metadata map must continue
+  to fail closed on miss.
+- `record_nttp_binding_mirrors` currently records an unqualified local-style
+  key for NTTP parameters because the existing consteval NTTP key domain is
+  based on the parameter TextId. Do not widen this into owner/index identity;
+  generated/local identity cleanup belongs to idea 169.
 - The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`
   was not touched.
 - No current blockers.

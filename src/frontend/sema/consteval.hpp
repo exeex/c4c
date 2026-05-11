@@ -243,7 +243,9 @@ struct ConstEvalEnv {
       auto it = named_consts->find(name);
       if (it != named_consts->end()) return it->second;
     }
-    // 6. Non-type template parameter bindings.
+    // 6. Non-type template parameter bindings. This is the legacy
+    // no-metadata rendered bridge; Node/TextId/key lookup must gate metadata
+    // rich calls before they can reach it.
     if (nttp_bindings) {
       auto it = nttp_bindings->find(name);
       if (it != nttp_bindings->end()) return it->second;
@@ -406,10 +408,14 @@ struct ConstEvalEnv {
     return key;
   }
 
-  std::optional<long long> lookup_rendered_nttp(const std::string& name) const {
-    // Compatibility bridge for unqualified NTTP references after other value
-    // domains had metadata but the NTTP binding itself did not. Covered NTTP
-    // metadata misses must not reach this bridge.
+  std::optional<long long>
+  lookup_nttp_binding_by_legacy_rendered_no_metadata_bridge(
+      const std::string& name) const {
+    // Owner: call-env compatibility for legacy NTTP references that still have
+    // only rendered parameter spelling. Limitation: this bridge is not binding
+    // authority for metadata-rich nodes; complete TextId/key misses must not
+    // reach it. Removal condition: all NTTP forwarding and consteval lookup
+    // consumers carry TextId/key metadata.
     if (!nttp_bindings) return std::nullopt;
     auto it = nttp_bindings->find(name);
     return it != nttp_bindings->end() ? std::optional<long long>(it->second)
@@ -453,7 +459,9 @@ struct ConstEvalEnv {
       auto it = named_consts->find(name);
       if (it != named_consts->end()) return it->second;
     }
-    if (!skip_nttp) return lookup_rendered_nttp(name);
+    if (!skip_nttp) {
+      return lookup_nttp_binding_by_legacy_rendered_no_metadata_bridge(name);
+    }
     return std::nullopt;
   }
 

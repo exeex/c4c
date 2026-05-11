@@ -413,6 +413,11 @@ void record_nttp_binding_mirrors(
     const ConstEvalStructuredNameKey& structured_key,
     ConstTextMap* out_nttp_bindings_by_text,
     ConstStructuredMap* out_nttp_bindings_by_key) {
+  // Owner: consteval call-env construction. Limitation: rendered
+  // `nttp_bindings` is retained only as a no-metadata compatibility mirror;
+  // these TextId/key maps are the authoritative mirrors for covered NTTP
+  // lookup. Removal condition: all consteval NTTP consumers read metadata maps
+  // directly and the rendered call-env map can be deleted.
   if (!structured_key.valid()) return;
   if (out_nttp_bindings_by_text) {
     (*out_nttp_bindings_by_text)[structured_key.base_text_id] = value;
@@ -425,6 +430,9 @@ void record_nttp_binding_mirrors(
 ConstEvalValueLookupResult lookup_forwarded_nttp_arg_by_text(
     const ConstEvalEnv& env,
     TextId text_id) {
+  // Metadata-only forwarded NTTP lookup. When present metadata maps do not
+  // find the forwarded TextId, the forwarded NTTP domain closes so stale
+  // rendered spellings cannot recover the value later in bind_consteval_call_env.
   if (text_id == kInvalidText) return {};
   bool saw_metadata = false;
   if (env.nttp_bindings_by_text && !env.nttp_bindings_by_text->empty()) {
