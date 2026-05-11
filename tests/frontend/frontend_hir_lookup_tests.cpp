@@ -779,8 +779,11 @@ void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered
       c4c::NK_FUNCTION, "unregistered_template",
       texts.intern("unregistered_template"));
   expect_true(state.find_template_def(&unregistered_template, "stale_template") ==
+                  nullptr,
+              "template definition lookup should fail closed after a complete declaration-key miss");
+  expect_true(state.find_template_def(nullptr, "stale_template") ==
                   &stale_template,
-              "template definition lookup should preserve rendered fallback when declaration key is absent");
+              "template definition lookup should preserve rendered fallback for explicit no-metadata calls");
 
   c4c::Node stale_struct = make_compile_time_registry_node(
       c4c::NK_STRUCT_DEF, "StaleTemplateStruct",
@@ -803,8 +806,12 @@ void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered
   unregistered_struct.n_template_params = 1;
   expect_true(state.find_template_struct_def(&unregistered_struct,
                                              "StaleTemplateStruct") ==
+                  nullptr,
+              "template struct definition lookup should fail closed after a complete declaration-key miss");
+  expect_true(state.find_template_struct_def(nullptr,
+                                             "StaleTemplateStruct") ==
                   &stale_struct,
-              "template struct definition lookup should preserve rendered fallback when declaration key is absent");
+              "template struct definition lookup should preserve rendered fallback for explicit no-metadata calls");
 
   c4c::Node stale_struct_spec = make_compile_time_registry_node(
       c4c::NK_STRUCT_DEF, "StaleTemplateStruct<int>",
@@ -825,9 +832,13 @@ void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered
   const std::vector<const c4c::Node*>* fallback_specs =
       state.find_template_struct_specializations(&unregistered_struct,
                                                  "StaleTemplateStruct");
+  expect_true(fallback_specs == nullptr,
+              "template struct specialization lookup should fail closed after a complete owner-key miss");
+  fallback_specs =
+      state.find_template_struct_specializations(nullptr, "StaleTemplateStruct");
   expect_true(fallback_specs && fallback_specs->size() == 1 &&
                   (*fallback_specs)[0] == &stale_struct_spec,
-              "template struct specialization lookup should preserve rendered fallback when owner key is absent");
+              "template struct specialization lookup should preserve rendered fallback for explicit no-metadata calls");
 
   c4c::Node stale_consteval = make_compile_time_registry_node(
       c4c::NK_FUNCTION, "stale_consteval", texts.intern("stale_consteval"));
@@ -847,8 +858,11 @@ void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered
       texts.intern("unregistered_consteval"));
   unregistered_consteval.is_consteval = true;
   expect_true(state.find_consteval_def(&unregistered_consteval,
-                                       "stale_consteval") == &stale_consteval,
-              "consteval definition lookup should preserve rendered fallback when declaration key is absent");
+                                       "stale_consteval") == nullptr,
+              "consteval definition lookup should fail closed after a complete declaration-key miss");
+  expect_true(state.find_consteval_def(nullptr, "stale_consteval") ==
+                  &stale_consteval,
+              "consteval definition lookup should preserve rendered fallback for explicit no-metadata calls");
 }
 
 void test_template_struct_primary_lookup_uses_record_def_before_stale_origin() {

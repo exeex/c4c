@@ -62,6 +62,18 @@ void expect_eq_int(int actual, int expected, const std::string& msg) {
   }
 }
 
+c4c::Node make_compile_time_state_registry_node(
+    c4c::NodeKind kind,
+    const char* name,
+    c4c::TextId unqualified_text_id) {
+  c4c::Node node{};
+  node.kind = kind;
+  node.name = name;
+  node.unqualified_name = name;
+  node.unqualified_text_id = unqualified_text_id;
+  return node;
+}
+
 c4c::hir::Module lower_hir_module(std::string_view source,
                                   c4c::SourceProfile source_profile =
                                       c4c::SourceProfile::CppSubset) {
@@ -99,6 +111,101 @@ c4c::codegen::lir::LirModule make_link_name_aware_lir_module() {
   module.link_names.attach_text_table(module.link_name_texts.get());
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
   return module;
+}
+
+void test_hir_compile_time_state_complete_structured_misses_fail_closed() {
+  c4c::TextTable texts;
+  c4c::hir::CompileTimeState state;
+
+  c4c::Node stale_template = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "stale_template", texts.intern("stale_template"));
+  stale_template.n_template_params = 1;
+  c4c::Node structured_template = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "structured_template",
+      texts.intern("structured_template"));
+  structured_template.n_template_params = 1;
+  state.register_template_def("stale_template", &stale_template);
+  state.register_template_def("structured_template", &structured_template);
+  expect_true(state.find_template_def(&structured_template, "stale_template") ==
+                  &structured_template,
+              "template function lookup should use complete structured identity before rendered names");
+  c4c::Node missing_template = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "missing_template", texts.intern("missing_template"));
+  missing_template.n_template_params = 1;
+  expect_true(state.find_template_def(&missing_template, "stale_template") ==
+                  nullptr,
+              "template function lookup should fail closed after a complete structured miss");
+  expect_true(state.find_template_def(nullptr, "stale_template") ==
+                  &stale_template,
+              "template function lookup should keep rendered compatibility without metadata");
+
+  c4c::Node stale_struct = make_compile_time_state_registry_node(
+      c4c::NK_STRUCT_DEF, "StaleStruct", texts.intern("StaleStruct"));
+  stale_struct.n_template_params = 1;
+  c4c::Node structured_struct = make_compile_time_state_registry_node(
+      c4c::NK_STRUCT_DEF, "StructuredStruct",
+      texts.intern("StructuredStruct"));
+  structured_struct.n_template_params = 1;
+  state.register_template_struct_def("StaleStruct", &stale_struct);
+  state.register_template_struct_def("StructuredStruct", &structured_struct);
+  expect_true(state.find_template_struct_def(&structured_struct,
+                                             "StaleStruct") ==
+                  &structured_struct,
+              "template struct lookup should use complete structured identity before rendered names");
+  c4c::Node missing_struct = make_compile_time_state_registry_node(
+      c4c::NK_STRUCT_DEF, "MissingStruct", texts.intern("MissingStruct"));
+  missing_struct.n_template_params = 1;
+  expect_true(state.find_template_struct_def(&missing_struct, "StaleStruct") ==
+                  nullptr,
+              "template struct lookup should fail closed after a complete structured miss");
+  expect_true(state.find_template_struct_def(nullptr, "StaleStruct") ==
+                  &stale_struct,
+              "template struct lookup should keep rendered compatibility without metadata");
+
+  c4c::Node stale_spec = make_compile_time_state_registry_node(
+      c4c::NK_STRUCT_DEF, "StaleStruct<int>", texts.intern("StaleStruct"));
+  c4c::Node structured_spec = make_compile_time_state_registry_node(
+      c4c::NK_STRUCT_DEF, "StructuredStruct<int>",
+      texts.intern("StructuredStruct"));
+  state.register_template_struct_specialization("StaleStruct", &stale_spec);
+  state.register_template_struct_specialization(&structured_struct,
+                                                &structured_spec);
+  const std::vector<const c4c::Node*>* specs =
+      state.find_template_struct_specializations(&structured_struct,
+                                                 "StaleStruct");
+  expect_true(specs && specs->size() == 1 && (*specs)[0] == &structured_spec,
+              "template struct specialization lookup should use complete owner identity before rendered names");
+  specs = state.find_template_struct_specializations(&missing_struct,
+                                                     "StaleStruct");
+  expect_true(specs == nullptr,
+              "template struct specialization lookup should fail closed after a complete owner miss");
+  specs = state.find_template_struct_specializations(nullptr, "StaleStruct");
+  expect_true(specs && specs->size() == 1 && (*specs)[0] == &stale_spec,
+              "template struct specialization lookup should keep rendered compatibility without metadata");
+
+  c4c::Node stale_consteval = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "stale_consteval", texts.intern("stale_consteval"));
+  stale_consteval.is_consteval = true;
+  c4c::Node structured_consteval = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "structured_consteval",
+      texts.intern("structured_consteval"));
+  structured_consteval.is_consteval = true;
+  state.register_consteval_def("stale_consteval", &stale_consteval);
+  state.register_consteval_def("structured_consteval", &structured_consteval);
+  expect_true(state.find_consteval_def(&structured_consteval,
+                                       "stale_consteval") ==
+                  &structured_consteval,
+              "consteval lookup should use complete structured identity before rendered names");
+  c4c::Node missing_consteval = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "missing_consteval",
+      texts.intern("missing_consteval"));
+  missing_consteval.is_consteval = true;
+  expect_true(state.find_consteval_def(&missing_consteval,
+                                       "stale_consteval") == nullptr,
+              "consteval lookup should fail closed after a complete structured miss");
+  expect_true(state.find_consteval_def(nullptr, "stale_consteval") ==
+                  &stale_consteval,
+              "consteval lookup should keep rendered compatibility without metadata");
 }
 
 c4c::Node* make_hir_ref_overload_record(
@@ -6216,6 +6323,7 @@ int call_helper(int value) { return helper(value); }
 }  // namespace
 
 int main() {
+  test_hir_compile_time_state_complete_structured_misses_fail_closed();
   test_dense_id_map_tracks_assigned_dense_ids();
   test_optional_dense_id_map_supports_sparse_occupancy();
   test_dense_id_map_supports_local_type_storage();

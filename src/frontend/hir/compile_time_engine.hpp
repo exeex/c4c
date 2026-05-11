@@ -213,6 +213,12 @@ inline std::optional<CompileTimeRegistryKey> make_compile_time_registry_key(
   return key;
 }
 
+inline bool is_complete_compile_time_registry_key(
+    const CompileTimeRegistryKey& key) {
+  return key.unqualified_text_id != kInvalidText &&
+         key.declaration_fallback == nullptr;
+}
+
 // ── Structured compile-time value-binding identity types ────────────────────
 
 enum class CompileTimeValueBindingKeyKind : uint8_t {
@@ -1561,8 +1567,8 @@ struct CompileTimeState {
     return it != template_fn_defs_.end() ? it->second : nullptr;
   }
 
-  /// Look up a template function definition by declaration identity, falling
-  /// back to the rendered name only when one is supplied.
+  /// Look up a template function definition by declaration identity. Complete
+  /// structured misses fail closed; no-metadata calls may use rendered names.
   const Node* find_template_def(const Node* declaration,
                                 const std::string& rendered_name = {}) const {
     return find_structured_node_entry(
@@ -1576,8 +1582,8 @@ struct CompileTimeState {
     return it != template_struct_defs_.end() ? it->second : nullptr;
   }
 
-  /// Look up a template struct definition by declaration identity, falling
-  /// back to the rendered name only when one is supplied.
+  /// Look up a template struct definition by declaration identity. Complete
+  /// structured misses fail closed; no-metadata calls may use rendered names.
   const Node* find_template_struct_def(
       const Node* declaration,
       const std::string& rendered_name = {}) const {
@@ -1618,7 +1624,8 @@ struct CompileTimeState {
   }
 
   /// Look up registered template struct specializations by primary declaration
-  /// identity, falling back to the rendered primary name only when supplied.
+  /// identity. Complete structured misses fail closed; no-metadata calls may
+  /// use rendered primary names.
   const std::vector<const Node*>* find_template_struct_specializations(
       const Node* primary_def,
       const std::string& rendered_name) const {
@@ -1635,8 +1642,8 @@ struct CompileTimeState {
     return it != consteval_fn_defs_.end() ? it->second : nullptr;
   }
 
-  /// Look up a consteval function definition by declaration identity, falling
-  /// back to the rendered name only when one is supplied.
+  /// Look up a consteval function definition by declaration identity. Complete
+  /// structured misses fail closed; no-metadata calls may use rendered names.
   const Node* find_consteval_def(const Node* declaration,
                                  const std::string& rendered_name = {}) const {
     return find_structured_node_entry(
@@ -1946,6 +1953,7 @@ struct CompileTimeState {
     if (auto key = make_compile_time_registry_key(registry_kind, declaration)) {
       auto structured_it = structured_map.find(*key);
       if (structured_it != structured_map.end()) return structured_it->second;
+      if (is_complete_compile_time_registry_key(*key)) return nullptr;
     }
     if (!rendered_name.empty()) {
       auto rendered_it = rendered_map.find(rendered_name);
@@ -1966,6 +1974,7 @@ struct CompileTimeState {
     if (auto key = make_compile_time_registry_key(registry_kind, declaration)) {
       auto structured_it = structured_map.find(*key);
       if (structured_it != structured_map.end()) return &structured_it->second;
+      if (is_complete_compile_time_registry_key(*key)) return nullptr;
     }
     if (!rendered_name.empty()) {
       auto rendered_it = rendered_map.find(rendered_name);
