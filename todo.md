@@ -1,54 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/168_compatibility_bridge_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Retire HIR Rendered Declaration and Template Bridges
+Current Step ID: 5
+Current Step Title: Retire LIR and HIR-to-LIR Final-Output Bridges
 
 # Current Packet
 
 ## Just Finished
 
 Step 4 - Retire HIR Rendered Declaration and Template Bridges:
-HIR ref-overload rendered maps are now explicitly fenced as legacy
-no-owner/no-decl compatibility surfaces. The structured owner-key and decl-key
-maps remain authoritative; complete owner-key and decl-key misses still fail
-closed before rendered compatibility.
+Step 4 is sufficiently exhausted for this runbook. The committed Step 4 route
+now fences HIR template specialization compatibility, struct layout
+compatibility, declaration rendered compatibility, template definition
+preservation lookup, static member rendered maps, member symbol rendered
+lookup, template global rendered lookup, struct method rendered maps, and
+ref-overload rendered maps.
+
+Lifecycle decision: advance canonical execution state to Step 5. The Step 4
+primary targets in `plan.md` have either been narrowed to structured authority
+or explicitly documented as legacy, rendered-preservation, no-owner, no-decl,
+or compatibility boundaries. The previous Step 4 route review judged the route
+on track, and its template-global watch item has been addressed by the
+subsequent committed packet.
 
 Changed files:
 
 | File | Result |
 | --- | --- |
-| `src/frontend/hir/impl/lowerer.hpp` | Documented `ref_overload_set_` as legacy no-owner/no-decl compatibility and the owner/decl maps as authoritative. |
-| `src/frontend/hir/impl/expr/operator.cpp` | Renamed the struct ref-overload rendered gate to no-owner compatibility and documented owner-key/decl-key closed-miss boundaries. |
-| `src/frontend/hir/hir_build.cpp` | Documented rendered ref-overload map writes as no-decl compatibility mirrored into the authoritative decl-key map. |
-| `tests/frontend/frontend_hir_tests.cpp` | Renamed focused free/method ref-overload tests and messages around no-decl/no-owner compatibility and closed misses. |
-| `todo.md` | Recorded this executor packet and proof. |
-| `test_after.log` | Updated with the delegated build and focused HIR test proof. |
+| `todo.md` | Advanced the active lifecycle pointer from Step 4 to Step 5 and recorded the next Step 5 packet. |
 
 ## Suggested Next
 
-Supervisor should decide whether Step 4 has enough HIR rendered compatibility
-fencing to move to review/closure, or delegate the next narrowly owned
-bridge-retirement packet.
+Delegate the first Step 5 packet:
+
+Bridge family: LIR/HIR-to-LIR final-output bridge retirement.
+
+Initial target: inspect `extern_decl_name_map` and the nearest final-output or
+legacy rendered-name scans that recover semantic facts from emitted text.
+
+Packet goal: distinguish display/final LLVM output and verifier diagnostics
+from production semantic lookup; move any production lookup that has complete
+typed metadata to `LinkNameId`, `StructNameId`, typed signature/type mirrors,
+or explicit initializer/function ids. Any retained rendered path should be
+renamed or documented as output, diagnostic, raw import, legacy, or
+compatibility-only.
+
+Suggested proof: focused LIR or HIR-to-LIR tests covering the touched bridge,
+plus a fresh build target for the affected test binary. If the packet touches
+both LIR data structures and HIR-to-LIR lowering, escalate to the
+supervisor-approved broader subset before acceptance.
 
 ## Watchouts
 
-- This packet made no behavior change; the existing owner-key and decl-key
-  paths already close complete misses before rendered compatibility.
-- `resolve_ref_overload` still directly reads the rendered map for callers that
-  route by rendered base name; comments now identify that path as legacy
-  no-decl compatibility.
+- Preserve final emitted spelling and diagnostics unless the Step 5 packet
+  explicitly documents an intentional rendering change.
+- Do not claim Step 5 progress by moving final-output text around while leaving
+  semantic lookup dependent on rendered strings.
+- Treat parity verifier and dump text as display/diagnostic surfaces unless a
+  production caller is using that text as lookup authority.
 - The pre-existing untracked `review/168_step4_hir_bridge_route_review.md`
-  was not touched.
+  remains transient and was read only for this lifecycle decision.
 - No current blockers.
 
 ## Proof
 
-Proof command, logged to `test_after.log`:
+Lifecycle-only update; no code validation was run by the plan owner.
 
-`cmake --build build --target frontend_hir_tests frontend_hir_lookup_tests && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests)$'`
-
-Result: passed; 2/2 focused tests passed (`frontend_hir_tests`,
-`frontend_hir_lookup_tests`).
-
-Additional check: `git diff --check` passed.
+Supervisor context records the latest full-suite baseline candidate as accepted
+at 3135/3135 after commit `5cb05e4de`.
