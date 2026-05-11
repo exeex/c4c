@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/168_compatibility_bridge_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconfirm Bridge Inventory and First Target
+Current Step ID: 2
+Current Step Title: Retire Parser Compatibility Overloads
 
 # Current Packet
 
