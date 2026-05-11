@@ -3150,6 +3150,31 @@ void test_hir_static_member_const_lookup_structured_miss_keeps_base_fallback() {
               "structured static member const miss should use owner-key base fallback before stale rendered spelling");
 }
 
+void test_hir_static_member_const_lookup_rejects_rendered_fallback_after_owner_key_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef def;
+  def.tag = "OwnedStaticConstMiss";
+  def.tag_text_id = module.link_name_texts->intern("OwnedStaticConstMiss");
+  def.ns_qual.context_id = 20;
+  module.index_struct_def_owner(def, true);
+  module.struct_defs[def.tag] = def;
+
+  module.link_name_texts->intern("value");
+
+  lowerer.struct_static_member_const_values_[def.tag]["value"] = 37;
+
+  const std::optional<long long> value =
+      lowerer.find_struct_static_member_const_value(def.tag, "value");
+
+  expect_true(!value.has_value(),
+              "static member const lookup should reject rendered fallback after complete owner-key miss");
+  expect_true(lowerer.struct_static_member_const_value_lookup_parity_checks_ == 0,
+              "owner-key static member const misses should not consult rendered maps for parity");
+}
+
 void test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6599,6 +6624,7 @@ int main() {
   test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_const_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_static_member_const_lookup_structured_miss_keeps_base_fallback();
+  test_hir_static_member_const_lookup_rejects_rendered_fallback_after_owner_key_miss();
   test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_static_member_decl_lookup_rejects_rendered_fallback_after_owner_key_miss();

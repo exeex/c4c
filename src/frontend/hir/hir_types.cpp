@@ -2018,6 +2018,18 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
       }
       return owner_it->second;
     }
+    if (module_) {
+      if (const HirStructDef* structured =
+              module_->find_struct_def_by_owner_structured(owner_key->owner_key)) {
+        for (const auto& base_tag : structured->base_tags) {
+          if (auto from_base =
+                  find_struct_static_member_const_value(base_tag, member)) {
+            return from_base;
+          }
+        }
+      }
+    }
+    return std::nullopt;
   }
   auto sit = struct_static_member_const_values_.find(tag);
   if (sit != struct_static_member_const_values_.end()) {
@@ -2067,28 +2079,18 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
     return owner_it->second;
   }
 
-  const std::string* fallback_tag = rendered_tag;
-  if (module_) {
-    if (const std::string* owner_tag =
-            module_->find_struct_def_tag_by_owner(key.owner_key)) {
-      fallback_tag = owner_tag;
+  if (!module_ || !module_->link_name_texts) return std::nullopt;
+  const std::string_view member_text =
+      module_->link_name_texts->lookup(key.member_text_id);
+  if (member_text.empty()) return std::nullopt;
+  const HirStructDef* structured =
+      module_->find_struct_def_by_owner_structured(key.owner_key);
+  if (!structured) return std::nullopt;
+  const std::string member(member_text);
+  for (const auto& base_tag : structured->base_tags) {
+    if (auto from_base = find_struct_static_member_const_value(base_tag, member)) {
+      return from_base;
     }
-  }
-
-  std::string member_from_key;
-  const std::string* fallback_member = rendered_member;
-  if (module_ && module_->link_name_texts &&
-      key.member_text_id != kInvalidText) {
-    const std::string_view member_text =
-        module_->link_name_texts->lookup(key.member_text_id);
-    if (!member_text.empty()) {
-      member_from_key = std::string(member_text);
-      fallback_member = &member_from_key;
-    }
-  }
-
-  if (fallback_tag && fallback_member) {
-    return find_struct_static_member_const_value(*fallback_tag, *fallback_member);
   }
   return std::nullopt;
 }
