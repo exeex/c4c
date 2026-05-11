@@ -75,9 +75,10 @@ struct GlobalInfo {
   std::unordered_map<std::size_t, std::size_t> pointer_initializer_value_indices;
 };
 
-// GlobalTypes and TypeDeclMap are unresolved LIR-boundary tables keyed by the
-// producer's final spellings. Converted BIR instructions carry LinkNameId where
-// that semantic identity is available.
+// GlobalTypes and TypeDeclMap are unresolved LIR-boundary compatibility tables
+// keyed by producer final spellings. They support raw-import/no-id lowering
+// paths only; converted BIR instructions carry LinkNameId where semantic
+// identity is available, and those ids are the authority.
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
 using TypeDeclMap = std::unordered_map<std::string, std::string>;
 struct FunctionSymbolSet {
@@ -109,8 +110,9 @@ struct FunctionSymbolSet {
 
  private:
   std::unordered_set<LinkNameId> link_name_ids;
-  // Compatibility lookup for textual pointer initializers that have not yet
-  // been normalized to LinkNameId at the parse boundary.
+  // Raw-import/no-id compatibility lookup for textual pointer initializers.
+  // Present LinkNameId metadata must be checked against link_name_ids and must
+  // not fall back through this table on a miss.
   std::unordered_map<std::string, LinkNameId> raw_symbol_link_name_ids;
 };
 // Function-local slot/provenance maps are keyed by route-local SSA or slot

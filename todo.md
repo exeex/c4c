@@ -8,33 +8,35 @@ Current Step Title: Retire BIR and Backend Raw Symbol Fallbacks
 
 ## Just Finished
 
-Step 6 - Retire BIR and Backend Raw Symbol Fallbacks fenced BIR/LIR-to-BIR
-pointer initializer raw symbol parsing as a retained legacy compatibility
-boundary behind initializer `LinkNameId` metadata.
+Step 6 - Retire BIR and Backend Raw Symbol Fallbacks fenced the retained
+BIR/LIR-to-BIR raw function/global symbol tables as raw-import/no-id
+compatibility lookups behind `LinkNameId` authority.
 
-This packet made the raw `parse_global_address_initializer` boundary explicit:
-it exists for raw/no-id initializer payload compatibility and offset parsing,
-while present initializer `LinkNameId` metadata remains semantic authority and
-must fail closed on misses instead of falling back to raw spelling. Existing
-pointer-initializer tests continue to prove function/global `LinkNameId`
-authority, raw-only compatibility when no id is present, and present-id miss
-closure for scalar and aggregate pointer initializer paths.
+This packet was behavior-preserving: `GlobalTypes` and
+`FunctionSymbolSet::raw_symbol_link_name_ids` are now documented as producer
+final-spelling compatibility indices for no-id imported payloads, while
+present `LinkNameId` metadata remains semantic authority and fails closed on
+misses instead of falling through raw symbol lookup. The backend note test
+diagnostics now name raw-import/no-id compatibility explicitly for function
+initializers, global loads/stores, and initializer symbols.
 
 ## Suggested Next
 
-Continue Step 6 with another narrow BIR/backend raw-symbol family where
-structured id metadata already exists, such as raw function/global symbol maps
-or imported BIR name tables. Preserve runtime/intrinsic invalid-id boundaries
-and raw-only compatibility cases unless a present-id fallback gap is found.
+Continue Step 6 by reviewing whether any remaining imported BIR name-table or
+backend verifier diagnostics still describe raw spellings as semantic
+authority. Preserve raw-import/no-id compatibility and keep route-local
+prepared identity work out of this idea.
 
 ## Watchouts
 
 - This packet was behavior-preserving by design; it fenced an already-proven
-  initializer path rather than changing lowering semantics.
-- Raw-only pointer initializer compatibility remains valid when no initializer
-  `LinkNameId` metadata is present.
-- Present initializer `LinkNameId` metadata must remain authoritative and fail
-  closed on miss for both scalar and aggregate pointer initializer paths.
+  raw function/global symbol-table path rather than changing lowering
+  semantics.
+- Raw-import/no-id compatibility remains valid when no `LinkNameId` metadata is
+  present.
+- Present `LinkNameId` metadata must remain authoritative and fail closed on
+  miss for function initializers, global references, direct calls, and
+  initializer symbols.
 - Keep route-local value, block, slot, prepared, and generated-name cleanup out
   of Step 6 unless a raw spelling is acting as source/link-visible bridge
   authority; those local identity families belong to idea 169.

@@ -539,7 +539,7 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   if (lowered_ptr_to_raw_function == nullptr ||
       lowered_ptr_to_raw_function->initializer_symbol_name != "rendered_shadow" ||
       lowered_ptr_to_raw_function->initializer_symbol_name_id != raw_shadow_id) {
-    return fail("raw-only function initializer compatibility should remain available without LinkNameId metadata");
+    return fail("raw-import/no-id function initializer compatibility should remain available without LinkNameId metadata");
   }
 
   LirModule conflict_module;
@@ -722,7 +722,7 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   std::string error;
   if (!c4c::backend::bir::validate(compatibility_module, &error) ||
       compatibility_module.globals.front().initializer_symbol_name_id != c4c::kInvalidLinkName) {
-    return fail("unknown raw-only compatibility initializer symbols should remain valid only without LinkNameId");
+    return fail("unknown raw-import/no-id compatibility initializer symbols should remain valid only without LinkNameId");
   }
 
   return 0;
@@ -1139,7 +1139,7 @@ int expect_bir_verifier_rejects_known_link_name_mismatches() {
     });
     std::string error;
     if (!bir::validate(module, &error)) {
-      return fail("BIR verifier should preserve raw-only global store compatibility without LinkNameId");
+      return fail("BIR verifier should preserve raw-import/no-id global store compatibility without LinkNameId");
     }
   }
 
@@ -1151,7 +1151,7 @@ int expect_bir_verifier_rejects_known_link_name_mismatches() {
     });
     std::string error;
     if (!bir::validate(module, &error)) {
-      return fail("BIR verifier should preserve raw-only global load compatibility without LinkNameId");
+      return fail("BIR verifier should preserve raw-import/no-id global load compatibility without LinkNameId");
     }
   }
 
@@ -1303,7 +1303,7 @@ int expect_bir_verifier_rejects_known_link_name_mismatches() {
     std::string error;
     if (!bir::validate(module, &error)) {
       return fail(
-          "BIR verifier should preserve raw-only initializer-symbol compatibility without LinkNameId");
+          "BIR verifier should preserve raw-import/no-id initializer-symbol compatibility without LinkNameId");
     }
   }
 

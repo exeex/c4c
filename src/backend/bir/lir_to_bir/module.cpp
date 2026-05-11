@@ -121,6 +121,9 @@ c4c::LinkNameId resolve_initializer_symbol_link_name_id(
     c4c::LinkNameId initializer_function_link_name_id,
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols) {
+  // Function initializer ids are semantic authority when present. The raw
+  // symbol tables below are compatibility lookups for no-id imported BIR/LIR
+  // payloads only, so a present-but-unknown id must fail closed here.
   if (function_symbols.contains_link_name_id(initializer_function_link_name_id)) {
     return initializer_function_link_name_id;
   }
@@ -865,6 +868,9 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   global_types.reserve(context.lir_module.globals.size() + context.lir_module.string_pool.size());
   function_symbols.reserve(context.lir_module.extern_decls.size() +
                            context.lir_module.functions.size());
+  // These raw-name maps are import compatibility indices keyed by producer
+  // final spellings. LinkNameId-bearing globals/functions remain authoritative
+  // during BIR emission and verification.
   for (const auto& decl : context.lir_module.extern_decls) {
     function_symbols.insert_function(extern_decl_name_for_identity(context.lir_module, decl),
                                      decl.link_name_id);
