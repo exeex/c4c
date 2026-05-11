@@ -175,6 +175,21 @@ const c4c::hir::Function* find_function_with_param_names(
   return it == module.functions.end() ? nullptr : &(*it);
 }
 
+bool function_has_return_int_literal(const c4c::hir::Module& module,
+                                     const c4c::hir::Function& fn,
+                                     long long expected) {
+  for (const auto& block : fn.blocks) {
+    for (const auto& stmt : block.stmts) {
+      const auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+      if (!ret || !ret->expr) continue;
+      const auto* lit =
+          std::get_if<c4c::hir::IntLiteral>(&module.expr_pool[ret->expr->value].payload);
+      if (lit && lit->value == expected) return true;
+    }
+  }
+  return false;
+}
+
 void test_dense_id_map_tracks_assigned_dense_ids() {
   c4c::hir::DenseIdMap<c4c::hir::LocalId, std::string> names;
 
@@ -3136,6 +3151,48 @@ void test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag() 
               "scoped static member lookup should lower to a constexpr literal");
   expect_eq_int(static_cast<int>(literal->value), 23,
                 "scoped static member lowering should prefer record_def/member identity over stale rendered spelling");
+}
+
+void test_hir_local_block_enum_consteval_scopes_keep_same_spelled_values_distinct() {
+  const c4c::hir::Module module = lower_hir_module(R"cpp(
+int enum_scope_collision() {
+  enum { Same = 17 };
+  if constexpr (Same == 17) {
+  } else {
+    return 901;
+  }
+
+  {
+    enum { Same = 29 };
+    if constexpr (Same == 29) {
+    } else {
+      return 902;
+    }
+  }
+
+  if constexpr (Same == 17) {
+    return 46;
+  } else {
+    return 903;
+  }
+}
+)cpp");
+
+  const auto fn_it = module.fn_index.find("enum_scope_collision");
+  expect_true(fn_it != module.fn_index.end(),
+              "local/block enum consteval fixture should lower a function");
+  const c4c::hir::Function* fn = module.find_function(fn_it->second);
+  expect_true(fn != nullptr,
+              "local/block enum consteval fixture should resolve the lowered function");
+
+  expect_true(function_has_return_int_literal(module, *fn, 46),
+              "HIR constexpr-if should keep the outer local enum value after the inner block scope exits");
+  expect_true(!function_has_return_int_literal(module, *fn, 901),
+              "HIR constexpr-if should evaluate the first local enum through scoped metadata");
+  expect_true(!function_has_return_int_literal(module, *fn, 902),
+              "HIR constexpr-if should evaluate the same-spelled inner block enum through scoped metadata");
+  expect_true(!function_has_return_int_literal(module, *fn, 903),
+              "HIR constexpr-if should not let the inner block enum overwrite the outer enum after scope exit");
 }
 
 void test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag() {
@@ -6194,6 +6251,7 @@ int main() {
   test_hir_member_symbol_lookup_rejects_stale_rendered_after_text_key_miss();
   test_hir_member_symbol_lookup_keeps_rendered_fallback_without_structured_key();
   test_hir_scoped_static_member_lowering_prefers_record_def_over_stale_tag();
+  test_hir_local_block_enum_consteval_scopes_keep_same_spelled_values_distinct();
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_out_of_class_method_attachment_prefers_structured_owner_key();

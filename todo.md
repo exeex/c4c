@@ -1,24 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/167_local_block_enum_scope_static_eval_structured_mirrors.md
 Source Plan Path: plan.md
-Current Step ID: 2/3
-Current Step Title: Define the Local/Block Enum Lookup Carrier and Prefer Structured Lookup for the First Covered Path
+Current Step ID: 4
+Current Step Title: Add Local/Block Collision Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 2/3 implemented the first HIR lowerer local/block enum structured
-mirror path. `Lowerer` now carries scoped enum `TextId` and local-key maps
-beside the rendered `enum_consts_` compatibility mirror, non-global
-`collect_enum_def(n)` populates those scoped maps from `enum_name_text_ids`,
-and `make_lowerer_consteval_env` passes them into `ConstEvalEnv`.
+Plan Step 4 added focused HIR coverage for same-spelled local/block enum
+constants statically evaluated through the converted lowerer path.
+`frontend_hir_tests` now lowers a function with an outer local enum and an
+inner block enum that both define `Same`, then verifies HIR constexpr-if
+lowering keeps only the branches selected by the correct scoped values.
 
-The scoped maps are created only when declaration metadata exists, so
-rendered-only callers keep the explicit no-metadata compatibility bridge.
-Block and statement-expression exits restore the scoped map depth together
-with `enum_consts_`; local/block enum definitions are no longer registered
-into `CompileTimeState` as unscoped rendered globals.
+The test checks that the outer value is used before and after the inner block,
+that the inner value is used inside the block, and that stale failure-return
+literals from the wrong branches are absent from the lowered HIR. This observes
+lowerer static-evaluation branch selection rather than sema diagnostics.
+
+Step 2/3 implementation ledger:
+
+- `Lowerer` carries scoped enum `TextId` and local-key maps beside the rendered
+  `enum_consts_` compatibility mirror.
+- Non-global `collect_enum_def(n)` populates those scoped maps from
+  `enum_name_text_ids`, and `make_lowerer_consteval_env` passes them into
+  `ConstEvalEnv`.
+- Scoped maps are created only when declaration metadata exists, preserving the
+  explicit no-metadata compatibility bridge for rendered-only callers.
+- Block and statement-expression exits restore scoped map depth together with
+  `enum_consts_`; local/block enum definitions are not registered into
+  `CompileTimeState` as unscoped rendered globals.
 
 Step 1 inventory ledger, preserved for route context:
 
@@ -58,9 +70,9 @@ Step 1 inventory ledger, preserved for route context:
 
 ## Suggested Next
 
-Plan Step 4: add focused HIR collision coverage for same-spelled local/block
-enum constants that are statically evaluated through the converted lowerer
-path, including a statement-expression or nested-block case if available.
+Plan Step 5: convert the next metadata-capable local/block static-eval path, or
+explicitly fence a remaining rendered-only boundary if the next path lacks
+complete scope/domain metadata.
 
 ## Watchouts
 
@@ -72,11 +84,14 @@ path, including a statement-expression or nested-block case if available.
 - `CompileTimeState` still has no local/block enum scope lifetime; keep
   local/block enum constants out of its flat rendered enum map unless a future
   packet adds scoped metadata there too.
+- Nearby same-feature cases examined: HIR constexpr-if exercises
+  `make_lowerer_consteval_env` and scoped enum lookup directly; direct enum
+  expression lowering still uses the rendered compatibility mirror and is out
+  of reach for this coverage packet until that call site is converted.
 
 ## Proof
 
 Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_expr_scalar_control_helper|positive_sema_ok_enum_scope_local_over_global_c|positive_sema_ok_enum_scope_no_leak_after_block_c)$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_expr_scalar_control_helper|positive_sema_ok_enum_scope_local_over_global_c|positive_sema_ok_enum_scope_no_leak_after_block_c)$' > test_after.log`
 
-Proof result: supervisor reran the corrected command successfully. Proof log:
-`test_after.log`.
+Proof log: `test_after.log`.
