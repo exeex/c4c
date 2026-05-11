@@ -265,12 +265,19 @@ bool typespec_has_structured_owner_metadata(const TypeSpec& ts) {
          (ts.tpl_struct_origin && ts.tpl_struct_origin[0]);
 }
 
-bool typespec_has_structured_template_param_metadata(const TypeSpec& ts) {
-  return ts.template_param_text_id != kInvalidText ||
-         ts.tag_text_id != kInvalidText ||
-         ts.template_param_index >= 0 ||
-         ts.template_param_owner_text_id != kInvalidText ||
-         ts.template_param_owner_namespace_context_id >= 0;
+TypeSpec type_binding_lookup_carrier_with_valid_owner_text(
+    TypeSpec ts,
+    const Module* module) {
+  if (ts.template_param_owner_text_id == kInvalidText || !module ||
+      !module->link_name_texts) {
+    return ts;
+  }
+  if (!module->link_name_texts->lookup(ts.template_param_owner_text_id).empty()) {
+    return ts;
+  }
+  ts.template_param_owner_text_id = kInvalidText;
+  ts.template_param_owner_namespace_context_id = -1;
+  return ts;
 }
 
 std::optional<std::string> structured_owner_tag_from_type(
@@ -631,6 +638,26 @@ void Lowerer::assign_template_arg_refs_from_ast_args(
   ts->tpl_struct_args.size = 0;
   if (!ref || ref->n_template_args <= 0) return;
 
+  auto find_forwarded_type_binding =
+      [&](const TypeSpec& candidate,
+          HirTemplateTypeBindings* owner_structured_bindings) -> const TypeSpec* {
+    const HirTemplateTypeBindings* structured_bindings =
+        &ctx->structured_tpl_bindings;
+    if (owner_tpl && owner_structured_bindings) {
+      *owner_structured_bindings = ctx->structured_tpl_bindings;
+      for (const auto& [name, bound] : ctx->tpl_bindings) {
+        (void)add_hir_template_type_binding_by_legacy_name(
+            owner_tpl, name, bound, owner_structured_bindings);
+      }
+      structured_bindings = owner_structured_bindings;
+    }
+    const TypeSpec lookup_candidate =
+        type_binding_lookup_carrier_with_valid_owner_text(candidate, module_);
+    return find_template_type_binding_for_call(
+        &ctx->tpl_bindings, structured_bindings, &ctx->tpl_bindings_by_text,
+        module_, lookup_candidate);
+  };
+
   std::vector<HirTemplateArg> actual_args;
   actual_args.reserve(ref->n_template_args);
   for (int i = 0; i < ref->n_template_args; ++i) {
@@ -648,22 +675,9 @@ void Lowerer::assign_template_arg_refs_from_ast_args(
         const bool outer_rref = arg_ts.is_rvalue_ref;
         const bool outer_const = arg_ts.is_const;
         const bool outer_volatile = arg_ts.is_volatile;
-        const TypeSpec* bound = nullptr;
-        const TextId param_text_id =
-            arg_ts.template_param_text_id != kInvalidText
-                ? arg_ts.template_param_text_id
-                : arg_ts.tag_text_id;
-        if (param_text_id != kInvalidText) {
-          auto text_it = ctx->tpl_bindings_by_text.find(param_text_id);
-          if (text_it != ctx->tpl_bindings_by_text.end()) bound = &text_it->second;
-        }
-        if (!bound && !typespec_has_structured_template_param_metadata(arg_ts)) {
-          const char* legacy_tag = typespec_legacy_tag_if_present(arg_ts, 0);
-          if (legacy_tag && legacy_tag[0]) {
-            auto it = ctx->tpl_bindings.find(legacy_tag);
-            if (it != ctx->tpl_bindings.end()) bound = &it->second;
-          }
-        }
+        HirTemplateTypeBindings owner_structured_bindings;
+        const TypeSpec* bound =
+            find_forwarded_type_binding(arg_ts, &owner_structured_bindings);
         if (bound) {
           arg_ts = *bound;
           arg_ts.ptr_level += outer_ptr_level;
@@ -1031,6 +1045,26 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
   }
   if (!primary || !ref) return std::nullopt;
 
+  auto find_forwarded_type_binding =
+      [&](const TypeSpec& candidate,
+          HirTemplateTypeBindings* owner_structured_bindings) -> const TypeSpec* {
+    const HirTemplateTypeBindings* structured_bindings =
+        &ctx->structured_tpl_bindings;
+    if (primary && owner_structured_bindings) {
+      *owner_structured_bindings = ctx->structured_tpl_bindings;
+      for (const auto& [name, bound] : ctx->tpl_bindings) {
+        (void)add_hir_template_type_binding_by_legacy_name(
+            primary, name, bound, owner_structured_bindings);
+      }
+      structured_bindings = owner_structured_bindings;
+    }
+    const TypeSpec lookup_candidate =
+        type_binding_lookup_carrier_with_valid_owner_text(candidate, module_);
+    return find_template_type_binding_for_call(
+        &ctx->tpl_bindings, structured_bindings, &ctx->tpl_bindings_by_text,
+        module_, lookup_candidate);
+  };
+
   std::vector<HirTemplateArg> actual_args;
   actual_args.reserve(ref->n_template_args);
   for (int i = 0; i < ref->n_template_args; ++i) {
@@ -1046,22 +1080,9 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
         const bool outer_rref = ts.is_rvalue_ref;
         const bool outer_const = ts.is_const;
         const bool outer_volatile = ts.is_volatile;
-        const TypeSpec* bound = nullptr;
-        const TextId param_text_id =
-            ts.template_param_text_id != kInvalidText
-                ? ts.template_param_text_id
-                : ts.tag_text_id;
-        if (param_text_id != kInvalidText) {
-          auto text_it = ctx->tpl_bindings_by_text.find(param_text_id);
-          if (text_it != ctx->tpl_bindings_by_text.end()) bound = &text_it->second;
-        }
-        if (!bound && !typespec_has_structured_template_param_metadata(ts)) {
-          const char* legacy_tag = typespec_legacy_tag_if_present(ts, 0);
-          if (legacy_tag && legacy_tag[0]) {
-            auto it = ctx->tpl_bindings.find(legacy_tag);
-            if (it != ctx->tpl_bindings.end()) bound = &it->second;
-          }
-        }
+        HirTemplateTypeBindings owner_structured_bindings;
+        const TypeSpec* bound =
+            find_forwarded_type_binding(ts, &owner_structured_bindings);
         if (bound) {
           ts = *bound;
           ts.ptr_level += outer_ptr_level;

@@ -8,29 +8,28 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 ## Just Finished
 
-Completed the delegated Step 5 NTTP forwarding lookup-authority repair from
-`plan.md`. Function lowering now records the AST owner used to populate
-structured template bindings in `FunctionCtx`, and consteval NTTP forwarding
-uses that owner plus the forwarded parameter `TextId` to pass a complete
-owner/index query key into `lookup_nttp_binding` when available. Focused
-coverage now verifies that lowerer consteval forwarding prefers the complete
-structured NTTP binding over stale TextId/rendered mirrors, while stale
-structured misses still fail closed.
+Completed the delegated Step 5 value/type-argument forwarding lookup-authority
+repair from `plan.md`. The remaining `tpl_bindings_by_text` probes in
+`value_args.cpp` now route through `find_template_type_binding_for_call` with
+owner-scoped structured binding overlays, so complete structured type-parameter
+keys bind through shared authority and complete misses do not fall through to
+raw TextId lookup. Empty owner-text metadata is treated as incomplete so the
+existing compatibility path still handles legacy/incomplete carriers.
 
 ## Suggested Next
 
-Supervisor should review and commit this coherent Step 5 consteval NTTP
+Supervisor should review and commit this coherent Step 5 value/type-argument
 forwarding metadata slice, then choose the next packet only if more
 forwarding/lowerer lookup bypasses remain.
 
 ## Watchouts
 
-- `template_binding_owner_node` must stay aligned with the owner used to
-  populate `ctx.structured_nttp_bindings`; function lowering uses the function
-  node and struct-method lowering uses the structured owner selected for method
-  template bindings.
-- Explicit complete structured query-key misses fail closed before TextId or
-  rendered mirror fallback.
+- The owner-scoped overlay is built from the current legacy type bindings only
+  to seed structured owner/index authority for the delegated forwarding lookup;
+  stale complete structured misses still fail closed inside
+  `find_template_type_binding_for_call`.
+- Some inherited/member-typedef carriers can arrive with an owner TextId that
+  resolves to empty text; those remain compatibility/incomplete metadata cases.
 - Do not weaken tests or convert capability work into expectation-only changes.
 
 ## Proof
