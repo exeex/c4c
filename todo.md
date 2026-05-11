@@ -8,25 +8,27 @@ Current Step Title: Validate and Tighten Compatibility Boundaries
 
 ## Just Finished
 
-Step 6 Validate and Tighten Compatibility Boundaries added focused
-`backend_lir_to_bir_notes` verifier coverage proving global load/store
-validation is LinkNameId-authoritative: ID-only declared globals validate,
-unknown LinkNameIds fail before raw-name lookup, declared-but-undeclared
-LinkNameIds fail closed even when the raw name matches, and raw-only global
-load/store compatibility remains valid only when no LinkNameId is present.
+Step 6 Validate and Tighten Compatibility Boundaries added the remaining focused
+`backend_lir_to_bir_notes` verifier coverage for BIR initializer-symbol
+LinkNameId boundaries. Raw-only initializer symbols remain compatibility-valid
+only without LinkNameId, declared global/function LinkNameIds validate even when
+the retained display spelling drifts, unknown LinkNameIds reject before raw-name
+lookup, and known-but-undeclared LinkNameIds fail closed instead of falling back
+to matching raw spelling.
 
 ## Suggested Next
 
-Supervisor should decide whether this completes the Step 6 compatibility-boundary
-tightening or whether another focused verifier boundary needs coverage before
-broader backend validation.
+Supervisor should treat Step 6 as ready for broader proof or lifecycle closure
+review unless reviewer scrutiny identifies another compatibility boundary.
 
 ## Watchouts
 
 - No production validator change was needed; existing global load/store
-  validation already uses `LinkNameId` as authoritative when present.
-- Raw same-module global names remain accepted only for compatibility contracts
-  where the BIR reference has an invalid `LinkNameId`.
+  validation and initializer-symbol validation already use `LinkNameId` as
+  authoritative when present.
+- Raw same-module global names and initializer-symbol spellings remain accepted
+  only for compatibility contracts where the BIR reference has an invalid
+  `LinkNameId`.
 - The untracked `review/` artifacts were not touched.
 
 ## Proof

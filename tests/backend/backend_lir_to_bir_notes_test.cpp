@@ -1296,6 +1296,82 @@ int expect_bir_verifier_rejects_known_link_name_mismatches() {
     }
   }
 
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    module.globals.front().is_extern = false;
+    module.globals.front().initializer_symbol_name = "compat_unknown";
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail(
+          "BIR verifier should preserve raw-only initializer-symbol compatibility without LinkNameId");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.globals.front().is_extern = false;
+    module.globals.front().initializer_symbol_name = "stale_global_display";
+    module.globals.front().initializer_symbol_name_id = actual_id;
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail(
+          "BIR verifier should allow drifted initializer-symbol global displays when LinkNameId is declared");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_callee");
+    module.globals.front().is_extern = false;
+    module.globals.front().initializer_symbol_name = "stale_function_display";
+    module.globals.front().initializer_symbol_name_id = actual_id;
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail(
+          "BIR verifier should allow drifted initializer-symbol function displays when LinkNameId is declared");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    module.globals.front().is_extern = false;
+    module.globals.front().initializer_symbol_name = "actual_global";
+    module.globals.front().initializer_symbol_name_id = 9999;
+    if (!validate_rejects_with_message(
+            module, "bir global initializer symbol @actual_global must reference a known LinkNameId")) {
+      return fail("BIR verifier should reject initializer symbols with unknown LinkNameId");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId missing_id = module.names.link_names.intern("missing_global");
+    module.globals.front().is_extern = false;
+    module.globals.front().initializer_symbol_name = "stale_missing_display";
+    module.globals.front().initializer_symbol_name_id = missing_id;
+    if (!validate_rejects_with_message(
+            module,
+            "bir global initializer symbol @actual_global must reference a declared global or function by LinkNameId")) {
+      return fail(
+          "BIR verifier should reject initializer symbols whose LinkNameId has no declared symbol");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId missing_id = module.names.link_names.intern("missing_global");
+    module.globals.front().is_extern = false;
+    module.globals.front().initializer_symbol_name = "actual_global";
+    module.globals.front().initializer_symbol_name_id = missing_id;
+    if (!validate_rejects_with_message(
+            module,
+            "bir global initializer symbol @actual_global must not pair LinkNameId with a different declared global name")) {
+      return fail(
+          "BIR verifier should reject initializer symbols whose raw name only matches by name");
+    }
+  }
+
   return 0;
 }
 
