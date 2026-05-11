@@ -3198,26 +3198,10 @@ void Lowerer::lower_global(const Node* gv,
 TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
   if (!n) return {};
   auto find_template_type_binding = [&](const TypeSpec& ts) -> const TypeSpec* {
-    if (!ctx || ctx->tpl_bindings.empty()) return nullptr;
-    if (ts.template_param_text_id != kInvalidText) {
-      auto text_it = ctx->tpl_bindings_by_text.find(ts.template_param_text_id);
-      if (text_it != ctx->tpl_bindings_by_text.end()) return &text_it->second;
-      if (module_ && module_->link_name_texts) {
-        const std::string key(
-            module_->link_name_texts->lookup(ts.template_param_text_id));
-        auto it = ctx->tpl_bindings.find(key);
-        if (it != ctx->tpl_bindings.end()) return &it->second;
-      }
-    }
-    if (ts.tag_text_id != kInvalidText && module_ && module_->link_name_texts) {
-      const std::string key(module_->link_name_texts->lookup(ts.tag_text_id));
-      auto it = ctx->tpl_bindings.find(key);
-      if (it != ctx->tpl_bindings.end()) return &it->second;
-    }
-    const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
-    if (legacy_tag.empty()) return nullptr;
-    auto it = ctx->tpl_bindings.find(std::string(legacy_tag));
-    return it == ctx->tpl_bindings.end() ? nullptr : &it->second;
+    if (!ctx) return nullptr;
+    return find_template_type_binding_for_call(
+        &ctx->tpl_bindings, &ctx->structured_tpl_bindings,
+        &ctx->tpl_bindings_by_text, module_, ts);
   };
   auto apply_template_type_binding = [&](TypeSpec& target) -> bool {
     const TypeSpec* concrete = find_template_type_binding(target);
