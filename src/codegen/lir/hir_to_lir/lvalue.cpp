@@ -246,10 +246,12 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       return slot;
     }
     if (r->global) {
-      size_t gv_idx = r->global->value;
-      const auto& gv0 = mod_.globals[gv_idx];
-      if (const GlobalVar* best = select_global_object(gv0.name)) gv_idx = best->id.value;
-      const auto& gv = mod_.globals[gv_idx];
+      const GlobalVar* selected = select_global_object(*r);
+      if (!selected) selected = mod_.find_global(*r->global);
+      if (!selected) {
+        throw std::runtime_error("StmtEmitter: global lvalue not found: " + r->name);
+      }
+      const auto& gv = *selected;
       pts = gv.type.spec;
       return llvm_global_sym(emitted_link_name(mod_, gv.link_name_id, gv.name));
     }

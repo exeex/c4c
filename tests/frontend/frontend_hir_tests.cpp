@@ -1412,6 +1412,66 @@ int *global_ptr = &semantic_global[1];
               "global initializer lowering should not trust a drifted raw global-name collision");
 }
 
+void test_hir_to_lir_global_lvalue_store_prefers_link_name_ids() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int semantic_global = 1;
+int rendered_shadow = 2;
+
+void write_global(int value) { semantic_global = value; }
+)cpp");
+
+  const auto semantic_it = hir_module.global_index.find("semantic_global");
+  expect_true(semantic_it != hir_module.global_index.end(),
+              "fixture semantic global should be present in the HIR global index");
+  c4c::hir::GlobalVar* semantic_global = hir_module.find_global(semantic_it->second);
+  expect_true(semantic_global != nullptr &&
+                  semantic_global->link_name_id != c4c::kInvalidLinkName,
+              "fixture semantic global should carry stable HIR link identity");
+
+  const auto shadow_it = hir_module.global_index.find("rendered_shadow");
+  expect_true(shadow_it != hir_module.global_index.end(),
+              "fixture shadow global should be present in the HIR global index");
+  const c4c::hir::GlobalVar* shadow_global = hir_module.find_global(shadow_it->second);
+  expect_true(shadow_global != nullptr,
+              "fixture shadow global should resolve through the HIR global lookup");
+
+  for (auto& expr : hir_module.expr_pool) {
+    auto* ref = std::get_if<c4c::hir::DeclRef>(&expr.payload);
+    if (ref != nullptr && ref->global &&
+        ref->global->value == semantic_global->id.value) {
+      ref->name = shadow_global->name;
+      ref->link_name_id = c4c::kInvalidLinkName;
+    }
+  }
+  semantic_global->name = shadow_global->name;
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto writer_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "write_global";
+      });
+  expect_true(writer_it != lir_module.functions.end(),
+              "fixture writer should lower through semantic function identity");
+
+  bool saw_semantic_store = false;
+  bool saw_shadow_store = false;
+  for (const auto& block : writer_it->blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* store = std::get_if<c4c::codegen::lir::LirStoreOp>(&inst);
+      if (store == nullptr) continue;
+      if (store->ptr == "@semantic_global") saw_semantic_store = true;
+      if (store->ptr == "@rendered_shadow") saw_shadow_store = true;
+    }
+  }
+  expect_true(saw_semantic_store,
+              "global lvalue store lowering should recover the target spelling from GlobalId LinkNameId");
+  expect_true(!saw_shadow_store,
+              "global lvalue store lowering should not reselect by corrupted rendered global spelling");
+}
+
 void test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids() {
   c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 extern int helper(int value);
@@ -5905,6 +5965,7 @@ int main() {
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_direct_call_lookup_rejects_rendered_name_collision_after_link_name_miss();
   test_hir_to_lir_global_initializer_lookup_prefers_semantic_global_identity();
+  test_hir_to_lir_global_lvalue_store_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
   test_hir_to_lir_decl_backed_call_result_inference_prefers_link_name_ids();
   test_hir_to_lir_object_helper_callees_prefer_link_name_ids();
