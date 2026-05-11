@@ -1074,7 +1074,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_struct_array_read_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t4 = bir.load_global i32 @pairs, offset 12|bir.ret i32 %t4"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t3 = bir.load_global i32 @pairs, offset 12|bir.ret i32 %t3"
   FORBIDDEN_SNIPPETS "define i32 @main()"
 )
 
@@ -1084,7 +1084,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_struct_array_store_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @pairs, offset 8, i32 9|%t8 = bir.load_global i32 @pairs, offset 8|bir.ret i32 %t8"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @pairs, offset 8, i32 9|%t6 = bir.load_global i32 @pairs, offset 8|bir.ret i32 %t6"
   FORBIDDEN_SNIPPETS "define i32 @main()"
 )
 
@@ -1094,7 +1094,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/nested_global_struct_array_read_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t5 = bir.load_global i32 @s, offset 8|bir.ret i32 %t5"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t4 = bir.load_global i32 @s, offset 8|bir.ret i32 %t4"
   FORBIDDEN_SNIPPETS "define i32 @main()"
 )
 
@@ -1104,7 +1104,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/nested_global_struct_array_store_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @s, offset 4, i32 9|%t10 = bir.load_global i32 @s, offset 4|bir.ret i32 %t10"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @s, offset 4, i32 9|%t8 = bir.load_global i32 @s, offset 4|bir.ret i32 %t8"
   FORBIDDEN_SNIPPETS "define i32 @main()"
 )
 
