@@ -1,36 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/165_hir_lowerer_function_context_textid_authority.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Convert Remaining Metadata-Capable Paths
+Current Step ID: 4
+Current Step Title: Convert Remaining Metadata-Capable FunctionCtx Source Lookups
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 3 first source lookup conversion for `param_fn_ptr_sigs`.
+Completed plan Step 4 narrow source lookup conversion for `local_fn_ptr_sigs`.
 
 Changed paths:
 - `src/frontend/hir/impl/lowerer.hpp`
-- `src/frontend/hir/hir_functions.cpp`
+- `src/frontend/hir/impl/stmt/decl.cpp`
+- `src/frontend/hir/impl/stmt/stmt.cpp`
 - `src/frontend/hir/hir_types.cpp`
 - `tests/frontend/frontend_hir_lookup_tests.cpp`
 
-`append_explicit_callable_param` now records complete source parameters in `param_indices_by_text_id` and records function-pointer parameter signatures in `param_fn_ptr_sigs_by_index` by parameter index. Generated/no-metadata parameter names continue to populate the rendered `param_fn_ptr_sigs` compatibility map.
+`lower_local_decl_stmt` now records complete source locals in `local_ids_by_text_id` and stores function-pointer local signatures in `local_fn_ptr_sigs_by_id` by resolved `LocalId`. Generated/no-metadata local function-pointer declarations continue to populate the rendered `local_fn_ptr_sigs` compatibility map.
 
-`infer_call_result_type_from_callee` now resolves parameter function-pointer signatures by callee `unqualified_text_id -> param index -> FnPtrSig` before considering rendered fallback. Rendered parameter-signature lookup is only used when the callee has no source `TextId`.
+`infer_call_result_type_from_callee` now resolves local function-pointer signatures by callee `unqualified_text_id -> LocalId -> FnPtrSig` before considering rendered fallback. Rendered local-signature lookup is only used when the callee has no source `TextId`.
 
-Focused coverage added to `frontend_hir_lookup_tests` for indexed/TextId lookup winning over rendered spelling, complete TextId miss rejecting rendered fallback, and explicit no-metadata rendered compatibility.
+Local scope save/restore now preserves and restores the new local identity/signature maps alongside the existing rendered local maps. Focused coverage added to `frontend_hir_lookup_tests` for LocalId/TextId lookup winning over rendered spelling, complete TextId miss rejecting rendered fallback, and explicit no-metadata rendered compatibility.
 
 ## Suggested Next
 
-Convert the next narrow lookup group only after supervisor selection; `local_fn_ptr_sigs` by resolved local identity is the closest adjacent target, but it needs local identity lookup plumbing and should stay separate from this completed parameter-signature slice.
+Convert the next narrow FunctionCtx source lookup group only after supervisor selection; ordinary `params`/`locals` rendered maps remain outside this packet and should be handled separately from local function-pointer signatures.
 
 ## Watchouts
 
-- `param_indices_by_text_id` is function-context scoped; it intentionally does not try to solve same-spelled local shadowing.
-- Pack-expanded/generated parameters are not entered into the source `TextId` index because their emitted names are generated route-local handles; they retain rendered compatibility.
-- `local_fn_ptr_sigs` and ordinary `params`/`locals` lookups still use their existing rendered maps outside this packet.
+- `local_ids_by_text_id` is function-context scoped and restored with local scopes; `local_types` remains dense ID metadata and is not scope-restored by the pre-existing pattern.
+- Complete source local function-pointer signatures no longer populate the rendered `local_fn_ptr_sigs` map; only no-metadata/generated compatibility does.
+- Ordinary `params`/`locals` rendered lookups and `static_globals` remain outside this packet.
 
 ## Proof
 

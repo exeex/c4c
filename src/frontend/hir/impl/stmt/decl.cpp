@@ -131,7 +131,19 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     d.type = qtype_from(reference_storage_ts(effective_decl_ts), ValueCategory::LValue);
   }
   d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
-  if (d.fn_ptr_sig) ctx.local_fn_ptr_sigs[d.name] = *d.fn_ptr_sig;
+  const bool has_source_local_identity =
+      n && n->unqualified_text_id != kInvalidText &&
+      n->name && d.name == n->name;
+  if (has_source_local_identity) {
+    ctx.local_ids_by_text_id[n->unqualified_text_id] = d.id;
+  }
+  if (d.fn_ptr_sig) {
+    if (has_source_local_identity) {
+      ctx.local_fn_ptr_sigs_by_id.insert(d.id, *d.fn_ptr_sig);
+    } else {
+      ctx.local_fn_ptr_sigs[d.name] = *d.fn_ptr_sig;
+    }
+  }
   // Deduce unsized array dimension from initializer list
   if (n->init && d.type.spec.array_rank > 0 && d.type.spec.array_size < 0) {
     if (n->init->kind == NK_INIT_LIST) {
