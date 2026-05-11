@@ -13,27 +13,32 @@ long long sizeof_base(TypeBase b);
 long long sizeof_type_spec(const TypeSpec& ts);
 long long alignof_type_spec(const TypeSpec& ts);
 
-// Compatibility bridge for parser-local record probes that still receive
-// rendered record maps. Prefer direct record_def and structured record
-// metadata; remove this map parameter once those callers carry record_def or
-// structured record keys.
-Node* resolve_record_type_spec(
+// Ordinary parser-support record resolution uses only direct record_def
+// metadata. Callers that still need the parser-local rendered tag mirror must
+// opt into the compatibility entry point below.
+Node* resolve_record_type_spec(const TypeSpec& ts);
+
+// Explicit compatibility bridge for parser-local record probes that still
+// receive rendered record maps. Prefer direct record_def and structured record
+// metadata; remove this API once those callers carry record_def or structured
+// record keys.
+Node* resolve_record_type_spec_with_parser_tag_map_compatibility(
     const TypeSpec& ts,
-    const std::unordered_map<std::string, Node*>* compatibility_tag_map);
+    const std::unordered_map<std::string, Node*>*
+        parser_tag_map_compatibility);
 
 // Parser-owned constant evaluation should pass named constants through the
 // TextId table. For record layout queries, TypeSpec carries only provisional
 // parser output: record kind through TypeBase, tag TextId, namespace context,
 // qualifier TextId sequence, source spelling/location on the owning Node, and
-// declaration/reference role from AST context. resolve_record_type_spec keeps
-// the existing parser-local compatibility bridge alive for non-layout parser
-// probes and declaration checks. Remove that bridge once those callers carry
-// record_def or structured record keys into this helper. Constant-layout
-// evaluation uses record_def for structured records; Sema owns final record
-// identity and completion.
+// declaration/reference role from AST context. The separate
+// resolve_record_type_spec_with_parser_tag_map_compatibility API keeps the
+// existing parser-local compatibility bridge alive for non-layout parser
+// probes and declaration checks. Constant-layout evaluation uses record_def for
+// structured records; Sema owns final record identity and completion.
 bool eval_const_int(Node* n, long long* out,
                     const std::unordered_map<std::string, Node*>*
-                        compatibility_tag_map = nullptr,
+                        parser_record_layout_compatibility_tag_map = nullptr,
                     const std::unordered_map<TextId, long long>* structured_named_consts =
                         nullptr);
 // Explicit compatibility bridge for legacy/HIR template paths that only carry

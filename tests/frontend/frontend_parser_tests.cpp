@@ -7708,8 +7708,8 @@ void test_parser_record_layout_const_eval_rejects_structured_tag_fallback() {
   structured.qualifier_segments[0] = arena.strdup("stale_rendered_ns");
   set_legacy_tag_if_present(structured, arena.strdup("Record"), 0);
 
-  expect_true(c4c::resolve_record_type_spec(structured,
-                                            &compatibility_tag_map) == nullptr,
+  expect_true(c4c::resolve_record_type_spec_with_parser_tag_map_compatibility(
+                  structured, &compatibility_tag_map) == nullptr,
               "structured record TypeSpec without record_def should not use tag/TextId fallback authority");
 
   c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
@@ -7777,8 +7777,8 @@ void test_parser_record_layout_const_eval_rejects_structured_context_map_authori
   set_legacy_tag_if_present(structured, arena.strdup("stale_rendered_Record"),
                             0);
 
-  expect_true(c4c::resolve_record_type_spec(structured,
-                                            &compatibility_tag_map) == nullptr,
+  expect_true(c4c::resolve_record_type_spec_with_parser_tag_map_compatibility(
+                  structured, &compatibility_tag_map) == nullptr,
               "structured record TypeSpec without record_def should reject a same-namespace candidate with stale qualifier metadata");
 
   compatibility_tag_map["ns::Record"] = record;
@@ -7827,8 +7827,8 @@ void test_parser_record_layout_const_eval_rejects_context_defaulted_textid_match
   set_legacy_tag_if_present(context_defaulted,
                             arena.strdup("stale_rendered_Record"), 0);
 
-  expect_true(c4c::resolve_record_type_spec(context_defaulted,
-                                            &compatibility_tag_map) == nullptr,
+  expect_true(c4c::resolve_record_type_spec_with_parser_tag_map_compatibility(
+                  context_defaulted, &compatibility_tag_map) == nullptr,
               "context-defaulted structured TypeSpec should reject unique TextId-only record matches");
 
   c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
@@ -7847,8 +7847,8 @@ void test_parser_record_layout_const_eval_rejects_context_defaulted_textid_match
   ambiguous->namespace_context_id = 4;
   compatibility_tag_map["other::Record"] = ambiguous;
 
-  expect_true(c4c::resolve_record_type_spec(context_defaulted,
-                                            &compatibility_tag_map) == nullptr,
+  expect_true(c4c::resolve_record_type_spec_with_parser_tag_map_compatibility(
+                  context_defaulted, &compatibility_tag_map) == nullptr,
               "context-defaulted structured TypeSpec should reject ambiguous TextId-only record matches");
 }
 
@@ -8314,10 +8314,10 @@ void test_parser_qualified_template_record_refs_carry_record_definition() {
   set_legacy_tag_if_present(values->type, arena.strdup("stale::vector"), 0);
   set_legacy_tag_if_present(rit->type, arena.strdup("stale::reverse_iterator"),
                             0);
-  expect_true(c4c::resolve_record_type_spec(values->type, nullptr) ==
+  expect_true(c4c::resolve_record_type_spec(values->type) ==
                   values->type.record_def,
               "qualified vector record reference should resolve through record_def without parser-map fallback");
-  expect_true(c4c::resolve_record_type_spec(rit->type, nullptr) ==
+  expect_true(c4c::resolve_record_type_spec(rit->type) ==
                   rit->type.record_def,
               "qualified reverse_iterator record reference should resolve through record_def without parser-map fallback");
 }

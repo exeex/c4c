@@ -542,7 +542,8 @@ static bool type_record_context_matches_candidate(const TypeSpec& ts,
 }
 
 bool eval_const_int(Node* n, long long* out,
-    const std::unordered_map<std::string, Node*>* compatibility_tag_map,
+    const std::unordered_map<std::string, Node*>*
+        parser_record_layout_compatibility_tag_map,
     const std::unordered_map<TextId, long long>* structured_named_consts);
 bool eval_const_int_with_rendered_named_const_compatibility(
     Node* n, long long* out,
@@ -555,22 +556,29 @@ bool eval_const_int_with_rendered_named_const_compatibility(
 // related AST node, and declaration/reference role from AST context.
 //
 // This helper intentionally does not introduce a rendered-string semantic
-// field. The rendered tag map below is a parser-local compatibility bridge for
-// non-layout probes and declaration checks that have not yet been routed
-// through Sema's record table; remove it once those callers carry record_def or
-// structured record keys. Sema owns final record identity and completion.
-Node* resolve_record_type_spec(
-    const TypeSpec& ts,
-    const std::unordered_map<std::string, Node*>* compatibility_tag_map) {
+// field. Sema owns final record identity and completion.
+Node* resolve_record_type_spec(const TypeSpec& ts) {
     if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
         return ts.record_def;
     }
-    if (!compatibility_tag_map) return nullptr;
+    return nullptr;
+}
+
+// Parser-local compatibility bridge for non-layout probes and declaration
+// checks that have not yet been routed through Sema's record table; remove it
+// once those callers carry record_def or structured record keys. Complete
+// structured misses fail closed before the TextId-less legacy rendered fallback.
+Node* resolve_record_type_spec_with_parser_tag_map_compatibility(
+    const TypeSpec& ts,
+    const std::unordered_map<std::string, Node*>*
+        parser_tag_map_compatibility) {
+    if (Node* direct = resolve_record_type_spec(ts)) return direct;
+    if (!parser_tag_map_compatibility) return nullptr;
     if (typespec_has_structured_record_context(ts)) {
         // Secondary compatibility only: once a direct record_def carrier exists
         // it wins above. This path is for older parser callers that have
         // structured TextIds/context but have not yet carried the Node* itself.
-        for (const auto& entry : *compatibility_tag_map) {
+        for (const auto& entry : *parser_tag_map_compatibility) {
             if (type_record_context_matches_candidate(ts, entry.second)) {
                 return entry.second;
             }
@@ -580,7 +588,7 @@ Node* resolve_record_type_spec(
     if (ts.tag_text_id != kInvalidText) {
         // Secondary compatibility for unqualified TextId carriers. Do not use
         // the rendered key itself as authority when structured metadata misses.
-        for (const auto& entry : *compatibility_tag_map) {
+        for (const auto& entry : *parser_tag_map_compatibility) {
             Node* sd = entry.second;
             if (sd && sd->kind == NK_STRUCT_DEF &&
                 sd->unqualified_text_id == ts.tag_text_id) {
@@ -591,8 +599,8 @@ Node* resolve_record_type_spec(
     }
     const char* tag = support_legacy_typespec_tag_if_present(ts, 0);
     if (!tag) return nullptr;
-    const auto it = compatibility_tag_map->find(tag);
-    if (it == compatibility_tag_map->end()) return nullptr;
+    const auto it = parser_tag_map_compatibility->find(tag);
+    if (it == parser_tag_map_compatibility->end()) return nullptr;
     Node* sd = it->second;
     return sd && sd->kind == NK_STRUCT_DEF ? sd : nullptr;
 }

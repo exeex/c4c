@@ -98,20 +98,30 @@ void test_record_layout_resolution_uses_record_definition_before_stale_tag() {
   query.record_def = &real_record;
   query.array_size = -1;
 
-  expect_true(c4c::resolve_record_type_spec(query, &records) == &real_record,
+  expect_true(c4c::resolve_record_type_spec(query) == &real_record,
+              "ordinary record lookup should use direct record_def metadata");
+  expect_true(c4c::resolve_record_type_spec_with_parser_tag_map_compatibility(
+                  query, &records) == &real_record,
               "record layout lookup should use complete record_def before a stale exact-context rendered map");
 
   query.record_def = nullptr;
-  expect_true(c4c::resolve_record_type_spec(query, &records) == &stale_record,
-              "public parser support keeps bounded structured map compatibility only after direct record_def is absent");
+  expect_true(c4c::resolve_record_type_spec(query) == nullptr,
+              "ordinary record lookup must not recover through parser rendered-tag maps");
+  expect_true(c4c::resolve_record_type_spec_with_parser_tag_map_compatibility(
+                  query, &records) == &stale_record,
+              "explicit parser support compatibility keeps bounded structured map compatibility only after direct record_def is absent");
 
   query.tag_text_id = 99;
-  expect_true(c4c::resolve_record_type_spec(query, &records) == nullptr,
+  expect_true(c4c::resolve_record_type_spec_with_parser_tag_map_compatibility(
+                  query, &records) == nullptr,
               "structured record metadata miss should not recover through stale rendered tag");
 
   query.tag_text_id = c4c::kInvalidText;
   if (set_legacy_tag_if_present(query, "StaleRendered", 0)) {
-    expect_true(c4c::resolve_record_type_spec(query, &records) == &stale_record,
+    expect_true(c4c::resolve_record_type_spec(query) == nullptr,
+                "ordinary record lookup must not use legacy rendered tags");
+    expect_true(c4c::resolve_record_type_spec_with_parser_tag_map_compatibility(
+                    query, &records) == &stale_record,
                 "legacy rendered record tag remains explicit compatibility fallback");
   }
 
@@ -124,7 +134,8 @@ void test_record_layout_resolution_uses_record_definition_before_stale_tag() {
   query.record_def = &incomplete_record;
   query.tag_text_id = real_record.unqualified_text_id;
   query.namespace_context_id = incomplete_record.namespace_context_id;
-  expect_true(c4c::resolve_record_type_spec(query, &records) == &incomplete_record,
+  expect_true(c4c::resolve_record_type_spec_with_parser_tag_map_compatibility(
+                  query, &records) == &incomplete_record,
               "structured incomplete record_def should not complete through parser rendered-tag map");
 }
 

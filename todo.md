@@ -8,34 +8,35 @@ Current Step Title: Retire Parser Compatibility Overloads
 
 ## Just Finished
 
-Step 2 - Retire Parser Compatibility Overloads progressed for the selected
-`eval_const_int` rendered named-constant compatibility helper family.
+Step 2 - Retire Parser Compatibility Overloads progressed for the
+`resolve_record_type_spec` parser record/tag compatibility bridge family.
 
 Completed work:
 
 | Field | Result |
 | --- | --- |
-| Caller inspection | `rg` found production `eval_const_int` callers in parser table wrappers, parser template static-member probes, and `src/frontend/hir/impl/templates/templates.cpp`; only the HIR static-member helper still had rendered named-constant input. |
-| Production caller updates | Moved the empty rendered named-constant map in `eval_struct_static_member_value_hir` to an empty `std::unordered_map<TextId, long long>` so it binds to the structured overload. The real rendered NTTP path now calls an explicitly named compatibility function. Parser template callers already pass `ParserConstIntBindingTable` / `std::unordered_map<TextId, long long>`. |
-| Parser support API | Removed the broad rendered `eval_const_int(..., std::unordered_map<std::string, long long>*)` overload from ordinary overload resolution. Added `eval_const_int_with_rendered_named_const_compatibility` for the remaining HIR/template no-metadata rendered boundary. |
-| Focused tests | Added parser-support residual coverage proving structured named-constant evaluation uses `TextId`, fails closed after a complete `TextId` miss, and preserves no-metadata rendered behavior only through the explicit compatibility function. Existing stale-rendered-map regression tests were not weakened. |
-| Changed files | `src/frontend/parser/parser_support.hpp`, `src/frontend/parser/impl/support.cpp`, `src/frontend/hir/impl/templates/templates.cpp`, `tests/frontend/cpp_hir_parser_support_residual_metadata_test.cpp`, `todo.md`, and `test_after.log`. |
+| Caller inspection | `rg` found production rendered record/tag map callers in template static-member/base lookup paths: `src/frontend/parser/impl/types/template.cpp` and `src/frontend/parser/impl/types/base.cpp`. Ordinary production callers with no map were updated to the one-argument `resolve_record_type_spec`. |
+| Parser support API | Removed the broad `resolve_record_type_spec(..., std::unordered_map<std::string, Node*>*)` ordinary boundary. Added `resolve_record_type_spec_with_parser_tag_map_compatibility` for the retained parser-local rendered tag mirror. |
+| Layout behavior | Constant-layout helpers still require a complete direct `record_def` for structured records and only preserve TextId-less legacy rendered compatibility. Structured metadata misses continue to fail closed before any rendered-key fallback. |
+| Production caller updates | Remaining parser static-member/base compatibility callers now opt into `resolve_record_type_spec_with_parser_tag_map_compatibility`; direct record-def callers use `resolve_record_type_spec(ts)`. |
+| Focused tests | Strengthened parser-support residual coverage so ordinary record lookup proves it does not recover through parser rendered-tag maps, while explicit compatibility preserves the no-metadata fallback. Existing frontend parser stale-map closed-miss tests now call the explicit compatibility API. |
+| Changed files | `src/frontend/parser/parser_support.hpp`, `src/frontend/parser/impl/support.cpp`, `src/frontend/parser/impl/parser_state.hpp`, `src/frontend/parser/impl/types/base.cpp`, `src/frontend/parser/impl/types/template.cpp`, `src/frontend/parser/impl/core.cpp`, `src/frontend/parser/impl/types/declarator.cpp`, `src/frontend/parser/impl/types/types_helpers.hpp`, `tests/frontend/cpp_hir_parser_support_residual_metadata_test.cpp`, `tests/frontend/frontend_parser_tests.cpp`, `todo.md`, and `test_after.log`. |
 
 ## Suggested Next
 
-Continue Step 2 with a separate parser-support bridge packet after the
-supervisor selects the next bridge family and proof subset. The remaining
-record/tag compatibility bridge is still intentionally out of this packet.
+Continue Step 2 with the next supervisor-selected parser compatibility family,
+or have the supervisor decide whether the parser bridge-retirement step is
+complete after the typedef, const-int, type-compat, and record/tag packets.
 
 ## Watchouts
 
-- `eval_const_int_with_rendered_named_const_compatibility` is now the only
-  parser-support rendered named-constant entry point; it exists for the HIR
-  static-member rendered NTTP/no-metadata compatibility path and should not gain
-  new parser-owned callers.
-- Record-layout compatibility still flows through the existing rendered
-  record/tag map where required; `resolve_record_type_spec` was not folded into
-  this packet.
+- `resolve_record_type_spec_with_parser_tag_map_compatibility` is now the only
+  parser-support record resolver that accepts the rendered `struct_tag_def_map`.
+  It should stay limited to parser-local compatibility paths.
+- Constant-layout evaluation still takes a rendered tag map as a layout
+  compatibility input, but structured records must carry direct `record_def`
+  for layout; do not route structured layout misses into the explicit
+  compatibility resolver.
 - The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`
   was not touched.
 - No current blockers.
@@ -44,11 +45,10 @@ record/tag compatibility bridge is still intentionally out of this packet.
 
 Delegated proof command was run exactly and logged to `test_after.log`:
 
-`cmake --build build --target frontend_parser_tests frontend_parser_lookup_authority_tests cpp_hir_parser_support_residual_metadata_test cpp_hir_template_pattern_match_metadata_test && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_support_residual_structured_metadata|cpp_hir_template_pattern_match_structured_metadata)$'`
+`cmake --build build --target frontend_parser_tests frontend_parser_lookup_authority_tests cpp_hir_parser_support_residual_metadata_test && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_support_residual_structured_metadata)$'`
 
-Result: passed. Built the four delegated targets and ran 4/4 focused tests:
+Result: passed. Built the three delegated targets and ran 3/3 focused tests:
 `frontend_parser_tests`, `frontend_parser_lookup_authority_tests`,
-`cpp_hir_parser_support_residual_structured_metadata`, and
-`cpp_hir_template_pattern_match_structured_metadata`.
+and `cpp_hir_parser_support_residual_structured_metadata`.
 
 Additional hygiene: `git diff --check` passed.

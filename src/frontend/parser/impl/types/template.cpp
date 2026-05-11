@@ -161,8 +161,8 @@ const Node* template_static_member_base_record_definition(
         base_ts.namespace_context_id < 0 && !base_ts.is_global_qualified &&
         base_ts.n_qualifier_segments <= 0;
     if (!text_id_less_legacy_carrier) return nullptr;
-    return resolve_record_type_spec(base_ts,
-                                    &parser.definition_state_.struct_tag_def_map);
+    return resolve_record_type_spec_with_parser_tag_map_compatibility(
+        base_ts, &parser.definition_state_.struct_tag_def_map);
 }
 
 bool template_static_member_layout_type_allows_legacy_map(
@@ -1447,7 +1447,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             return false;
         }
 
-        const Node* sdef = resolve_record_type_spec(resolved_ref_ts, nullptr);
+        const Node* sdef = resolve_record_type_spec(resolved_ref_ts);
         if (!sdef) {
             ti = saved_ti;
             return false;

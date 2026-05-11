@@ -230,7 +230,7 @@ Node* type_spec_structured_record_definition(const Parser& parser,
                                              const TypeSpec* type) {
     if (!type) return nullptr;
     TypeSpec resolved = parser.resolve_struct_like_typedef_type(*type);
-    if (Node* record = resolve_record_type_spec(resolved, nullptr)) {
+    if (Node* record = resolve_record_type_spec(resolved)) {
         return record;
     }
     TextId record_text_id = resolved.tag_text_id;

@@ -1034,13 +1034,13 @@ const TypeSpec* find_typedef_type_by_typespec_metadata(const Parser& parser,
 
 bool typespec_resolves_to_structured_record_ctor_type(const Parser& parser,
                                                       const TypeSpec& ts) {
-    if (resolve_record_type_spec(ts, nullptr)) return true;
+    if (resolve_record_type_spec(ts)) return true;
 
     if (ts.tag_text_id == kInvalidText) return false;
 
     if (const TypeSpec* type = find_typedef_type_by_typespec_metadata(parser, ts)) {
         TypeSpec resolved = parser.resolve_struct_like_typedef_type(*type);
-        if (resolve_record_type_spec(resolved, nullptr)) return true;
+        if (resolve_record_type_spec(resolved)) return true;
         if (resolved.base == TB_STRUCT || resolved.base == TB_UNION) return true;
     }
 

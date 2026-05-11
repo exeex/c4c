@@ -1941,7 +1941,7 @@ TypeSpec Parser::parse_base_type() {
                         return nullptr;
                     }
                     if (resolved.record_def) return resolved.record_def;
-                    return resolve_record_type_spec(resolved, nullptr);
+                    return resolve_record_type_spec(resolved);
                 };
                 auto structured_record_for_type = [&](const TypeSpec& ts) -> const Node* {
                     if (const Node* keyed_record =
@@ -2538,13 +2538,13 @@ TypeSpec Parser::parse_base_type() {
                         resolved = resolve_struct_like(*typedef_type);
                     }
                 }
-                const Node* sdef = resolve_record_type_spec(resolved, nullptr);
+                const Node* sdef = resolve_record_type_spec(resolved);
                 if (!sdef) sdef = structured_record_for_type(resolved);
                 if (!sdef) {
                     if (const TypeSpec* typedef_type =
                             lookup_typedef_for_type(owner_ts)) {
                         resolved = resolve_struct_like(*typedef_type);
-                        sdef = resolve_record_type_spec(resolved, nullptr);
+                        sdef = resolve_record_type_spec(resolved);
                         if (!sdef) sdef = structured_record_for_type(resolved);
                     }
                 }
@@ -3887,8 +3887,7 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         if (!resolved.record_def) {
                                             if (Node* record =
-                                                    resolve_record_type_spec(
-                                                        resolved, nullptr)) {
+                                                    resolve_record_type_spec(resolved)) {
                                                 resolved.record_def = record;
                                             }
                                         }
@@ -4585,7 +4584,7 @@ TypeSpec Parser::parse_base_type() {
                     consume();  // member
                     bool save_const = ts.is_const, save_vol = ts.is_volatile;
                     if (resolved.base == TB_STRUCT && !resolved.record_def) {
-                        Node* inst_def = resolve_record_type_spec(ts, nullptr);
+                        Node* inst_def = resolve_record_type_spec(ts);
                         const TextId resolved_text_id =
                             resolved.tag_text_id != kInvalidText
                                 ? resolved.tag_text_id
@@ -5305,7 +5304,7 @@ TypeSpec Parser::parse_base_type() {
                                         resolve_typedef_type_chain(
                                             cur->base_types[bi]);
                                     const Node* base_def =
-                                        resolve_record_type_spec(
+                                        resolve_record_type_spec_with_parser_tag_map_compatibility(
                                             base_ts,
                                             &definition_state_
                                                  .struct_tag_def_map);
@@ -5371,7 +5370,7 @@ TypeSpec Parser::parse_base_type() {
                                     return false;
                                 }
                                 const Node* owner_def =
-                                    resolve_record_type_spec(
+                                    resolve_record_type_spec_with_parser_tag_map_compatibility(
                                         owner_ts,
                                         &definition_state_
                                              .struct_tag_def_map);
@@ -6772,7 +6771,7 @@ TypeSpec Parser::parse_base_type() {
                                                 resolve_typedef_type_chain(
                                                     cur->base_types[bi]);
                                             const Node* base_def =
-                                                resolve_record_type_spec(
+                                                resolve_record_type_spec_with_parser_tag_map_compatibility(
                                                     base_ts,
                                                     &definition_state_
                                                          .struct_tag_def_map);
@@ -6848,7 +6847,7 @@ TypeSpec Parser::parse_base_type() {
                                             return false;
                                         }
                                         const Node* owner_def =
-                                            resolve_record_type_spec(
+                                            resolve_record_type_spec_with_parser_tag_map_compatibility(
                                                 owner_ts,
                                                 &definition_state_
                                                      .struct_tag_def_map);
@@ -7246,9 +7245,7 @@ TypeSpec Parser::parse_base_type() {
                                                         if (!resolved_member
                                                                  .record_def) {
                                                             if (Node* member_def =
-                                                                    resolve_record_type_spec(
-                                                                        resolved_member,
-                                                                        nullptr)) {
+                                                                    resolve_record_type_spec(resolved_member)) {
                                                                 resolved_member
                                                                     .record_def =
                                                                     member_def;
@@ -7334,8 +7331,7 @@ TypeSpec Parser::parse_base_type() {
                                             -> Node* {
                                         Node* base_def = produced.record_def;
                                         if (!base_def) {
-                                            base_def = resolve_record_type_spec(
-                                                produced, nullptr);
+                                            base_def = resolve_record_type_spec(produced);
                                         }
                                         if (!base_def) return nullptr;
                                         const char* saved_member_name =
@@ -8317,7 +8313,7 @@ TypeSpec Parser::parse_base_type() {
                         // If the resolved type is the same template origin, use the instantiation tag.
                         if (resolved.base == TB_STRUCT) {
                             Node* inst_def =
-                                resolve_record_type_spec(ts, nullptr);
+                                resolve_record_type_spec(ts);
                             if (!inst_def) {
                                 const char* owner_legacy_tag =
                                     parse_base_type_legacy_tag_if_no_metadata(ts);
@@ -8353,8 +8349,7 @@ TypeSpec Parser::parse_base_type() {
                                             return true;
                                         }
                                         if (const Node* resolved_record =
-                                                resolve_record_type_spec(
-                                                    resolved_type, nullptr)) {
+                                                resolve_record_type_spec(resolved_type)) {
                                             TextId resolved_text_id =
                                                 parse_base_type_record_text_id(
                                                     *this, resolved_record);

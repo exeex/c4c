@@ -1803,7 +1803,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name,
                                 break;
                             }
                             const Node* resolved_nested_owner =
-                                resolve_record_type_spec(nested_decl->type, nullptr);
+                                resolve_record_type_spec(nested_decl->type);
                             if (!resolved_nested_owner) {
                                 ok = false;
                                 break;
