@@ -1024,7 +1024,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_aggregate_array_function_pointer_call_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t4 = bir.load_global ptr @gs, offset 8|%t5 = bir.call i32 %t4(i32 4)|bir.ret i32 %t5"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t3 = bir.load_global ptr @gs, offset 8|%t4 = bir.call i32 %t3(i32 4)|bir.ret i32 %t4"
   FORBIDDEN_SNIPPETS "call i32 (ptr, i32) %t|addr @inc+8"
 )
 

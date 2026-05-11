@@ -558,7 +558,31 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_global_gep_address(
 
   std::string current_type(c4c::codegen::lir::trim_lir_arg_text(type_text));
   std::size_t byte_offset = 0;
-  for (std::size_t index_pos = 0; index_pos < gep.indices.size(); ++index_pos) {
+  std::size_t index_pos = 0;
+  const auto base_layout = lookup_addressing_layout(current_type, type_decls, structured_layouts);
+  const std::string gep_element_type(c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str()));
+  if (base_layout.kind == AggregateTypeLayout::Kind::Array &&
+      gep_element_type == base_layout.element_type_text) {
+    const auto parsed_index = parse_typed_operand(gep.indices.front());
+    if (!parsed_index.has_value()) {
+      return std::nullopt;
+    }
+    const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
+    if (!index_value.has_value() || *index_value < 0 ||
+        static_cast<std::size_t>(*index_value) >= base_layout.array_count) {
+      return std::nullopt;
+    }
+    const auto element_layout =
+        lookup_addressing_layout(base_layout.element_type_text, type_decls, structured_layouts);
+    if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+        element_layout.size_bytes == 0) {
+      return std::nullopt;
+    }
+    byte_offset = static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
+    current_type = base_layout.element_type_text;
+    index_pos = 1;
+  }
+  for (; index_pos < gep.indices.size(); ++index_pos) {
     const auto parsed_index = parse_typed_operand(gep.indices[index_pos]);
     if (!parsed_index.has_value()) {
       return std::nullopt;

@@ -457,13 +457,42 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     return false;
   };
 
-  const auto return_info =
+  auto return_info =
       lower_return_info_from_type(call.return_type.str(),
                                   type_decls,
                                   context_.target_profile,
                                   &structured_layouts_);
   if (!return_info.has_value()) {
     return fail_call_family(kCallReturnFamily);
+  }
+  std::string call_return_storage_type = std::string(call.return_type.str());
+  if (!return_info->returned_via_sret &&
+      call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+    const auto result_name = call.result.str();
+    for (const auto& block : function_.blocks) {
+      for (const auto& candidate : block.insts) {
+        const auto* store = std::get_if<c4c::codegen::lir::LirStoreOp>(&candidate);
+        if (store == nullptr ||
+            store->val.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+            store->val.str() != result_name) {
+          continue;
+        }
+        const auto aggregate_return_info =
+            lower_return_info_from_type(store->type_str.str(),
+                                        type_decls,
+                                        context_.target_profile,
+                                        &structured_layouts_);
+        if (aggregate_return_info.has_value() &&
+            aggregate_return_info->returned_via_sret) {
+          return_info = *aggregate_return_info;
+          call_return_storage_type = std::string(store->type_str.str());
+        }
+        break;
+      }
+      if (return_info->returned_via_sret) {
+        break;
+      }
+    }
   }
 
   std::vector<bir::Value> lowered_args;
@@ -513,6 +542,23 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     }
     return bir::Value::named_symbol_pointer("@" + global_name, global_it->second.link_name_id);
   };
+  const auto aggregate_alias_layout =
+      [&](const c4c::codegen::lir::LirOperand& operand) -> std::optional<AggregateTypeLayout> {
+    if (operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return std::nullopt;
+    }
+    const auto aggregate_alias_it = aggregate_value_aliases.find(operand.str());
+    if (aggregate_alias_it == aggregate_value_aliases.end()) {
+      return std::nullopt;
+    }
+    const auto aggregate_it = local_aggregate_slots.find(aggregate_alias_it->second);
+    if (aggregate_it == local_aggregate_slots.end()) {
+      return std::nullopt;
+    }
+    return lower_byval_aggregate_layout(aggregate_it->second.type_text,
+                                        type_decls,
+                                        &structured_layouts_);
+  };
 
   const auto maybe_resolve_direct_calloc_pointer_address =
       [&](std::string_view symbol_name,
@@ -555,7 +601,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       return fail_call_family(kCallReturnFamily);
     }
     sret_slot_name = call.result.str();
-    if (!declare_local_aggregate_slots(call.return_type.str(),
+    if (!declare_local_aggregate_slots(call_return_storage_type,
                                        *sret_slot_name,
                                        return_info->align_bytes)) {
       return fail_call_family(kCallReturnFamily);
@@ -664,11 +710,26 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           });
           continue;
         }
-        const auto arg =
-            lower_value(c4c::codegen::lir::LirOperand(
-                            std::string(parsed_call->typed_call.args[index].operand)),
-                        *arg_type,
-                        value_aliases);
+        const auto arg_operand = c4c::codegen::lir::LirOperand(
+            std::string(parsed_call->typed_call.args[index].operand));
+        if (const auto aggregate_layout = aggregate_alias_layout(arg_operand);
+            aggregate_layout.has_value()) {
+          const auto arg = lower_byval_call_arg_value(arg_operand, *aggregate_layout);
+          if (!arg.has_value()) {
+            return fail_call_family(call_family);
+          }
+          lowered_arg_types.push_back(bir::TypeKind::Ptr);
+          lowered_args.push_back(*arg);
+          lowered_arg_abi.push_back(bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = aggregate_layout->size_bytes,
+              .align_bytes = aggregate_layout->align_bytes,
+              .primary_class = bir::AbiValueClass::Memory,
+              .byval_copy = true,
+          });
+          continue;
+        }
+        const auto arg = lower_value(arg_operand, *arg_type, value_aliases);
         if (!arg.has_value()) {
           return fail_call_family(call_family);
         }
@@ -739,11 +800,26 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         });
         continue;
       }
-      const auto arg =
-          lower_value(c4c::codegen::lir::LirOperand(
-                          std::string(parsed_call->args[index].operand)),
-                      *arg_type,
-                      value_aliases);
+      const auto arg_operand =
+          c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand));
+      if (const auto aggregate_layout = aggregate_alias_layout(arg_operand);
+          aggregate_layout.has_value()) {
+        const auto arg = lower_byval_call_arg_value(arg_operand, *aggregate_layout);
+        if (!arg.has_value()) {
+          return fail_call_family(call_family);
+        }
+        lowered_arg_types.push_back(bir::TypeKind::Ptr);
+        lowered_args.push_back(*arg);
+        lowered_arg_abi.push_back(bir::CallArgAbiInfo{
+            .type = bir::TypeKind::Ptr,
+            .size_bytes = aggregate_layout->size_bytes,
+            .align_bytes = aggregate_layout->align_bytes,
+            .primary_class = bir::AbiValueClass::Memory,
+            .byval_copy = true,
+        });
+        continue;
+      }
+      const auto arg = lower_value(arg_operand, *arg_type, value_aliases);
       if (!arg.has_value()) {
         return fail_call_family(call_family);
       }
