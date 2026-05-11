@@ -694,24 +694,25 @@ const std::vector<const Node*>* Lowerer::find_template_struct_specializations(
         primary_tpl, selected_specializations);
     return selected_specializations;
   }
-  if (!selected_specializations) {
-    selected_specializations =
-        ct_state_->find_template_struct_specializations(primary_tpl);
-  }
-  if (!selected_specializations) {
-    if (const auto* specializations =
-            ct_state_->find_template_struct_specializations(primary_tpl,
-                                                            primary_tpl->name)) {
-      selected_specializations = specializations;
-    } else {
-      auto it = template_struct_specializations_.find(primary_tpl->name);
-      selected_specializations =
-          it != template_struct_specializations_.end() ? &it->second : nullptr;
-    }
-  }
+  selected_specializations =
+      find_template_struct_specializations_no_owner_compat(primary_tpl->name);
   record_template_struct_specialization_lookup_parity(
       primary_tpl, selected_specializations);
   return selected_specializations;
+}
+
+const std::vector<const Node*>*
+Lowerer::find_template_struct_specializations_no_owner_compat(
+    const std::string& rendered_primary_name) const {
+  if (rendered_primary_name.empty()) return nullptr;
+  if (const auto* specializations =
+          ct_state_
+              ->find_template_struct_specializations_no_metadata_compat(
+                  rendered_primary_name)) {
+    return specializations;
+  }
+  auto it = template_struct_specializations_.find(rendered_primary_name);
+  return it != template_struct_specializations_.end() ? &it->second : nullptr;
 }
 
 void Lowerer::record_template_struct_primary_lookup_parity(

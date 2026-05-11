@@ -8,72 +8,51 @@ Current Step Title: Retire HIR Rendered Declaration and Template Bridges
 
 ## Just Finished
 
-Step 3 - Narrow Sema and Consteval Rendered Mirrors is complete enough to
-advance. The sema/consteval bridge-retirement packets landed in:
+Step 4 - Retire HIR Rendered Declaration and Template Bridges:
+template-struct specialization rendered-primary lookup is fenced as explicit
+compatibility/no-owner behavior.
 
-| Commit | Result |
+Changed files:
+
+| File | Result |
 | --- | --- |
-| `40404c298` | Fenced rendered enum-constant compatibility around `static_eval_int`; ordinary structured enum key/text misses fail closed, and the retained rendered enum map is reachable only through an explicitly named compatibility API. |
-| `3eaa60230` | Fenced `ConstEvalEnv` template/type binding mirrors; complete key/text misses no longer reopen rendered lookup, while legacy rendered display-tag helpers are named as compatibility bridges. |
-| `70de559c4` | Fenced `ConstEvalEnv` NTTP binding mirrors; complete NTTP key/text misses and forwarded NTTP misses fail closed, while rendered NTTP lookup remains only a no-metadata compatibility bridge. |
-
-Step 3 completion decision:
-
-| Field | Result |
-| --- | --- |
-| Sema/type-utils rendered enum maps | Covered by `40404c298`; complete scoped-carrier and TextId misses fail closed unless the caller opts into the named compatibility boundary. |
-| Consteval type and NTTP binding mirrors | Covered by `3eaa60230` and `70de559c4`; key/text maps remain binding authority, rendered maps remain named legacy/no-metadata mirrors, and complete metadata misses fail closed. |
-| Fallback canonical template names | Already fenced before this Step 3 slice: `substitute_template_args_impl` only consults `fallback_name_bindings` when the use-site lacks complete template parameter identity, and `cpp_hir_sema_canonical_symbol_metadata_test` covers both the complete-identity miss and no-metadata fallback cases. No extra Step 3 packet is required for idea 168. |
-| Consteval local `by_name` | Not a Step 3 blocker for idea 168; the audit classifies this as route-local/generated identity cleanup owned by idea 169, not source/link compatibility bridge retirement. |
-| Lifecycle decision | Advance from Step 3 to Step 4: Retire HIR Rendered Declaration and Template Bridges. |
+| `src/frontend/hir/compile_time_engine.hpp` | Renamed the rendered primary-name registration/lookup surface to `*_no_metadata_compat`; owner-key lookup now spells out that complete `CompileTimeRegistryKey` misses return `nullptr` before consulting rendered compatibility. |
+| `src/frontend/hir/impl/lowerer.hpp` | Added a `find_template_struct_specializations_no_owner_compat` declaration and documented the lowerer rendered specialization map as a no-owner compatibility mirror. |
+| `src/frontend/hir/impl/templates/templates.cpp` | Split the lowerer no-owner fallback into the named compatibility helper; complete owner-key hits still win, and complete owner-key misses return before fallback. |
+| `tests/frontend/frontend_hir_tests.cpp` | Updated the compile-time-state closed-miss test to register and query rendered fallback through the explicit no-metadata compatibility API. |
+| `tests/frontend/frontend_hir_lookup_tests.cpp` | Updated the HIR lookup authority test to use the explicit no-metadata compatibility API while keeping the complete owner-key miss closed. |
+| `test_after.log` | Updated with the delegated build and focused HIR test proof. |
 
 ## Suggested Next
 
-Begin Step 4 by re-reading the idea 167 HIR bridge inventory and selecting the
-first narrow HIR rendered declaration/template bridge. Candidate starting
-points from the runbook are `fn_index`, `global_index`, `struct_defs`,
-`template_defs`, rendered specialization keys, rendered qualified imports, and
-no-owner handoffs.
-
-The next executor packet should name the exact HIR bridge family, separate
-ordinary production lookup from imports/dumps/diagnostics/incomplete-owner
-compatibility, inspect production callers before editing tests, and add
-closed-miss proof for the touched structured carrier.
+Continue Step 4 with one separate HIR rendered declaration/template bridge
+family, such as `fn_index`, `global_index`, `struct_defs`, `template_defs`,
+rendered qualified imports, or no-owner handoffs. Keep that packet separate
+from template-struct specialization lookup.
 
 ## Watchouts
 
-- Keep ABI, display, diagnostics, and final spelling output-only; Step 3 should
-  not remove visible text just to reduce rendered-string grep count.
-- Do not fold route-local generated-name cleanup into this plan; idea 169 owns
-  route-local identity domains.
-- HIR rendered indexes may be valid as import, dump, diagnostic,
-  incomplete-owner, absent-owner-index, no-owner handoff, or display/output
-  boundaries; do not remove those just to reduce grep count.
+- `CompileTimeState::template_struct_specializations_` and
+  `Lowerer::template_struct_specializations_` still exist as retained rendered
+  compatibility mirrors; their removal condition is that all callers can supply
+  complete primary owner metadata or an explicitly structured import/handoff
+  carrier.
+- `Lowerer::eval_deferred_nttp_expr_hir` still reads the lowerer rendered
+  specialization mirror through `DeferredNttpTemplateLookup`; that use remains
+  no-owner compatibility and was not widened in this packet.
 - Keep HIR `FunctionCtx` local/label/generated-name cleanup out of this plan;
   idea 169 owns route-local identity domains.
-- Step 3 retained compatibility bridges must stay narrow: enum rendered maps,
-  consteval type bindings, and NTTP bindings are not ordinary authority after
-  complete structured metadata misses.
 - The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`
   was not touched.
 - No current blockers.
 
 ## Proof
 
-Lifecycle-only advancement. No implementation, tests, `plan.md`, source idea,
-review artifact, or log files were changed by this packet.
+Proof command, logged to `test_after.log`:
 
-Step 3 proof already landed with the three sema/consteval bridge commits:
+`cmake --build build --target frontend_hir_tests frontend_hir_lookup_tests && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests)$'`
 
-- `40404c298`: built `cpp_hir_sema_consteval_type_utils_metadata_test` and
-  `frontend_hir_tests`; ran 2/2 focused tests,
-  `cpp_hir_sema_consteval_type_utils_structured_metadata` and
-  `frontend_hir_tests`.
-- `3eaa60230`: built `cpp_hir_sema_consteval_type_utils_metadata_test` and
-  `frontend_hir_tests`; ran the same 2/2 focused tests.
-- `70de559c4`: built `cpp_hir_sema_consteval_type_utils_metadata_test` and
-  `frontend_hir_tests`; ran the same 2/2 focused tests.
+Result: passed; 2/2 focused tests passed (`frontend_hir_tests`,
+`frontend_hir_lookup_tests`).
 
-Plan-owner validation for this lifecycle edit:
-
-`git diff --check -- todo.md`
+Additional check: `git diff --check` passed.

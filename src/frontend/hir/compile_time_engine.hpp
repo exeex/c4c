@@ -1482,9 +1482,12 @@ struct CompileTimeState {
     }
   }
 
-  /// Register a template struct specialization under its primary template name.
-  void register_template_struct_specialization(const std::string& primary_name,
-                                              const Node* node) {
+  /// Register a template struct specialization in the retained rendered-name
+  /// compatibility mirror. This bridge is for callers without primary owner
+  /// metadata; complete owner-key misses must not recover through it.
+  void register_template_struct_specialization_no_metadata_compat(
+      const std::string& primary_name,
+      const Node* node) {
     template_struct_specializations_[primary_name].push_back(node);
   }
 
@@ -1492,7 +1495,8 @@ struct CompileTimeState {
   void register_template_struct_specialization(const Node* primary_def,
                                               const Node* node) {
     if (!primary_def || !primary_def->name) return;
-    register_template_struct_specialization(primary_def->name, node);
+    register_template_struct_specialization_no_metadata_compat(primary_def->name,
+                                                               node);
     if (auto key = make_compile_time_registry_key(
             CompileTimeRegistryKeyKind::TemplateStructSpecializationOwner,
             primary_def)) {
@@ -1624,8 +1628,11 @@ struct CompileTimeState {
     return it == template_struct_defs_by_key_.end() ? nullptr : it->second;
   }
 
-  /// Look up registered template struct specializations (nullptr if unknown).
-  const std::vector<const Node*>* find_template_struct_specializations(
+  /// Rendered primary-name compatibility lookup for template struct
+  /// specializations. This is only valid when the caller has no primary owner
+  /// metadata; structured owner-key lookup remains authoritative otherwise.
+  const std::vector<const Node*>*
+  find_template_struct_specializations_no_metadata_compat(
       const std::string& name) const {
     auto it = template_struct_specializations_.find(name);
     return it != template_struct_specializations_.end() ? &it->second : nullptr;
@@ -1644,11 +1651,18 @@ struct CompileTimeState {
   const std::vector<const Node*>* find_template_struct_specializations(
       const Node* primary_def,
       const std::string& rendered_name) const {
-    return find_structured_vector_entry(
-        CompileTimeRegistryKeyKind::TemplateStructSpecializationOwner,
-        primary_def, rendered_name,
-        template_struct_specializations_by_owner_key_,
-        template_struct_specializations_);
+    if (auto key = make_compile_time_registry_key(
+            CompileTimeRegistryKeyKind::TemplateStructSpecializationOwner,
+            primary_def)) {
+      auto structured_it =
+          template_struct_specializations_by_owner_key_.find(*key);
+      if (structured_it != template_struct_specializations_by_owner_key_.end()) {
+        return &structured_it->second;
+      }
+      if (is_complete_compile_time_registry_key(*key)) return nullptr;
+    }
+    return find_template_struct_specializations_no_metadata_compat(
+        rendered_name);
   }
 
   /// Look up a consteval function definition by name (nullptr if unknown).
@@ -2097,9 +2111,9 @@ struct CompileTimeState {
                        : std::nullopt;
   }
 
-  // Step 5 classification: rendered-name maps are compatibility fallbacks for
-  // callers that cannot yet supply declaration keys; *_by_key_ mirrors are the
-  // structured authority when present.
+  // Rendered-name maps are compatibility fallbacks for callers that cannot yet
+  // supply declaration keys; *_by_key_ mirrors are the structured authority
+  // when present.
   // Template function definitions indexed by name (AST node pointers).
   std::unordered_map<std::string, const Node*> template_fn_defs_;
   // Best-effort structured mirrors indexed by declaration identity.
@@ -2111,7 +2125,9 @@ struct CompileTimeState {
   std::unordered_map<CompileTimeRegistryKey, const Node*,
                      CompileTimeRegistryKeyHash>
       template_struct_defs_by_key_;
-  // Template struct specializations indexed by primary name.
+  // Template struct specializations indexed by rendered primary name. This is a
+  // no-metadata compatibility mirror only; complete owner-key misses fail
+  // closed before this map is consulted.
   std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;
   std::unordered_map<CompileTimeRegistryKey, std::vector<const Node*>,
                      CompileTimeRegistryKeyHash>

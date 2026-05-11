@@ -180,7 +180,8 @@ void test_hir_compile_time_state_complete_structured_misses_fail_closed() {
   c4c::Node structured_spec = make_compile_time_state_registry_node(
       c4c::NK_STRUCT_DEF, "StructuredStruct<int>",
       texts.intern("StructuredStruct"));
-  state.register_template_struct_specialization("StaleStruct", &stale_spec);
+  state.register_template_struct_specialization_no_metadata_compat(
+      "StaleStruct", &stale_spec);
   state.register_template_struct_specialization(&structured_struct,
                                                 &structured_spec);
   const std::vector<const c4c::Node*>* specs =
@@ -192,7 +193,8 @@ void test_hir_compile_time_state_complete_structured_misses_fail_closed() {
                                                      "StaleStruct");
   expect_true(specs == nullptr,
               "template struct specialization lookup should fail closed after a complete owner miss");
-  specs = state.find_template_struct_specializations(nullptr, "StaleStruct");
+  specs =
+      state.find_template_struct_specializations_no_metadata_compat("StaleStruct");
   expect_true(specs && specs->size() == 1 && (*specs)[0] == &stale_spec,
               "template struct specialization lookup should keep rendered compatibility without metadata");
 

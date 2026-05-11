@@ -1196,6 +1196,9 @@ class Lowerer {
       const std::string& rendered_name = {}) const;
   const std::vector<const Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
+  const std::vector<const Node*>*
+  find_template_struct_specializations_no_owner_compat(
+      const std::string& rendered_primary_name) const;
   void record_template_struct_primary_lookup_parity(
       const Node* rendered_primary) const;
   void record_template_struct_specialization_lookup_parity(
@@ -1230,9 +1233,9 @@ class Lowerer {
   std::shared_ptr<CompileTimeState> ct_state_ = std::make_shared<CompileTimeState>();
   // Convenience alias — shorthand for ct_state_->registry.
   InstantiationRegistry& registry_ = ct_state_->registry;
-  // Step 5 classification: rendered-name compatibility caches below are kept
-  // beside structured mirrors/parity checks until all HIR producers and
-  // consumers can pass owner/member identity directly.
+  // Rendered-name compatibility caches below are kept beside structured
+  // mirrors/parity checks until all HIR producers and consumers can pass
+  // owner/member identity directly.
   // Template struct definitions indexed by struct tag name.
   std::unordered_map<std::string, const Node*> struct_def_nodes_;
   std::unordered_map<HirRecordOwnerKey, const Node*, HirRecordOwnerKeyHash>
@@ -1243,7 +1246,9 @@ class Lowerer {
       template_struct_defs_by_owner_;
   mutable size_t template_struct_primary_lookup_parity_checks_ = 0;
   mutable size_t template_struct_primary_lookup_parity_mismatches_ = 0;
-  // Template struct specializations indexed by primary template name.
+  // Template struct specializations indexed by rendered primary template name.
+  // This is a no-owner compatibility mirror only; complete owner-key misses
+  // fail closed before this map is consulted.
   std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;
   std::unordered_map<HirRecordOwnerKey, std::vector<const Node*>, HirRecordOwnerKeyHash>
       template_struct_specializations_by_owner_;

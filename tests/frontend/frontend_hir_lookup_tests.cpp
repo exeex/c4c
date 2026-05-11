@@ -861,8 +861,8 @@ void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered
   c4c::Node structured_struct_spec = make_compile_time_registry_node(
       c4c::NK_STRUCT_DEF, "StructuredTemplateStruct<int>",
       texts.intern("StructuredTemplateStruct"));
-  state.register_template_struct_specialization("StaleTemplateStruct",
-                                                &stale_struct_spec);
+  state.register_template_struct_specialization_no_metadata_compat(
+      "StaleTemplateStruct", &stale_struct_spec);
   state.register_template_struct_specialization(&structured_struct,
                                                 &structured_struct_spec);
   const std::vector<const c4c::Node*>* structured_specs =
@@ -877,7 +877,8 @@ void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered
   expect_true(fallback_specs == nullptr,
               "template struct specialization lookup should fail closed after a complete owner-key miss");
   fallback_specs =
-      state.find_template_struct_specializations(nullptr, "StaleTemplateStruct");
+      state.find_template_struct_specializations_no_metadata_compat(
+          "StaleTemplateStruct");
   expect_true(fallback_specs && fallback_specs->size() == 1 &&
                   (*fallback_specs)[0] == &stale_struct_spec,
               "template struct specialization lookup should preserve rendered fallback for explicit no-metadata calls");
