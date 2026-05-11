@@ -76,16 +76,36 @@ void copy_consteval_structured_bindings(const SourceMap& source,
   }
 }
 
-DeclRef make_function_lookup_decl_ref(Module& module, std::string name,
-                                      const Node* source = nullptr) {
+DeclRef make_function_lookup_decl_ref(
+    Module& module, std::string name, const Node* source = nullptr,
+    LinkNameId known_link_name_id = kInvalidLinkName) {
   DeclRef ref;
   ref.name = std::move(name);
   TextTable* texts = module.link_name_texts.get();
   ref.name_text_id = source ? make_unqualified_text_id(source, texts)
                             : make_text_id(ref.name, texts);
   ref.ns_qual = source ? make_ns_qual(source, texts) : NamespaceQualifier{};
-  ref.link_name_id = module.link_names.find(ref.name);
+  ref.link_name_id = known_link_name_id != kInvalidLinkName
+                         ? known_link_name_id
+                         : module.link_names.find(ref.name);
   return ref;
+}
+
+LinkNameId find_template_instantiation_link_name_id(
+    const Module& module, std::string_view template_name,
+    const SpecializationKey& spec_key,
+    const SpecializationKey* legacy_spec_key) {
+  const auto tdef_it = module.template_defs.find(std::string(template_name));
+  if (tdef_it == module.template_defs.end()) return kInvalidLinkName;
+  const auto& instances = tdef_it->second.instances;
+  for (const auto& inst : instances) {
+    if (inst.mangled_link_name_id == kInvalidLinkName) continue;
+    if (inst.spec_key == spec_key ||
+        (legacy_spec_key && inst.spec_key == *legacy_spec_key)) {
+      return inst.mangled_link_name_id;
+    }
+  }
+  return kInvalidLinkName;
 }
 
 DeclRef make_global_lookup_decl_ref(Module& module, std::string name,
@@ -1133,7 +1153,25 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
 
   if (auto dit = deduced_template_calls_.find(call);
       dit != deduced_template_calls_.end()) {
-    DeclRef fn_ref = make_function_lookup_decl_ref(*module_, dit->second.mangled_name);
+    LinkNameId link_name_id = kInvalidLinkName;
+    if (call->left && call->left->kind == NK_VAR && call->left->name) {
+      if (const Node* tpl_fn = ct_state_->find_template_def(call->left->name)) {
+        const auto param_order =
+            get_template_param_order(tpl_fn, &dit->second.bindings,
+                                     &dit->second.nttp_bindings);
+        const SpecializationKey spec_key =
+            dit->second.nttp_bindings.empty()
+                ? make_specialization_key(call->left->name, param_order,
+                                          dit->second.bindings, tpl_fn)
+                : make_specialization_key(call->left->name, param_order,
+                                          dit->second.bindings,
+                                          dit->second.nttp_bindings, tpl_fn);
+        link_name_id = find_template_instantiation_link_name_id(
+            *module_, call->left->name, spec_key, nullptr);
+      }
+    }
+    DeclRef fn_ref = make_function_lookup_decl_ref(
+        *module_, dit->second.mangled_name, nullptr, link_name_id);
     if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
       return fn->return_type.spec;
     }
@@ -1181,6 +1219,7 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
                                         bindings, nttp_bindings, tpl_fn);
       const SpecializationKey spec_key =
           structured_spec_key ? *structured_spec_key : legacy_spec_key;
+      LinkNameId resolved_link_name_id = kInvalidLinkName;
       if (const auto* inst_list = registry_.find_instances(call->left->name)) {
         for (const auto& inst : *inst_list) {
           if (inst.spec_key == spec_key ||
@@ -1190,7 +1229,11 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
           }
         }
       }
-      DeclRef fn_ref = make_function_lookup_decl_ref(*module_, resolved_name);
+      resolved_link_name_id = find_template_instantiation_link_name_id(
+          *module_, call->left->name, spec_key,
+          structured_spec_key ? &legacy_spec_key : nullptr);
+      DeclRef fn_ref = make_function_lookup_decl_ref(
+          *module_, resolved_name, nullptr, resolved_link_name_id);
       if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
         return fn->return_type.spec;
       }
@@ -3444,7 +3487,23 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
         const std::string callee_name = n->left->name;
         auto dit = deduced_template_calls_.find(n);
         if (dit != deduced_template_calls_.end()) {
-          DeclRef fn_ref = make_function_lookup_decl_ref(*module_, dit->second.mangled_name);
+          LinkNameId link_name_id = kInvalidLinkName;
+          if (const Node* tpl_fn = ct_state_->find_template_def(callee_name)) {
+            const auto param_order =
+                get_template_param_order(tpl_fn, &dit->second.bindings,
+                                         &dit->second.nttp_bindings);
+            const SpecializationKey spec_key =
+                dit->second.nttp_bindings.empty()
+                    ? make_specialization_key(callee_name, param_order,
+                                              dit->second.bindings, tpl_fn)
+                    : make_specialization_key(callee_name, param_order,
+                                              dit->second.bindings,
+                                              dit->second.nttp_bindings, tpl_fn);
+            link_name_id = find_template_instantiation_link_name_id(
+                *module_, callee_name, spec_key, nullptr);
+          }
+          DeclRef fn_ref = make_function_lookup_decl_ref(
+              *module_, dit->second.mangled_name, nullptr, link_name_id);
           if (const Function* fn = module_->resolve_function_decl(fn_ref)) {
             return reference_value_ts(fn->return_type.spec);
           }
