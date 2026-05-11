@@ -2824,6 +2824,66 @@ void test_hir_template_struct_specialization_lookup_prefers_owner_key_over_stale
               "template struct specialization lookup should prefer owner-key identity over stale rendered primary name");
 }
 
+void test_hir_template_struct_specialization_lookup_rejects_stale_rendered_after_owner_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node stale_primary{};
+  stale_primary.kind = c4c::NK_STRUCT_DEF;
+  stale_primary.name = "StaleSpecializedPrimary";
+  stale_primary.unqualified_name = "StaleSpecializedPrimary";
+  stale_primary.unqualified_text_id =
+      module.link_name_texts->intern("StaleSpecializedPrimary");
+  stale_primary.namespace_context_id = 0;
+  stale_primary.n_template_params = 1;
+
+  c4c::Node stale_spec{};
+  stale_spec.kind = c4c::NK_STRUCT_DEF;
+  stale_spec.name = "StaleSpecializedPrimary<int>";
+  stale_spec.unqualified_name = "StaleSpecializedPrimary";
+
+  lowerer.register_template_struct_primary("StaleSpecializedPrimary",
+                                           &stale_primary);
+  lowerer.register_template_struct_specialization(&stale_primary, &stale_spec);
+
+  c4c::Node missing_structured_primary{};
+  missing_structured_primary.kind = c4c::NK_STRUCT_DEF;
+  missing_structured_primary.name = "StaleSpecializedPrimary";
+  missing_structured_primary.unqualified_name = "MissingSpecializedPrimary";
+  missing_structured_primary.unqualified_text_id =
+      module.link_name_texts->intern("MissingSpecializedPrimary");
+  missing_structured_primary.namespace_context_id = 0;
+  missing_structured_primary.n_template_params = 1;
+
+  expect_true(
+      lowerer.find_template_struct_specializations(
+          &missing_structured_primary) == nullptr,
+      "template struct specialization lookup should reject stale rendered fallback after a complete owner-key miss");
+}
+
+void test_hir_template_struct_specialization_lookup_keeps_no_metadata_rendered_compatibility() {
+  c4c::hir::Lowerer lowerer;
+
+  c4c::Node rendered_only_primary{};
+  rendered_only_primary.kind = c4c::NK_STRUCT_DEF;
+  rendered_only_primary.name = "RenderedOnlySpecializedPrimary";
+  rendered_only_primary.n_template_params = 1;
+
+  c4c::Node rendered_only_spec{};
+  rendered_only_spec.kind = c4c::NK_STRUCT_DEF;
+  rendered_only_spec.name = "RenderedOnlySpecializedPrimary<int>";
+
+  lowerer.register_template_struct_specialization(&rendered_only_primary,
+                                                  &rendered_only_spec);
+
+  const std::vector<const c4c::Node*>* specializations =
+      lowerer.find_template_struct_specializations(&rendered_only_primary);
+  expect_true(specializations && specializations->size() == 1 &&
+                  (*specializations)[0] == &rendered_only_spec,
+              "template struct specialization lookup should keep rendered compatibility when owner metadata is unavailable");
+}
+
 void test_hir_member_owner_lookup_record_def_failure_does_not_use_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6462,6 +6522,8 @@ int main() {
   test_hir_member_owner_lookup_prefers_template_origin_over_stale_tag();
   test_hir_template_struct_primary_lookup_prefers_record_def_over_stale_origin();
   test_hir_template_struct_specialization_lookup_prefers_owner_key_over_stale_primary_name();
+  test_hir_template_struct_specialization_lookup_rejects_stale_rendered_after_owner_miss();
+  test_hir_template_struct_specialization_lookup_keeps_no_metadata_rendered_compatibility();
   test_hir_member_owner_lookup_record_def_failure_does_not_use_stale_tag();
   test_hir_member_owner_lookup_generated_record_def_without_key_keeps_tag_fallback();
   test_hir_member_owner_lookup_template_args_failure_does_not_use_stale_tag();

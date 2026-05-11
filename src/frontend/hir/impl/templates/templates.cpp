@@ -684,6 +684,13 @@ const std::vector<const Node*>* Lowerer::find_template_struct_specializations(
     if (owner_it != template_struct_specializations_by_owner_.end()) {
       selected_specializations = &owner_it->second;
     }
+    if (!selected_specializations) {
+      selected_specializations =
+          ct_state_->find_template_struct_specializations(primary_tpl);
+    }
+    record_template_struct_specialization_lookup_parity(
+        primary_tpl, selected_specializations);
+    return selected_specializations;
   }
   if (!selected_specializations) {
     selected_specializations =
