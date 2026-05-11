@@ -3,7 +3,6 @@ Source Idea Path: ideas/open/165_hir_lowerer_function_context_textid_authority.m
 Source Plan Path: plan.md
 Current Step ID: 5
 Current Step Title: Convert Remaining Metadata-Capable Paths
-你該做code review了
 
 # Current Packet
 
