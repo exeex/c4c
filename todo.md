@@ -8,27 +8,29 @@ Current Step Title: Convert Forwarding and Lowerer Lookup Paths
 
 ## Just Finished
 
-Completed the delegated Step 5 lowerer generic-control lookup packet from
-`plan.md`. `Lowerer::infer_generic_ctrl_type` now resolves template typedef
-bindings through `find_template_type_binding_for_call`, so TypeSpecs with
-complete structured template-parameter metadata use structured binding authority
-and complete structured misses fail closed instead of falling back to text or
-rendered binding maps. Incomplete metadata still reaches the existing
-compatibility lookup paths through the shared helper.
+Completed the delegated Step 5 NTTP forwarding lookup-authority repair from
+`plan.md`. `Lowerer::lookup_nttp_binding` now accepts an optional complete
+structured NTTP query key and only selects complete structured NTTP bindings
+through exact owner/index metadata. Raw TextId/rendered lookup no longer
+selects complete structured bindings; it can still use compatibility mirrors
+where the raw TextId belongs to the structured domain, while stale/mismatched
+complete-key misses fail closed. `resolve_ast_template_value_arg` now passes a
+complete owner/index key when its template owner and argument index provide one.
+Focused same-spelled different-owner lookup coverage was added.
 
 ## Suggested Next
 
-Supervisor should review and commit this coherent Step 5 lookup-authority
-slice, then choose the next packet only if more direct forwarding or lowerer
-lookup bypasses remain.
+Supervisor should review and commit this coherent Step 5 NTTP lookup-authority
+slice, then choose the next packet only if more forwarding/lowerer lookup
+bypasses remain.
 
 ## Watchouts
 
-- `find_template_type_binding_for_call` is now the single authority for this
-  lowerer path; avoid reintroducing direct `tpl_bindings_by_text` or rendered
-  `tpl_bindings` probes in `infer_generic_ctrl_type`.
-- No focused test was added in this packet because the existing delegated HIR
-  and template lookup subset covers the shared helper and passed unchanged.
+- AST consteval forwarding still lacks source-owner/index metadata at the call
+  site, so it uses matching TextId compatibility mirrors but no longer selects
+  complete structured NTTP bindings by raw spelling alone.
+- Explicit complete structured query-key misses fail closed before TextId or
+  rendered mirror fallback.
 - Do not weaken tests or convert capability work into expectation-only changes.
 
 ## Proof

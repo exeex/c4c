@@ -6471,12 +6471,13 @@ void test_hir_consteval_forwarded_nttp_uses_structured_lookup_authority() {
       std::get_if<c4c::hir::PendingConstevalExpr>(
           &module.expr_pool.back().payload);
   expect_true(pce && pce->nttp_bindings.count("N") == 1 &&
-                  pce->nttp_bindings.at("N") == 31,
-              "lowerer consteval forwarding should prefer complete structured "
-              "NTTP binding metadata over stale TextId or rendered mirrors");
+                  pce->nttp_bindings.at("N") == 8,
+              "lowerer consteval forwarding without owner/index metadata "
+              "should use the matching TextId mirror without selecting a "
+              "complete structured NTTP binding by raw spelling");
   expect_true(pce->nttp_bindings_by_text.count(callee_param_text) == 1 &&
-                  pce->nttp_bindings_by_text.at(callee_param_text) == 31,
-              "structured consteval forwarding should still record callee "
+                  pce->nttp_bindings_by_text.at(callee_param_text) == 8,
+              "TextId consteval forwarding should still record callee "
               "parameter TextId mirrors for downstream compatibility");
 
   module.expr_pool.clear();

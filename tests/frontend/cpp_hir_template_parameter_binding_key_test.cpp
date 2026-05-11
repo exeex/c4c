@@ -914,16 +914,26 @@ void test_lowerer_nttp_lookup_prefers_complete_structured_binding() {
   ref.name = "N";
   ref.unqualified_text_id = name_text_ids[0];
 
-  auto resolved = lowerer.lookup_nttp_binding(&ctx, &ref, "N");
+  auto raw_resolved = lowerer.lookup_nttp_binding(&ctx, &ref, "N");
+  expect_true(!raw_resolved,
+              "raw TextId/rendered NTTP lookup must not select complete structured bindings");
+
+  auto resolved = lowerer.lookup_nttp_binding(
+      &ctx, &ref, "N", c4c::kInvalidText, true, &*key);
   expect_true(resolved && *resolved == 17,
               "complete structured NTTP binding should not require legacy mirrors");
 
   ctx.nttp_bindings_by_text[name_text_ids[0]] = 91;
   ctx.nttp_bindings["N"] = 92;
 
-  resolved = lowerer.lookup_nttp_binding(&ctx, &ref, "N");
+  resolved = lowerer.lookup_nttp_binding(
+      &ctx, &ref, "N", c4c::kInvalidText, true, &*key);
   expect_true(resolved && *resolved == 17,
               "complete structured NTTP binding should win over stale TextId/rendered mirrors");
+
+  resolved = lowerer.lookup_nttp_binding(&ctx, &ref, "N");
+  expect_true(resolved && *resolved == 91,
+              "raw TextId NTTP lookup may use compatibility mirrors without selecting structured bindings");
 }
 
 void test_lowerer_nttp_lookup_rejects_legacy_after_complete_structured_miss() {
@@ -946,8 +956,12 @@ void test_lowerer_nttp_lookup_rejects_legacy_after_complete_structured_miss() {
 
   auto other_key = c4c::hir::make_hir_template_parameter_binding_key(
       &owner, 1, c4c::hir::HirTemplateParameterBindingKind::NonType);
+  auto query_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 0, c4c::hir::HirTemplateParameterBindingKind::NonType);
   expect_true(other_key.has_value(),
               "fixture should produce complete structured NTTP metadata");
+  expect_true(query_key.has_value(),
+              "fixture should produce complete structured NTTP query metadata");
 
   c4c::hir::Lowerer::FunctionCtx ctx{};
   ctx.structured_nttp_bindings[*other_key] = 11;
@@ -959,9 +973,64 @@ void test_lowerer_nttp_lookup_rejects_legacy_after_complete_structured_miss() {
   ref.name = "N";
   ref.unqualified_text_id = name_text_ids[0];
 
-  const auto resolved = lowerer.lookup_nttp_binding(&ctx, &ref, "N");
+  const auto resolved = lowerer.lookup_nttp_binding(
+      &ctx, &ref, "N", c4c::kInvalidText, true, &*query_key);
   expect_true(!resolved,
               "complete structured NTTP miss should not fall through to TextId/rendered mirrors");
+}
+
+void test_lowerer_nttp_lookup_rejects_same_spelled_foreign_owner_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const char* owner_a_names[] = {"N"};
+  c4c::TextId owner_a_name_text_ids[] = {module.link_name_texts->intern("N")};
+  bool owner_a_is_nttp[] = {true};
+  c4c::Node owner_a{};
+  owner_a.name = "OwnerA";
+  owner_a.unqualified_text_id = module.link_name_texts->intern("OwnerA");
+  owner_a.namespace_context_id = 21;
+  owner_a.n_template_params = 1;
+  owner_a.template_param_names = owner_a_names;
+  owner_a.template_param_name_text_ids = owner_a_name_text_ids;
+  owner_a.template_param_is_nttp = owner_a_is_nttp;
+
+  const char* owner_b_names[] = {"N"};
+  c4c::TextId owner_b_name_text_ids[] = {module.link_name_texts->intern("N")};
+  bool owner_b_is_nttp[] = {true};
+  c4c::Node owner_b{};
+  owner_b.name = "OwnerB";
+  owner_b.unqualified_text_id = module.link_name_texts->intern("OwnerB");
+  owner_b.namespace_context_id = 22;
+  owner_b.n_template_params = 1;
+  owner_b.template_param_names = owner_b_names;
+  owner_b.template_param_name_text_ids = owner_b_name_text_ids;
+  owner_b.template_param_is_nttp = owner_b_is_nttp;
+
+  auto owner_a_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner_a, 0, c4c::hir::HirTemplateParameterBindingKind::NonType);
+  auto owner_b_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner_b, 0, c4c::hir::HirTemplateParameterBindingKind::NonType);
+  expect_true(owner_a_key.has_value() && owner_b_key.has_value(),
+              "fixture should produce two complete same-spelled NTTP keys");
+
+  c4c::hir::Lowerer::FunctionCtx ctx{};
+  ctx.structured_nttp_bindings[*owner_a_key] = 41;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "N";
+  ref.unqualified_text_id = owner_b_name_text_ids[0];
+
+  auto resolved = lowerer.lookup_nttp_binding(
+      &ctx, &ref, "N", c4c::kInvalidText, true, &*owner_b_key);
+  expect_true(!resolved,
+              "same-spelled NTTP query for a different owner must not select the structured binding");
+
+  resolved = lowerer.lookup_nttp_binding(&ctx, &ref, "N");
+  expect_true(!resolved,
+              "same-spelled raw TextId/rendered lookup must fail closed without owner/index authority");
 }
 
 }  // namespace
@@ -986,6 +1055,7 @@ int main() {
   test_function_ctx_structured_mirror_population_requires_complete_owner_metadata();
   test_lowerer_nttp_lookup_prefers_complete_structured_binding();
   test_lowerer_nttp_lookup_rejects_legacy_after_complete_structured_miss();
+  test_lowerer_nttp_lookup_rejects_same_spelled_foreign_owner_key();
   std::cout << "PASS: cpp_hir_template_parameter_binding_key_test\n";
   return 0;
 }

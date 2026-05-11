@@ -742,9 +742,17 @@ bool Lowerer::resolve_ast_template_value_arg(
         ref->template_arg_nttp_text_ids ? ref->template_arg_nttp_text_ids[index]
                                         : kInvalidText;
     if (forwarded_text_id != kInvalidText) {
+      std::optional<HirTemplateParameterBindingKey> query_key;
+      if (owner_tpl && index < owner_tpl->n_template_params &&
+          owner_tpl->template_param_is_nttp &&
+          owner_tpl->template_param_is_nttp[index]) {
+        query_key = make_hir_template_parameter_binding_key(
+            owner_tpl, index, HirTemplateParameterBindingKind::NonType);
+      }
       if (auto nttp_value = lookup_nttp_binding(
               ctx, nullptr, nttp_name, forwarded_text_id,
-              false /* allow_rendered_mirror_fallback */)) {
+              false /* allow_rendered_mirror_fallback */,
+              query_key ? &*query_key : nullptr)) {
         *out_value = *nttp_value;
         return true;
       }

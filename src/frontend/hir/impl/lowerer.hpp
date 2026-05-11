@@ -337,7 +337,8 @@ class Lowerer {
                                                const Node* name_node,
                                                const char* rendered_name,
                                                TextId query_text_id = kInvalidText,
-                                               bool allow_rendered_mirror_fallback = true) const;
+                                               bool allow_rendered_mirror_fallback = true,
+                                               const HirTemplateParameterBindingKey* query_key = nullptr) const;
 
   static TypeSpec reference_storage_ts(TypeSpec ts);
 
