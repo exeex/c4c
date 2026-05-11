@@ -3,7 +3,7 @@
 Status: Active
 Source Idea Path: ideas/open/169_route_local_identity_domain_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
+Current Step ID: 1
 Current Step Title: Inventory Route-Local String Authority
 
 ## Just Finished
