@@ -2,7 +2,7 @@ Status: Active
 Source Idea Path: ideas/open/162_link_name_id_backend_symbol_authority.md
 Source Plan Path: plan.md
 Current Step ID: 6
-Current Step Title: Make BIR Validation and Backend Preparation LinkNameId-Authoritative
+Current Step Title: Validate and Tighten Compatibility Boundaries
 
 # Current Packet
 
