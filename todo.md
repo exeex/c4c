@@ -8,51 +8,39 @@ Current Step Title: Introduce Or Reuse A Route-Local Id Domain
 
 ## Just Finished
 
-Step 2 introduced the typed BIR route-local slot id boundary for the selected
-BIR local-slot authority family.
+Step 2 integration fix completed: `backend_prepare_stack_layout_test.cpp` now
+passes a `bir::NameTables` to the updated
+`prepare::stack_layout::collect_function_stack_objects` signature.
 
 Completed work:
-- Extended `bir::NameTables` with `SlotNameTable`.
-- Added `SlotNameId` fields to `LocalSlot`, `LoadLocalInst`,
-  `StoreLocalInst`, local-slot `MemoryAddress` bases, and call sret storage.
-- Populated ids in the existing BIR module finalization pass after lowering,
-  alongside the existing `BlockLabelId` finalization.
-- Updated BIR validation so present slot ids are authoritative and fail closed
-  when unknown, duplicated, out of function, or paired with different spelling.
-  No-id declarations/references still use legacy spelling fallback.
-- Updated prepared stack-layout and call-plan consumers to resolve prepared
-  slot ids through BIR slot ids when present, preserving rendered spelling.
+- Added a test-local helper that interns direct fixture `LocalSlot::slot_id`
+  values through `bir::NameTables::slot_names`.
+- Updated the four direct stack-object collection helpers to pass the BIR name
+  table into `collect_function_stack_objects`.
+- Preserved the existing output spelling and assertions while exercising the
+  new slot-id authority path for local-slot fixtures.
 
 Files changed:
-- `src/backend/bir/bir.hpp`
-- `src/backend/bir/bir_validate.cpp`
-- `src/backend/bir/lir_to_bir/module.cpp`
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/prealloc.cpp`
-- `src/backend/prealloc/stack_layout/analysis.cpp`
-- `src/backend/prealloc/stack_layout/coordinator.cpp`
+- `tests/backend/backend_prepare_stack_layout_test.cpp`
+- `todo.md`
 
 ## Suggested Next
 
-Step 3 should add focused validation/lookup tests that construct mismatched or
-ambiguous BIR local-slot spellings with ids present. The useful cases are:
-duplicate `LocalSlot::slot_id`, invalid/unknown ids, load/store ids paired with
-the wrong spelling, and local-slot `MemoryAddress` ids that must resolve by id
-rather than by fallback text.
+Step 3 can proceed with focused validation/lookup tests for mismatched or
+ambiguous BIR local-slot spellings with ids present.
 
 ## Watchouts
 
-- The original delegated proof target `c4c` is not present in this build tree;
-  the accepted proof uses the available compiler target `c4cll`.
-- The corrected proof log in `test_after.log` contains the supervisor-selected
-  CTest subset after the `c4cll` build.
-- Step 3 tests should directly exercise BIR validation; the current packet did
-  not add test files.
+- This packet only repairs the missed test integration with the new
+  `collect_function_stack_objects` signature; it does not add the Step 3
+  validation cases.
+- `review/168_step4_hir_bridge_route_review.md` remains unrelated dirty state
+  if present.
 
 ## Proof
 
-Build/proof results in `test_after.log`:
-- `cmake --build build --target c4cll &&`
-  `ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_prepared_printer|backend_cli_dump_bir_is_semantic|backend_cli_dump_prepared_bir_is_prepared|backend_cli_dump_bir_layout_sensitive_aggregate|backend_cli_dump_prepared_bir_local_arg_call_contract|backend_codegen_route_x86_64_local_.*observe_semantic_bir|backend_codegen_route_x86_64_builtin_mem.*local.*observe_semantic_bir)$'`:
-  pass, 27/27 tests.
+Build/proof results:
+- `cmake --build build -j`: pass.
+- `ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_lir_to_bir_notes|backend_prepared_printer|backend_cli_dump_bir_is_semantic|backend_cli_dump_prepared_bir_is_prepared|backend_cli_dump_bir_layout_sensitive_aggregate|backend_cli_dump_prepared_bir_local_arg_call_contract|backend_codegen_route_x86_64_local_.*observe_semantic_bir|backend_codegen_route_x86_64_builtin_mem.*local.*observe_semantic_bir)$' > test_after.log 2>&1`:
+  pass, 28/28 tests, log path `test_after.log`.
 - `git diff --check`: pass.

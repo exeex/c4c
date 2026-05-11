@@ -134,21 +134,33 @@ bir::Function make_stack_layout_analysis_object_collection_function() {
   return function;
 }
 
+bir::NameTables intern_local_slot_ids(bir::Function& function) {
+  bir::NameTables names;
+  for (auto& slot : function.local_slots) {
+    slot.slot_id = names.slot_names.intern(slot.name);
+  }
+  return names;
+}
+
 std::pair<prepare::PreparedNameTables, std::vector<prepare::PreparedStackObject>>
 collect_stack_layout_analysis_objects_with_names() {
   bir::Function function = make_stack_layout_analysis_object_collection_function();
+  bir::NameTables bir_names = intern_local_slot_ids(function);
   prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  auto objects = prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  auto objects =
+      prepare::stack_layout::collect_function_stack_objects(names, bir_names, function, next_object_id);
   return {std::move(names), std::move(objects)};
 }
 
 std::pair<prepare::PreparedNameTables, std::vector<prepare::PreparedStackObject>>
 collect_stack_layout_regalloc_hint_objects() {
   bir::Function function = make_stack_layout_analysis_object_collection_function();
+  bir::NameTables bir_names = intern_local_slot_ids(function);
   prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  auto objects = prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  auto objects =
+      prepare::stack_layout::collect_function_stack_objects(names, bir_names, function, next_object_id);
   prepare::stack_layout::apply_regalloc_hints(names,
                                               function,
                                               prepare::stack_layout::FunctionInlineAsmSummary{},
@@ -187,18 +199,22 @@ bir::Function make_stack_layout_param_object_collection_function() {
 std::pair<prepare::PreparedNameTables, std::vector<prepare::PreparedStackObject>>
 collect_stack_layout_param_objects_with_names() {
   bir::Function function = make_stack_layout_param_object_collection_function();
+  bir::NameTables bir_names = intern_local_slot_ids(function);
   prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  auto objects = prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  auto objects =
+      prepare::stack_layout::collect_function_stack_objects(names, bir_names, function, next_object_id);
   return {std::move(names), std::move(objects)};
 }
 
 std::pair<prepare::PreparedNameTables, std::vector<prepare::PreparedStackObject>>
 collect_stack_layout_param_regalloc_hint_objects() {
   bir::Function function = make_stack_layout_param_object_collection_function();
+  bir::NameTables bir_names = intern_local_slot_ids(function);
   prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  auto objects = prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  auto objects =
+      prepare::stack_layout::collect_function_stack_objects(names, bir_names, function, next_object_id);
   prepare::stack_layout::apply_regalloc_hints(names,
                                               function,
                                               prepare::stack_layout::FunctionInlineAsmSummary{},
