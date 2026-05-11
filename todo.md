@@ -2,56 +2,133 @@ Status: Active
 Source Idea Path: ideas/open/165_hir_lowerer_function_context_textid_authority.md
 Source Plan Path: plan.md
 Current Step ID: 5
-Current Step Title: Convert Remaining Metadata-Capable Paths
+Current Step Title: Fence Retained String Maps and Compatibility Bridges
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 5 local const binding conversion for
-`FunctionCtx::local_const_bindings`.
+Completed plan Step 5 fencing for retained `FunctionCtx` string maps and
+compatibility bridges without implementation churn.
 
 Changed paths:
-- `src/frontend/hir/impl/lowerer.hpp`
-- `src/frontend/hir/hir_types.cpp`
-- `src/frontend/hir/impl/expr/call.cpp`
-- `src/frontend/hir/impl/expr/scalar_control.cpp`
-- `src/frontend/hir/impl/stmt/control_flow.cpp`
-- `src/frontend/hir/impl/stmt/decl.cpp`
-- `src/frontend/hir/impl/stmt/stmt.cpp`
-- `src/frontend/hir/impl/stmt/switch.cpp`
-- `src/frontend/hir/impl/templates/value_args.cpp`
-- `tests/frontend/frontend_hir_lookup_tests.cpp`
+- `todo.md`
 
-Foldable local constexpr/const integer declarations now retain the rendered
-`local_const_bindings` compatibility map while also populating source
-`TextId`/structured-key maps when the declaration has complete local source
-metadata. `make_lowerer_consteval_env` passes those local const metadata maps
-into `ConstEvalEnv`, and HIR local-const evaluation call sites now hand through
-the current `FunctionCtx` metadata maps. Block and statement-expression scope
-rollback preserves/restores the rendered and source local const maps together.
+Retained string-keyed maps and bridges:
 
-Focused `frontend_hir_lookup_tests` coverage now proves local const insertion
-populates source maps, source TextId/key lookup beats a stale rendered name,
-complete source misses fail closed instead of reopening the rendered local const
-map, and invalid/no-metadata compatibility still uses the rendered map.
+- `FunctionCtx::pack_params`
+  - Owner: HIR callable parameter-pack expansion in
+    `append_callable_params`/`try_expand_pack_call_arg`.
+  - Limitation: keyed by the source pack parameter spelling used by the
+    forwarded argument pattern. This remains string-keyed because the
+    forwarding use site lacks a structured pack binding key; it only exposes
+    the forwarded `NK_VAR` spelling needed to recover the emitted pack element
+    params.
+  - Removal condition: convert only after pack-forwarding AST/HIR carries an
+    explicit structured pack binding identity from parameter declaration to
+    forwarded use site.
+
+- `FunctionCtx::label_blocks`
+  - Owner: statement/control-flow lowering for `label:` and `goto label`.
+  - Limitation: function-local control-flow labels are route-local block
+    handles, not source value lookup authority. The map resolves goto target
+    spellings to `BlockId` during lowering.
+  - Removal condition: replace only if labels gain a structured function-local
+    label id in the frontend/HIR contract; do not convert them to module-level
+    symbols.
+
+- Generated route-local handles in `FunctionCtx::locals`
+  - Owner: lowering helpers that synthesize temporaries and slots such as
+    rvalue-reference argument temps, operator/member-call temps, compound
+    literal storage, and other generated local names.
+  - Limitation: generated locals do not have source `TextId` identity. They are
+    recorded through `rendered_compat_local_names` and use the rendered
+    `locals` map as an explicit compatibility boundary.
+  - Removal condition: replace only after generated HIR locals are threaded by
+    `LocalId` or another structured handle at every creation/use site, with no
+    parser-spelling lookup needed.
+
+- Synthetic/no-metadata parameters in `FunctionCtx::params`
+  - Owner: callable parameter lowering for generated, anonymous, and
+    no-metadata parameters, including compatibility function-pointer signature
+    lookup in `param_fn_ptr_sigs`.
+  - Limitation: source parameters with complete `TextId` metadata use
+    `param_indices_by_text_id` and `param_fn_ptr_sigs_by_index`; rendered
+    `params`/`param_fn_ptr_sigs` remain only for synthetic or no-metadata
+    parameter names marked by `rendered_compat_param_*`.
+  - Removal condition: remove after all callable parameter producers supply
+    stable source/synthetic parameter identity and no HIR lookup path requires
+    rendered parameter spelling.
+
+- Rendered compatibility mirror for source/generated locals:
+  - Owner: `FunctionCtx::locals`, `local_fn_ptr_sigs`, and
+    `rendered_compat_local_*`.
+  - Limitation: metadata-capable source locals now use
+    `local_ids_by_text_id` and `local_fn_ptr_sigs_by_id`; complete source
+    misses fail closed. Rendered lookup is fenced to generated/no-metadata
+    locals.
+  - Removal condition: remove when generated locals and no-metadata local
+    declarations have structured local identity.
+
+- Rendered compatibility mirror for source/generated params:
+  - Owner: `FunctionCtx::params`, `param_fn_ptr_sigs`, and
+    `rendered_compat_param_*`.
+  - Limitation: metadata-capable source params now use
+    `param_indices_by_text_id` and `param_fn_ptr_sigs_by_index`; complete
+    source misses do not reopen the rendered map. Rendered lookup is fenced to
+    synthetic/no-metadata params.
+  - Removal condition: remove when every parameter path supplies stable
+    source/synthetic parameter identity.
+
+- Rendered compatibility mirror for static globals/static locals:
+  - Owner: `FunctionCtx::static_globals` plus
+    `static_global_ids_by_text_id` and `rendered_compat_static_global_*`.
+  - Limitation: local extern and static-local declarations with complete
+    source text use `static_global_ids_by_text_id`; rendered lookup remains for
+    no-metadata/generated compatibility only.
+  - Removal condition: remove after static-local/global bridge users all carry
+    source `TextId` or link/global identity directly.
+
+- Rendered compatibility mirror for local consts:
+  - Owner: `FunctionCtx::local_const_bindings` plus
+    `local_const_bindings_by_text` and `local_const_bindings_by_key`.
+  - Limitation: foldable source local const declarations now populate
+    TextId/structured-key maps; complete metadata misses fail closed. The
+    rendered map remains only for generated or no-metadata consteval
+    compatibility.
+  - Removal condition: remove after all consteval local-const producers and
+    consumers carry source local-const identity or an explicit generated const
+    handle.
+
+Inventory closure: all Step 1 metadata-capable source lookup groups are now
+converted or fenced. `locals`, `params`, `static_globals`,
+`local_fn_ptr_sigs`, `param_fn_ptr_sigs`, and `local_const_bindings` have
+structured/TextId authority for complete metadata and documented rendered
+compatibility boundaries. `pack_params` and `label_blocks` are retained as
+non-source-semantic string maps with explicit removal conditions.
 
 ## Suggested Next
 
-Supervisor can hand this Step 5 `local_const_bindings` slice to reviewer or
-acceptance, or choose the next narrow metadata-capable lookup path if any Step 5
-items remain.
+Supervisor can move to plan Step 6 final proof and closure readiness, or send
+this documentation-only Step 5 fence to reviewer if an independent drift check
+is desired before final validation.
 
 ## Watchouts
 
-- `local_const_bindings` remains the rendered no-metadata compatibility map.
-  Source references with complete local TextId metadata now fail closed for the
-  local-const domain when the source maps miss.
-- This packet intentionally did not expand into pack parameters or broader
-  consteval rewrites.
+- This packet intentionally did not touch implementation files. The retained
+  maps were fenced by documenting current owners, limitations, and removal
+  conditions only.
+- `pack_params` is deliberately not converted in this plan because forwarding
+  lacks a structured pack binding key at the use site.
+- `label_blocks` remains a function-local control-flow map, not source value
+  lookup authority.
+- Rendered mirrors are compatibility boundaries for generated/no-metadata
+  producers; they should not be reopened for complete source metadata misses.
 
 ## Proof
 
-Ran delegated proof: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_template_struct_body_instantiation|llvm_gcc_c_torture_src_20000112_1_c|frontend_hir_tests|frontend_hir_lookup_tests|positive_sema_ok_local_fn_ptr_decl_c|backend_codegen_route_x86_64_function_pointer_param_direct_arg_observe_semantic_bir|cpp_positive_sema_c_style_cast_template_fn_ptr_param_type_parse_cpp|cpp_positive_sema_operator_this_out_of_class_runtime_cpp|cpp_positive_sema_template_deferred_method_cpp|cpp_positive_sema_template_struct_method_cpp|eastl_cpp_external_piecewise_construct_frontend_basic_cpp|eastl_cpp_external_utility_frontend_basic_cpp|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_static_member_base_structured_metadata|cpp_hir_template_value_arg_static_member_trait)$' > test_after.log`.
+Ran delegated proof: `git diff --check -- todo.md`.
 
-Result: passed; `test_after.log` contains 15/15 selected tests passing.
+Result: passed. This documentation-only packet did not create or update
+`test_after.log`; the supervisor-selected proof for this slice was a diff
+whitespace check only.
