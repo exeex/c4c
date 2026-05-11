@@ -1,7 +1,8 @@
 # Route-Local Identity Domain Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-11
 
 Depends On:
 - `ideas/closed/167_whole_codebase_string_authority_final_audit.md`
@@ -71,6 +72,30 @@ which are acting as local semantic keys.
 - Output spelling remains stable unless an intentional rendering change is
   documented.
 - Tests cover id-based route-local lookup or validation, not just printed text.
+
+## Closure Notes
+
+Idea 169 completed after the Step 5 broader backend checkpoint. The runbook
+selected BIR local-slot authority as the bounded route-local lookup family and
+migrated it to typed `SlotNameId` authority for BIR local slots, local
+load/store references, local-slot memory-address bases, and sret storage while
+preserving rendered spelling for display and no-id compatibility payloads.
+
+Validation included direct verifier coverage for duplicate ids,
+load/store/address id-name mismatches, and no-id compatibility, plus a broader
+backend checkpoint:
+
+```bash
+cmake --build build -j
+ctest --test-dir build -j --output-on-failure -R '^(backend_|backend_codegen_route_|positive_sema_inline_backend_coord_c$)'
+```
+
+The checkpoint passed with 110/110 runnable tests; 12 disabled MIR trace tests
+did not run. Remaining route-local string families were classified. AArch64
+direct LIR emitter string-keyed lowering and the larger prealloc/out-of-SSA
+raw-name helper set are follow-up initiative candidates if deeper typed-id
+migration is needed. Idea 170 continues to own string-authority guard and
+allowlist machinery.
 
 ## Reviewer Reject Signals
 
