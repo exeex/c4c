@@ -529,7 +529,13 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
         }
         if (const Node* decl = find_static_member_decl()) {
           if (decl->init) {
-            long long v = static_eval_int(decl->init, enum_consts_);
+            LowererConstEvalStructuredMaps static_member_consteval_maps;
+            refresh_global_consteval_structured_maps(static_member_consteval_maps);
+            StaticEvalIntEnumLookupInput static_member_enum_lookup;
+            static_member_enum_lookup.rendered_enum_consts = &enum_consts_;
+            static_member_enum_lookup.enum_consts_by_key =
+                &static_member_consteval_maps.enum_consts_by_key;
+            long long v = static_eval_int(decl->init, static_member_enum_lookup);
             TypeSpec ts = decl->type;
             if (ts.base == TB_VOID) ts.base = TB_INT;
             return append_expr(n, IntLiteral{v, false}, ts);

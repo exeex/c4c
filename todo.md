@@ -1,29 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/164_sema_type_utils_static_eval_structured_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 2/3/4
-Current Step Title: Add structured enum lookup input, prefer structured lookup/fail closed for covered complete metadata, and convert the first covered caller
+Current Step ID: 4
+Current Step Title: Convert Covered Callers
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Steps 2/3/4 first slice: added
-`StaticEvalIntEnumLookupInput` for `static_eval_int`, including structured key
-and TextId enum maps plus the rendered string bridge; updated recursive
-evaluation to propagate that input; and made covered structured/TextId misses
-return closed instead of falling through to `enum_consts.find(n->name)`.
+Completed `plan.md` Step 4 remaining covered-caller slice: converted the
+static member declaration initializer fallback in
+`src/frontend/hir/impl/expr/scalar_control.cpp` from the rendered
+`enum_consts_` overload to `StaticEvalIntEnumLookupInput` populated from
+lowerer structured enum maps.
 
-Converted the non-template `static constexpr` struct member initializer path in
-`src/frontend/hir/hir_types.cpp` to build lowerer structured enum maps from
-`ct_state_` and call the new `static_eval_int` input. The legacy
-`static_eval_int(Node*, const std::unordered_map<std::string, long long>&)`
-overload remains as the documented no-metadata compatibility bridge.
-
-Added focused coverage in
-`tests/frontend/cpp_hir_sema_consteval_type_utils_metadata_test.cpp` for
-structured enum preference over stale rendered names, structured miss
-fail-closed behavior, and TextId enum lookup/miss behavior.
+Converted covered `static_eval_int` callers now consist of the non-template
+`static constexpr` struct member initializer path in
+`src/frontend/hir/hir_types.cpp` and the static member declaration initializer
+fallback in `src/frontend/hir/impl/expr/scalar_control.cpp`. Remaining
+rendered lookup is the no-metadata compatibility bridge overload plus the
+intentional NTTP-specific rendered fallback in
+`Lowerer::eval_const_int_with_nttp_bindings`.
 
 ## Step 1 Inventory Ledger
 
@@ -57,30 +54,28 @@ was required and no `test_after.log` was written for that inventory-only slice.
   `src/frontend/hir/impl/expr/scalar_control.cpp` static member declaration
   initializer fallback while lowering a member reference. Classification:
   structured-metadata capable for global enum constants in the surrounding
-  lowerer context, but still not converted in this packet.
+  lowerer context; converted in the current Step 4 packet.
 
 ## Suggested Next
 
-Convert the next covered caller, likely the static member declaration
-initializer fallback in `src/frontend/hir/impl/expr/scalar_control.cpp`, to the
-new input while preserving NTTP-specific behavior in
-`Lowerer::eval_const_int_with_nttp_bindings`.
+Have the supervisor decide whether Step 4 is complete or whether the
+NTTP-specific compatibility fallback needs a separate plan-review packet.
 
 ## Watchouts
 
-- The new `static_eval_int` input treats any provided structured/TextId map as
-  authoritative when the queried node has matching metadata; only provide those
-  maps for domains the caller intends to cover.
+- `static_eval_int` now has no remaining HIR caller using the rendered-map
+  overload except the compatibility bridge itself; `rg "static_eval_int\\("`
+  shows only the two structured HIR callers and recursive evaluator calls.
 - `Lowerer::eval_const_int_with_nttp_bindings` still has its own enum rendered
   fallback and was intentionally not changed in this packet.
-- Local/block enum-scope conversion still needs a separate packet because
-  `enum_consts_` has mutable save/restore behavior while `ct_state_` mirrors
-  structured global enum constants.
+- Local/block enum-scope conversion still needs a separate packet if the plan
+  wants to cover mutable `enum_consts_` save/restore behavior beyond the global
+  structured metadata mirrored by `ct_state_`.
 
 ## Proof
 
 Ran the supervisor-selected proof exactly:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_positive_sema_template_constexpr_member_runtime_cpp)$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_expr_scalar_control_helper|cpp_positive_sema_template_constexpr_member_runtime_cpp)$' > test_after.log`
 
-Result: passed. `test_after.log` contains 3/3 passing tests.
+Result: passed. `test_after.log` contains 4/4 passing tests.
