@@ -6,6 +6,75 @@
 
 namespace c4c {
 
+namespace {
+
+enum class StaticEvalEnumLookupStatus {
+  NoMetadata,
+  Miss,
+  Found,
+};
+
+struct StaticEvalEnumLookupResult {
+  StaticEvalEnumLookupStatus status = StaticEvalEnumLookupStatus::NoMetadata;
+  long long value = 0;
+};
+
+std::optional<hir::ConstEvalStructuredNameKey> static_eval_enum_key(const Node* n) {
+  if (!n || n->namespace_context_id < 0 ||
+      n->unqualified_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+  if (n->n_qualifier_segments < 0) return std::nullopt;
+  if (n->n_qualifier_segments > 0 && !n->qualifier_text_ids) return std::nullopt;
+  hir::ConstEvalStructuredNameKey key;
+  key.namespace_context_id = n->namespace_context_id;
+  key.is_global_qualified = n->is_global_qualified;
+  key.base_text_id = n->unqualified_text_id;
+  key.qualifier_text_ids.reserve(static_cast<std::size_t>(n->n_qualifier_segments));
+  for (int i = 0; i < n->n_qualifier_segments; ++i) {
+    TextId segment = n->qualifier_text_ids[i];
+    if (segment == kInvalidText) return std::nullopt;
+    key.qualifier_text_ids.push_back(segment);
+  }
+  return key;
+}
+
+StaticEvalEnumLookupResult static_eval_lookup_enum(
+    const Node* n,
+    const StaticEvalIntEnumLookupInput& enum_lookup) {
+  if (!n || !n->name || !n->name[0]) return {};
+  if (enum_lookup.enum_consts_by_key) {
+    const std::optional<hir::ConstEvalStructuredNameKey> key =
+        static_eval_enum_key(n);
+    if (key.has_value() && key->valid()) {
+      const auto it = enum_lookup.enum_consts_by_key->find(*key);
+      if (it != enum_lookup.enum_consts_by_key->end()) {
+        return {StaticEvalEnumLookupStatus::Found, it->second};
+      }
+      return {StaticEvalEnumLookupStatus::Miss, 0};
+    }
+  }
+  if (enum_lookup.enum_consts_by_text &&
+      !n->is_global_qualified && n->n_qualifier_segments == 0 &&
+      n->unqualified_text_id != kInvalidText) {
+    const auto it = enum_lookup.enum_consts_by_text->find(n->unqualified_text_id);
+    if (it != enum_lookup.enum_consts_by_text->end()) {
+      return {StaticEvalEnumLookupStatus::Found, it->second};
+    }
+    return {StaticEvalEnumLookupStatus::Miss, 0};
+  }
+  // Rendered lookup is retained only as a no-metadata compatibility bridge.
+  if (enum_lookup.rendered_enum_consts) {
+    auto it = enum_lookup.rendered_enum_consts->find(n->name);
+    if (it != enum_lookup.rendered_enum_consts->end()) {
+      return {StaticEvalEnumLookupStatus::Found, it->second};
+    }
+  }
+  return {};
+}
+
+}  // namespace
+
 TypeSpec make_ts(TypeBase base) {
   TypeSpec ts{};
   ts.base = base;
@@ -1020,16 +1089,22 @@ int infer_array_size_from_init(Node* init) {
 
 long long static_eval_int(
     Node* n,
-    const std::unordered_map<std::string, long long>& enum_consts) {
+    const StaticEvalIntEnumLookupInput& enum_lookup) {
   if (!n) return 0;
   if (n->kind == NK_INT_LIT) return n->ival;
   if (n->kind == NK_CHAR_LIT) return n->ival;
   if (n->kind == NK_VAR && n->name) {
-    auto it = enum_consts.find(n->name);
-    if (it != enum_consts.end()) return it->second;
+    const StaticEvalEnumLookupResult enum_result =
+        static_eval_lookup_enum(n, enum_lookup);
+    if (enum_result.status == StaticEvalEnumLookupStatus::Found) {
+      return enum_result.value;
+    }
+    if (enum_result.status == StaticEvalEnumLookupStatus::Miss) {
+      return 0;
+    }
   }
   if (n->kind == NK_CAST && n->left) {
-    long long v = static_eval_int(n->left, enum_consts);
+    long long v = static_eval_int(n->left, enum_lookup);
     TypeSpec ts = n->type;
     if (ts.ptr_level == 0) {
       int bits = 0;
@@ -1064,13 +1139,13 @@ long long static_eval_int(
     return v;
   }
   if (n->kind == NK_UNARY && n->op) {
-    if (strcmp(n->op, "-") == 0 && n->left) return -static_eval_int(n->left, enum_consts);
-    if (strcmp(n->op, "+") == 0 && n->left) return static_eval_int(n->left, enum_consts);
-    if (strcmp(n->op, "~") == 0 && n->left) return ~static_eval_int(n->left, enum_consts);
+    if (strcmp(n->op, "-") == 0 && n->left) return -static_eval_int(n->left, enum_lookup);
+    if (strcmp(n->op, "+") == 0 && n->left) return static_eval_int(n->left, enum_lookup);
+    if (strcmp(n->op, "~") == 0 && n->left) return ~static_eval_int(n->left, enum_lookup);
   }
   if (n->kind == NK_BINOP && n->op && n->left && n->right) {
-    long long l = static_eval_int(n->left, enum_consts);
-    long long r = static_eval_int(n->right, enum_consts);
+    long long l = static_eval_int(n->left, enum_lookup);
+    long long r = static_eval_int(n->right, enum_lookup);
     if (strcmp(n->op, "+") == 0) return l + r;
     if (strcmp(n->op, "-") == 0) return l - r;
     if (strcmp(n->op, "*") == 0) return l * r;
@@ -1083,6 +1158,14 @@ long long static_eval_int(
     if (strcmp(n->op, ">>") == 0) return l >> (r & 63);
   }
   return 0;
+}
+
+long long static_eval_int(
+    Node* n,
+    const std::unordered_map<std::string, long long>& enum_consts) {
+  StaticEvalIntEnumLookupInput enum_lookup;
+  enum_lookup.rendered_enum_consts = &enum_consts;
+  return static_eval_int(n, enum_lookup);
 }
 
 double static_eval_float(Node* n) {

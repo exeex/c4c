@@ -1,96 +1,86 @@
 Status: Active
 Source Idea Path: ideas/open/164_sema_type_utils_static_eval_structured_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Static Eval Callers
+Current Step ID: 2/3/4
+Current Step Title: Add structured enum lookup input, prefer structured lookup/fail closed for covered complete metadata, and convert the first covered caller
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 inventory for `static_eval_int` without
-implementation or test edits.
+Completed `plan.md` Steps 2/3/4 first slice: added
+`StaticEvalIntEnumLookupInput` for `static_eval_int`, including structured key
+and TextId enum maps plus the rendered string bridge; updated recursive
+evaluation to propagate that input; and made covered structured/TextId misses
+return closed instead of falling through to `enum_consts.find(n->name)`.
 
-Inventory and classification:
+Converted the non-template `static constexpr` struct member initializer path in
+`src/frontend/hir/hir_types.cpp` to build lowerer structured enum maps from
+`ct_state_` and call the new `static_eval_int` input. The legacy
+`static_eval_int(Node*, const std::unordered_map<std::string, long long>&)`
+overload remains as the documented no-metadata compatibility bridge.
 
-- Declaration: `src/frontend/sema/type_utils.hpp:70`
-  `long long static_eval_int(Node*, const std::unordered_map<std::string, long long>&)`.
-  Classification: rendered-compatibility only. The public API accepts only a
-  rendered string map and cannot express enum-domain identity or fail-closed
-  structured misses.
-- Definition: `src/frontend/sema/type_utils.cpp:1021`
-  `static_eval_int`; enum constants are resolved by `enum_consts.find(n->name)`
-  for `NK_VAR`.
-  Classification: rendered-compatibility only today; implementation target for
-  adding structured/TextId-aware lookup input while retaining this string map as
-  the no-metadata bridge.
-- Internal recursive calls: `src/frontend/sema/type_utils.cpp:1032`,
-  `src/frontend/sema/type_utils.cpp:1067`,
-  `src/frontend/sema/type_utils.cpp:1068`,
-  `src/frontend/sema/type_utils.cpp:1069`,
-  `src/frontend/sema/type_utils.cpp:1072`,
-  `src/frontend/sema/type_utils.cpp:1073`.
-  Classification: unrelated to enum constants as caller groups. They only
-  propagate the evaluator input through casts, unary operators, and binary
-  operators; enum lookup authority remains the `NK_VAR` branch.
+Added focused coverage in
+`tests/frontend/cpp_hir_sema_consteval_type_utils_metadata_test.cpp` for
+structured enum preference over stale rendered names, structured miss
+fail-closed behavior, and TextId enum lookup/miss behavior.
+
+## Step 1 Inventory Ledger
+
+Inventory/proof packet completed before implementation; no build or test proof
+was required and no `test_after.log` was written for that inventory-only slice.
+
+- Declaration: `src/frontend/sema/type_utils.hpp`
+  `static_eval_int(Node*, const std::unordered_map<std::string, long long>&)`.
+  Classification before this slice: rendered-compatibility only; the public API
+  could not express enum-domain identity or fail-closed structured misses.
+- Definition: `src/frontend/sema/type_utils.cpp` `static_eval_int`; the
+  `NK_VAR` branch resolved enum constants through `enum_consts.find(n->name)`.
+  Classification before this slice: implementation target for adding
+  structured/TextId-aware lookup input while retaining the string map as the
+  no-metadata bridge.
+- Internal recursive calls in `static_eval_int`: casts, unary operators, and
+  binary operators only propagated the evaluator input. Classification: not
+  separate enum lookup authorities; the `NK_VAR` branch owns enum resolution.
 - Wrapper/parallel evaluator:
-  `src/frontend/hir/hir_types.cpp:465`
-  `Lowerer::eval_const_int_with_nttp_bindings`.
-  Classification: TextId capable for NTTP bindings via
-  `NttpTextBindings` and `Node::unqualified_text_id`; rendered-compatibility
-  only for enum constants today because it still falls back to
-  `enum_consts_.find(n->name)`.
-- External caller group:
-  `src/frontend/hir/hir_types.cpp:2682`
-  non-template `static constexpr` struct member evaluation during struct layout.
-  Classification: structured-metadata capable for global enum constants. The
-  lowerer owns `ct_state_` structured enum mirrors and
-  `make_lowerer_consteval_env`/`LowererConstEvalStructuredMaps`; the initializer
-  nodes carry `unqualified_text_id`/namespace metadata. It currently calls the
-  rendered bridge when no NTTP bindings are present.
-- External caller group:
-  `src/frontend/hir/impl/expr/scalar_control.cpp:532`
-  static member declaration initializer fallback while lowering a member
-  reference.
-  Classification: structured-metadata capable for global enum constants and
-  TextId capable in the surrounding lowering context. The path has access to
-  `ctx`, `module_`, `ct_state_`, and the same lowerer structured-map machinery,
-  but the fallback call currently passes only `enum_consts_`.
-
-No direct sema validation callers of `static_eval_int` were found by text
-search. Sema validation already has separate structured enum value maps, so it
-is not the first target for this runbook.
-
-Narrow first implementation target: convert the non-template static constexpr
-struct member initializer path in `src/frontend/hir/hir_types.cpp:2682` to a
-structured-aware static integer evaluation input. This is the smallest direct
-caller group: it is a single call site, it already sits beside
-`eval_const_int_with_nttp_bindings` for the templated case, and the lowerer can
-provide global structured enum mirrors without changing unrelated expression
-lowering behavior.
+  `src/frontend/hir/hir_types.cpp`
+  `Lowerer::eval_const_int_with_nttp_bindings`. Classification: TextId-capable
+  for NTTP bindings through `NttpTextBindings` and
+  `Node::unqualified_text_id`, but rendered-compatibility only for enum
+  constants today.
+- First selected external caller:
+  `src/frontend/hir/hir_types.cpp` non-template `static constexpr` struct
+  member evaluation during struct layout. Classification: structured-metadata
+  capable for global enum constants through `ct_state_` and lowerer structured
+  map helpers; converted in the current implementation packet.
+- Remaining external caller target:
+  `src/frontend/hir/impl/expr/scalar_control.cpp` static member declaration
+  initializer fallback while lowering a member reference. Classification:
+  structured-metadata capable for global enum constants in the surrounding
+  lowerer context, but still not converted in this packet.
 
 ## Suggested Next
 
-Implement the structured lookup input for `static_eval_int`, then convert the
-`src/frontend/hir/hir_types.cpp:2682` non-template static constexpr struct
-member initializer call site first.
+Convert the next covered caller, likely the static member declaration
+initializer fallback in `src/frontend/hir/impl/expr/scalar_control.cpp`, to the
+new input while preserving NTTP-specific behavior in
+`Lowerer::eval_const_int_with_nttp_bindings`.
 
 ## Watchouts
 
-- Do not treat raw `TextId` alone as sufficient when enum/domain scope matters.
-- Do not let complete structured misses fall back to `enum_consts.find(n->name)`.
-- Keep rendered string lookup only as an explicit no-metadata compatibility
-  bridge.
-- Do not reopen the full consteval interpreter or validate table ownership.
-- `Lowerer::eval_const_int_with_nttp_bindings` already handles NTTP TextId
-  bindings but not structured enum constants; avoid regressing that behavior
-  when adding enum lookup metadata.
-- `enum_consts_` has mutable save/restore behavior for block scopes in
-  statement lowering, while `ct_state_` mirrors structured global enum
-  constants. Local enum-scope conversion may need a separate packet after the
-  global static-member initializer path.
+- The new `static_eval_int` input treats any provided structured/TextId map as
+  authoritative when the queried node has matching metadata; only provide those
+  maps for domains the caller intends to cover.
+- `Lowerer::eval_const_int_with_nttp_bindings` still has its own enum rendered
+  fallback and was intentionally not changed in this packet.
+- Local/block enum-scope conversion still needs a separate packet because
+  `enum_consts_` has mutable save/restore behavior while `ct_state_` mirrors
+  structured global enum constants.
 
 ## Proof
 
-Inventory-only packet; no build or test proof required by the supervisor. No
-`test_after.log` was written.
+Ran the supervisor-selected proof exactly:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_positive_sema_template_constexpr_member_runtime_cpp)$' > test_after.log`
+
+Result: passed. `test_after.log` contains 3/3 passing tests.

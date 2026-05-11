@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "ast.hpp"
+#include "consteval.hpp"
 
 namespace c4c {
 
@@ -67,6 +68,15 @@ std::string normalize_printf_longdouble_format(std::string s);
 std::vector<uint32_t> decode_wide_string(const char* sval);
 
 int infer_array_size_from_init(Node* init);
+struct StaticEvalIntEnumLookupInput {
+  const std::unordered_map<std::string, long long>* rendered_enum_consts = nullptr;
+  const hir::ConstTextMap* enum_consts_by_text = nullptr;
+  const hir::ConstStructuredMap* enum_consts_by_key = nullptr;
+};
+
+long long static_eval_int(
+    Node* n,
+    const StaticEvalIntEnumLookupInput& enum_lookup);
 long long static_eval_int(
     Node* n,
     const std::unordered_map<std::string, long long>& enum_consts);

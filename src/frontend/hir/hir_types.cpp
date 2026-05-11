@@ -2667,6 +2667,12 @@ void Lowerer::lower_struct_def(const Node* sd) {
       }
     }
   }
+  LowererConstEvalStructuredMaps static_member_consteval_maps;
+  refresh_global_consteval_structured_maps(static_member_consteval_maps);
+  StaticEvalIntEnumLookupInput static_member_enum_lookup;
+  static_member_enum_lookup.rendered_enum_consts = &enum_consts_;
+  static_member_enum_lookup.enum_consts_by_key =
+      &static_member_consteval_maps.enum_consts_by_key;
 
   for (int i = 0; i < num_fields; ++i) {
     const Node* f = get_field(i);
@@ -2679,7 +2685,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
     if (f->is_static && f->is_constexpr && f->name && f->name[0] && f->init) {
       static_const_value =
           struct_nttp_bindings.empty()
-              ? static_eval_int(f->init, enum_consts_)
+              ? static_eval_int(f->init, static_member_enum_lookup)
               : eval_const_int_with_nttp_bindings(
                     f->init, struct_nttp_bindings,
                     struct_nttp_bindings_by_text.empty()

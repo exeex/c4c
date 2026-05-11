@@ -46,6 +46,19 @@ c4c::Node alignof_type_node(const c4c::TypeSpec& ts) {
   return n;
 }
 
+c4c::Node var_ref(const char* rendered_name,
+                  const char* unqualified_name,
+                  c4c::TextId text_id,
+                  int namespace_context_id) {
+  c4c::Node n{};
+  n.kind = c4c::NK_VAR;
+  n.name = rendered_name;
+  n.unqualified_name = unqualified_name;
+  n.unqualified_text_id = text_id;
+  n.namespace_context_id = namespace_context_id;
+  return n;
+}
+
 c4c::TypeSpec record_ref(c4c::TextId text_id, const char* rendered_tag) {
   c4c::TypeSpec ts{};
   ts.base = c4c::TB_STRUCT;
@@ -162,6 +175,79 @@ void test_type_binding_equivalence_keeps_no_metadata_rendered_compatibility() {
               "rendered tags remain a no-metadata compatibility fallback");
 }
 
+void test_static_eval_int_prefers_structured_enum_metadata() {
+  constexpr int kNamespaceContext = 7;
+  c4c::TextTable texts;
+  const c4c::TextId real_text = texts.intern("RealEnumValue");
+
+  c4c::hir::ConstEvalStructuredNameKey key;
+  key.namespace_context_id = kNamespaceContext;
+  key.base_text_id = real_text;
+
+  c4c::hir::ConstStructuredMap structured_enums;
+  structured_enums.emplace(key, 42);
+  std::unordered_map<std::string, long long> rendered_enums;
+  rendered_enums.emplace("stale_enum_value", 99);
+
+  c4c::StaticEvalIntEnumLookupInput lookup;
+  lookup.rendered_enum_consts = &rendered_enums;
+  lookup.enum_consts_by_key = &structured_enums;
+
+  c4c::Node ref =
+      var_ref("stale_enum_value", "RealEnumValue", real_text, kNamespaceContext);
+  expect_eq_int(static_cast<int>(c4c::static_eval_int(&ref, lookup)), 42,
+                "static_eval_int should prefer structured enum metadata over rendered names");
+}
+
+void test_static_eval_int_structured_enum_miss_rejects_rendered_bridge() {
+  constexpr int kNamespaceContext = 7;
+  c4c::TextTable texts;
+  const c4c::TextId real_text = texts.intern("RealEnumValue");
+  const c4c::TextId other_text = texts.intern("OtherEnumValue");
+
+  c4c::hir::ConstEvalStructuredNameKey key;
+  key.namespace_context_id = kNamespaceContext;
+  key.base_text_id = other_text;
+
+  c4c::hir::ConstStructuredMap structured_enums;
+  structured_enums.emplace(key, 13);
+  std::unordered_map<std::string, long long> rendered_enums;
+  rendered_enums.emplace("stale_enum_value", 99);
+
+  c4c::StaticEvalIntEnumLookupInput lookup;
+  lookup.rendered_enum_consts = &rendered_enums;
+  lookup.enum_consts_by_key = &structured_enums;
+
+  c4c::Node ref =
+      var_ref("stale_enum_value", "RealEnumValue", real_text, kNamespaceContext);
+  expect_eq_int(static_cast<int>(c4c::static_eval_int(&ref, lookup)), 0,
+                "structured enum metadata miss should not recover through rendered lookup");
+}
+
+void test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge() {
+  c4c::TextTable texts;
+  const c4c::TextId real_text = texts.intern("RealEnumValue");
+  const c4c::TextId missing_text = texts.intern("MissingEnumValue");
+
+  c4c::hir::ConstTextMap text_enums;
+  text_enums.emplace(real_text, 31);
+  std::unordered_map<std::string, long long> rendered_enums;
+  rendered_enums.emplace("stale_enum_value", 99);
+
+  c4c::StaticEvalIntEnumLookupInput lookup;
+  lookup.rendered_enum_consts = &rendered_enums;
+  lookup.enum_consts_by_text = &text_enums;
+
+  c4c::Node ref = var_ref("stale_enum_value", "RealEnumValue", real_text, -1);
+  expect_eq_int(static_cast<int>(c4c::static_eval_int(&ref, lookup)), 31,
+                "static_eval_int should use TextId enum metadata before rendered names");
+
+  c4c::Node miss =
+      var_ref("stale_enum_value", "MissingEnumValue", missing_text, -1);
+  expect_eq_int(static_cast<int>(c4c::static_eval_int(&miss, lookup)), 0,
+                "TextId enum metadata miss should not recover through rendered lookup");
+}
+
 }  // namespace
 
 int main() {
@@ -169,6 +255,9 @@ int main() {
   test_consteval_sizeof_metadata_miss_rejects_stale_rendered_tag();
   test_type_binding_equivalence_rejects_rendered_name_when_metadata_exists();
   test_type_binding_equivalence_keeps_no_metadata_rendered_compatibility();
+  test_static_eval_int_prefers_structured_enum_metadata();
+  test_static_eval_int_structured_enum_miss_rejects_rendered_bridge();
+  test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge();
   std::cout << "PASS: cpp_hir_sema_consteval_type_utils_metadata_test\n";
   return 0;
 }
