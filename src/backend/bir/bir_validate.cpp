@@ -29,6 +29,7 @@ const Global* find_global(const Module& module,
                           LinkNameId global_name_id);
 const Global* find_global_by_name(const Module& module, std::string_view global_name);
 const Function* find_function_by_name(const Module& module, std::string_view function_name);
+const Function* find_function_by_link_name_id(const Module& module, LinkNameId function_name_id);
 
 bool validate_named_value(const Module& module,
                           const Value& value,
@@ -208,7 +209,8 @@ bool validate_call(const Module& module,
     return false;
   }
   if (!inst.is_indirect && inst.callee_link_name_id != kInvalidLinkName) {
-    const auto* linked_function = find_function(module, inst.callee, inst.callee_link_name_id);
+    const auto* linked_function =
+        find_function_by_link_name_id(module, inst.callee_link_name_id);
     if (linked_function == nullptr) {
       return fail(error, "bir call in @" + function.name +
                              " must reference a declared function by LinkNameId");
@@ -293,11 +295,7 @@ const Function* find_function(const Module& module,
                               std::string_view function_name,
                               LinkNameId function_name_id = kInvalidLinkName) {
   if (function_name_id != kInvalidLinkName) {
-    const auto it = std::find_if(
-        module.functions.begin(),
-        module.functions.end(),
-        [&](const Function& function) { return function.link_name_id == function_name_id; });
-    return it == module.functions.end() ? nullptr : &*it;
+    return find_function_by_link_name_id(module, function_name_id);
   }
   return find_function_by_name(module, function_name);
 }
@@ -314,6 +312,14 @@ const Function* find_function_by_name(const Module& module, std::string_view fun
       module.functions.begin(),
       module.functions.end(),
       [&](const Function& function) { return function.name == function_name; });
+  return it == module.functions.end() ? nullptr : &*it;
+}
+
+const Function* find_function_by_link_name_id(const Module& module, LinkNameId function_name_id) {
+  const auto it = std::find_if(
+      module.functions.begin(),
+      module.functions.end(),
+      [&](const Function& function) { return function.link_name_id == function_name_id; });
   return it == module.functions.end() ? nullptr : &*it;
 }
 

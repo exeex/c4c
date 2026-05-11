@@ -1165,6 +1165,22 @@ int expect_bir_verifier_rejects_known_link_name_mismatches() {
 
   {
     auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId missing_id = module.names.link_names.intern("missing_callee");
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee = "actual_callee",
+        .callee_link_name_id = missing_id,
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir call in @user must reference a declared function by LinkNameId")) {
+      return fail("BIR verifier should reject direct calls whose raw callee only matches by name");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
     const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
     module.globals.front().is_extern = false;
     module.globals.front().initializer_symbol_name = "other_global";
