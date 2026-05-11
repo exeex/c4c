@@ -1424,7 +1424,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_nested_i32_array_field_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t26.memcpy.copy.0 = bir.load_local i32 %lv.w.4|bir.store_local %lv.w.16, i32 %t26.memcpy.copy.0|%t26.memcpy.copy.4 = bir.load_local i32 %lv.w.8|bir.store_local %lv.w.20, i32 %t26.memcpy.copy.4|%t26.memcpy.copy.8 = bir.load_local i32 %lv.w.12|bir.store_local %lv.w.24, i32 %t26.memcpy.copy.8|bir.ret i32 %t49"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t20.memcpy.copy.0 = bir.load_local i32 %lv.w.4|bir.store_local %lv.w.16, i32 %t20.memcpy.copy.0|%t20.memcpy.copy.4 = bir.load_local i32 %lv.w.8|bir.store_local %lv.w.20, i32 %t20.memcpy.copy.4|%t20.memcpy.copy.8 = bir.load_local i32 %lv.w.12|bir.store_local %lv.w.24, i32 %t20.memcpy.copy.8|bir.ret i32 %t40"
   FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
 )
 
@@ -1454,7 +1454,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_prefix_local_i32_array_to_pair_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%lv.dst.memcpy.copy.0 = bir.load_local i32 %lv.src.4|bir.store_local %lv.dst.0, i32 %lv.dst.memcpy.copy.0|%lv.dst.memcpy.copy.4 = bir.load_local i32 %lv.src.8|bir.store_local %lv.dst.4, i32 %lv.dst.memcpy.copy.4|bir.ret i32 %t31"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%lv.dst.memcpy.copy.0 = bir.load_local i32 %lv.src.4|bir.store_local %lv.dst.0, i32 %lv.dst.memcpy.copy.0|%lv.dst.memcpy.copy.4 = bir.load_local i32 %lv.src.8|bir.store_local %lv.dst.4, i32 %lv.dst.memcpy.copy.4|bir.ret i32 %t27"
   FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
 )
 
@@ -1474,7 +1474,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_prefix_local_i32_subarray_to_nested_pair_field_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t30.memcpy.copy.0 = bir.load_local i32 %lv.src.8|bir.store_local %lv.dst.8, i32 %t30.memcpy.copy.0|%t30.memcpy.copy.4 = bir.load_local i32 %lv.src.12|bir.store_local %lv.dst.12, i32 %t30.memcpy.copy.4|bir.ret i32 %t60"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t24.memcpy.copy.0 = bir.load_local i32 %lv.src.8|bir.store_local %lv.dst.8, i32 %t24.memcpy.copy.0|%t24.memcpy.copy.4 = bir.load_local i32 %lv.src.12|bir.store_local %lv.dst.12, i32 %t24.memcpy.copy.4|bir.ret i32 %t51"
   FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
 )
 
