@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-05-11
 
 Depends On:
-- `ideas/open/166_hir_rendered_registry_mirror_retirement_audit.md`
+- `ideas/closed/166_hir_rendered_registry_mirror_retirement_audit.md`
 
 Parent Ideas:
 - `ideas/closed/158_sema_validate_string_authority_audit.md`
