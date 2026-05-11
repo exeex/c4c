@@ -397,7 +397,7 @@ bool normalize_zero_sized_struct_return_from_body(Module* module, Function* fn) 
         continue;
       }
 
-      std::unordered_map<std::string, TypeSpec> empty_typedefs;
+      std::unordered_map<TextId, TypeSpec> empty_typedefs;
       if (!types_compatible_p(*inferred, expr_ts, empty_typedefs)) {
         return false;
       }

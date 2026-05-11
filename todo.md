@@ -8,56 +8,46 @@ Current Step Title: Retire Parser Compatibility Overloads
 
 ## Just Finished
 
-Step 1 - Reconfirm Bridge Inventory and First Target is complete. Re-read the
-idea 167 final audit closure artifact and prior consolidated audit packet from
-`git show 80c86e13d:todo.md`, then selected the first idea 168 implementation
-target.
+Step 2 - Retire Parser Compatibility Overloads progressed for the selected
+rendered typedef/type-compatibility helper family.
 
-Selected first target bridge family:
+Completed work:
 
-| Field | Selection |
+| Field | Result |
 | --- | --- |
-| Bridge owner | Parser support helpers in `src/frontend/parser/parser_support.hpp` and `src/frontend/parser/impl/support.cpp`. |
-| Bridge family | Rendered typedef/type-compatibility overloads: `resolve_typedef_chain(TypeSpec, const std::unordered_map<std::string, TypeSpec>&)` and `types_compatible_p(TypeSpec, TypeSpec, const std::unordered_map<std::string, TypeSpec>&)`. |
-| Current boundary | Parser-owned callers already have `TextId` overloads whose misses fail closed, but a rendered `std::string` overload remains as a broad compatibility API for legacy/HIR proof paths and production HIR callers that pass an empty rendered map. |
-| Planned new boundary | Move production empty-map callers to the `TextId` overload with an empty `std::unordered_map<TextId, TypeSpec>`, then delete the rendered overloads if no non-test caller remains; if a caller still truly lacks metadata, rename/fence it as explicit no-metadata compatibility instead of leaving an ordinary overload. |
-| Nearby tests | `cpp_hir_parser_type_helper_residual_structured_metadata`, `frontend_parser_lookup_authority_tests`, `frontend_parser_tests`, and `cpp_hir_template_pattern_match_structured_metadata`. |
-| Implementation proof command | `cmake --build build --target frontend_parser_tests frontend_parser_lookup_authority_tests cpp_hir_parser_type_helper_residual_metadata_test cpp_hir_template_pattern_match_metadata_test && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_type_helper_residual_structured_metadata|cpp_hir_template_pattern_match_structured_metadata)$'` |
-
-The target belongs to idea 168 because it narrows a retained rendered
-source/type compatibility bridge from the idea 167 audit. It is not route-local
-identity cleanup for idea 169 and does not require regression-guard machinery
-from idea 170.
+| Caller inspection | `rg` found production helper callers only in `src/frontend/hir/impl/templates/templates.cpp` and `src/frontend/hir/hir_functions.cpp`; both passed empty rendered typedef maps only to select the old overload. |
+| Production caller updates | Moved those empty-map callers to empty `std::unordered_map<TextId, TypeSpec>` so they bind to the structured `TextId` overloads. |
+| Parser support API | Deleted the rendered `std::unordered_map<std::string, TypeSpec>` overload declarations from `src/frontend/parser/parser_support.hpp` and definitions from `src/frontend/parser/impl/support.cpp`. No explicit no-metadata rendered boundary remains for this helper family because no non-test rendered caller remained. |
+| Focused tests | Updated `tests/frontend/frontend_parser_lookup_authority_tests.cpp` to use the `TextId` typedef map for the parser-support nominal-identity compatibility checks. Existing stale-rendered-map regression tests in `frontend_parser_tests` and `cpp_hir_parser_type_helper_residual_metadata_test` stayed intact and still prove complete `TextId` misses do not recover through rendered maps. |
+| Changed files | `src/frontend/parser/parser_support.hpp`, `src/frontend/parser/impl/support.cpp`, `src/frontend/hir/impl/templates/templates.cpp`, `src/frontend/hir/hir_functions.cpp`, `tests/frontend/frontend_parser_lookup_authority_tests.cpp`, `todo.md`, and `test_after.log`. |
 
 ## Suggested Next
 
-Implement the selected Step 2 parser-support packet: inspect production callers
-of the rendered typedef/type-compatibility overloads, switch empty rendered-map
-callers to the `TextId` overloads, and remove or explicitly fence any remaining
-rendered overload surface.
+Continue Step 2 with a separate parser-support bridge packet, likely rendered
+record or constant-evaluation compatibility maps, after the supervisor selects
+the next bridge family and proof subset.
 
 ## Watchouts
 
-- Do not weaken the existing stale-rendered-map tests; they are regression
-  witnesses for complete `TextId` misses.
-- `src/frontend/hir/impl/templates/templates.cpp` and
-  `src/frontend/hir/hir_functions.cpp` currently use empty rendered typedef
-  maps only to satisfy overload selection, so they are likely first production
-  caller updates.
-- Keep consteval `by_name`, HIR local names, SSA values, labels, slots, and
-  generated names out of this packet; those are idea 169 route-local work.
-- If a real no-metadata rendered typedef caller appears during implementation,
-  keep it explicit and named as compatibility rather than preserving the broad
-  overload.
+- The removed typedef/type-compatibility rendered overloads are gone from the
+  parser-support public header; any future no-metadata rendered typedef use
+  should be introduced only as an explicitly named compatibility boundary.
+- `src/frontend/hir/hir_functions.cpp` still begins with a note saying the file
+  is not wired into the build, but the delegated proof rebuilt it through
+  `c4c_frontend`, so the direct production caller change was compiled.
+- The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`
+  was not touched.
+- No current blockers.
 
 ## Proof
 
-Todo-only Step 1 packet. Delegated proof command:
+Delegated proof command was run exactly and logged to `test_after.log`:
 
-`git diff --check -- todo.md`
+`cmake --build build --target frontend_parser_tests frontend_parser_lookup_authority_tests cpp_hir_parser_type_helper_residual_metadata_test cpp_hir_template_pattern_match_metadata_test && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_type_helper_residual_structured_metadata|cpp_hir_template_pattern_match_structured_metadata)$'`
 
-Result: passed.
+Result: passed. Built the four delegated targets and ran 4/4 focused tests:
+`frontend_parser_tests`, `frontend_parser_lookup_authority_tests`,
+`cpp_hir_parser_type_helper_residual_structured_metadata`, and
+`cpp_hir_template_pattern_match_structured_metadata`.
 
-No implementation tests were run in this packet. `test_after.log` was not
-updated because the supervisor delegated a todo-only diff-check proof command
-with no log artifact.
+Additional hygiene: `git diff --check` passed.

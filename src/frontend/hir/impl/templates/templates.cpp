@@ -498,7 +498,7 @@ bool hir_match_type_pattern(
     const TypeSpec& pattern_raw, const TypeSpec& actual_raw,
     const Node* tpl_def,
     std::unordered_map<std::string, TypeSpec>* type_bindings) {
-  static const std::unordered_map<std::string, TypeSpec> kEmptyTypedefs;
+  static const std::unordered_map<TextId, TypeSpec> kEmptyTypedefs;
   TypeSpec pattern = resolve_typedef_chain(pattern_raw, kEmptyTypedefs);
   TypeSpec actual = resolve_typedef_chain(actual_raw, kEmptyTypedefs);
   if (pattern.is_const && !actual.is_const) return false;

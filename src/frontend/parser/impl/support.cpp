@@ -1106,27 +1106,6 @@ TypeSpec resolve_typedef_chain(
     return ts;
 }
 
-// Compatibility bridge for legacy/HIR callers that only carry rendered typedef
-// names. Parser-owned paths should use the TextId-domain overload above.
-// Remove this overload once those callers pass structured typedef TextIds or
-// typed HIR bindings.
-TypeSpec resolve_typedef_chain(
-    TypeSpec ts,
-    const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs) {
-    for (int depth = 0; depth < 16; ++depth) {
-        if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) break;
-        const char* tag = support_legacy_typespec_tag_if_present(ts, 0);
-        if (!tag) break;
-        auto it = compatibility_typedefs.find(tag);
-        if (it == compatibility_typedefs.end()) break;
-        bool c = ts.is_const, v = ts.is_volatile;
-        ts = it->second;
-        ts.is_const   |= c;
-        ts.is_volatile |= v;
-    }
-    return ts;
-}
-
 static bool typespec_has_complete_qualifier_text_ids(const TypeSpec& ts) {
     if (ts.n_qualifier_segments <= 0) return false;
     if (!ts.qualifier_text_ids) return false;
@@ -1210,18 +1189,6 @@ bool types_compatible_p(TypeSpec a, TypeSpec b,
     return types_compatible_after_typedef_resolution(
         resolve_typedef_chain(a, typedefs),
         resolve_typedef_chain(b, typedefs));
-}
-
-// Compatibility bridge for legacy/HIR callers that only carry rendered typedef
-// names. Parser-owned paths should use the TextId-domain overload above.
-// Remove this overload once those callers pass structured typedef TextIds or
-// typed HIR bindings.
-bool types_compatible_p(
-    TypeSpec a, TypeSpec b,
-    const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs) {
-    return types_compatible_after_typedef_resolution(
-        resolve_typedef_chain(a, compatibility_typedefs),
-        resolve_typedef_chain(b, compatibility_typedefs));
 }
 
 }  // namespace c4c

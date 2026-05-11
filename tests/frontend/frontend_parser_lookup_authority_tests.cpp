@@ -7127,7 +7127,7 @@ void test_parser_support_types_compatible_uses_structured_nominal_identity() {
   const c4c::TextId enum_text = texts.intern("SupportStructuredEnum");
   const c4c::TextId other_enum_text =
       texts.intern("SupportOtherStructuredEnum");
-  const std::unordered_map<std::string, c4c::TypeSpec> empty_typedefs;
+  const std::unordered_map<c4c::TextId, c4c::TypeSpec> empty_typedefs;
 
   auto make_nominal = [&](c4c::TypeBase base, const char* rendered_tag) {
     c4c::TypeSpec ts{};

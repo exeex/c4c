@@ -52,13 +52,4 @@ TypeSpec resolve_typedef_chain(TypeSpec ts,
 bool types_compatible_p(TypeSpec a, TypeSpec b,
                         const std::unordered_map<TextId, TypeSpec>& typedefs);
 
-// Compatibility bridges for legacy/HIR proof paths that only carry rendered
-// typedef names. New parser-owned callers should use the TextId overloads.
-// Remove these overloads once those proof paths pass structured typedef
-// TextIds or typed HIR bindings.
-TypeSpec resolve_typedef_chain(TypeSpec ts,
-                               const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs);
-bool types_compatible_p(TypeSpec a, TypeSpec b,
-                        const std::unordered_map<std::string, TypeSpec>& compatibility_typedefs);
-
 }  // namespace c4c
