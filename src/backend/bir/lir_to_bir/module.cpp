@@ -124,6 +124,9 @@ c4c::LinkNameId resolve_initializer_symbol_link_name_id(
   if (function_symbols.contains_link_name_id(initializer_function_link_name_id)) {
     return initializer_function_link_name_id;
   }
+  if (initializer_function_link_name_id != c4c::kInvalidLinkName) {
+    return c4c::kInvalidLinkName;
+  }
   const auto global_it = global_types.find(std::string(symbol_name));
   if (global_it != global_types.end()) {
     return global_it->second.link_name_id;

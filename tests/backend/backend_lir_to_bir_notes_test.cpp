@@ -455,6 +455,10 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   const c4c::LinkNameId ptr_to_global_id = module.link_names.intern("semantic_ptr_to_global");
   const c4c::LinkNameId callee_id = module.link_names.intern("semantic_callee");
   const c4c::LinkNameId ptr_to_function_id = module.link_names.intern("semantic_ptr_to_function");
+  const c4c::LinkNameId raw_shadow_id = module.link_names.intern("rendered_shadow");
+  const c4c::LinkNameId missing_callee_id = module.link_names.intern("semantic_missing_callee");
+  const c4c::LinkNameId ptr_to_missing_function_id =
+      module.link_names.intern("semantic_ptr_to_missing_function");
 
   LirGlobal target;
   target.name = "drifted_target_display";
@@ -479,6 +483,13 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   callee.return_type = c4c::codegen::lir::LirTypeRef("void");
   module.extern_decls.push_back(std::move(callee));
 
+  c4c::codegen::lir::LirExternDecl raw_shadow;
+  raw_shadow.name = "raw_shadow_display";
+  raw_shadow.link_name_id = raw_shadow_id;
+  raw_shadow.return_type_str = "void";
+  raw_shadow.return_type = c4c::codegen::lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(raw_shadow));
+
   LirGlobal ptr_to_function;
   ptr_to_function.name = "drifted_ptr_to_function_display";
   ptr_to_function.link_name_id = ptr_to_function_id;
@@ -487,6 +498,15 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   ptr_to_function.initializer_function_link_name_ids.push_back(callee_id);
   ptr_to_function.align_bytes = 8;
   module.globals.push_back(std::move(ptr_to_function));
+
+  LirGlobal ptr_to_missing_function;
+  ptr_to_missing_function.name = "drifted_ptr_to_missing_function_display";
+  ptr_to_missing_function.link_name_id = ptr_to_missing_function_id;
+  ptr_to_missing_function.llvm_type = "ptr";
+  ptr_to_missing_function.init_text = "ptr @rendered_shadow";
+  ptr_to_missing_function.initializer_function_link_name_ids.push_back(missing_callee_id);
+  ptr_to_missing_function.align_bytes = 8;
+  module.globals.push_back(std::move(ptr_to_missing_function));
 
   auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
   if (!result.module.has_value()) {
@@ -514,6 +534,13 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
       lowered_ptr_to_function->initializer_symbol_name != "drifted_callee_display" ||
       lowered_ptr_to_function->initializer_symbol_name_id != callee_id) {
     return fail("pointer initializer with structured function id should not depend on raw display spelling");
+  }
+
+  const auto* lowered_ptr_to_missing_function = find_global("semantic_ptr_to_missing_function");
+  if (lowered_ptr_to_missing_function == nullptr ||
+      lowered_ptr_to_missing_function->initializer_symbol_name != "rendered_shadow" ||
+      lowered_ptr_to_missing_function->initializer_symbol_name_id != c4c::kInvalidLinkName) {
+    return fail("valid initializer function LinkNameId miss should not fall back to raw symbol lookup");
   }
 
   c4c::backend::bir::Module compatibility_module;

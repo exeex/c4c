@@ -8,42 +8,37 @@ Current Step Title: Propagate LinkNameId Through LIR to BIR
 
 ## Just Finished
 
-Completed Step 3 audit and fix for the HIR-to-LIR constant-initializer
-function-designator route in
-`src/codegen/lir/hir_to_lir/const_init_emitter.cpp`.
+Completed Step 4 LIR-to-BIR initializer-symbol authority fix in
+`src/backend/bir/lir_to_bir/module.cpp`.
 
-The scoped audit found that `resolve_function_decl_name` still fell back to the
-raw rendered `DeclRef::name` when a constant initializer carried a valid
-`LinkNameId` whose function lookup missed. That covered metadata path now uses
-the HIR link-name table spelling instead of raw text. The focused test mutates
-a global function-pointer initializer to carry a semantic external
-`LinkNameId` while the raw initializer spelling remains `rendered_shadow`, then
-proves the LIR initializer emits `@semantic_external_helper` and not the raw
-collision.
+`resolve_initializer_symbol_link_name_id` now treats a present initializer
+function `LinkNameId` as authoritative for the function-designator path. If the
+ID misses the known function-symbol set, lowering records no BIR initializer
+symbol ID instead of falling through to raw global/function symbol lookup. The
+focused backend test adds a raw spelling collision and proves the raw function
+symbol cannot override a structured initializer ID miss.
 
 ## Suggested Next
 
-Move to Step 4 on the LIR-to-BIR symbol authority target, starting with the
-backend route that consumes LIR function/global/extern `LinkNameId` metadata
-and must not reselect symbols by rendered text.
+Continue Step 4 by auditing the remaining LIR-to-BIR function/global symbol
+consumers for any valid `LinkNameId` miss that still reopens raw spelling
+lookup.
 
 ## Watchouts
 
-- Existing constant-initializer global-address selection already routes through
-  `select_global_object(DeclRef)` or `select_global_object(GlobalId)`.
-- `LirModule::record_extern_decl` already dedups by `LinkNameId`, and the LIR
-  printer resolves extern declaration spellings from `LinkNameId`; no scoped
-  `ir.hpp` change was needed for this packet.
-- A valid `LinkNameId` miss for a covered symbol must not reopen raw string
-  lookup silently in Step 4 backend/lowering paths.
+- Compatibility raw symbol lookup remains available only when no initializer
+  function `LinkNameId` metadata is present.
+- This packet intentionally leaves `resolve_known_global_address` raw function
+  compatibility behavior unchanged; the owned fix is the BIR
+  `initializer_symbol_name_id` resolution route.
 
 ## Proof
 
 Passed:
 
 ```sh
-{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_lookup_tests|frontend_lir_.*)$'; } > test_after.log 2>&1
+{ cmake --build --preset default --target backend_lir_to_bir_notes_test && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$'; } > test_after.log 2>&1
 ```
 
-Proof log: `test_after.log`. Result: build succeeded and 5/5 selected tests
+Proof log: `test_after.log`. Result: build succeeded and 1/1 selected test
 passed.
