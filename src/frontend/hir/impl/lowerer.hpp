@@ -419,7 +419,8 @@ class Lowerer {
   long long eval_const_int_with_nttp_bindings(
       const Node* n,
       const NttpBindings& nttp_bindings,
-      const NttpTextBindings* nttp_bindings_by_text = nullptr) const;
+      const NttpTextBindings* nttp_bindings_by_text = nullptr,
+      const ConstStructuredMap* enum_consts_by_key = nullptr) const;
 
   std::optional<std::string> find_struct_method_mangled(
       const std::string& tag,

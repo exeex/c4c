@@ -8,19 +8,16 @@ Current Step Title: Convert Covered Callers
 
 ## Just Finished
 
-Completed `plan.md` Step 4 remaining covered-caller slice: converted the
-static member declaration initializer fallback in
-`src/frontend/hir/impl/expr/scalar_control.cpp` from the rendered
-`enum_consts_` overload to `StaticEvalIntEnumLookupInput` populated from
-lowerer structured enum maps.
+Completed `plan.md` Step 4 NTTP evaluator slice: converted
+`Lowerer::eval_const_int_with_nttp_bindings` so enum constants use a structured
+`ConstEvalStructuredNameKey` map when the queried node has complete metadata,
+returning closed on structured misses instead of falling through to rendered
+enum lookup.
 
-Converted covered `static_eval_int` callers now consist of the non-template
-`static constexpr` struct member initializer path in
-`src/frontend/hir/hir_types.cpp` and the static member declaration initializer
-fallback in `src/frontend/hir/impl/expr/scalar_control.cpp`. Remaining
-rendered lookup is the no-metadata compatibility bridge overload plus the
-intentional NTTP-specific rendered fallback in
-`Lowerer::eval_const_int_with_nttp_bindings`.
+Preserved NTTP binding priority: the evaluator still checks
+`NttpTextBindings` first and explicit rendered NTTP bindings second, before
+enum lookup. Both NTTP-backed static member evaluation sites now pass refreshed
+lowerer structured enum maps through the evaluator and its recursive calls.
 
 ## Step 1 Inventory Ledger
 
@@ -43,8 +40,8 @@ was required and no `test_after.log` was written for that inventory-only slice.
   `src/frontend/hir/hir_types.cpp`
   `Lowerer::eval_const_int_with_nttp_bindings`. Classification: TextId-capable
   for NTTP bindings through `NttpTextBindings` and
-  `Node::unqualified_text_id`, but rendered-compatibility only for enum
-  constants today.
+  `Node::unqualified_text_id`; converted in the current Step 4 packet so enum
+  constants use structured TextId-based keys when complete.
 - First selected external caller:
   `src/frontend/hir/hir_types.cpp` non-template `static constexpr` struct
   member evaluation during struct layout. Classification: structured-metadata
@@ -58,16 +55,16 @@ was required and no `test_after.log` was written for that inventory-only slice.
 
 ## Suggested Next
 
-Have the supervisor decide whether Step 4 is complete or whether the
-NTTP-specific compatibility fallback needs a separate plan-review packet.
+Have the supervisor decide whether Step 4 is complete or whether local/block
+enum-scope structured mirrors need a separate plan-review packet.
 
 ## Watchouts
 
-- `static_eval_int` now has no remaining HIR caller using the rendered-map
-  overload except the compatibility bridge itself; `rg "static_eval_int\\("`
-  shows only the two structured HIR callers and recursive evaluator calls.
-- `Lowerer::eval_const_int_with_nttp_bindings` still has its own enum rendered
-  fallback and was intentionally not changed in this packet.
+- `Lowerer::eval_const_int_with_nttp_bindings` still allows rendered enum
+  lookup only when no structured/TextId carrier can be built for the queried
+  node; complete structured misses fail closed.
+- Explicit rendered NTTP bindings remain compatibility authority after
+  `NttpTextBindings`, as required by the packet.
 - Local/block enum-scope conversion still needs a separate packet if the plan
   wants to cover mutable `enum_consts_` save/restore behavior beyond the global
   structured metadata mirrored by `ct_state_`.
@@ -76,6 +73,6 @@ NTTP-specific compatibility fallback needs a separate plan-review packet.
 
 Ran the supervisor-selected proof exactly:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_expr_scalar_control_helper|cpp_positive_sema_template_constexpr_member_runtime_cpp)$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_template_deferred_nttp_static_member_expr|cpp_hir_template_deferred_nttp_cast_static_member_expr|cpp_hir_template_alias_deferred_nttp_static_member|cpp_positive_sema_template_constexpr_member_runtime_cpp)$' > test_after.log`
 
-Result: passed. `test_after.log` contains 4/4 passing tests.
+Result: passed. `test_after.log` contains 6/6 passing tests.

@@ -64,6 +64,31 @@ std::optional<ConstEvalStructuredNameKey> to_consteval_name_key(
   return out;
 }
 
+std::optional<ConstEvalStructuredNameKey> consteval_name_key_from_node(
+    const Node* n) {
+  if (!n || n->namespace_context_id < 0 ||
+      n->unqualified_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+  if (n->n_qualifier_segments < 0) return std::nullopt;
+  if (n->n_qualifier_segments > 0 && !n->qualifier_text_ids) {
+    return std::nullopt;
+  }
+  ConstEvalStructuredNameKey key;
+  key.namespace_context_id = n->namespace_context_id;
+  key.is_global_qualified = n->is_global_qualified;
+  key.base_text_id = n->unqualified_text_id;
+  key.qualifier_text_ids.reserve(
+      static_cast<std::size_t>(n->n_qualifier_segments));
+  for (int i = 0; i < n->n_qualifier_segments; ++i) {
+    const TextId segment = n->qualifier_text_ids[i];
+    if (segment == kInvalidText) return std::nullopt;
+    key.qualifier_text_ids.push_back(segment);
+  }
+  return key.valid() ? std::optional<ConstEvalStructuredNameKey>(key)
+                     : std::nullopt;
+}
+
 template <typename SourceMap>
 void copy_consteval_structured_bindings(const SourceMap& source,
                                         ConstStructuredMap& out) {
@@ -465,7 +490,8 @@ std::optional<FnPtrSig> Lowerer::fn_ptr_sig_from_decl_node(const Node* n) {
 long long Lowerer::eval_const_int_with_nttp_bindings(
     const Node* n,
     const NttpBindings& nttp_bindings,
-    const NttpTextBindings* nttp_bindings_by_text) const {
+    const NttpTextBindings* nttp_bindings_by_text,
+    const ConstStructuredMap* enum_consts_by_key) const {
   if (!n) return 0;
   if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) return n->ival;
   if (n->kind == NK_VAR && n->name) {
@@ -475,13 +501,24 @@ long long Lowerer::eval_const_int_with_nttp_bindings(
     }
     auto nttp_it = nttp_bindings.find(n->name);
     if (nttp_it != nttp_bindings.end()) return nttp_it->second;
+    if (enum_consts_by_key) {
+      const std::optional<ConstEvalStructuredNameKey> key =
+          consteval_name_key_from_node(n);
+      if (key.has_value()) {
+        auto enum_it = enum_consts_by_key->find(*key);
+        if (enum_it != enum_consts_by_key->end()) return enum_it->second;
+        return 0;
+      }
+    }
+    // No structured/TextId carrier: retain rendered-name enum compatibility.
     auto enum_it = enum_consts_.find(n->name);
     if (enum_it != enum_consts_.end()) return enum_it->second;
     return 0;
   }
   if (n->kind == NK_CAST && n->left) {
     long long v =
-        eval_const_int_with_nttp_bindings(n->left, nttp_bindings, nttp_bindings_by_text);
+        eval_const_int_with_nttp_bindings(
+            n->left, nttp_bindings, nttp_bindings_by_text, enum_consts_by_key);
     TypeSpec ts = n->type;
     if (ts.ptr_level == 0) {
       int bits = 0;
@@ -509,19 +546,21 @@ long long Lowerer::eval_const_int_with_nttp_bindings(
   if (n->kind == NK_UNARY && n->op && n->left) {
     if (strcmp(n->op, "-") == 0)
       return -eval_const_int_with_nttp_bindings(
-          n->left, nttp_bindings, nttp_bindings_by_text);
+          n->left, nttp_bindings, nttp_bindings_by_text, enum_consts_by_key);
     if (strcmp(n->op, "+") == 0)
       return eval_const_int_with_nttp_bindings(
-          n->left, nttp_bindings, nttp_bindings_by_text);
+          n->left, nttp_bindings, nttp_bindings_by_text, enum_consts_by_key);
     if (strcmp(n->op, "~") == 0)
       return ~eval_const_int_with_nttp_bindings(
-          n->left, nttp_bindings, nttp_bindings_by_text);
+          n->left, nttp_bindings, nttp_bindings_by_text, enum_consts_by_key);
   }
   if (n->kind == NK_BINOP && n->op && n->left && n->right) {
     long long l =
-        eval_const_int_with_nttp_bindings(n->left, nttp_bindings, nttp_bindings_by_text);
+        eval_const_int_with_nttp_bindings(
+            n->left, nttp_bindings, nttp_bindings_by_text, enum_consts_by_key);
     long long r =
-        eval_const_int_with_nttp_bindings(n->right, nttp_bindings, nttp_bindings_by_text);
+        eval_const_int_with_nttp_bindings(
+            n->right, nttp_bindings, nttp_bindings_by_text, enum_consts_by_key);
     if (strcmp(n->op, "+") == 0) return l + r;
     if (strcmp(n->op, "-") == 0) return l - r;
     if (strcmp(n->op, "*") == 0) return l * r;
@@ -2690,7 +2729,8 @@ void Lowerer::lower_struct_def(const Node* sd) {
                     f->init, struct_nttp_bindings,
                     struct_nttp_bindings_by_text.empty()
                         ? nullptr
-                        : &struct_nttp_bindings_by_text);
+                        : &struct_nttp_bindings_by_text,
+                    &static_member_consteval_maps.enum_consts_by_key);
     }
     if (f->name && f->name[0]) {
       struct_static_member_decls_[tag][f->name] = f;

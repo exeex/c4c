@@ -342,10 +342,13 @@ void Lowerer::record_instantiated_template_struct_field_metadata(
   if (!orig_f || !orig_f->name) return;
   std::optional<long long> static_const_value;
   if (orig_f->is_static && orig_f->is_constexpr && orig_f->init) {
+    LowererConstEvalStructuredMaps static_member_consteval_maps;
+    refresh_global_consteval_structured_maps(static_member_consteval_maps);
     static_const_value =
         eval_const_int_with_nttp_bindings(
             orig_f->init, selected_nttp_bindings_map,
-            selected_nttp_bindings_by_text);
+            selected_nttp_bindings_by_text,
+            &static_member_consteval_maps.enum_consts_by_key);
   }
   struct_static_member_decls_[mangled][orig_f->name] = orig_f;
   if (static_const_value) {
