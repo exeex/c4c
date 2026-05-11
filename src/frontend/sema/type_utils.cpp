@@ -75,6 +75,14 @@ StaticEvalEnumLookupResult static_eval_lookup_enum(
 
 }  // namespace
 
+StaticEvalIntEnumLookupInput
+StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(
+    const std::unordered_map<std::string, long long>& rendered_enum_consts) {
+  StaticEvalIntEnumLookupInput enum_lookup;
+  enum_lookup.rendered_enum_consts = &rendered_enum_consts;
+  return enum_lookup;
+}
+
 TypeSpec make_ts(TypeBase base) {
   TypeSpec ts{};
   ts.base = base;
@@ -1160,11 +1168,11 @@ long long static_eval_int(
   return 0;
 }
 
-long long static_eval_int(
+long long static_eval_int_with_rendered_enum_compatibility(
     Node* n,
     const std::unordered_map<std::string, long long>& enum_consts) {
-  StaticEvalIntEnumLookupInput enum_lookup;
-  enum_lookup.rendered_enum_consts = &enum_consts;
+  StaticEvalIntEnumLookupInput enum_lookup =
+      StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(enum_consts);
   return static_eval_int(n, enum_lookup);
 }
 

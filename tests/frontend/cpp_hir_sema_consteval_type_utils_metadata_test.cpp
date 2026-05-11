@@ -190,8 +190,9 @@ void test_static_eval_int_prefers_structured_enum_metadata() {
   std::unordered_map<std::string, long long> rendered_enums;
   rendered_enums.emplace("stale_enum_value", 99);
 
-  c4c::StaticEvalIntEnumLookupInput lookup;
-  lookup.rendered_enum_consts = &rendered_enums;
+  c4c::StaticEvalIntEnumLookupInput lookup =
+      c4c::StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(
+          rendered_enums);
   lookup.enum_consts_by_key = &structured_enums;
 
   c4c::Node ref =
@@ -215,8 +216,9 @@ void test_static_eval_int_structured_enum_miss_rejects_rendered_bridge() {
   std::unordered_map<std::string, long long> rendered_enums;
   rendered_enums.emplace("stale_enum_value", 99);
 
-  c4c::StaticEvalIntEnumLookupInput lookup;
-  lookup.rendered_enum_consts = &rendered_enums;
+  c4c::StaticEvalIntEnumLookupInput lookup =
+      c4c::StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(
+          rendered_enums);
   lookup.enum_consts_by_key = &structured_enums;
 
   c4c::Node ref =
@@ -235,8 +237,9 @@ void test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge() {
   std::unordered_map<std::string, long long> rendered_enums;
   rendered_enums.emplace("stale_enum_value", 99);
 
-  c4c::StaticEvalIntEnumLookupInput lookup;
-  lookup.rendered_enum_consts = &rendered_enums;
+  c4c::StaticEvalIntEnumLookupInput lookup =
+      c4c::StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(
+          rendered_enums);
   lookup.enum_consts_by_text = &text_enums;
 
   c4c::Node ref = var_ref("stale_enum_value", "RealEnumValue", real_text, -1);
@@ -275,8 +278,9 @@ void test_static_eval_int_keeps_same_spelled_enum_domains_distinct() {
   std::unordered_map<std::string, long long> rendered_enums;
   rendered_enums.emplace("Value", 404);
 
-  c4c::StaticEvalIntEnumLookupInput lookup;
-  lookup.rendered_enum_consts = &rendered_enums;
+  c4c::StaticEvalIntEnumLookupInput lookup =
+      c4c::StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(
+          rendered_enums);
   lookup.enum_consts_by_text = &text_enums;
   lookup.enum_consts_by_key = &structured_enums;
 
@@ -301,6 +305,25 @@ void test_static_eval_int_keeps_same_spelled_enum_domains_distinct() {
                 "second structured enum domain should select its own value");
   expect_eq_int(static_cast<int>(c4c::static_eval_int(&missing_ref, lookup)), 0,
                 "structured enum miss must not recover through shared TextId or rendered spelling");
+}
+
+void test_static_eval_int_named_rendered_enum_compatibility_requires_opt_in() {
+  std::unordered_map<std::string, long long> rendered_enums;
+  rendered_enums.emplace("RenderedOnlyEnumValue", 77);
+
+  c4c::Node ref =
+      var_ref("RenderedOnlyEnumValue", "RenderedOnlyEnumValue",
+              c4c::kInvalidText, -1);
+  c4c::StaticEvalIntEnumLookupInput ordinary_lookup;
+  expect_eq_int(static_cast<int>(c4c::static_eval_int(&ref, ordinary_lookup)), 0,
+                "ordinary static_eval_int should not infer rendered enum compatibility");
+
+  expect_eq_int(
+      static_cast<int>(
+          c4c::static_eval_int_with_rendered_enum_compatibility(
+              &ref, rendered_enums)),
+      77,
+      "rendered enum lookup should remain only through the named compatibility API");
 }
 
 void test_consteval_env_scoped_enum_metadata_beats_stale_rendered_mirror() {
@@ -363,6 +386,7 @@ int main() {
   test_static_eval_int_structured_enum_miss_rejects_rendered_bridge();
   test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge();
   test_static_eval_int_keeps_same_spelled_enum_domains_distinct();
+  test_static_eval_int_named_rendered_enum_compatibility_requires_opt_in();
   test_consteval_env_scoped_enum_metadata_beats_stale_rendered_mirror();
   std::cout << "PASS: cpp_hir_sema_consteval_type_utils_metadata_test\n";
   return 0;

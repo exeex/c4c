@@ -532,10 +532,11 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
           if (decl->init) {
             LowererConstEvalStructuredMaps static_member_consteval_maps;
             refresh_global_consteval_structured_maps(static_member_consteval_maps);
-            // Re-evaluating a static-member initializer here is compatibility
-            // lookup over global enum mirrors, not local/block enum authority.
-            StaticEvalIntEnumLookupInput static_member_enum_lookup;
-            static_member_enum_lookup.rendered_enum_consts = &enum_consts_;
+            // Re-evaluating a static-member initializer keeps an explicit
+            // rendered-enum compatibility mirror for no-metadata cases.
+            StaticEvalIntEnumLookupInput static_member_enum_lookup =
+                StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(
+                    enum_consts_);
             static_member_enum_lookup.enum_consts_by_key =
                 &static_member_consteval_maps.enum_consts_by_key;
             long long v = static_eval_int(decl->init, static_member_enum_lookup);

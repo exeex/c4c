@@ -3033,11 +3033,10 @@ void Lowerer::lower_struct_def(const Node* sd) {
   }
   LowererConstEvalStructuredMaps static_member_consteval_maps;
   refresh_global_consteval_structured_maps(static_member_consteval_maps);
-  // Static member initializers are evaluated against global enum mirrors and
-  // rendered compatibility only. Local/block enum authority requires scoped
-  // lifetime metadata, which this layout path does not carry.
-  StaticEvalIntEnumLookupInput static_member_enum_lookup;
-  static_member_enum_lookup.rendered_enum_consts = &enum_consts_;
+  // Static member initializers keep an explicit rendered-enum compatibility
+  // mirror for no-metadata cases. Structured key misses still fail closed.
+  StaticEvalIntEnumLookupInput static_member_enum_lookup =
+      StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(enum_consts_);
   static_member_enum_lookup.enum_consts_by_key =
       &static_member_consteval_maps.enum_consts_by_key;
 

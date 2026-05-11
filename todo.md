@@ -8,36 +8,44 @@ Current Step Title: Narrow Sema and Consteval Rendered Mirrors
 
 ## Just Finished
 
-Step 2 - Retire Parser Compatibility Overloads is complete enough to advance.
-The parser bridge-retirement packets landed in:
+Step 3 - Narrow Sema and Consteval Rendered Mirrors: completed the first
+rendered enum-constant mirror packet around `static_eval_int`.
 
-| Commit | Result |
-| --- | --- |
-| `0e3a94b7e` | Retired the broad rendered typedef/type-compatibility parser-support overload family. Production callers now bind through structured `TextId` maps, and focused tests preserve stale-rendered-map closed-miss coverage. |
-| `6aaed86f4` | Removed the broad rendered `eval_const_int` overload from ordinary resolution and fenced the retained no-metadata rendered named-constant path behind `eval_const_int_with_rendered_named_const_compatibility`. |
-| `df4759b5f` | Removed the broad rendered `resolve_record_type_spec` ordinary boundary and fenced the retained parser-local rendered tag mirror behind `resolve_record_type_spec_with_parser_tag_map_compatibility`. |
+Implementation notes:
 
-Step 2 completion decision:
+- Inspected all production callers of `static_eval_int` and all assignments to
+  `StaticEvalIntEnumLookupInput::rendered_enum_consts`.
+- Removed the broad ordinary rendered-map overload
+  `static_eval_int(Node*, const std::unordered_map<std::string, long long>&)`
+  from the public surface and replaced it with the explicitly named
+  `static_eval_int_with_rendered_enum_compatibility`.
+- Added `StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility` so HIR
+  static-member initializer paths opt into the rendered enum mirror by name
+  while still passing `enum_consts_by_key` as structured authority.
+- Kept direct `static_eval_int(Node*, StaticEvalIntEnumLookupInput)` callers
+  working. Complete structured key/text misses still fail closed before any
+  rendered compatibility lookup.
+- Updated `cpp_hir_sema_consteval_type_utils_metadata_test` to use the named
+  compatibility boundary and to prove ordinary no-compatibility lookup does
+  not infer rendered enum authority.
 
-| Field | Result |
-| --- | --- |
-| Parser production structured misses | Covered parser-support typedef/type-compatibility, const-int, and record/tag families now fail closed for complete structured metadata misses or require an explicitly named compatibility API. |
-| Retained parser bridges | Remaining rendered parser bridges are named as compatibility/no-metadata boundaries instead of ordinary overloads. |
-| Focused proof | Each parser packet built its delegated targets and passed the supervisor-selected parser/support regression subset, with results recorded in `test_after.log` at the time of execution. |
-| Baseline review | Supervisor compared old/new full-suite baselines after the hook reminder; both were 3135/3135 passing with the same disabled tests, then ran `scripts/plan_review_state.py accept-baseline`. |
-| Lifecycle decision | Advance from Step 2 to Step 3: Narrow Sema and Consteval Rendered Mirrors. |
+Changed files:
+
+- `src/frontend/sema/type_utils.hpp`
+- `src/frontend/sema/type_utils.cpp`
+- `src/frontend/hir/hir_types.cpp`
+- `src/frontend/hir/impl/expr/scalar_control.cpp`
+- `tests/frontend/cpp_hir_sema_consteval_type_utils_metadata_test.cpp`
+- `todo.md`
+- `test_after.log`
 
 ## Suggested Next
 
-Begin Step 3 by re-reading the idea 167 sema/consteval bridge inventory and
-selecting the first narrow rendered mirror family. Candidate starting points
-from the runbook are rendered enum const maps, template/type/NTTP binding
-mirrors, fallback canonical template names, and any source/link compatibility
-`by_name` consteval bridge.
-
-The next executor packet should name the exact sema or consteval mirror being
-narrowed, inspect production callers before editing tests, and use focused
-closed-miss proof for the touched metadata carrier.
+Continue Step 3 with the next narrow sema/consteval mirror family from the
+idea 167 inventory, likely template/type/NTTP binding mirrors or fallback
+canonical template names. Inspect production callers first, then fence or
+delete one rendered bridge family and add closed-miss proof for its structured
+carrier.
 
 ## Watchouts
 
@@ -45,31 +53,24 @@ closed-miss proof for the touched metadata carrier.
   not remove visible text just to reduce rendered-string grep count.
 - Do not fold route-local generated-name cleanup into this plan; idea 169 owns
   route-local identity domains.
-- `eval_const_int_with_rendered_named_const_compatibility` and
-  `resolve_record_type_spec_with_parser_tag_map_compatibility` remain explicit
-  compatibility boundaries from Step 2 and should not gain new ordinary
-  production callers.
+- `StaticEvalIntEnumLookupInput::rendered_enum_consts` remains as a retained
+  no-metadata compatibility mirror. New ordinary callers should use structured
+  key/text metadata and should not assign the field directly.
+- The rendered enum compatibility API preserves source/link compatibility for
+  no-metadata callers only; complete structured key/text misses must continue
+  to fail closed.
 - The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`
   was not touched.
 - No current blockers.
 
 ## Proof
 
-Lifecycle-only cleanup. No implementation or test files were changed.
+Ran delegated proof command and refreshed `test_after.log`:
 
-Step 2 proof already landed with the three parser bridge commits:
+`cmake --build build --target cpp_hir_sema_consteval_type_utils_metadata_test frontend_hir_tests && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_sema_consteval_type_utils_structured_metadata|frontend_hir_tests)$'`
 
-- `0e3a94b7e`: built `frontend_parser_tests`,
-  `frontend_parser_lookup_authority_tests`,
-  `cpp_hir_parser_type_helper_residual_metadata_test`, and
-  `cpp_hir_template_pattern_match_metadata_test`; ran 4/4 focused tests.
-- `6aaed86f4`: built `frontend_parser_tests`,
-  `frontend_parser_lookup_authority_tests`,
-  `cpp_hir_parser_support_residual_metadata_test`, and
-  `cpp_hir_template_pattern_match_metadata_test`; ran 4/4 focused tests.
-- `df4759b5f`: built `frontend_parser_tests`,
-  `frontend_parser_lookup_authority_tests`, and
-  `cpp_hir_parser_support_residual_metadata_test`; ran 3/3 focused tests.
+Result: pass. Built both delegated targets and ran 2/2 matching CTest tests:
+`cpp_hir_sema_consteval_type_utils_structured_metadata` and
+`frontend_hir_tests`.
 
-Baseline review was accepted after the supervisor compared old/new full-suite
-baselines: both were 3135/3135 passing with the same disabled tests.
+Also ran `git diff --check`: pass.
