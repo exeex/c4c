@@ -628,8 +628,9 @@ struct LirModule {
   std::vector<LirStringConst> string_pool;
   std::vector<LirExternDecl> extern_decls;
 
-  // Extern call declarations dedup first by semantic link-visible identity,
-  // then by raw fallback spelling only when no LinkNameId exists yet.
+  // Extern call declarations dedup first by semantic link-visible identity.
+  // The raw/rendered-name map is a legacy compatibility and output boundary
+  // for declarations that arrive before complete LinkNameId metadata exists.
   std::unordered_map<LinkNameId, ExternDeclInfo> extern_decl_link_name_map;
   std::unordered_map<std::string, ExternDeclInfo> extern_decl_name_map;
 
@@ -661,11 +662,20 @@ struct LirModule {
   }
 
   /// Record an extern function call declaration. Prefer semantic dedup by
-  /// LinkNameId and fall back to raw-name dedup only when no semantic id
-  /// exists. Upgrades void returns to concrete types when a non-void call is
-  /// seen.
+  /// LinkNameId and fall back to legacy raw/rendered-name dedup only when no
+  /// semantic id exists yet. Upgrades void returns to concrete types when a
+  /// non-void call is seen.
   void record_extern_decl(const std::string& name, const std::string& ret_ty,
                           LinkNameId link_name_id = kInvalidLinkName) {
+    if (link_name_id == kInvalidLinkName) {
+      const LinkNameId known_link_name_id = link_names.find(name);
+      if (known_link_name_id != kInvalidLinkName &&
+          extern_decl_link_name_map.find(known_link_name_id) !=
+              extern_decl_link_name_map.end()) {
+        link_name_id = known_link_name_id;
+      }
+    }
+
     const LirTypeRef ret_type = extern_return_type_ref(ret_ty);
     if (link_name_id != kInvalidLinkName) {
       auto it = extern_decl_link_name_map.find(link_name_id);

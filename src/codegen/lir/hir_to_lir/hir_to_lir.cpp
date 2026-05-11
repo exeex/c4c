@@ -886,8 +886,9 @@ static void finalize_module(LirModule& module,
     module.extern_decls.push_back(std::move(ed));
   };
 
-  // Convert extern declaration dedup state into the printer vector, filtering
-  // out functions defined in this TU by semantic link name when available.
+  // Convert extern declaration dedup state into the printer vector. LinkNameId
+  // entries are the authoritative path; the raw-name map is retained only for
+  // legacy import/output compatibility when complete link metadata was absent.
   for (const auto& [_, decl_info] : module.extern_decl_link_name_map) {
     push_extern_decl(decl_info);
   }

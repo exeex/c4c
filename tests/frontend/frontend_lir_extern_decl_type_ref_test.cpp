@@ -44,7 +44,7 @@ void push_recorded_extern_decl(c4c::codegen::lir::LirModule& module,
                                std::string_view name) {
   const auto it = module.extern_decl_name_map.find(std::string(name));
   expect_true(it != module.extern_decl_name_map.end(),
-              "record_extern_decl should populate the raw-name dedup map");
+              "record_extern_decl should populate the legacy raw-name compatibility map");
 
   c4c::codegen::lir::LirExternDecl decl;
   decl.name = it->second.name;
@@ -54,9 +54,30 @@ void push_recorded_extern_decl(c4c::codegen::lir::LirModule& module,
   module.extern_decls.push_back(std::move(decl));
 }
 
+void expect_link_name_id_preempts_legacy_raw_map() {
+  c4c::codegen::lir::LirModule module = make_struct_module();
+  const c4c::LinkNameId extern_pair_id =
+      module.link_names.intern("extern_pair");
+
+  module.record_extern_decl("extern_pair", "void", extern_pair_id);
+  module.record_extern_decl("extern_pair", "%struct.Pair");
+
+  expect_true(module.extern_decl_name_map.empty(),
+              "known LinkNameId should preempt legacy raw-name fallback");
+  const auto it = module.extern_decl_link_name_map.find(extern_pair_id);
+  expect_true(it != module.extern_decl_link_name_map.end(),
+              "known LinkNameId should remain the extern declaration authority");
+  expect_eq(it->second.return_type_str, "%struct.Pair",
+            "LinkNameId extern declaration should merge later raw-name return metadata");
+  expect_true(it->second.return_type.has_struct_name_id(),
+              "LinkNameId extern declaration should retain structured return metadata");
+}
+
 }  // namespace
 
 int main() {
+  expect_link_name_id_preempts_legacy_raw_map();
+
   c4c::codegen::lir::LirModule module = make_struct_module();
 
   module.record_extern_decl("extern_pair", "%struct.Pair");
