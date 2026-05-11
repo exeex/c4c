@@ -340,15 +340,30 @@ using HirTemplateNttpBindings = std::unordered_map<
     long long,
     HirTemplateParameterBindingKeyHash>;
 
-/// Legacy compatibility mirror keyed by rendered template parameter spelling.
-/// Keep this map in sync during migration, but do not add new semantic
-/// authority that depends only on the rendered parameter name.
+/// Owner: HIR template binding migration compatibility.
+/// Limitation: keyed only by rendered template parameter spelling; keep this
+/// map in sync during migration, but do not add new semantic authority that
+/// depends only on the rendered parameter name.
+/// Removal condition: all covered HIR type-binding creation, lookup,
+/// forwarding, and identity paths use complete HirTemplateParameterBindingKey
+/// metadata or explicitly no-metadata compatibility handoffs.
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
 
-/// Legacy compatibility mirror keyed by rendered NTTP parameter spelling.
+/// Owner: HIR template binding migration compatibility.
+/// Limitation: keyed only by rendered NTTP parameter spelling; complete
+/// owner-aware lookups must prefer HirTemplateNttpBindings and fail closed on
+/// complete structured misses instead of reopening this mirror.
+/// Removal condition: all covered HIR NTTP creation, lookup, forwarding, and
+/// identity paths use complete HirTemplateParameterBindingKey metadata or
+/// explicitly no-metadata compatibility handoffs.
 using NttpBindings = std::unordered_map<std::string, long long>;
 
-/// Legacy compatibility mirror keyed only by parameter TextId; not owner-aware.
+/// Owner: HIR template binding migration compatibility.
+/// Limitation: keyed only by parameter TextId; not owner-aware and therefore
+/// not sufficient for cross-owner semantic identity.
+/// Removal condition: parser/sema/HIR handoffs can always provide complete
+/// owner/index/domain metadata or explicitly no-metadata compatibility
+/// handoffs.
 using NttpTextBindings = std::unordered_map<TextId, long long>;
 
 [[nodiscard]] inline std::optional<int>
