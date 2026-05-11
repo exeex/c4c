@@ -8,36 +8,34 @@ Current Step Title: Validate and Tighten Compatibility Boundaries
 
 ## Just Finished
 
-Step 6 validation blocker repaired stale owned test fixtures that still wrote
-or asserted removed `TypeSpec::tag` compatibility payloads.
+Step 6 combined validation proof reran the backend LinkNameId authority,
+prealloc call contract, repaired structured-context fixture, and frontend HIR
+fixture coverage after the fixture repair and reviewer follow-up.
 
-`backend_prepare_structured_context_test` now seeds `TypeSpec::tag_text_id` for
-the structured signature drift parameter. `frontend_hir_tests` now builds its
-record, typedef, member lookup, template, destructor, constructor, and
-out-of-class-method fixtures through current structured owner/member metadata
-instead of retired rendered-tag carriers, while preserving the stale-vs-real
-owner assertions.
+The fresh combined proof cleared the stale fixture-only proof caveat from the
+post-fixture review for this Step 6 subset.
 
 ## Suggested Next
 
-Resume Step 6 proof or supervisor review now that the default build blocker in
-the owned test fixtures is cleared.
+Supervisor should decide whether this combined subset is enough for the current
+Step 6 slice or whether to escalate to broader backend/full-suite validation
+before any milestone or closure decision.
 
 ## Watchouts
 
-- The frontend fixture repairs intentionally keep stale rendered names present
-  where useful, but move the authoritative lookup path to `tag_text_id`,
-  `record_def`, owner keys, qualifier TextIds, member fields, and structured
-  NTTP metadata.
-- No production files or tests outside the delegated owned set were touched.
+- Reviewer still classified validation sufficiency as needing broader proof for
+  an acceptance boundary; this packet only proves the supervisor-selected
+  combined Step 6 subset.
+- No production files, tests, plan files, source ideas, or review artifacts were
+  touched in this validation-only packet.
 
 ## Proof
 
 Passed:
 
 ```sh
-{ cmake --build --preset default --target backend_prepare_structured_context_test frontend_hir_tests && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_structured_context|frontend_hir_tests)$'; } > test_after.log 2>&1
+{ cmake --build --preset default --target backend_lir_to_bir_notes_test backend_prepare_frame_stack_call_contract_test backend_prepare_structured_context_test frontend_hir_tests && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_prepare_frame_stack_call_contract|backend_prepare_structured_context|frontend_hir_tests)$'; } > test_after.log 2>&1
 ```
 
-Proof log: `test_after.log`. Result: build succeeded and 2/2 selected tests
+Proof log: `test_after.log`. Result: build succeeded and 4/4 selected tests
 passed.
