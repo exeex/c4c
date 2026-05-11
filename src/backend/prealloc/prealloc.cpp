@@ -147,6 +147,51 @@ namespace {
   return nullptr;
 }
 
+[[nodiscard]] bool module_has_symbol_link_name_id(const bir::Module& module,
+                                                  LinkNameId link_name_id) {
+  if (link_name_id == kInvalidLinkName) {
+    return false;
+  }
+  for (const auto& global : module.globals) {
+    if (global.link_name_id == link_name_id) {
+      return true;
+    }
+  }
+  return find_module_function_by_link_name_id(module, link_name_id) != nullptr;
+}
+
+[[nodiscard]] std::optional<std::string_view> resolve_symbol_pointer_name(
+    const bir::Module& module,
+    const bir::Value& value) {
+  if (value.pointer_symbol_link_name_id == kInvalidLinkName) {
+    if (value.kind == bir::Value::Kind::Named && !value.name.empty() && value.name.front() == '@') {
+      return value.name;
+    }
+    return std::nullopt;
+  }
+
+  const std::string_view semantic_name =
+      module.names.link_names.spelling(value.pointer_symbol_link_name_id);
+  if (semantic_name.empty() || !module_has_symbol_link_name_id(module, value.pointer_symbol_link_name_id)) {
+    return std::nullopt;
+  }
+  std::string_view raw_name = value.name;
+  if (!raw_name.empty() && raw_name.front() == '@') {
+    raw_name.remove_prefix(1);
+  }
+  if (!raw_name.empty() && raw_name != semantic_name) {
+    return std::nullopt;
+  }
+  return semantic_name;
+}
+
+[[nodiscard]] std::string display_symbol_pointer_name(std::string_view semantic_name) {
+  if (!semantic_name.empty() && semantic_name.front() == '@') {
+    return std::string(semantic_name);
+  }
+  return "@" + std::string(semantic_name);
+}
+
 struct DirectCalleeResolution {
   std::optional<std::string_view> name;
   const bir::Function* function = nullptr;
@@ -973,6 +1018,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .source_base_value_id = std::nullopt,
               .source_literal = std::nullopt,
               .source_symbol_name = std::nullopt,
+              .source_symbol_name_id = std::nullopt,
               .source_register_name = std::nullopt,
               .source_slot_id = std::nullopt,
               .source_stack_offset_bytes = std::nullopt,
@@ -1052,15 +1098,27 @@ void populate_call_plans(PreparedBirModule& prepared) {
                       register_bank_from_class(regalloc_value->register_class);
                 }
               }
-              if (!call->args[arg_index].name.empty() && call->args[arg_index].name.front() == '@') {
+              const auto symbol_name =
+                  resolve_symbol_pointer_name(prepared.module, call->args[arg_index]);
+              if (symbol_name.has_value()) {
                 arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
-                arg_plan.source_symbol_name = call->args[arg_index].name;
+                if (call->args[arg_index].pointer_symbol_link_name_id != kInvalidLinkName) {
+                  arg_plan.source_symbol_name_id = prepared.names.link_names.intern(*symbol_name);
+                  arg_plan.source_symbol_name = display_symbol_pointer_name(*symbol_name);
+                } else {
+                  arg_plan.source_symbol_name = std::string(*symbol_name);
+                }
               }
-            } else if (call->args[arg_index].kind == bir::Value::Kind::Named &&
-                       !call->args[arg_index].name.empty() &&
-                       call->args[arg_index].name.front() == '@') {
+            } else if (const auto symbol_name =
+                           resolve_symbol_pointer_name(prepared.module, call->args[arg_index]);
+                       symbol_name.has_value()) {
               arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
-              arg_plan.source_symbol_name = call->args[arg_index].name;
+              if (call->args[arg_index].pointer_symbol_link_name_id != kInvalidLinkName) {
+                arg_plan.source_symbol_name_id = prepared.names.link_names.intern(*symbol_name);
+                arg_plan.source_symbol_name = display_symbol_pointer_name(*symbol_name);
+              } else {
+                arg_plan.source_symbol_name = std::string(*symbol_name);
+              }
             } else if (call->args[arg_index].kind != bir::Value::Kind::Named) {
               arg_plan.source_encoding = PreparedStorageEncodingKind::Immediate;
               arg_plan.source_literal = call->args[arg_index];

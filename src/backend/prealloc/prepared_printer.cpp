@@ -62,6 +62,21 @@ std::string_view maybe_link_name(const PreparedNameTables& names, std::optional<
   return prepared_link_name(names, *id);
 }
 
+std::string source_symbol_name(const PreparedNameTables& names,
+                               const PreparedCallArgumentPlan& arg) {
+  if (arg.source_symbol_name_id.has_value()) {
+    const std::string_view semantic_name = prepared_link_name(names, *arg.source_symbol_name_id);
+    if (!semantic_name.empty() && semantic_name.front() == '@') {
+      return std::string(semantic_name);
+    }
+    return "@" + std::string(semantic_name);
+  }
+  if (arg.source_symbol_name.has_value()) {
+    return *arg.source_symbol_name;
+  }
+  return {};
+}
+
 const PreparedFrameSlot* find_frame_slot(const PreparedBirModule& module,
                                          PreparedFrameSlotId slot_id) {
   for (const auto& slot : module.stack_layout.frame_slots) {
@@ -176,8 +191,9 @@ void append_call_arg_source_summary(std::ostringstream& out,
                                     const PreparedNameTables& names,
                                     const PreparedCallArgumentPlan& arg) {
   out << storage_encoding_kind_name(arg.source_encoding);
-  if (arg.source_symbol_name.has_value()) {
-    out << ":" << *arg.source_symbol_name;
+  const std::string symbol_name = source_symbol_name(names, arg);
+  if (!symbol_name.empty()) {
+    out << ":" << symbol_name;
   } else if (arg.source_literal.has_value()) {
     out << ":" << render_value(*arg.source_literal);
   } else if (arg.source_base_value_name.has_value()) {
@@ -978,8 +994,12 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (arg.source_literal.has_value()) {
           out << " source_literal=" << render_value(*arg.source_literal);
         }
-        if (arg.source_symbol_name.has_value()) {
-          out << " source_symbol=" << *arg.source_symbol_name;
+        const std::string symbol_name = source_symbol_name(module.names, arg);
+        if (!symbol_name.empty()) {
+          out << " source_symbol=" << symbol_name;
+          if (arg.source_symbol_name_id.has_value()) {
+            out << " source_symbol_id=" << *arg.source_symbol_name_id;
+          }
         }
         if (arg.source_register_name.has_value()) {
           out << " source_reg=" << *arg.source_register_name;

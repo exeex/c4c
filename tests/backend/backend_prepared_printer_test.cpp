@@ -715,8 +715,10 @@ prepare::PreparedBirModule prepare_memory_return_call_dump_module() {
 prepare::PreparedBirModule prepare_call_argument_source_shape_dump_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
+  const c4c::LinkNameId extern_data_id = module.names.link_names.intern("extern_data");
   module.globals.push_back(bir::Global{
       .name = "extern_data",
+      .link_name_id = extern_data_id,
       .type = bir::TypeKind::I32,
       .is_extern = true,
       .size_bytes = 4,
@@ -821,7 +823,7 @@ prepare::PreparedBirModule prepare_call_argument_source_shape_dump_module() {
       .result = bir::Value::named(bir::TypeKind::I32, "tmp.call"),
       .callee = "extern_consume_ptr_pair",
       .args = {
-          bir::Value::named(bir::TypeKind::Ptr, "@extern_data"),
+          bir::Value::named_symbol_pointer("", extern_data_id),
           bir::Value::named(bir::TypeKind::Ptr, "arg.ptr"),
       },
       .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
@@ -2255,6 +2257,11 @@ int main() {
   if (!expect_contains(source_shape_dump,
                        "source_symbol=@extern_data",
                        "symbol-address argument detail payload")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(source_shape_dump,
+                       "source_symbol_id=",
+                       "symbol-address argument detail LinkNameId payload")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(source_shape_dump,

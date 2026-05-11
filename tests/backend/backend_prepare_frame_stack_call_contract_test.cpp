@@ -1460,8 +1460,10 @@ bir::Module make_stack_argument_slot_contract_module() {
 bir::Module make_call_argument_source_shape_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
+  const c4c::LinkNameId extern_data_id = module.names.link_names.intern("extern_data");
   module.globals.push_back(bir::Global{
       .name = "extern_data",
+      .link_name_id = extern_data_id,
       .type = bir::TypeKind::I32,
       .is_extern = true,
       .size_bytes = 4,
@@ -1566,7 +1568,7 @@ bir::Module make_call_argument_source_shape_module() {
       .result = bir::Value::named(bir::TypeKind::I32, "tmp.call"),
       .callee = "extern_consume_ptr_pair",
       .args = {
-          bir::Value::named(bir::TypeKind::Ptr, "@extern_data"),
+          bir::Value::named_symbol_pointer("", extern_data_id),
           bir::Value::named(bir::TypeKind::Ptr, "arg.ptr"),
       },
       .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
@@ -1597,6 +1599,64 @@ bir::Module make_call_argument_source_shape_module() {
       bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "tmp.call")};
   caller.blocks.push_back(std::move(entry));
 
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
+bir::Module make_call_argument_symbol_link_name_id_mismatch_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const c4c::LinkNameId extern_data_id = module.names.link_names.intern("extern_data");
+  module.globals.push_back(bir::Global{
+      .name = "extern_data",
+      .link_name_id = extern_data_id,
+      .type = bir::TypeKind::I32,
+      .is_extern = true,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Function callee;
+  callee.name = "extern_consume_ptr";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "value",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "call_argument_symbol_mismatch_contract";
+  caller.return_type = bir::TypeKind::Void;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "extern_consume_ptr",
+      .args = {bir::Value::named_symbol_pointer("@stale_extern_data", extern_data_id)},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(caller));
   return module;
 }
@@ -2980,7 +3040,10 @@ int check_call_argument_source_shape_contract() {
   const auto& symbol_arg = call_plan.arguments[0];
   if (symbol_arg.source_encoding != prepare::PreparedStorageEncodingKind::SymbolAddress ||
       !symbol_arg.source_symbol_name.has_value() ||
-      *symbol_arg.source_symbol_name != "@extern_data") {
+      *symbol_arg.source_symbol_name != "@extern_data" ||
+      !symbol_arg.source_symbol_name_id.has_value() ||
+      prepare::prepared_link_name(prepared.names, *symbol_arg.source_symbol_name_id) !=
+          "extern_data") {
     return fail("call-argument source-shape contract: call_plans lost symbol-address authority");
   }
 
@@ -2994,6 +3057,25 @@ int check_call_argument_source_shape_contract() {
       computed_arg.source_pointer_byte_delta != std::optional<std::int64_t>{4}) {
     return fail(
         "call-argument source-shape contract: call_plans lost computed-address base identity authority");
+  }
+
+  return 0;
+}
+
+int check_call_argument_symbol_link_name_id_mismatch_contract() {
+  const auto prepared = prepare_module(make_call_argument_symbol_link_name_id_mismatch_module());
+  const auto* call_plans =
+      find_call_plans_function(prepared, "call_argument_symbol_mismatch_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 1) {
+    return fail("call-argument symbol mismatch contract: missing prepared call plan");
+  }
+
+  const auto& arg = call_plans->calls.front().arguments.front();
+  if (arg.source_encoding == prepare::PreparedStorageEncodingKind::SymbolAddress ||
+      arg.source_symbol_name.has_value() || arg.source_symbol_name_id.has_value()) {
+    return fail(
+        "call-argument symbol mismatch contract: stale raw symbol was accepted over LinkNameId authority");
   }
 
   return 0;
@@ -4905,6 +4987,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_call_argument_source_shape_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_call_argument_symbol_link_name_id_mismatch_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_stack_argument_slot_contract(); rc != 0) {
