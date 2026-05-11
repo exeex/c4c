@@ -8,10 +8,13 @@ Current Step Title: Classify Route-Local and Generated Names
 
 ## Just Finished
 
-Step 3 - Classify Route-Local and Generated Names first packet is complete.
+Step 3 - Classify Route-Local and Generated Names second packet is complete.
 No implementation or test files were edited.
 
-Classification table:
+Backend route-local classification table from the first packet remains below,
+followed by the frontend/midend table added by this packet.
+
+Backend route-local classification table:
 
 | Owner/domain | File/local symbol or path | Class | Evidence | Local collision domain / stage boundary | Generator for generated names | Feed idea 169? |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -33,34 +36,54 @@ Classification table:
 | Prepared local analysis maps | `prealloc/out_of_ssa.cpp` `BlockAnalysis::{blocks_by_label,defs_by_name}`, local `blocks_by_label`; `prealloc/regalloc.cpp` `last_loaded_pointer_name_by_slot`, `direct_step_by_value_name`, `pointer_carriers` | `RL` / `CB` | Analysis maps key CFG and defs by raw strings or local ids to synchronize transformations; regalloc maps use `ValueNameId` for pointer carriers but still has a slot-name string map. | One prepared function/pass-local analysis; no source/link boundary. | Map keys inherited from BIR/prepared names; generated temps as above. | Yes for raw-string maps that synchronize structures; lower priority for already-typed `ValueNameId` maps. |
 | Register names and ABI storage strings | `prealloc/regalloc.cpp` `materialize_register_names`, `split_trailing_register_index`, call arg/result destination register helpers; `PreparedRegallocValue::assigned_register` | `DO` / `RL` | Register strings are target/backend storage spellings and final allocation/debug payload, not source semantic identity; occupied-register lists define local allocation resources. | Target-profile/register-bank local allocation domain; crosses into prepared printer/x86 emission. | Target profile register names and contiguous numeric expansion. | No for idea 169 route-local compiler identity, except keep separate from value identity in cleanup notes. |
 
+Frontend/midend route-local, generated, display, and bridge classification table:
+
+| Owner/domain | File/local symbol or path | Class | Evidence | Local collision domain / stage boundary | Generator for generated names | Feed idea 169 or other follow-up? |
+| --- | --- | --- | --- | --- | --- | --- |
+| Parser provisional source-name carriers | `src/frontend/parser/ast.hpp` `TypeSpec::{tag_text_id,qualifier_text_ids,record_def,deferred_member_type_*}`, `Node::{name,unqualified_name,unqualified_text_id,qualifier_text_ids,op,sval}` | `DD` / `CB` | Comments identify parser strings as diagnostics/display bridges while `TextId`, qualifier metadata, `record_def`, and AST role carry parser/sema authority; scalar literal strings preserve raw lexemes. | Parser-to-sema handoff; per-source spelling metadata, not route-local lowering identity. | Source spelling from lexer/parser; no compiler-generated name family. | No for idea 169; keep under structured-name bridge retirement if any rendered fallback reopens after complete metadata. |
+| Parser support rendered maps | `src/frontend/parser/parser_support.hpp`, `src/frontend/parser/impl/support.cpp` `resolve_record_type_spec`, `eval_const_int`, `resolve_typedef_chain`, `types_compatible_p` compatibility overloads | `CB` | Public comments require `record_def`/`TextId` overloads for new callers and state structured typedef misses must not recover through rendered fallback; compatibility overloads are for legacy/HIR proof paths. | Parser-local compatibility boundary for callers that lack `record_def`, `TextId`, or typed HIR bindings. | None. | No for idea 169; bridge-retirement follow-up, likely idea 168/170 depending on owner. |
+| Parser diagnostics/debug/rendering | `src/frontend/parser/impl/core.cpp` parse debug stack, `render_name_in_context`, `render_lookup_name_in_context`; `ast.hpp` `debug_string`, `ast_dump`, `operator_kind_mangled_name` | `DD` / `DO` | Debug and render helpers format parser metadata for traces, dumps, diagnostics, or operator spelling; comments warn not to split rendered qualified spelling for string-mirror compatibility. | Diagnostic/debug/output boundary; not lookup authority unless a caller feeds rendered text back into lookup. | Operator helper returns canonical output suffix for operator-shaped names; otherwise source spelling. | No for idea 169; only output/diagnostic unless later audit finds feedback into semantic lookup. |
+| Sema canonical type display/fallback names | `src/frontend/sema/canonical_symbol.cpp` `canonical_leaf_display_spelling`, `format_canonical_type`, `TemplateArgBindings::fallback_name_bindings`, ABI mangling helpers | `DD` / `CB` | Comments mark display/source spelling as non-authority; complete template parameter identity uses owner/index/text metadata, while fallback name bindings exist for incomplete metadata. | Sema canonicalization and ABI-text generation boundary. | ABI/type text renderer derives strings from canonical type and source display spellings. | Not idea 169; possible semantic/fallback cleanup belongs to structured template/name follow-up, not route-local temporary identity. |
+| Sema static integer enum lookup | `src/frontend/sema/type_utils.hpp` `StaticEvalIntEnumLookupInput::rendered_enum_consts`, `type_utils.cpp` `static_eval_int` | `CB` | Comment says rendered enum lookup is global/compatibility-only and lacks local/block enum scope lifetime; callers needing authority must use explicit scoped carriers. | Static-eval compatibility boundary; not route-local generated identity. | None. | No for idea 169; follow bridge-retirement/regression lane if rendered enum fallback remains reachable with complete scoped metadata. |
+| Sema/consteval interpreter locals | `src/frontend/sema/consteval.cpp` `InterpreterBindings::{by_name,by_text,by_key}`, `snapshot`, `restore`, `interp_block` `shadowed` | `RL` / `CB` | Comment says `by_name` is a no-metadata compatibility mirror while `by_text`/`by_key` carry interpreter-local authority; shadow snapshots are keyed by local declaration spelling for block-scope restoration. | One consteval interpreter invocation and nested block scopes; crosses only through `ConstEvalEnv` during evaluation. | Source local names; no generated compiler names. | Yes for idea 169: local consteval binding/shadow state is route-local and should retire raw `by_name` where metadata is complete. |
+| Sema/consteval call-env template mirrors | `src/frontend/sema/consteval.cpp` `bind_consteval_call_env`, `TypeBindings`, `NttpBindings`, `*_bindings_by_text`, `*_binding_keys_by_name` | `CB` | Comments state rendered type/NTTP maps are compatibility mirrors; text/key maps are authority when metadata exists, and complete structured misses fail closed. | Consteval call environment for one interpreted call/template instantiation. | Template parameter spellings from source params and defaults. | Not idea 169; use template binding/structured miss follow-up if any rendered map becomes authority. |
+| HIR function-scope locals, params, static locals | `src/frontend/hir/impl/lowerer.hpp` `FunctionCtx::{locals,params,static_globals,local_*_by_text_id,param_indices_by_text_id,static_global_ids_by_text_id,rendered_compat_*}`; `stmt/decl.cpp`, `stmt/range_for.cpp` inserts | `RL` / `CB` | `FunctionCtx` comments classify these as function-scope parser spelling maps, not module/global semantic lookup authority; text-id maps and ids carry structured authority while rendered compat sets fence fallback names. | One HIR function lowering context; crosses AST-to-HIR lowering and local expression resolution only. | Source local/param spellings plus generated hidden locals listed below. | Yes: this is the frontend/midend route-local cleanup surface most aligned with idea 169. |
+| HIR user labels and goto targets | `src/frontend/hir/impl/lowerer.hpp` `FunctionCtx::label_blocks`; `src/frontend/hir/impl/stmt/stmt.cpp` `NK_LABEL`, `NK_GOTO`; `hir_ir.hpp` `LabelAddrExpr`, `BlockId::as_label` | `RL` / `GT` | Lowering maps label spelling to `BlockId` inside one function; gotos resolve against that map; label-address expressions carry user label plus enclosing function id/name for blockaddress; `BlockId::as_label` generates `.LBB<N>` display labels. | One HIR function CFG; crosses HIR-to-LIR block lowering and final blockaddress rendering. | Source labels for user `label:`/`goto`; `BlockId::as_label()` emits `.LBB` plus block id. | Yes for raw user-label map; generated `.LBB<N>` is harmless display unless consumed as lookup authority. |
+| HIR hidden/generated local names | `src/frontend/hir/impl/stmt/decl.cpp` `__rref_tmp_<LocalId>`; `src/frontend/hir/impl/stmt/range_for.cpp` `__range_begin`, `__range_end`, range loop element locals | `GT` / `RL` | Lowering allocates hidden locals with `next_local_id()` and inserts their names into `ctx.locals`/`rendered_compat_local_names`; range helpers create fixed hidden local spellings in the same function scope. | One HIR function local namespace; can collide with user spellings if names are not typed/fenced. | `__rref_tmp_` plus `LocalId.value`; fixed `__range_begin`/`__range_end` names. | Yes: generated local names should be local ids first, rendered names only for dumps/final lowering. |
+| HIR template parameter binding mirrors | `src/frontend/hir/hir_ir.hpp` `TypeBindings`, `NttpBindings`, `NttpTextBindings`; `FunctionCtx::{tpl_bindings,nttp_bindings,pack_params}`; `templates/*` lookup sites | `CB` / `RL` | Type/Nttp binding comments explicitly call rendered maps migration compatibility and require complete `HirTemplateParameterBindingKey` metadata for authority; `pack_params` remains function/template-local by rendered pack name. | One template lowering/instantiation context, but can cross deferred HIR template materialization. | Source template parameter names; pack element helper names derive from pack params. | Mostly not idea 169; belongs to existing/known template binding cleanup unless `pack_params` is split as route-local lowering state. |
+| HIR rendered declaration/record indexes | `src/frontend/hir/hir_ir.hpp` `Module::{fn_index,global_index,struct_defs,template_defs,struct_def_owner_index}`, `find_*_by_name_legacy`, `classify_*_decl_lookup` | `CB` / `SA` | Comments call `fn_index`, `global_index`, and `struct_defs` rendered-name compatibility indexes; structured lookup, `LinkNameId`, concrete ids, and owner keys are authoritative when metadata is complete; complete structured misses do not reopen rendered lookup except explicit compatibility cases. | HIR module declaration/record lookup boundary; not route-local temporary identity. | Source/link-visible declaration spelling and mangled names from canonical symbol code. | No for idea 169; feed bridge-retirement/regression guard lanes if remaining compatibility is too broad. |
+| HIR specialization display keys | `src/frontend/hir/hir_ir.hpp` `SpecializationKey::canonical`, `SpecializationOwnerIdentity::display_name`, `HirRecordOwnerTemplateIdentity::specialization_key`, `format_type_for_specialization_display_key` | `DD` / `CB` | Comments state `canonical` is display/compatibility data and `HirRecordOwnerTemplateIdentity::specialization_key` is retained until record owners carry full structured specialization identity. | HIR template specialization identity/display boundary; owner/argument identity is structured, serialized string is mirror/fallback. | Display key renderer formats structured owner/argument data into canonical text. | Not idea 169; follow structured specialization identity cleanup. |
+| HIR final-output and ABI payloads | `src/frontend/hir/hir_ir.hpp` `Function::name`, `Function::link_name_id`, `GlobalVar::name`, `ConstevalCallInfo::fn_name`, `HirTemplateDef::mangled_name`; `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` `signature_text`, `spec-key` comments | `DO` / `CB` | Link-visible authority is carried by `LinkNameId` where available; rendered names and signature/spec text are consumed by dumps, LIR/LLVM output, compatibility scans, or compile-time diagnostics. | HIR-to-LIR/final output boundary; producer payload must not feed back as source semantic authority. | ABI mangling/canonical symbol helpers and HIR-to-LIR signature renderers. | No for idea 169; bridge-retirement lane should keep final-output scans fenced. |
+| HIR diagnostics/parity observations | `src/frontend/hir/hir_ir.hpp` `CompileTimeInfo::diagnostics`, `ModuleDeclLookupHit`, parity mismatch vectors, `HirRecordOwnerKey::debug_label`; `templates.cpp` deferred diagnostic formatter | `DD` | Diagnostic/parity vectors and debug labels describe lookup decisions and mismatches; they do not select semantic objects. | Inspection/diagnostic boundary after HIR lowering or compile-time normalization. | Debug label formatting from owner keys and rendered fallback. | No follow-up unless diagnostics are accidentally parsed as authority. |
+
 ## Suggested Next
 
-Continue Step 3 with the second route-local/generated-name packet focused on
-frontend and midend route-local/display names that were out of scope here:
-parser/sema/HIR local labels, diagnostic/display-only names, compatibility
-rendered maps, and any remaining final-output payloads that might be confused
-with semantic authority.
+Move to Step 4 with a compatibility-bridge retirement packet focused on the
+remaining rendered bridges that are not route-local: parser support overloads,
+HIR module declaration/record indexes, template/specialization rendered mirrors,
+and final-output scan boundaries.
 
 ## Watchouts
 
-- `ValueNameId`, `BlockLabelId`, and `SlotNameId` are the right kind of local
-  backend identity but still stage-local; do not promote them to `TextId` or
-  `LinkNameId`.
-- The strongest idea 169 candidates found here are raw-string maps that
-  synchronize multiple local structures: LIR-to-BIR `BlockLookup`/`CompareMap`,
-  BIR validation fallback label/slot/name lookup, prealloc `defs_by_name`,
-  `blocks_by_label`, slot-name maps, and generated phi/select names.
-- Final LLVM/BIR rendering remains output/diagnostic unless a path feeds the
-  rendered text back into lookup; this packet found compatibility bridges but
-  no new Step 3 `SA` source-semantic authority in these families.
-- String-pool/private labels are generated addressable data names, not source
-  string-literal text and not link-visible global authority.
+- The Step 3 route-local families that should feed idea 169 are now concrete:
+  backend `ValueNameId`/`BlockLabelId`/`SlotNameId` raw fallback maps, LIR/BIR
+  generated private data labels, HIR `FunctionCtx` raw local/param/static maps,
+  HIR `label_blocks`, consteval interpreter `by_name`, and generated hidden HIR
+  local names.
+- `TextId`, `LinkNameId`, owner keys, `FunctionId`, `GlobalId`, `LocalId`,
+  `BlockId`, and structured template/member keys are semantic or local typed
+  authorities; do not collapse route-local cleanup into source/link-visible ids.
+- Final LLVM/BIR/HIR rendering, ABI text, diagnostics, debug labels, and parity
+  reports remain output/display unless a caller feeds rendered text back into
+  lookup.
+- This packet found compatibility bridges and route-local raw maps but no new
+  parser/sema/HIR `SA` string family that should be fixed inside Step 3.
 
 ## Proof
 
-Classification/audit proof only; no tests were required because this packet
-made no implementation or behavior changes and found no tiny behavior-sensitive
-issue requiring execution proof. `test_after.log` was not updated.
+Focused audit replay only; no tests were required because this packet made no
+implementation or behavior changes and found no tiny behavior-sensitive issue.
+`test_after.log` was not updated.
 
 Commands run:
 
@@ -72,5 +95,20 @@ Commands run:
 
 `c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/prealloc/out_of_ssa.cpp build/compile_commands.json`
 
-All four proof commands completed successfully. Targeted follow-up inspection
-used `rg`/`sed` only and stayed within the packet's read scope.
+`rg -n --glob '!build*/**' --glob '!ideas/closed/**' --glob '!review/**' -e 'unordered_map<[^\n;>]*std::string' -e 'map<[^\n;>]*std::string' -e 'find\\([^\n)]*name' -e 'lookup\\([^\n)]*name' -e 'by_name' -e 'name_map' -e 'rendered' -e 'display' -e 'diagnostic' -e 'qualified_name' -e 'source_name' -e 'mangled_name' -e 'fresh' -e 'tmp' -e 'label' src/frontend src/codegen/lir/hir_to_lir`
+
+`rg -n 'unordered_map<.*std::string|std::map<.*std::string|_by_name|name_map|compat|rendered|display|diagnostic|label_blocks|local_text|local_names|params|locals|find\\(' src/frontend/parser src/frontend/sema src/frontend/hir/hir_ir.hpp src/frontend/hir/impl/lowerer.hpp src/frontend/hir/impl/stmt src/frontend/hir/impl/templates`
+
+`rg -n 'std::unordered_map<std::string|std::map<std::string|named|typedef|enum|labels?|goto|local|param|scope|diagnostic|display|rendered' src/frontend/sema/validate.cpp src/frontend/sema/canonical_symbol.cpp src/frontend/sema/consteval.cpp`
+
+`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/frontend/sema/consteval.cpp build/compile_commands.json`
+
+`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/frontend/hir/impl/stmt/stmt.cpp build/compile_commands.json`
+
+`c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/frontend/parser/impl/support.cpp build/compile_commands.json`
+
+The focused `rg`/`sed` replay and the three AST-backed symbol inspections above
+completed successfully. A header-only exploratory clang-tool invocation against
+`src/frontend/hir/impl/lowerer.hpp` missed an include path, so it was not used
+as proof; the successful compile-database queries and direct file inspection
+provided the needed confirmation.
