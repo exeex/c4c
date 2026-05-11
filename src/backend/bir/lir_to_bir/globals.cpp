@@ -132,6 +132,14 @@ bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
   return function_symbols.find_raw_symbol_link_name_id(raw_symbol_name).has_value();
 }
 
+bool is_known_function_global_address(const GlobalAddress& address,
+                                      const FunctionSymbolSet& function_symbols) {
+  if (address.link_name_id != kInvalidLinkName) {
+    return is_known_function_link_name_id(address.link_name_id, function_symbols);
+  }
+  return is_known_raw_function_symbol(address.global_name, function_symbols);
+}
+
 std::optional<GlobalAddress> resolve_known_global_address(std::string_view global_name,
                                                           GlobalTypes& global_types,
                                                           const FunctionSymbolSet& function_symbols,
@@ -158,6 +166,7 @@ std::optional<GlobalAddress> resolve_known_global_address(std::string_view globa
     }
     info.known_global_address = GlobalAddress{
         .global_name = info.initializer_symbol_name,
+        .link_name_id = info.initializer_function_link_name_id,
         .value_type = bir::TypeKind::Ptr,
         .byte_offset = 0,
     };
@@ -237,9 +246,15 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
 
       const auto target_it = global_types.find(address.global_name);
       if (target_it == global_types.end()) {
-        if (!is_known_raw_function_symbol(address.global_name, function_symbols) ||
-            address.byte_offset != 0) {
+        if (!is_known_function_global_address(address, function_symbols) || address.byte_offset != 0) {
           return false;
+        }
+        if (address.link_name_id == kInvalidLinkName) {
+          const auto link_name_id =
+              function_symbols.find_raw_symbol_link_name_id(address.global_name);
+          if (link_name_id.has_value()) {
+            address.link_name_id = *link_name_id;
+          }
         }
         address.value_type = bir::TypeKind::Ptr;
         continue;
@@ -399,6 +414,10 @@ std::optional<bir::Global> lower_minimal_global_impl(
       return std::nullopt;
     }
     aggregate.initializer_elements = *initializer_elements;
+    if (pointer_offsets.size() == 1 && global.initializer_function_link_name_ids.size() == 1) {
+      pointer_offsets.begin()->second.link_name_id =
+          global.initializer_function_link_name_ids.front();
+    }
     info->pointer_initializer_offsets = std::move(pointer_offsets);
   }
 

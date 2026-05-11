@@ -8,30 +8,41 @@ Current Step Title: Propagate LinkNameId Through LIR to BIR
 
 ## Just Finished
 
-Completed Step 4 LIR-to-BIR known-global-address authority fix in
-`src/backend/bir/lir_to_bir/globals.cpp`.
+Completed Step 4 LIR-to-BIR aggregate pointer-initializer and runtime
+global-address provenance authority fix across
+`src/backend/bir/lir_to_bir/`.
 
-`resolve_known_global_address` now treats a present initializer function
-`LinkNameId` as authoritative when deciding whether a pointer initializer names
-a known function. If the ID is valid but misses the known function-symbol set,
-the route no longer falls back to raw function-symbol spelling. The focused
-backend test keeps raw compatibility green for no-ID metadata and proves a
-valid ID miss with the same raw function spelling does not lower.
+`GlobalAddress` now carries `LinkNameId` provenance. Aggregate pointer
+initializer offsets propagate the single available initializer function
+`LinkNameId`, function-address checks prefer that ID over raw spelling, and
+runtime/local pointer provenance records preserve the resolved function ID when
+they must bridge from raw LIR global operands. Focused backend tests cover
+drifted aggregate function-field spelling and reject a valid aggregate
+initializer function `LinkNameId` miss that raw spelling would otherwise rescue.
 
 ## Suggested Next
 
-Continue Step 4 by auditing aggregate pointer-initializer offsets and runtime
-global-address provenance for any remaining raw function-symbol lookup that
-lacks structured `LinkNameId` authority.
+Continue Step 4 by auditing direct pointer argument/value alias routes where
+LIR operands still expose only raw `@symbol` text, then either thread structured
+operand identity or keep the bridge documented until LIR supplies it.
 
 ## Watchouts
 
-- Compatibility raw function lookup remains available when no initializer
-  function `LinkNameId` metadata is present.
-- This packet intentionally targets scalar pointer-global known-address
-  resolution; aggregate pointer offsets still use raw `GlobalAddress` spellings
-  and may need a separate metadata route before they can enforce the same
-  authority rule.
+- Compatibility bridge: direct `LirOperandKind::Global` function operands in
+  pointer values still enter LIR-to-BIR as raw `@symbol` text. Owner: LIR
+  operand metadata. Limitation: LIR-to-BIR can resolve and preserve the
+  function `LinkNameId` after raw lookup, but cannot make the operand spelling
+  itself non-authoritative until the operand carries structured identity.
+  Removal condition: replace raw operand lookup when LIR global operands expose
+  `LinkNameId` or equivalent symbol identity.
+- Compatibility bridge: aggregate pointer initializer metadata is a global-level
+  vector of function `LinkNameId`s, not a per-field mapping. Owner: LIR global
+  initializer metadata. Limitation: this packet can safely apply the ID when
+  exactly one aggregate pointer initializer offset and one initializer function
+  ID are present; multi-function aggregate initializers still require per-field
+  metadata before raw spelling can be fully removed. Removal condition:
+  introduce offset-aligned initializer function IDs and consume them when
+  populating `pointer_initializer_offsets`.
 
 ## Proof
 

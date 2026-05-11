@@ -13,6 +13,7 @@ namespace c4c::backend {
 using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
 using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
+using lir_to_bir_detail::is_known_function_global_address;
 using lir_to_bir_detail::is_known_raw_function_symbol;
 using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::lower_integer_type;
@@ -723,6 +724,7 @@ bool BirFunctionLowerer::lower_memory_load_inst(
               dynamic_global_pointer_arrays_,
               local_pointer_value_aliases_,
               global_types_,
+              function_symbols_,
               &value_aliases_,
               lowered_insts);
           dynamic_pointer_array_load.has_value()) {
@@ -805,7 +807,7 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
           local_indirect_pointer_slots.end();
       if (!preserve_loaded_pointer_provenance) {
         if (nested_global_it->second.byte_offset == 0 &&
-            is_known_raw_function_symbol(nested_global_it->second.global_name, function_symbols)) {
+            is_known_function_global_address(nested_global_it->second, function_symbols)) {
           (*value_aliases)[result] =
               bir::Value::named(bir::TypeKind::Ptr, "@" + nested_global_it->second.global_name);
           (*global_pointer_slots)[result] = nested_global_it->second;
@@ -930,13 +932,15 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
       const std::string global_name = stored_operand.str().substr(1);
       const auto global_it = global_types.find(global_name);
       if (global_it == global_types.end()) {
-        if (!is_known_raw_function_symbol(global_name, function_symbols)) {
+        const auto link_name_id = function_symbols.find_raw_symbol_link_name_id(global_name);
+        if (!link_name_id.has_value()) {
           return LocalSlotStoreResult::Failed;
         }
         local_pointer_slot_addresses->erase(ptr_it->second);
         local_slot_address_slots->erase(ptr_it->second);
         (*local_address_slots)[ptr_it->second] = GlobalAddress{
             .global_name = global_name,
+            .link_name_id = *link_name_id,
             .value_type = bir::TypeKind::Ptr,
             .byte_offset = 0,
         };
@@ -1243,7 +1247,7 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
         local_indirect_pointer_slots.find(slot) != local_indirect_pointer_slots.end();
     if (!preserve_loaded_pointer_provenance) {
       if (addr_it->second.byte_offset == 0 &&
-          is_known_raw_function_symbol(addr_it->second.global_name, function_symbols)) {
+          is_known_function_global_address(addr_it->second, function_symbols)) {
         (*value_aliases)[result] =
             bir::Value::named(bir::TypeKind::Ptr, "@" + addr_it->second.global_name);
         (*global_pointer_slots)[result] = addr_it->second;

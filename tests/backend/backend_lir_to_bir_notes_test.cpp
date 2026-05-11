@@ -574,6 +574,74 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
     return fail("valid initializer function LinkNameId miss should not fall back to raw symbol lookup");
   }
 
+  LirModule aggregate_module;
+  aggregate_module.link_name_texts = std::make_shared<c4c::TextTable>();
+  aggregate_module.link_names.attach_text_table(aggregate_module.link_name_texts.get());
+  aggregate_module.struct_names.attach_text_table(aggregate_module.link_name_texts.get());
+  aggregate_module.type_decls.push_back("%struct.fnslot = type { ptr }");
+  const c4c::LinkNameId aggregate_callee_id =
+      aggregate_module.link_names.intern("semantic_aggregate_callee");
+  const c4c::LinkNameId aggregate_slot_id =
+      aggregate_module.link_names.intern("semantic_aggregate_slot");
+
+  c4c::codegen::lir::LirExternDecl aggregate_callee;
+  aggregate_callee.name = "drifted_aggregate_callee_display";
+  aggregate_callee.link_name_id = aggregate_callee_id;
+  aggregate_callee.return_type_str = "void";
+  aggregate_callee.return_type = c4c::codegen::lir::LirTypeRef("void");
+  aggregate_module.extern_decls.push_back(std::move(aggregate_callee));
+
+  LirGlobal aggregate_slot;
+  aggregate_slot.name = "drifted_aggregate_slot_display";
+  aggregate_slot.link_name_id = aggregate_slot_id;
+  aggregate_slot.llvm_type = "%struct.fnslot";
+  aggregate_slot.init_text = "{ ptr @drifted_aggregate_callee_display }";
+  aggregate_slot.initializer_function_link_name_ids.push_back(aggregate_callee_id);
+  aggregate_slot.align_bytes = 8;
+  aggregate_module.globals.push_back(std::move(aggregate_slot));
+
+  auto aggregate_result = try_lower_to_bir_with_options(aggregate_module, BirLoweringOptions{});
+  if (!aggregate_result.module.has_value()) {
+    return fail("aggregate pointer initializer should use LinkNameId authority for function fields");
+  }
+
+  LirModule aggregate_conflict_module;
+  aggregate_conflict_module.link_name_texts = std::make_shared<c4c::TextTable>();
+  aggregate_conflict_module.link_names.attach_text_table(
+      aggregate_conflict_module.link_name_texts.get());
+  aggregate_conflict_module.struct_names.attach_text_table(
+      aggregate_conflict_module.link_name_texts.get());
+  aggregate_conflict_module.type_decls.push_back("%struct.fnslot = type { ptr }");
+  const c4c::LinkNameId aggregate_raw_shadow_id =
+      aggregate_conflict_module.link_names.intern("rendered_shadow");
+  const c4c::LinkNameId aggregate_missing_callee_id =
+      aggregate_conflict_module.link_names.intern("semantic_missing_aggregate_callee");
+  const c4c::LinkNameId aggregate_conflict_slot_id =
+      aggregate_conflict_module.link_names.intern("semantic_aggregate_conflict_slot");
+
+  c4c::codegen::lir::LirExternDecl aggregate_raw_shadow;
+  aggregate_raw_shadow.name = "raw_shadow_display";
+  aggregate_raw_shadow.link_name_id = aggregate_raw_shadow_id;
+  aggregate_raw_shadow.return_type_str = "void";
+  aggregate_raw_shadow.return_type = c4c::codegen::lir::LirTypeRef("void");
+  aggregate_conflict_module.extern_decls.push_back(std::move(aggregate_raw_shadow));
+
+  LirGlobal aggregate_conflict_slot;
+  aggregate_conflict_slot.name = "drifted_aggregate_conflict_slot_display";
+  aggregate_conflict_slot.link_name_id = aggregate_conflict_slot_id;
+  aggregate_conflict_slot.llvm_type = "%struct.fnslot";
+  aggregate_conflict_slot.init_text = "{ ptr @rendered_shadow }";
+  aggregate_conflict_slot.initializer_function_link_name_ids.push_back(
+      aggregate_missing_callee_id);
+  aggregate_conflict_slot.align_bytes = 8;
+  aggregate_conflict_module.globals.push_back(std::move(aggregate_conflict_slot));
+
+  auto aggregate_conflict_result =
+      try_lower_to_bir_with_options(aggregate_conflict_module, BirLoweringOptions{});
+  if (aggregate_conflict_result.module.has_value()) {
+    return fail("aggregate pointer initializer LinkNameId miss should not fall back to raw spelling");
+  }
+
   c4c::backend::bir::Module compatibility_module;
   compatibility_module.globals.push_back(c4c::backend::bir::Global{
       .name = "compat_ptr",

@@ -13,6 +13,7 @@ using GlobalAddress = BirFunctionLowerer::GlobalAddress;
 using GlobalPointerSlotKey = BirFunctionLowerer::GlobalPointerSlotKey;
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::GlobalInfo;
+using lir_to_bir_detail::is_known_function_global_address;
 using lir_to_bir_detail::is_known_raw_function_symbol;
 using lir_to_bir_detail::type_size_bytes;
 
@@ -83,7 +84,8 @@ std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_local_pointer
 
 std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_global_array_pointer_values(
     const DynamicGlobalPointerArrayAccess& access,
-    const GlobalTypes& global_types) {
+    const GlobalTypes& global_types,
+    const FunctionSymbolSet& function_symbols) {
   const auto global_it = global_types.find(access.global_name);
   if (global_it == global_types.end() || access.element_count == 0) {
     return std::nullopt;
@@ -99,6 +101,10 @@ std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_global_array_
     const auto init_it = global_it->second.pointer_initializer_offsets.find(offset);
     if (init_it == global_it->second.pointer_initializer_offsets.end() ||
         init_it->second.value_type != bir::TypeKind::Ptr || init_it->second.byte_offset != 0) {
+      return std::nullopt;
+    }
+    if (global_types.find(init_it->second.global_name) == global_types.end() &&
+        !is_known_function_global_address(init_it->second, function_symbols)) {
       return std::nullopt;
     }
     element_values.push_back(
@@ -153,11 +159,13 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_pointer_store_address(
     const std::string global_name = operand.str().substr(1);
     const auto global_it = global_types.find(global_name);
     if (global_it == global_types.end()) {
-      if (!is_known_raw_function_symbol(global_name, function_symbols)) {
+      const auto link_name_id = function_symbols.find_raw_symbol_link_name_id(global_name);
+      if (!link_name_id.has_value()) {
         return std::nullopt;
       }
       return GlobalAddress{
           .global_name = global_name,
+          .link_name_id = *link_name_id,
           .value_type = bir::TypeKind::Ptr,
           .byte_offset = 0,
       };

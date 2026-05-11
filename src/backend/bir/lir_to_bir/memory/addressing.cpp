@@ -687,6 +687,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_add
   const auto leaf_layout = lookup_addressing_layout(current_type, type_decls, structured_layouts);
   return GlobalAddress{
       .global_name = base_address.global_name,
+      .link_name_id = base_address.link_name_id,
       .value_type = leaf_layout.kind == AggregateTypeLayout::Kind::Scalar
                         ? leaf_layout.scalar_type
                         : bir::TypeKind::Void,

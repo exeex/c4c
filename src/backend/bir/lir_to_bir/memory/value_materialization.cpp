@@ -271,6 +271,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_dynamic_pointer_array_load(
     const DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
     const LocalPointerValueAliasMap& local_pointer_value_aliases,
     const GlobalTypes& global_types,
+    const FunctionSymbolSet& function_symbols,
     ValueMap* value_aliases,
     std::vector<bir::Inst>* lowered_insts) {
   auto record_selected_value = [&](const bir::Value& selected_value) -> bool {
@@ -299,7 +300,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_dynamic_pointer_array_load(
   if (const auto global_array_it = dynamic_global_pointer_arrays.find(std::string(ptr_name));
       global_array_it != dynamic_global_pointer_arrays.end()) {
     const auto element_values =
-        collect_global_array_pointer_values(global_array_it->second, global_types);
+        collect_global_array_pointer_values(
+            global_array_it->second, global_types, function_symbols);
     if (!element_values.has_value()) {
       return false;
     }

@@ -44,6 +44,7 @@ struct GlobalAddress {
   // LinkNameId-backed global resolution stores final spelling here because the
   // memory/provenance tables still bridge to raw LIR operands.
   std::string global_name;
+  LinkNameId link_name_id = kInvalidLinkName;
   bir::TypeKind value_type = bir::TypeKind::Void;
   std::size_t byte_offset = 0;
 };
@@ -258,6 +259,8 @@ bool is_known_function_link_name_id(LinkNameId link_name_id,
                                     const FunctionSymbolSet& function_symbols);
 bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
                                   const FunctionSymbolSet& function_symbols);
+bool is_known_function_global_address(const GlobalAddress& address,
+                                      const FunctionSymbolSet& function_symbols);
 
 }  // namespace lir_to_bir_detail
 
@@ -782,7 +785,8 @@ class BirFunctionLowerer {
       const LocalPointerValueAliasMap& local_pointer_value_aliases);
   static std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
       const DynamicGlobalPointerArrayAccess& access,
-      const GlobalTypes& global_types);
+      const GlobalTypes& global_types,
+      const FunctionSymbolSet& function_symbols);
   static void record_pointer_global_object_alias(
       std::string_view result_name,
       const lir_to_bir_detail::GlobalInfo& global_info,
@@ -1181,6 +1185,7 @@ class BirFunctionLowerer {
       const DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
       const LocalPointerValueAliasMap& local_pointer_value_aliases,
       const GlobalTypes& global_types,
+      const FunctionSymbolSet& function_symbols,
       ValueMap* value_aliases,
       std::vector<bir::Inst>* lowered_insts);
   std::optional<bir::Value> load_dynamic_pointer_value_array_value(
