@@ -1933,6 +1933,18 @@ const Node* Lowerer::find_struct_static_member_decl(
       }
       return owner_it->second;
     }
+    if (module_) {
+      if (const HirStructDef* structured =
+              module_->find_struct_def_by_owner_structured(owner_key->owner_key)) {
+        for (const auto& base_tag : structured->base_tags) {
+          if (const Node* from_base =
+                  find_struct_static_member_decl(base_tag, member)) {
+            return from_base;
+          }
+        }
+      }
+    }
+    return nullptr;
   }
   auto sit = struct_static_member_decls_.find(tag);
   if (sit != struct_static_member_decls_.end()) {
@@ -1942,11 +1954,13 @@ const Node* Lowerer::find_struct_static_member_decl(
       return mit->second;
     }
   }
-  auto dit = module_->struct_defs.find(tag);
-  if (dit != module_->struct_defs.end()) {
-    for (const auto& base_tag : dit->second.base_tags) {
-      if (const Node* from_base = find_struct_static_member_decl(base_tag, member))
-        return from_base;
+  if (module_) {
+    auto dit = module_->struct_defs.find(tag);
+    if (dit != module_->struct_defs.end()) {
+      for (const auto& base_tag : dit->second.base_tags) {
+        if (const Node* from_base = find_struct_static_member_decl(base_tag, member))
+          return from_base;
+      }
     }
   }
   return nullptr;
@@ -1958,8 +1972,8 @@ const Node* Lowerer::find_struct_static_member_decl(
     const std::string* rendered_member) const {
   if (!hir_struct_member_lookup_key_has_complete_metadata(key)) return nullptr;
   const auto owner_it = struct_static_member_decls_by_owner_.find(key);
-  if (owner_it == struct_static_member_decls_by_owner_.end()) return nullptr;
-  if (rendered_tag && rendered_member) {
+  if (owner_it != struct_static_member_decls_by_owner_.end() &&
+      rendered_tag && rendered_member) {
     auto sit = struct_static_member_decls_.find(*rendered_tag);
     if (sit != struct_static_member_decls_.end()) {
       auto mit = sit->second.find(*rendered_member);
@@ -1969,7 +1983,23 @@ const Node* Lowerer::find_struct_static_member_decl(
       }
     }
   }
-  return owner_it->second;
+  if (owner_it != struct_static_member_decls_by_owner_.end()) {
+    return owner_it->second;
+  }
+  if (!module_ || !module_->link_name_texts) return nullptr;
+  const std::string_view member_text =
+      module_->link_name_texts->lookup(key.member_text_id);
+  if (member_text.empty()) return nullptr;
+  const HirStructDef* structured =
+      module_->find_struct_def_by_owner_structured(key.owner_key);
+  if (!structured) return nullptr;
+  const std::string member(member_text);
+  for (const auto& base_tag : structured->base_tags) {
+    if (const Node* from_base = find_struct_static_member_decl(base_tag, member)) {
+      return from_base;
+    }
+  }
+  return nullptr;
 }
 
 std::optional<long long> Lowerer::find_struct_static_member_const_value(

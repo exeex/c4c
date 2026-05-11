@@ -3210,6 +3210,74 @@ void test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_ke
               "static member decl lookup should preserve rendered fallback when no owner key exists");
 }
 
+void test_hir_static_member_decl_lookup_rejects_rendered_fallback_after_owner_key_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef def;
+  def.tag = "OwnedStaticMiss";
+  def.tag_text_id = module.link_name_texts->intern("OwnedStaticMiss");
+  def.ns_qual.context_id = 19;
+  module.index_struct_def_owner(def, true);
+  module.struct_defs[def.tag] = def;
+
+  module.link_name_texts->intern("value");
+
+  c4c::Node stale_decl{};
+  stale_decl.kind = c4c::NK_DECL;
+  stale_decl.name = "value";
+  lowerer.struct_static_member_decls_[def.tag]["value"] = &stale_decl;
+
+  const c4c::Node* decl =
+      lowerer.find_struct_static_member_decl(def.tag, "value");
+
+  expect_true(decl == nullptr,
+              "static member decl lookup should reject rendered fallback after complete owner-key miss");
+  expect_true(lowerer.struct_static_member_decl_lookup_parity_checks_ == 0,
+              "owner-key static member decl misses should not consult rendered maps for parity");
+}
+
+void test_hir_static_member_decl_lookup_keeps_owner_key_base_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef base_def;
+  base_def.tag = "OwnedStaticBase";
+  base_def.tag_text_id = module.link_name_texts->intern("OwnedStaticBase");
+  base_def.ns_qual.context_id = 21;
+  module.index_struct_def_owner(base_def, true);
+  module.struct_defs[base_def.tag] = base_def;
+
+  c4c::hir::HirStructDef derived_def;
+  derived_def.tag = "OwnedStaticDerived";
+  derived_def.tag_text_id = module.link_name_texts->intern("OwnedStaticDerived");
+  derived_def.ns_qual.context_id = 21;
+  derived_def.base_tags.push_back(base_def.tag);
+  module.index_struct_def_owner(derived_def, true);
+  module.struct_defs[derived_def.tag] = derived_def;
+
+  const c4c::TextId member_text_id = module.link_name_texts->intern("value");
+  const c4c::hir::HirRecordOwnerKey base_owner_key =
+      c4c::hir::make_hir_record_owner_key(base_def);
+  const std::optional<c4c::hir::HirStructMemberLookupKey> base_member_key =
+      lowerer.make_struct_member_lookup_key(base_owner_key, member_text_id);
+  expect_true(base_member_key.has_value(),
+              "fixture should build complete base static-member key");
+
+  c4c::Node base_decl{};
+  base_decl.kind = c4c::NK_DECL;
+  base_decl.name = "value";
+  lowerer.struct_static_member_decls_by_owner_[*base_member_key] = &base_decl;
+
+  const c4c::Node* decl =
+      lowerer.find_struct_static_member_decl(derived_def.tag, "value");
+
+  expect_true(decl == &base_decl,
+              "static member decl owner-key miss should still search structured bases");
+}
+
 void test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spelling() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6533,6 +6601,8 @@ int main() {
   test_hir_static_member_const_lookup_structured_miss_keeps_base_fallback();
   test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_static_member_decl_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_static_member_decl_lookup_rejects_rendered_fallback_after_owner_key_miss();
+  test_hir_static_member_decl_lookup_keeps_owner_key_base_fallback();
   test_hir_member_symbol_lookup_prefers_owner_key_over_stale_rendered_spelling();
   test_hir_member_symbol_lookup_rejects_stale_rendered_after_record_def_miss();
   test_hir_member_symbol_lookup_rejects_stale_rendered_after_text_key_miss();
