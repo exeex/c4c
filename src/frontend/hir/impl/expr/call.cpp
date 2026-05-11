@@ -485,13 +485,11 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
           find_struct_method_mangled(tag, method_name, base_ts.is_const)) {
     CallExpr call{};
     std::string resolved_method = *resolved_method_opt;
-    const std::string base_key = tag + "::" + method_name;
-    auto ovit = ref_overload_set_.find(base_key);
-    if (ovit == ref_overload_set_.end()) {
-      ovit = ref_overload_set_.find(base_key + "_const");
-    }
-    if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
-      resolved_method = resolve_ref_overload(ovit->first, n, ctx);
+    if (const auto* overloads =
+            find_struct_ref_overload_set(tag, method_name, base_ts.is_const);
+        overloads && !overloads->empty()) {
+      resolved_method =
+          resolve_ref_overload_entries(*overloads, resolved_method, n, ctx);
     }
     // `resolved_method` is already the concrete overload body selected for this
     // call. Bind the direct-call carrier from that exact callee name instead of
@@ -697,12 +695,19 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
       diag += "'";
       throw std::runtime_error(diag);
     }
-      if (n->left && n->left->kind == NK_VAR && n->left->name &&
-          ref_overload_set_.count(n->left->name)) {
-        resolved_callee_name = resolve_ref_overload(n->left->name, n, ctx);
+    bool resolved_ref_overload = false;
+    if (n->left && n->left->kind == NK_VAR && n->left->name) {
+      const auto* overloads = find_free_ref_overload_set(n->left);
+      if (overloads && !overloads->empty()) {
+        resolved_callee_name =
+            resolve_ref_overload_entries(*overloads, n->left->name, n, ctx);
         DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
-        c.callee = append_expr(n->left, dr, direct_call_callee_type(*module_, dr, n->left->type));
-      } else {
+        c.callee = append_expr(
+            n->left, dr, direct_call_callee_type(*module_, dr, n->left->type));
+        resolved_ref_overload = true;
+      }
+    }
+    if (!resolved_ref_overload) {
       bool resolved_as_method = false;
       if (ctx && !ctx->method_struct_tag.empty() &&
           n->left && n->left->kind == NK_VAR && n->left->name) {

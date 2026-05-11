@@ -3468,6 +3468,16 @@ void Lowerer::lower_struct_def(const Node* sd) {
         e1.param_is_lvalue_ref.push_back(method->params[pi]->type.is_lvalue_ref);
       }
       ovset.push_back(std::move(e1));
+      if (has_struct_owner_key) {
+        HirStructMethodLookupKey overload_key;
+        overload_key.owner_key = struct_owner_key;
+        overload_key.method_text_id =
+            make_unqualified_text_id(method, module_->link_name_texts.get());
+        overload_key.is_const_method = method->is_const_method;
+        if (hir_struct_method_lookup_key_has_complete_metadata(overload_key)) {
+          ref_overload_set_by_owner_[overload_key] = ovset;
+        }
+      }
     }
     struct_methods_[key] = mangled;
     struct_method_link_name_ids_[key] = module_->link_names.intern(mangled);

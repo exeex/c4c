@@ -326,6 +326,7 @@ class Lowerer {
   };
 
   struct CtorOverload;
+  struct RefOverloadEntry;
 
   static bool is_lvalue_ref_ts(const TypeSpec& ts);
 
@@ -779,6 +780,19 @@ class Lowerer {
   std::string resolve_ref_overload(const std::string& base_name,
                                    const Node* call_node,
                                    const FunctionCtx* ctx = nullptr);
+  std::string resolve_ref_overload_entries(
+      const std::vector<RefOverloadEntry>& overloads,
+      const std::string& fallback_name,
+      const Node* call_node,
+      const FunctionCtx* ctx = nullptr);
+  const std::vector<RefOverloadEntry>* find_struct_ref_overload_set(
+      const std::string& tag,
+      const std::string& method,
+      bool is_const_obj) const;
+  std::optional<ModuleDeclLookupKey> make_ref_overload_function_lookup_key(
+      const Node* fn_or_ref) const;
+  const std::vector<RefOverloadEntry>* find_free_ref_overload_set(
+      const Node* callee) const;
 
   const Node* find_pending_method_by_mangled(
       const std::string& mangled_name) const;
@@ -1335,7 +1349,9 @@ class Lowerer {
     const Node* method_node;
   };
   std::unordered_map<std::string, DtorInfo> struct_destructors_;
-  // Ref-overload resolution: base function name → list of overload entries.
+  // Ref-overload resolution. The rendered map is retained for no-metadata
+  // free-function compatibility; struct-method overloads use the owner-key
+  // mirror whenever complete owner/method metadata is available.
   struct RefOverloadEntry {
     std::string mangled_name;
     std::vector<bool> param_is_rvalue_ref;
@@ -1344,7 +1360,14 @@ class Lowerer {
     bool method_is_rvalue_ref = false;
   };
   std::unordered_map<std::string, std::vector<RefOverloadEntry>> ref_overload_set_;
-  // Reverse mapping: AST Node* of overloaded function → mangled name.
+  std::unordered_map<HirStructMethodLookupKey, std::vector<RefOverloadEntry>,
+                     HirStructMethodLookupKeyHash>
+      ref_overload_set_by_owner_;
+  std::unordered_map<ModuleDeclLookupKey, std::vector<RefOverloadEntry>,
+                     ModuleDeclLookupKeyHash>
+      ref_overload_set_by_decl_;
+  // Reverse mapping by AST node identity; this is not rendered base-name
+  // authority and remains route-local to lowering already-selected nodes.
   std::unordered_map<const Node*, std::string> ref_overload_mangled_;
   // Marks lowering performed on behalf of the compile-time engine so pending
   // consteval nodes can preserve deferred-instantiation provenance.

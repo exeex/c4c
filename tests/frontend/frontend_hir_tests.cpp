@@ -809,6 +809,79 @@ void test_hir_ref_overload_grouping_rejects_tag_text_id_mismatch_without_owner_k
               "tag_text_id mismatch must not fall back to matching rendered tags");
 }
 
+void test_hir_ref_overload_free_lookup_prefers_decl_key_over_stale_base_name() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "free_ref_overload";
+  callee.unqualified_name = "free_ref_overload";
+  callee.unqualified_text_id = module.link_name_texts->intern("free_ref_overload");
+  callee.namespace_context_id = 41;
+
+  const std::optional<c4c::hir::ModuleDeclLookupKey> key =
+      lowerer.make_ref_overload_function_lookup_key(&callee);
+  expect_true(key.has_value(),
+              "free ref-overload fixture should have structured function metadata");
+
+  c4c::hir::Lowerer::RefOverloadEntry stale_entry;
+  stale_entry.mangled_name = "stale_free_ref_overload";
+  c4c::hir::Lowerer::RefOverloadEntry structured_entry;
+  structured_entry.mangled_name = "structured_free_ref_overload";
+  lowerer.ref_overload_set_["free_ref_overload"].push_back(stale_entry);
+  lowerer.ref_overload_set_by_decl_[*key].push_back(structured_entry);
+
+  const auto* overloads = lowerer.find_free_ref_overload_set(&callee);
+  expect_true(overloads != nullptr && overloads->size() == 1 &&
+                  (*overloads)[0].mangled_name == "structured_free_ref_overload",
+              "free ref-overload lookup should prefer declaration keys over stale rendered base names");
+}
+
+void test_hir_ref_overload_free_lookup_rejects_rendered_fallback_after_decl_key_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "missing_free_ref_overload";
+  callee.unqualified_name = "missing_free_ref_overload";
+  callee.unqualified_text_id =
+      module.link_name_texts->intern("missing_free_ref_overload");
+  callee.namespace_context_id = 42;
+
+  c4c::hir::Lowerer::RefOverloadEntry stale_entry;
+  stale_entry.mangled_name = "stale_free_ref_overload";
+  lowerer.ref_overload_set_["missing_free_ref_overload"].push_back(stale_entry);
+
+  const auto* overloads = lowerer.find_free_ref_overload_set(&callee);
+  expect_true(overloads == nullptr,
+              "free ref-overload lookup should reject rendered fallback after complete declaration-key miss");
+}
+
+void test_hir_ref_overload_free_lookup_keeps_rendered_fallback_without_decl_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "legacy_free_ref_overload";
+  callee.unqualified_text_id = c4c::kInvalidText;
+  callee.namespace_context_id = -1;
+
+  c4c::hir::Lowerer::RefOverloadEntry legacy_entry;
+  legacy_entry.mangled_name = "legacy_free_ref_overload";
+  lowerer.ref_overload_set_["legacy_free_ref_overload"].push_back(legacy_entry);
+
+  const auto* overloads = lowerer.find_free_ref_overload_set(&callee);
+  expect_true(overloads != nullptr && overloads->size() == 1 &&
+                  (*overloads)[0].mangled_name == "legacy_free_ref_overload",
+              "free ref-overload lookup should keep rendered fallback without structured function metadata");
+}
+
 void test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 namespace ns {
@@ -3716,6 +3789,91 @@ void test_hir_struct_method_lookup_rejects_rendered_fallback_after_owner_key_mis
               "method return-type lookup should reject rendered fallback after complete owner-key miss");
   expect_true(lowerer.struct_method_return_type_lookup_parity_checks_ == 0,
               "owner-key method return-type misses should not consult rendered maps for parity");
+}
+
+void test_hir_ref_overload_method_lookup_prefers_owner_key_over_stale_rendered_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 31;
+  const c4c::TextId owner_text =
+      module.link_name_texts->intern("StructuredRefOverloadOwner");
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+
+  c4c::hir::HirStructDef def;
+  def.tag = "RenderedRefOverloadOwner";
+  def.tag_text_id = owner_text;
+  def.ns_qual = owner_ns;
+  module.index_struct_def_owner(owner_key, def.tag, true);
+  module.struct_defs[def.tag] = def;
+
+  c4c::hir::HirStructMethodLookupKey method_key;
+  method_key.owner_key = owner_key;
+  method_key.method_text_id = module.link_name_texts->intern("method");
+  method_key.is_const_method = false;
+
+  c4c::hir::Lowerer::RefOverloadEntry stale_entry;
+  stale_entry.mangled_name = "stale_ref_overload";
+  c4c::hir::Lowerer::RefOverloadEntry structured_entry;
+  structured_entry.mangled_name = "structured_ref_overload";
+
+  lowerer.ref_overload_set_[def.tag + "::method"].push_back(stale_entry);
+  lowerer.ref_overload_set_by_owner_[method_key].push_back(structured_entry);
+
+  const auto* overloads =
+      lowerer.find_struct_ref_overload_set(def.tag, "method", false);
+  expect_true(overloads != nullptr && overloads->size() == 1 &&
+                  (*overloads)[0].mangled_name == "structured_ref_overload",
+              "method ref-overload lookup should prefer owner-key entries over stale rendered keys");
+}
+
+void test_hir_ref_overload_method_lookup_rejects_rendered_fallback_after_owner_key_miss() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 32;
+  const c4c::TextId owner_text =
+      module.link_name_texts->intern("MissingRefOverloadOwner");
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+
+  c4c::hir::HirStructDef def;
+  def.tag = "RenderedMissingRefOverloadOwner";
+  def.tag_text_id = owner_text;
+  def.ns_qual = owner_ns;
+  module.index_struct_def_owner(owner_key, def.tag, true);
+  module.struct_defs[def.tag] = def;
+  module.link_name_texts->intern("method");
+
+  c4c::hir::Lowerer::RefOverloadEntry stale_entry;
+  stale_entry.mangled_name = "stale_ref_overload";
+  lowerer.ref_overload_set_[def.tag + "::method"].push_back(stale_entry);
+
+  const auto* overloads =
+      lowerer.find_struct_ref_overload_set(def.tag, "method", false);
+  expect_true(overloads == nullptr,
+              "method ref-overload lookup should reject rendered fallback after complete owner-key miss");
+}
+
+void test_hir_ref_overload_method_lookup_keeps_rendered_fallback_without_owner_key() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::Lowerer::RefOverloadEntry legacy_entry;
+  legacy_entry.mangled_name = "legacy_ref_overload";
+  lowerer.ref_overload_set_["LegacyRendered::method"].push_back(legacy_entry);
+
+  const auto* overloads =
+      lowerer.find_struct_ref_overload_set("LegacyRendered", "method", false);
+  expect_true(overloads != nullptr && overloads->size() == 1 &&
+                  (*overloads)[0].mangled_name == "legacy_ref_overload",
+              "method ref-overload lookup should keep rendered fallback when owner metadata is absent");
 }
 
 void test_hir_struct_method_lookup_structured_miss_keeps_base_fallback() {
@@ -6899,6 +7057,9 @@ int main() {
   test_hir_ref_overload_grouping_rejects_partial_metadata_rendered_fallback();
   test_hir_ref_overload_grouping_prefers_tag_text_id_over_stale_tag_without_owner_key();
   test_hir_ref_overload_grouping_rejects_tag_text_id_mismatch_without_owner_key();
+  test_hir_ref_overload_free_lookup_prefers_decl_key_over_stale_base_name();
+  test_hir_ref_overload_free_lookup_rejects_rendered_fallback_after_decl_key_miss();
+  test_hir_ref_overload_free_lookup_keeps_rendered_fallback_without_decl_key();
   test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs();
   test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes();
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();
@@ -6959,6 +7120,9 @@ int main() {
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_struct_method_lookup_rejects_rendered_fallback_after_owner_key_miss();
+  test_hir_ref_overload_method_lookup_prefers_owner_key_over_stale_rendered_key();
+  test_hir_ref_overload_method_lookup_rejects_rendered_fallback_after_owner_key_miss();
+  test_hir_ref_overload_method_lookup_keeps_rendered_fallback_without_owner_key();
   test_hir_struct_method_lookup_structured_miss_keeps_base_fallback();
   test_hir_out_of_class_method_attachment_prefers_structured_owner_key();
   test_hir_out_of_class_method_skip_prefers_structured_owner_key();

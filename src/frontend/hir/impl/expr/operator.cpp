@@ -81,14 +81,21 @@ std::optional<ExprId> Lowerer::try_lower_rvalue_ref_storage_addr(
 std::string Lowerer::resolve_ref_overload(const std::string& base_name,
                                           const Node* call_node,
                                           const FunctionCtx* ctx) {
+  auto ovit = ref_overload_set_.find(base_name);
+  if (ovit == ref_overload_set_.end()) return {};
+  return resolve_ref_overload_entries(ovit->second, base_name, call_node, ctx);
+}
+
+std::string Lowerer::resolve_ref_overload_entries(
+    const std::vector<RefOverloadEntry>& overloads,
+    const std::string& fallback_name,
+    const Node* call_node,
+    const FunctionCtx* ctx) {
   auto expr_is_lvalue = [&](const Node* expr) -> bool {
     if (is_ast_lvalue(expr, ctx)) return true;
     if (auto ts = infer_call_result_type(ctx, expr)) return ts->is_lvalue_ref;
     return false;
   };
-  auto ovit = ref_overload_set_.find(base_name);
-  if (ovit == ref_overload_set_.end()) return {};
-  const auto& overloads = ovit->second;
   const Node* object_node =
       (call_node && call_node->left && call_node->left->kind == NK_MEMBER)
           ? call_node->left->left
@@ -133,7 +140,68 @@ std::string Lowerer::resolve_ref_overload(const std::string& base_name,
       best_score = score;
     }
   }
-  return best_name ? *best_name : base_name;
+  return best_name ? *best_name : fallback_name;
+}
+
+const std::vector<Lowerer::RefOverloadEntry>* Lowerer::find_struct_ref_overload_set(
+    const std::string& tag,
+    const std::string& method,
+    bool is_const_obj) const {
+  if (!module_) return nullptr;
+  const std::string base_key = tag + "::" + method;
+  const std::string const_key = base_key + "_const";
+  auto rendered_key_for = [&](bool is_const_method) -> const std::string& {
+    return is_const_method ? const_key : base_key;
+  };
+  bool rendered_fallback_allowed = true;
+  auto try_owner = [&](bool is_const_method)
+      -> const std::vector<RefOverloadEntry>* {
+    const auto owner_key =
+        make_struct_method_lookup_key(tag, method, is_const_method);
+    if (!owner_key) return nullptr;
+    rendered_fallback_allowed = false;
+    const auto owner_it = ref_overload_set_by_owner_.find(*owner_key);
+    if (owner_it == ref_overload_set_by_owner_.end()) return nullptr;
+    return &owner_it->second;
+  };
+  auto try_rendered = [&](bool is_const_method)
+      -> const std::vector<RefOverloadEntry>* {
+    const auto rendered_it = ref_overload_set_.find(rendered_key_for(is_const_method));
+    if (rendered_it == ref_overload_set_.end()) return nullptr;
+    return &rendered_it->second;
+  };
+  const bool preferred_const = is_const_obj;
+  const bool alternate_const = !is_const_obj;
+  if (const auto* local = try_owner(preferred_const)) return local;
+  if (const auto* local = try_owner(alternate_const)) return local;
+  if (rendered_fallback_allowed) {
+    if (const auto* local = try_rendered(preferred_const)) return local;
+    if (const auto* local = try_rendered(alternate_const)) return local;
+  }
+  auto dit = module_->struct_defs.find(tag);
+  if (dit != module_->struct_defs.end()) {
+    for (const auto& base_tag : dit->second.base_tags) {
+      if (const auto* inherited =
+              find_struct_ref_overload_set(base_tag, method, is_const_obj)) {
+        return inherited;
+      }
+    }
+  }
+  return nullptr;
+}
+
+const std::vector<Lowerer::RefOverloadEntry>* Lowerer::find_free_ref_overload_set(
+    const Node* callee) const {
+  if (!callee || !callee->name) return nullptr;
+  if (const std::optional<ModuleDeclLookupKey> key =
+          make_ref_overload_function_lookup_key(callee)) {
+    const auto structured_it = ref_overload_set_by_decl_.find(*key);
+    return structured_it == ref_overload_set_by_decl_.end()
+               ? nullptr
+               : &structured_it->second;
+  }
+  const auto rendered_it = ref_overload_set_.find(callee->name);
+  return rendered_it == ref_overload_set_.end() ? nullptr : &rendered_it->second;
 }
 
 const Node* Lowerer::find_pending_method_by_mangled(
@@ -194,10 +262,9 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   if (!resolved) return ExprId::invalid();
 
   std::string resolved_mangled = *resolved;
-  std::string base_key = owner_tag + "::" + op_method_name;
-  auto ovit = ref_overload_set_.find(base_key);
-  if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
-    const auto& overloads = ovit->second;
+  if (const auto* overloads =
+          find_struct_ref_overload_set(owner_tag, op_method_name, obj_ts.is_const);
+      overloads && !overloads->empty()) {
     auto expr_is_lvalue = [&](const Node* expr) -> bool {
       if (is_ast_lvalue(expr, ctx)) return true;
       if (auto ts = infer_call_result_type(ctx, expr)) return ts->is_lvalue_ref;
@@ -206,7 +273,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
     const bool object_is_lvalue = expr_is_lvalue(obj_node);
     const std::string* best_name = nullptr;
     int best_score = -1;
-    for (const auto& ov : overloads) {
+    for (const auto& ov : *overloads) {
       bool viable = true;
       int score = 0;
       if (ov.method_is_lvalue_ref && !object_is_lvalue) viable = false;

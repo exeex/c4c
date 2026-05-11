@@ -296,6 +296,26 @@ bool ref_overload_record_types_match_without_complete_owner_key(
 
 }  // namespace
 
+std::optional<ModuleDeclLookupKey> Lowerer::make_ref_overload_function_lookup_key(
+    const Node* fn_or_ref) const {
+  if (!module_ || !module_->link_name_texts || !fn_or_ref) return std::nullopt;
+  if (fn_or_ref->namespace_context_id < 0 ||
+      (fn_or_ref->unqualified_text_id == kInvalidText &&
+       (!fn_or_ref->unqualified_name || !fn_or_ref->unqualified_name[0]))) {
+    return std::nullopt;
+  }
+  TextId name_text_id = make_ast_node_unqualified_text_id_for_owner_key(
+      fn_or_ref, module_->link_name_texts.get());
+  if (name_text_id == kInvalidText && fn_or_ref->name && fn_or_ref->name[0]) {
+    name_text_id = module_->link_name_texts->intern(fn_or_ref->name);
+  }
+  if (name_text_id == kInvalidText) return std::nullopt;
+  const NamespaceQualifier ns_qual =
+      make_ast_node_ns_qual_for_owner_key(fn_or_ref, module_->link_name_texts.get());
+  return make_module_decl_lookup_key(
+      ModuleDeclKind::Function, ns_qual, name_text_id);
+}
+
 std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {
   std::vector<const Node*> items;
   std::function<void(const Node*)> flatten = [&](const Node* n) {
@@ -740,18 +760,32 @@ void Lowerer::materialize_hir_template_defs(Module& m) {
 void Lowerer::collect_ref_overloaded_free_functions(
     const std::vector<const Node*>& items) {
   std::unordered_map<std::string, const Node*> first_fn_decl;
+  std::unordered_map<ModuleDeclLookupKey, const Node*, ModuleDeclLookupKeyHash>
+      first_fn_decl_by_decl;
   for (const Node* item : items) {
     if (item->kind != NK_FUNCTION || !item->name || item->is_consteval ||
         item->n_template_params > 0 || item->is_explicit_specialization) {
       continue;
     }
     std::string fn_name = item->name;
-    auto prev_it = first_fn_decl.find(fn_name);
-    if (prev_it == first_fn_decl.end()) {
-      first_fn_decl[fn_name] = item;
-      continue;
+    const std::optional<ModuleDeclLookupKey> item_decl_key =
+        make_ref_overload_function_lookup_key(item);
+    const Node* prev = nullptr;
+    if (item_decl_key) {
+      auto prev_it = first_fn_decl_by_decl.find(*item_decl_key);
+      if (prev_it == first_fn_decl_by_decl.end()) {
+        first_fn_decl_by_decl[*item_decl_key] = item;
+        continue;
+      }
+      prev = prev_it->second;
+    } else {
+      auto prev_it = first_fn_decl.find(fn_name);
+      if (prev_it == first_fn_decl.end()) {
+        first_fn_decl[fn_name] = item;
+        continue;
+      }
+      prev = prev_it->second;
     }
-    const Node* prev = prev_it->second;
     if (prev->n_params != item->n_params) continue;
     bool has_ref_diff = false;
     bool base_match = true;
@@ -802,6 +836,9 @@ void Lowerer::collect_ref_overloaded_free_functions(
     }
     ovset.push_back(std::move(e1));
     ref_overload_mangled_[item] = fn_name + "__rref_overload";
+    if (item_decl_key) {
+      ref_overload_set_by_decl_[*item_decl_key] = ovset;
+    }
   }
 }
 
