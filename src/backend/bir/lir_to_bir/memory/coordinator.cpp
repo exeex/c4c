@@ -175,6 +175,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         if (global_it != global_types.end() && global_it->second.supports_linear_addressing) {
           global_address_ints[cast->result.str()] = GlobalAddress{
               .global_name = global_name,
+              .link_name_id = global_it->second.link_name_id,
               .value_type = global_it->second.value_type,
               .byte_offset = 0,
           };
@@ -184,6 +185,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             global_it->second.value_type == bir::TypeKind::Ptr) {
           global_object_address_ints[cast->result.str()] = GlobalAddress{
               .global_name = global_name,
+              .link_name_id = global_it->second.link_name_id,
               .value_type = bir::TypeKind::Ptr,
               .byte_offset = 0,
           };

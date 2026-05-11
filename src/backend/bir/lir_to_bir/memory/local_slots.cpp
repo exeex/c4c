@@ -962,6 +962,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_slot_address_slots->erase(ptr_it->second);
         (*local_address_slots)[ptr_it->second] = GlobalAddress{
             .global_name = global_name,
+            .link_name_id = global_it->second.link_name_id,
             .value_type = global_it->second.value_type,
             .byte_offset = 0,
         };

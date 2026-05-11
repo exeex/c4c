@@ -261,6 +261,7 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
       }
 
       if (target_it->second.supports_linear_addressing) {
+        address.link_name_id = target_it->second.link_name_id;
         if (address.value_type == bir::TypeKind::Void) {
           address.value_type = target_it->second.value_type;
         }
@@ -273,6 +274,7 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
       if (target_it->second.supports_direct_value &&
           target_it->second.value_type == bir::TypeKind::Ptr &&
           address.byte_offset == 0) {
+        address.link_name_id = target_it->second.link_name_id;
         address.value_type = bir::TypeKind::Ptr;
         continue;
       }

@@ -132,6 +132,7 @@ void BirFunctionLowerer::record_pointer_global_object_alias(
 
   global_object_pointer_slots[std::string(result_name)] = GlobalAddress{
       .global_name = global_info.initializer_symbol_name,
+      .link_name_id = pointee_it->second.link_name_id,
       .value_type = bir::TypeKind::Ptr,
       .byte_offset = 0,
   };
@@ -175,6 +176,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_pointer_store_address(
     }
     return GlobalAddress{
         .global_name = global_name,
+        .link_name_id = global_it->second.link_name_id,
         .value_type = global_it->second.value_type,
         .byte_offset = 0,
     };
@@ -314,6 +316,9 @@ static std::optional<GlobalAddress> resolve_linear_addressed_global_scalar_acces
 
   return GlobalAddress{
       .global_name = address.global_name,
+      .link_name_id = address.link_name_id != kInvalidLinkName
+                          ? address.link_name_id
+                          : global_it->second.link_name_id,
       .value_type = accessed_type,
       .byte_offset = address.byte_offset,
   };

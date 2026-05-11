@@ -963,7 +963,9 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         type_decls,
         structured_layouts_);
     if (resolved_address.has_value()) {
-      global_pointer_slots[gep.result.str()] = *resolved_address;
+      auto linked_address = *resolved_address;
+      linked_address.link_name_id = global_it->second.link_name_id;
+      global_pointer_slots[gep.result.str()] = std::move(linked_address);
       return true;
     }
     const auto dynamic_array = resolve_global_dynamic_pointer_array_access(

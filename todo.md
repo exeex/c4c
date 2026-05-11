@@ -8,33 +8,44 @@ Current Step Title: Propagate LinkNameId Through LIR to BIR
 
 ## Just Finished
 
-Completed Step 4 LIR-to-BIR aggregate pointer-initializer and runtime
-global-address provenance authority fix across
-`src/backend/bir/lir_to_bir/`.
+Continued Step 4 by auditing direct pointer argument/value alias routes where
+LIR still exposes raw `@symbol` operands.
 
-`GlobalAddress` now carries `LinkNameId` provenance. Aggregate pointer
-initializer offsets propagate the single available initializer function
-`LinkNameId`, function-address checks prefer that ID over raw spelling, and
-runtime/local pointer provenance records preserve the resolved function ID when
-they must bridge from raw LIR global operands. Focused backend tests cover
-drifted aggregate function-field spelling and reject a valid aggregate
-initializer function `LinkNameId` miss that raw spelling would otherwise rescue.
+Known-global provenance records now keep the resolved global `LinkNameId` when
+direct raw LIR operands are admitted through local pointer slots, global
+provenance stores, pointer-object aliases, direct global GEPs, pointer-to-int
+address aliases, and linear addressed global scalar accesses. Direct function
+pointer argument/value aliases remain compatibility bridges because the LIR
+operand and BIR pointer value carriers do not have per-value `LinkNameId`
+metadata.
 
 ## Suggested Next
 
-Continue Step 4 by auditing direct pointer argument/value alias routes where
-LIR operands still expose only raw `@symbol` text, then either thread structured
-operand identity or keep the bridge documented until LIR supplies it.
+Continue Step 4 by auditing remaining non-direct pointer carriers that build
+`bir::Value::named(ptr, "@symbol")`, especially aggregate copy/materialization
+paths, and either thread existing `GlobalAddress` identity through them or
+record the no-metadata bridge.
 
 ## Watchouts
 
-- Compatibility bridge: direct `LirOperandKind::Global` function operands in
-  pointer values still enter LIR-to-BIR as raw `@symbol` text. Owner: LIR
-  operand metadata. Limitation: LIR-to-BIR can resolve and preserve the
-  function `LinkNameId` after raw lookup, but cannot make the operand spelling
-  itself non-authoritative until the operand carries structured identity.
-  Removal condition: replace raw operand lookup when LIR global operands expose
-  `LinkNameId` or equivalent symbol identity.
+- Compatibility bridge: direct `LirOperandKind::Global` function operands used
+  as pointer argument values still enter LIR-to-BIR as raw `@symbol` text.
+  Owner: LIR operand metadata and BIR pointer-value identity. Limitation:
+  `lower_call_pointer_arg_value()` and
+  `resolve_local_aggregate_pointer_value_alias()` can validate the symbol
+  against function tables, but `bir::Value::named(TypeKind::Ptr, "@symbol")`
+  has no field for `LinkNameId`, so the lowered argument value remains spelling
+  carried. Removal condition: add structured symbol identity to LIR global
+  operands or BIR pointer values, then consume it in direct pointer argument
+  lowering.
+- Compatibility bridge: direct pointer stores of function operands still use
+  raw LIR global spelling as the lookup key before recording `GlobalAddress`.
+  Owner: LIR operand metadata. Limitation: LIR-to-BIR now records the recovered
+  function `LinkNameId` in `GlobalAddress`, but the initial store operand
+  lookup cannot avoid raw text until the operand itself carries identity.
+  Removal condition: replace raw function lookup in
+  `resolve_pointer_store_address()` and local-slot pointer stores when LIR
+  global operands expose `LinkNameId` or equivalent symbol identity.
 - Compatibility bridge: aggregate pointer initializer metadata is a global-level
   vector of function `LinkNameId`s, not a per-field mapping. Owner: LIR global
   initializer metadata. Limitation: this packet can safely apply the ID when
