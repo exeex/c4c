@@ -197,12 +197,10 @@ void test_module_decl_lookup_records_each_authority() {
   c4c::TextTable& texts = *module.link_name_texts;
 
   const c4c::TextId structured_fn_text = texts.intern("structured_fn");
-  const c4c::TextId legacy_fn_text = texts.intern("legacy_fn");
   const c4c::TextId incomplete_qualified_fn_text =
       texts.intern("incomplete_qualified_fn");
   const c4c::TextId link_fn_text = texts.intern("link_fn");
   const c4c::TextId structured_global_text = texts.intern("structured_global");
-  const c4c::TextId legacy_global_text = texts.intern("legacy_global");
   const c4c::TextId incomplete_qualified_global_text =
       texts.intern("incomplete_qualified_global");
   const c4c::TextId concrete_global_text = texts.intern("concrete_global");
@@ -245,10 +243,10 @@ void test_module_decl_lookup_records_each_authority() {
 
   c4c::hir::DeclRef legacy_fn_ref;
   legacy_fn_ref.name = "legacy_fn";
-  legacy_fn_ref.name_text_id = legacy_fn_text;
+  legacy_fn_ref.name_text_id = c4c::kInvalidText;
   const c4c::hir::Function* legacy_fn = module.resolve_function_decl(legacy_fn_ref);
   expect_true(legacy_fn != nullptr && legacy_fn->id.value == 1,
-              "function decl-ref without a structured key hit should keep rendered fallback");
+              "function decl-ref without declaration metadata should keep rendered fallback");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
                       "legacy_fn", 1),
@@ -295,11 +293,11 @@ void test_module_decl_lookup_records_each_authority() {
 
   c4c::hir::DeclRef legacy_global_ref;
   legacy_global_ref.name = "legacy_global";
-  legacy_global_ref.name_text_id = legacy_global_text;
+  legacy_global_ref.name_text_id = c4c::kInvalidText;
   const c4c::hir::GlobalVar* legacy_global =
       module.resolve_global_decl(legacy_global_ref);
   expect_true(legacy_global != nullptr && legacy_global->id.value == 1,
-              "global decl-ref without a structured key hit should keep rendered fallback");
+              "global decl-ref without declaration metadata should keep rendered fallback");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
                       "legacy_global", 1),
@@ -451,6 +449,50 @@ void test_stale_rendered_names_do_not_override_authoritative_decl_lookup() {
   expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Global,
                            "stale_global_name", 23, 20),
               "global link-name disagreement should record legacy mismatch");
+}
+
+void test_complete_decl_lookup_miss_rejects_stale_rendered_indexes() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId stale_fn_text = texts.intern("stale_rendered_fn");
+  const c4c::TextId missing_fn_text = texts.intern("missing_structured_fn");
+  const c4c::TextId stale_global_text = texts.intern("stale_rendered_global");
+  const c4c::TextId missing_global_text =
+      texts.intern("missing_structured_global");
+  const c4c::hir::NamespaceQualifier other_ns = make_ns(texts, "other");
+
+  add_function(module, c4c::hir::FunctionId{30}, "stale_rendered_fn",
+               stale_fn_text);
+  add_function(module, c4c::hir::FunctionId{31}, "other::missing_structured_fn",
+               missing_fn_text, c4c::kInvalidLinkName, other_ns);
+  add_global(module, c4c::hir::GlobalId{40}, "stale_rendered_global",
+             stale_global_text);
+  add_global(module, c4c::hir::GlobalId{41}, "other::missing_structured_global",
+             missing_global_text, c4c::kInvalidLinkName, other_ns);
+
+  c4c::hir::DeclRef fn_ref;
+  fn_ref.name = "stale_rendered_fn";
+  fn_ref.name_text_id = missing_fn_text;
+  const c4c::hir::Function* fn = module.resolve_function_decl(fn_ref);
+  expect_true(fn == nullptr,
+              "complete function declaration-key miss must not use rendered fn_index");
+  expect_true(!has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                       "stale_rendered_fn", 30),
+              "complete function declaration-key miss must not record legacy rendered authority");
+
+  c4c::hir::DeclRef global_ref;
+  global_ref.name = "stale_rendered_global";
+  global_ref.name_text_id = missing_global_text;
+  const c4c::hir::GlobalVar* global = module.resolve_global_decl(global_ref);
+  expect_true(global == nullptr,
+              "complete global declaration-key miss must not use rendered global_index");
+  expect_true(!has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                       "stale_rendered_global", 40),
+              "complete global declaration-key miss must not record legacy rendered authority");
 }
 
 void test_direct_call_callee_lookup_uses_authoritative_decl_identity() {
@@ -5865,6 +5907,7 @@ void test_lower_non_method_incomplete_structured_method_metadata_rejects_rendere
 int main() {
   test_module_decl_lookup_records_each_authority();
   test_stale_rendered_names_do_not_override_authoritative_decl_lookup();
+  test_complete_decl_lookup_miss_rejects_stale_rendered_indexes();
   test_direct_call_callee_lookup_uses_authoritative_decl_identity();
   test_operator_callee_lookup_uses_authoritative_decl_identity();
   test_range_for_method_callee_lookup_uses_authoritative_decl_identity();

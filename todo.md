@@ -8,32 +8,33 @@ Current Step Title: Process Remaining Module and Compile-Time Registries
 
 ## Just Finished
 
-Completed plan Step 4 regression repair for compile-time consteval lookup:
-`CompileTimeState::find_consteval_def` now uses consteval symbol identity for
-definition/reference lookup, so `NK_VAR` call references match registered
-`NK_FUNCTION` consteval definitions without reopening rendered fallback after
-complete structured misses.
+Completed plan Step 4 Module declaration lookup fencing: `Module`
+function/global resolution now rejects rendered `fn_index`/`global_index`
+fallback when a complete structured declaration-key miss belongs to the
+structured declaration registry domain, while preserving LinkNameId,
+ConcreteGlobalId, structured hits, and explicit no-metadata rendered
+compatibility.
 
-Tightened compile-time registry completeness so TextId-only keys without
-namespace metadata remain explicit compatibility cases, and extended
-`frontend_hir_tests` coverage for consteval call-reference identity plus
-no-domain consteval compatibility.
+Extended focused HIR lookup coverage for function and global stale-rendered
+collisions after complete structured declaration-key misses.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 4 regression slice, then continue
-with the next remaining module-level compile-time registry handoff.
+Supervisor can review and commit this Step 4 Module registry fencing slice,
+then decide whether any remaining compile-time registry handoff is still
+needed.
 
 ## Watchouts
 
-The fix intentionally keeps complete consteval symbol misses fenced: rendered
-lookup is reached only when structured key metadata is absent and the TextId
-compatibility map does not authoritatively miss.
+Generated helper names can still reach rendered compatibility when their
+TextId does not belong to the structured declaration registry domain; this
+keeps existing template-call helper LinkNameId carrier tests passing without
+reopening fallback for stale source declaration-key collisions.
 
 ## Proof
 
 Ran the delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|cpp_positive_sema_static_assert_consteval_runtime_cpp)$' > test_after.log 2>&1`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$' > test_after.log 2>&1`.
 
-Result: passed. `test_after.log` contains passing `frontend_hir_tests` and
-`cpp_positive_sema_static_assert_consteval_runtime_cpp` ctest results.
+Result: passed. `test_after.log` contains the passing `frontend_hir_tests`
+ctest result.

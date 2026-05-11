@@ -2660,6 +2660,15 @@ struct Module {
     return it == fn_structured_index.end() ? nullptr : find_function(it->second);
   }
 
+  [[nodiscard]] bool has_function_decl_structured_text(TextId declaration_text_id) const {
+    if (declaration_text_id == kInvalidText) return false;
+    return std::any_of(
+        fn_structured_index.begin(), fn_structured_index.end(),
+        [&](const auto& entry) {
+          return entry.first.declaration_text_id == declaration_text_id;
+        });
+  }
+
   void record_function_decl_lookup_parity_mismatch(
       const DeclRef& ref, const Function& structured, const Function& legacy) const {
     record_decl_lookup_parity_mismatch(
@@ -2684,6 +2693,10 @@ struct Module {
       return ModuleDeclLookupHit{
           ModuleDeclKind::Function, ModuleDeclLookupAuthority::Structured, ref.name,
           structured->id.value};
+    }
+    const auto key = make_function_decl_lookup_key(ref);
+    if (key && has_function_decl_structured_text(key->declaration_text_id)) {
+      return std::nullopt;
     }
     if (legacy) {
       return ModuleDeclLookupHit{
@@ -2776,6 +2789,15 @@ struct Module {
     return it == global_structured_index.end() ? nullptr : find_global(it->second);
   }
 
+  [[nodiscard]] bool has_global_decl_structured_text(TextId declaration_text_id) const {
+    if (declaration_text_id == kInvalidText) return false;
+    return std::any_of(
+        global_structured_index.begin(), global_structured_index.end(),
+        [&](const auto& entry) {
+          return entry.first.declaration_text_id == declaration_text_id;
+        });
+  }
+
   void record_global_decl_lookup_parity_mismatch(
       const DeclRef& ref, const GlobalVar& structured, const GlobalVar& legacy) const {
     record_decl_lookup_parity_mismatch(
@@ -2807,6 +2829,10 @@ struct Module {
       return ModuleDeclLookupHit{
           ModuleDeclKind::Global, ModuleDeclLookupAuthority::Structured, ref.name,
           structured->id.value};
+    }
+    const auto key = make_global_decl_lookup_key(ref);
+    if (key && has_global_decl_structured_text(key->declaration_text_id)) {
+      return std::nullopt;
     }
     if (legacy) {
       return ModuleDeclLookupHit{
