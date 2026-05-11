@@ -8,25 +8,29 @@ Current Step Title: Add BIR Pointer Value Identity for Symbol-Carrying Values
 
 ## Just Finished
 
-Step 5 first narrow slice is implemented.
+Step 5 aggregate/store pointer-value identity slice is implemented.
 
-`bir::Value` now has `pointer_symbol_link_name_id` plus
-`Value::named_symbol_pointer()` for named pointer values that denote
-link-visible globals/functions. Direct function pointer call arguments now set
-the carrier from `FunctionSymbolSet`, byval global aggregate call arguments set
-it from `GlobalInfo::link_name_id`, and synthesized dynamic global pointer-array
-values preserve the `GlobalAddress::link_name_id` they were resolved from.
+Aggregate pointer initializer element values now reuse the resolved
+`GlobalAddress::link_name_id` through a byte-offset to initializer-element index
+bridge, so covered function and global pointer fields publish an ID-backed
+`bir::Value` instead of remaining display-only `@symbol` values. Direct pointer
+stores of known function and global symbols now build ID-backed stored pointer
+values before local/global/provenance store routes consume them, and local
+pointer-slot reload aliases recover the same carrier for subsequent pointer
+value uses.
 
-`backend_lir_to_bir_notes_test` now covers one direct function pointer value and
-one byval global pointer route, including equality checks that prove the
-structured carrier is not equivalent to raw display-only `@symbol` spelling.
+`backend_lir_to_bir_notes_test` now covers aggregate initializer element
+carriers for one function pointer field and one global pointer field, direct
+local pointer stores for function and global symbols, and store/load recovery
+into a later call argument. The assertions include equality checks proving these
+values are not equivalent to raw display-only pointer values.
 
 ## Suggested Next
 
-Continue Step 5 by extending the new pointer-value carrier into aggregate
-initializer element values and pointer stores, then add verifier coverage for
-pointer-value `LinkNameId` mismatches before moving to Step 6 backend
-preparation.
+Continue Step 5 by adding verifier coverage for pointer-value
+`LinkNameId`/display-name mismatches on ID-backed `bir::Value` carriers, then
+decide whether any remaining compatibility bridges are narrow enough to carry
+into Step 6 backend preparation.
 
 ## Watchouts
 
@@ -51,15 +55,12 @@ preparation.
   metadata before raw spelling can be fully removed. Removal condition:
   introduce offset-aligned initializer function IDs and consume them when
   populating `pointer_initializer_offsets`.
-- Compatibility bridge: aggregate initializer element values still render
-  pointer fields as `bir::Value::named(TypeKind::Ptr, "@symbol")` even when
-  `lower_aggregate_initializer_recursive()` records the same field in
-  `pointer_initializer_offsets`. Owner: BIR aggregate initializer value model.
-  Limitation: semantic identity is preserved in the `GlobalAddress` side table
-  used by lowering/provenance, but the public initializer element carrier has no
-  per-element `LinkNameId`. Removal condition: add structured pointer identity
-  to BIR initializer elements or replace raw pointer initializer values with an
-  ID-backed carrier consumed by validation and backend preparation.
+- Compatibility bridge: aggregate initializer element values now receive
+  `LinkNameId` through `GlobalInfo::pointer_initializer_value_indices`, which is
+  derived while parsing the current flattened initializer element vector. Owner:
+  BIR aggregate initializer value model. Limitation: this is still a bridge
+  from byte offsets to flattened value indices; a future initializer element
+  model with explicit offsets would remove that coupling.
 - Compatibility bridge: byval aggregate call arguments that pass an addressable
   global now lower to `bir::Value::named_symbol_pointer()` with the target
   global `LinkNameId`. Limitation: this is proven for direct byval global
@@ -69,6 +70,11 @@ preparation.
   pointer initializer offsets now materializes ID-backed arm values from
   `GlobalAddress::link_name_id`. Limitation: the selected value is still a
   plain `SelectInst` result without per-arm semantic validation in the verifier.
+- Compatibility bridge: direct pointer stores of function/global LIR operands
+  now preserve `LinkNameId` on the BIR stored value when the raw operand can be
+  resolved through `FunctionSymbolSet` or `GlobalTypes`. Limitation: the initial
+  LIR store operand is still textual; drifted raw store values cannot be
+  repaired until LIR operands carry symbol identity directly.
 
 ## Proof
 

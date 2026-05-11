@@ -71,6 +71,7 @@ struct GlobalInfo {
   // Aggregate pointer-initializer fields are keyed by byte offset, not by
   // string spelling.
   std::unordered_map<std::size_t, GlobalAddress> pointer_initializer_offsets;
+  std::unordered_map<std::size_t, std::size_t> pointer_initializer_value_indices;
 };
 
 // GlobalTypes and TypeDeclMap are unresolved LIR-boundary tables keyed by the
@@ -229,13 +230,15 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
     std::string_view init_text,
     std::string_view type_text,
     const TypeDeclMap& type_decls,
-    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets);
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
+    std::unordered_map<std::size_t, std::size_t>* pointer_value_indices = nullptr);
 std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
     std::string_view init_text,
     std::string_view type_text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts,
-    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets);
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
+    std::unordered_map<std::size_t, std::size_t>* pointer_value_indices = nullptr);
 
 std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlobal& global,
                                                 const TypeDeclMap& type_decls,

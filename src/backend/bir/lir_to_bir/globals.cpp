@@ -406,12 +406,22 @@ std::optional<bir::Global> lower_minimal_global_impl(
                                                  : layout.align_bytes;
   if (!global.is_extern_decl) {
     std::unordered_map<std::size_t, GlobalAddress> pointer_offsets;
+    std::unordered_map<std::size_t, std::size_t> pointer_value_indices;
     const auto initializer_elements =
         structured_layouts != nullptr
             ? lower_aggregate_initializer(
-                  global.init_text, global.llvm_type, type_decls, *structured_layouts, &pointer_offsets)
+                  global.init_text,
+                  global.llvm_type,
+                  type_decls,
+                  *structured_layouts,
+                  &pointer_offsets,
+                  &pointer_value_indices)
             : lower_aggregate_initializer(
-                  global.init_text, global.llvm_type, type_decls, &pointer_offsets);
+                  global.init_text,
+                  global.llvm_type,
+                  type_decls,
+                  &pointer_offsets,
+                  &pointer_value_indices);
     if (!initializer_elements.has_value()) {
       return std::nullopt;
     }
@@ -421,6 +431,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
           global.initializer_function_link_name_ids.front();
     }
     info->pointer_initializer_offsets = std::move(pointer_offsets);
+    info->pointer_initializer_value_indices = std::move(pointer_value_indices);
   }
 
   info->value_type = bir::TypeKind::I8;

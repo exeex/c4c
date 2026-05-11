@@ -621,6 +621,7 @@ bool lower_aggregate_initializer_recursive(
     const BackendStructuredLayoutTable* structured_layouts,
     std::vector<bir::Value>* out,
     std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
+    std::unordered_map<std::size_t, std::size_t>* pointer_value_indices,
     std::size_t byte_offset) {
   const auto layout = lookup_global_initializer_layout(type_text, type_decls, structured_layouts);
   if (layout.kind == AggregateTypeLayout::Kind::Invalid) {
@@ -649,6 +650,9 @@ bool lower_aggregate_initializer_recursive(
                                : parse_global_address_initializer(trimmed_init, type_decls);
       if (address.has_value()) {
         pointer_offsets->emplace(byte_offset, *address);
+        if (pointer_value_indices != nullptr) {
+          (*pointer_value_indices)[byte_offset] = out->size();
+        }
         out->push_back(bir::Value::named(bir::TypeKind::Ptr, "@" + address->global_name));
         return true;
       }
@@ -691,6 +695,7 @@ bool lower_aggregate_initializer_recursive(
                                                  structured_layouts,
                                                  out,
                                                  pointer_offsets,
+                                                 pointer_value_indices,
                                                  byte_offset + index * element_layout.size_bytes)) {
         return false;
       }
@@ -723,6 +728,7 @@ bool lower_aggregate_initializer_recursive(
                                                structured_layouts,
                                                out,
                                                pointer_offsets,
+                                               pointer_value_indices,
                                                byte_offset + layout.fields[index].byte_offset)) {
       return false;
     }
@@ -746,10 +752,18 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
     std::string_view init_text,
     std::string_view type_text,
     const TypeDeclMap& type_decls,
-    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets) {
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
+    std::unordered_map<std::size_t, std::size_t>* pointer_value_indices) {
   std::vector<bir::Value> lowered;
   if (!lower_aggregate_initializer_recursive(
-          init_text, type_text, type_decls, nullptr, &lowered, pointer_offsets, 0)) {
+          init_text,
+          type_text,
+          type_decls,
+          nullptr,
+          &lowered,
+          pointer_offsets,
+          pointer_value_indices,
+          0)) {
     return std::nullopt;
   }
   return lowered;
@@ -760,10 +774,18 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
     std::string_view type_text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts,
-    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets) {
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
+    std::unordered_map<std::size_t, std::size_t>* pointer_value_indices) {
   std::vector<bir::Value> lowered;
   if (!lower_aggregate_initializer_recursive(
-          init_text, type_text, type_decls, &structured_layouts, &lowered, pointer_offsets, 0)) {
+          init_text,
+          type_text,
+          type_decls,
+          &structured_layouts,
+          &lowered,
+          pointer_offsets,
+          pointer_value_indices,
+          0)) {
     return std::nullopt;
   }
   return lowered;

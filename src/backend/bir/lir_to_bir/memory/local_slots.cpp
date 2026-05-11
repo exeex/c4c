@@ -14,7 +14,6 @@ using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggrega
 using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLookup;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 using lir_to_bir_detail::is_known_function_global_address;
-using lir_to_bir_detail::is_known_raw_function_symbol;
 using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
@@ -410,8 +409,12 @@ bool BirFunctionLowerer::lower_memory_store_inst(
   if (*value_type == bir::TypeKind::Ptr &&
       store.val.kind() == c4c::codegen::lir::LirOperandKind::Global) {
     const std::string global_name = store.val.str().substr(1);
-    if (is_known_raw_function_symbol(global_name, function_symbols_)) {
-      value = bir::Value::named(bir::TypeKind::Ptr, "@" + global_name);
+    if (const auto link_name_id = function_symbols_.find_raw_symbol_link_name_id(global_name);
+        link_name_id.has_value()) {
+      value = bir::Value::named_symbol_pointer("@" + global_name, *link_name_id);
+    } else if (const auto global_it = global_types_.find(global_name);
+               global_it != global_types_.end()) {
+      value = bir::Value::named_symbol_pointer("@" + global_name, global_it->second.link_name_id);
     }
   }
   if (!value.has_value()) {
@@ -808,14 +811,15 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
       if (!preserve_loaded_pointer_provenance) {
         if (nested_global_it->second.byte_offset == 0 &&
             is_known_function_global_address(nested_global_it->second, function_symbols)) {
-          (*value_aliases)[result] =
-              bir::Value::named(bir::TypeKind::Ptr, "@" + nested_global_it->second.global_name);
+          (*value_aliases)[result] = bir::Value::named_symbol_pointer(
+              "@" + nested_global_it->second.global_name, nested_global_it->second.link_name_id);
           (*global_pointer_slots)[result] = nested_global_it->second;
         } else if (const auto honest_base =
                        resolve_honest_pointer_base(nested_global_it->second, global_types);
                    honest_base.has_value() && honest_base->byte_offset == 0) {
           (*value_aliases)[result] =
-              bir::Value::named(bir::TypeKind::Ptr, "@" + honest_base->global_name);
+              bir::Value::named_symbol_pointer("@" + honest_base->global_name,
+                                               honest_base->link_name_id);
           (*global_pointer_slots)[result] = *honest_base;
         }
       }
@@ -1249,15 +1253,16 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
     if (!preserve_loaded_pointer_provenance) {
       if (addr_it->second.byte_offset == 0 &&
           is_known_function_global_address(addr_it->second, function_symbols)) {
-        (*value_aliases)[result] =
-            bir::Value::named(bir::TypeKind::Ptr, "@" + addr_it->second.global_name);
+        (*value_aliases)[result] = bir::Value::named_symbol_pointer(
+            "@" + addr_it->second.global_name, addr_it->second.link_name_id);
         (*global_pointer_slots)[result] = addr_it->second;
         return true;
       }
       if (const auto honest_base = resolve_honest_pointer_base(addr_it->second, global_types);
           honest_base.has_value() && honest_base->byte_offset == 0) {
         (*value_aliases)[result] =
-            bir::Value::named(bir::TypeKind::Ptr, "@" + honest_base->global_name);
+            bir::Value::named_symbol_pointer("@" + honest_base->global_name,
+                                             honest_base->link_name_id);
         (*global_pointer_slots)[result] = *honest_base;
         return true;
       }

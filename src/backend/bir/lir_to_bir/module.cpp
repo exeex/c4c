@@ -139,6 +139,31 @@ c4c::LinkNameId resolve_initializer_symbol_link_name_id(
   return c4c::kInvalidLinkName;
 }
 
+void apply_resolved_pointer_initializer_value_ids(bir::Module* module,
+                                                  const GlobalTypes& global_types) {
+  for (auto& global : module->globals) {
+    const auto info_it = global_types.find(global.name);
+    if (info_it == global_types.end() || info_it->second.pointer_initializer_offsets.empty()) {
+      continue;
+    }
+    for (const auto& [byte_offset, address] : info_it->second.pointer_initializer_offsets) {
+      if (address.link_name_id == c4c::kInvalidLinkName) {
+        continue;
+      }
+      const auto value_index_it =
+          info_it->second.pointer_initializer_value_indices.find(byte_offset);
+      if (value_index_it == info_it->second.pointer_initializer_value_indices.end() ||
+          value_index_it->second >= global.initializer_elements.size()) {
+        continue;
+      }
+      auto& value = global.initializer_elements[value_index_it->second];
+      if (value.kind == bir::Value::Kind::Named && value.type == bir::TypeKind::Ptr) {
+        value = bir::Value::named_symbol_pointer(value.name, address.link_name_id);
+      }
+    }
+  }
+}
+
 void record_block_integer_constant_alias(
     const c4c::codegen::lir::LirInst& inst,
     BirFunctionLowerer::ValueMap* block_value_aliases) {
@@ -909,6 +934,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
         "bootstrap lir_to_bir only supports aggregate pointer fields initialized from addressable globals right now");
     return std::nullopt;
   }
+  apply_resolved_pointer_initializer_value_ids(&module, global_types);
 
   std::unordered_set<std::string> resolving_global_addresses;
   for (auto& [global_name, info] : global_types) {

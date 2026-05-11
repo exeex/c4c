@@ -605,6 +605,74 @@ int expect_pointer_initializer_symbol_names_carry_link_name_id() {
   if (!aggregate_result.module.has_value()) {
     return fail("aggregate pointer initializer should use LinkNameId authority for function fields");
   }
+  const c4c::backend::bir::Global* lowered_aggregate_slot = nullptr;
+  for (const auto& global : aggregate_result.module->globals) {
+    if (global.link_name_id == aggregate_slot_id) {
+      lowered_aggregate_slot = &global;
+      break;
+    }
+  }
+  if (lowered_aggregate_slot == nullptr ||
+      lowered_aggregate_slot->initializer_elements.size() != 1 ||
+      lowered_aggregate_slot->initializer_elements.front().pointer_symbol_link_name_id !=
+          aggregate_callee_id) {
+    return fail("aggregate pointer initializer element values should carry function LinkNameId");
+  }
+  if (lowered_aggregate_slot->initializer_elements.front() ==
+      c4c::backend::bir::Value::named(TypeKind::Ptr, "@drifted_aggregate_callee_display")) {
+    return fail("aggregate function pointer initializer value must not be raw display spelling only");
+  }
+
+  LirModule aggregate_global_module;
+  aggregate_global_module.link_name_texts = std::make_shared<c4c::TextTable>();
+  aggregate_global_module.link_names.attach_text_table(
+      aggregate_global_module.link_name_texts.get());
+  aggregate_global_module.struct_names.attach_text_table(
+      aggregate_global_module.link_name_texts.get());
+  aggregate_global_module.type_decls.push_back("%struct.gslot = type { ptr }");
+  const c4c::LinkNameId aggregate_target_id =
+      aggregate_global_module.link_names.intern("semantic_aggregate_target");
+  const c4c::LinkNameId aggregate_global_slot_id =
+      aggregate_global_module.link_names.intern("semantic_aggregate_global_slot");
+
+  LirGlobal aggregate_target;
+  aggregate_target.name = "drifted_aggregate_target_display";
+  aggregate_target.link_name_id = aggregate_target_id;
+  aggregate_target.llvm_type = "i32";
+  aggregate_target.init_text = "i32 19";
+  aggregate_target.align_bytes = 4;
+  aggregate_global_module.globals.push_back(std::move(aggregate_target));
+
+  LirGlobal aggregate_global_slot;
+  aggregate_global_slot.name = "drifted_aggregate_global_slot_display";
+  aggregate_global_slot.link_name_id = aggregate_global_slot_id;
+  aggregate_global_slot.llvm_type = "%struct.gslot";
+  aggregate_global_slot.init_text = "{ ptr @semantic_aggregate_target }";
+  aggregate_global_slot.align_bytes = 8;
+  aggregate_global_module.globals.push_back(std::move(aggregate_global_slot));
+
+  auto aggregate_global_result =
+      try_lower_to_bir_with_options(aggregate_global_module, BirLoweringOptions{});
+  if (!aggregate_global_result.module.has_value()) {
+    return fail("aggregate pointer initializer should use LinkNameId authority for global fields");
+  }
+  const c4c::backend::bir::Global* lowered_aggregate_global_slot = nullptr;
+  for (const auto& global : aggregate_global_result.module->globals) {
+    if (global.link_name_id == aggregate_global_slot_id) {
+      lowered_aggregate_global_slot = &global;
+      break;
+    }
+  }
+  if (lowered_aggregate_global_slot == nullptr ||
+      lowered_aggregate_global_slot->initializer_elements.size() != 1 ||
+      lowered_aggregate_global_slot->initializer_elements.front().pointer_symbol_link_name_id !=
+          aggregate_target_id) {
+    return fail("aggregate pointer initializer element values should carry global LinkNameId");
+  }
+  if (lowered_aggregate_global_slot->initializer_elements.front() ==
+      c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_aggregate_target")) {
+    return fail("aggregate global pointer initializer value must not be raw display spelling only");
+  }
 
   LirModule aggregate_conflict_module;
   aggregate_conflict_module.link_name_texts = std::make_shared<c4c::TextTable>();
@@ -699,6 +767,18 @@ int expect_pointer_value_symbol_identity_carrier() {
   function.name = "drifted_pointer_user_display";
   function.link_name_id = user_id;
   function.signature_text = "define void @drifted_pointer_user_display()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%ptr.slot"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%global.ptr.slot"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
 
   LirBlock entry;
   entry.label = "entry";
@@ -710,6 +790,30 @@ int expect_pointer_value_symbol_identity_carrier() {
       .callee_type_suffix = "(ptr, ptr)",
       .args_str =
           "ptr @semantic_function_arg, ptr byval(%struct.payload) @semantic_byval_payload",
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("@semantic_function_arg"),
+      .ptr = LirOperand("%ptr.slot"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("@semantic_byval_payload"),
+      .ptr = LirOperand("%global.ptr.slot"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%stored.fn"),
+      .type_str = "ptr",
+      .ptr = LirOperand("%ptr.slot"),
+  });
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@semantic_pointer_sink"),
+      .direct_callee_link_name_id = sink_id,
+      .callee_type_suffix = "(ptr, ptr)",
+      .args_str =
+          "ptr %stored.fn, ptr byval(%struct.payload) @semantic_byval_payload",
   });
   entry.terminator = LirRet{
       .value_str = std::nullopt,
@@ -735,31 +839,70 @@ int expect_pointer_value_symbol_identity_carrier() {
     return fail("pointer-value carrier fixture should lower the user call");
   }
 
-  const auto* call =
-      std::get_if<c4c::backend::bir::CallInst>(&lowered_user->blocks.front().insts.front());
-  if (call == nullptr || call->args.size() != 2) {
+  std::vector<const c4c::backend::bir::CallInst*> calls;
+  const c4c::backend::bir::StoreLocalInst* function_pointer_store = nullptr;
+  const c4c::backend::bir::StoreLocalInst* global_pointer_store = nullptr;
+  for (const auto& inst : lowered_user->blocks.front().insts) {
+    if (const auto* lowered_call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+        lowered_call != nullptr) {
+      calls.push_back(lowered_call);
+    }
+    if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+        store != nullptr && store->slot_name == "%ptr.slot") {
+      function_pointer_store = store;
+    }
+    if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+        store != nullptr && store->slot_name == "%global.ptr.slot") {
+      global_pointer_store = store;
+    }
+  }
+  if (calls.size() != 2 || calls[0]->args.size() != 2 || calls[1]->args.size() != 2) {
     return fail("pointer-value carrier fixture should lower both pointer arguments");
   }
+  if (function_pointer_store == nullptr ||
+      function_pointer_store->value.name != "@semantic_function_arg" ||
+      function_pointer_store->value.pointer_symbol_link_name_id != fn_arg_id) {
+    return fail("direct function pointer stores should preserve LinkNameId on the stored value");
+  }
+  if (function_pointer_store->value ==
+      c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_function_arg")) {
+    return fail("direct function pointer store values must not be raw display spelling only");
+  }
+  if (global_pointer_store == nullptr ||
+      global_pointer_store->value.name != "@semantic_byval_payload" ||
+      global_pointer_store->value.pointer_symbol_link_name_id != byval_global_id) {
+    return fail("direct global pointer stores should preserve LinkNameId on the stored value");
+  }
+  if (global_pointer_store->value ==
+      c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_byval_payload")) {
+    return fail("direct global pointer store values must not be raw display spelling only");
+  }
 
-  if (call->args[0].name != "@semantic_function_arg" ||
-      call->args[0].pointer_symbol_link_name_id != fn_arg_id) {
+  const auto& direct_call = *calls[0];
+  const auto& recovered_call = *calls[1];
+  if (direct_call.args[0].name != "@semantic_function_arg" ||
+      direct_call.args[0].pointer_symbol_link_name_id != fn_arg_id) {
     return fail("direct function pointer values should carry LinkNameId identity");
   }
-  if (call->args[0].pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
+  if (direct_call.args[0].pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
     return fail("direct function pointer value identity must not be raw display spelling only");
   }
+  if (recovered_call.args[0].name != "@semantic_function_arg" ||
+      recovered_call.args[0].pointer_symbol_link_name_id != fn_arg_id) {
+    return fail("stored then loaded function pointer values should recover LinkNameId identity");
+  }
 
-  if (call->args[1].name != "@semantic_byval_payload" ||
-      call->args[1].pointer_symbol_link_name_id != byval_global_id) {
+  if (direct_call.args[1].name != "@semantic_byval_payload" ||
+      direct_call.args[1].pointer_symbol_link_name_id != byval_global_id) {
     return fail("byval global pointer values should carry the global LinkNameId");
   }
-  if (call->args[1].pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
+  if (direct_call.args[1].pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
     return fail("byval global pointer value identity must not be raw display spelling only");
   }
 
-  if (call->args[0] ==
+  if (direct_call.args[0] ==
           c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_function_arg") ||
-      call->args[1] ==
+      direct_call.args[1] ==
           c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_byval_payload")) {
     return fail("symbol pointer values should not compare equal to raw display-only values");
   }
