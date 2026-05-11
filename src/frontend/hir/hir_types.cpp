@@ -1174,6 +1174,13 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
         if (sig_it != ctx->param_fn_ptr_sigs_by_index.end()) {
           return sig_it->second.return_type.spec;
         }
+      } else if (ctx->rendered_compat_param_text_ids.find(
+                     callee->unqualified_text_id) !=
+                     ctx->rendered_compat_param_text_ids.end() ||
+                 ctx->rendered_compat_param_names.find(name) !=
+                     ctx->rendered_compat_param_names.end()) {
+        const auto pit = ctx->param_fn_ptr_sigs.find(name);
+        if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second.return_type.spec;
       }
     } else {
       const auto pit = ctx->param_fn_ptr_sigs.find(name);
@@ -3407,6 +3414,17 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
           if (pit != ctx->param_indices_by_text_id.end() && ctx->fn &&
               pit->second < ctx->fn->params.size()) {
             return reference_value_ts(ctx->fn->params[pit->second].type.spec);
+          } else if (ctx->rendered_compat_param_text_ids.find(
+                         n->unqualified_text_id) !=
+                         ctx->rendered_compat_param_text_ids.end() ||
+                     ctx->rendered_compat_param_names.find(name) !=
+                         ctx->rendered_compat_param_names.end()) {
+            auto rendered_pit = ctx->params.find(name);
+            if (rendered_pit != ctx->params.end() && ctx->fn &&
+                rendered_pit->second < ctx->fn->params.size()) {
+              return reference_value_ts(
+                  ctx->fn->params[rendered_pit->second].type.spec);
+            }
           }
         } else {
           auto pit = ctx->params.find(name);

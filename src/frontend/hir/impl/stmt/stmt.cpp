@@ -646,6 +646,10 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
     this_param.type = qtype_from(this_ts, ValueCategory::LValue);
     this_param.span = make_span(method_node);
     ctx.params[this_param.name] = static_cast<uint32_t>(fn.params.size());
+    if (this_param.name_text_id != kInvalidText) {
+      ctx.rendered_compat_param_text_ids.insert(this_param.name_text_id);
+    }
+    ctx.rendered_compat_param_names.insert(this_param.name);
     fn.params.push_back(std::move(this_param));
   }
 

@@ -1126,6 +1126,11 @@ void Lowerer::append_explicit_callable_param(
       param_node->name && emitted_name == param_node->name;
   if (has_source_param_identity) {
     ctx.param_indices_by_text_id[param_node->unqualified_text_id] = param_index;
+  } else {
+    if (param.name_text_id != kInvalidText) {
+      ctx.rendered_compat_param_text_ids.insert(param.name_text_id);
+    }
+    ctx.rendered_compat_param_names.insert(param.name);
   }
   if (param.fn_ptr_sig) {
     if (has_source_param_identity) {

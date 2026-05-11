@@ -3412,6 +3412,41 @@ void test_param_lookup_no_metadata_uses_rendered_fallback() {
               "no-metadata parameter type inference should keep rendered compatibility fallback");
 }
 
+void test_param_lookup_marked_generated_text_id_uses_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId generated_this_text_id =
+      module.link_name_texts->intern("generated_this_source_carrier");
+  c4c::hir::Function fn;
+  fn.params.push_back(make_param_with_type("this", c4c::TB_STRUCT));
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.fn = &fn;
+  ctx.params["this"] = 0;
+  ctx.rendered_compat_param_names.insert("this");
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "this";
+  ref.unqualified_name = "this";
+  ref.unqualified_text_id = generated_this_text_id;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && decl_ref->param_index &&
+                  *decl_ref->param_index == 0,
+              "marked generated parameter value lookup should keep rendered compatibility fallback despite a valid TextId");
+
+  const c4c::TypeSpec inferred =
+      lowerer.infer_generic_ctrl_type(&ctx, &ref);
+  expect_true(inferred.base == c4c::TB_STRUCT,
+              "marked generated parameter type inference should keep rendered compatibility fallback despite a valid TextId");
+}
+
 c4c::hir::FnPtrSig make_returning_fn_ptr_sig(c4c::TypeBase return_base) {
   c4c::hir::FnPtrSig sig{};
   sig.return_type.spec.base = return_base;
@@ -5272,6 +5307,7 @@ int main() {
   test_generic_type_param_lookup_prefers_param_text_id_over_rendered_name();
   test_param_lookup_text_miss_rejects_rendered_fallback();
   test_param_lookup_no_metadata_uses_rendered_fallback();
+  test_param_lookup_marked_generated_text_id_uses_rendered_fallback();
   test_param_fn_ptr_sig_lookup_prefers_param_text_id_over_rendered_name();
   test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback();
   test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback();
