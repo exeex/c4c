@@ -590,8 +590,15 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       has_local_binding = true;
     }
     if (!has_local_binding) {
-      auto pit = ctx->params.find(r.name);
-      if (pit != ctx->params.end()) r.param_index = pit->second;
+      if (n->unqualified_text_id != kInvalidText) {
+        auto pit = ctx->param_indices_by_text_id.find(n->unqualified_text_id);
+        if (pit != ctx->param_indices_by_text_id.end()) {
+          r.param_index = pit->second;
+        }
+      } else {
+        auto pit = ctx->params.find(r.name);
+        if (pit != ctx->params.end()) r.param_index = pit->second;
+      }
     }
   }
   if (!has_local_binding) {

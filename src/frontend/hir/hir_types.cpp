@@ -3402,10 +3402,18 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
             return reference_value_ts(ctx->local_types.at(lit->second));
           }
         }
-        auto pit = ctx->params.find(name);
-        if (pit != ctx->params.end() && ctx->fn &&
-            pit->second < ctx->fn->params.size()) {
-          return reference_value_ts(ctx->fn->params[pit->second].type.spec);
+        if (n->unqualified_text_id != kInvalidText) {
+          auto pit = ctx->param_indices_by_text_id.find(n->unqualified_text_id);
+          if (pit != ctx->param_indices_by_text_id.end() && ctx->fn &&
+              pit->second < ctx->fn->params.size()) {
+            return reference_value_ts(ctx->fn->params[pit->second].type.spec);
+          }
+        } else {
+          auto pit = ctx->params.find(name);
+          if (pit != ctx->params.end() && ctx->fn &&
+              pit->second < ctx->fn->params.size()) {
+            return reference_value_ts(ctx->fn->params[pit->second].type.spec);
+          }
         }
         auto sit = ctx->static_globals.find(name);
         if (sit != ctx->static_globals.end()) {

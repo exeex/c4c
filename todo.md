@@ -8,30 +8,46 @@ Current Step Title: Convert Remaining Metadata-Capable FunctionCtx Source Lookup
 
 ## Just Finished
 
-Completed plan Step 4 narrow source lookup conversion for `local_fn_ptr_sigs`.
+Completed plan Step 4 narrow source lookup conversion for ordinary source
+parameter value/type lookup.
 
 Changed paths:
-- `src/frontend/hir/impl/lowerer.hpp`
-- `src/frontend/hir/impl/stmt/decl.cpp`
-- `src/frontend/hir/impl/stmt/stmt.cpp`
 - `src/frontend/hir/hir_types.cpp`
+- `src/frontend/hir/impl/expr/scalar_control.cpp`
 - `tests/frontend/frontend_hir_lookup_tests.cpp`
 
-`lower_local_decl_stmt` now records complete source locals in `local_ids_by_text_id` and stores function-pointer local signatures in `local_fn_ptr_sigs_by_id` by resolved `LocalId`. Generated/no-metadata local function-pointer declarations continue to populate the rendered `local_fn_ptr_sigs` compatibility map.
+`lower_var_expr` now resolves ordinary parameter values by
+`param_indices_by_text_id` when the reference carries a complete source
+`unqualified_text_id`. A complete source parameter TextId miss no longer
+reopens the rendered `ctx.params` compatibility map.
 
-`infer_call_result_type_from_callee` now resolves local function-pointer signatures by callee `unqualified_text_id -> LocalId -> FnPtrSig` before considering rendered fallback. Rendered local-signature lookup is only used when the callee has no source `TextId`.
+`infer_generic_ctrl_type` now resolves ordinary parameter types through the
+same `TextId -> param index -> fn.params[index]` path. Rendered `ctx.params`
+fallback remains only for no-metadata/synthetic references with
+`kInvalidText`, such as compatibility references to `this` and generated pack
+elements.
 
-Local scope save/restore now preserves and restores the new local identity/signature maps alongside the existing rendered local maps. Focused coverage added to `frontend_hir_lookup_tests` for LocalId/TextId lookup winning over rendered spelling, complete TextId miss rejecting rendered fallback, and explicit no-metadata rendered compatibility.
+Focused coverage added to `frontend_hir_lookup_tests` for parameter TextId
+lookup winning over rendered spelling in both value lowering and generic type
+inference, complete source TextId miss rejecting rendered fallback, and
+explicit no-metadata rendered compatibility.
 
 ## Suggested Next
 
-Convert the next narrow FunctionCtx source lookup group only after supervisor selection; ordinary `params`/`locals` rendered maps remain outside this packet and should be handled separately from local function-pointer signatures.
+Convert the next narrow FunctionCtx source lookup group only after supervisor
+selection; ordinary `locals`, `static_globals`, `local_const_bindings`, and
+pack parameter rendered lookups remain outside this packet.
 
 ## Watchouts
 
-- `local_ids_by_text_id` is function-context scoped and restored with local scopes; `local_types` remains dense ID metadata and is not scope-restored by the pre-existing pattern.
-- Complete source local function-pointer signatures no longer populate the rendered `local_fn_ptr_sigs` map; only no-metadata/generated compatibility does.
-- Ordinary `params`/`locals` rendered lookups and `static_globals` remain outside this packet.
+- This packet intentionally uses `n->unqualified_text_id` as the source
+  metadata signal. `make_unqualified_text_id` may intern rendered names for
+  no-metadata nodes, so it is not used to decide whether rendered `ctx.params`
+  fallback is allowed.
+- The existing rendered `ctx.params["this"]` call sites in statement/call
+  lowering remain as synthetic compatibility paths.
+- Ordinary `locals`, `static_globals`, and `local_const_bindings` rendered
+  lookups remain outside this packet.
 
 ## Proof
 

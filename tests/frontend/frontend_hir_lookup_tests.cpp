@@ -3277,6 +3277,141 @@ void test_lvalue_cast_structured_miss_rejects_stale_tag() {
               "lvalue cast should reject stale rendered tag after structured binding miss");
 }
 
+c4c::hir::Param make_param_with_type(const char* name, c4c::TypeBase base) {
+  c4c::hir::Param param{};
+  param.name = name;
+  param.type.spec.base = base;
+  param.type.spec.array_size = -1;
+  param.type.spec.inner_rank = -1;
+  return param;
+}
+
+void test_var_expr_param_lookup_prefers_param_text_id_over_rendered_name() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId value_text_id = module.link_name_texts->intern("value");
+  c4c::hir::Function fn;
+  fn.params.push_back(make_param_with_type("value", c4c::TB_INT));
+  fn.params.push_back(make_param_with_type("value", c4c::TB_LONG));
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.fn = &fn;
+  ctx.params["value"] = 0;
+  ctx.param_indices_by_text_id[value_text_id] = 1;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id = value_text_id;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && decl_ref->param_index &&
+                  *decl_ref->param_index == 1,
+              "source parameter value lookup should prefer TextId/index authority over rendered name");
+}
+
+void test_generic_type_param_lookup_prefers_param_text_id_over_rendered_name() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId value_text_id = module.link_name_texts->intern("value");
+  c4c::hir::Function fn;
+  fn.params.push_back(make_param_with_type("value", c4c::TB_INT));
+  fn.params.push_back(make_param_with_type("value", c4c::TB_LONG));
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.fn = &fn;
+  ctx.params["value"] = 0;
+  ctx.param_indices_by_text_id[value_text_id] = 1;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id = value_text_id;
+
+  const c4c::TypeSpec inferred =
+      lowerer.infer_generic_ctrl_type(&ctx, &ref);
+  expect_true(inferred.base == c4c::TB_LONG,
+              "generic source parameter type inference should prefer TextId/index authority over rendered name");
+}
+
+void test_param_lookup_text_miss_rejects_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::Function fn;
+  fn.params.push_back(make_param_with_type("value", c4c::TB_INT));
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.fn = &fn;
+  ctx.params["value"] = 0;
+
+  c4c::TypeSpec fallback_ts{};
+  fallback_ts.base = c4c::TB_CHAR;
+  fallback_ts.array_size = -1;
+  fallback_ts.inner_rank = -1;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id = module.link_name_texts->intern("different_source_param");
+  ref.type = fallback_ts;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && !decl_ref->param_index,
+              "complete source parameter TextId miss should not reopen rendered value lookup fallback");
+
+  const c4c::TypeSpec inferred =
+      lowerer.infer_generic_ctrl_type(&ctx, &ref);
+  expect_true(inferred.base == c4c::TB_CHAR,
+              "complete source parameter TextId miss should not reopen rendered type lookup fallback");
+}
+
+void test_param_lookup_no_metadata_uses_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::Function fn;
+  fn.params.push_back(make_param_with_type("value", c4c::TB_INT));
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.fn = &fn;
+  ctx.params["value"] = 0;
+
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id = c4c::kInvalidText;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(&ctx, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref && decl_ref->param_index &&
+                  *decl_ref->param_index == 0,
+              "no-metadata parameter value lookup should keep rendered compatibility fallback");
+
+  const c4c::TypeSpec inferred =
+      lowerer.infer_generic_ctrl_type(&ctx, &ref);
+  expect_true(inferred.base == c4c::TB_INT,
+              "no-metadata parameter type inference should keep rendered compatibility fallback");
+}
+
 c4c::hir::FnPtrSig make_returning_fn_ptr_sig(c4c::TypeBase return_base) {
   c4c::hir::FnPtrSig sig{};
   sig.return_type.spec.base = return_base;
@@ -5133,6 +5268,10 @@ int main() {
   test_builtin_query_type_no_metadata_keeps_compatibility_shape();
   test_lvalue_cast_uses_template_param_text_id_binding();
   test_lvalue_cast_structured_miss_rejects_stale_tag();
+  test_var_expr_param_lookup_prefers_param_text_id_over_rendered_name();
+  test_generic_type_param_lookup_prefers_param_text_id_over_rendered_name();
+  test_param_lookup_text_miss_rejects_rendered_fallback();
+  test_param_lookup_no_metadata_uses_rendered_fallback();
   test_param_fn_ptr_sig_lookup_prefers_param_text_id_over_rendered_name();
   test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback();
   test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback();
