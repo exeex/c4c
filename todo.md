@@ -1,54 +1,75 @@
 Status: Active
 Source Idea Path: ideas/open/168_compatibility_bridge_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Retire Parser Compatibility Overloads
+Current Step ID: 3
+Current Step Title: Narrow Sema and Consteval Rendered Mirrors
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Retire Parser Compatibility Overloads progressed for the
-`resolve_record_type_spec` parser record/tag compatibility bridge family.
+Step 2 - Retire Parser Compatibility Overloads is complete enough to advance.
+The parser bridge-retirement packets landed in:
 
-Completed work:
+| Commit | Result |
+| --- | --- |
+| `0e3a94b7e` | Retired the broad rendered typedef/type-compatibility parser-support overload family. Production callers now bind through structured `TextId` maps, and focused tests preserve stale-rendered-map closed-miss coverage. |
+| `6aaed86f4` | Removed the broad rendered `eval_const_int` overload from ordinary resolution and fenced the retained no-metadata rendered named-constant path behind `eval_const_int_with_rendered_named_const_compatibility`. |
+| `df4759b5f` | Removed the broad rendered `resolve_record_type_spec` ordinary boundary and fenced the retained parser-local rendered tag mirror behind `resolve_record_type_spec_with_parser_tag_map_compatibility`. |
+
+Step 2 completion decision:
 
 | Field | Result |
 | --- | --- |
-| Caller inspection | `rg` found production rendered record/tag map callers in template static-member/base lookup paths: `src/frontend/parser/impl/types/template.cpp` and `src/frontend/parser/impl/types/base.cpp`. Ordinary production callers with no map were updated to the one-argument `resolve_record_type_spec`. |
-| Parser support API | Removed the broad `resolve_record_type_spec(..., std::unordered_map<std::string, Node*>*)` ordinary boundary. Added `resolve_record_type_spec_with_parser_tag_map_compatibility` for the retained parser-local rendered tag mirror. |
-| Layout behavior | Constant-layout helpers still require a complete direct `record_def` for structured records and only preserve TextId-less legacy rendered compatibility. Structured metadata misses continue to fail closed before any rendered-key fallback. |
-| Production caller updates | Remaining parser static-member/base compatibility callers now opt into `resolve_record_type_spec_with_parser_tag_map_compatibility`; direct record-def callers use `resolve_record_type_spec(ts)`. |
-| Focused tests | Strengthened parser-support residual coverage so ordinary record lookup proves it does not recover through parser rendered-tag maps, while explicit compatibility preserves the no-metadata fallback. Existing frontend parser stale-map closed-miss tests now call the explicit compatibility API. |
-| Changed files | `src/frontend/parser/parser_support.hpp`, `src/frontend/parser/impl/support.cpp`, `src/frontend/parser/impl/parser_state.hpp`, `src/frontend/parser/impl/types/base.cpp`, `src/frontend/parser/impl/types/template.cpp`, `src/frontend/parser/impl/core.cpp`, `src/frontend/parser/impl/types/declarator.cpp`, `src/frontend/parser/impl/types/types_helpers.hpp`, `tests/frontend/cpp_hir_parser_support_residual_metadata_test.cpp`, `tests/frontend/frontend_parser_tests.cpp`, `todo.md`, and `test_after.log`. |
+| Parser production structured misses | Covered parser-support typedef/type-compatibility, const-int, and record/tag families now fail closed for complete structured metadata misses or require an explicitly named compatibility API. |
+| Retained parser bridges | Remaining rendered parser bridges are named as compatibility/no-metadata boundaries instead of ordinary overloads. |
+| Focused proof | Each parser packet built its delegated targets and passed the supervisor-selected parser/support regression subset, with results recorded in `test_after.log` at the time of execution. |
+| Baseline review | Supervisor compared old/new full-suite baselines after the hook reminder; both were 3135/3135 passing with the same disabled tests, then ran `scripts/plan_review_state.py accept-baseline`. |
+| Lifecycle decision | Advance from Step 2 to Step 3: Narrow Sema and Consteval Rendered Mirrors. |
 
 ## Suggested Next
 
-Continue Step 2 with the next supervisor-selected parser compatibility family,
-or have the supervisor decide whether the parser bridge-retirement step is
-complete after the typedef, const-int, type-compat, and record/tag packets.
+Begin Step 3 by re-reading the idea 167 sema/consteval bridge inventory and
+selecting the first narrow rendered mirror family. Candidate starting points
+from the runbook are rendered enum const maps, template/type/NTTP binding
+mirrors, fallback canonical template names, and any source/link compatibility
+`by_name` consteval bridge.
+
+The next executor packet should name the exact sema or consteval mirror being
+narrowed, inspect production callers before editing tests, and use focused
+closed-miss proof for the touched metadata carrier.
 
 ## Watchouts
 
-- `resolve_record_type_spec_with_parser_tag_map_compatibility` is now the only
-  parser-support record resolver that accepts the rendered `struct_tag_def_map`.
-  It should stay limited to parser-local compatibility paths.
-- Constant-layout evaluation still takes a rendered tag map as a layout
-  compatibility input, but structured records must carry direct `record_def`
-  for layout; do not route structured layout misses into the explicit
-  compatibility resolver.
+- Keep ABI, display, diagnostics, and final spelling output-only; Step 3 should
+  not remove visible text just to reduce rendered-string grep count.
+- Do not fold route-local generated-name cleanup into this plan; idea 169 owns
+  route-local identity domains.
+- `eval_const_int_with_rendered_named_const_compatibility` and
+  `resolve_record_type_spec_with_parser_tag_map_compatibility` remain explicit
+  compatibility boundaries from Step 2 and should not gain new ordinary
+  production callers.
 - The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`
   was not touched.
 - No current blockers.
 
 ## Proof
 
-Delegated proof command was run exactly and logged to `test_after.log`:
+Lifecycle-only cleanup. No implementation or test files were changed.
 
-`cmake --build build --target frontend_parser_tests frontend_parser_lookup_authority_tests cpp_hir_parser_support_residual_metadata_test && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_parser_lookup_authority_tests|cpp_hir_parser_support_residual_structured_metadata)$'`
+Step 2 proof already landed with the three parser bridge commits:
 
-Result: passed. Built the three delegated targets and ran 3/3 focused tests:
-`frontend_parser_tests`, `frontend_parser_lookup_authority_tests`,
-and `cpp_hir_parser_support_residual_structured_metadata`.
+- `0e3a94b7e`: built `frontend_parser_tests`,
+  `frontend_parser_lookup_authority_tests`,
+  `cpp_hir_parser_type_helper_residual_metadata_test`, and
+  `cpp_hir_template_pattern_match_metadata_test`; ran 4/4 focused tests.
+- `6aaed86f4`: built `frontend_parser_tests`,
+  `frontend_parser_lookup_authority_tests`,
+  `cpp_hir_parser_support_residual_metadata_test`, and
+  `cpp_hir_template_pattern_match_metadata_test`; ran 4/4 focused tests.
+- `df4759b5f`: built `frontend_parser_tests`,
+  `frontend_parser_lookup_authority_tests`, and
+  `cpp_hir_parser_support_residual_metadata_test`; ran 3/3 focused tests.
 
-Additional hygiene: `git diff --check` passed.
+Baseline review was accepted after the supervisor compared old/new full-suite
+baselines: both were 3135/3135 passing with the same disabled tests.
