@@ -224,18 +224,42 @@ struct ResolvedFrameSlot {
 
 [[nodiscard]] std::optional<PreparedAddress> build_direct_symbol_backed_address(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const std::optional<bir::MemoryAddress>& address,
     std::string_view fallback_symbol_name,
+    LinkNameId fallback_symbol_link_name_id,
     std::int64_t fallback_byte_offset,
     std::size_t size_bytes,
     std::size_t align_bytes) {
+  const auto resolve_symbol_name =
+      [&](std::string_view raw_symbol_name,
+          LinkNameId symbol_link_name_id) -> std::optional<LinkNameId> {
+    if (symbol_link_name_id != kInvalidLinkName) {
+      const std::string_view semantic_symbol_name =
+          bir_names.link_names.spelling(symbol_link_name_id);
+      if (semantic_symbol_name.empty()) {
+        return std::nullopt;
+      }
+      if (!raw_symbol_name.empty() && raw_symbol_name != semantic_symbol_name) {
+        return std::nullopt;
+      }
+      return names.link_names.intern(semantic_symbol_name);
+    }
+    if (raw_symbol_name.empty()) {
+      return std::nullopt;
+    }
+    return names.link_names.intern(raw_symbol_name);
+  };
+
   if (!address.has_value()) {
-    if (fallback_symbol_name.empty()) {
+    const auto symbol_name =
+        resolve_symbol_name(fallback_symbol_name, fallback_symbol_link_name_id);
+    if (!symbol_name.has_value()) {
       return std::nullopt;
     }
     return PreparedAddress{
         .base_kind = PreparedAddressBaseKind::GlobalSymbol,
-        .symbol_name = names.link_names.intern(fallback_symbol_name),
+        .symbol_name = *symbol_name,
         .byte_offset = fallback_byte_offset,
         .size_bytes = size_bytes,
         .align_bytes = align_bytes,
@@ -257,13 +281,20 @@ struct ResolvedFrameSlot {
 
   const std::string_view symbol_name =
       address->base_name.empty() ? fallback_symbol_name : std::string_view(address->base_name);
-  if (symbol_name.empty()) {
+  const LinkNameId symbol_link_name_id =
+      address->base_kind == bir::MemoryAddress::BaseKind::GlobalSymbol
+          ? (address->base_link_name_id != kInvalidLinkName
+                 ? address->base_link_name_id
+                 : (address->base_name.empty() ? fallback_symbol_link_name_id : kInvalidLinkName))
+          : kInvalidLinkName;
+  const auto prepared_symbol_name = resolve_symbol_name(symbol_name, symbol_link_name_id);
+  if (!prepared_symbol_name.has_value()) {
     return std::nullopt;
   }
 
   return PreparedAddress{
       .base_kind = base_kind,
-      .symbol_name = names.link_names.intern(symbol_name),
+      .symbol_name = *prepared_symbol_name,
       .byte_offset = address->byte_offset + fallback_byte_offset,
       .size_bytes = size_bytes,
       .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
@@ -273,6 +304,7 @@ struct ResolvedFrameSlot {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -287,7 +319,14 @@ struct ResolvedFrameSlot {
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes : inst.align_bytes,
       size_bytes);
   auto address = build_direct_symbol_backed_address(
-      names, inst.address, {}, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+      names,
+      bir_names,
+      inst.address,
+      {},
+      kInvalidLinkName,
+      static_cast<std::int64_t>(inst.byte_offset),
+      size_bytes,
+      align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -303,6 +342,7 @@ struct ResolvedFrameSlot {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -317,7 +357,14 @@ struct ResolvedFrameSlot {
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes : inst.align_bytes,
       size_bytes);
   auto address = build_direct_symbol_backed_address(
-      names, inst.address, {}, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+      names,
+      bir_names,
+      inst.address,
+      {},
+      kInvalidLinkName,
+      static_cast<std::int64_t>(inst.byte_offset),
+      size_bytes,
+      align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -333,6 +380,7 @@ struct ResolvedFrameSlot {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -352,8 +400,10 @@ struct ResolvedFrameSlot {
       size_bytes);
   auto address = build_direct_symbol_backed_address(
       names,
+      bir_names,
       inst.address,
       inst.global_name,
+      inst.global_name_id,
       static_cast<std::int64_t>(inst.byte_offset),
       size_bytes,
       align_bytes);
@@ -372,6 +422,7 @@ struct ResolvedFrameSlot {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -391,8 +442,10 @@ struct ResolvedFrameSlot {
       size_bytes);
   auto address = build_direct_symbol_backed_address(
       names,
+      bir_names,
       inst.address,
       inst.global_name,
+      inst.global_name_id,
       static_cast<std::int64_t>(inst.byte_offset),
       size_bytes,
       align_bytes);
@@ -568,7 +621,7 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                names, function_name_id, block_label_id, inst_index, *load_local);
+                names, bir_names, function_name_id, block_label_id, inst_index, *load_local);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
@@ -589,7 +642,7 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                names, function_name_id, block_label_id, inst_index, *store_local);
+                names, bir_names, function_name_id, block_label_id, inst_index, *store_local);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
@@ -610,7 +663,7 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                names, function_name_id, block_label_id, inst_index, *load_global);
+                names, bir_names, function_name_id, block_label_id, inst_index, *load_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -624,7 +677,7 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                names, function_name_id, block_label_id, inst_index, *store_global);
+                names, bir_names, function_name_id, block_label_id, inst_index, *store_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }

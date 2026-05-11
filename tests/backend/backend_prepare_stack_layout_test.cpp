@@ -1924,6 +1924,76 @@ prepare::PreparedBirModule prepare_id_authoritative_stack_access_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module() {
+  bir::Module module;
+
+  const c4c::LinkNameId canonical_global_id =
+      module.names.link_names.intern("g.authoritative");
+  module.globals.push_back(bir::Global{
+      .name = "g.authoritative",
+      .link_name_id = canonical_global_id,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.globals.push_back(bir::Global{
+      .name = "g.raw.drift",
+      .link_name_id = module.names.link_names.intern("g.raw.drift"),
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.globals.push_back(bir::Global{
+      .name = "g.compat",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Function function;
+  function.name = "stack_layout_link_name_authoritative_global_access_activation";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
+      .global_name_id = canonical_global_id,
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = "g.raw.drift",
+      .global_name_id = canonical_global_id,
+      .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = "g.compat",
+      .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
+      .align_bytes = 4,
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_phi_single_block_local_slot_module() {
   bir::Module module;
 
@@ -3316,6 +3386,63 @@ int check_id_authoritative_stack_access_activation(const prepare::PreparedBirMod
   return 0;
 }
 
+int check_link_name_authoritative_global_access_activation(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* function_addressing = prepare::find_prepared_addressing(
+      prepared,
+      find_function_name_id(
+          prepared, "stack_layout_link_name_authoritative_global_access_activation"));
+  if (function_addressing == nullptr) {
+    return fail("expected link-name authoritative global fixture to publish addressing");
+  }
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
+  if (function_addressing->accesses.size() != 2) {
+    return fail("expected mismatched LinkNameId/raw global spelling to fail closed");
+  }
+
+  const auto* id_load_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 0);
+  if (id_load_access == nullptr) {
+    return fail("expected prepared addressing to record ID-only global load");
+  }
+  if (!id_load_access->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *id_load_access->result_value_name) !=
+          "id.loaded" ||
+      id_load_access->stored_value_name.has_value() ||
+      id_load_access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !id_load_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *id_load_access->address.symbol_name) !=
+          "g.authoritative" ||
+      id_load_access->address.byte_offset != 0 || id_load_access->address.size_bytes != 4 ||
+      id_load_access->address.align_bytes != 4 ||
+      !id_load_access->address.can_use_base_plus_offset) {
+    return fail("expected ID-only global load to resolve through LinkNameId");
+  }
+
+  if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 1) !=
+      nullptr) {
+    return fail("expected raw global spelling drift to stay out of prepared addressing");
+  }
+
+  const auto* compat_store_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 2);
+  if (compat_store_access == nullptr) {
+    return fail("expected raw-only compatibility global store to remain supported");
+  }
+  if (compat_store_access->result_value_name.has_value() ||
+      !compat_store_access->stored_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *compat_store_access->stored_value_name) !=
+          "id.loaded" ||
+      compat_store_access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !compat_store_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *compat_store_access->address.symbol_name) !=
+          "g.compat") {
+    return fail("expected raw-only compatibility global store to resolve by spelling");
+  }
+
+  return 0;
+}
+
 int check_phi_single_block_local_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.phi.single.root");
   if (root_object == nullptr) {
@@ -3748,6 +3875,14 @@ int main() {
       prepare_id_authoritative_stack_access_module();
   if (const int rc = check_id_authoritative_stack_access_activation(
           id_authoritative_stack_access_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto link_name_authoritative_global_access_prepared =
+      prepare_link_name_authoritative_global_access_module();
+  if (const int rc = check_link_name_authoritative_global_access_activation(
+          link_name_authoritative_global_access_prepared);
       rc != 0) {
     return rc;
   }
