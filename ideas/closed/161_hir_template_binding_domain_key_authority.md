@@ -1,7 +1,8 @@
 # HIR Template Binding Domain Key Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-10
+Closed: 2026-05-11
 
 Parent Ideas:
 - `ideas/closed/160_sema_canonical_symbol_template_key_authority.md`
@@ -148,6 +149,19 @@ HIR owns late semantic materialization:
   compatibility mirrors with removal conditions.
 - Focused HIR tests cover nested/same-spelled template parameter and NTTP
   forwarding cases.
+
+## Closure Summary
+
+Closed after Step 6 validation. The active runbook moved covered HIR template
+binding identity to owner-aware structured keys for creation, lookup,
+forwarding, pending/specialization identity, and compatibility-boundary
+documentation. Retained rendered/string maps are compatibility mirrors for
+display, incomplete metadata, and transition paths rather than primary
+semantic authority for covered HIR template work.
+
+Close proof used the committed Step 6 validation slice
+`5ab4eb499 Validate template binding compatibility boundaries`. The available
+full-suite `test_after.log` passed 3025/3025 tests with zero failures.
 
 ## Reviewer Reject Signals
 
