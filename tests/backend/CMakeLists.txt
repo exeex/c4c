@@ -1645,10 +1645,10 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DSRC_A=${BACKEND_CASE_ROOT}/nested_member_pointer_array.c
           -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/nested_member_pointer_array_semantic_bir_x86_64.ll
-          "-DREQUIRED_SNIPPETS_A=bir.func @get_second(ptr %p.o) -> i32 {|%t1 = bir.load_local ptr %t1.addr, addr %p.o|%t6 = bir.load_local i32 %t6.addr, addr %t1+4|bir.store_local %lv.outer.0, ptr %lv.inner|bir.call i32 get_second(ptr %lv.outer)|bir.ret i32 %t9"
+          "-DREQUIRED_SNIPPETS_A=bir.func @get_second(ptr %p.o) -> i32 {|%t1 = bir.load_local ptr %t1.addr, addr %p.o|%t5 = bir.load_local i32 %t5.addr, addr %t1+4|bir.store_local %lv.outer.0, ptr %lv.inner|bir.call i32 get_second(ptr %lv.outer)|bir.ret i32 %t7"
           -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
           -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/nested_member_pointer_array_local_array_semantic_bir_x86_64.ll
-          "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t14 = bir.add i32 %t9, %t13|bir.ret i32 %t14"
+          "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t10 = bir.add i32 %t6, %t9|bir.ret i32 %t10"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
 )
 c4c_set_backend_test_labels(
@@ -1764,6 +1764,6 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_struct_array_call_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.pairs.0, i32 1|bir.store_local %lv.pairs.12, i32 4|%t17 = bir.load_local i32 %lv.i|%t18 = bir.sext i32 %t17 to i64|%t19 = bir.select eq i64 %t18, 0, ptr %t19.elt0, %t19.elt1|bir.call i32 get_y(ptr %t19)|bir.ret i32 %t20"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.pairs.0, i32 1|bir.store_local %lv.pairs.12, i32 4|%t12 = bir.load_local i32 %lv.i|%t13 = bir.sext i32 %t12 to i64|%t14 = bir.select eq i64 %t13, 0, ptr %t14.elt0, %t14.elt1|bir.call i32 get_y(ptr %t14)|bir.ret i32 %t15"
   FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr) @get_y|getelementptr [2 x %struct.Pair], ptr"
 )

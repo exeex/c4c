@@ -661,24 +661,33 @@ BirFunctionLowerer::resolve_local_dynamic_aggregate_array_access(
     return std::nullopt;
   }
 
+  std::string element_type_text(c4c::codegen::lir::trim_lir_arg_text(base_type_text));
+  std::size_t byte_offset = aggregate_slots.base_byte_offset;
+  const auto base_layout = lookup_local_gep_layout(base_type_text, type_decls, structured_layouts);
+  const auto gep_element_type = c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str());
+  if (base_layout.kind == AggregateTypeLayout::Kind::Array &&
+      gep_element_type == std::string_view(base_layout.element_type_text)) {
+    element_type_text = std::string(gep_element_type);
+  }
+
   const auto extent =
       structured_layouts != nullptr
           ? find_repeated_aggregate_extent_at_offset(aggregate_slots.storage_type_text,
-                                                     aggregate_slots.base_byte_offset,
-                                                     base_type_text,
+                                                     byte_offset,
+                                                     element_type_text,
                                                      type_decls,
                                                      *structured_layouts)
           : find_repeated_aggregate_extent_at_offset(aggregate_slots.storage_type_text,
-                                                     aggregate_slots.base_byte_offset,
-                                                     base_type_text,
+                                                     byte_offset,
+                                                     element_type_text,
                                                      type_decls);
   if (!extent.has_value()) {
     return std::nullopt;
   }
 
   return DynamicLocalAggregateArrayAccess{
-      .element_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(base_type_text)),
-      .byte_offset = aggregate_slots.base_byte_offset,
+      .element_type_text = std::move(element_type_text),
+      .byte_offset = byte_offset,
       .element_count = extent->element_count,
       .element_stride_bytes = extent->element_stride_bytes,
       .leaf_slots = aggregate_slots.leaf_slots,

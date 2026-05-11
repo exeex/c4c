@@ -426,6 +426,21 @@ BirFunctionLowerer::resolve_relative_gep_target(
     }
 
     if (index_pos == 0) {
+      if (layout.kind == AggregateTypeLayout::Kind::Array &&
+          gep_element_type == std::string_view(layout.element_type_text)) {
+        const auto element_layout =
+            lookup_addressing_layout(layout.element_type_text, type_decls, structured_layouts);
+        if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+            element_layout.size_bytes == 0 ||
+            static_cast<std::size_t>(*index_value) >= layout.array_count) {
+          return std::nullopt;
+        }
+        byte_offset +=
+            static_cast<std::int64_t>(static_cast<std::size_t>(*index_value) *
+                                      element_layout.size_bytes);
+        current_type = layout.element_type_text;
+        continue;
+      }
       if (gep_element_type != std::string_view(current_type) && *index_value == 0 &&
           can_reinterpret_byte_storage_as_type_impl(
               current_type, 0, gep_element_type, type_decls, structured_layouts)) {
