@@ -335,7 +335,9 @@ class Lowerer {
 
   std::optional<long long> lookup_nttp_binding(const FunctionCtx* ctx,
                                                const Node* name_node,
-                                               const char* rendered_name) const;
+                                               const char* rendered_name,
+                                               TextId query_text_id = kInvalidText,
+                                               bool allow_rendered_mirror_fallback = true) const;
 
   static TypeSpec reference_storage_ts(TypeSpec ts);
 

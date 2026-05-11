@@ -6332,6 +6332,9 @@ void test_hir_template_value_arg_text_id_miss_blocks_rendered_lookup() {
 
   c4c::Node* owner = parser.make_node(c4c::NK_FUNCTION, 1);
   owner->kind = c4c::NK_FUNCTION;
+  owner->name = arena.strdup("Owner");
+  owner->unqualified_name = arena.strdup("Owner");
+  owner->unqualified_text_id = texts.intern("Owner");
   owner->n_template_params = 1;
   owner->template_param_names = arena.alloc_array<const char*>(1);
   owner->template_param_names[0] = arena.strdup("N");
@@ -6374,12 +6377,121 @@ void test_hir_template_value_arg_text_id_miss_blocks_rendered_lookup() {
               "HIR template value materialization should use the matching "
               "TextId carrier when it is available");
 
+  (void)c4c::hir::add_hir_template_nttp_binding_by_legacy_name(
+      owner, "N", 23, &ctx.structured_nttp_bindings);
+  expect_true(lowerer.resolve_ast_template_value_arg(owner, ref, 0, &ctx, &value) &&
+                  value == 23,
+              "HIR template value materialization should prefer complete "
+              "structured NTTP binding metadata over stale TextId mirrors");
+
+  ctx.structured_nttp_bindings.clear();
   ref->template_arg_nttp_text_ids[0] = c4c::kInvalidText;
   value = 0;
   expect_true(lowerer.resolve_ast_template_value_arg(owner, ref, 0, &ctx, &value) &&
                   value == 42,
               "no-carrier HIR template value materialization should keep "
               "rendered-name compatibility");
+}
+
+void test_hir_consteval_forwarded_nttp_uses_structured_lookup_authority() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files,
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId outer_text = texts.intern("OuterN");
+  const c4c::TextId stale_text = texts.intern("StaleN");
+  const c4c::TextId callee_param_text = texts.intern("N");
+
+  c4c::Node* outer_owner = parser.make_node(c4c::NK_FUNCTION, 1);
+  outer_owner->kind = c4c::NK_FUNCTION;
+  outer_owner->name = arena.strdup("Outer");
+  outer_owner->unqualified_name = arena.strdup("Outer");
+  outer_owner->unqualified_text_id = texts.intern("Outer");
+  outer_owner->n_template_params = 1;
+  outer_owner->template_param_names = arena.alloc_array<const char*>(1);
+  outer_owner->template_param_names[0] = arena.strdup("OuterN");
+  outer_owner->template_param_name_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  outer_owner->template_param_name_text_ids[0] = outer_text;
+  outer_owner->template_param_is_nttp = arena.alloc_array<bool>(1);
+  outer_owner->template_param_is_nttp[0] = true;
+
+  c4c::Node* ce_fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  ce_fn->kind = c4c::NK_FUNCTION;
+  ce_fn->name = arena.strdup("ce");
+  ce_fn->unqualified_name = arena.strdup("ce");
+  ce_fn->unqualified_text_id = texts.intern("ce");
+  ce_fn->n_template_params = 1;
+  ce_fn->template_param_names = arena.alloc_array<const char*>(1);
+  ce_fn->template_param_names[0] = arena.strdup("N");
+  ce_fn->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  ce_fn->template_param_name_text_ids[0] = callee_param_text;
+  ce_fn->template_param_is_nttp = arena.alloc_array<bool>(1);
+  ce_fn->template_param_is_nttp[0] = true;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
+  callee->kind = c4c::NK_VAR;
+  callee->name = arena.strdup("ce");
+  callee->has_template_args = true;
+  callee->n_template_args = 1;
+  callee->template_arg_is_value = arena.alloc_array<bool>(1);
+  callee->template_arg_is_value[0] = true;
+  callee->template_arg_values = arena.alloc_array<long long>(1);
+  callee->template_arg_values[0] = 0;
+  callee->template_arg_nttp_names = arena.alloc_array<const char*>(1);
+  callee->template_arg_nttp_names[0] = arena.strdup("RenderedOuterN");
+  callee->template_arg_nttp_text_ids = arena.alloc_array<c4c::TextId>(1);
+  callee->template_arg_nttp_text_ids[0] = outer_text;
+
+  c4c::Node* call = parser.make_node(c4c::NK_CALL, 1);
+  call->kind = c4c::NK_CALL;
+  call->left = callee;
+  call->type.base = c4c::TB_INT;
+  call->type.array_size = -1;
+  call->type.inner_rank = -1;
+
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.ct_state_->register_consteval_def("ce", ce_fn);
+
+  c4c::hir::Lowerer::FunctionCtx ctx{};
+  ctx.nttp_bindings["RenderedOuterN"] = 7;
+  ctx.nttp_bindings_by_text[outer_text] = 8;
+  (void)c4c::hir::add_hir_template_nttp_binding_by_legacy_name(
+      outer_owner, "OuterN", 31, &ctx.structured_nttp_bindings);
+
+  std::optional<c4c::hir::ExprId> expr_id =
+      lowerer.try_lower_consteval_call_expr(&ctx, call);
+  expect_true(expr_id.has_value(),
+              "lowerer consteval call should emit a pending expression");
+  const c4c::hir::PendingConstevalExpr* pce =
+      std::get_if<c4c::hir::PendingConstevalExpr>(
+          &module.expr_pool.back().payload);
+  expect_true(pce && pce->nttp_bindings.count("N") == 1 &&
+                  pce->nttp_bindings.at("N") == 31,
+              "lowerer consteval forwarding should prefer complete structured "
+              "NTTP binding metadata over stale TextId or rendered mirrors");
+  expect_true(pce->nttp_bindings_by_text.count(callee_param_text) == 1 &&
+                  pce->nttp_bindings_by_text.at(callee_param_text) == 31,
+              "structured consteval forwarding should still record callee "
+              "parameter TextId mirrors for downstream compatibility");
+
+  module.expr_pool.clear();
+  callee->template_arg_nttp_text_ids[0] = stale_text;
+  ctx.nttp_bindings_by_text[stale_text] = 41;
+  expr_id = lowerer.try_lower_consteval_call_expr(&ctx, call);
+  expect_true(expr_id.has_value(),
+              "lowerer consteval call should still emit a pending expression "
+              "after a structured forwarding miss");
+  pce = std::get_if<c4c::hir::PendingConstevalExpr>(
+      &module.expr_pool.back().payload);
+  expect_true(pce && pce->nttp_bindings.empty() &&
+                  pce->nttp_bindings_by_text.empty(),
+              "complete structured forwarding misses should not fall through "
+              "to stale TextId or rendered NTTP mirrors");
 }
 
 void test_hir_forwarded_nttp_rejects_rendered_after_text_id_miss() {
@@ -7440,6 +7552,7 @@ int main() {
   test_dependent_template_specialization_uses_nested_arg_carriers_before_debug_text();
   test_consteval_template_arg_expr_carrier_blocks_rendered_fallback_on_eval_miss();
   test_hir_template_value_arg_text_id_miss_blocks_rendered_lookup();
+  test_hir_consteval_forwarded_nttp_uses_structured_lookup_authority();
   test_hir_forwarded_nttp_rejects_rendered_after_text_id_miss();
   test_hir_typed_type_arg_carrier_miss_blocks_debug_text_lookup();
   test_hir_type_pack_carrier_miss_blocks_debug_text_pack_lookup();

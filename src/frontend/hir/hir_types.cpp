@@ -1184,9 +1184,16 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
 }
 
 std::optional<long long> Lowerer::lookup_nttp_binding(
-    const FunctionCtx* ctx, const Node* name_node, const char* rendered_name) const {
+    const FunctionCtx* ctx,
+    const Node* name_node,
+    const char* rendered_name,
+    TextId query_text_id,
+    bool allow_rendered_mirror_fallback) const {
   if (!ctx) return std::nullopt;
-  const TextId text_id = name_node ? name_node->unqualified_text_id : kInvalidText;
+  const TextId text_id = query_text_id != kInvalidText
+                             ? query_text_id
+                             : (name_node ? name_node->unqualified_text_id
+                                          : kInvalidText);
   std::optional<long long> text_mirror_value;
   if (text_id != kInvalidText && !ctx->nttp_bindings_by_text.empty()) {
     auto text_it = ctx->nttp_bindings_by_text.find(text_id);
@@ -1195,7 +1202,7 @@ std::optional<long long> Lowerer::lookup_nttp_binding(
     }
   }
   std::optional<long long> rendered_mirror_value;
-  if (rendered_name && rendered_name[0]) {
+  if (allow_rendered_mirror_fallback && rendered_name && rendered_name[0]) {
     auto rendered_it = ctx->nttp_bindings.find(rendered_name);
     if (rendered_it != ctx->nttp_bindings.end()) {
       rendered_mirror_value = rendered_it->second;

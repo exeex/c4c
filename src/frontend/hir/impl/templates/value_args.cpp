@@ -741,15 +741,15 @@ bool Lowerer::resolve_ast_template_value_arg(
     const TextId forwarded_text_id =
         ref->template_arg_nttp_text_ids ? ref->template_arg_nttp_text_ids[index]
                                         : kInvalidText;
-    if (forwarded_text_id != kInvalidText &&
-        !ctx->nttp_bindings_by_text.empty()) {
-      auto text_it = ctx->nttp_bindings_by_text.find(forwarded_text_id);
-      if (text_it != ctx->nttp_bindings_by_text.end()) {
-        *out_value = text_it->second;
+    if (forwarded_text_id != kInvalidText) {
+      if (auto nttp_value = lookup_nttp_binding(
+              ctx, nullptr, nttp_name, forwarded_text_id,
+              false /* allow_rendered_mirror_fallback */)) {
+        *out_value = *nttp_value;
         return true;
       }
+      return false;
     }
-    if (forwarded_text_id != kInvalidText) return false;
     if (auto nttp_value = lookup_nttp_binding(ctx, nullptr, nttp_name)) {
       *out_value = *nttp_value;
       return true;

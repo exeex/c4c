@@ -827,17 +827,16 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
                 n->left->template_arg_nttp_text_ids
                     ? n->left->template_arg_nttp_text_ids[i]
                     : kInvalidText;
-            if (forwarded_text_id != kInvalidText &&
-                !ctx->nttp_bindings_by_text.empty()) {
-              auto text_it = ctx->nttp_bindings_by_text.find(forwarded_text_id);
-              if (text_it != ctx->nttp_bindings_by_text.end()) {
-                ce_nttp_bindings[fn_def->template_param_names[i]] = text_it->second;
+            if (forwarded_text_id != kInvalidText) {
+              if (auto nttp_value = lookup_nttp_binding(
+                      ctx, nullptr, n->left->template_arg_nttp_names[i],
+                      forwarded_text_id,
+                      false /* allow_rendered_mirror_fallback */)) {
+                ce_nttp_bindings[fn_def->template_param_names[i]] = *nttp_value;
                 record_nttp_text_binding(
-                    fn_def, i, text_it->second, &ce_nttp_bindings_by_text);
+                    fn_def, i, *nttp_value, &ce_nttp_bindings_by_text);
                 continue;
               }
-            }
-            if (forwarded_text_id != kInvalidText) {
               continue;
             }
             // No TextId carrier: retain legacy rendered-name forwarding.
