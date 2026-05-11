@@ -562,10 +562,12 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
   }
 
   if (r.global) {
-    size_t gv_idx = r.global->value;
-    const auto& gv0 = mod_.globals[gv_idx];
-    if (const GlobalVar* best = select_global_object(gv0.name)) gv_idx = best->id.value;
-    const auto& gv = mod_.globals[gv_idx];
+    const GlobalVar* selected = select_global_object(r);
+    if (!selected) selected = mod_.find_global(*r.global);
+    if (!selected) {
+      throw std::runtime_error("StmtEmitter: global rvalue not found: " + r.name);
+    }
+    const auto& gv = *selected;
     const std::string global_name = emitted_link_name(mod_, gv.link_name_id, gv.name);
     if (gv.type.spec.array_rank > 0 && !gv.type.spec.is_ptr_to_array) {
       const std::string tmp = fresh_tmp(ctx);

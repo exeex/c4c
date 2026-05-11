@@ -8,15 +8,15 @@ Current Step Title: Propagate LinkNameId Through HIR to LIR
 
 ## Just Finished
 
-Completed Step 3 narrow HIR-to-LIR global lvalue store handoff in
-`src/codegen/lir/hir_to_lir/lvalue.cpp`.
+Completed Step 3 continuation for the HIR-to-LIR runtime global rvalue route in
+`src/codegen/lir/hir_to_lir/expr/coordinator.cpp`.
 
-Global lvalue lowering now resolves a `DeclRef` with a concrete `GlobalId`
-through `select_global_object(*r)`, preserving the original global's
-`LinkNameId` authority instead of reselecting by the rendered `GlobalVar::name`.
-The focused test corrupts both the HIR global spelling and the lvalue
-`DeclRef` spelling, then proves the generated LIR store still targets the
-semantic global symbol rather than a rendered-name collision.
+Global rvalue load lowering now resolves a `DeclRef` with a concrete
+`GlobalId` through `select_global_object(r)`, preserving the original global's
+`LinkNameId` authority instead of reselecting by the rendered
+`GlobalVar::name`. The focused test corrupts both the HIR global spelling and
+the rvalue `DeclRef` spelling, then proves the generated LIR load still targets
+the semantic global symbol rather than a rendered-name collision.
 
 ## Suggested Next
 
@@ -27,9 +27,6 @@ extern-declaration bridge not already covered by `LinkNameId` dedup.
 
 ## Watchouts
 
-- The sibling runtime global rvalue path in
-  `src/codegen/lir/hir_to_lir/expr/coordinator.cpp` has the same rendered-name
-  reselection shape, but it was outside this packet's owned files.
 - Existing constant-initializer global-address selection already routes through
   `select_global_object(DeclRef)` or `select_global_object(GlobalId)`.
 - A valid `LinkNameId` miss for a covered known symbol must not reopen raw
