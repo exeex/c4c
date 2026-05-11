@@ -1494,7 +1494,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_local_i32_array_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.1, i32 2|bir.store_local %lv.dst.2, i32 3|bir.store_local %lv.dst.0, i32 0|bir.store_local %lv.dst.1, i32 0|bir.store_local %lv.dst.2, i32 0|bir.ret i32 %t33"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.1, i32 2|bir.store_local %lv.dst.2, i32 3|bir.store_local %lv.dst.0, i32 0|bir.store_local %lv.dst.1, i32 0|bir.store_local %lv.dst.2, i32 0|bir.ret i32 %t24"
   FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
 )
 
@@ -1514,7 +1514,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_local_i32_array_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.1, i32 2|bir.store_local %lv.dst.2, i32 3|bir.store_local %lv.dst.0, i32 -1|bir.store_local %lv.dst.1, i32 -1|bir.store_local %lv.dst.2, i32 -1|bir.ret i32 %t63"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.1, i32 2|bir.store_local %lv.dst.2, i32 3|bir.store_local %lv.dst.0, i32 -1|bir.store_local %lv.dst.1, i32 -1|bir.store_local %lv.dst.2, i32 -1|bir.ret i32 %t54"
   FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
 )
 
@@ -1544,7 +1544,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nested_i32_array_field_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 1|bir.store_local %lv.dst.8, i32 2|bir.store_local %lv.dst.12, i32 3|bir.store_local %lv.dst.4, i32 0|bir.store_local %lv.dst.8, i32 0|bir.store_local %lv.dst.12, i32 0|bir.ret i32 %t35"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 1|bir.store_local %lv.dst.8, i32 2|bir.store_local %lv.dst.12, i32 3|bir.store_local %lv.dst.4, i32 0|bir.store_local %lv.dst.8, i32 0|bir.store_local %lv.dst.12, i32 0|bir.ret i32 %t29"
   FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
 )
 
@@ -1554,7 +1554,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_nested_i32_array_field_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 1|bir.store_local %lv.dst.8, i32 2|bir.store_local %lv.dst.12, i32 3|bir.store_local %lv.dst.4, i32 -1|bir.store_local %lv.dst.8, i32 -1|bir.store_local %lv.dst.12, i32 -1|bir.ret i32 %t74"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 1|bir.store_local %lv.dst.8, i32 2|bir.store_local %lv.dst.12, i32 3|bir.store_local %lv.dst.4, i32 -1|bir.store_local %lv.dst.8, i32 -1|bir.store_local %lv.dst.12, i32 -1|bir.ret i32 %t68"
   FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
 )
 
@@ -1564,7 +1564,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_prefix_nested_i32_subarray_field_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 1|bir.store_local %lv.dst.8, i32 2|bir.store_local %lv.dst.12, i32 3|bir.store_local %lv.dst.16, i32 4|bir.store_local %lv.dst.20, i32 9|bir.store_local %lv.dst.8, i32 -1|bir.store_local %lv.dst.12, i32 -1|%t38 = bir.load_local i32 %lv.dst.4|%t53 = bir.load_local i32 %lv.dst.8|%t69 = bir.load_local i32 %lv.dst.12|%t85 = bir.load_local i32 %lv.dst.16|%t97 = bir.load_local i32 %lv.dst.20|bir.ret i32 %t109"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 1|bir.store_local %lv.dst.8, i32 2|bir.store_local %lv.dst.12, i32 3|bir.store_local %lv.dst.16, i32 4|bir.store_local %lv.dst.20, i32 9|bir.store_local %lv.dst.8, i32 -1|bir.store_local %lv.dst.12, i32 -1|%t32 = bir.load_local i32 %lv.dst.4|%t46 = bir.load_local i32 %lv.dst.8|%t61 = bir.load_local i32 %lv.dst.12|%t76 = bir.load_local i32 %lv.dst.16|%t88 = bir.load_local i32 %lv.dst.20|bir.ret i32 %t100"
   FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
 )
 
