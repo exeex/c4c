@@ -81,6 +81,9 @@ std::optional<ExprId> Lowerer::try_lower_rvalue_ref_storage_addr(
 std::string Lowerer::resolve_ref_overload(const std::string& base_name,
                                           const Node* call_node,
                                           const FunctionCtx* ctx) {
+  // Direct rendered-name resolution is the legacy no-decl compatibility path.
+  // Callers with structured callee metadata must use find_free_ref_overload_set
+  // so complete decl-key misses remain closed before rendered compatibility.
   auto ovit = ref_overload_set_.find(base_name);
   if (ovit == ref_overload_set_.end()) return {};
   return resolve_ref_overload_entries(ovit->second, base_name, call_node, ctx);
@@ -153,18 +156,18 @@ const std::vector<Lowerer::RefOverloadEntry>* Lowerer::find_struct_ref_overload_
   auto rendered_key_for = [&](bool is_const_method) -> const std::string& {
     return is_const_method ? const_key : base_key;
   };
-  bool rendered_fallback_allowed = true;
+  bool no_owner_rendered_compatibility_allowed = true;
   auto try_owner = [&](bool is_const_method)
       -> const std::vector<RefOverloadEntry>* {
     const auto owner_key =
         make_struct_method_lookup_key(tag, method, is_const_method);
     if (!owner_key) return nullptr;
-    rendered_fallback_allowed = false;
+    no_owner_rendered_compatibility_allowed = false;
     const auto owner_it = ref_overload_set_by_owner_.find(*owner_key);
     if (owner_it == ref_overload_set_by_owner_.end()) return nullptr;
     return &owner_it->second;
   };
-  auto try_rendered = [&](bool is_const_method)
+  auto try_no_owner_rendered_compatibility = [&](bool is_const_method)
       -> const std::vector<RefOverloadEntry>* {
     const auto rendered_it = ref_overload_set_.find(rendered_key_for(is_const_method));
     if (rendered_it == ref_overload_set_.end()) return nullptr;
@@ -174,9 +177,17 @@ const std::vector<Lowerer::RefOverloadEntry>* Lowerer::find_struct_ref_overload_
   const bool alternate_const = !is_const_obj;
   if (const auto* local = try_owner(preferred_const)) return local;
   if (const auto* local = try_owner(alternate_const)) return local;
-  if (rendered_fallback_allowed) {
-    if (const auto* local = try_rendered(preferred_const)) return local;
-    if (const auto* local = try_rendered(alternate_const)) return local;
+  // Explicit no-owner rendered compatibility: if either complete owner/method
+  // key existed and missed, stale rendered ref-overload sets must not win.
+  if (no_owner_rendered_compatibility_allowed) {
+    if (const auto* local =
+            try_no_owner_rendered_compatibility(preferred_const)) {
+      return local;
+    }
+    if (const auto* local =
+            try_no_owner_rendered_compatibility(alternate_const)) {
+      return local;
+    }
   }
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
@@ -196,6 +207,8 @@ const std::vector<Lowerer::RefOverloadEntry>* Lowerer::find_free_ref_overload_se
   if (const std::optional<ModuleDeclLookupKey> key =
           make_ref_overload_function_lookup_key(callee)) {
     const auto structured_it = ref_overload_set_by_decl_.find(*key);
+    // Complete decl-key misses fail closed; rendered names are no-decl
+    // compatibility only and must not repair stale rendered collisions.
     return structured_it == ref_overload_set_by_decl_.end()
                ? nullptr
                : &structured_it->second;

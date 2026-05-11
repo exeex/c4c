@@ -812,7 +812,7 @@ void test_hir_ref_overload_grouping_rejects_tag_text_id_mismatch_without_owner_k
               "tag_text_id mismatch must not fall back to matching rendered tags");
 }
 
-void test_hir_ref_overload_free_lookup_prefers_decl_key_over_stale_base_name() {
+void test_hir_ref_overload_free_lookup_prefers_decl_key_over_no_decl_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -839,10 +839,10 @@ void test_hir_ref_overload_free_lookup_prefers_decl_key_over_stale_base_name() {
   const auto* overloads = lowerer.find_free_ref_overload_set(&callee);
   expect_true(overloads != nullptr && overloads->size() == 1 &&
                   (*overloads)[0].mangled_name == "structured_free_ref_overload",
-              "free ref-overload lookup should prefer declaration keys over stale rendered base names");
+              "free ref-overload lookup should prefer declaration keys over no-decl rendered compatibility");
 }
 
-void test_hir_ref_overload_free_lookup_rejects_rendered_fallback_after_decl_key_miss() {
+void test_hir_ref_overload_free_lookup_closes_decl_key_miss_before_no_decl_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -861,10 +861,10 @@ void test_hir_ref_overload_free_lookup_rejects_rendered_fallback_after_decl_key_
 
   const auto* overloads = lowerer.find_free_ref_overload_set(&callee);
   expect_true(overloads == nullptr,
-              "free ref-overload lookup should reject rendered fallback after complete declaration-key miss");
+              "free ref-overload lookup should reject no-decl rendered compatibility after complete declaration-key miss");
 }
 
-void test_hir_ref_overload_free_lookup_keeps_rendered_fallback_without_decl_key() {
+void test_hir_ref_overload_free_lookup_keeps_no_decl_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -882,7 +882,7 @@ void test_hir_ref_overload_free_lookup_keeps_rendered_fallback_without_decl_key(
   const auto* overloads = lowerer.find_free_ref_overload_set(&callee);
   expect_true(overloads != nullptr && overloads->size() == 1 &&
                   (*overloads)[0].mangled_name == "legacy_free_ref_overload",
-              "free ref-overload lookup should keep rendered fallback without structured function metadata");
+              "free ref-overload lookup should keep no-decl rendered compatibility without structured function metadata");
 }
 
 void test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs() {
@@ -3838,7 +3838,7 @@ void test_hir_struct_method_lookup_closes_complete_owner_key_miss_before_rendere
               "owner-key method return-type misses should not consult rendered maps for parity");
 }
 
-void test_hir_ref_overload_method_lookup_prefers_owner_key_over_stale_rendered_key() {
+void test_hir_ref_overload_method_lookup_prefers_owner_key_over_no_owner_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -3874,10 +3874,10 @@ void test_hir_ref_overload_method_lookup_prefers_owner_key_over_stale_rendered_k
       lowerer.find_struct_ref_overload_set(def.tag, "method", false);
   expect_true(overloads != nullptr && overloads->size() == 1 &&
                   (*overloads)[0].mangled_name == "structured_ref_overload",
-              "method ref-overload lookup should prefer owner-key entries over stale rendered keys");
+              "method ref-overload lookup should prefer owner-key entries over no-owner rendered compatibility");
 }
 
-void test_hir_ref_overload_method_lookup_rejects_rendered_fallback_after_owner_key_miss() {
+void test_hir_ref_overload_method_lookup_closes_owner_key_miss_before_no_owner_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -3904,10 +3904,10 @@ void test_hir_ref_overload_method_lookup_rejects_rendered_fallback_after_owner_k
   const auto* overloads =
       lowerer.find_struct_ref_overload_set(def.tag, "method", false);
   expect_true(overloads == nullptr,
-              "method ref-overload lookup should reject rendered fallback after complete owner-key miss");
+              "method ref-overload lookup should reject no-owner rendered compatibility after complete owner-key miss");
 }
 
-void test_hir_ref_overload_method_lookup_keeps_rendered_fallback_without_owner_key() {
+void test_hir_ref_overload_method_lookup_keeps_no_owner_rendered_compatibility() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
@@ -3920,7 +3920,7 @@ void test_hir_ref_overload_method_lookup_keeps_rendered_fallback_without_owner_k
       lowerer.find_struct_ref_overload_set("LegacyRendered", "method", false);
   expect_true(overloads != nullptr && overloads->size() == 1 &&
                   (*overloads)[0].mangled_name == "legacy_ref_overload",
-              "method ref-overload lookup should keep rendered fallback when owner metadata is absent");
+              "method ref-overload lookup should keep no-owner rendered compatibility when owner metadata is absent");
 }
 
 void test_hir_struct_method_lookup_structured_miss_keeps_base_fallback() {
@@ -7104,9 +7104,9 @@ int main() {
   test_hir_ref_overload_grouping_rejects_partial_metadata_rendered_fallback();
   test_hir_ref_overload_grouping_prefers_tag_text_id_over_stale_tag_without_owner_key();
   test_hir_ref_overload_grouping_rejects_tag_text_id_mismatch_without_owner_key();
-  test_hir_ref_overload_free_lookup_prefers_decl_key_over_stale_base_name();
-  test_hir_ref_overload_free_lookup_rejects_rendered_fallback_after_decl_key_miss();
-  test_hir_ref_overload_free_lookup_keeps_rendered_fallback_without_decl_key();
+  test_hir_ref_overload_free_lookup_prefers_decl_key_over_no_decl_rendered_compatibility();
+  test_hir_ref_overload_free_lookup_closes_decl_key_miss_before_no_decl_rendered_compatibility();
+  test_hir_ref_overload_free_lookup_keeps_no_decl_rendered_compatibility();
   test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs();
   test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes();
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();
@@ -7168,9 +7168,9 @@ int main() {
   test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag();
   test_hir_struct_method_lookup_keeps_no_owner_rendered_compatibility();
   test_hir_struct_method_lookup_closes_complete_owner_key_miss_before_rendered_compatibility();
-  test_hir_ref_overload_method_lookup_prefers_owner_key_over_stale_rendered_key();
-  test_hir_ref_overload_method_lookup_rejects_rendered_fallback_after_owner_key_miss();
-  test_hir_ref_overload_method_lookup_keeps_rendered_fallback_without_owner_key();
+  test_hir_ref_overload_method_lookup_prefers_owner_key_over_no_owner_rendered_compatibility();
+  test_hir_ref_overload_method_lookup_closes_owner_key_miss_before_no_owner_rendered_compatibility();
+  test_hir_ref_overload_method_lookup_keeps_no_owner_rendered_compatibility();
   test_hir_struct_method_lookup_structured_miss_keeps_base_fallback();
   test_hir_out_of_class_method_attachment_prefers_structured_owner_key();
   test_hir_out_of_class_method_skip_prefers_structured_owner_key();

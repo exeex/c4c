@@ -817,6 +817,8 @@ void Lowerer::collect_ref_overloaded_free_functions(
       }
     }
     if (!has_ref_diff || !base_match) continue;
+    // Keep writing the rendered-name set as an explicit no-decl compatibility
+    // surface. Structured free-function lookup is mirrored by decl key below.
     auto& ovset = ref_overload_set_[fn_name];
     if (ovset.empty()) {
       Lowerer::RefOverloadEntry e0;
@@ -837,6 +839,9 @@ void Lowerer::collect_ref_overloaded_free_functions(
     ovset.push_back(std::move(e1));
     ref_overload_mangled_[item] = fn_name + "__rref_overload";
     if (item_decl_key) {
+      // The decl-key mirror is authoritative for callers that carry complete
+      // declaration metadata; a miss there must not fall back to this rendered
+      // compatibility set.
       ref_overload_set_by_decl_[*item_decl_key] = ovset;
     }
   }

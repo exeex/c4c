@@ -1374,9 +1374,10 @@ class Lowerer {
     const Node* method_node;
   };
   std::unordered_map<std::string, DtorInfo> struct_destructors_;
-  // Ref-overload resolution. The rendered map is retained for no-metadata
-  // free-function compatibility; struct-method overloads use the owner-key
-  // mirror whenever complete owner/method metadata is available.
+  // Ref-overload resolution. The rendered map is retained only as explicit
+  // no-owner/no-decl compatibility. Complete struct owner/method keys and
+  // complete free-function decl keys are the authoritative lookup surfaces;
+  // misses there fail closed before the rendered compatibility map is used.
   struct RefOverloadEntry {
     std::string mangled_name;
     std::vector<bool> param_is_rvalue_ref;
@@ -1384,10 +1385,16 @@ class Lowerer {
     bool method_is_lvalue_ref = false;
     bool method_is_rvalue_ref = false;
   };
+  // Legacy rendered compatibility map keyed by rendered free name or
+  // "struct_tag::method_name". It is not owner/decl lookup authority.
   std::unordered_map<std::string, std::vector<RefOverloadEntry>> ref_overload_set_;
+  // Authoritative struct-method ref-overload map keyed by structured owner,
+  // method TextId, and constness.
   std::unordered_map<HirStructMethodLookupKey, std::vector<RefOverloadEntry>,
                      HirStructMethodLookupKeyHash>
       ref_overload_set_by_owner_;
+  // Authoritative free-function ref-overload map keyed by structured decl
+  // identity.
   std::unordered_map<ModuleDeclLookupKey, std::vector<RefOverloadEntry>,
                      ModuleDeclLookupKeyHash>
       ref_overload_set_by_decl_;
