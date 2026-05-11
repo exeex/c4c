@@ -1107,6 +1107,110 @@ int expect_bir_verifier_rejects_known_link_name_mismatches() {
 
   {
     auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.functions.back().blocks.front().insts.push_back(bir::StoreGlobalInst{
+        .global_name_id = actual_id,
+        .value = bir::Value::immediate_i32(1),
+    });
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail("BIR verifier should allow ID-only global stores to declared globals");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.functions.back().blocks.front().insts.push_back(bir::LoadGlobalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+        .global_name_id = actual_id,
+    });
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail("BIR verifier should allow ID-only global loads from declared globals");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    module.functions.back().blocks.front().insts.push_back(bir::StoreGlobalInst{
+        .global_name = "actual_global",
+        .value = bir::Value::immediate_i32(1),
+    });
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail("BIR verifier should preserve raw-only global store compatibility without LinkNameId");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    module.functions.back().blocks.front().insts.push_back(bir::LoadGlobalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+        .global_name = "actual_global",
+    });
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail("BIR verifier should preserve raw-only global load compatibility without LinkNameId");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    module.functions.back().blocks.front().insts.push_back(bir::StoreGlobalInst{
+        .global_name = "actual_global",
+        .global_name_id = 9999,
+        .value = bir::Value::immediate_i32(1),
+    });
+    if (!validate_rejects_with_message(
+            module, "bir global store in @user must reference a known LinkNameId")) {
+      return fail("BIR verifier should reject global stores with unknown LinkNameId");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    module.functions.back().blocks.front().insts.push_back(bir::LoadGlobalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+        .global_name = "actual_global",
+        .global_name_id = 9999,
+    });
+    if (!validate_rejects_with_message(
+            module, "bir global load in @user must reference a known LinkNameId")) {
+      return fail("BIR verifier should reject global loads with unknown LinkNameId");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId missing_id = module.names.link_names.intern("missing_global");
+    module.functions.back().blocks.front().insts.push_back(bir::StoreGlobalInst{
+        .global_name = "actual_global",
+        .global_name_id = missing_id,
+        .value = bir::Value::immediate_i32(1),
+    });
+    if (!validate_rejects_with_message(
+            module, "bir global store in @user must reference a declared global")) {
+      return fail("BIR verifier should reject global stores whose raw name only matches by name");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId missing_id = module.names.link_names.intern("missing_global");
+    module.functions.back().blocks.front().insts.push_back(bir::LoadGlobalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+        .global_name = "actual_global",
+        .global_name_id = missing_id,
+    });
+    if (!validate_rejects_with_message(
+            module, "bir global load in @user must reference a declared global")) {
+      return fail("BIR verifier should reject global loads whose raw name only matches by name");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
     const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_callee");
     module.functions.back().blocks.front().insts.push_back(bir::CallInst{
         .callee = "other_callee",
