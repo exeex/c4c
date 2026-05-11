@@ -1,54 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/168_compatibility_bridge_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Narrow Sema and Consteval Rendered Mirrors
+Current Step ID: 4
+Current Step Title: Retire HIR Rendered Declaration and Template Bridges
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Narrow Sema and Consteval Rendered Mirrors: completed the NTTP
-binding mirror packet in `ConstEvalEnv`.
+Step 3 - Narrow Sema and Consteval Rendered Mirrors is complete enough to
+advance. The sema/consteval bridge-retirement packets landed in:
 
-Implementation notes:
+| Commit | Result |
+| --- | --- |
+| `40404c298` | Fenced rendered enum-constant compatibility around `static_eval_int`; ordinary structured enum key/text misses fail closed, and the retained rendered enum map is reachable only through an explicitly named compatibility API. |
+| `3eaa60230` | Fenced `ConstEvalEnv` template/type binding mirrors; complete key/text misses no longer reopen rendered lookup, while legacy rendered display-tag helpers are named as compatibility bridges. |
+| `70de559c4` | Fenced `ConstEvalEnv` NTTP binding mirrors; complete NTTP key/text misses and forwarded NTTP misses fail closed, while rendered NTTP lookup remains only a no-metadata compatibility bridge. |
 
-- Inspected production construction and lookup of
-  `nttp_bindings`, `nttp_bindings_by_text`, `nttp_bindings_by_key`,
-  `record_nttp_binding_mirrors`, and forwarded NTTP binding lookup in
-  `bind_consteval_call_env`.
-- Renamed the private rendered NTTP helper to
-  `lookup_nttp_binding_by_legacy_rendered_no_metadata_bridge` so the retained
-  rendered map entry point is explicitly marked as a no-metadata compatibility
-  bridge.
-- Tightened comments on the rendered `nttp_bindings` field, the rendered
-  lookup helper, `record_nttp_binding_mirrors`, and
-  `lookup_forwarded_nttp_arg_by_text`: TextId/key maps remain binding
-  authority for covered NTTP paths, rendered maps remain only legacy
-  no-metadata mirrors, and complete key/text misses must not reopen rendered
-  lookup.
-- Preserved structured lookup ordering in `ConstEvalEnv::lookup`: complete
-  key hits beat TextId/rendered mirrors, TextId hits beat rendered mirrors when
-  no key hit exists, and complete NTTP key/text misses fail closed.
-- Added focused `cpp_hir_sema_consteval_type_utils_metadata_test` coverage for
-  NTTP key/text mirror authority, closed misses, forwarded NTTP miss fencing,
-  and the retained no-metadata forwarded rendered fallback.
+Step 3 completion decision:
 
-Changed files:
-
-- `src/frontend/sema/consteval.hpp`
-- `src/frontend/sema/consteval.cpp`
-- `tests/frontend/cpp_hir_sema_consteval_type_utils_metadata_test.cpp`
-- `todo.md`
-- `test_after.log`
+| Field | Result |
+| --- | --- |
+| Sema/type-utils rendered enum maps | Covered by `40404c298`; complete scoped-carrier and TextId misses fail closed unless the caller opts into the named compatibility boundary. |
+| Consteval type and NTTP binding mirrors | Covered by `3eaa60230` and `70de559c4`; key/text maps remain binding authority, rendered maps remain named legacy/no-metadata mirrors, and complete metadata misses fail closed. |
+| Fallback canonical template names | Already fenced before this Step 3 slice: `substitute_template_args_impl` only consults `fallback_name_bindings` when the use-site lacks complete template parameter identity, and `cpp_hir_sema_canonical_symbol_metadata_test` covers both the complete-identity miss and no-metadata fallback cases. No extra Step 3 packet is required for idea 168. |
+| Consteval local `by_name` | Not a Step 3 blocker for idea 168; the audit classifies this as route-local/generated identity cleanup owned by idea 169, not source/link compatibility bridge retirement. |
+| Lifecycle decision | Advance from Step 3 to Step 4: Retire HIR Rendered Declaration and Template Bridges. |
 
 ## Suggested Next
 
-Continue Step 3 with the next narrow sema/consteval mirror family from the
-idea 167 inventory, likely fallback canonical template names or another
-remaining sema rendered mirror. Inspect production callers first, then fence or
-delete one rendered bridge family and add closed-miss proof for its structured
-carrier.
+Begin Step 4 by re-reading the idea 167 HIR bridge inventory and selecting the
+first narrow HIR rendered declaration/template bridge. Candidate starting
+points from the runbook are `fn_index`, `global_index`, `struct_defs`,
+`template_defs`, rendered specialization keys, rendered qualified imports, and
+no-owner handoffs.
+
+The next executor packet should name the exact HIR bridge family, separate
+ordinary production lookup from imports/dumps/diagnostics/incomplete-owner
+compatibility, inspect production callers before editing tests, and add
+closed-miss proof for the touched structured carrier.
 
 ## Watchouts
 
@@ -56,26 +46,34 @@ carrier.
   not remove visible text just to reduce rendered-string grep count.
 - Do not fold route-local generated-name cleanup into this plan; idea 169 owns
   route-local identity domains.
-- `nttp_bindings` remains retained for no-metadata consteval compatibility and
-  for legacy forwarded spellings when the call-site supplies no TextId/key
-  carrier. Any valid forwarded TextId plus present metadata map must continue
-  to fail closed on miss.
-- `record_nttp_binding_mirrors` currently records an unqualified local-style
-  key for NTTP parameters because the existing consteval NTTP key domain is
-  based on the parameter TextId. Do not widen this into owner/index identity;
-  generated/local identity cleanup belongs to idea 169.
+- HIR rendered indexes may be valid as import, dump, diagnostic,
+  incomplete-owner, absent-owner-index, no-owner handoff, or display/output
+  boundaries; do not remove those just to reduce grep count.
+- Keep HIR `FunctionCtx` local/label/generated-name cleanup out of this plan;
+  idea 169 owns route-local identity domains.
+- Step 3 retained compatibility bridges must stay narrow: enum rendered maps,
+  consteval type bindings, and NTTP bindings are not ordinary authority after
+  complete structured metadata misses.
 - The pre-existing untracked `review/166_compile_time_registry_fencing_route_review.md`
   was not touched.
 - No current blockers.
 
 ## Proof
 
-Ran delegated proof command and refreshed `test_after.log`:
+Lifecycle-only advancement. No implementation, tests, `plan.md`, source idea,
+review artifact, or log files were changed by this packet.
 
-`cmake --build build --target cpp_hir_sema_consteval_type_utils_metadata_test frontend_hir_tests && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_sema_consteval_type_utils_structured_metadata|frontend_hir_tests)$'`
+Step 3 proof already landed with the three sema/consteval bridge commits:
 
-Result: pass. Built both delegated targets and ran 2/2 matching CTest tests:
-`cpp_hir_sema_consteval_type_utils_structured_metadata` and
-`frontend_hir_tests`.
+- `40404c298`: built `cpp_hir_sema_consteval_type_utils_metadata_test` and
+  `frontend_hir_tests`; ran 2/2 focused tests,
+  `cpp_hir_sema_consteval_type_utils_structured_metadata` and
+  `frontend_hir_tests`.
+- `3eaa60230`: built `cpp_hir_sema_consteval_type_utils_metadata_test` and
+  `frontend_hir_tests`; ran the same 2/2 focused tests.
+- `70de559c4`: built `cpp_hir_sema_consteval_type_utils_metadata_test` and
+  `frontend_hir_tests`; ran the same 2/2 focused tests.
 
-Also ran `git diff --check`: pass.
+Plan-owner validation for this lifecycle edit:
+
+`git diff --check -- todo.md`
