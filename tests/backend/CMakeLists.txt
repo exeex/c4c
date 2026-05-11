@@ -947,10 +947,10 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DSRC_A=${BACKEND_CASE_ROOT}/param_member_array.c
           -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/param_member_array_semantic_bir_x86_64.ll
-          "-DREQUIRED_SNIPPETS_A=bir.func @get_second(ptr byval(size=8, align=4) %p.p) -> i32 {|bir.call i32 get_second(ptr byval(size=8, align=4) %lv.p)|bir.ret i32 %t9"
+          "-DREQUIRED_SNIPPETS_A=bir.func @get_second(ptr byval(size=8, align=4) %p.p) -> i32 {|bir.call i32 get_second(ptr byval(size=8, align=4) %lv.p)|bir.ret i32 %t3"
           -DSRC_B=${BACKEND_CASE_ROOT}/nested_param_member_array.c
           -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/nested_param_member_array_semantic_bir_x86_64.ll
-          "-DREQUIRED_SNIPPETS_B=bir.func @get_second(ptr byval(size=8, align=4) %p.o) -> i32 {|bir.call i32 get_second(ptr byval(size=8, align=4) %lv.outer)|bir.ret i32 %t11"
+          "-DREQUIRED_SNIPPETS_B=bir.func @get_second(ptr byval(size=8, align=4) %p.o) -> i32 {|bir.call i32 get_second(ptr byval(size=8, align=4) %lv.outer)|bir.ret i32 %t4"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
 )
 c4c_set_backend_test_labels(
@@ -1044,7 +1044,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_nested_aggregate_array_function_pointer_call_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t5 = bir.load_global ptr @g, offset 16|%t6 = bir.call i32 %t5(i32 4)|bir.ret i32 %t6"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t4 = bir.load_global ptr @g, offset 16|%t5 = bir.call i32 %t4(i32 4)|bir.ret i32 %t5"
   FORBIDDEN_SNIPPETS "call i32 (ptr, i32) @g.inner.1.fn|addr @inc+16"
 )
 
