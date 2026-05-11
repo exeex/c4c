@@ -1167,6 +1167,34 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
   const std::string name = callee->name;
   if (ctx) {
     if (callee->unqualified_text_id != kInvalidText) {
+      const auto local_it =
+          ctx->local_ids_by_text_id.find(callee->unqualified_text_id);
+      if (local_it != ctx->local_ids_by_text_id.end()) {
+        if (ctx->local_fn_ptr_sigs_by_id.contains(local_it->second)) {
+          return ctx->local_fn_ptr_sigs_by_id.at(local_it->second)
+              .return_type.spec;
+        }
+        return std::nullopt;
+      }
+      if (ctx->rendered_compat_local_text_ids.find(
+              callee->unqualified_text_id) !=
+              ctx->rendered_compat_local_text_ids.end() ||
+          ctx->rendered_compat_local_names.find(name) !=
+              ctx->rendered_compat_local_names.end()) {
+        const auto lit = ctx->local_fn_ptr_sigs.find(name);
+        if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
+      }
+    } else {
+      const auto lit = ctx->local_fn_ptr_sigs.find(name);
+      if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
+    }
+    const auto sit = ctx->static_globals.find(name);
+    if (sit != ctx->static_globals.end()) {
+      if (const GlobalVar* gv = module_->find_global(sit->second)) {
+        if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
+      }
+    }
+    if (callee->unqualified_text_id != kInvalidText) {
       const auto param_it =
           ctx->param_indices_by_text_id.find(callee->unqualified_text_id);
       if (param_it != ctx->param_indices_by_text_id.end()) {
@@ -1185,23 +1213,6 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
     } else {
       const auto pit = ctx->param_fn_ptr_sigs.find(name);
       if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second.return_type.spec;
-    }
-    if (callee->unqualified_text_id != kInvalidText) {
-      const auto local_it =
-          ctx->local_ids_by_text_id.find(callee->unqualified_text_id);
-      if (local_it != ctx->local_ids_by_text_id.end() &&
-          ctx->local_fn_ptr_sigs_by_id.contains(local_it->second)) {
-        return ctx->local_fn_ptr_sigs_by_id.at(local_it->second).return_type.spec;
-      }
-    } else {
-      const auto lit = ctx->local_fn_ptr_sigs.find(name);
-      if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
-    }
-    const auto sit = ctx->static_globals.find(name);
-    if (sit != ctx->static_globals.end()) {
-      if (const GlobalVar* gv = module_->find_global(sit->second)) {
-        if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
-      }
     }
   }
   DeclRef global_ref = make_global_lookup_decl_ref(*module_, name, callee);

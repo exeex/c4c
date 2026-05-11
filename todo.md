@@ -3,51 +3,45 @@ Source Idea Path: ideas/open/165_hir_lowerer_function_context_textid_authority.m
 Source Plan Path: plan.md
 Current Step ID: 5
 Current Step Title: Convert Remaining Metadata-Capable Paths
+你該做code review了
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 5 repair for stale source-local identity after local
-`extern` and local `static` declarations install a `static_globals` bridge.
+Completed plan Step 5 reviewer-blocker repair for
+`infer_call_result_type_from_callee` local-over-param function-pointer
+shadowing.
 
 Changed paths:
-- `src/frontend/hir/impl/lowerer.hpp`
 - `src/frontend/hir/hir_types.cpp`
-- `src/frontend/hir/impl/expr/scalar_control.cpp`
-- `src/frontend/hir/impl/expr/call.cpp`
-- `src/frontend/hir/impl/expr/object.cpp`
-- `src/frontend/hir/impl/expr/operator.cpp`
-- `src/frontend/hir/impl/stmt/decl.cpp`
-- `src/frontend/hir/impl/stmt/range_for.cpp`
-- `src/frontend/hir/impl/stmt/stmt.cpp`
 - `tests/frontend/frontend_hir_lookup_tests.cpp`
 
-`lower_local_decl_stmt` now clears stale source-local lookup authority when a
-same-name local `extern` resolves to a global or a same-name local `static`
-lowers into a static/global bridge. The cleanup removes rendered local/name
-compatibility entries, rendered function-pointer signatures, and any
-`local_ids_by_text_id` entry for either the shadowed rendered local id or the
-bridge declaration TextId.
+`infer_call_result_type_from_callee` now checks active local TextId/LocalId
+function-pointer signatures before parameter signatures, matching the existing
+local-over-param value/type lookup authority. A complete local binding without
+a function-pointer signature now stops inference instead of reopening a
+same-spelled parameter fallback, while rendered compatibility remains fenced to
+the existing rendered local/param compatibility sets and no-metadata path.
 
-The dense `local_fn_ptr_sigs_by_id` map has no erase API, so the repair fences
-those stale signatures by removing the `TextId -> LocalId` authority that made
-them reachable. Focused coverage proves local extern/static bridges beat stale
-source-local value/type/signature lookup while the existing source-local
-hit/miss/generated fallback behavior remains intact.
+Focused `frontend_hir_lookup_tests` coverage now proves a same-spelled active
+local function pointer shadows the parameter signature, and that a complete
+local shadow without a function-pointer signature blocks parameter fallback.
 
 ## Suggested Next
 
-Supervisor can choose the next narrow FunctionCtx lookup group. Ordinary
-`local_const_bindings` and pack parameter rendered lookups remain outside this
-packet.
+Supervisor can hand the fixed slice to reviewer/supervisor acceptance, or choose
+the next narrow Step 5 metadata-capable lookup path if more reviewer blockers
+remain.
 
 ## Watchouts
 
-- `DenseIdMap` still has no erase operation; stale dense local signature/type
-  slots are fenced by clearing their reachable identity maps rather than
-  deleting the dense slots.
-- Ordinary `local_const_bindings` rendered lookups remain outside this packet.
+- The fix intentionally treats a complete local TextId hit as authoritative
+  even when no local function-pointer signature is present; that preserves
+  shadowing and prevents a stale same-name parameter signature from leaking
+  through.
+- Existing param/local complete miss and no-metadata rendered compatibility
+  tests still pass under the delegated subset.
 
 ## Proof
 

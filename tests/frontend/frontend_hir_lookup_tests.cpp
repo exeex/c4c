@@ -3693,6 +3693,60 @@ void test_local_fn_ptr_sig_lookup_prefers_local_text_id_over_rendered_name() {
               "local fn-ptr return inference should prefer local TextId/LocalId authority over rendered name");
 }
 
+void test_local_fn_ptr_sig_lookup_shadows_same_spelled_param_sig() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId callback_text_id =
+      module.link_name_texts->intern("callback");
+  const c4c::hir::LocalId callback_local{7};
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.local_ids_by_text_id[callback_text_id] = callback_local;
+  ctx.local_fn_ptr_sigs_by_id.insert(
+      callback_local, make_returning_fn_ptr_sig(c4c::TB_LONG));
+  ctx.param_indices_by_text_id[callback_text_id] = 0;
+  ctx.param_fn_ptr_sigs_by_index[0] =
+      make_returning_fn_ptr_sig(c4c::TB_INT);
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "callback";
+  callee.unqualified_name = "callback";
+  callee.unqualified_text_id = callback_text_id;
+
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &callee);
+  expect_true(ret.has_value() && ret->base == c4c::TB_LONG,
+              "active local fn-ptr signature should shadow a same-spelled parameter signature");
+}
+
+void test_local_fn_ptr_sig_complete_local_shadow_blocks_param_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId callback_text_id =
+      module.link_name_texts->intern("callback");
+  const c4c::hir::LocalId callback_local{7};
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.local_ids_by_text_id[callback_text_id] = callback_local;
+  ctx.param_indices_by_text_id[callback_text_id] = 0;
+  ctx.param_fn_ptr_sigs_by_index[0] =
+      make_returning_fn_ptr_sig(c4c::TB_INT);
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "callback";
+  callee.unqualified_name = "callback";
+  callee.unqualified_text_id = callback_text_id;
+
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &callee);
+  expect_true(!ret.has_value(),
+              "complete local shadow without a fn-ptr signature should not fall through to a same-spelled parameter signature");
+}
+
 void test_local_fn_ptr_sig_text_miss_rejects_rendered_fallback() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -5579,6 +5633,8 @@ int main() {
   test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback();
   test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback();
   test_local_fn_ptr_sig_lookup_prefers_local_text_id_over_rendered_name();
+  test_local_fn_ptr_sig_lookup_shadows_same_spelled_param_sig();
+  test_local_fn_ptr_sig_complete_local_shadow_blocks_param_fallback();
   test_local_fn_ptr_sig_text_miss_rejects_rendered_fallback();
   test_local_fn_ptr_sig_no_metadata_uses_rendered_fallback();
   test_callable_zero_sized_return_structured_miss_rejects_stale_tag();
