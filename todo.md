@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/178_global_aggregate_layout_structured_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Fail Closed On Stale Or Mismatched Global Metadata
+Current Step ID: 5
+Current Step Title: Validate and Summarize
 
 # Current Packet
 
