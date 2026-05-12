@@ -8,18 +8,19 @@ Current Step Title: Audit Template Instantiated Record Lookup
 
 ## Just Finished
 
-Step 5 fenced the direct template-emission existing-instantiation reuse path in
-`src/frontend/parser/impl/types/base.cpp`.
+Step 5 fixed the direct template-emission existing-instantiation regression
+from commit `12589ce3e` in `src/frontend/parser/impl/types/base.cpp`.
 
-When the parser has a structured direct-emission instantiation key, a miss from
-`find_template_instantiated_record_for_direct_emit` no longer falls through to
-`definition_state_.struct_tag_def_map[mangled]`. Rendered-map reuse is retained
-only before concrete emission on the explicit legacy/no-structured-key path,
-with a comment naming that owner, limitation, and removal condition.
+The parser now distinguishes a complete structured direct-emission
+instantiation key from a key that has already been marked. Rendered
+`definition_state_.struct_tag_def_map[mangled]` reuse is permitted only when
+there is no complete structured instantiation key. If a complete key exists
+but has not yet been marked, the route scans structured records and then emits
+a fresh concrete record instead of recovering through rendered tag spelling.
 
-The direct-emission parser test now marks the structured key, removes the
-structured concrete records, poisons the rendered tag map, and verifies that the
-stale rendered record is not returned after the structured scan misses.
+The direct-emission parser test now clears the mark, removes the structured
+record, poisons the rendered tag map, and verifies that an unmarked complete
+structured key does not reuse the stale rendered record.
 
 ## Suggested Next
 
@@ -60,6 +61,6 @@ the remaining rendered `struct_tag_def_map` reads are accounted for.
 
 Step 5 focused proof passed:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^frontend_parser_tests$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_tests|frontend_parser_lookup_authority_tests)$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.

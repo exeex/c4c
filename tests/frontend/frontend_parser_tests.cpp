@@ -6858,15 +6858,33 @@ void test_parser_template_instantiation_dedup_keys_structure_direct_emission() {
   parser.template_state_.instantiated_template_struct_keys_by_key.clear();
   parser.definition_state_.struct_tag_def_map.erase(first_tag);
   parser.definition_state_.defined_struct_tags.erase(first_tag);
+  for (auto it = parser.definition_state_.struct_defs.begin();
+       it != parser.definition_state_.struct_defs.end();) {
+    if (*it == first.record_def) {
+      it = parser.definition_state_.struct_defs.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  c4c::Node* stale_unmarked_instantiation =
+      parser.make_node(c4c::NK_STRUCT_DEF, 3);
+  stale_unmarked_instantiation->name = arena.strdup("StaleUnmarkedBoxInt");
+  parser.definition_state_.struct_tag_def_map[first_tag] =
+      stale_unmarked_instantiation;
   c4c::TypeSpec second = parse_box_int();
   expect_true(second.base == c4c::TB_STRUCT &&
                   second.tag_text_id != c4c::kInvalidText,
               "missing structured direct-emission de-dup should fall through to concrete emission");
   expect_true(second.record_def != nullptr,
               "demoted direct template emission should return the recreated record_def");
+  expect_true(second.record_def != stale_unmarked_instantiation,
+              "complete unmarked structured direct-emission keys should not reuse stale rendered map records");
   expect_eq(parser.parser_text(second.tag_text_id), first_tag,
             "recreated direct-emission de-dup should preserve the instantiated tag spelling");
-  expect_true(parser.definition_state_.struct_tag_def_map.count(first_tag) > 0,
+  auto second_tag_it =
+      parser.definition_state_.struct_tag_def_map.find(first_tag);
+  expect_true(second_tag_it != parser.definition_state_.struct_tag_def_map.end() &&
+                  second_tag_it->second == second.record_def,
               "missing structured direct-emission de-dup should recreate the concrete struct definition");
   expect_eq_int(
       static_cast<int>(

@@ -692,6 +692,36 @@ static bool has_template_instantiation_dedup_key_for_direct_emit(
                structured_key) > 0;
 }
 
+static bool has_complete_template_instantiation_key_for_direct_emit(
+    const ParserTemplateState::TemplateInstantiationKey& structured_key) {
+    using Argument = ParserTemplateState::TemplateInstantiationKey::Argument;
+    using TypeComponent = Argument::TypeComponent;
+
+    if (structured_key.template_key.base_text_id == kInvalidText) {
+        return false;
+    }
+    for (const Argument& arg : structured_key.arguments) {
+        switch (arg.payload_kind) {
+            case Argument::PayloadKind::Type:
+                for (const TypeComponent& component : arg.type_components) {
+                    if (component.kind ==
+                        TypeComponent::Kind::CompatibilityText) {
+                        return false;
+                    }
+                }
+                break;
+            case Argument::PayloadKind::TypeCompatibilityText:
+            case Argument::PayloadKind::LegacyExpressionText:
+                return false;
+            case Argument::PayloadKind::ValueExpression:
+            case Argument::PayloadKind::ValueTokens:
+            case Argument::PayloadKind::NumericValue:
+                break;
+        }
+    }
+    return true;
+}
+
 static void mark_template_instantiation_dedup_key_for_direct_emit(
     Parser& parser,
     const ParserTemplateState::TemplateInstantiationKey& structured_key) {
@@ -6117,16 +6147,19 @@ TypeSpec Parser::parse_base_type() {
                         return ts;
                     }
 
-                    const bool has_structured_instantiation_key =
+                    const bool has_complete_structured_instantiation_key =
+                        has_complete_template_instantiation_key_for_direct_emit(
+                            structured_emitted_instance_key);
+                    const bool has_marked_structured_instantiation_key =
                         has_template_instantiation_dedup_key_for_direct_emit(
                             *this, structured_emitted_instance_key);
                     Node* instantiated_record =
-                        has_structured_instantiation_key
+                        has_complete_structured_instantiation_key
                             ? find_template_instantiated_record_for_direct_emit(
                                   *this, structured_emitted_instance_key)
                             : nullptr;
                     if (!instantiated_record &&
-                        !has_structured_instantiation_key) {
+                        !has_complete_structured_instantiation_key) {
                         auto existing_inst =
                             definition_state_.struct_tag_def_map.find(mangled);
                         if (existing_inst !=
@@ -6139,7 +6172,7 @@ TypeSpec Parser::parse_base_type() {
                         }
                     }
                     if (!instantiated_record &&
-                        !has_structured_instantiation_key) {
+                        !has_marked_structured_instantiation_key) {
                         mark_template_instantiation_dedup_key_for_direct_emit(
                             *this, structured_emitted_instance_key);
                         // Create a concrete NK_STRUCT_DEF with substituted field types
