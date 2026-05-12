@@ -709,6 +709,12 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     if (aggregate_it == local_aggregate_slots.end()) {
       return std::nullopt;
     }
+    // Step 4 no-id compatibility bridge: call lowering owns aggregate-value
+    // alias layout for local aggregate slots. The limitation is that
+    // LocalAggregateSlots still retain rendered type text, not the original
+    // LirTypeRef/StructNameId for the aggregate value being passed by address.
+    // Remove this once aggregate aliases and local slots carry structured type
+    // identity through call lowering.
     return lower_byval_aggregate_layout(aggregate_it->second.type_text,
                                         type_decls,
                                         &structured_layouts_);
@@ -722,6 +728,11 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       }
       const auto& type_ref = call.structured_args[index].type_ref;
       if (type_ref.empty()) {
+        // Step 4 no-id compatibility bridge: structured call arguments may be
+        // present only as positional mirrors without a LirTypeRef carrier. This
+        // path is limited to legacy rendered byval text; metadata-bearing args
+        // below must keep failing closed on missing or mismatched StructNameId.
+        // Remove it once structured call arguments always carry type refs.
         return lower_byval_aggregate_layout(legacy_type_text, type_decls, &structured_layouts_);
       }
       if (!type_ref.has_struct_name_id()) {
@@ -756,8 +767,12 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       return layout;
     }
     if (call.arg_type_refs.empty()) {
-      // Legacy hand-built LIR compatibility: without structured argument
-      // mirrors, rendered byval text is still the only available authority.
+      // Step 4 no-id compatibility bridge: hand-built LIR calls without
+      // structured argument mirrors still expose only rendered byval text. The
+      // limitation is that no LirTypeRef/StructNameId carrier exists at this
+      // boundary, so layout is delegated to the aggregate.cpp selected-layout
+      // fence. Remove this once all call argument lowering provides structured
+      // argument refs or an explicit no-id legacy marker.
       return lower_byval_aggregate_layout(legacy_type_text, type_decls, &structured_layouts_);
     }
     if (index >= call.arg_type_refs.size()) {
@@ -1200,6 +1215,12 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
       return fail_runtime_family("variadic runtime family");
     }
     if (!lowered_type.has_value()) {
+      // Step 4 no-id compatibility bridge: variadic runtime lowering owns
+      // aggregate va_arg materialization from LirVaArgOp::type_str. The
+      // limitation is that va_arg lowering currently carries rendered result
+      // type text into local aggregate slot creation instead of a
+      // LirTypeRef/StructNameId identity. Remove this once variadic aggregate
+      // runtime lowering threads structured type refs into aggregate slots.
       const auto aggregate_layout =
           lower_byval_aggregate_layout(va_arg.type_str.str(), type_decls_, &structured_layouts_);
       if (!aggregate_layout.has_value()) {

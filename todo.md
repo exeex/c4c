@@ -8,29 +8,29 @@ Current Step Title: Fence Type And Aggregate Layout Compatibility
 
 ## Just Finished
 
-Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the
-`memory/intrinsics.cpp` aggregate-layout wrapper and fenced
-`lower_intrinsic_aggregate_layout()` as a retained no-id compatibility bridge.
+Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the remaining
+`lower_byval_aggregate_layout()` call sites in `calling.cpp` and `cfg.cpp`.
 
-The owner is local memset/memcpy intrinsic lowering. The limitation is that the
-intrinsic helpers receive raw rendered aggregate type text from
-`LocalAggregateSlots` and pointer slot state rather than `LirTypeRef` /
-`StructNameId` metadata for the aggregate object being filled or copied.
-Structured layouts remain authoritative when available through the existing
-`lower_byval_aggregate_layout()` path. The removal condition is intrinsic
-memory lowering threading structured type identity through local aggregate and
-pointer-derived leaf views.
+`calling.cpp` now explicitly classifies the retained no-id compatibility bridges
+for aggregate-value alias layout from local aggregate slots, structured call
+arguments whose positional mirror lacks a `LirTypeRef`, hand-built LIR calls
+without structured argument mirrors, and aggregate `va_arg` runtime lowering.
+Existing metadata-bearing byval call-argument paths still fail closed on missing
+or mismatched `StructNameId`.
+
+`cfg.cpp` now explicitly classifies aggregate PHI planning from
+`LirPhiOp::type_str` as a no-id compatibility bridge until PHI aggregate plans
+retain structured type identity.
 
 No test expectations were changed; the slice is comment-only and
 behavior-preserving.
 
 ## Suggested Next
 
-Continue Step 4 by inventorying remaining `lower_byval_aggregate_layout()` or
-aggregate-layout callers that are not yet explicitly classified. Prefer
-converting to structured lookup where carriers already have `LirTypeRef` /
-`StructNameId`; otherwise leave an explicit no-id fence with owner, limitation,
-and removal condition.
+Continue Step 4 by doing a final repo-wide inventory of
+`lower_byval_aggregate_layout()` and direct aggregate-layout callers to confirm
+each retained raw-text bridge is either behind a Step 4 fence or has a
+metadata-bearing fail-closed path.
 
 ## Watchouts
 
@@ -107,6 +107,13 @@ and removal condition.
 - The `memory/intrinsics.cpp` wrapper fence is comment-only. It deliberately
   preserves local memset/memcpy compatibility for aggregate and pointer-derived
   leaf views that still carry only rendered type text.
+- The `calling.cpp` byval/aggregate fences are comment-only. They deliberately
+  preserve legacy call, local aggregate alias, and variadic runtime aggregate
+  behavior while keeping existing `LirTypeRef` / `StructNameId` call-argument
+  checks fail-closed.
+- The `cfg.cpp` aggregate PHI fence is comment-only. `LirPhiOp::type_str` is a
+  `LirTypeRef`, but `PhiLoweringPlan` currently records only rendered text; do
+  not treat aggregate PHI layout as structured until the plan carries the ID.
 - `tests/backend/backend_lir_to_bir_notes_test.cpp` was reviewed only through
   the delegated backend proof; no expectation changes were needed or made.
 

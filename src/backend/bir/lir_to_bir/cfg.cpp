@@ -140,13 +140,21 @@ std::optional<BirFunctionLowerer::PhiBlockPlanMap> BirFunctionLowerer::collect_p
       if (const auto phi_type = lower_integer_type(plan.type_text); phi_type.has_value()) {
         plan.kind = PhiLoweringPlan::Kind::ScalarValue;
         plan.type = *phi_type;
-      } else if (const auto aggregate_layout =
-                     lower_byval_aggregate_layout(plan.type_text, type_decls_, &structured_layouts_);
-                 aggregate_layout.has_value()) {
+      } else {
+        // Step 4 no-id compatibility bridge: CFG PHI lowering owns aggregate
+        // PHI planning from LirPhiOp::type_str. The limitation is that
+        // PhiLoweringPlan currently stores only rendered type text, so
+        // aggregate PHI slot alignment still uses the aggregate.cpp
+        // selected-layout fence instead of a StructNameId-bearing LirTypeRef
+        // lookup. Remove this once PHI aggregate plans retain structured
+        // type identity.
+        const auto aggregate_layout =
+            lower_byval_aggregate_layout(plan.type_text, type_decls_, &structured_layouts_);
+        if (!aggregate_layout.has_value()) {
+          return std::nullopt;
+        }
         plan.kind = PhiLoweringPlan::Kind::AggregateValue;
         plan.aggregate_align_bytes = aggregate_layout->align_bytes;
-      } else {
-        return std::nullopt;
       }
       for (const auto& [value, label] : phi->incoming) {
         const c4c::codegen::lir::LirOperand incoming(value);
