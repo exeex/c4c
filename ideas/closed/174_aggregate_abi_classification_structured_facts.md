@@ -1,7 +1,8 @@
 # Aggregate ABI Classification Structured Facts
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/172_type_identity_authority_audit.md`
@@ -55,6 +56,28 @@ AArch64 direct LIR route is the largest spelling-authority island.
   structured metadata mismatch.
 - The proof includes a fresh build or compile check plus focused backend CTest
   or route coverage.
+
+## Completion Summary
+
+The completed runbook selected fixed aggregate byval call arguments as the
+bounded ABI classification boundary. That path now publishes structured
+aggregate identity through LIR type-ref mirrors while preserving rendered LLVM
+ABI spelling as output. BIR classification consumes the typed mirror
+(`StructNameId` / aggregate `LirTypeRef`) when metadata is available, with
+legacy compatibility limited to existing mirrorless paths.
+
+Fail-closed metadata mismatch coverage was added for byval argument type-ref
+mirror mismatches, and frontend coverage records byval argument type-ref
+mirrors. Focused validation passed 6/6 targeted tests, broader
+`backend_|frontend_lir` validation passed 113 executed tests, and the
+supervisor accepted the full-suite baseline at commit `878d88413` with
+3137/3137 passing tests. A close-time non-mutating regression guard parse over
+the existing canonical focused log also passed.
+
+Remaining compatibility note: older or mirrorless paths may still use the
+named legacy fallback. That fallback is not the preferred authority for
+metadata-rich aggregate ABI classification and should be retired by a separate
+source idea if broader AArch64/direct-LIR parser removal becomes the target.
 
 ## Reviewer Reject Signals
 
