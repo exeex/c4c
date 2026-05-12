@@ -88,6 +88,12 @@ BirFunctionLowerer::AggregateTypeLayout selected_aggregate_type_layout(
     std::string_view type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
+  // Step 4 no-id compatibility bridge: aggregate.cpp still threads rendered
+  // type text through local aggregate slot declaration, leaf discovery, and
+  // byval copy helpers. Structured layouts remain authoritative when the text
+  // names one, while metadata-bearing byval params must use the LirTypeRef
+  // lookup path below and fail closed there. Remove this bridge once local
+  // aggregate slot state and byval copy state carry structured type refs.
   return lookup_backend_aggregate_type_layout_result(type_text, type_decls, structured_layouts)
       .layout;
 }

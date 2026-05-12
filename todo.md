@@ -8,19 +8,20 @@ Current Step Title: Fence Type And Aggregate Layout Compatibility
 
 ## Just Finished
 
-Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the local-slot
-scalar byte-offset aggregate layout wrapper in
-`src/backend/bir/lir_to_bir/memory/local_slots.cpp`.
+Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the
+`aggregate.cpp` byval/local aggregate layout helper that passes rendered type
+text into aggregate layout lookup.
 
-The retained raw rendered-type-text path in
-`lookup_scalar_byte_offset_layout_result()` is now fenced as a Step 4 no-id
-compatibility bridge. Its owner is local-slot aggregate leaf discovery and
-dynamic aggregate array load/store access; its limitation is that those paths
-still thread rendered type spelling while local-slot address/aggregate state
-lacks `LirTypeRef`/`StructNameId` carriers. Metadata-rich type refs must
-continue to use the central type-ref lookup and fail closed on stale or
-mismatched structured text. The removal condition is local-slot address and
-aggregate state carrying structured type metadata instead of rendered spelling.
+The retained raw rendered-type-text path in `selected_aggregate_type_layout()`
+is now fenced as a Step 4 no-id compatibility bridge. Its owner is
+`aggregate.cpp` local aggregate slot declaration, leaf discovery, and byval
+copy helpers; its limitation is that those paths still thread rendered type
+spelling while local aggregate slot and byval copy state lack `LirTypeRef` /
+`StructNameId` carriers. Metadata-bearing byval params must continue to use
+the `selected_aggregate_type_ref_layout()` path and fail closed on stale or
+mismatched structured text. The removal condition is local aggregate slot state
+and byval copy state carrying structured type refs instead of rendered
+spelling.
 
 No test edits were needed because behavior did not change. Existing structured
 layout lookup tests continue to cover structured-table authority, no-id legacy
@@ -84,6 +85,10 @@ if a structured carrier is already available there.
 - The local-slot scalar byte-offset fence is comment-only and deliberately does
   not change dynamic local aggregate array behavior; those helpers still only
   carry rendered element type text.
+- The aggregate.cpp selected-layout fence is comment-only and deliberately does
+  not change local aggregate slot declaration, leaf discovery, or byval copy
+  behavior; metadata-bearing byval params already use the `LirTypeRef` lookup
+  path and should keep failing closed there.
 
 ## Proof
 
