@@ -940,6 +940,11 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
       const std::string global_name = stored_operand.str().substr(1);
       const auto global_it = global_types.find(global_name);
       if (global_it == global_types.end()) {
+        // Step 3 fence: this raw lookup is the local-slot pointer-store address
+        // tracking no-id compatibility bridge. FunctionSymbolSet is populated
+        // only after module-boundary LinkNameId resolution, so metadata-rich
+        // missing ids cannot recover through spelling here; remove this when
+        // LIR pointer operands carry resolvable LinkNameId metadata.
         const auto link_name_id = function_symbols.find_raw_symbol_link_name_id(global_name);
         if (!link_name_id.has_value()) {
           return LocalSlotStoreResult::Failed;

@@ -8,30 +8,30 @@ Current Step Title: Convert Link-Visible Symbol Identity
 
 ## Just Finished
 
-Step 3 - Convert Link-Visible Symbol Identity reviewed and fenced the
-link-visible local display/identity helpers in
-`src/backend/bir/lir_to_bir/calling.cpp`.
+Step 3 - Convert Link-Visible Symbol Identity reviewed the remaining raw
+function-symbol lookup around
+`src/backend/bir/lir_to_bir/memory/local_slots.cpp:943` in the local-slot
+pointer store/address tracking path.
 
-The declaration identity helpers still fall back to raw function/extern
-spelling for no-id LIR declarations, and direct-call lowering still falls back
-to parsed raw callee spelling for no-id direct calls. Those paths are now
-explicitly fenced as Step 3 compatibility bridges: their owner is the
-declaration/direct-call identity bridge in `calling.cpp`, their limitation is
-that module construction rejects unresolved `LinkNameId` functions/externs and
-direct calls require `FunctionSymbolSet` membership before metadata-rich
-lowering can use the fallback, and their removal condition is LIR declarations
-and direct-call operands always carrying resolvable `LinkNameId` metadata.
+That lookup is now explicitly fenced as a Step 3 no-id compatibility bridge:
+its owner is the local-slot pointer-store address tracking bridge in
+`local_slots.cpp`, its limitation is that `FunctionSymbolSet` is populated only
+after module-boundary `LinkNameId` resolution so metadata-rich missing ids
+cannot recover through raw spelling here, and its removal condition is LIR
+pointer operands carrying resolvable `LinkNameId` metadata.
 
 No focused test was added because this packet only documents/fences existing
-behavior. The existing metadata-rich direct-call and extern/global
-`LinkNameId` boundary tests continue to prove that missing or stale ids fail
-before raw display spelling can recover them.
+behavior. The existing metadata-rich pointer-store identity coverage continues
+to prove that missing `LinkNameId` spelling fails at the module boundary instead
+of recovering through raw operand spelling.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing any remaining link-visible raw/no-id compatibility
-bridges outside the already fenced direct-call, pointer-store, call-pointer
-argument, local-aggregate pointer-value alias, and declaration identity paths.
+Continue Step 3 by searching for any remaining semantic
+`find_raw_symbol_link_name_id` or raw link-visible symbol fallback outside the
+already fenced local-slot pointer-store value/address, call-pointer argument,
+local-aggregate pointer-value alias, declaration identity, and direct-call
+paths.
 
 ## Watchouts
 
@@ -57,10 +57,10 @@ argument, local-aggregate pointer-value alias, and declaration identity paths.
   complete. Those fallbacks are no-id compatibility only; do not bypass the
   module-boundary `LinkNameId` checks or `FunctionSymbolSet` membership when
   changing them later.
-- The local pointer-store fence relies on `FunctionSymbolSet` construction
-  failing closed for metadata-bearing functions or extern declarations whose
-  `LinkNameId` spelling cannot be resolved; do not bypass that module-boundary
-  check in a later pointer bridge.
+- The local pointer-store value and address-tracking fences rely on
+  `FunctionSymbolSet` construction failing closed for metadata-bearing
+  functions or extern declarations whose `LinkNameId` spelling cannot be
+  resolved; do not bypass that module-boundary check in a later pointer bridge.
 - The call-pointer argument and local-aggregate pointer-value alias fences have
   the same boundary assumption: they are only for no-id imported function
   pointer operands, not a way to recover corrupted metadata-rich function
