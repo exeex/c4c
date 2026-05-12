@@ -1,12 +1,13 @@
 # HIR Generated Member Payload Structured Miss
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
 
-Blocks:
+Unblocked:
 - `ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
 
 ## Goal
@@ -64,6 +65,32 @@ rendered owner/member spelling.
   identity.
 - The closure notes state whether idea 195's generated-member payload blocker
   is cleared.
+
+## Closure Notes
+
+Idea 195 may treat its generated-member payload blocker as resolved. The
+metadata-rich generated-member path is fenced so a complete structured
+owner/member lookup miss cannot recover semantic authority through stale
+rendered owner/member spelling.
+
+Retained compatibility owner: no-metadata/generated-member callers that cannot
+form complete structured owner/member lookup keys.
+
+Retained compatibility limitation: rendered owner/member lookup remains only
+for explicit no-metadata compatibility or non-semantic text/display paths; it
+is not semantic authority after a complete structured miss.
+
+Retained compatibility removal condition: remove the rendered compatibility
+fallback once all generated-member callers can provide complete structured
+owner/member metadata.
+
+Close-time proof used matching `test_before.log` and `test_after.log` for
+`frontend_hir_lookup_tests`; `c4c-regression-guard` passed with
+`--allow-non-decreasing-passed`.
+
+Broader supporting proof recorded before closure:
+`frontend_hir_tests` passed 1/1, and the accepted full-suite baseline at commit
+`4bbc48abc` had 3137/3137 passing.
 
 ## Reviewer Reject Signals
 

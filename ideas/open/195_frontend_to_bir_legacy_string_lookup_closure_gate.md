@@ -34,14 +34,16 @@ fenced.
 
 ## Blocked State
 
-This gate is inactive while its Step 3 HIR blockers are being resolved:
+This gate is inactive while its remaining Step 3 HIR blocker is being resolved:
 
 - `ideas/open/201_hir_template_registry_structured_generated_paths.md`
-- `ideas/open/202_hir_generated_member_payload_structured_miss.md`
+
+The generated-member payload blocker was resolved by
+`ideas/closed/202_hir_generated_member_payload_structured_miss.md`.
 
 Do not advance this idea to milestone validation, closure, or backend restart
-readiness until both blockers are either completed or explicitly fenced by a
-supervisor-approved lifecycle decision.
+readiness until the remaining blocker is either completed or explicitly fenced
+by a supervisor-approved lifecycle decision.
 
 ## In Scope
 
