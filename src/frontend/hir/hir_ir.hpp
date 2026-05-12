@@ -2737,6 +2737,11 @@ struct Module {
         ModuleDeclKind::Function, ref.name, structured.id.value, legacy.id.value);
   }
 
+  [[nodiscard]] static bool rendered_decl_compatibility_has_same_text(
+      const DeclRef& ref, TextId rendered_text_id) {
+    return ref.name_text_id != kInvalidText && rendered_text_id == ref.name_text_id;
+  }
+
   [[nodiscard]] std::optional<ModuleDeclLookupHit> classify_function_decl_lookup(
       const DeclRef& ref) const {
     if (ref.local || ref.param_index || ref.global) return std::nullopt;
@@ -2758,7 +2763,10 @@ struct Module {
           structured->id.value};
     }
     const auto key = make_function_decl_lookup_key(ref);
-    if (key) return std::nullopt;
+    if (key && !(legacy &&
+                 rendered_decl_compatibility_has_same_text(ref, legacy->name_text_id))) {
+      return std::nullopt;
+    }
     if (legacy) {
       return ModuleDeclLookupHit{
           ModuleDeclKind::Function, ModuleDeclLookupAuthority::LegacyRendered, ref.name,
@@ -2791,7 +2799,18 @@ struct Module {
   }
 
   const Function* resolve_direct_call_callee(const DeclRef& ref) const {
-    return resolve_function_decl(ref);
+    if (const Function* fn = resolve_function_decl(ref)) return fn;
+    if (!ref.local && !ref.param_index && !ref.global &&
+        ref.link_name_id == kInvalidLinkName) {
+      if (const Function* legacy =
+              find_function_by_rendered_decl_compatibility_name(ref.name)) {
+        record_decl_lookup_hit(ModuleDeclLookupHit{
+            ModuleDeclKind::Function, ModuleDeclLookupAuthority::LegacyRendered,
+            ref.name, legacy->id.value});
+        return legacy;
+      }
+    }
+    return nullptr;
   }
 
   const Function* resolve_operator_callee(const DeclRef& ref) const {
@@ -2900,7 +2919,10 @@ struct Module {
           structured->id.value};
     }
     const auto key = make_global_decl_lookup_key(ref);
-    if (key) return std::nullopt;
+    if (key && !(legacy &&
+                 rendered_decl_compatibility_has_same_text(ref, legacy->name_text_id))) {
+      return std::nullopt;
+    }
     if (legacy) {
       return ModuleDeclLookupHit{
           ModuleDeclKind::Global, ModuleDeclLookupAuthority::LegacyRendered, ref.name,

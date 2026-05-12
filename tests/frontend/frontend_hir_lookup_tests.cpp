@@ -622,6 +622,43 @@ void test_complete_decl_lookup_miss_uses_named_rendered_compatibility_only() {
               "named global rendered compatibility helper should accept rendered-qualified names");
 }
 
+void test_decl_lookup_missing_owner_metadata_keeps_same_text_compatibility() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId fn_text = texts.intern("owner_recovered_fn");
+  const c4c::TextId global_text = texts.intern("owner_recovered_global");
+  const c4c::hir::NamespaceQualifier api_ns = make_ns(texts, "api");
+
+  add_function(module, c4c::hir::FunctionId{70}, "api::owner_recovered_fn",
+               fn_text, c4c::kInvalidLinkName, api_ns);
+  add_global(module, c4c::hir::GlobalId{80}, "api::owner_recovered_global",
+             global_text, c4c::kInvalidLinkName, api_ns);
+
+  c4c::hir::DeclRef fn_ref;
+  fn_ref.name = "api::owner_recovered_fn";
+  fn_ref.name_text_id = fn_text;
+  const c4c::hir::Function* fn = module.resolve_function_decl(fn_ref);
+  expect_true(fn != nullptr && fn->id.value == 70,
+              "same-TextId function lookup should preserve rendered compatibility when owner metadata is missing");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "api::owner_recovered_fn", 70),
+              "same-TextId function owner recovery should record legacy rendered authority");
+
+  c4c::hir::DeclRef global_ref;
+  global_ref.name = "api::owner_recovered_global";
+  global_ref.name_text_id = global_text;
+  const c4c::hir::GlobalVar* global = module.resolve_global_decl(global_ref);
+  expect_true(global != nullptr && global->id.value == 80,
+              "same-TextId global lookup should preserve rendered compatibility when owner metadata is missing");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "api::owner_recovered_global", 80),
+              "same-TextId global owner recovery should record legacy rendered authority");
+}
+
 void test_direct_call_callee_lookup_uses_authoritative_decl_identity() {
   c4c::hir::Module module;
   module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
@@ -695,6 +732,14 @@ void test_direct_call_callee_lookup_uses_authoritative_decl_identity() {
   expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
                            "api::stale_qualified_direct_callee", 34, 33),
               "qualified direct-call structured lookup should record stale-rendered mismatch");
+
+  c4c::hir::DeclRef rendered_only_ref;
+  rendered_only_ref.name = "stale_direct_callee";
+  rendered_only_ref.name_text_id = texts.intern("generated_direct_call_carrier");
+  const c4c::hir::Function* rendered_only_fn =
+      module.resolve_direct_call_callee(rendered_only_ref);
+  expect_true(rendered_only_fn != nullptr && rendered_only_fn->id.value == 30,
+              "direct-call compatibility should preserve rendered generated-callee lookup after a structured miss");
 }
 
 void test_operator_callee_lookup_uses_authoritative_decl_identity() {
@@ -6699,6 +6744,7 @@ int main() {
   test_stale_rendered_names_do_not_override_authoritative_decl_lookup();
   test_complete_decl_lookup_miss_rejects_stale_rendered_indexes();
   test_complete_decl_lookup_miss_uses_named_rendered_compatibility_only();
+  test_decl_lookup_missing_owner_metadata_keeps_same_text_compatibility();
   test_direct_call_callee_lookup_uses_authoritative_decl_identity();
   test_operator_callee_lookup_uses_authoritative_decl_identity();
   test_range_for_method_callee_lookup_uses_authoritative_decl_identity();
