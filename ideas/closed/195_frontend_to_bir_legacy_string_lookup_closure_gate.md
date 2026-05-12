@@ -1,7 +1,8 @@
 # Frontend-to-BIR Legacy String Lookup Closure Gate
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/188_lir_bir_freeze_closure_gate.md`
@@ -32,14 +33,30 @@ additional BIR global memory provenance routes.
 Backend restart should wait until those surfaces are closed or consciously
 fenced.
 
-## Blocker Clearance
+## Closure Decision
 
-The Step 3 HIR blockers discovered by this gate have been resolved:
+Closed after the final ledger and residual high-risk audit found no remaining
+metadata-rich frontend-to-BIR path that recovers semantic identity through
+rendered strings after a complete structured miss.
+
+Resolved blocker ideas:
 
 - `ideas/closed/201_hir_template_registry_structured_generated_paths.md`
 - `ideas/closed/202_hir_generated_member_payload_structured_miss.md`
 
-This gate may be reactivated for milestone validation and closure review.
+Closure proof:
+
+- `test_before.log`: 91/91 passed for the milestone frontend/HIR/LIR/BIR
+  authority subset.
+- `test_after.log`: 91/91 passed for the same subset.
+- Regression guard passed with `--allow-non-decreasing-passed`.
+- Accepted full-suite baseline: `test_baseline.log` for commit `a07fa8929`,
+  3137/3137 passed.
+
+Backend restart planning is allowed next. Backend restart implementation,
+parser retirement, sema retirement, HIR retirement, and BIR/backend
+compatibility retirement remain separate initiatives and are not completed by
+this gate.
 
 ## In Scope
 
