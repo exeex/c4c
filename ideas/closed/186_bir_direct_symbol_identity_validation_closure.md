@@ -1,7 +1,8 @@
 # BIR Direct Symbol Identity Validation Closure
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/162_linknameid_backend_symbol_authority.md`
@@ -53,6 +54,15 @@ string-first.
 - Tests cover direct calls and at least one global or pointer-initializer
   symbol reference.
 - Validation includes focused BIR validation/lowering coverage.
+
+## Completion Note
+
+Closed after direct-call generated metadata-rich references were made
+`LinkNameId`-authoritative, missing or stale ids fail closed, pointer
+initializer structured symbol references retain fail-closed coverage, and
+raw/no-id plus runtime placeholder compatibility routes stayed explicit.
+Close-time backend regression guard passed with matching `test_before.log` and
+`test_after.log` backend subsets: 109 passed, 0 failed before and after.
 
 ## Reviewer Reject Signals
 
