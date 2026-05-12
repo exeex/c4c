@@ -8,60 +8,67 @@ Current Step Title: Validate And Prepare Completion Evidence
 
 ## Just Finished
 
-Completed `plan.md` Step 4 as evidence bookkeeping. The already-committed
-focused tests prove generated call lowering uses structured metadata instead of
-stale rendered call text when `LirCallOp::structured_args` is present.
+Completed `plan.md` Step 5 as final validation and completion evidence for
+idea 190.
 
-The Step 3 backend coverage records four stale-text cases:
-- direct scalar calls prefer structured argument type/operand facts over stale
-  `args_str`;
-- direct byval calls materialize aggregate ABI facts from
-  `structured_args[index].type_ref` instead of stale rendered argument text;
-- indirect calls prefer structured callee and argument metadata over stale
-  rendered suffix or argument text;
-- no-signature structured intrinsic calls infer argument facts from
-  `structured_args` even when rendered signature metadata is absent and
-  `args_str` is stale.
+Implementation summary:
+- `LirCallOp` now carries `structured_args` populated from generated
+  `OwnedLirTypedCallArg` facts by `make_lir_call_op_with_return_type_ref`.
+- LIR-to-BIR call lowering treats non-empty `structured_args` as the
+  metadata-rich authority for argument operand, type text, and byval type-ref
+  facts.
+- Focused backend coverage proves stale rendered `args_str` or
+  `callee_type_suffix` does not override structured metadata for direct scalar,
+  direct byval, indirect, and no-signature structured calls.
 
-Raw/no-carrier compatibility remains explicit: empty `structured_args` keeps the
-legacy rendered-text parser path, and the raw direct-call compatibility test
-continues to prove hand-authored/no-metadata LIR still lowers through text.
+Compatibility boundaries retained:
+- Empty `structured_args` remains the explicit raw/no-metadata compatibility
+  path through the legacy rendered-text parser.
+- `callee_type_suffix` and `args_str` remain printed spelling and raw fixture
+  payloads; this step does not claim printer spelling authority has moved to
+  structured metadata.
+- `structured_args[].type_ref` is carried only when the frontend-generated
+  `OwnedLirTypedCallArg` already had a type ref; scalar and variadic-tail
+  entries may still rely on structured type text plus operand identity.
+
+Recommendation: idea 190 is ready for supervisor review and lifecycle close.
+The source acceptance criteria are met: metadata-rich generated call lowering
+can obtain argument facts without reparsing rendered call text as semantic
+authority, stale rendered text cannot silently change selected argument or ABI
+facts when structured metadata is present, raw/no-metadata compatibility remains
+explicit, and focused direct plus indirect call coverage is green.
 
 ## Suggested Next
 
-Run `plan.md` Step 5: collect final validation/completion evidence for idea
-190. Suggested proof is the already-green focused build/test command plus the
-backend subset from Step 3, followed by any supervisor-requested broader
-validation before closure.
+Supervisor should review this completed Step 5 packet, commit the coherent idea
+190 slice if accepted, then delegate lifecycle close to the plan owner.
 
 ## Watchouts
 
 - Do not continue the idea 188 closure gate until ideas 190, 191, and 194 are
   closed or the closure-gate source idea is explicitly narrowed.
-- `structured_args[].type_ref` is only populated when the existing
-  `OwnedLirTypedCallArg` carried one. Some scalar and variadic-tail arguments
-  currently have structured type/operand text but an empty `LirTypeRef`.
-- Empty `callee_type_suffix` on a structured call is intentionally treated as
-  absent parameter metadata, not as an authoritative zero-argument signature.
-- The printer still uses `callee_type_suffix` and `args_str`, so stale rendered
-  text can still affect printed LLVM text; Step 4 proves backend lowering
-  authority, not printer spelling authority.
-- Step 5 should decide whether the focused `frontend_lir_call_type_ref` plus
-  `backend_lir_to_bir_notes` proof and the broader `^backend_` subset are
-  enough to recommend closing idea 190, or whether the supervisor wants an
-  additional regression guard before lifecycle closure.
+- Idea 191 depends on idea 190 and can now proceed to byval signature-text
+  retirement once supervisor/plan-owner close idea 190.
+- Printer spelling still uses rendered call text; a future printer-authority
+  initiative should be tracked separately if needed.
 
 ## Proof
 
-No new command was required for this evidence-only packet. Cited existing Step 3
-proof:
+Focused proof from the implementation slice:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_call_type_ref|backend_lir_to_bir_notes)$' > test_after.log`
 
 Result: passed, `2/2` tests green. Proof log: `test_after.log`.
 
-Also cited existing Step 3 backend subset:
+Backend subset cited from Step 3:
 
 `ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
 Result: passed, `109/109` runnable tests green; `12` matching tests disabled.
+
+Final broad proof run for Step 5:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log`
+
+Result: passed, `3137/3137` runnable tests green; `12` disabled tests did not
+run. Proof log: `test_after.log`.
