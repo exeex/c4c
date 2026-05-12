@@ -66,6 +66,37 @@ void expect_eq_int(int actual, int expected, const std::string& msg) {
   }
 }
 
+c4c::hir::HirRecordOwnerTemplateIdentity make_test_template_record_identity(
+    c4c::TextId primary_text_id,
+    int namespace_context_id,
+    std::string canonical = "type:int") {
+  c4c::hir::HirTemplateParameterBindingKey param_key{};
+  param_key.parameter_kind = c4c::hir::HirTemplateParameterBindingKind::Type;
+  param_key.owner_namespace_context_id = namespace_context_id;
+  param_key.owner_template_text_id = primary_text_id;
+  param_key.parameter_index = 0;
+  param_key.parameter_text_id = primary_text_id + 1;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+
+  c4c::hir::SpecializationArgumentIdentity arg;
+  arg.parameter_name = "T";
+  arg.parameter_key = param_key;
+  arg.kind = c4c::hir::SpecializationArgumentKind::Type;
+  arg.type = int_ts;
+
+  c4c::hir::HirRecordOwnerTemplateIdentity identity;
+  identity.primary_declaration_text_id = primary_text_id;
+  identity.specialization_key = canonical;
+  identity.specialization.owner.namespace_context_id = namespace_context_id;
+  identity.specialization.owner.declaration_text_id = primary_text_id;
+  identity.specialization.owner.display_name = "Box";
+  identity.specialization.arguments.push_back(std::move(arg));
+  identity.specialization.canonical = std::move(canonical);
+  return identity;
+}
+
 c4c::Node make_compile_time_state_registry_node(
     c4c::NodeKind kind,
     const char* name,
@@ -3221,9 +3252,8 @@ void test_hir_static_member_const_lookup_prefers_template_owner_key_over_stale_t
   def.tag = "StaleRenderedBox_T_int";
   def.tag_text_id = module.link_name_texts->intern("Box");
   def.ns_qual.context_id = 9;
-  c4c::hir::HirRecordOwnerTemplateIdentity identity;
-  identity.primary_declaration_text_id = def.tag_text_id;
-  identity.specialization_key = "type:int";
+  c4c::hir::HirRecordOwnerTemplateIdentity identity =
+      make_test_template_record_identity(def.tag_text_id, def.ns_qual.context_id);
   const c4c::hir::HirRecordOwnerKey owner_key =
       c4c::hir::make_hir_template_record_owner_key(def, std::move(identity));
   module.index_struct_def_owner(owner_key, def.tag, true);
@@ -3335,9 +3365,8 @@ void test_hir_static_member_decl_lookup_prefers_template_owner_key_over_stale_ta
   def.tag = "StaleRenderedBox_T_int";
   def.tag_text_id = module.link_name_texts->intern("Box");
   def.ns_qual.context_id = 9;
-  c4c::hir::HirRecordOwnerTemplateIdentity identity;
-  identity.primary_declaration_text_id = def.tag_text_id;
-  identity.specialization_key = "type:int";
+  c4c::hir::HirRecordOwnerTemplateIdentity identity =
+      make_test_template_record_identity(def.tag_text_id, def.ns_qual.context_id);
   const c4c::hir::HirRecordOwnerKey owner_key =
       c4c::hir::make_hir_template_record_owner_key(def, std::move(identity));
   module.index_struct_def_owner(owner_key, def.tag, true);
@@ -3775,9 +3804,8 @@ void test_hir_struct_method_lookup_prefers_template_owner_key_over_stale_tag() {
   def.tag = "StaleRenderedBox_T_int";
   def.tag_text_id = module.link_name_texts->intern("Box");
   def.ns_qual.context_id = 9;
-  c4c::hir::HirRecordOwnerTemplateIdentity identity;
-  identity.primary_declaration_text_id = def.tag_text_id;
-  identity.specialization_key = "type:int";
+  c4c::hir::HirRecordOwnerTemplateIdentity identity =
+      make_test_template_record_identity(def.tag_text_id, def.ns_qual.context_id);
   const c4c::hir::HirRecordOwnerKey owner_key =
       c4c::hir::make_hir_template_record_owner_key(def, std::move(identity));
   module.index_struct_def_owner(owner_key, def.tag, true);

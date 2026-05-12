@@ -483,6 +483,7 @@ std::optional<HirRecordOwnerKey> Lowerer::make_template_struct_instance_owner_ke
   HirRecordOwnerTemplateIdentity identity;
   identity.primary_declaration_text_id = primary_text_id;
   identity.specialization_key = instance_key.spec_key.canonical;
+  identity.specialization = instance_key.spec_key;
   HirRecordOwnerKey key =
       make_hir_template_record_owner_key(def.ns_qual, primary_text_id, std::move(identity));
   if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;

@@ -1770,20 +1770,18 @@ enum class HirRecordOwnerKeyKind : uint8_t {
   TemplateInstantiation,
 };
 
-/// Compatibility bridge for template records while template identity still
-/// enters HIR record ownership through declaration metadata plus the
-/// display-only SpecializationKey::canonical string.
+/// Template-owner identity for instantiated records.
 ///
-/// Removal criterion: replace `specialization_key` with a structured
-/// specialization identity payload once HIR record owners can carry the same
-/// owner/argument identity data as SpecializationKey.
+/// `specialization` is the semantic identity. `specialization_key` is retained
+/// as the rendered display/compatibility mirror of SpecializationKey::canonical.
 struct HirRecordOwnerTemplateIdentity {
   TextId primary_declaration_text_id = kInvalidText;
   std::string specialization_key;  // serialized display/compatibility mirror
+  SpecializationKey specialization;
 
   [[nodiscard]] bool operator==(const HirRecordOwnerTemplateIdentity& other) const {
     return primary_declaration_text_id == other.primary_declaration_text_id &&
-           specialization_key == other.specialization_key;
+           specialization == other.specialization;
   }
 
   [[nodiscard]] bool operator!=(const HirRecordOwnerTemplateIdentity& other) const {
@@ -1791,7 +1789,19 @@ struct HirRecordOwnerTemplateIdentity {
   }
 
   [[nodiscard]] bool empty() const {
-    return primary_declaration_text_id == kInvalidText && specialization_key.empty();
+    return primary_declaration_text_id == kInvalidText &&
+           specialization_key.empty() && specialization.empty();
+  }
+
+  [[nodiscard]] bool has_complete_specialization_identity() const {
+    if (primary_declaration_text_id == kInvalidText) return false;
+    if (specialization.empty()) return false;
+    if (!specialization.owner.has_structured_identity()) return false;
+    for (const auto& arg : specialization.arguments) {
+      if (arg.kind == SpecializationArgumentKind::Missing) return false;
+      if (!arg.has_complete_structured_parameter_identity()) return false;
+    }
+    return true;
   }
 };
 
@@ -1856,7 +1866,7 @@ struct HirRecordOwnerKeyHash {
     const size_t qualifier_hash = hash_text_id_sequence(
         key.qualifier_segment_text_ids.data(), key.qualifier_segment_text_ids.size());
     const size_t specialization_hash =
-        std::hash<std::string>{}(key.template_identity.specialization_key);
+        SpecializationKeyHash{}(key.template_identity.specialization);
     return static_cast<size_t>(hash_id_words(
         kIdHashSeed, static_cast<uint32_t>(key.kind),
         static_cast<uint32_t>(key.namespace_context_id),
@@ -1952,8 +1962,7 @@ struct HirStructMemberLookupKeyHash {
     return false;
   }
   if (key.kind == HirRecordOwnerKeyKind::TemplateInstantiation) {
-    return key.template_identity.primary_declaration_text_id != kInvalidText &&
-           !key.template_identity.specialization_key.empty();
+    return key.template_identity.has_complete_specialization_identity();
   }
   return true;
 }

@@ -448,6 +448,104 @@ void test_structured_specialization_key_requires_complete_binding_maps() {
               "mismatched structured NTTP mirror should force legacy specialization-key fallback");
 }
 
+void test_template_record_owner_key_uses_structured_specialization_identity() {
+  const char* names[] = {"T"};
+  c4c::TextId text_ids[] = {17};
+  bool is_nttp[] = {false};
+  c4c::Node owner{};
+  owner.name = const_cast<char*>("Box");
+  owner.namespace_context_id = 8;
+  owner.unqualified_text_id = 301;
+  owner.n_template_params = 1;
+  owner.template_param_names = names;
+  owner.template_param_name_text_ids = text_ids;
+  owner.template_param_is_nttp = is_nttp;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  c4c::TypeSpec char_ts{};
+  char_ts.base = c4c::TB_CHAR;
+
+  c4c::hir::TypeBindings int_legacy_bindings;
+  int_legacy_bindings.emplace("T", int_ts);
+  c4c::hir::TypeBindings char_legacy_bindings;
+  char_legacy_bindings.emplace("T", char_ts);
+  const auto type_key = c4c::hir::make_hir_template_parameter_binding_key(
+      &owner, 0, c4c::hir::HirTemplateParameterBindingKind::Type);
+  expect_true(type_key.has_value(),
+              "fixture owner metadata should produce a structured parameter key");
+
+  c4c::hir::HirTemplateTypeBindings int_structured_bindings;
+  int_structured_bindings.emplace(*type_key, int_ts);
+  c4c::hir::HirTemplateTypeBindings char_structured_bindings;
+  char_structured_bindings.emplace(*type_key, char_ts);
+  const std::vector<std::string> param_order{"T"};
+
+  auto int_spec = c4c::hir::try_make_structured_specialization_key(
+      "Box", param_order, int_legacy_bindings, int_structured_bindings,
+      {}, {}, &owner);
+  auto char_spec = c4c::hir::try_make_structured_specialization_key(
+      "Box", param_order, char_legacy_bindings, char_structured_bindings,
+      {}, {}, &owner);
+  expect_true(int_spec.has_value() && char_spec.has_value(),
+              "complete structured type mirrors should build specialization keys");
+
+  int_spec->canonical = "Box<T=stale-rendered>";
+  char_spec->canonical = "Box<T=stale-rendered>";
+
+  c4c::hir::NamespaceQualifier ns;
+  ns.context_id = owner.namespace_context_id;
+  c4c::hir::HirRecordOwnerTemplateIdentity int_identity;
+  int_identity.primary_declaration_text_id = owner.unqualified_text_id;
+  int_identity.specialization_key = int_spec->canonical;
+  int_identity.specialization = *int_spec;
+  c4c::hir::HirRecordOwnerTemplateIdentity char_identity;
+  char_identity.primary_declaration_text_id = owner.unqualified_text_id;
+  char_identity.specialization_key = char_spec->canonical;
+  char_identity.specialization = *char_spec;
+
+  const c4c::hir::HirRecordOwnerKey int_owner =
+      c4c::hir::make_hir_template_record_owner_key(
+          ns, owner.unqualified_text_id, std::move(int_identity));
+  const c4c::hir::HirRecordOwnerKey char_owner =
+      c4c::hir::make_hir_template_record_owner_key(
+          ns, owner.unqualified_text_id, std::move(char_identity));
+
+  expect_true(c4c::hir::hir_record_owner_key_has_complete_metadata(int_owner) &&
+                  c4c::hir::hir_record_owner_key_has_complete_metadata(char_owner),
+              "template record owner keys should require structured specialization metadata");
+  expect_true(int_owner != char_owner,
+              "same rendered specialization text must not define template record owner identity");
+
+  std::unordered_set<c4c::hir::HirRecordOwnerKey,
+                     c4c::hir::HirRecordOwnerKeyHash>
+      owners;
+  owners.insert(int_owner);
+  owners.insert(char_owner);
+  expect_true(owners.size() == 2,
+              "template record owner hash must include structured specialization facts");
+
+  c4c::hir::HirRecordOwnerTemplateIdentity display_only_identity;
+  display_only_identity.primary_declaration_text_id = owner.unqualified_text_id;
+  display_only_identity.specialization_key = "Box<T=int>";
+  const c4c::hir::HirRecordOwnerKey display_only_owner =
+      c4c::hir::make_hir_template_record_owner_key(
+          ns, owner.unqualified_text_id, std::move(display_only_identity));
+  expect_true(!c4c::hir::hir_record_owner_key_has_complete_metadata(
+                  display_only_owner),
+              "display-only specialization text should not make template record owner metadata complete");
+
+  c4c::hir::HirRecordOwnerTemplateIdentity stale_display_identity;
+  stale_display_identity.primary_declaration_text_id = owner.unqualified_text_id;
+  stale_display_identity.specialization_key = "Box<T=different-rendered>";
+  stale_display_identity.specialization = *int_spec;
+  const c4c::hir::HirRecordOwnerKey stale_display_owner =
+      c4c::hir::make_hir_template_record_owner_key(
+          ns, owner.unqualified_text_id, std::move(stale_display_identity));
+  expect_true(int_owner == stale_display_owner,
+              "rendered specialization text should be display-only when structured identity matches");
+}
+
 void test_instantiation_registry_records_structured_seed_identity() {
   const char* names[] = {"T", "N"};
   c4c::TextId text_ids[] = {17, 19};
@@ -1108,6 +1206,7 @@ int main() {
   test_legacy_name_dual_write_helpers_require_complete_owner_metadata();
   test_specialization_argument_identity_uses_structured_parameter_key();
   test_structured_specialization_key_requires_complete_binding_maps();
+  test_template_record_owner_key_uses_structured_specialization_identity();
   test_instantiation_registry_records_structured_seed_identity();
   test_pending_template_binding_identity_helpers_accept_structured_maps();
   test_pending_template_state_can_use_structured_identity_key();
