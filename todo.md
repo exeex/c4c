@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/179_byval_copy_layout_structured_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Thread Structured Layout Facts Into the Selected Route
+Current Step ID: 5
+Current Step Title: Validate and Summarize
 
 # Current Packet
 
