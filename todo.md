@@ -1,88 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/201_hir_template_registry_structured_generated_paths.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Record Closure Evidence
+Current Step ID: Step 5
+Current Step Title: Validate And Hand Off Closure
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Record Closure Evidence.
+Step 5: Validate And Hand Off Closure.
 
-Status note: this packet records the final evidence for
-`ideas/open/201_hir_template_registry_structured_generated_paths.md`. The HIR
-template-registry blocker recorded against idea 195 is cleared for the
-inventoried HIR hot files, subject only to the explicit compatibility leftovers
-listed below. This does not claim broader frontend-to-BIR closure or backend
-restart readiness beyond this blocker.
+Validation and closure handoff are recorded for
+`ideas/open/201_hir_template_registry_structured_generated_paths.md`.
 
-Final caller classification:
+Focused proof supplied by the supervisor:
 
-- `src/frontend/hir/impl/expr/call.cpp`: generated-call lowering is
-  metadata-rich semantic authority when `function_decl_nodes_` supplies a
-  declaration carrier. Explicit and deduced generated-template calls now use
-  structured `find_template_def(declaration, rendered_name)` and fail closed
-  after a complete structured miss. Rendered lookup remains only for
-  no-declaration compatibility, including the builtin `"forward"` helper.
-- `src/frontend/hir/impl/templates/deduction.cpp`: template deduction result
-  inference is metadata-rich when it has an AST declaration node. The
-  deduction path uses structured template definition lookup from that
-  declaration carrier; rendered spelling is not semantic recovery after
-  structured identity is available and missed.
-- `src/frontend/hir/hir_build.cpp`: generated template collection and seed
-  paths use `function_decl_nodes_` as the structured declaration carrier when
-  available. Rendered template definition lookup is retained only for
-  no-carrier collection/seed compatibility.
-- `src/frontend/hir/impl/compile_time/engine.cpp`: pending consteval replay and
-  deferred retry bookkeeping use `TemplateCallInfo::primary_template_decl` /
-  resolved primary definition identity when available. The replay path copies
-  template-call metadata before deferred instantiation so registry lookups do
-  not read stale HIR pool references after instantiation growth.
+- Command:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_hir_lookup_tests)$' > test_after.log 2>&1`
+- Result: passed 2/2.
+- Proof log: `test_after.log`.
 
-Blocker clearance:
+Accepted full-suite baseline evidence:
 
-- Cleared: no known metadata-rich generated template-registry path in
-  `call.cpp`, `deduction.cpp`, `hir_build.cpp`, or `engine.cpp` can recover
-  semantic authority through string-only `find_template_def(name)` or
-  `has_template_def(name)` after structured template identity is available and
-  misses.
-- Remaining work for idea 195 is outside this blocker and must be decided by
-  the supervisor/plan-owner lifecycle after this idea is validated or closed.
+- Baseline file: `test_baseline.log`.
+- Baseline commit: `a07fa8929`.
+- Result: passed 3137/3137.
+
+Closure handoff:
+
+- Ready for lifecycle closure by the plan owner.
+- No remaining known blockers inside idea 201.
+- The HIR template-registry blocker recorded against idea 195 is ready to be
+  marked cleared for this blocker only; broader frontend-to-BIR or backend
+  restart readiness remains outside this idea.
 
 ## Suggested Next
 
-Proceed to Step 5 validation and closure handoff for
-`ideas/open/201_hir_template_registry_structured_generated_paths.md`.
+Hand off to the plan owner to decide lifecycle closure for
+`ideas/open/201_hir_template_registry_structured_generated_paths.md` and update
+the blocked state of idea 195 if closure is accepted.
 
 ## Watchouts
 
-- Retained compatibility: `src/frontend/hir/impl/expr/call.cpp` keeps rendered
-  lookup for generated-call sites with no `function_decl_nodes_` declaration
-  carrier. Owner: HIR generated-call lowering. Limitation: the path cannot
-  prove the primary template declaration. Removal condition: all generated-call
-  lowering inputs carry a declaration identity, including the builtin
-  `"forward"` helper bridge.
-- Retained compatibility: `src/frontend/hir/hir_build.cpp` permits rendered
-  `find_template_def(name)` only when `function_decl_nodes_` has no declaration
-  carrier for the template name. Owner: HIR build collection/seed scaffolding.
-  Limitation: no structured declaration identity is available. Removal
-  condition: all generated template collection/seed callers carry a primary
-  declaration identity instead of only rendered spelling.
-- Retained compatibility: `src/frontend/hir/impl/compile_time/engine.cpp`
-  still uses rendered compile-time lookup only when `TemplateCallInfo` has no
-  `primary_template_decl`. Owner: compile-time replay of legacy/no-metadata HIR
-  template calls. Limitation: old metadata cannot prove the primary
-  declaration. Removal condition: generated HIR template calls require or
-  synthesize `primary_template_decl`.
-- Retained compatibility: `CompileTimeState::record_deferred_instance` fills a
-  missing `primary_def` from rendered spelling when the caller supplies no
-  primary. Owner: compile-time registry bookkeeping. Limitation: only
-  no-metadata callers use this branch after replay precheck passes the resolved
-  primary. Removal condition: deferred-instantiation APIs require the primary
-  template declaration.
+- The retained rendered lookup branches listed in Step 4 are compatibility
+  only for no-metadata callers; they are not known blockers for idea 201.
+- Idea 195 closure remains a separate lifecycle decision after plan-owner
+  review of this blocker closure.
 
 ## Proof
 
-Evidence-only `todo.md` update. Per delegated proof contract, no build or test
-proof was run and no root-level log was created or modified for this packet.
+Todo-only validation handoff update. Per delegated proof contract, no tests
+were rerun and no root-level logs were modified by this packet.
+
+Recorded supervisor-supplied proof:
+
+- `test_after.log`: focused HIR proof passed
+  `frontend_hir_tests` and `frontend_hir_lookup_tests` 2/2.
+- `test_baseline.log`: accepted full-suite baseline for commit `a07fa8929`
+  passed 3137/3137.
