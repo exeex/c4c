@@ -1,7 +1,8 @@
 # HIR Constructor/Member Owner Structured Lookup Closure
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/177_template_record_owner_structured_identity.md`
@@ -51,6 +52,25 @@ metadata-rich constructors or aggregate members.
 - Rendered fallback is explicit no-metadata compatibility.
 - Focused HIR tests cover structured success and stale rendered fallback
   rejection.
+
+## Completion Notes
+
+Closed after selecting the direct struct constructor route. The route now treats
+complete `record_def` or tag/namespace owner metadata as structured owner
+authority through the lowerer registry structured-owner helper, and complete
+structured owner misses fail closed instead of recovering through stale rendered
+callee spelling.
+
+Focused proof was recorded through `frontend_hir_lookup_tests`, with structured
+success and stale rendered fallback rejection coverage. Close review accepted
+the canonical focused regression guard comparison in `test_before.log` and
+`test_after.log` using `--allow-non-decreasing-passed`, plus the hook-produced
+full-suite baseline evidence in `test_baseline.log` at commit `7b8e16a21`
+showing 3137/3137 tests passing.
+
+Remaining rendered-owner surfaces were recorded in the Step 4 todo history as
+explicit no-owner/no-metadata compatibility or broader follow-up cleanup, not as
+unresolved acceptance blockers for this selected-route closure.
 
 ## Reviewer Reject Signals
 
