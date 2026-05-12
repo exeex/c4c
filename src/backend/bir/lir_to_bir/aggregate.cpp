@@ -192,9 +192,6 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
   if (!parsed_params.has_value()) {
     return aggregate_params;
   }
-  const auto signature_text_params =
-      structured_params_available ? parse_function_signature_params(function_.signature_text)
-                                  : std::nullopt;
 
   const bool use_declared_names =
       !structured_params_available && !function_.params.empty() &&
@@ -217,10 +214,18 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
     if (name.empty()) {
       return {};
     }
-    const bool is_explicit_byval_param =
-        structured_params_available && signature_text_params.has_value() &&
-        index < signature_text_params->size() &&
-        parse_byval_pointee_type((*signature_text_params)[index].type).has_value();
+    const bool is_explicit_byval_param = parsed_param.is_byval;
+    const bool type_ref_spells_byval =
+        structured_params_available &&
+        parse_byval_pointee_type(function_.signature_param_type_refs[index].str()).has_value();
+    if (structured_params_available && type_ref_spells_byval && !is_explicit_byval_param) {
+      aggregate_params.emplace(std::move(name),
+                               AggregateParamInfo{
+                                   .type_text = normalized_type,
+                                   .layout = AggregateTypeLayout{},
+                               });
+      return aggregate_params;
+    }
     const bool use_structured_byval_layout =
         is_explicit_byval_param &&
         function_.signature_param_type_refs[index].has_struct_name_id();

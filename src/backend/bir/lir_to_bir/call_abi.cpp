@@ -271,7 +271,7 @@ BirFunctionLowerer::parse_function_signature_params(std::string_view signature_t
           return;
         }
         if (param == "...") {
-          params.push_back({"", "...", true});
+          params.push_back({"", "...", true, false});
           return;
         }
 
@@ -280,7 +280,10 @@ BirFunctionLowerer::parse_function_signature_params(std::string_view signature_t
           parse_failed = true;
           return;
         }
-        params.push_back({std::string(parsed->type), std::string(parsed->operand), false});
+        params.push_back({std::string(parsed->type),
+                          std::string(parsed->operand),
+                          false,
+                          parse_signature_byval_pointee_type(parsed->type).has_value()});
       });
   if (parse_failed) {
     return std::nullopt;
@@ -308,10 +311,11 @@ BirFunctionLowerer::structured_signature_params(
         function.signature_param_type_refs[index].str(),
         function.signature_params[index].name,
         false,
+        function.signature_params[index].is_byval,
     });
   }
   if (function.signature_is_variadic) {
-    params.push_back({"", "...", true});
+    params.push_back({"", "...", true, false});
   }
   return params;
 }
@@ -507,8 +511,7 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
                                                            enforced_type_ref);
       const bool requires_aggregate_layout =
           enforce_structured_aggregate_layouts &&
-          (param_type_ref.has_struct_name_id() ||
-           parse_signature_byval_pointee_type(param.type).has_value());
+          (param_type_ref.has_struct_name_id() || param.is_byval);
       if (layout.has_value()) {
         if (param.operand.empty()) {
           return false;

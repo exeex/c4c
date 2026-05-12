@@ -1,44 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/191_bir_function_signature_byval_metadata_text_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Or Select Structured Byval Signature Metadata
+Current Step ID: Step 3
+Current Step Title: Route Aggregate Param Collection Through Structured Facts
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 by adding explicit structured byval metadata at the existing
-function signature metadata boundary.
+Completed Step 3 by routing incoming aggregate parameter collection through
+structured byval metadata when structured signature params exist.
 
 Changes:
-- Added `LirSignatureParam::is_byval` as the structured byval carrier.
-- Populated `is_byval` from the same AMD64 SysV aggregate-byval predicate used
-  by generated function signature rendering.
-- Updated LIR verification to reject disagreement between
-  `signature_params[index].is_byval` and the corresponding
-  `signature_param_type_refs[index]` byval ABI fragment.
-- Extended the frontend signature metadata test so declared and defined byval
-  functions assert explicit structured byval metadata, and verifier tests reject
-  both missing-byval-flag and invalid-explicit-byval shapes.
+- Extended `ParsedFunctionSignatureParam` with an explicit `is_byval` fact.
+- Made `structured_signature_params` populate that fact from
+  `LirSignatureParam::is_byval`.
+- Removed the metadata-rich `collect_aggregate_params` parse of
+  `function_.signature_text` for byval detection.
+- Kept `parse_function_signature_params(function_.signature_text)` as the
+  no-structured-metadata fallback, where parsed text still supplies legacy
+  byval state.
+- Added backend coverage proving stale byval spelling in `signature_text` does
+  not rescue structured metadata when the structured byval flag is absent.
 
 ## Suggested Next
 
-Execute Step 3: route BIR function-signature aggregate/byval collection through
-structured `LirSignatureParam::is_byval` metadata when structured signature
-metadata exists, keeping `signature_text` parsing as the legacy no-metadata
-fallback only.
+Execute Step 4: add or review focused stale-text evidence around structured
+function-signature byval authority, including positive structured byval and
+legacy no-metadata fallback behavior.
 
 ## Watchouts
 
-- Backend lowering was intentionally not changed in Step 2; `collect_aggregate_params`
-  still needs Step 3 work to stop reading byval state from `signature_text` for
-  metadata-rich functions.
-- Legacy raw LIR fixtures without `signature_params` still need the text parser
-  compatibility path.
-- Step 2 verifier checks only run when a structured `LirSignatureParam` is
-  present; metadata-free `signature_param_type_refs` compatibility remains
-  accepted for existing aggregate-param fixtures.
+- `lower_function_params_with_layouts` now uses `param.is_byval` for the
+  structured aggregate-layout requirement, but valid structured byval layout
+  still depends on the existing `signature_param_type_refs` type text and
+  `StructNameId` boundary.
+- The no-metadata compatibility path still parses `signature_text`; that is
+  intentional and should remain isolated to `!has_structured_signature_params`.
+- The new backend failure case reports through the local-memory semantic family
+  because aggregate-param alias materialization is where the stale structured
+  byval fact becomes fatal.
 
 ## Proof
 
@@ -49,3 +50,9 @@ Ran:
 Result: passed, `2/2` tests green.
 
 Proof log: `test_after.log`.
+
+Supervisor also ran:
+
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`
+
+Result: passed, `109/109` runnable tests green; `12` matching tests disabled.

@@ -108,6 +108,7 @@ int expect_incoming_byval_param_with_missing_struct_layout_fails_closed();
 int expect_incoming_byval_param_with_mismatched_struct_id_fails_closed();
 int expect_incoming_byval_param_with_opaque_struct_layout_fails_closed();
 int expect_metadata_rich_incoming_byval_param_without_struct_id_fails_closed();
+int expect_metadata_rich_incoming_byval_param_without_byval_flag_fails_closed();
 int expect_non_aarch64_metadata_rich_incoming_byval_param_without_struct_id_uses_legacy_layout();
 int expect_legacy_incoming_byval_param_without_signature_type_ref_uses_legacy_layout();
 int expect_structured_signature_return_materializes_sret_from_type_ref();
@@ -2790,7 +2791,7 @@ LirModule make_incoming_byval_param_boundary_module(
   payload_param_type.tag_text_id = module.link_name_texts->intern("Payload");
   function.params.push_back({"%payload", payload_param_type});
   function.signature_params.push_back(
-      lir::LirSignatureParam{.name = "%payload", .type = payload_param_type});
+      lir::LirSignatureParam{.name = "%payload", .type = payload_param_type, .is_byval = true});
   function.signature_param_type_refs.push_back(std::move(signature_param_type_ref));
 
   LirBlock entry;
@@ -2933,6 +2934,25 @@ int expect_metadata_rich_incoming_byval_param_without_struct_id_fails_closed() {
                      "function",
                      "failed in function-signature semantic family")) {
     return fail("missing function-signature failure for incoming byval parameter without StructNameId");
+  }
+  return 0;
+}
+
+int expect_metadata_rich_incoming_byval_param_without_byval_flag_fails_closed() {
+  LirModule module = make_incoming_byval_param_boundary_module(lir::LirTypeRef(""));
+  const c4c::StructNameId payload_id = module.struct_names.find("%struct.Payload");
+  module.functions.front().signature_param_type_refs.front() =
+      lir::LirTypeRef::struct_type("ptr byval(%struct.Payload)", payload_id);
+  module.functions.front().signature_params.front().is_byval = false;
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("stale signature_text byval should not override structured byval metadata");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in local-memory semantic family")) {
+    return fail("missing local-memory failure for incoming byval parameter without byval flag");
   }
   return 0;
 }
@@ -4948,6 +4968,12 @@ int main() {
           expect_metadata_rich_incoming_byval_param_without_struct_id_fails_closed();
       missing_incoming_byval_id_status != 0) {
     return missing_incoming_byval_id_status;
+  }
+
+  if (const int missing_incoming_byval_flag_status =
+          expect_metadata_rich_incoming_byval_param_without_byval_flag_fails_closed();
+      missing_incoming_byval_flag_status != 0) {
+    return missing_incoming_byval_flag_status;
   }
 
   if (const int non_aarch64_missing_incoming_byval_id_status =

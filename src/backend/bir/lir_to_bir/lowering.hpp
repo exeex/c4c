@@ -292,6 +292,7 @@ class BirFunctionLowerer {
     std::string type;
     std::string operand;
     bool is_varargs = false;
+    bool is_byval = false;
   };
 
   struct ParsedTypedCall {
