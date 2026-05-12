@@ -1,7 +1,8 @@
 # Global Aggregate Layout Structured Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/173_aggregate_layout_identity_structured_boundary.md`
@@ -58,6 +59,19 @@ looks plausible even if the structured owner/layout identity is stale.
 - Focused backend/LIR/BIR tests cover the selected route and a stale/mismatched
   structured identity case.
 - Validation includes a fresh build plus targeted backend route coverage.
+
+## Closure Notes
+
+Completed via the bounded metadata-rich global aggregate initializer/layout
+route. Structured `LirTypeRef` identity now drives the selected generated
+global aggregate layout path, stale/missing/opaque/parity-mismatched structured
+metadata fails closed, and the legacy text-only fallback remains explicit for
+no-metadata compatibility.
+
+Closure proof used the focused route command recorded in `todo.md`:
+`cmake --build build --target backend_prepare_structured_context_test frontend_lir_global_type_ref_test && ctest --test-dir build -R 'backend_prepare_structured_context|frontend_lir_global_type_ref' --output-on-failure`.
+The canonical `test_before.log` and `test_after.log` comparison passed with no
+new failures under the accepted non-decreasing baseline guard.
 
 ## Reviewer Reject Signals
 
