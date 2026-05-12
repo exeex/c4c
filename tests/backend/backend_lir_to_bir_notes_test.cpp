@@ -85,6 +85,7 @@ LirModule make_dynamic_indexed_gep_global_member_array_module();
 
 int expect_link_name_id_symbol_identity_survives_drifted_display_names();
 int expect_link_name_id_global_identity_rejects_unresolved_id();
+int expect_link_name_id_extern_identity_rejects_unresolved_id();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_dynamic_global_scalar_array_loads_reject_missing_link_name_spelling();
 int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
@@ -355,6 +356,52 @@ int expect_link_name_id_global_identity_rejects_unresolved_id() {
                      "module",
                      "LinkNameId-bearing LIR global must resolve through the link-name table")) {
     return fail("unresolved global LinkNameId failure should identify the fail-closed path");
+  }
+  return 0;
+}
+
+int expect_link_name_id_extern_identity_rejects_unresolved_id() {
+  LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  constexpr c4c::LinkNameId kStaleExternId = 9999;
+
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_raw_extern";
+  callee.link_name_id = kStaleExternId;
+  callee.return_type_str = "void";
+  callee.return_type = c4c::codegen::lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
+  LirFunction function;
+  function.name = "extern_identity_user";
+  function.signature_text = "define void @extern_identity_user()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .return_type = c4c::codegen::lir::LirTypeRef("void"),
+      .callee = LirOperand("@stale_raw_extern"),
+      .direct_callee_link_name_id = kStaleExternId,
+      .callee_signature = void_call_signature({}),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("unresolved extern LinkNameId should not recover through raw LIR spelling");
+  }
+  if (!contains_note(result.notes,
+                     "module",
+                     "LinkNameId-bearing LIR extern declaration must resolve through the link-name table")) {
+    return fail("unresolved extern LinkNameId failure should identify the fail-closed path");
   }
   return 0;
 }
@@ -5422,6 +5469,11 @@ int main() {
           expect_link_name_id_global_identity_rejects_unresolved_id();
       link_name_unresolved_global_status != 0) {
     return link_name_unresolved_global_status;
+  }
+  if (const int link_name_unresolved_extern_status =
+          expect_link_name_id_extern_identity_rejects_unresolved_id();
+      link_name_unresolved_extern_status != 0) {
+    return link_name_unresolved_extern_status;
   }
 
   if (const int string_pool_link_name_status =

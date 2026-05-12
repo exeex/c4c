@@ -9,25 +9,26 @@ Current Step Title: Convert Link-Visible Symbol Identity
 ## Just Finished
 
 Step 3 - Convert Link-Visible Symbol Identity completed a narrow LIR-to-BIR
-global identity fence.
+function/extern identity fence.
 
-`src/backend/bir/lir_to_bir/module.cpp` now treats a non-invalid
-`LirGlobal::link_name_id` as semantic authority for lowered BIR global
-identity. If the id cannot resolve through the LIR link-name table, lowering
-fails closed instead of recovering through `LirGlobal::name`. Raw global names
-remain compatibility identity only for no-id globals.
+`src/backend/bir/lir_to_bir/module.cpp` now treats non-invalid
+`LirExternDecl::link_name_id` and `LirFunction::link_name_id` values as
+semantic authority while building the LIR-to-BIR function-symbol table. If a
+present id cannot resolve through the module link-name table, module lowering
+fails closed before raw-name compatibility indices are populated. Raw function
+and extern spelling remains compatibility identity only for no-id payloads.
 
 `tests/backend/backend_lir_to_bir_notes_test.cpp` now includes a focused stale
-global `LinkNameId` fixture proving an unresolved metadata-rich global does not
-lower through its raw rendered spelling, and records the fail-closed module
-note.
+extern `LinkNameId` fixture proving an unresolved metadata-rich extern/direct
+call path does not lower through its raw rendered spelling, and records the
+fail-closed module note.
 
 ## Suggested Next
 
-Continue Step 3 with the next smallest link-visible identity fence. A natural
-next packet is to apply the same unresolved-id fail-closed rule to
-function/extern symbol identity at the LIR-to-BIR module boundary, while
-preserving raw-name compatibility only for no-id functions or declarations.
+Continue Step 3 by reviewing the remaining direct-call and pointer-to-symbol
+bridges that still resolve via raw symbol spelling for no-id compatibility.
+Keep the next packet to one bridge and prove that present `LinkNameId` metadata
+cannot fall back through the raw compatibility table on a miss.
 
 ## Watchouts
 
@@ -46,9 +47,10 @@ preserving raw-name compatibility only for no-id functions or declarations.
 - x86 `module/data.cpp` raw same-module global lookup is currently final
   assembler/output spelling territory. Do not convert that before the upstream
   BIR/prepared link-name carriers are fenced.
-- This slice intentionally fenced only LIR global identity. Function and extern
-  `LinkNameId` spelling helpers still need separate review before claiming
-  Step 3 broadly complete.
+- This slice fenced the LIR-to-BIR function-symbol table at the module
+  boundary, but `calling.cpp` still has local display/identity helpers that
+  return raw spelling. They are currently guarded by the module-boundary check;
+  review them before claiming Step 3 broadly complete.
 
 ## Proof
 

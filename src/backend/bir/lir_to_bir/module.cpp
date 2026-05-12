@@ -96,6 +96,20 @@ std::string function_name_for_reporting(const c4c::codegen::lir::LirModule& modu
   return function.name;
 }
 
+std::optional<std::string> function_name_for_identity(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::codegen::lir::LirFunction& function) {
+  const std::string_view resolved_name = resolve_link_name(module.link_names,
+                                                           function.link_name_id);
+  if (!resolved_name.empty()) {
+    return std::string(resolved_name);
+  }
+  if (function.link_name_id != c4c::kInvalidLinkName) {
+    return std::nullopt;
+  }
+  return function.name;
+}
+
 std::optional<std::string> global_name_for_identity(const c4c::codegen::lir::LirModule& module,
                                                     const c4c::codegen::lir::LirGlobal& global) {
   const std::string_view resolved_name = resolve_link_name(module.link_names,
@@ -109,12 +123,16 @@ std::optional<std::string> global_name_for_identity(const c4c::codegen::lir::Lir
   return global.name;
 }
 
-std::string extern_decl_name_for_identity(const c4c::codegen::lir::LirModule& module,
-                                          const c4c::codegen::lir::LirExternDecl& decl) {
+std::optional<std::string> extern_decl_name_for_identity(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::codegen::lir::LirExternDecl& decl) {
   const std::string_view resolved_name = resolve_link_name(module.link_names,
                                                            decl.link_name_id);
   if (!resolved_name.empty()) {
     return std::string(resolved_name);
+  }
+  if (decl.link_name_id != c4c::kInvalidLinkName) {
+    return std::nullopt;
   }
   return decl.name;
 }
@@ -913,12 +931,26 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   // final spellings. LinkNameId-bearing globals/functions remain authoritative
   // during BIR emission and verification.
   for (const auto& decl : context.lir_module.extern_decls) {
-    function_symbols.insert_function(extern_decl_name_for_identity(context.lir_module, decl),
-                                     decl.link_name_id);
+    const auto decl_name = extern_decl_name_for_identity(context.lir_module, decl);
+    if (!decl_name.has_value()) {
+      context.note(
+          "module",
+          "LinkNameId-bearing LIR extern declaration must resolve through the link-name table "
+          "before raw-name compatibility is allowed");
+      return std::nullopt;
+    }
+    function_symbols.insert_function(*decl_name, decl.link_name_id);
   }
   for (const auto& function : context.lir_module.functions) {
-    function_symbols.insert_function(function_name_for_reporting(context.lir_module, function),
-                                     function.link_name_id);
+    const auto function_name = function_name_for_identity(context.lir_module, function);
+    if (!function_name.has_value()) {
+      context.note(
+          "module",
+          "LinkNameId-bearing LIR function must resolve through the link-name table before "
+          "raw-name compatibility is allowed");
+      return std::nullopt;
+    }
+    function_symbols.insert_function(*function_name, function.link_name_id);
   }
   const auto type_decls = build_type_decl_map(context.lir_module.type_decls);
   module.structured_types = build_bir_structured_type_spelling_context(
