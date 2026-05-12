@@ -49,6 +49,22 @@ bool typespec_has_aggregate_structured_identity_metadata(const TypeSpec& ts) {
          (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0);
 }
 
+bool typespec_has_complete_tag_owner_metadata(const TypeSpec& ts) {
+  if (ts.namespace_context_id < 0 || ts.tag_text_id == kInvalidText) {
+    return false;
+  }
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = ts.namespace_context_id;
+  ns_qual.is_global_qualified = ts.is_global_qualified;
+  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+    ns_qual.segment_text_ids.assign(
+        ts.qualifier_text_ids,
+        ts.qualifier_text_ids + ts.n_qualifier_segments);
+  }
+  return hir_record_owner_key_has_complete_metadata(
+      make_hir_record_owner_key(ns_qual, ts.tag_text_id));
+}
+
 std::optional<HirRecordOwnerKey> aggregate_direct_assign_owner_key(
     const TypeSpec& ts,
     TextTable* texts) {
@@ -153,7 +169,9 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
     if (owner_ts.base == TB_STRUCT) {
       set_typespec_final_spelling_tag_if_present(owner_ts, callee_name.c_str(), 0);
       has_structured_owner =
-          owner_ts.record_def || owner_ts.tpl_struct_origin ||
+          owner_ts.record_def ||
+          typespec_has_complete_tag_owner_metadata(owner_ts) ||
+          owner_ts.tpl_struct_origin ||
           (owner_ts.tpl_struct_args.data && owner_ts.tpl_struct_args.size > 0);
     } else {
       owner_ts = TypeSpec{};
