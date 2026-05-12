@@ -607,6 +607,13 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
   };
 
   if (auto owner_tag = try_structured_record_owner_tag()) return owner_tag;
+  if (auto owner_key = record_owner_key_from_type_tag_metadata(base_ts);
+      owner_key && !module_->find_struct_def_tag_by_owner(*owner_key) &&
+      (!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) &&
+      base_ts.tpl_struct_origin_key.base_text_id == kInvalidText &&
+      !(base_ts.tpl_struct_args.data && base_ts.tpl_struct_args.size > 0)) {
+    return std::nullopt;
+  }
   if (auto owner_tag = structured_owner_tag_from_type(base_ts, module_)) {
     return owner_tag;
   }
@@ -977,6 +984,7 @@ bool Lowerer::try_eval_template_value_arg_expr(
       }
       if (member.empty()) return false;
       if (structured_owner_key && expr->unqualified_text_id != kInvalidText) {
+        bool owner_key_resolved = false;
         if (auto member_key = make_struct_member_lookup_key(
                 *structured_owner_key, expr->unqualified_text_id)) {
           auto value_it = struct_static_member_const_values_by_owner_.find(
@@ -989,12 +997,18 @@ bool Lowerer::try_eval_template_value_arg_expr(
         if (module_) {
           if (const std::string* owner_tag =
                   module_->find_struct_def_tag_by_owner(*structured_owner_key)) {
+            owner_key_resolved = true;
             if (auto value = try_eval_instantiated_struct_static_member_const(
                     *owner_tag, member)) {
               *out_value = *value;
               return true;
             }
           }
+        }
+        if (!owner_key_resolved &&
+            structured_owner_key->namespace_context_id >= 0 &&
+            !structured_owner_key->qualifier_segment_text_ids.empty()) {
+          return false;
         }
       }
       if (!structured_owner_name.empty()) {
@@ -1024,6 +1038,7 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
     const Node* ref,
     const std::string& member) {
   const Node* primary = nullptr;
+  bool has_complete_owner_key = false;
   if (ref && ref->qualifier_text_ids && ref->n_qualifier_segments > 0) {
     const TextId owner_text_id =
         ref->qualifier_text_ids[ref->n_qualifier_segments - 1];
@@ -1042,10 +1057,15 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
       HirRecordOwnerKey owner_key =
           make_hir_record_owner_key(owner_ns, owner_text_id);
       if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+        has_complete_owner_key = true;
         auto it = template_struct_defs_by_owner_.find(owner_key);
         if (it != template_struct_defs_by_owner_.end()) primary = it->second;
       }
     }
+  }
+  if (has_complete_owner_key && !primary && ref->namespace_context_id >= 0 &&
+      ref->n_qualifier_segments > 1) {
+    return std::nullopt;
   }
   if (!primary) primary = find_template_struct_primary(tpl_name);
   if (!primary && tpl_name.find("::") == std::string::npos) {

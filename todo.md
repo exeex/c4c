@@ -8,34 +8,33 @@ Current Step Title: Fence Metadata-Rich Module And Owner Lookups
 
 ## Just Finished
 
-Completed `plan.md` Step 2 owner-fallback slice for HIR record/aggregate
-lookup. `resolve_struct_method_lookup_owner_tag` now resolves complete
-record/tag owner keys before delegating to rendered compatibility helpers, so
-complete owner-key misses fail closed before `tag_text_id`, legacy tag, or
-rendered `struct_defs` recovery.
+Completed `plan.md` Step 2 remaining HIR template value-arg owner-recovery
+slice. `resolve_member_lookup_owner_tag` now rejects complete tag owner-key
+misses before rendered `tag_text_id`/legacy `struct_defs` recovery when no
+template-origin metadata can legitimately realize a new owner, and template
+static-member value-arg evaluation now stops before rendered primary recovery
+for complete qualified owner-key misses.
 
-Retained direct-constructor `callee_name` and aggregate `typespec_legacy_tag`
-bridges are documented as no-owner compatibility only. Focused lookup coverage
-now proves a complete method owner-key miss rejects rendered/tag compatibility
-even when a stale rendered `struct_defs` entry exists.
+Retained rendered compatibility is fenced to no-owner/incomplete-owner paths:
+template-origin realization can still proceed, and no-metadata template
+static-member value args still use rendered primary lookup.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by reviewing the remaining non-owned
-`resolve_member_lookup_owner_tag` rendered recovery in
-`src/frontend/hir/impl/templates/value_args.cpp`; this packet fenced the owned
-method wrapper without editing that broader helper.
+Treat `plan.md` Step 2 as complete and have the supervisor or plan owner choose
+the next lifecycle action, likely advancing to the next runbook step.
 
 ## Watchouts
 
-- The method-wrapper fence intentionally resolves or rejects complete owner
-  keys before calling `resolve_member_lookup_owner_tag`, because that helper is
-  outside this packet's owned files and still has a rendered tag recovery path.
-- No-owner direct constructor and aggregate compatibility remain intact; this
-  slice only rejects complete owner-key misses.
+- The template static-member fence is intentionally limited to complete
+  qualified owner keys with a namespace context; current positive fixtures still
+  rely on rendered primary compatibility for parser-generated owner refs that
+  do not carry that full owner context.
+- Template-origin metadata is not treated as a stale rendered recovery path;
+  it may still materialize a fresh owner before returning a tag.
 
 ## Proof
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|frontend_hir_tests|cpp_hir_expr_object_materialization_helper)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|frontend_hir_tests|cpp_hir_value_args_residual_structured_metadata|cpp_hir_template_value_arg_static_member_trait|cpp_hir_template_deferred_nttp_(expr|arith_expr|paren_expr|bool_expr|logic_expr|true_expr|number_expr|static_member_expr|cast_static_member_expr|sizeof_pack_expr)|cpp_hir_template_alias_deferred_nttp_static_member)$"' > test_after.log 2>&1`
 
 Result: passed. `test_after.log` is the proof log.

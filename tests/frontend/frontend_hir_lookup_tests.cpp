@@ -2795,6 +2795,89 @@ void test_template_value_arg_static_member_uses_structured_owner_key() {
               "template value-arg const eval should use structured owner/member metadata");
 }
 
+void test_template_value_arg_static_member_owner_key_miss_rejects_rendered_primary() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node init{};
+  init.kind = c4c::NK_INT_LIT;
+  init.ival = 77;
+  c4c::Node value_decl{};
+  value_decl.kind = c4c::NK_DECL;
+  value_decl.is_static = true;
+  value_decl.name = "value";
+  value_decl.init = &init;
+  c4c::Node* fields[] = {&value_decl};
+  c4c::Node rendered_primary{};
+  rendered_primary.kind = c4c::NK_STRUCT_DEF;
+  rendered_primary.name = "RealOwner";
+  rendered_primary.unqualified_name = "RealOwner";
+  rendered_primary.fields = fields;
+  rendered_primary.n_fields = 1;
+  lowerer.template_struct_defs_["RealOwner"] = &rendered_primary;
+
+  const c4c::TextId ns_text = module.link_name_texts->intern("MissingNs");
+  const c4c::TextId owner_text = module.link_name_texts->intern("RealOwner");
+  const c4c::TextId member_text = module.link_name_texts->intern("value");
+  c4c::TextId qualifier_text_ids[] = {ns_text, owner_text};
+  const char* qualifier_segments[] = {"MissingNs", "RealOwner"};
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "RealOwner::value";
+  ref.unqualified_name = "value";
+  ref.unqualified_text_id = member_text;
+  ref.qualifier_text_ids = qualifier_text_ids;
+  ref.qualifier_segments = qualifier_segments;
+  ref.n_qualifier_segments = 2;
+  ref.namespace_context_id = 74;
+  ref.has_template_args = true;
+
+  long long value = 0;
+  const bool evaluated =
+      lowerer.try_eval_template_value_arg_expr(&ref, nullptr, &value);
+  expect_true(!evaluated,
+              "complete template value-arg owner-key misses must not recover through rendered template-primary lookup");
+}
+
+void test_template_value_arg_static_member_no_metadata_uses_rendered_primary() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node init{};
+  init.kind = c4c::NK_INT_LIT;
+  init.ival = 77;
+  c4c::Node value_decl{};
+  value_decl.kind = c4c::NK_DECL;
+  value_decl.is_static = true;
+  value_decl.name = "value";
+  value_decl.init = &init;
+  c4c::Node* fields[] = {&value_decl};
+  c4c::Node rendered_primary{};
+  rendered_primary.kind = c4c::NK_STRUCT_DEF;
+  rendered_primary.name = "LegacyOwner";
+  rendered_primary.unqualified_name = "LegacyOwner";
+  rendered_primary.fields = fields;
+  rendered_primary.n_fields = 1;
+  lowerer.template_struct_defs_["LegacyOwner"] = &rendered_primary;
+
+  const char* qualifier_segments[] = {"LegacyOwner"};
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "LegacyOwner::value";
+  ref.unqualified_name = "value";
+  ref.qualifier_segments = qualifier_segments;
+  ref.n_qualifier_segments = 1;
+  ref.has_template_args = true;
+
+  long long value = 0;
+  const bool evaluated =
+      lowerer.try_eval_template_value_arg_expr(&ref, nullptr, &value);
+  expect_true(evaluated && value == 77,
+              "template value-arg const eval should keep rendered primary compatibility without owner metadata");
+}
+
 void test_scalar_static_member_rejects_rendered_owner_split() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6591,6 +6674,43 @@ void test_struct_method_owner_tag_complete_miss_rejects_rendered_fallbacks() {
               "tag_text_id, legacy tag, or rendered struct_defs compatibility");
 }
 
+void test_member_lookup_owner_tag_complete_miss_rejects_rendered_fallbacks() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId missing_ns_text =
+      module.link_name_texts->intern("MissingMemberNs");
+  const c4c::TextId rendered_owner_text =
+      module.link_name_texts->intern("RenderedMemberOwner");
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "RenderedMemberOwner";
+  stale_def.tag_text_id = rendered_owner_text;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TextId qualifier_text_ids[] = {missing_ns_text};
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.namespace_context_id = 82;
+  owner_ts.tag_text_id = rendered_owner_text;
+  owner_ts.qualifier_text_ids = qualifier_text_ids;
+  owner_ts.n_qualifier_segments = 1;
+  set_legacy_tag_if_present(
+      owner_ts, arena.strdup("RenderedMemberOwner"), 0);
+
+  const std::optional<std::string> owner_tag =
+      lowerer.resolve_member_lookup_owner_tag(
+          owner_ts, false, nullptr, nullptr, nullptr, nullptr,
+          "member-owner-complete-miss");
+  expect_true(!owner_tag.has_value(),
+              "complete member owner-key misses must not recover through "
+              "tag_text_id, legacy tag, or rendered struct_defs compatibility");
+}
+
 void test_out_of_class_nested_method_attach_uses_structured_owner_key() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6831,6 +6951,8 @@ int main() {
   test_static_member_nttp_const_eval_prefers_text_id_binding();
   test_template_value_arg_static_member_rejects_rendered_owner_split();
   test_template_value_arg_static_member_uses_structured_owner_key();
+  test_template_value_arg_static_member_owner_key_miss_rejects_rendered_primary();
+  test_template_value_arg_static_member_no_metadata_uses_rendered_primary();
   test_scalar_static_member_rejects_rendered_owner_split();
   test_scalar_static_member_uses_member_text_after_structured_owner();
   test_scalar_generated_static_member_structured_miss_rejects_rendered_const_fallback();
@@ -6908,6 +7030,7 @@ int main() {
   test_direct_struct_constructor_uses_structured_owner_key();
   test_direct_struct_constructor_owner_miss_rejects_stale_rendered_fallback();
   test_struct_method_owner_tag_complete_miss_rejects_rendered_fallbacks();
+  test_member_lookup_owner_tag_complete_miss_rejects_rendered_fallbacks();
   test_out_of_class_nested_method_attach_uses_structured_owner_key();
   test_out_of_class_method_attach_rejects_rendered_name_without_structured_key();
   test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback();
