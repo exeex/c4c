@@ -57,6 +57,17 @@ void test_pending_base_substitution_prefers_template_param_text_id() {
                   base_arg.type.template_param_text_id == t_text,
               "Base<T> argument should carry template_param_text_id metadata");
 
+  c4c::Node* stale_base_int = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  stale_base_int->name = arena.strdup("Base<int>");
+  stale_base_int->unqualified_name = arena.strdup("Base<int>");
+  stale_base_int->template_origin_name = arena.strdup("Base");
+  stale_base_int->n_template_args = 1;
+  stale_base_int->template_arg_is_value = arena.alloc_array<bool>(1);
+  stale_base_int->template_arg_is_value[0] = false;
+  stale_base_int->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+  stale_base_int->template_arg_types[0].base = c4c::TB_INT;
+  parser.definition_state_.struct_tag_def_map["Base<int>"] = stale_base_int;
+
   derived->template_param_names[0] = arena.strdup("StaleRenderedT");
   const c4c::Token seed = tokens.empty() ? c4c::Token{} : tokens.front();
   parser.replace_token_stream_for_testing({
@@ -83,6 +94,9 @@ void test_pending_base_substitution_prefers_template_param_text_id() {
                       "Base",
               "pending Base<T> should materialize Base<int> through structured "
               "template_param_text_id before stale rendered parameter names");
+  expect_true(base_ts.record_def != stale_base_int,
+              "metadata-rich Base<T> materialization should not trust a stale "
+              "rendered Base<int> tag-map entry");
   expect_true(base_ts.record_def->n_template_args == 1 &&
                   base_ts.record_def->template_arg_types &&
                   base_ts.record_def->template_arg_types[0].base == c4c::TB_INT,

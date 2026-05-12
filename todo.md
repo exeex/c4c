@@ -8,45 +8,28 @@ Current Step Title: Audit Template Instantiated Record Lookup
 
 ## Just Finished
 
-Step 4 hard-fenced
-`eval_const_int_with_rendered_named_const_compatibility` in commit
-`18b8a7757`.
+Step 5 converted the structured base-instantiation materialization path in
+`src/frontend/parser/impl/types/base.cpp`.
 
-The compatibility bridge now accepts an optional structured named-constant
-`TextId` table. When that table is supplied and the node carries parser
-named-constant metadata, structured lookup is authoritative: a hit returns the
-`TextId` value, and a miss fails closed before rendered named-constant lookup.
-The retained rendered lookup is explicitly documented as legacy/no-metadata
-compatibility for callers such as HIR template probes that still pass rendered
-NTTP names, with the removal condition tied to those callers carrying TextIds.
+`materialize_structured_base_record` no longer begins from
+`definition_state_.struct_tag_def_map.find(base_mangled)`. For metadata-rich
+base instantiation routes it now constructs the structured template
+instantiation key from the primary template and parsed argument metadata, then
+resolves the record through the structured instantiated-record scan. Rendered
+`base_mangled` tag-map lookup remains only in the existing explicit
+legacy/no-carrier compatibility branches.
 
-The direct parser-support residual metadata test proves that stale rendered
-named constants cannot override complete parser metadata in the compatibility
-bridge, including a qualified metadata miss, while preserving explicit
-rendered no-metadata behavior.
-
-Focused proof passed for
-`cpp_hir_parser_support_residual_structured_metadata`. The accepted
-full-suite baseline candidate for commit `18b8a7757` was identical green:
-3137 passed, 0 failed, with the existing 12 disabled backend CLI tests.
+The pending base-substitution metadata test now poisons the rendered
+`Base<int>` tag-map entry with a stale record and asserts that structured
+`Base<T>` materialization does not return that stale rendered-map record.
 
 ## Suggested Next
 
-Begin Step 5 by auditing template instantiated record lookup routes that can
-derive candidate keys from rendered `template_origin_name` or adjacent
-rendered spelling.
-
-Bound the next executor packet to parser-owned template instantiated record
-lookup in `src/frontend/parser/impl/types/base.cpp` and closely related parser
-handoff tests. Classify each remaining rendered-origin lookup as one of:
-metadata-rich route that must use structured record, owner, or domain metadata;
-legacy/no-metadata compatibility that needs an owner/limitation/removal
-comment; or out-of-scope HIR/Sema behavior that belongs outside this parser
-plan.
-
-For the first reachable metadata-rich route, replace rendered-origin authority
-or fail closed after a complete structured miss, then add focused stale-rendered
-template-origin proof if the route remains reachable.
+Continue Step 5 with the remaining parser-owned template instantiated record
+lookup surfaces in `src/frontend/parser/impl/types/base.cpp`, especially the
+existing-instantiation reuse branch near concrete template struct emission.
+Classify each retained rendered map lookup as structured-key authority,
+legacy/no-carrier compatibility, or closure-ledger debt.
 
 ## Watchouts
 
@@ -68,20 +51,17 @@ template-origin proof if the route remains reachable.
   proves parser-owned metadata is complete.
 - Do not treat `template_origin_name` or rendered candidate keys as semantic
   authority when structured instantiated-record metadata is available.
+- The retained rendered `base_mangled` lookups around base materialization are
+  intended only for no-carrier compatibility. Do not move them back into
+  metadata-rich paths.
 - Step 3 reviewer watch item: retained no-metadata/template-instantiation
   fallbacks in `base.cpp` should be accounted for in Step 5 and the Step 6
   closure ledger.
 
 ## Proof
 
-Step 4 focused proof passed:
+Step 5 focused proof passed:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^cpp_hir_parser_support_residual_structured_metadata$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(cpp_hir_parser_type_base_pending_base_substitution_structured_metadata|cpp_hir_parser_type_base_instantiated_deferred_member_structured_metadata)$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.
-
-Baseline accepted:
-
-`test_baseline.log` records commit `18b8a7757f56db06dab28fa91b198888d6efaef4`,
-full-suite, 3137 passed, 0 failed, with the existing 12 disabled backend CLI
-tests.

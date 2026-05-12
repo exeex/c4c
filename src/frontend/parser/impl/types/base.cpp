@@ -7350,23 +7350,10 @@ TypeSpec Parser::parse_base_type() {
                                         return true;
                                     };
                                     auto materialize_structured_base_record =
-                                        [&](const std::string& base_mangled,
-                                            const Node* primary,
+                                        [&](const Node* primary,
                                             const std::vector<ParsedTemplateArg>& args)
                                             -> Node* {
-                                        if (!primary || base_mangled.empty()) {
-                                            return nullptr;
-                                        }
-                                        auto it =
-                                            definition_state_.struct_tag_def_map.find(
-                                                base_mangled);
-                                        if (it ==
-                                            definition_state_.struct_tag_def_map.end()) {
-                                            return nullptr;
-                                        }
-                                        Node* candidate = it->second;
-                                        if (!candidate ||
-                                            candidate->kind != NK_STRUCT_DEF) {
+                                        if (!primary) {
                                             return nullptr;
                                         }
                                         const char* expected_origin =
@@ -7374,6 +7361,28 @@ TypeSpec Parser::parse_base_type() {
                                                     primary->template_origin_name[0]
                                                 ? primary->template_origin_name
                                                 : primary->name;
+                                        if (!expected_origin ||
+                                            !expected_origin[0]) {
+                                            expected_origin =
+                                                primary->unqualified_name;
+                                        }
+                                        const ParserTemplateState::
+                                            TemplateInstantiationKey
+                                                structured_key{
+                                                    template_instantiation_name_key_for_direct_emit(
+                                                        *this, primary,
+                                                        expected_origin
+                                                            ? expected_origin
+                                                            : ""),
+                                                    make_template_instantiation_argument_keys(
+                                                        args)};
+                                        Node* candidate =
+                                            find_template_instantiated_record_for_direct_emit(
+                                                *this, structured_key);
+                                        if (!candidate ||
+                                            candidate->kind != NK_STRUCT_DEF) {
+                                            return nullptr;
+                                        }
                                         const char* candidate_origin =
                                             candidate->template_origin_name &&
                                                     candidate->template_origin_name[0]
@@ -7742,7 +7751,6 @@ TypeSpec Parser::parse_base_type() {
                                                         base_has_structured_carrier) {
                                                         base_def =
                                                             materialize_structured_base_record(
-                                                                base_mangled,
                                                                 base_primary,
                                                                 base_args);
                                                     } else if (!base_def) {
@@ -7886,7 +7894,6 @@ TypeSpec Parser::parse_base_type() {
                                                     base_has_structured_carrier) {
                                                     base_def =
                                                         materialize_structured_base_record(
-                                                            base_mangled,
                                                             base_primary,
                                                             base_args);
                                                 } else if (!base_def) {
