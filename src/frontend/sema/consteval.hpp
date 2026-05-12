@@ -637,10 +637,12 @@ ConstEvalResult evaluate_constant_expr(const Node* n, const ConstEvalEnv& env);
 // Evaluate a consteval function call at compile time.
 // `func_def` must be an NK_FUNCTION node with is_consteval=true.
 // `args` are the constant values for each parameter.
-// `consteval_fns` maps rendered function names to NK_FUNCTION AST nodes for
-// no-metadata recursive/chained consteval calls. The optional TextId/key maps
-// are authority for metadata-rich call sites; the rendered map is removable
-// once all callers provide those maps.
+// Owner: legacy/deprecated no-metadata consteval-call compatibility.
+// `consteval_fns` maps rendered function names to NK_FUNCTION AST nodes only
+// for recursive/chained consteval calls whose callee carries no TextId/key
+// metadata. Limitation: rendered strings are not semantic identity and must
+// not recover metadata-rich misses. Removal condition: delete this bridge once
+// all consteval call paths provide the TextId/key maps.
 ConstEvalResult evaluate_consteval_call(
     const Node* func_def,
     const std::vector<ConstValue>& args,

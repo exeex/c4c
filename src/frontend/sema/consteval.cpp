@@ -1075,9 +1075,12 @@ const Node* lookup_consteval_function(
     const ConstEvalFunctionTextMap* consteval_fns_by_text,
     const ConstEvalFunctionStructuredMap* consteval_fns_by_key) {
   if (!callee || !callee->name) return nullptr;
-  // `consteval_fns` is the legacy rendered compatibility map. TextId and
-  // structured function maps are authoritative when call metadata is present;
-  // only no-metadata calls fall back to the rendered spelling.
+  // Owner: legacy/deprecated no-metadata consteval-call compatibility.
+  // TextId and structured function maps are authoritative when call metadata
+  // is present. Limitation: the rendered `consteval_fns` map is only a bridge
+  // for callers without metadata and must not recover TextId/key misses.
+  // Removal condition: delete the rendered bridge once every consteval caller
+  // supplies TextId/key maps.
   auto key = consteval_symbol_key(callee);
   if (key.has_value() && key->valid()) {
     const Node* structured = lookup_consteval_function_by_key(consteval_fns_by_key, callee);
@@ -1096,6 +1099,8 @@ const Node* lookup_consteval_function(
   }
   if (key.has_value() || has_text_metadata) return nullptr;
 
+  // Retained fallback: no-metadata recursive/chained consteval calls can still
+  // use the legacy rendered map while upstream call sites finish migrating.
   auto it = consteval_fns.find(callee->name);
   const Node* legacy = it != consteval_fns.end() ? it->second : nullptr;
   return legacy;

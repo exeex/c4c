@@ -8,24 +8,18 @@ Current Step Title: Fence Consteval Function And Local Const Lookup
 
 ## Just Finished
 
-Step 4 local-const lookup fencing is complete for this packet. Retained
-rendered local-const lookup in `ConstEvalEnv::lookup(std::string)` and the
-rendered local branch in `lookup_rendered_compatibility` now carry nearby
-legacy/deprecated owner, limitation, and removal-condition notes. The existing
-interpreter `by_name` mirror note remains the fenced no-metadata compatibility
-boundary for local bindings.
-
-`cpp_hir_sema_consteval_type_utils_structured_metadata` now has focused direct
-local-const proof: key metadata beats stale rendered locals, TextId metadata
-beats stale rendered locals, complete local metadata misses do not recover
-through rendered local maps, and no-metadata local lookups keep rendered
-compatibility.
+Step 4 consteval-function rendered lookup fencing is complete for this packet.
+The retained `consteval_fns` rendered fallback in the consteval API and
+`lookup_consteval_function` now has nearby legacy/deprecated owner, limitation,
+and removal-condition notes. Behavior is unchanged: TextId/key function maps
+remain authoritative for metadata-rich calls, metadata misses cannot recover
+through rendered names, and no-metadata recursive/chained consteval calls keep
+the rendered compatibility bridge.
 
 ## Suggested Next
 
-Continue Step 4 with any remaining consteval function rendered-lookup fencing
-review the supervisor wants, or hand Step 4 to reviewer scrutiny if the current
-function/local-const proof set is considered complete.
+Hand Step 4 to reviewer scrutiny, or have the plan owner advance/close this
+step if the current function/local-const proof set is considered complete.
 
 ## Watchouts
 
@@ -40,11 +34,12 @@ function/local-const proof set is considered complete.
   legacy/deprecated notes; future edits should preserve the invariant that a
   local TextId/key metadata miss sets `skip_local` and cannot fall through to
   `local_consts` or interpreter `by_name`.
-- A metadata-rich miss must not fall through to rendered `consteval_fns`.
+- The retained `consteval_fns` rendered fallback is intentionally no-metadata
+  only; a metadata-rich miss must not fall through to it.
 
 ## Proof
 
 Passed delegated proof:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(cpp_hir_sema_consteval_type_utils_structured_metadata|frontend_parser_tests)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_tests|cpp_hir_sema_consteval_type_utils_structured_metadata)$"' > test_after.log 2>&1`
 
 Result: passed, 2/2 focused tests green. Proof log: `test_after.log`.
