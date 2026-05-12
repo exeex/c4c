@@ -1,11 +1,12 @@
 # String Authority Regression Guard
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/167_whole_codebase_string_authority_final_audit.md`
-- `ideas/open/168_compatibility_bridge_retirement.md`
+- `ideas/closed/168_compatibility_bridge_retirement.md`
 
 Parent Ideas:
 - `ideas/closed/158_sema_validate_string_authority_audit.md`
@@ -59,6 +60,28 @@ undo the migration gradually.
 - Adding a new suspicious string map requires an explicit classification.
 - Documentation explains how to classify valid display, diagnostic,
   compatibility, and route-local cases.
+
+## Closure Notes
+
+Closed after Step 5. The implemented guard is intentionally declaration-level
+only, scans configured roots, and requires exact path plus symbol
+classifications for accepted hits. Ordinary `.find(name)` call-site scanning is
+out of scope for this idea.
+
+Implemented artifacts:
+- `scripts/string_authority_classifications.json`
+- `scripts/string_authority_guard.py`
+- `scripts/test_string_authority_guard.py`
+- CTest entries and `string_authority_guard` build target in
+  `tests/CMakeLists.txt`
+
+Closure proof:
+- `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(string_authority_guard|backend_|backend_codegen_route_|positive_sema_inline_backend_coord_c$)' > test_after.log 2>&1`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+Result: close accepted. The Step 5 broader proof passed with 112/112 runnable
+tests and 12 disabled MIR trace tests not run; the monotonic regression guard
+reported no new failures.
 
 ## Reviewer Reject Signals
 
