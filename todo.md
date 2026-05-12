@@ -8,37 +8,37 @@ Current Step Title: Fence Consteval Replay And Pending Identity Names
 
 ## Just Finished
 
-Completed `plan.md` Step 2. The final HIR template value-arg owner-recovery
-slice fenced `resolve_member_lookup_owner_tag` so complete tag owner-key misses
-are rejected before rendered `tag_text_id`/legacy `struct_defs` recovery when no
-template-origin metadata can legitimately realize a new owner, and template
-static-member value-arg evaluation now stops before rendered primary recovery
-for complete qualified owner-key misses.
+Completed `plan.md` Step 3. Audited HIR consteval replay and pending identity
+lookup around `PendingConstevalExpr::fn_name`, `pending_consteval_key`, and
+`find_pending_consteval_def`. Complete `callee_identity` paths already fail
+closed through the structured consteval registry before rendered-name lookup,
+and the remaining rendered `fn_name` fallback is now documented as
+display/no-metadata compatibility only.
 
-Retained rendered compatibility is fenced to no-owner/incomplete-owner paths:
-template-origin realization can still proceed, and no-metadata template
-static-member value args still use rendered primary lookup.
+Confirmed existing focused stale-name coverage:
+`test_consteval_call_lowering_rejects_stale_rendered_registry_after_metadata_miss`
+and
+`test_pending_consteval_replay_rejects_stale_rendered_registry_after_metadata_miss`.
 
 ## Suggested Next
 
-Execute `plan.md` Step 3: fence consteval replay and pending expression identity
-so rendered names cannot act as semantic fallback when structured identity is
-complete. Start by inventorying the remaining rendered consteval lookup surfaces
-after idea 196, including `PendingConstevalExpr::fn_name` or any successor
-display/no-metadata state, then pick a focused stale-name replay or pending
-consteval proof case.
+Proceed to the next supervisor-selected packet after Step 3 review. A coherent
+next packet is to continue the legacy compatibility retirement sweep at the next
+plan step, using the same pattern: identify one rendered fallback surface,
+fence complete structured misses, and preserve no-metadata compatibility only
+where explicitly needed.
 
 ## Watchouts
 
-- The template static-member fence is intentionally limited to complete
-  qualified owner keys with a namespace context; current positive fixtures still
-  rely on rendered primary compatibility for parser-generated owner refs that
-  do not carry that full owner context.
-- Template-origin metadata is not treated as a stale rendered recovery path;
-  it may still materialize a fresh owner before returning a tag.
+- `PendingConstevalExpr::fn_name` is still used for diagnostics,
+  `ConstevalCallInfo` display metadata, and no-metadata replay compatibility.
+  It must not become semantic authority after a complete `callee_identity` miss.
+- `evaluate_consteval_call` still receives rendered consteval maps for nested
+  no-metadata compatibility, with structured/text mirrors supplied alongside
+  them.
 
 ## Proof
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|frontend_hir_tests|cpp_hir_value_args_residual_structured_metadata|cpp_hir_template_value_arg_static_member_trait|cpp_hir_template_deferred_nttp_(expr|arith_expr|paren_expr|bool_expr|logic_expr|true_expr|number_expr|static_member_expr|cast_static_member_expr|sizeof_pack_expr)|cpp_hir_template_alias_deferred_nttp_static_member)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|frontend_hir_tests|cpp_hir_consteval_reduction_verified|cpp_hir_consteval_template_reduction_verified|cpp_hir_deferred_consteval_(chain|multi|incomplete_type)|cpp_positive_sema_deferred_consteval_(chain|multi|incomplete_type|nttp)_cpp|cpp_positive_sema_consteval_)"' > test_after.log 2>&1`
 
 Result: passed. `test_after.log` is the proof log.

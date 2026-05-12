@@ -1666,6 +1666,9 @@ struct CompileTimeState {
   }
 
   /// Look up a consteval function definition by name (nullptr if unknown).
+  /// Rendered-name lookup is display/no-metadata compatibility. Callers with
+  /// declaration identity should use the overload below so complete structured
+  /// misses cannot recover through stale rendered names.
   const Node* find_consteval_def(const std::string& name) const {
     auto it = consteval_fn_defs_.find(name);
     return it != consteval_fn_defs_.end() ? it->second : nullptr;

@@ -137,6 +137,8 @@ const Node* find_pending_consteval_def(const CompileTimeState& ct_state,
     auto it = defs.find(*key);
     return it == defs.end() ? nullptr : it->second;
   }
+  // fn_name is retained for diagnostics and no-metadata compatibility only.
+  // Complete structured callee misses must fail closed before this fallback.
   return ct_state.find_consteval_def(pce.fn_name);
 }
 
