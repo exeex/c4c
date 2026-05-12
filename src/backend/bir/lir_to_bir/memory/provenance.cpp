@@ -223,6 +223,11 @@ std::optional<bir::Value> BirFunctionLowerer::resolve_local_aggregate_pointer_va
   }
 
   const std::string symbol_name = operand.str().substr(1);
+  // Step 3 fence: this raw lookup is the local-aggregate pointer-value alias
+  // compatibility bridge for no-id imported function operands. FunctionSymbolSet
+  // is populated only after LinkNameId declarations resolve at the module
+  // boundary, so metadata-rich missing ids cannot recover through this path;
+  // remove this when LIR pointer operands carry LinkNameId metadata directly.
   const auto function_link_name_id = function_symbols.find_raw_symbol_link_name_id(symbol_name);
   if (!function_link_name_id.has_value()) {
     return std::nullopt;

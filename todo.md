@@ -9,17 +9,18 @@ Current Step Title: Convert Link-Visible Symbol Identity
 ## Just Finished
 
 Step 3 - Convert Link-Visible Symbol Identity reviewed and fenced the
-call-pointer argument bridge in
+local-aggregate pointer-value alias bridge in
 `src/backend/bir/lir_to_bir/memory/provenance.cpp`.
 
-`lower_call_pointer_arg_value()` still accepts raw global operands such as
-`@semantic_callee` and uses `FunctionSymbolSet::find_raw_symbol_link_name_id`
-to keep no-id imported function pointer arguments working. That raw lookup is
-now explicitly fenced as a Step 3 no-id compatibility bridge: its owner is the
-call-pointer argument bridge, its limitation is that `FunctionSymbolSet` is
-populated only after `LinkNameId` declarations resolve at the module boundary,
-and its removal condition is LIR pointer operands carrying `LinkNameId`
-metadata directly.
+`resolve_local_aggregate_pointer_value_alias()` still accepts raw global
+operands such as `@semantic_callee` and uses
+`FunctionSymbolSet::find_raw_symbol_link_name_id` to keep no-id imported
+function operands working while materializing local aggregate pointer values.
+That raw lookup is now explicitly fenced as a Step 3 no-id compatibility
+bridge: its owner is the local-aggregate pointer-value alias bridge, its
+limitation is that `FunctionSymbolSet` is populated only after `LinkNameId`
+declarations resolve at the module boundary, and its removal condition is LIR
+pointer operands carrying `LinkNameId` metadata directly.
 
 No focused test was added because this packet only documents/fences existing
 behavior. The existing metadata-rich direct-call and extern/global
@@ -28,11 +29,10 @@ before raw symbol lookup can recover them.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing the remaining raw pointer-to-function bridge in
-`memory/provenance.cpp`, especially
-`resolve_local_aggregate_pointer_value_alias()`, and either fence its no-id
-compatibility lookup or document why an existing `LinkNameId` boundary already
-blocks metadata-rich fallback.
+Continue Step 3 by reviewing the remaining link-visible local display/identity
+helpers in `src/backend/bir/lir_to_bir/calling.cpp`, and document why the
+existing module-boundary `LinkNameId` checks already block metadata-rich
+fallback or fence any retained raw/no-id compatibility path.
 
 ## Watchouts
 
@@ -55,16 +55,17 @@ blocks metadata-rich fallback.
   boundary, but `calling.cpp` still has local display/identity helpers that
   return raw spelling. They are currently guarded by the module-boundary check;
   review them before claiming Step 3 broadly complete.
-- The direct-call bridge review is complete, and the local direct pointer-store
-  bridge is now fenced. Remaining Step 3 risk is in provenance paths that
-  accept raw `@symbol` operands without per-operand `LinkNameId` carriers.
+- The direct-call bridge review is complete, and the local direct pointer-store,
+  call-pointer argument, and local-aggregate pointer-value alias bridges are
+  now fenced.
 - The local pointer-store fence relies on `FunctionSymbolSet` construction
   failing closed for metadata-bearing functions or extern declarations whose
   `LinkNameId` spelling cannot be resolved; do not bypass that module-boundary
   check in a later pointer bridge.
-- The call-pointer argument fence has the same boundary assumption: it is only
-  for no-id imported function pointer arguments, not a way to recover corrupted
-  metadata-rich function identity.
+- The call-pointer argument and local-aggregate pointer-value alias fences have
+  the same boundary assumption: they are only for no-id imported function
+  pointer operands, not a way to recover corrupted metadata-rich function
+  identity.
 
 ## Proof
 
