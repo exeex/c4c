@@ -3,63 +3,55 @@
 Status: Active
 Source Idea Path: ideas/open/170_string_authority_regression_guard.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Integrate Developer Workflow
+Current Step ID: 5
+Current Step Title: Prove Guard Coverage And Non-Disruption
 
 ## Just Finished
 
-Step 4 integrated the local string-authority guard into the developer workflow
-without changing the scanner roots or adding call-site scanning.
+Step 5 proved guard coverage and non-disruption after workflow integration.
 
 Changed files:
 
-- `scripts/string_authority_guard.py`
-- `tests/CMakeLists.txt`
 - `todo.md`
 
-Implementation notes:
+Checkpoint result:
 
-- `tests/CMakeLists.txt` now registers `string_authority_guard` and
-  `string_authority_guard_self_test` CTest entries under
-  `workflow;string_authority`, plus a `string_authority_guard` build target that
-  runs both Python commands from the repo root.
-- `scripts/string_authority_guard.py --help` now documents the direct Python
-  commands, the CTest regex, and reviewer expectations for exact classification
-  entries with owner, domain, category, reason, removal condition, and evidence.
-- the help text explicitly keeps entries exact by `path` + `symbol` and says not
-  to broaden scanner roots or ordinary `.find(name)` call-site scanning.
+- Full build passed with `cmake --build build -j`.
+- Broader CTest regex included the new `string_authority_guard` and
+  `string_authority_guard_self_test` entries plus backend/backend-route tests.
+- The regex selected 124 tests; 12 disabled MIR trace tests did not run, and
+  all 112 runnable tests passed.
+- Guard CTest entries passed and the guard reported 235 classified
+  declaration-level hits.
+- No backend, workflow, or guard failures were observed.
+
+Closure readiness:
+- Step 1 inventoried the declaration-level guard surface and data shape.
+- Step 2 added exact reviewable classifications.
+- Step 3 implemented the guard and self-test, including generic unclassified
+  string-keyed declaration failure coverage.
+- Step 4 integrated the guard into CTest and a build target with help guidance.
+- Step 5 proved the integrated guard and representative backend subset.
 
 ## Suggested Next
 
-Step 5 should prove guard coverage and non-disruption. A good next packet is to
-run the supervisor-selected build or CTest subset after this workflow
-integration, including `ctest --test-dir build -R string_authority_guard
---output-on-failure`, and record whether failures are guard issues,
-pre-existing unrelated failures, or lifecycle blockers.
+Supervisor lifecycle decision: call the plan owner to decide whether idea 170
+is ready to close or needs a follow-up split before closure.
 
 ## Watchouts
 
-- The current guard reports 235 classified declaration-level hits after the
-  stricter Step 3 inventory expansion.
-- The first implementation deliberately avoids ordinary `.find(name)` call-site
-  scanning; widening into expression use sites should be a separate
-  re-inventory packet with new exact classifications.
-- The new CTest entries require a configured build tree that has seen the
-  updated `tests/CMakeLists.txt`; re-run `cmake --preset default` or an
-  equivalent configure step if `ctest -R string_authority_guard` does not list
-  them.
+- The guard remains intentionally declaration-level only. Ordinary `.find(name)`
+  call-site scanning is still out of scope.
+- The scanner is a local text scanner, not a full C++ parser; broadening it
+  should start with a new inventory/classification packet.
+- Current proof is broader subset proof, not a fresh full-suite run after Step
+  5's todo-only note.
 
 ## Proof
 
-Step 4 proof:
+Step 5 proof:
 
-- `python3 scripts/string_authority_guard.py > test_after.log 2>&1`
-- `python3 scripts/test_string_authority_guard.py`
-- `cmake --preset default`
-- `ctest --test-dir build -R string_authority_guard --output-on-failure`
-- `cmake --build --preset default --target string_authority_guard`
-- `git diff --check`
-
-All commands passed. The direct guard proof writes the canonical executor proof
-log to `test_after.log`; the CTest regex ran both `string_authority_guard` and
-`string_authority_guard_self_test`.
+- `cmake --build build -j`: pass.
+- `ctest --test-dir build -j --output-on-failure -R '^(string_authority_guard|backend_|backend_codegen_route_|positive_sema_inline_backend_coord_c$)' > test_after.log 2>&1`:
+  pass, 112/112 runnable tests; 12 disabled MIR trace tests did not run.
+- `git diff --check -- todo.md`: pass.
