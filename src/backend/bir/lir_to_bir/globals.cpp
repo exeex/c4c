@@ -120,11 +120,17 @@ AggregateTypeLayout lookup_global_layout(
   return lookup_global_layout_result(type_text, type_decls, structured_layouts).layout;
 }
 
-AggregateTypeLayout lookup_global_layout(
+BackendAggregateLayoutLookup lookup_structured_global_layout_result(
     const c4c::codegen::lir::LirTypeRef& type_ref,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts) {
-  return lookup_backend_aggregate_type_ref_layout(type_ref, type_decls, structured_layouts);
+  const auto lookup =
+      lookup_backend_aggregate_type_ref_layout_result(type_ref, type_decls, structured_layouts);
+  if (!lookup.used_structured_layout || lookup.used_legacy_fallback ||
+      lookup.structured_text_mismatch) {
+    return {};
+  }
+  return lookup;
 }
 
 }  // namespace
@@ -398,11 +404,13 @@ std::optional<bir::Global> lower_minimal_global_impl(
     return lowered;
   }
 
-  const auto layout = global.llvm_type_ref.has_value() && structured_layouts != nullptr
-                          ? lookup_global_layout(*global.llvm_type_ref,
-                                                 type_decls,
-                                                 *structured_layouts)
-                          : lookup_global_layout(global.llvm_type, type_decls, structured_layouts);
+  const auto layout_lookup =
+      global.llvm_type_ref.has_value() && structured_layouts != nullptr
+          ? lookup_structured_global_layout_result(*global.llvm_type_ref,
+                                                   type_decls,
+                                                   *structured_layouts)
+          : lookup_global_layout_result(global.llvm_type, type_decls, structured_layouts);
+  const auto& layout = layout_lookup.layout;
   if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
        layout.kind != AggregateTypeLayout::Kind::Array) ||
       layout.size_bytes == 0) {

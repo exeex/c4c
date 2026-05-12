@@ -692,6 +692,7 @@ int check_global_initializer_lowering_prefers_structured_layout_table() {
   enum class GlobalFixture {
     Structured,
     StaleMetadata,
+    MissingStructNameId,
     LegacyFallback,
   };
 
@@ -727,6 +728,10 @@ int check_global_initializer_lowering_prefers_structured_layout_table() {
       global.llvm_type_ref =
           lir::LirTypeRef::struct_type("%struct.StalePairText",
                                        module.struct_names.find("%struct.Pair"));
+    } else if (fixture == GlobalFixture::MissingStructNameId) {
+      global.name = "pair_missing_struct_id";
+      global.llvm_type = "%struct.Pair";
+      global.llvm_type_ref = lir::LirTypeRef("%struct.Pair");
     } else {
       global.name = "pair_fallback";
       global.llvm_type = "%struct.StalePairText";
@@ -757,6 +762,13 @@ int check_global_initializer_lowering_prefers_structured_layout_table() {
                                                   c4c::backend::BirLoweringOptions{});
   if (stale_result.module.has_value()) {
     return fail("stale structured global initializer metadata did not fail closed");
+  }
+
+  const auto missing_id_result =
+      c4c::backend::try_lower_to_bir_with_options(make_module(GlobalFixture::MissingStructNameId),
+                                                  c4c::backend::BirLoweringOptions{});
+  if (missing_id_result.module.has_value()) {
+    return fail("structured global initializer without StructNameId did not fail closed");
   }
 
   const auto fallback_result =
