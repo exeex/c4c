@@ -3,88 +3,63 @@
 Status: Active
 Source Idea Path: ideas/open/171_identity_authority_migration_closure_gate.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Reconcile Remaining Identity Inventory
+Current Step ID: 4
+Current Step Title: Write Closure Ledger
 
 ## Just Finished
 
-Step 3: Reconcile Remaining Identity Inventory checkpoint completed for idea
-171.
+Step 4: Write Closure Ledger checkpoint completed for idea 171.
 
-Evidence reviewed:
-- Idea 167 final audit artifact from historical `todo.md` commit `80c86e13d`,
-  including the Step 1-5 inventory, classification legend, retained bridge
-  table, route-local/generated families, and follow-up recommendations.
-- Idea 168 closure notes, which retired or fenced parser, sema/consteval, HIR,
-  LIR/HIR-to-LIR, BIR, and backend rendered/raw-symbol compatibility surfaces.
-- Idea 169 closure notes, which moved the selected BIR local-slot family to
-  typed `SlotNameId` authority and classified the remaining route-local raw
-  name families.
-- Idea 170 closure notes plus `scripts/string_authority_classifications.json`,
-  which provide the current declaration-level guard inventory.
+Identity-domain closure ledger:
 
-Current guard inventory from `scripts/string_authority_classifications.json`:
-
-| Classification category | Entries |
-| --- | ---: |
-| `abi-spelling` | 10 |
-| `compatibility-bridge` | 120 |
-| `diagnostic-debug` | 1 |
-| `display-output` | 1 |
-| `generated-temporary-name` | 1 |
-| `route-local-identity` | 43 |
-| `structured-authority` | 10 |
-| Total classified entries | 186 |
-
-The guard reports more declaration-level hits than JSON entries because one
-classification entry can cover repeated declaration hits for the same exact
-path plus symbol. The fresh guard proof reports `235 classified
-declaration-level hits`.
-
-Remaining-item ledger:
-
-| Inventory lane | Current classification | Closure decision |
+| Identity domain | Owner and purpose | Retained bridges, limits, and removal condition |
 | --- | --- | --- |
-| Parser record/type/const-int rendered helpers from idea 167 | Documented bridge or fixed by idea 168 where broad fallback was retired/fenced. | No unclassified semantic entry remains; retained parser bridges are explicit compatibility/no-metadata boundaries. |
-| Sema validate, type-utils, consteval, and canonical-symbol rendered maps | Documented bridge or structured authority; display/ABI spelling kept output-only. | No new source idea needed; complete structured misses remain assigned to the guard boundary. |
-| HIR module declaration, record owner, template, specialization, and lowerer maps | Mix of structured authority, documented bridge, route-local identity, ABI spelling, and display/output. | No unclassified semantic entry remains; retained rendered paths are compatibility, no-owner/incomplete-metadata, route-local, or output cases. |
-| LIR and HIR-to-LIR link-visible identity maps and final-output text scans | `LinkNameId`/`StructNameId` authority where structured; retained raw-name/text paths are documented bridge, ABI spelling, or display/output. | No blocker; production bridge narrowing was handled by idea 168, with output text kept separate from semantic authority. |
-| BIR link-visible function/global lookup and validator raw-name helpers | Documented bridge or diagnostic/debug; id/name mismatches fail validation where ids are present. | No unclassified semantic entry remains; invalid-id and raw-import boundaries are documented compatibility. |
-| BIR local slots, local values, blocks, memory-address bases, phi labels, and string-pool names | Route-local identity, generated temporary name, or documented bridge. | The selected local-slot family was fixed under idea 169; broader AArch64 direct LIR emitter and prealloc/out-of-SSA raw-name helper sets remain follow-up candidates only if deeper typed-id migration is desired. |
-| Prealloc, stack-layout, regalloc, and out-of-SSA raw-name helpers | Route-local identity, structured authority, documented bridge, or ABI spelling. | No closure blocker; raw route-local synchronization is classified, not source/link semantic authority. |
-| Diagnostics, debug, printers, dumps, parity labels, final assembly/LLVM text, and ABI spellings | Diagnostic/debug, display/output, or ABI spelling. | Out of scope for semantic string-authority cleanup unless future code feeds the text back into production lookup. |
+| `TextId` | Parser and source-facing syntax spelling owner. It carries source text identity and spelling where the compiler needs stable source-origin text, not semantic equality by rendered string. | Retained parser/rendered helpers are compatibility or no-metadata boundaries from the pre-migration surface. They remain valid only when no richer parsed or semantic key exists. Removal condition: the caller receives typed syntax/semantic ids directly and no longer needs rendered fallback text. |
+| Structured semantic keys | Sema, HIR, LIR, BIR, and backend semantic owners for domains that already have typed ids or structured key material. They own lookup equality for declarations, constants, slots, records, globals, and route state where identity has more shape than a display string. | Compatibility bridges are allowed where legacy APIs, incomplete metadata, invalid ids, or raw imported symbols still cross an older boundary. They must stay classified by the guard with owner, domain, category, and reason. Removal condition: the producer exports the structured id/key at that boundary and the consumer stops reconstructing identity from raw spelling. |
+| `QualifiedNameKey` | Qualified semantic-name owner where identity depends on namespace/module path plus leaf name rather than plain text. It is the canonical lookup key for qualified declaration identity. | Any raw qualified-string lookup is retained only as a documented bridge for compatibility input or incomplete metadata. It is not a new semantic authority. Removal condition: callers construct and pass `QualifiedNameKey` or equivalent structured key material before lookup. |
+| Owner-aware template keys | Template binding and canonical-symbol owners for identity that depends on both rendered template shape and owning declaration/context. They prevent plain rendered strings from deciding template equivalence across owners. | Retained rendered-template maps are compatibility bridges only when owner/context is unavailable or when preserving old serialized/debug-facing behavior. Removal condition: owner-aware template key material reaches the lookup site on every production path. |
+| `LinkNameId` | Link-visible symbol owner for functions/globals and backend-facing symbol identity. It separates final link identity from source spelling and display text. | Raw symbol-name bridges remain for ABI spelling, imported/raw object surfaces, invalid-id diagnostics, or compatibility routes that have not yet been supplied a valid link id. Removal condition: every production consumer has valid `LinkNameId`/structured link key input and raw spelling is used only for final emitted text or diagnostics. |
+| Route-local ids | Backend and lowering-route owners for local slots, temporaries, blocks, memory bases, phi labels, string-pool names, prealloc/regalloc state, and out-of-SSA route synchronization. These ids are local authority inside one lowering route and are not source or link semantic names. | Raw local names are retained when they synchronize a route-local table, name generated temporaries, or preserve direct emitter/prealloc/out-of-SSA helper behavior. Limitation: they must not be promoted into source/link semantic lookup. Removal condition: a future deeper typed-id migration gives those route-local helpers stable typed ids without changing their route-local scope. |
+| Display/output text | Diagnostics, debug dumps, printers, parity labels, final assembly text, LLVM text, and ABI spellings own user-visible or emitted spelling only. They are outputs, not semantic lookup keys. | Retained text scans and formatting paths are acceptable while they remain output-only. Removal condition is required only if a future production lookup feeds these strings back into semantic identity; that would need a new structured owner or follow-up idea. |
 
-Blocker status:
-- No declaration-level semantic string-authority entry remains unclassified by
-  the current guard.
-- No Step 3 implementation blocker was found.
-- No new follow-up idea is required for closure. The only noted follow-up
-  candidates are non-blocking deeper typed-id migration candidates already
-  named by idea 169: AArch64 direct LIR emitter string-keyed lowering and the
-  larger prealloc/out-of-SSA raw-name helper set.
+Remaining semantic string lookup status:
+- No unclassified semantic string-authority lookup remains in the current
+  Step 3 inventory or the idea 170 guard classification set.
+- Retained bridges have explicit owners and limits: parser/source spelling,
+  structured semantic boundary gaps, qualified-name compatibility,
+  owner-aware template compatibility, link-name/raw import compatibility,
+  route-local synchronization, or output-only text.
+- The only deeper migration candidates remain non-blocking and outside this
+  closure gate: AArch64 direct LIR emitter string-keyed lowering and the larger
+  prealloc/out-of-SSA raw-name helper set, if a future typed route-local id
+  migration is desired.
+
+Closure blocker status:
+- No Step 4 closure blocker remains.
+- No new follow-up idea is required to close the string identity-authority
+  migration.
 
 ## Suggested Next
 
-Proceed to Step 4 by writing the compact identity-domain closure ledger for
-`TextId`, structured semantic keys, `QualifiedNameKey`, owner-aware template
-keys, `LinkNameId`, route-local ids, and display text.
+Proceed to Step 5: Decide Closure Or Follow-Up. The next packet should let the
+plan owner or supervisor decide whether to close idea 171, move durable compact
+closure notes into the appropriate lifecycle artifact, and retire active
+`plan.md`/`todo.md` if closure is accepted.
 
 ## Watchouts
 
-- Keep Step 4 as a closure-ledger packet; do not start idea 172 or type-identity
-  audit work.
-- Do not treat classified route-local names, generated names, ABI spellings, or
-  display/output strings as source/link identity bugs.
-- If the supervisor wants deeper migration of the AArch64 direct LIR emitter or
-  prealloc/out-of-SSA raw-name helpers, that should be a separate follow-up
-  initiative rather than an expansion of this closure gate.
+- Step 5 is lifecycle/closure work, not implementation work.
+- Do not start idea 172 or type-identity audit work from this gate.
+- Do not treat classified route-local names, generated names, ABI spellings,
+  diagnostics/debug text, or display/output strings as source or link identity
+  bugs unless a future production lookup consumes them as semantic identity.
+- Retained bridges should stay guard-classified until their removal condition
+  is met; closure should not depend on silently accepting unowned string lookup.
 
 ## Proof
 
-Supervisor-selected guard proof:
-- `python3 scripts/string_authority_guard.py > test_after.log 2>&1`
-  - Result: passed.
-  - Proof log path: `test_after.log`
-  - Log summary: `string authority guard passed: 235 classified declaration-level hits`
+Supervisor-selected lifecycle proof:
 - `git diff --check -- todo.md`
   - Result: passed.
+  - Proof log path: none; the delegated proof is a diff whitespace check and
+    does not create `test_after.log`.
