@@ -761,6 +761,32 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       for (std::size_t index = 0; index < parsed_call->typed_call.args.size(); ++index) {
         const auto trimmed_param_type =
             c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.param_types[index]);
+        const auto trimmed_arg_type =
+            c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.args[index].type);
+        if (parse_byval_pointee_type(trimmed_arg_type).has_value()) {
+          const auto aggregate_layout =
+              lower_byval_call_arg_layout(index, trimmed_arg_type);
+          if (!aggregate_layout.has_value()) {
+            return fail_call_family(call_family);
+          }
+          const auto arg = lower_byval_call_arg_value(
+              c4c::codegen::lir::LirOperand(
+                  std::string(parsed_call->typed_call.args[index].operand)),
+              *aggregate_layout);
+          if (!arg.has_value()) {
+            return fail_call_family(call_family);
+          }
+          lowered_arg_types.push_back(bir::TypeKind::Ptr);
+          lowered_args.push_back(*arg);
+          lowered_arg_abi.push_back(bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = aggregate_layout->size_bytes,
+              .align_bytes = aggregate_layout->align_bytes,
+              .primary_class = bir::AbiValueClass::Memory,
+              .byval_copy = true,
+          });
+          continue;
+        }
         if (trimmed_param_type == "ptr") {
           const auto arg = lower_public_pointer_call_arg_value(
               c4c::codegen::lir::LirOperand(

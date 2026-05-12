@@ -93,6 +93,8 @@ int expect_legacy_byval_call_arg_without_type_refs_still_lowers();
 int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed();
 int expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
 int expect_direct_call_prefers_structured_callee_signature_over_stale_suffix();
+int expect_direct_call_structured_byval_signature_materializes_aggregate_abi();
+int expect_direct_call_structured_byval_signature_mismatch_fails_closed();
 int expect_metadata_rich_direct_call_without_signature_fails_closed();
 int expect_indirect_call_prefers_structured_callee_signature_over_stale_suffix();
 int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
@@ -2174,6 +2176,116 @@ int expect_direct_call_prefers_structured_callee_signature_over_stale_suffix() {
     }
   }
   return fail("direct call should preserve structured pointer parameter type in BIR");
+}
+
+LirModule make_direct_structured_byval_call_signature_module(bool mismatched_signature) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.Payload = type { i32, i32 }");
+  module.type_decls.push_back("%struct.OtherPayload = type { i32, i32 }");
+
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_byval_sink");
+  const c4c::StructNameId payload_id = module.struct_names.intern("%struct.Payload");
+  const c4c::StructNameId other_payload_id = module.struct_names.intern("%struct.OtherPayload");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = payload_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = other_payload_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+  const c4c::StructNameId signature_arg_id =
+      mismatched_signature ? other_payload_id : payload_id;
+
+  LirGlobal payload;
+  payload.name = "payload";
+  payload.llvm_type = "%struct.Payload";
+  payload.init_text = "{ i32 7, i32 11 }";
+  payload.align_bytes = 4;
+  module.globals.push_back(std::move(payload));
+
+  LirFunction function;
+  function.name = !mismatched_signature
+                      ? "direct_call_structured_byval_signature"
+                      : "direct_call_structured_byval_signature_mismatch";
+  function.signature_text = std::string("define void @") + function.name + "()";
+
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef("void");
+  signature.fixed_param_types = {"ptr"};
+  signature.fixed_param_type_refs = {
+      lir::LirTypeRef("ptr")};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@stale_byval_sink"),
+      .direct_callee_link_name_id = callee_id,
+      .callee_type_suffix = "(i32)",
+      .args_str = "ptr byval(%struct.Payload) @payload",
+      .arg_type_refs = {
+          lir::LirTypeRef::struct_type("ptr byval(%struct.Payload)", signature_arg_id)},
+      .callee_signature = std::move(signature),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_direct_call_structured_byval_signature_materializes_aggregate_abi() {
+  auto result = try_lower_to_bir_with_options(
+      make_direct_structured_byval_call_signature_module(false),
+      BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("structured direct byval call should lower using aggregate metadata");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.name != "direct_call_structured_byval_signature" ||
+        function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) continue;
+      if (!call->is_indirect && call->callee == "semantic_byval_sink" &&
+          call->arg_types.size() == 1 && call->arg_types.front() == TypeKind::Ptr &&
+          call->arg_abi.size() == 1 && call->arg_abi.front().byval_copy &&
+          call->arg_abi.front().size_bytes == 8 &&
+          call->arg_abi.front().align_bytes == 4) {
+        return 0;
+      }
+    }
+  }
+  return fail("structured direct byval call should materialize aggregate ABI facts in BIR");
+}
+
+int expect_direct_call_structured_byval_signature_mismatch_fails_closed() {
+  LirModule module = make_direct_structured_byval_call_signature_module(true);
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("structured direct byval call with mismatched signature StructNameId should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'direct-call semantic family'")) {
+    return fail("missing direct-call family failure for mismatched direct byval signature metadata");
+  }
+  return 0;
 }
 
 int expect_metadata_rich_direct_call_without_signature_fails_closed() {
@@ -4378,6 +4490,16 @@ int main() {
           expect_direct_call_prefers_structured_callee_signature_over_stale_suffix();
       direct_structured_signature_status != 0) {
     return direct_structured_signature_status;
+  }
+  if (const int direct_structured_byval_status =
+          expect_direct_call_structured_byval_signature_materializes_aggregate_abi();
+      direct_structured_byval_status != 0) {
+    return direct_structured_byval_status;
+  }
+  if (const int direct_structured_byval_mismatch_status =
+          expect_direct_call_structured_byval_signature_mismatch_fails_closed();
+      direct_structured_byval_mismatch_status != 0) {
+    return direct_structured_byval_mismatch_status;
   }
 
   if (const int missing_direct_signature_status =
