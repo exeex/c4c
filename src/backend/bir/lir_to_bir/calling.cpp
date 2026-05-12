@@ -20,6 +20,7 @@ std::string function_name_for_reporting(const c4c::codegen::lir::LirModule& modu
   if (!resolved_name.empty()) {
     return std::string(resolved_name);
   }
+  // Reporting only: diagnostics may display legacy no-id function spelling.
   return function.name;
 }
 
@@ -29,6 +30,12 @@ std::string function_name_for_identity(const c4c::LinkNameTable& link_names,
   if (!resolved_name.empty()) {
     return std::string(resolved_name);
   }
+  // Step 3 fence: this raw fallback is the declaration/function identity
+  // compatibility bridge for no-id LIR functions. Module construction rejects
+  // LinkNameId-bearing functions whose ids do not resolve before this helper is
+  // used for BIR declarations, so metadata-rich identity cannot recover through
+  // raw display spelling here; remove this when all LIR function declarations
+  // carry resolvable LinkNameId metadata.
   return function.name;
 }
 
@@ -38,6 +45,12 @@ std::string extern_decl_name_for_identity(const c4c::LinkNameTable& link_names,
   if (!resolved_name.empty()) {
     return std::string(resolved_name);
   }
+  // Step 3 fence: this raw fallback is the extern declaration identity
+  // compatibility bridge for no-id imported functions. Module construction
+  // rejects LinkNameId-bearing extern declarations whose ids do not resolve
+  // before this helper is used for BIR declarations, so metadata-rich identity
+  // cannot recover through raw display spelling here; remove this when all LIR
+  // extern declarations carry resolvable LinkNameId metadata.
   return decl.name;
 }
 
@@ -854,6 +867,12 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           return std::string(semantic_name);
         }
       }
+      // Step 3 fence: this fallback is the direct-call no-id compatibility
+      // bridge. Metadata-rich direct calls require a structured signature and a
+      // FunctionSymbolSet LinkNameId hit before this lambda is used, and that
+      // symbol set is populated only after module-boundary LinkNameId
+      // declarations resolve; remove this when direct-call LIR operands always
+      // carry resolvable LinkNameId metadata.
       return std::string(fallback_name);
     };
     if (metadata_rich_direct_call && !call.callee_signature.has_value()) {

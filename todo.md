@@ -9,30 +9,29 @@ Current Step Title: Convert Link-Visible Symbol Identity
 ## Just Finished
 
 Step 3 - Convert Link-Visible Symbol Identity reviewed and fenced the
-local-aggregate pointer-value alias bridge in
-`src/backend/bir/lir_to_bir/memory/provenance.cpp`.
+link-visible local display/identity helpers in
+`src/backend/bir/lir_to_bir/calling.cpp`.
 
-`resolve_local_aggregate_pointer_value_alias()` still accepts raw global
-operands such as `@semantic_callee` and uses
-`FunctionSymbolSet::find_raw_symbol_link_name_id` to keep no-id imported
-function operands working while materializing local aggregate pointer values.
-That raw lookup is now explicitly fenced as a Step 3 no-id compatibility
-bridge: its owner is the local-aggregate pointer-value alias bridge, its
-limitation is that `FunctionSymbolSet` is populated only after `LinkNameId`
-declarations resolve at the module boundary, and its removal condition is LIR
-pointer operands carrying `LinkNameId` metadata directly.
+The declaration identity helpers still fall back to raw function/extern
+spelling for no-id LIR declarations, and direct-call lowering still falls back
+to parsed raw callee spelling for no-id direct calls. Those paths are now
+explicitly fenced as Step 3 compatibility bridges: their owner is the
+declaration/direct-call identity bridge in `calling.cpp`, their limitation is
+that module construction rejects unresolved `LinkNameId` functions/externs and
+direct calls require `FunctionSymbolSet` membership before metadata-rich
+lowering can use the fallback, and their removal condition is LIR declarations
+and direct-call operands always carrying resolvable `LinkNameId` metadata.
 
 No focused test was added because this packet only documents/fences existing
 behavior. The existing metadata-rich direct-call and extern/global
 `LinkNameId` boundary tests continue to prove that missing or stale ids fail
-before raw symbol lookup can recover them.
+before raw display spelling can recover them.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing the remaining link-visible local display/identity
-helpers in `src/backend/bir/lir_to_bir/calling.cpp`, and document why the
-existing module-boundary `LinkNameId` checks already block metadata-rich
-fallback or fence any retained raw/no-id compatibility path.
+Continue Step 3 by reviewing any remaining link-visible raw/no-id compatibility
+bridges outside the already fenced direct-call, pointer-store, call-pointer
+argument, local-aggregate pointer-value alias, and declaration identity paths.
 
 ## Watchouts
 
@@ -51,13 +50,13 @@ fallback or fence any retained raw/no-id compatibility path.
 - x86 `module/data.cpp` raw same-module global lookup is currently final
   assembler/output spelling territory. Do not convert that before the upstream
   BIR/prepared link-name carriers are fenced.
-- This slice fenced the LIR-to-BIR function-symbol table at the module
-  boundary, but `calling.cpp` still has local display/identity helpers that
-  return raw spelling. They are currently guarded by the module-boundary check;
-  review them before claiming Step 3 broadly complete.
 - The direct-call bridge review is complete, and the local direct pointer-store,
   call-pointer argument, and local-aggregate pointer-value alias bridges are
   now fenced.
+- The `calling.cpp` declaration identity and direct-call fallback review is
+  complete. Those fallbacks are no-id compatibility only; do not bypass the
+  module-boundary `LinkNameId` checks or `FunctionSymbolSet` membership when
+  changing them later.
 - The local pointer-store fence relies on `FunctionSymbolSet` construction
   failing closed for metadata-bearing functions or extern declarations whose
   `LinkNameId` spelling cannot be resolved; do not bypass that module-boundary
