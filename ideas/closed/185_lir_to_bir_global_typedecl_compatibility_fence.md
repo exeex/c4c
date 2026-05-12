@@ -1,7 +1,8 @@
 # LIR-to-BIR Global/TypeDecl Compatibility Fence
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/180_aarch64_direct_lir_aggregate_type_bridge_retirement.md`
@@ -51,6 +52,17 @@ comments and convention.
 - Focused tests cover structured success, stale/missing metadata rejection, and
   retained raw compatibility where appropriate.
 - Validation includes targeted LIR-to-BIR global/type/layout coverage.
+
+## Closure Notes
+
+- Closed by fencing the generated aggregate-global `llvm_type_ref` path through
+  structured layout identity instead of final type spelling.
+- Focused backend coverage now proves structured success, stale structured
+  metadata rejection, missing `StructNameId` rejection, and retained raw/no-id
+  compatibility for the selected path.
+- Pointer initializer paths carrying `initializer_function_link_name_ids`
+  remain adjacent follow-up territory rather than a blocker for this selected
+  global/type/layout fence.
 
 ## Reviewer Reject Signals
 
