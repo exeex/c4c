@@ -1,10 +1,11 @@
 # Aggregate Layout Identity Structured Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
-- `ideas/open/172_type_identity_authority_audit.md`
+- `ideas/closed/172_type_identity_authority_audit.md`
 
 ## Goal
 
@@ -57,6 +58,27 @@ and stack layout even when stronger record identity exists upstream.
   copy, global, or stack behavior without weakening expectations.
 - The proof includes a fresh build or compile check plus targeted CTest or
   route coverage for the changed boundary.
+
+## Closure Summary
+
+Closed after completing the selected local aggregate GEP layout boundary.
+Metadata-rich generated local aggregate GEP inputs now use structured layout
+identity and fail closed when the structured context is stale, mismatched,
+opaque, or otherwise unusable for that consumer. Equal rendered aggregate
+spelling is no longer sufficient to accept this metadata-rich local GEP
+boundary, while legacy/no-metadata compatibility remains isolated behind the
+existing explicit fallback.
+
+Focused proof covered `backend_prepare_structured_context` and
+`backend_lir_to_bir_notes`; the canonical regression guard passed for matching
+`test_before.log` and `test_after.log` focused logs. Broader backend validation
+passed, and the accepted full-suite baseline for commit
+`9aed9b5d0fbbb348ee25819ee2a715c0a5aa5793` passed 3137 tests with no failures.
+
+Follow-up aggregate identity work for globals, byval copies, call ABI,
+stack/global layout routes, or broader backend aggregate migration remains
+outside this selected boundary and should be captured as separate ideas when
+needed.
 
 ## Reviewer Reject Signals
 
