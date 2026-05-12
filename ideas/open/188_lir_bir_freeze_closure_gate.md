@@ -55,6 +55,17 @@ starting while freeze blockers are still implicit.
 - No high-risk generated-path string authority remains unclassified.
 - Any remaining blocker is captured as a new open idea before backend restart.
 
+## Lifecycle Notes
+
+- 2026-05-12: Milestone validation is blocked, not closed. The accepted
+  `test_before.log` baseline was green at 3137 passed / 0 failed, while the
+  Step 3 full-suite `test_after.log` result has 3128 passed / 9 failed. The
+  common observed failure is
+  `LirCallOp.callee_signature: structured callee signature does not match call
+  arguments`, including old-style/no-prototype and variadic direct-call cases.
+  This gate is parked until `ideas/open/189_direct_call_no_prototype_variadic_signature_mismatch.md`
+  resolves the direct-call signature mismatch blocker.
+
 ## Reviewer Reject Signals
 
 - The gate claims freeze while direct-call or global-symbol generated paths
