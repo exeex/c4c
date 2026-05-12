@@ -10,6 +10,8 @@
 
 namespace {
 
+namespace lir = c4c::codegen::lir;
+
 using c4c::backend::BirLoweringNote;
 using c4c::backend::BirLoweringOptions;
 using c4c::backend::bir::TypeKind;
@@ -3173,6 +3175,92 @@ LirModule make_local_aggregate_raw_float_tail_memcpy_module() {
   return module;
 }
 
+LirModule make_local_gep_structured_mismatch_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = pair_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+  module.type_decls.push_back("%struct.Pair = type { i64, i64 }");
+
+  LirFunction function;
+  function.name = "local_gep_structured_mismatch";
+  function.signature_text = "define void @local_gep_structured_mismatch()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.pair"),
+      .type_str = lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%field1"),
+      .element_type = lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      .ptr = LirOperand("%lv.pair"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 1")},
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_local_gep_rejects_structured_opaque_legacy_fallback_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = pair_id,
+      .is_opaque = true,
+  });
+  module.type_decls.push_back("%struct.Pair = type { i64, i64 }");
+
+  LirFunction function;
+  function.name = "local_gep_rejects_structured_opaque_legacy_fallback";
+  function.signature_text =
+      "define void @local_gep_rejects_structured_opaque_legacy_fallback()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.pair"),
+      .type_str = lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%field1"),
+      .element_type = lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      .ptr = LirOperand("%lv.pair"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 1")},
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_local_scalar_double_decimal_zero_store_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -4036,6 +4124,35 @@ int main() {
           "unexpected local aggregate raw float-tail memcpy module failure note");
       local_aggregate_raw_float_tail_memcpy_status != 0) {
     return local_aggregate_raw_float_tail_memcpy_status;
+  }
+
+  if (const int local_gep_structured_mismatch_status = expect_success_without_function_note(
+          "local_gep_structured_mismatch",
+          make_local_gep_structured_mismatch_module(),
+          "latest function failure: semantic lir_to_bir function "
+          "'local_gep_structured_mismatch' failed in gep local-memory semantic family",
+          "failed in gep local-memory semantic family",
+          "structured local GEP should use structured layout despite mismatched legacy text",
+          "structured local GEP mismatch should not keep the module on the gep local-memory "
+          "semantic-family note");
+      local_gep_structured_mismatch_status != 0) {
+    return local_gep_structured_mismatch_status;
+  }
+
+  if (const int local_gep_structured_opaque_status = expect_failure_notes(
+          "local_gep_rejects_structured_opaque_legacy_fallback",
+          make_local_gep_rejects_structured_opaque_legacy_fallback_module(),
+          kModuleSummary,
+          "failed in gep local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function "
+          "'local_gep_rejects_structured_opaque_legacy_fallback' failed in gep local-memory "
+          "semantic family",
+          "missing module capability-bucket summary note for structured local GEP fallback "
+          "rejection",
+          "missing specific structured local GEP fallback rejection function note",
+          "missing module note carrying structured local GEP fallback rejection failure");
+      local_gep_structured_opaque_status != 0) {
+    return local_gep_structured_opaque_status;
   }
 
   if (const int local_scalar_double_decimal_zero_store_status = expect_success_without_function_note(
