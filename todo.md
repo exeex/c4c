@@ -1,40 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/197_bir_backend_compatibility_string_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Audit Backend-Prepared Route-Local Names
+Current Step ID: 6
+Current Step Title: Closure Ledger And Broader Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 - Audit Backend-Prepared Route-Local Names continued with the remaining
-owned x86 prepared/route-local lowering helper audit.
+Step 5 - Audit Backend-Prepared Route-Local Names is lifecycle-accepted based
+on `review/step5_route_local_names_review.md`.
 
-Audit result:
-- `src/backend/mir/x86/prepared/prepared.hpp` now fences public rendered
-  focus/entry names at `make_query()` as inputs that must be resolved through
-  the prepared name table before prepared route state is consumed.
-- `prepared::Operand::text` and `render_immediate_operand()` are classified as
-  final x86 operand spelling derived from structured BIR values, not prepared
-  or BIR value identity.
-- `src/backend/mir/x86/prepared/dispatch.cpp` now documents that
-  `focus_function` is a public debug/entry selector over rendered text and that
-  the fast-path lane is route-local summary state, not symbol authority.
-- `src/backend/mir/x86/lowering/lowering.hpp` now fences `frame_comment()` as
-  debug/status display text after prepared lookup, and `stack_mem()` as final
-  x86 addressing syntax whose offset must already come from the prepared frame
-  plan.
-- The remaining owned x86 lowering summary helpers and prepared immediate/
-  dispatch helpers were audited as route-local, debug/status, or final
-  assembler spelling surfaces. No behavior, supported-path contract, or test
-  expectation change was needed or made.
+Acceptance result:
+- Reviewer found no blocking findings and no testcase-overfit evidence.
+- Reviewer judged the Step 5 route aligned with
+  `ideas/open/197_bir_backend_compatibility_string_retirement.md` and the
+  active runbook.
+- Step 5 classified retained backend-prepared, route-debug, x86 route summary,
+  module label, prepared query/dispatch/operand, and lowering-helper names as
+  route-local, diagnostics/display, final assembler spelling, target-physical
+  register spelling, interned-id display, or explicit no-id compatibility.
+- Step 5 made no supported-path contract or test expectation changes.
+- Step 5 proof was build plus backend CTest; 109 backend tests passed, with the
+  disabled route-debug focus CLI tests still not run.
 
 ## Suggested Next
 
-Supervisor should decide whether Step 5 is ready for reviewer/plan-owner
-acceptance or whether another explicitly named backend-prepared naming surface
-needs a final narrow audit packet.
+Step 6 - Closure Ledger And Broader Proof should produce the final
+reviewer-auditable compatibility ledger in this file before closure.
+
+Closure ledger work to do:
+- Summarize deleted, converted, fenced, and intentionally retained string paths
+  across text/string-constant identity, link-visible symbol identity,
+  type/layout compatibility, route-local names, diagnostics, final spelling,
+  and explicit raw/no-id compatibility.
+- State whether new backend restart work may consume the BIR/prepared
+  interface without adding rendered-name recovery fallbacks.
+- Identify any retained no-id compatibility paths and their owner, limitation,
+  and removal condition.
+- Record the supervisor-selected broader validation command and result for the
+  final compatibility retirement slice.
+- Confirm focused proofs cover structured success, stale-id fail-closed
+  behavior, and retained no-id compatibility where applicable.
 
 ## Watchouts
 
@@ -154,6 +161,11 @@ needs a final narrow audit packet.
   is display text, and `stack_mem()` renders final assembler syntax from an
   already-prepared frame offset; neither helper owns semantic identity or frame
   policy.
+- Step 6 is a closure/proof ledger step, not an implementation expansion. If
+  the ledger exposes a missing upstream carrier or separate backend restart
+  requirement, record a separate open idea instead of widening this plan.
+- Step 6 broader validation must not treat the Step 5 backend-only proof as
+  full acceptance proof; the review noted disabled route-debug focus CLI tests.
 
 ## Proof
 
