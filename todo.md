@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/190_lir_call_argument_structured_payload_boundary.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Define The Structured Argument Carrier
+Current Step ID: Step 3
+Current Step Title: Route Generated LIR-To-BIR Calls Through Structured Facts
 
 # Current Packet
 
