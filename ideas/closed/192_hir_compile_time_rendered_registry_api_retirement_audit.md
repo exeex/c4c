@@ -1,7 +1,8 @@
 # HIR Compile-Time Rendered Registry API Retirement Audit
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/161_hir_template_binding_domain_key_authority.md`
@@ -60,3 +61,23 @@ second semantic name system.
 - Rendered overloads remain public and unqualified with no compatibility label.
 - Structured miss fail-closed behavior is weakened.
 - The slice expands into template engine redesign.
+
+## Closure Notes
+
+Closed after converting the direct consteval call-lowering route through
+`try_lower_consteval_call_expr` to require structured callee identity before
+using rendered consteval registry compatibility. The focused HIR guard passed
+with `test_before.log` and `test_after.log` both reporting `2/2` tests passing
+and no new failures. The close-time regression guard passed on those canonical
+logs with no new failures.
+
+Full-suite baseline acceptance for commit `78f3cc95d` compared
+`test_baseline.log` and `test_baseline.new.log`; both reported `3137/3137`
+passing with no new failures.
+
+Remaining rendered registry APIs are classified as compatibility or follow-up
+surface rather than blockers for this idea. The highest-value remaining
+metadata-rich consteval route has been materialized as
+`ideas/open/196_hir_pending_consteval_structured_identity.md`, covering
+structured consteval identity through `PendingConstevalExpr` and recursive
+consteval evaluation.
