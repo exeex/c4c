@@ -85,35 +85,56 @@ std::string decode_llvm_c_string(std::string_view raw_bytes) {
 }
 
 struct LoweredStringConstantMetadata {
-  std::vector<bir::StringConstant> ordered;
-  c4c::TextTable names;
-  // String-pool byte payload lookup is keyed by interned TextId. The retained
-  // StringConstant::name spelling is compatibility/display text.
-  std::unordered_map<c4c::TextId, std::string> bytes_by_name;
+  struct Entry {
+    std::string name;
+    std::string bytes;
+  };
+
+  std::vector<Entry> ordered;
 };
 
 LoweredStringConstantMetadata collect_lowered_string_constants(
     const c4c::codegen::lir::LirModule& module) {
   LoweredStringConstantMetadata metadata;
   metadata.ordered.reserve(module.string_pool.size());
-  metadata.bytes_by_name.reserve(module.string_pool.size());
   for (const auto& string_constant : module.string_pool) {
     if (string_constant.pool_name.empty() || string_constant.byte_length <= 0) {
       continue;
     }
     const auto stripped_name = strip_global_sig(string_constant.pool_name);
-    const c4c::TextId name_id = metadata.names.intern(stripped_name);
-    if (name_id == c4c::kInvalidText) {
-      continue;
-    }
     const auto decoded_bytes = decode_llvm_c_string(string_constant.raw_bytes);
-    metadata.bytes_by_name.emplace(name_id, decoded_bytes);
-    metadata.ordered.push_back(bir::StringConstant{
+    metadata.ordered.push_back(LoweredStringConstantMetadata::Entry{
         .name = stripped_name,
         .bytes = decoded_bytes,
     });
   }
   return metadata;
+}
+
+std::unordered_map<c4c::TextId, const bir::StringConstant*> materialize_string_constants(
+    const LoweredStringConstantMetadata& string_constants,
+    bir::Module* lowered_module) {
+  std::unordered_map<c4c::TextId, const bir::StringConstant*> by_name_id;
+  if (lowered_module == nullptr) {
+    return by_name_id;
+  }
+
+  lowered_module->string_constants.clear();
+  lowered_module->string_constants.reserve(string_constants.ordered.size());
+  by_name_id.reserve(string_constants.ordered.size());
+  for (const auto& entry : string_constants.ordered) {
+    const c4c::TextId name_id = lowered_module->names.texts.intern(entry.name);
+    if (name_id == c4c::kInvalidText) {
+      continue;
+    }
+    lowered_module->string_constants.push_back(bir::StringConstant{
+        .name = entry.name,
+        .name_id = name_id,
+        .bytes = entry.bytes,
+    });
+    by_name_id.emplace(name_id, &lowered_module->string_constants.back());
+  }
+  return by_name_id;
 }
 
 bool gep_indices_are_all_zero(const c4c::codegen::lir::LirGepOp& gep) {
@@ -137,7 +158,8 @@ using StringPointerAliasMap = std::unordered_map<std::string, c4c::TextId>;
 
 StringPointerAliasMap collect_string_pointer_aliases(
     const c4c::codegen::lir::LirFunction& function,
-    const LoweredStringConstantMetadata& string_constants) {
+    const c4c::TextTable& string_constant_names,
+    const std::unordered_map<c4c::TextId, const bir::StringConstant*>& string_constants_by_name_id) {
   StringPointerAliasMap aliases;
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
@@ -149,9 +171,9 @@ StringPointerAliasMap collect_string_pointer_aliases(
 
         if (gep->ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
           const auto global_name = strip_global_sig(gep->ptr.str());
-          const c4c::TextId name_id = string_constants.names.find(global_name);
-          if (string_constants.bytes_by_name.find(name_id) !=
-              string_constants.bytes_by_name.end()) {
+          const c4c::TextId name_id = string_constant_names.find(global_name);
+          if (string_constants_by_name_id.find(name_id) !=
+              string_constants_by_name_id.end()) {
             aliases.emplace(gep->result.str(), name_id);
           }
           continue;
@@ -254,8 +276,9 @@ void rewrite_direct_call_string_pointer_args(
     return;
   }
 
-  lowered_module->string_constants = string_constants.ordered;
-  if (string_constants.bytes_by_name.empty()) {
+  const auto string_constants_by_name_id =
+      materialize_string_constants(string_constants, lowered_module);
+  if (string_constants_by_name_id.empty()) {
     return;
   }
 
@@ -273,7 +296,8 @@ void rewrite_direct_call_string_pointer_args(
     }
 
     const auto string_aliases =
-        collect_string_pointer_aliases(*lir_function, string_constants);
+        collect_string_pointer_aliases(
+            *lir_function, lowered_module->names.texts, string_constants_by_name_id);
     if (string_aliases.empty()) {
       continue;
     }
@@ -309,7 +333,7 @@ void rewrite_direct_call_string_pointer_args(
         c4c::TextId resolved_name_id = c4c::kInvalidText;
         if (arg_operand.kind() == c4c::codegen::lir::LirOperandKind::Global) {
           const auto global_name = strip_global_sig(arg_operand.str());
-          resolved_name_id = string_constants.names.find(global_name);
+          resolved_name_id = lowered_module->names.texts.find(global_name);
         } else if (arg_operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
           const auto alias_it = string_aliases.find(arg_operand.str());
           if (alias_it == string_aliases.end()) {
@@ -320,11 +344,12 @@ void rewrite_direct_call_string_pointer_args(
           continue;
         }
 
-        if (string_constants.bytes_by_name.find(resolved_name_id) ==
-            string_constants.bytes_by_name.end()) {
+        const auto string_constant_it = string_constants_by_name_id.find(resolved_name_id);
+        if (string_constant_it == string_constants_by_name_id.end()) {
           continue;
         }
-        const std::string_view resolved_name = string_constants.names.lookup(resolved_name_id);
+        const std::string_view resolved_name =
+            lowered_module->names.texts.lookup(string_constant_it->second->name_id);
         std::string rewritten_name = "@";
         rewritten_name.append(resolved_name);
         lowered_call.args[arg_index] = bir::Value::named(bir::TypeKind::Ptr, rewritten_name);

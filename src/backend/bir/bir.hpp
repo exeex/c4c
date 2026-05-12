@@ -237,9 +237,11 @@ struct Global {
 };
 
 struct StringConstant {
-  // String-pool constants are still retained compatibility names rather than
-  // semantic link-name symbols. They intentionally do not carry LinkNameId yet.
+  // Compatibility/display spelling for raw-only BIR and output. Metadata-rich
+  // lowering must use name_id as the text-pool identity and may only consume
+  // name when no structured text identity exists.
   std::string name;
+  TextId name_id = kInvalidText;
   std::string bytes;
   std::size_t align_bytes = 1;
 };

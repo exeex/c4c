@@ -93,6 +93,7 @@ int expect_addressed_global_pointer_provenance_uses_link_name_id_keys();
 int expect_bir_verifier_rejects_known_link_name_mismatches();
 int expect_bir_verifier_rejects_local_slot_id_mismatches();
 int expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
+int expect_string_pool_direct_call_bridge_requires_text_id();
 int expect_legacy_byval_call_arg_without_type_refs_still_lowers();
 int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed();
 int expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
@@ -428,6 +429,17 @@ int expect_string_pool_direct_call_bridge_prefers_function_link_name_id() {
   if (lowered_user == nullptr || lowered_user->name != "semantic_user") {
     return fail("semantic user function should lower with LinkNameId identity");
   }
+  if (result.module->string_constants.size() != 2) {
+    return fail("string-pool lowering should materialize BIR string constants");
+  }
+  for (const auto& string_constant : result.module->string_constants) {
+    if (string_constant.name_id == c4c::kInvalidText) {
+      return fail("BIR string constants should carry TextId identity");
+    }
+    if (result.module->names.texts.lookup(string_constant.name_id) != string_constant.name) {
+      return fail("BIR string constant TextId should resolve to the display spelling");
+    }
+  }
 
   bool saw_good_string_arg = false;
   bool saw_bad_string_arg = false;
@@ -452,6 +464,87 @@ int expect_string_pool_direct_call_bridge_prefers_function_link_name_id() {
     return fail("string-pool direct-call bridge should not use raw-name decoy aliases");
   }
   return 0;
+}
+
+int expect_string_pool_direct_call_bridge_requires_text_id() {
+  LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::LinkNameId sink_id = module.link_names.intern("text_id_required_sink");
+  const c4c::LinkNameId user_id = module.link_names.intern("text_id_required_user");
+
+  LirGlobal raw_only_global;
+  raw_only_global.name = ".str.raw_only";
+  raw_only_global.qualifier = "constant ";
+  raw_only_global.llvm_type = "[5 x i8]";
+  raw_only_global.init_text = "c\"raw\\00\"";
+  raw_only_global.align_bytes = 1;
+  module.globals.push_back(std::move(raw_only_global));
+
+  c4c::codegen::lir::LirExternDecl sink;
+  sink.name = "text_id_required_sink";
+  sink.link_name_id = sink_id;
+  sink.return_type_str = "void";
+  sink.return_type = c4c::codegen::lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(sink));
+
+  LirFunction function;
+  function.name = "text_id_required_user";
+  function.link_name_id = user_id;
+  function.signature_text = "define void @text_id_required_user()";
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%stale_ptr"),
+      .element_type = c4c::codegen::lir::LirTypeRef("[5 x i8]"),
+      .ptr = LirOperand("@.str.raw_only"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 0"},
+  });
+  entry.insts.push_back(LirCallOp{
+      .return_type = c4c::codegen::lir::LirTypeRef("void"),
+      .callee = LirOperand("@text_id_required_sink"),
+      .direct_callee_link_name_id = sink_id,
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr %stale_ptr",
+      .callee_signature = void_call_signature({"ptr"}),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("raw-only string pointer fixture should still lower to BIR");
+  }
+  if (!result.module->string_constants.empty()) {
+    return fail("raw-only string pointer fixture should not synthesize a BIR TextId carrier");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.link_name_id != user_id) {
+      continue;
+    }
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+        if (call == nullptr || call->args.empty()) {
+          continue;
+        }
+        if (call->args.front() == c4c::backend::bir::Value::named(TypeKind::Ptr,
+                                                                  "@.str.raw_only")) {
+          return fail("string-pool rewrite must not recover through raw spelling without TextId");
+        }
+      }
+    }
+    return 0;
+  }
+  return fail("raw-only string pointer fixture lost the lowered function");
 }
 
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id() {
@@ -5303,6 +5396,11 @@ int main() {
           expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
       string_pool_link_name_status != 0) {
     return string_pool_link_name_status;
+  }
+  if (const int string_pool_text_id_status =
+          expect_string_pool_direct_call_bridge_requires_text_id();
+      string_pool_text_id_status != 0) {
+    return string_pool_text_id_status;
   }
 
   if (const int link_name_mismatch_status =
