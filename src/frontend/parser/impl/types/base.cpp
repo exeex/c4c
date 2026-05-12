@@ -3123,6 +3123,31 @@ TypeSpec Parser::parse_base_type() {
                                                                     : kInvalidText;
                                                         }
                                                     }
+                                                    set_template_arg_refs_from_parsed_args(
+                                                        &owner_ts, parsed_args);
+                                                    const ParserTemplateState::
+                                                        TemplateInstantiationKey
+                                                            owner_instance_key{
+                                                                template_instantiation_name_key_for_direct_emit(
+                                                                    *this,
+                                                                    primary_tpl,
+                                                                    origin),
+                                                                make_template_instantiation_argument_keys(
+                                                                    parsed_args)};
+                                                    std::vector<std::pair<
+                                                        std::string, TypeSpec>>
+                                                        selected_type_bindings;
+                                                    std::vector<std::pair<
+                                                        std::string, long long>>
+                                                        selected_nttp_bindings;
+                                                    const Node* selected_tpl =
+                                                        select_template_struct_pattern_for_args(
+                                                            parsed_args,
+                                                            primary_tpl,
+                                                            find_template_struct_specializations(
+                                                                primary_tpl),
+                                                            &selected_type_bindings,
+                                                            &selected_nttp_bindings);
                                                     std::string mangled;
                                                     TypeSpec resolved_owner =
                                                         owner_ts;
@@ -3136,23 +3161,31 @@ TypeSpec Parser::parse_base_type() {
                                                             "qualified_template_member_typedef_base",
                                                             &resolved_owner);
                                                     }
-                                                    if (resolved_owner.record_def) {
+                                                    Node*
+                                                        structured_owner_record =
+                                                            find_template_instantiated_record_for_direct_emit(
+                                                                *this,
+                                                                owner_instance_key);
+                                                    if (structured_owner_record) {
                                                         owner_ts = resolved_owner;
-                                                    } else if (!mangled.empty()) {
-                                                        auto inst_it =
-                                                            definition_state_
-                                                                .struct_tag_def_map
-                                                                .find(mangled);
-                                                        if (inst_it !=
-                                                            definition_state_
-                                                                .struct_tag_def_map
-                                                                .end()) {
-                                                            owner_ts.record_def =
-                                                                inst_it->second;
-                                                        }
+                                                        owner_ts.record_def =
+                                                            structured_owner_record;
+                                                    } else if (
+                                                        resolved_owner.record_def &&
+                                                        selected_tpl &&
+                                                        selected_tpl !=
+                                                            primary_tpl &&
+                                                        selected_tpl
+                                                                ->n_template_params ==
+                                                            0 &&
+                                                        resolved_owner
+                                                                .record_def ==
+                                                            selected_tpl) {
+                                                        owner_ts = resolved_owner;
                                                     }
                                                     TypeSpec member_ts{};
-                                                    if (lookup_struct_member_typedef_recursive_for_type(
+                                                    if (owner_ts.record_def &&
+                                                        lookup_struct_member_typedef_recursive_for_type(
                                                             owner_ts,
                                                             member_name,
                                                             member_text_id,

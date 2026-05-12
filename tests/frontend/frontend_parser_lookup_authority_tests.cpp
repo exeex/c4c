@@ -4564,6 +4564,78 @@ void test_alias_member_typedef_type_substitution_uses_text_id_without_tag() {
               "owner spellings are stale");
 }
 
+void test_qualified_template_member_typedef_rejects_stale_mangled_owner_map() {
+  const char* source =
+      "template <typename T>\n"
+      "struct Owner {\n"
+      "  using type = int;\n"
+      "};\n";
+
+  c4c::Arena arena;
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_parser_lookup_authority_tests.cpp");
+  (void)parser.parse();
+
+  const c4c::TextId owner_text = lexer.text_table().intern("Owner");
+  const c4c::TextId type_text = lexer.text_table().intern("type");
+  c4c::Node* primary = parser.find_template_struct_primary(
+      parser.current_namespace_context_id(), owner_text);
+  expect_true(primary != nullptr,
+              "Owner primary should be registered for qualified member "
+              "typedef stale-map test");
+
+  c4c::Parser::TemplateArgParseResult int_arg{};
+  int_arg.is_value = false;
+  int_arg.type.array_size = -1;
+  int_arg.type.inner_rank = -1;
+  int_arg.type.base = c4c::TB_INT;
+  std::vector<c4c::Parser::TemplateArgParseResult> args;
+  args.push_back(int_arg);
+  const std::string mangled =
+      parser.build_template_struct_mangled_name("Owner", primary, primary,
+                                                args);
+
+  c4c::TypeSpec stale_member{};
+  stale_member.array_size = -1;
+  stale_member.inner_rank = -1;
+  stale_member.base = c4c::TB_LONG;
+  c4c::Node* stale_owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  stale_owner->name = arena.strdup(mangled.c_str());
+  stale_owner->unqualified_name = arena.strdup(mangled.c_str());
+  stale_owner->unqualified_text_id =
+      lexer.text_table().intern(mangled.c_str());
+  stale_owner->namespace_context_id = parser.current_namespace_context_id();
+  stale_owner->n_member_typedefs = 1;
+  stale_owner->member_typedef_names = arena.alloc_array<const char*>(1);
+  stale_owner->member_typedef_names[0] = arena.strdup("type");
+  stale_owner->member_typedef_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  stale_owner->member_typedef_text_ids[0] = type_text;
+  stale_owner->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  stale_owner->member_typedef_types[0] = stale_member;
+  parser.definition_state_.struct_tag_def_map[mangled] = stale_owner;
+
+  c4c::Token seed{};
+  parser.replace_token_stream_for_testing({
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Owner"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
+      parser.make_injected_token(seed, c4c::TokenKind::EndOfFile, ""),
+  });
+
+  c4c::TypeSpec resolved = parser.parse_base_type();
+  expect_true(resolved.base != c4c::TB_LONG,
+              "qualified template member typedef owner lookup should not "
+              "recover through a stale rendered struct_tag_def_map entry");
+}
+
 void test_alias_template_member_typedef_arg_uses_text_id_over_stale_name() {
   const char* source =
       "template <int V>\n"
@@ -7530,6 +7602,7 @@ int main() {
   test_alias_member_typedef_origin_key_only_materializes_record_def();
   test_alias_member_typedef_nttp_substitution_uses_text_id_over_stale_name();
   test_alias_member_typedef_type_substitution_uses_text_id_without_tag();
+  test_qualified_template_member_typedef_rejects_stale_mangled_owner_map();
   test_alias_template_member_typedef_arg_uses_text_id_over_stale_name();
   test_alias_template_member_typedef_type_arg_uses_text_id_without_tag();
   test_alias_template_nested_origin_key_arg_ignores_rendered_debug_text();

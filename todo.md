@@ -8,28 +8,21 @@ Current Step Title: Convert Parser Qualified-Name And Owner Recovery
 
 ## Just Finished
 
-Step 2 was accepted by `review/step2_parser_tag_map_review.md` with no
-blocking findings. The review judged the record/layout tag-map fencing
-route-aligned, narrow proof sufficient, and complete enough to advance.
+Step 3 started at `src/frontend/parser/impl/types/base.cpp:3141`.
+Qualified template member-typedef owner recovery now builds a structured
+template-instantiation key and `tpl_struct_args` carrier for the owner, consumes
+the structured instantiated record when present, and no longer recovers the
+owner through the rendered `struct_tag_def_map.find(mangled)` fallback in this
+block.
 
-Accepted Step 2 state: metadata-rich static-member base and owner record routes
-in `src/frontend/parser/impl/types/base.cpp` now use structured
-`record_def`/`TextId`/context/qualifier carrier lookup, while TextId-less,
-context-less helper-local tails remain explicit legacy compatibility. No test
-expectations were changed.
+Added lookup-authority coverage proving `Owner<int>::type` does not recover a
+member typedef through a stale rendered mangled owner map entry.
 
 ## Suggested Next
 
-Start Step 3 at `src/frontend/parser/impl/types/base.cpp:3141`: the review
-identified this as a non-blocking owner/qualified-name watch where a qualified
-template member-typedef owner can still recover through
-`definition_state_.struct_tag_def_map.find(mangled)` when
-`ensure_template_struct_instantiated_from_args` does not return
-`resolved_owner.record_def`.
-
-Convert that route to consume structured owner or `record_def` carriers where
-complete, or fence the fallback as parser-local compatibility with owner,
-limitation, and removal condition.
+Continue Step 3 with the next parser qualified-name/owner recovery surface in
+`src/frontend/parser/impl/types/base.cpp`; prefer another narrow stale-rendered
+proof before widening beyond parser-owned lookup authority.
 
 ## Watchouts
 
@@ -53,9 +46,9 @@ limitation, and removal condition.
   `ensure_template_struct_instantiated_from_args` because that API requires an
   output buffer; they are no longer used for base.cpp owner-definition lookup
   fallback.
-- Treat `src/frontend/parser/impl/types/base.cpp:3141` as the first Step 3
-  target/watch; it is owner/qualified-name recovery scope, not a Step 2
-  record/layout blocker.
+- `qualified_template_member_typedef_base` still passes a local `mangled`
+  buffer because `ensure_template_struct_instantiated_from_args` requires it;
+  this block no longer uses that rendered string for owner recovery.
 
 ## Proof
 
