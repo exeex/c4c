@@ -1,36 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/187_bir_memory_provenance_global_handle_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Add focused global provenance tests
+Current Step ID: Step 4
+Current Step Title: Validate and prepare handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added focused backend LIR-to-BIR tests for the addressed global
-provenance LinkNameId boundary introduced by Step 2.
+Step 4 validated the idea 187 backend handoff without widening into the final
+freeze gate.
 
-The new test exercises structured lowering through an addressed global pointer
-slot, verifies the recovered global load keeps the stored target LinkNameId, and
-guards `AddressedGlobalPointerSlots` plus `AddressedGlobalPointerValueSlots`
-against stale same-spelling LinkNameId aliases while retaining a distinct
-`kInvalidLinkName` raw/no-id compatibility key.
+Completed evidence:
+
+- Step 1 inventory was committed as `4e9ef545d`.
+- Step 2 keyed `AddressedGlobalPointerSlots` and
+  `AddressedGlobalPointerValueSlots` by `LinkNameId` in commit `014102853`.
+- Step 3 added focused backend tests for the addressed global provenance
+  LinkNameId boundary in commit `f006f5069`.
+- Backend proof is still green after Step 4 validation: 109/109 enabled
+  `^backend_` tests passed.
+- Baseline-review candidate `test_baseline.new.log` was rejected after
+  comparison with `test_baseline.log` because the full-suite candidate had 9
+  unrelated failures: `3128 passed, 9 failed` versus the existing baseline
+  `3137 passed, 0 failed`.
 
 ## Suggested Next
 
-Proceed to the next supervisor-selected packet for the active plan. A coherent
-next slice would audit nearby dynamic global provenance side tables for the
-same LinkNameId-vs-spelling boundary, without widening route-local maps.
+Recommend supervisor call plan-owner to close or switch idea 187 if no further
+source-idea scope remains. Do not treat the rejected full-suite baseline
+candidate as a blocker for this Step 4 backend handoff.
 
 ## Watchouts
 
-- `GlobalPointerSlotKey::global_name` remains part of the key for raw/no-id
-  compatibility and display-boundary bridging; `link_name_id` is authoritative
-  when present.
-- The test intentionally checks lowering-visible BIR instructions and the
-  side-table key maps; it does not rely on final printed names.
-- No implementation files or expectation rewrites were changed.
+- Residual risk: Step 4 did not run the final freeze gate or accept a new
+  full-suite baseline.
+- Residual risk: the rejected `test_baseline.new.log` failures are outside this
+  packet and should remain a separate follow-up if the supervisor wants a clean
+  full-suite baseline refresh.
+- Residual risk: backend proof covers the selected `^backend_` subset only; the
+  supervisor owns any broader milestone validation.
+- No implementation files, tests, plan files, idea files, or baseline logs were
+  changed in this packet.
 
 ## Proof
 
@@ -38,6 +49,6 @@ Ran exactly:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
 
-Result: passed. Build completed and backend CTest reported 100% passing for 109
-run tests; 12 disabled MIR trace tests were not run. Proof log:
-`test_after.log`.
+Result: passed. Build completed with no work to do and backend CTest reported
+100% passing for 109 enabled tests; 12 disabled MIR trace tests were not run.
+Proof log: `test_after.log`.
