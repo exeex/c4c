@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-05-12
 
 Depends On:
-- `ideas/open/190_lir_call_argument_structured_payload_boundary.md`
+- `ideas/closed/190_lir_call_argument_structured_payload_boundary.md`
 
 ## Goal
 
