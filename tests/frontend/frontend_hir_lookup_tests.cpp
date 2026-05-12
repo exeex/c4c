@@ -553,50 +553,73 @@ void test_complete_decl_lookup_miss_uses_named_rendered_compatibility_only() {
   self_consistent_fn_ref.name_text_id = compat_fn_text;
   const c4c::hir::Function* self_consistent_fn =
       module.resolve_function_decl(self_consistent_fn_ref);
-  expect_true(self_consistent_fn != nullptr &&
-                  self_consistent_fn->id.value == 50,
-              "self-consistent complete function miss may use rendered compatibility");
-  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
-                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
-                      "self_consistent_fn", 50),
-              "self-consistent function compatibility should record legacy rendered authority");
+  expect_true(self_consistent_fn == nullptr,
+              "self-consistent complete function miss must not use rendered compatibility through resolve");
+  expect_true(!has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                       "self_consistent_fn", 50),
+              "self-consistent complete function miss must not record legacy rendered authority");
+  const c4c::hir::Function* self_consistent_fn_compat =
+      module.find_function_by_rendered_decl_compatibility_name("self_consistent_fn");
+  expect_true(self_consistent_fn_compat != nullptr &&
+                  self_consistent_fn_compat->id.value == 50,
+              "named function rendered compatibility helper should keep rendered-only lookup");
+  expect_true(module.find_function_by_name_legacy("self_consistent_fn") ==
+                  self_consistent_fn_compat,
+              "legacy function helper should stay routed through named rendered compatibility");
 
   c4c::hir::DeclRef qualified_fn_ref;
   qualified_fn_ref.name = "api::rendered_qualified_fn";
   qualified_fn_ref.name_text_id = qualified_fn_text;
   const c4c::hir::Function* qualified_fn =
       module.resolve_function_decl(qualified_fn_ref);
-  expect_true(qualified_fn != nullptr && qualified_fn->id.value == 52,
-              "rendered-qualified complete function miss may use rendered compatibility");
-  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
-                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
-                      "api::rendered_qualified_fn", 52),
-              "rendered-qualified function compatibility should record legacy rendered authority");
+  expect_true(qualified_fn == nullptr,
+              "rendered-qualified complete function miss must not use rendered compatibility through resolve");
+  expect_true(!has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                       "api::rendered_qualified_fn", 52),
+              "rendered-qualified complete function miss must not record legacy rendered authority");
+  const c4c::hir::Function* qualified_fn_compat =
+      module.find_function_by_rendered_decl_compatibility_name("api::rendered_qualified_fn");
+  expect_true(qualified_fn_compat != nullptr && qualified_fn_compat->id.value == 52,
+              "named function rendered compatibility helper should accept rendered-qualified names");
 
   c4c::hir::DeclRef self_consistent_global_ref;
   self_consistent_global_ref.name = "self_consistent_global";
   self_consistent_global_ref.name_text_id = compat_global_text;
   const c4c::hir::GlobalVar* self_consistent_global =
       module.resolve_global_decl(self_consistent_global_ref);
-  expect_true(self_consistent_global != nullptr &&
-                  self_consistent_global->id.value == 60,
-              "self-consistent complete global miss may use rendered compatibility");
-  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
-                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
-                      "self_consistent_global", 60),
-              "self-consistent global compatibility should record legacy rendered authority");
+  expect_true(self_consistent_global == nullptr,
+              "self-consistent complete global miss must not use rendered compatibility through resolve");
+  expect_true(!has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                       "self_consistent_global", 60),
+              "self-consistent complete global miss must not record legacy rendered authority");
+  const c4c::hir::GlobalVar* self_consistent_global_compat =
+      module.find_global_by_rendered_decl_compatibility_name("self_consistent_global");
+  expect_true(self_consistent_global_compat != nullptr &&
+                  self_consistent_global_compat->id.value == 60,
+              "named global rendered compatibility helper should keep rendered-only lookup");
+  expect_true(module.find_global_by_name_legacy("self_consistent_global") ==
+                  self_consistent_global_compat,
+              "legacy global helper should stay routed through named rendered compatibility");
 
   c4c::hir::DeclRef qualified_global_ref;
   qualified_global_ref.name = "api::rendered_qualified_global";
   qualified_global_ref.name_text_id = qualified_global_text;
   const c4c::hir::GlobalVar* qualified_global =
       module.resolve_global_decl(qualified_global_ref);
-  expect_true(qualified_global != nullptr && qualified_global->id.value == 62,
-              "rendered-qualified complete global miss may use rendered compatibility");
-  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
-                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
-                      "api::rendered_qualified_global", 62),
-              "rendered-qualified global compatibility should record legacy rendered authority");
+  expect_true(qualified_global == nullptr,
+              "rendered-qualified complete global miss must not use rendered compatibility through resolve");
+  expect_true(!has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                       "api::rendered_qualified_global", 62),
+              "rendered-qualified complete global miss must not record legacy rendered authority");
+  const c4c::hir::GlobalVar* qualified_global_compat =
+      module.find_global_by_rendered_decl_compatibility_name("api::rendered_qualified_global");
+  expect_true(qualified_global_compat != nullptr &&
+                  qualified_global_compat->id.value == 62,
+              "named global rendered compatibility helper should accept rendered-qualified names");
 }
 
 void test_direct_call_callee_lookup_uses_authoritative_decl_identity() {
@@ -728,13 +751,12 @@ void test_operator_callee_lookup_uses_authoritative_decl_identity() {
                            "stale_operator_callee", 42, 40),
               "operator link-name callee lookup should record stale-rendered mismatch");
 
-  const c4c::TextId legacy_text = texts.intern("legacy_operator_callee");
   add_function(module, c4c::hir::FunctionId{43}, "legacy_operator_callee",
                c4c::kInvalidText, c4c::kInvalidLinkName, {}, c4c::TB_LONGLONG);
 
   c4c::hir::DeclRef legacy_ref;
   legacy_ref.name = "legacy_operator_callee";
-  legacy_ref.name_text_id = legacy_text;
+  legacy_ref.name_text_id = c4c::kInvalidText;
   const c4c::hir::Function* legacy_fn =
       module.resolve_operator_callee(legacy_ref);
   expect_true(legacy_fn != nullptr && legacy_fn->id.value == 43,
@@ -781,13 +803,12 @@ void test_range_for_method_callee_lookup_uses_authoritative_decl_identity() {
                            "stale_range_for_method", 51, 50),
               "range-for method link-name lookup should record stale-rendered mismatch");
 
-  const c4c::TextId legacy_text = texts.intern("legacy_range_for_method");
   add_function(module, c4c::hir::FunctionId{52}, "legacy_range_for_method",
                c4c::kInvalidText, c4c::kInvalidLinkName, {}, c4c::TB_LONGLONG);
 
   c4c::hir::DeclRef legacy_ref;
   legacy_ref.name = "legacy_range_for_method";
-  legacy_ref.name_text_id = legacy_text;
+  legacy_ref.name_text_id = c4c::kInvalidText;
   const c4c::hir::Function* legacy_fn =
       module.resolve_range_for_method_callee(legacy_ref);
   expect_true(legacy_fn != nullptr && legacy_fn->id.value == 52,

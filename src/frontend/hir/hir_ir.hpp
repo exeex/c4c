@@ -2731,35 +2731,6 @@ struct Module {
     return it == fn_structured_index.end() ? nullptr : find_function(it->second);
   }
 
-  [[nodiscard]] bool has_function_decl_structured_text(TextId declaration_text_id) const {
-    if (declaration_text_id == kInvalidText) return false;
-    return std::any_of(
-        fn_structured_index.begin(), fn_structured_index.end(),
-        [&](const auto& entry) {
-          return entry.first.declaration_text_id == declaration_text_id;
-        });
-  }
-
-  [[nodiscard]] bool allows_rendered_qualified_decl_compatibility(
-      const DeclRef& ref) const {
-    return ref.name.find("::") != SymbolName::npos &&
-           ref.ns_qual.segments.empty() &&
-           ref.ns_qual.segment_text_ids.empty() &&
-           !ref.ns_qual.is_global_qualified;
-  }
-
-  [[nodiscard]] bool has_self_consistent_rendered_decl_compatibility_name(
-      const DeclRef& ref) const {
-    if (ref.name_text_id == kInvalidText || !link_name_texts) return false;
-    return link_name_texts->lookup(ref.name_text_id) == ref.name;
-  }
-
-  [[nodiscard]] bool allows_legacy_rendered_decl_compatibility_after_structured_miss(
-      const DeclRef& ref) const {
-    return allows_rendered_qualified_decl_compatibility(ref) ||
-           has_self_consistent_rendered_decl_compatibility_name(ref);
-  }
-
   void record_function_decl_lookup_parity_mismatch(
       const DeclRef& ref, const Function& structured, const Function& legacy) const {
     record_decl_lookup_parity_mismatch(
@@ -2787,10 +2758,7 @@ struct Module {
           structured->id.value};
     }
     const auto key = make_function_decl_lookup_key(ref);
-    if (key && has_function_decl_structured_text(key->declaration_text_id) &&
-        !allows_legacy_rendered_decl_compatibility_after_structured_miss(ref)) {
-      return std::nullopt;
-    }
+    if (key) return std::nullopt;
     if (legacy) {
       return ModuleDeclLookupHit{
           ModuleDeclKind::Function, ModuleDeclLookupAuthority::LegacyRendered, ref.name,
@@ -2898,15 +2866,6 @@ struct Module {
     return it == global_structured_index.end() ? nullptr : find_global(it->second);
   }
 
-  [[nodiscard]] bool has_global_decl_structured_text(TextId declaration_text_id) const {
-    if (declaration_text_id == kInvalidText) return false;
-    return std::any_of(
-        global_structured_index.begin(), global_structured_index.end(),
-        [&](const auto& entry) {
-          return entry.first.declaration_text_id == declaration_text_id;
-        });
-  }
-
   void record_global_decl_lookup_parity_mismatch(
       const DeclRef& ref, const GlobalVar& structured, const GlobalVar& legacy) const {
     record_decl_lookup_parity_mismatch(
@@ -2941,10 +2900,7 @@ struct Module {
           structured->id.value};
     }
     const auto key = make_global_decl_lookup_key(ref);
-    if (key && has_global_decl_structured_text(key->declaration_text_id) &&
-        !allows_legacy_rendered_decl_compatibility_after_structured_miss(ref)) {
-      return std::nullopt;
-    }
+    if (key) return std::nullopt;
     if (legacy) {
       return ModuleDeclLookupHit{
           ModuleDeclKind::Global, ModuleDeclLookupAuthority::LegacyRendered, ref.name,
