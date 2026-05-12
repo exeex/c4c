@@ -5,7 +5,7 @@ Created: 2026-05-12
 
 Depends On:
 - `ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
-- `ideas/open/196_hir_pending_consteval_structured_identity.md`
+- `ideas/closed/196_hir_pending_consteval_structured_identity.md`
 
 ## Goal
 

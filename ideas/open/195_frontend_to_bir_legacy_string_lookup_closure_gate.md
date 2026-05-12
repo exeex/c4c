@@ -4,12 +4,12 @@ Status: Open
 Created: 2026-05-12
 
 Depends On:
-- `ideas/open/188_lir_bir_freeze_closure_gate.md`
-- `ideas/open/190_lir_call_argument_structured_payload_boundary.md`
-- `ideas/open/191_bir_function_signature_byval_metadata_text_retirement.md`
-- `ideas/open/192_hir_compile_time_rendered_registry_api_retirement_audit.md`
-- `ideas/open/193_hir_constructor_member_owner_structured_lookup_closure.md`
-- `ideas/open/194_bir_global_memory_provenance_linknameid_expansion.md`
+- `ideas/closed/188_lir_bir_freeze_closure_gate.md`
+- `ideas/closed/190_lir_call_argument_structured_payload_boundary.md`
+- `ideas/closed/191_bir_function_signature_byval_metadata_text_retirement.md`
+- `ideas/closed/192_hir_compile_time_rendered_registry_api_retirement_audit.md`
+- `ideas/closed/193_hir_constructor_member_owner_structured_lookup_closure.md`
+- `ideas/closed/194_bir_global_memory_provenance_linknameid_expansion.md`
 
 ## Goal
 
