@@ -8,33 +8,31 @@ Current Step Title: Fence Type And Aggregate Layout Compatibility
 
 ## Just Finished
 
-Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the local
-memory/addressing aggregate layout wrappers in
-`src/backend/bir/lir_to_bir/memory/local_gep.cpp` and
-`src/backend/bir/lir_to_bir/memory/addressing.cpp`.
+Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the local-slot
+scalar byte-offset aggregate layout wrapper in
+`src/backend/bir/lir_to_bir/memory/local_slots.cpp`.
 
-The retained raw rendered-type-text paths in `lookup_local_gep_layout_result()`
-and `lookup_addressing_layout_result()` are now fenced as Step 4 no-id
-compatibility bridges. Their owner is the local GEP and shared
-memory/addressing projection boundary; their limitation is that structured
-layouts may still be consulted from rendered text only while these helpers lack
-`LirTypeRef`/`StructNameId` carriers, and metadata-rich type refs must continue
-to use the central type-ref lookup that fails closed on stale or mismatched
-structured text. The removal condition is local GEP/addressing callers carrying
-a structured type-ref or equivalent StructNameId carrier instead of rendered
-spelling.
+The retained raw rendered-type-text path in
+`lookup_scalar_byte_offset_layout_result()` is now fenced as a Step 4 no-id
+compatibility bridge. Its owner is local-slot aggregate leaf discovery and
+dynamic aggregate array load/store access; its limitation is that those paths
+still thread rendered type spelling while local-slot address/aggregate state
+lacks `LirTypeRef`/`StructNameId` carriers. Metadata-rich type refs must
+continue to use the central type-ref lookup and fail closed on stale or
+mismatched structured text. The removal condition is local-slot address and
+aggregate state carrying structured type metadata instead of rendered spelling.
 
 No test edits were needed because behavior did not change. Existing structured
-layout lookup and aggregate projection tests continue to cover structured-table
-authority, no-id legacy fallback, and metadata-rich type-ref fail-closed
-behavior.
+layout lookup tests continue to cover structured-table authority, no-id legacy
+fallback, and metadata-rich type-ref fail-closed behavior.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing another aggregate layout caller that still passes
-raw type text, such as local-slot aggregate layout helpers or global-address
-paths in `memory/addressing.cpp`. Fence the retained no-id path or add focused
-fail-closed proof if a structured carrier is already available there.
+Continue Step 4 by reviewing the remaining local-slot aggregate layout call
+sites that bypass the local scalar byte-offset wrapper, such as direct
+`lookup_backend_aggregate_type_layout()` use in pointer-store address
+materialization. Fence the retained no-id path or add focused fail-closed proof
+if a structured carrier is already available there.
 
 ## Watchouts
 
@@ -83,6 +81,9 @@ fail-closed proof if a structured carrier is already available there.
 - The local GEP/addressing wrapper fence is comment-only and deliberately does
   not tighten `resolve_aggregate_*` public raw-text helpers; their signatures do
   not yet carry `LirTypeRef` metadata.
+- The local-slot scalar byte-offset fence is comment-only and deliberately does
+  not change dynamic local aggregate array behavior; those helpers still only
+  carry rendered element type text.
 
 ## Proof
 

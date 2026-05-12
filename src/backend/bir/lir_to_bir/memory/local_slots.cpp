@@ -28,6 +28,13 @@ BackendAggregateLayoutLookup lookup_scalar_byte_offset_layout_result(
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
   if (structured_layouts != nullptr) {
+    // Step 4 no-id compatibility bridge: local-slot scalar byte-offset helpers
+    // still route rendered aggregate type text through this lookup for local
+    // aggregate leaf discovery and dynamic aggregate array access. Structured
+    // layouts remain authoritative when the rendered text names one; metadata-
+    // bearing type refs must use the central type-ref lookup and fail closed
+    // there. Remove this bridge once local-slot address/aggregate state carries
+    // LirTypeRef or equivalent StructNameId metadata instead of type spelling.
     return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
   }
   const BackendStructuredLayoutTable empty_structured_layouts;
