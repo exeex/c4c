@@ -331,6 +331,7 @@ static std::optional<GlobalAddress> resolve_linear_addressed_global_scalar_acces
 
 GlobalPointerSlotKey BirFunctionLowerer::make_global_pointer_slot_key(const GlobalAddress& address) {
   return GlobalPointerSlotKey{
+      .link_name_id = address.link_name_id,
       .global_name = address.global_name,
       .byte_offset = address.byte_offset,
   };

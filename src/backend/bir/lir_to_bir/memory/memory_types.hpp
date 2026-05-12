@@ -18,20 +18,24 @@ struct GlobalAddress;
 namespace c4c::backend {
 
 struct GlobalPointerSlotKey {
-  // LinkNameId-backed global resolution stores final spelling here because the
-  // memory maps bridge to raw LIR operands and target byte offsets.
+  // LinkNameId is the authority when present. Raw/no-id compatibility entries
+  // keep kInvalidLinkName so textual LIR operands remain distinguishable from
+  // metadata-rich generated globals that share the same spelling.
+  LinkNameId link_name_id = kInvalidLinkName;
   std::string global_name;
   std::size_t byte_offset = 0;
 
   bool operator==(const GlobalPointerSlotKey& other) const {
-    return global_name == other.global_name && byte_offset == other.byte_offset;
+    return link_name_id == other.link_name_id && global_name == other.global_name &&
+           byte_offset == other.byte_offset;
   }
 };
 
 struct GlobalPointerSlotKeyHash {
   std::size_t operator()(const GlobalPointerSlotKey& key) const {
-    return std::hash<std::string>{}(key.global_name) ^
-           (std::hash<std::size_t>{}(key.byte_offset) << 1);
+    return std::hash<LinkNameId>{}(key.link_name_id) ^
+           (std::hash<std::string>{}(key.global_name) << 1) ^
+           (std::hash<std::size_t>{}(key.byte_offset) << 2);
   }
 };
 
