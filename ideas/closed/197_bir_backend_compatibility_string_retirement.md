@@ -1,11 +1,26 @@
 # BIR Backend Compatibility String Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
 - `ideas/closed/196_hir_pending_consteval_structured_identity.md`
+
+## Closure Notes
+
+Closed after Step 6 recorded the compatibility-retirement ledger in `todo.md`
+and the full-suite before/after proof logs matched with no regressions:
+3137 passed, 0 failed, with the same 12 disabled backend CLI trace/focus tests
+not run.
+
+The closed interface contract is that new backend restart work may consume the
+post-retirement BIR/prepared surfaces without adding rendered-name recovery
+fallbacks for covered metadata-rich text, link-visible symbol, and type/layout
+identity. Consumers that still lack a structured carrier should stay behind the
+existing named no-id compatibility boundary or create a separate upstream
+carrier initiative.
 
 ## Goal
 
