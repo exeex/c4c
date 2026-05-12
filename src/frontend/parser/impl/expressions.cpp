@@ -205,6 +205,28 @@ static bool instantiate_template_owner_expr_type(
     return true;
 }
 
+static bool template_arg_has_structured_owner_metadata(
+    const Parser::TemplateArgParseResult& arg) {
+    if (arg.expr || !arg.captured_expr_tokens.empty()) return true;
+    if (arg.is_value) {
+        return arg.nttp_text_id != kInvalidText;
+    }
+    const TypeSpec& type = arg.type;
+    return type.record_def || type.tag_text_id != kInvalidText ||
+           type.template_param_text_id != kInvalidText ||
+           type.template_param_owner_text_id != kInvalidText ||
+           type.tpl_struct_origin_key.base_text_id != kInvalidText ||
+           type.array_size_expr != nullptr;
+}
+
+static bool template_args_have_structured_owner_metadata(
+    const std::vector<Parser::TemplateArgParseResult>& parsed_args) {
+    for (const Parser::TemplateArgParseResult& arg : parsed_args) {
+        if (template_arg_has_structured_owner_metadata(arg)) return true;
+    }
+    return false;
+}
+
 static void attach_constructor_owner_type_carrier(Parser& parser,
                                                   Node* node,
                                                   const TypeSpec& owner_ts) {
@@ -2014,7 +2036,10 @@ Node* parse_primary(Parser& parser) {
                                 // Try to instantiate via parse_base_type to get
                                 // the structured owner for Template<Args>.
                                 int after_member_pos = parser.pos_;
-                                bool template_owner_requires_structured_metadata = false;
+                                bool template_owner_requires_structured_metadata =
+                                    qn.base_text_id != kInvalidText ||
+                                    template_args_have_structured_owner_metadata(
+                                        parsed_args);
                                 TypeSpec structured_owner_ts{};
                                 bool have_structured_owner =
                                     instantiate_template_owner_expr_type(
@@ -2125,6 +2150,12 @@ Node* parse_primary(Parser& parser) {
                                     member_qn.qualifier_text_ids.push_back(
                                         owner_text_id);
                                 } else if (!template_owner_requires_structured_metadata) {
+                                    // Legacy/no-metadata owner: this segment
+                                    // split is retained only for callers that
+                                    // lack qualified-owner TextIds and template
+                                    // arg carriers. Remove once all expression
+                                    // template-owner routes populate structured
+                                    // owner metadata.
                                     size_t segment_start = 0;
                                     while (segment_start <= owner_name.size()) {
                                         const size_t segment_end =

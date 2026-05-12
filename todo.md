@@ -8,22 +8,21 @@ Current Step Title: Convert Parser Qualified-Name And Owner Recovery
 
 ## Just Finished
 
-Step 3 post-commit regression from `e7b807a28` is fixed for
-`cpp_parser_debug_qualified_type_spelling_stack`.
+Step 3 fenced the expression-construction route for
+`Template<Args>::member` in `src/frontend/parser/impl/expressions.cpp`.
 
-Updated the parser-debug diagnostic expectation to the new qualified-owner
-route: the stack now records the outer `try_parse_cpp_scoped_base_type` /
-`try_parse_qualified_base_type` frames before entering the nested template
-argument path. This keeps the compatibility proof meaningful because it
-asserts the stronger structured qualified-owner route that replaced rendered
-`struct_tag_def_map` owner recovery, while preserving the final committed
-`parse_top_level_parameter_list` failure and nested template-argument frames.
+The parser now marks a template owner as requiring structured metadata before
+owner recovery when the qualified owner has a TextId or any parsed template
+argument carries structured identity. If complete owner construction still
+misses, the expression route no longer falls through to rendered owner segment
+splitting. The only remaining rendered segment split is documented as
+legacy/no-metadata compatibility with owner, limitation, and removal condition.
 
 ## Suggested Next
 
 Continue Step 3 with the next parser qualified-name/owner recovery surface, or
-hand this regression slice back to the supervisor for commit after review of
-the hook-added baseline reminder.
+hand this expression-owner fence slice back to the supervisor for review and
+commit.
 
 ## Watchouts
 
@@ -37,6 +36,10 @@ the hook-added baseline reminder.
   scopes.
 - Newly retained parser bridges need `legacy` or `deprecated` comments with
   owner, limitation, and removal condition.
+- The expression template-owner route still permits the structured
+  `qn.base_text_id` owner qualifier path when an instantiated owner TextId is
+  unavailable; the fenced fallback is only the rendered `owner_name` segment
+  split for no-metadata callers.
 - For Step 2, avoid the constant-layout
   `parser_record_layout_compatibility_tag_map` route at first unless the
   packet explicitly targets layout; it is already fenced to direct
@@ -61,5 +64,3 @@ Passed:
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_parser_debug_qualified_type_spelling_stack)$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.
-
-Review artifact: `review/step2_parser_tag_map_review.md`.
