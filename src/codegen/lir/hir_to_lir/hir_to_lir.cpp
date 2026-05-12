@@ -250,8 +250,12 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   for (const auto& param : fn.params) {
     const TypeSpec param_ts =
         lir_owned_type_spec(mod, param.type.spec, lir_module);
+    const bool is_byval_signature_param =
+        llvm_target_is_amd64_sysv(mod.target_profile) &&
+        llvm_cc::amd64_fixed_aggregate_passed_byval(param.type.spec, mod);
     lir_fn.signature_params.push_back(
-        {"%p." + sanitize_llvm_ident(param.name), param_ts});
+        {"%p." + sanitize_llvm_ident(param.name), param_ts,
+         is_byval_signature_param});
     lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(
         rendered_signature_param_type(mod, lir_module, param.type.spec), lir_module,
         mod, param.type.spec));

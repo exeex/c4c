@@ -171,6 +171,7 @@ void expect_byval_signature_refs(
 void expect_single_signature_param(const c4c::codegen::lir::LirFunction& fn,
                                    std::string_view expected_name,
                                    c4c::TypeBase expected_base,
+                                   bool expected_byval,
                                    const std::string& msg) {
   expect_eq(std::to_string(fn.signature_params.size()), "1",
             msg + " should carry one structured signature parameter");
@@ -178,6 +179,8 @@ void expect_single_signature_param(const c4c::codegen::lir::LirFunction& fn,
             msg + " should carry the lowered parameter name");
   expect_true(fn.signature_params[0].type.base == expected_base,
               msg + " should carry the HIR parameter type");
+  expect_true(fn.signature_params[0].is_byval == expected_byval,
+              msg + " should carry explicit structured byval metadata");
 }
 
 void test_owned_type_spec_rejects_stale_rendered_compatibility() {
@@ -326,7 +329,7 @@ int defined_void_params(void) {
 
   const auto& declared_pair = require_function(lir_module, "declared_pair", true);
   expect_struct_signature_refs(lir_module, declared_pair);
-  expect_single_signature_param(declared_pair, "%p.input", c4c::TB_STRUCT,
+  expect_single_signature_param(declared_pair, "%p.input", c4c::TB_STRUCT, false,
                                 "declared aggregate signature metadata");
   expect_true(!declared_pair.signature_is_variadic,
               "non-variadic declaration should carry a structured variadic=false flag");
@@ -335,7 +338,7 @@ int defined_void_params(void) {
 
   const auto& defined_pair = require_function(lir_module, "defined_pair", false);
   expect_struct_signature_refs(lir_module, defined_pair);
-  expect_single_signature_param(defined_pair, "%p.input", c4c::TB_STRUCT,
+  expect_single_signature_param(defined_pair, "%p.input", c4c::TB_STRUCT, false,
                                 "defined aggregate signature metadata");
   expect_true(!defined_pair.signature_is_variadic,
               "non-variadic definition should carry a structured variadic=false flag");
@@ -345,12 +348,12 @@ int defined_void_params(void) {
   const std::string byval_param_text = "ptr byval(%struct.Big) align 8";
   const auto& declared_big = require_function(lir_module, "declared_big", true);
   expect_byval_signature_refs(declared_big, byval_param_text);
-  expect_single_signature_param(declared_big, "%p.input", c4c::TB_STRUCT,
+  expect_single_signature_param(declared_big, "%p.input", c4c::TB_STRUCT, true,
                                 "declared byval signature metadata");
 
   const auto& defined_big = require_function(lir_module, "defined_big", false);
   expect_byval_signature_refs(defined_big, byval_param_text);
-  expect_single_signature_param(defined_big, "%p.input", c4c::TB_STRUCT,
+  expect_single_signature_param(defined_big, "%p.input", c4c::TB_STRUCT, true,
                                 "defined byval signature metadata");
 
   const auto& declared_variadic =
@@ -359,7 +362,7 @@ int defined_void_params(void) {
               "variadic declaration should carry a structured variadic flag");
   expect_true(!declared_variadic.signature_has_void_param_list,
               "variadic declaration should not carry a void-param-list flag");
-  expect_single_signature_param(declared_variadic, "%p.fixed", c4c::TB_INT,
+  expect_single_signature_param(declared_variadic, "%p.fixed", c4c::TB_INT, false,
                                 "declared variadic signature metadata");
   expect_eq(std::to_string(declared_variadic.signature_param_type_refs.size()), "1",
             "variadic declaration should mirror only fixed parameters");
@@ -370,7 +373,7 @@ int defined_void_params(void) {
               "variadic definition should carry a structured variadic flag");
   expect_true(!defined_variadic.signature_has_void_param_list,
               "variadic definition should not carry a void-param-list flag");
-  expect_single_signature_param(defined_variadic, "%p.fixed", c4c::TB_INT,
+  expect_single_signature_param(defined_variadic, "%p.fixed", c4c::TB_INT, false,
                                 "defined variadic signature metadata");
   expect_eq(std::to_string(defined_variadic.signature_param_type_refs.size()), "1",
             "variadic definition should mirror only fixed parameters");
@@ -488,6 +491,22 @@ int defined_void_params(void) {
   expect_verify_rejects(
       byval_text_fallback,
       "verifier should reject a byval signature parameter mirror text mismatch");
+
+  c4c::codegen::lir::LirModule missing_byval_flag = lir_module;
+  require_mutable_function(missing_byval_flag, "declared_big", true)
+      .signature_params[0]
+      .is_byval = false;
+  expect_verify_rejects(
+      missing_byval_flag,
+      "verifier should reject byval mirror text without explicit byval metadata");
+
+  c4c::codegen::lir::LirModule invalid_byval_shape = lir_module;
+  require_mutable_function(invalid_byval_shape, "declared_pair", true)
+      .signature_params[0]
+      .is_byval = true;
+  expect_verify_rejects(
+      invalid_byval_shape,
+      "verifier should reject explicit byval metadata without a byval mirror");
 
   c4c::codegen::lir::LirModule aggregate_param_module;
   c4c::codegen::lir::LirFunction aggregate_param_decl;

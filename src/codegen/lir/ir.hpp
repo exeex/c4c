@@ -516,6 +516,7 @@ struct LirExternDecl {
 struct LirSignatureParam {
   std::string name;
   TypeSpec type{};
+  bool is_byval = false;
 };
 
 struct LirFunction {

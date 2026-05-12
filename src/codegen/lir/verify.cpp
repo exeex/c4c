@@ -820,6 +820,19 @@ void verify_function_signature_param_type_ref_mirror(
 
   if (!param) return;
 
+  if (param->is_byval && mirror.str().find("byval(") == std::string::npos) {
+    std::ostringstream detail;
+    detail << "parameter " << index << " for function '" << fn.name
+           << "' is marked byval but its type mirror lacks a byval ABI fragment";
+    fail_verify(field, detail.str());
+  }
+  if (!param->is_byval && mirror.str().find("byval(") != std::string::npos) {
+    std::ostringstream detail;
+    detail << "parameter " << index << " for function '" << fn.name
+           << "' has a byval type mirror but is not marked byval";
+    fail_verify(field, detail.str());
+  }
+
   const StructNameId expected_id =
       expected_direct_aggregate_signature_id(mod, param->type);
   const bool structured_aggregate_param =
