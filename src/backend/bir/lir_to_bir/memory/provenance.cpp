@@ -160,6 +160,12 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_pointer_store_address(
     const std::string global_name = operand.str().substr(1);
     const auto global_it = global_types.find(global_name);
     if (global_it == global_types.end()) {
+      // Step 3 fence: this raw lookup is the pointer-store address resolver's
+      // no-id compatibility bridge for imported function operands. FunctionSymbolSet
+      // is populated after LinkNameId resolution at the module boundary, so
+      // metadata-rich function identity with a missing id cannot recover through
+      // raw operand spelling here. Remove this bridge when LIR pointer-store
+      // addresses carry resolvable LinkNameId metadata.
       const auto link_name_id = function_symbols.find_raw_symbol_link_name_id(global_name);
       if (!link_name_id.has_value()) {
         return std::nullopt;
