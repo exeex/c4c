@@ -21,6 +21,9 @@ std::string render_grouped_span(c4c::backend::prepare::PreparedRegisterBank bank
                                 std::optional<std::string_view> register_name,
                                 std::size_t contiguous_width,
                                 const std::vector<std::string>& occupied_register_names) {
+  // Step 5: x86 route summaries print target-physical register spellings from
+  // prepared/prealloc authority. These strings are debug display, not semantic
+  // identity recovery.
   std::ostringstream out;
   out << c4c::backend::prepare::prepared_register_bank_name(bank) << ":";
   if (register_name.has_value()) {
@@ -57,6 +60,9 @@ void append_grouped_authority(std::ostringstream& out,
                               const c4c::backend::prepare::PreparedBirModule& module,
                               c4c::FunctionNameId function_name,
                               bool trace) {
+  // Step 5: retained prepared value names below are interned-id display for
+  // x86 route diagnostics. The route still consumes prepared IDs and carrier
+  // records before expanding them to text.
   const auto consumed = c4c::backend::x86::consume_plans(module, function_name);
   const auto* frame_plan = consumed.frame;
   const auto* call_plans = consumed.calls;
@@ -348,6 +354,8 @@ std::string render_report(const c4c::backend::prepare::PreparedBirModule& module
   out << "target arch: " << static_cast<int>(target_profile.arch) << "\n";
   out << "defined functions: " << defined_functions << "\n";
   if (focus_function.has_value()) {
+    // Step 5: x86 route focus strings are public dump filters over rendered
+    // names. They intentionally do not establish backend semantic identity.
     out << "focus function: " << *focus_function << "\n";
   }
   if (focus_block.has_value()) {

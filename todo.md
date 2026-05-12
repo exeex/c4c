@@ -9,36 +9,31 @@ Current Step Title: Audit Backend-Prepared Route-Local Names
 ## Just Finished
 
 Step 5 - Audit Backend-Prepared Route-Local Names continued with a
-route-debug focus filtering and prepared-printer display-name packet.
+target-local x86 route summary/trace packet.
 
 Audit result:
-- `backend.cpp` route-debug focus options are now explicitly fenced as public
-  dump filters over rendered function, block, and value spellings. The focus
-  path may resolve those spellings back to prepared IDs to trim debug output,
-  but it is not semantic identity recovery for backend lowering.
-- Prepared function and block focus filtering already resolves the requested
-  spelling through `PreparedNameTables` before trimming structured prepared
-  state; no behavior change was needed.
-- Prepared value focus filtering already resolves the requested spelling to a
-  `ValueNameId` and then follows `PreparedValueId` ownership where available;
-  no behavior change was needed.
-- The remaining focus-path raw comparisons for prepare-note text markers and
-  synthesized prepared stack-object names are now documented as debug/display
-  filtering only.
-- `prepared_printer.cpp` already carried the broad Step 5 display fence for
-  interned-name expansion and the printer-local function-name comparison. This
-  packet added the missing nearby fence for legacy raw call-argument source
-  symbol spellings, which are printed only as prepared route-debug text when no
-  `LinkNameId` is present.
-- `tests/backend/backend_x86_route_debug_test.cpp` was audited as route-debug
-  expectation coverage only; no expectation change was needed or made.
+- `src/backend/mir/x86/debug/debug.cpp` now classifies grouped route summaries
+  and traces as debug display over prepared/prealloc authority. Target register
+  spellings remain target-physical names, prepared value names remain
+  interned-id display, and focus strings remain public dump filters over
+  rendered text.
+- `src/backend/mir/x86/module/module.cpp` now classifies x86 function-local
+  labels as final assembly spellings derived after prepared block-label
+  validation, narrow register spellings as target-physical assembly names, and
+  grouped authority comments as diagnostics only.
+- The `module.cpp` BIR block-label raw-text fallback is documented as legacy
+  no-id compatibility only; metadata-bearing blocks still match through the
+  structured BIR label id spelling.
+- `tests/backend/backend_prepare_frame_stack_call_contract_test.cpp` and
+  `tests/backend/backend_x86_route_debug_test.cpp` were audited as expectation
+  coverage for those x86 route/debug surfaces. No behavior or expectation
+  change was needed or made.
 
 ## Suggested Next
 
 Continue Step 5 with the next backend-prepared naming packet: audit any
-remaining target-local route summaries/traces outside `backend.cpp` and
-`prepared_printer.cpp`, especially x86 debug-route helpers that print or filter
-route-local labels.
+remaining backend-prepared route-local names outside the already covered
+prealloc, prepared-printer, backend focus, and x86 summary/trace surfaces.
 
 ## Watchouts
 
@@ -145,6 +140,12 @@ route-local labels.
 - The prepared-printer legacy `source_symbol_name` fallback remains display
   only. Do not treat it as a replacement for `LinkNameId` on metadata-bearing
   call plans.
+- The x86 route summary/trace fences added here are comment-only. They
+  deliberately preserve public route-debug output while classifying retained
+  names as final asm spelling, target-physical register spelling, interned-id
+  display, or route-local debug filtering.
+- The x86 `module.cpp` block-label fallback remains no-id compatibility only.
+  Do not use it to recover stale or mismatched metadata-bearing block identity.
 
 ## Proof
 

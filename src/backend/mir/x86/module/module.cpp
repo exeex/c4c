@@ -66,6 +66,8 @@ std::string render_stack_memory_operand(std::size_t byte_offset, std::string_vie
 }
 
 std::string narrow_i16_register_name(std::string_view wide_register) {
+  // Step 5: these are target-physical x86 register spellings for final
+  // assembly emission, not backend semantic identity keys.
   if (wide_register == "rax" || wide_register == "eax") return "ax";
   if (wide_register == "rbx" || wide_register == "ebx") return "bx";
   if (wide_register == "rcx" || wide_register == "ecx") return "cx";
@@ -151,6 +153,8 @@ std::string render_global_ptr_memory_operand(const Data& data,
 }
 
 std::string render_function_local_label(std::string_view function_name, std::string_view label) {
+  // Step 5: x86 function-local labels are final assembly spellings derived
+  // after prepared block-label validation.
   return ".L" + std::string(function_name) + "_" + std::string(label);
 }
 
@@ -202,6 +206,9 @@ bool bir_block_matches_prepared_label(
     const c4c::backend::bir::NameTables& bir_names,
     const c4c::backend::prepare::PreparedNameTables& names,
     c4c::BlockLabelId prepared_label) {
+  // Step 5: the raw BIR block-label fallback is compatibility for legacy
+  // no-id blocks. Metadata-bearing blocks must match through the structured
+  // BIR label id spelling.
   const auto prepared_spelling = c4c::backend::prepare::prepared_block_label(names, prepared_label);
   if (block.label_id != c4c::kInvalidBlockLabel) {
     return bir_names.block_labels.spelling(block.label_id) == prepared_spelling;
@@ -1140,6 +1147,8 @@ std::string render_grouped_span(c4c::backend::prepare::PreparedRegisterBank bank
                                 std::optional<std::string_view> register_name,
                                 std::size_t contiguous_width,
                                 const std::vector<std::string>& occupied_register_names) {
+  // Step 5: grouped authority comments print prepared/prealloc display
+  // spellings and target-physical register names for diagnostics only.
   std::string rendered =
       std::string(c4c::backend::prepare::prepared_register_bank_name(bank)) + ":";
   rendered += register_name.has_value() ? std::string(*register_name) : std::string("<none>");
