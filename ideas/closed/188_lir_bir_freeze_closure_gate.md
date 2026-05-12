@@ -1,6 +1,6 @@
 # LIR/BIR Freeze Closure Gate
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
 
 Depends On:
@@ -78,6 +78,16 @@ from starting while freeze blockers are still implicit.
   dependencies are closed or the source scope is explicitly narrowed.
 - 2026-05-12: Dependencies 190, 191, and 194 are closed; dependency paths were
   repaired to the closed archive before reactivating this gate.
+- 2026-05-12: Closed after the freeze ledger, high-risk generated-path audit,
+  and restart-readiness decision all completed. The gate classifies retained
+  strings as presentation/output, diagnostics, route-local handles, ABI/final
+  spelling, runtime/intrinsic placeholders, or explicit raw/no-id
+  compatibility. No high-risk generated-path string authority remains
+  unclassified, no narrow blocker idea remains before backend restart, and no
+  backend restart implementation work was mixed into this gate. Close-time
+  full-suite regression guard passed using existing canonical logs:
+  `test_before.log` `3137/3137`, `test_after.log` `3137/3137`, no new
+  failures.
 
 ## Reviewer Reject Signals
 
