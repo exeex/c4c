@@ -559,6 +559,22 @@ std::string_view strip_typed_initializer_prefix(std::string_view init_text,
 
 namespace {
 
+std::optional<std::string_view> structured_type_name_for_ref(
+    const c4c::codegen::lir::LirTypeRef& type_ref,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  if (!type_ref.has_struct_name_id()) {
+    return c4c::codegen::lir::trim_lir_arg_text(type_ref.str());
+  }
+  for (const auto& [type_name, entry] : structured_layouts) {
+    (void)type_name;
+    if (entry.name_id == type_ref.struct_name_id() &&
+        entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid) {
+      return entry.type_name;
+    }
+  }
+  return std::nullopt;
+}
+
 bool append_zero_aggregate_initializer(
     std::string_view type_text,
     const TypeDeclMap& type_decls,
@@ -790,6 +806,32 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
           pointer_offsets,
           pointer_value_indices,
           0)) {
+    return std::nullopt;
+  }
+  return lowered;
+}
+
+std::optional<std::vector<bir::Value>> lower_aggregate_initializer_for_type_ref(
+    std::string_view init_text,
+    const c4c::codegen::lir::LirTypeRef& type_ref,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
+    std::unordered_map<std::size_t, std::size_t>* pointer_value_indices) {
+  const auto type_name = structured_type_name_for_ref(type_ref, structured_layouts);
+  if (!type_name.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<bir::Value> lowered;
+  if (!lower_aggregate_initializer_recursive(init_text,
+                                             *type_name,
+                                             type_decls,
+                                             &structured_layouts,
+                                             &lowered,
+                                             pointer_offsets,
+                                             pointer_value_indices,
+                                             0)) {
     return std::nullopt;
   }
   return lowered;

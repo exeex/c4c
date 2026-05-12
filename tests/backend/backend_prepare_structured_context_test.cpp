@@ -540,6 +540,7 @@ int check_aggregate_initializer_prefers_structured_layout_table() {
   using c4c::backend::lir_to_bir_detail::build_backend_structured_layout_table;
   using c4c::backend::lir_to_bir_detail::build_type_decl_map;
   using c4c::backend::lir_to_bir_detail::lower_aggregate_initializer;
+  using c4c::backend::lir_to_bir_detail::lower_aggregate_initializer_for_type_ref;
 
   lir::LirModule module;
   module.link_name_texts = std::make_shared<c4c::TextTable>();
@@ -559,9 +560,9 @@ int check_aggregate_initializer_prefers_structured_layout_table() {
       module.struct_decls, module.struct_names, mismatched_legacy_decls);
 
   std::unordered_map<std::size_t, GlobalAddress> structured_pointer_offsets;
-  const auto structured_initializer = lower_aggregate_initializer(
+  const auto structured_initializer = lower_aggregate_initializer_for_type_ref(
       "{ i32 1, i32 2 }",
-      "%struct.Pair",
+      lir::LirTypeRef::struct_type("%struct.StalePairText", pair_id),
       mismatched_legacy_decls,
       structured_table,
       &structured_pointer_offsets);
@@ -611,7 +612,12 @@ int check_global_initializer_lowering_prefers_structured_layout_table() {
 
     lir::LirGlobal global;
     global.name = include_structured_decl ? "pair_structured" : "pair_fallback";
-    global.llvm_type = "%struct.Pair";
+    global.llvm_type = include_structured_decl ? "%struct.StalePairText" : "%struct.Pair";
+    if (include_structured_decl) {
+      global.llvm_type_ref =
+          lir::LirTypeRef::struct_type("%struct.StalePairText",
+                                       module.struct_names.find("%struct.Pair"));
+    }
     global.init_text = include_structured_decl ? "{ i32 1, i32 2 }" : "{ i64 1, i64 2 }";
     module.globals.push_back(std::move(global));
     return module;

@@ -264,6 +264,7 @@ BackendStructuredLayoutTable build_backend_structured_layout_table(
 
     BackendStructuredLayoutEntry entry;
     entry.type_name = name;
+    entry.name_id = decl->name_id;
     entry.structured_found = true;
     entry.structured_layout =
         compute_structured_decl_layout(*decl, structured_decls, &active);
@@ -558,11 +559,48 @@ BackendAggregateLayoutLookup lookup_backend_aggregate_type_layout_result(
   };
 }
 
+BackendAggregateLayoutLookup lookup_backend_aggregate_type_ref_layout_result(
+    const c4c::codegen::lir::LirTypeRef& type_ref,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  if (type_ref.has_struct_name_id()) {
+    for (const auto& [type_name, entry] : structured_layouts) {
+      (void)type_name;
+      if (entry.name_id != type_ref.struct_name_id()) {
+        continue;
+      }
+      const bool mismatch = (entry.parity_checked && !entry.parity_matches) ||
+                            c4c::codegen::lir::trim_lir_arg_text(type_ref.str()) !=
+                                entry.type_name;
+      if (entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid) {
+        return BackendAggregateLayoutLookup{
+            .layout = entry.structured_layout,
+            .used_structured_layout = true,
+            .used_legacy_fallback = false,
+            .structured_text_mismatch = mismatch,
+        };
+      }
+      return BackendAggregateLayoutLookup{};
+    }
+    return BackendAggregateLayoutLookup{};
+  }
+
+  return lookup_backend_aggregate_type_layout_result(type_ref.str(), type_decls, structured_layouts);
+}
+
 AggregateTypeLayout lookup_backend_aggregate_type_layout(
     std::string_view text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts) {
   return lookup_backend_aggregate_type_layout_result(text, type_decls, structured_layouts).layout;
+}
+
+AggregateTypeLayout lookup_backend_aggregate_type_ref_layout(
+    const c4c::codegen::lir::LirTypeRef& type_ref,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  return lookup_backend_aggregate_type_ref_layout_result(type_ref, type_decls, structured_layouts)
+      .layout;
 }
 
 }  // namespace c4c::backend::lir_to_bir_detail

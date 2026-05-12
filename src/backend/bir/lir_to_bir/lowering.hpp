@@ -158,6 +158,7 @@ struct BackendStructuredLayoutEntry {
   // Structured type final spelling used to correlate the structured LIR table
   // with legacy type-decl text during parity checks.
   std::string type_name;
+  c4c::StructNameId name_id = c4c::kInvalidStructName;
   AggregateTypeLayout structured_layout;
   AggregateTypeLayout legacy_layout;
   bool legacy_found = false;
@@ -211,8 +212,16 @@ BackendAggregateLayoutLookup lookup_backend_aggregate_type_layout_result(
     std::string_view text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts);
+BackendAggregateLayoutLookup lookup_backend_aggregate_type_ref_layout_result(
+    const c4c::codegen::lir::LirTypeRef& type_ref,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts);
 AggregateTypeLayout lookup_backend_aggregate_type_layout(
     std::string_view text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts);
+AggregateTypeLayout lookup_backend_aggregate_type_ref_layout(
+    const c4c::codegen::lir::LirTypeRef& type_ref,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts);
 std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text);
@@ -238,6 +247,13 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
 std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
     std::string_view init_text,
     std::string_view type_text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
+    std::unordered_map<std::size_t, std::size_t>* pointer_value_indices = nullptr);
+std::optional<std::vector<bir::Value>> lower_aggregate_initializer_for_type_ref(
+    std::string_view init_text,
+    const c4c::codegen::lir::LirTypeRef& type_ref,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts,
     std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
