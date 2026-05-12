@@ -1,36 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/177_template_record_owner_structured_identity.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Preserve Output Compatibility
+Current Step ID: 5
+Current Step Title: Validate and Summarize
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 audited the selected template struct owner identity output surfaces after
-structured identity threading. `HirRecordOwnerTemplateIdentity` keeps
-`specialization_key` as display/compatibility payload only while equality and
-hashing use structured `SpecializationKey`, and
-`make_template_struct_instance_owner_key` copies the canonical display string
-without reparsing it. HIR template definition, function, and call display paths
-still render canonical/display text, and no compatibility expectation change was
-needed.
+Step 5 recorded the final validation summary for the template record owner
+structured identity slice. The selected path keeps semantic owner identity on
+structured `SpecializationKey` data while preserving rendered specialization
+strings as display/compatibility payload only. The slice also fixed the
+`frontend_hir_lookup_tests` regression that invalidated the earlier full-suite
+baseline candidate.
 
 ## Suggested Next
 
-Continue with the supervisor-selected acceptance, review, or lifecycle packet
-for the structured template record owner key slice.
+Run a fresh full-suite baseline/acceptance pass, then have the supervisor choose
+whether to close, review, or continue lifecycle handling for the source idea.
 
 ## Watchouts
 
-Do not normalize or reparse rendered specialization strings in later packets.
-Rendered canonical text remains display/compatibility data; structured
-`SpecializationKey` metadata remains the owner identity authority.
+Full-suite baseline candidate `82fdd6df` was rejected because
+`frontend_hir_lookup_tests` segfaulted. That regression was fixed in
+`cd3f12fcf`, but closure still needs a fresh full-suite baseline after that fix.
+Keep semantic/display separation intact: rendered canonical text remains
+display/compatibility data, and structured `SpecializationKey` metadata remains
+the owner identity authority.
 
 ## Proof
 
-Ran:
-`cmake --build build --target frontend_hir_tests cpp_hir_template_parameter_binding_key_test cpp_hir_template_realize_struct_metadata_test && ctest --test-dir build -R '^(frontend_hir_tests|cpp_hir_template_parameter_binding_key_structured_metadata|cpp_hir_template_realize_struct_structured_metadata|cpp_hir_template_def_dump|cpp_hir_template_call_info_dump)$' --output-on-failure > test_after.log`
+No new build/test run was required for this validation-summary packet.
 
-Result: passed. Proof log: `test_after.log`.
+Existing evidence recorded:
+
+- Step 2 focused proof passed 3/3.
+- Regression-fix proof passed 4/4, including `frontend_hir_lookup_tests`.
+- Step 3 display proof passed 5/5.
+- Supervisor broader proof passed 43/43:
+  `ctest --test-dir build -R '^(frontend_hir|cpp_hir_template)' --output-on-failure`
+
+Proof log state: no new `test_after.log` was produced by this packet.
