@@ -1,7 +1,8 @@
 # Sema Legacy Compatibility Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
@@ -82,3 +83,27 @@ remaining frontend-to-BIR lookup surfaces.
 - Tests only update diagnostics, rendered names, or expected text.
 - The route expands into parser, HIR, BIR, or backend work instead of staying
   Sema owned.
+
+## Closure Ledger
+
+Closed after the active six-step runbook completed its Sema-owned scope.
+Metadata-rich enum, type-binding, NTTP, consteval function, local const, and
+struct-def/layout paths now use structured key, `TextId`, or owner metadata as
+semantic authority before rendered compatibility. Complete structured misses in
+covered routes fail closed before rendered maps can recover stale names.
+
+No production Sema compatibility route was fully deleted because retained
+rendered bridges still serve explicit no-metadata, diagnostic/display,
+source-payload, final-spelling, or HIR-boundary callers. Retained bridges were
+fenced as legacy or deprecated compatibility with owner, limitation, and
+removal-condition comments.
+
+Residual parser syntax-carrier cleanup, broad HIR registry/lowerer cleanup,
+BIR/LIR/backend compatibility retirement, and final-output spelling work remain
+separate follow-up scope.
+
+Close proof: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R
+"^(frontend_parser_tests|cpp_hir_.*structured_metadata|cpp_positive_sema_)"`
+passed `923/923`; `c4c-regression-guard` comparison of `test_before.log` and
+`test_after.log` passed with no new failures.
