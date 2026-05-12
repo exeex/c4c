@@ -5084,6 +5084,152 @@ void test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag() {
               "initializer-list aggregate direct assignment must not use stale rendered tags after structured owner miss");
 }
 
+void test_compound_literal_direct_agg_structured_identity_rejects_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* unresolved_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  unresolved_record->name = arena.strdup("UnresolvedCompoundDirectAggOwner");
+  unresolved_record->unqualified_name =
+      arena.strdup("UnresolvedCompoundDirectAggOwner");
+  unresolved_record->namespace_context_id = parser.current_namespace_context_id();
+
+  c4c::TypeSpec missing_ts{};
+  missing_ts.array_size = -1;
+  missing_ts.inner_rank = -1;
+  missing_ts.base = c4c::TB_STRUCT;
+  set_legacy_tag_if_present(
+      missing_ts, arena.strdup("StaleCompoundDirectAggOwner"), 0);
+  missing_ts.tag_text_id =
+      module.link_name_texts->intern("StaleCompoundDirectAggOwner");
+  missing_ts.record_def = unresolved_record;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleCompoundDirectAggOwner";
+  stale_def.tag_text_id = missing_ts.tag_text_id;
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* source = parser.make_node(c4c::NK_VAR, 1);
+  source->name = arena.strdup("compound_source");
+  source->unqualified_name = arena.strdup("compound_source");
+  source->type = missing_ts;
+  c4c::Node* init = parser.make_node(c4c::NK_INIT_LIST, 1);
+  init->children = arena.alloc_array<c4c::Node*>(1);
+  init->children[0] = source;
+  init->n_children = 1;
+
+  c4c::TypeSpec array_ts = missing_ts;
+  array_ts.array_rank = 1;
+  array_ts.array_size = 1;
+  array_ts.array_dims[0] = 1;
+  c4c::Node* compound = parser.make_node(c4c::NK_COMPOUND_LIT, 1);
+  compound->type = array_ts;
+  compound->left = init;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  const c4c::hir::LocalId source_id{44};
+  ctx.locals["compound_source"] = source_id;
+  ctx.local_types.insert(source_id, missing_ts);
+  lowerer.lower_compound_literal_expr(&ctx, compound);
+
+  bool used_unresolved_direct_assign = false;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* assign = std::get_if<c4c::hir::AssignExpr>(&expr.payload);
+    if (!assign) continue;
+    const c4c::hir::Expr* lhs = module.find_expr(assign->lhs);
+    const c4c::hir::Expr* rhs = module.find_expr(assign->rhs);
+    const auto* index =
+        lhs ? std::get_if<c4c::hir::IndexExpr>(&lhs->payload) : nullptr;
+    const auto* ref =
+        rhs ? std::get_if<c4c::hir::DeclRef>(&rhs->payload) : nullptr;
+    if (index && ref && ref->name == "compound_source") {
+      used_unresolved_direct_assign = true;
+    }
+  }
+  expect_true(!used_unresolved_direct_assign,
+              "compound-literal aggregate direct assignment must reject unresolved structured owner identity");
+
+  const c4c::TextId collision_text =
+      module.link_name_texts->intern("RenderedCompoundDirectAggCollision");
+  c4c::Node* lhs_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  lhs_record->name = arena.strdup("RenderedCompoundDirectAggCollision");
+  lhs_record->unqualified_name =
+      arena.strdup("RenderedCompoundDirectAggCollision");
+  lhs_record->namespace_context_id = 100;
+  c4c::Node* rhs_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  rhs_record->name = arena.strdup("RenderedCompoundDirectAggCollision");
+  rhs_record->unqualified_name =
+      arena.strdup("RenderedCompoundDirectAggCollision");
+  rhs_record->namespace_context_id = 101;
+
+  c4c::TypeSpec lhs_ts{};
+  lhs_ts.array_size = -1;
+  lhs_ts.inner_rank = -1;
+  lhs_ts.base = c4c::TB_STRUCT;
+  lhs_ts.tag_text_id = collision_text;
+  lhs_ts.namespace_context_id = 100;
+  set_legacy_tag_if_present(
+      lhs_ts, arena.strdup("RenderedCompoundDirectAggCollision"), 0);
+  lhs_ts.record_def = lhs_record;
+  c4c::TypeSpec rhs_ts = lhs_ts;
+  rhs_ts.namespace_context_id = 101;
+  rhs_ts.record_def = rhs_record;
+
+  c4c::Node* collision_source = parser.make_node(c4c::NK_VAR, 1);
+  collision_source->name = arena.strdup("collision_source");
+  collision_source->unqualified_name = arena.strdup("collision_source");
+  collision_source->type = rhs_ts;
+  c4c::Node* collision_init = parser.make_node(c4c::NK_INIT_LIST, 1);
+  collision_init->children = arena.alloc_array<c4c::Node*>(1);
+  collision_init->children[0] = collision_source;
+  collision_init->n_children = 1;
+
+  c4c::TypeSpec collision_array_ts = lhs_ts;
+  collision_array_ts.array_rank = 1;
+  collision_array_ts.array_size = 1;
+  collision_array_ts.array_dims[0] = 1;
+  c4c::Node* collision_compound = parser.make_node(c4c::NK_COMPOUND_LIT, 1);
+  collision_compound->type = collision_array_ts;
+  collision_compound->left = collision_init;
+
+  c4c::hir::Lowerer::FunctionCtx collision_ctx;
+  c4c::hir::Function collision_fn;
+  collision_ctx.fn = &collision_fn;
+  collision_ctx.current_block = c4c::hir::BlockId{0};
+  const c4c::hir::LocalId collision_source_id{45};
+  collision_ctx.locals["collision_source"] = collision_source_id;
+  collision_ctx.local_types.insert(collision_source_id, rhs_ts);
+  const size_t collision_expr_start = module.expr_pool.size();
+  lowerer.lower_compound_literal_expr(&collision_ctx, collision_compound);
+
+  bool used_mismatched_direct_assign = false;
+  for (size_t i = collision_expr_start; i < module.expr_pool.size(); ++i) {
+    const auto* assign =
+        std::get_if<c4c::hir::AssignExpr>(&module.expr_pool[i].payload);
+    if (!assign) continue;
+    const c4c::hir::Expr* lhs = module.find_expr(assign->lhs);
+    const c4c::hir::Expr* rhs = module.find_expr(assign->rhs);
+    const auto* index =
+        lhs ? std::get_if<c4c::hir::IndexExpr>(&lhs->payload) : nullptr;
+    const auto* ref =
+        rhs ? std::get_if<c4c::hir::DeclRef>(&rhs->payload) : nullptr;
+    if (index && ref && ref->name == "collision_source") {
+      used_mismatched_direct_assign = true;
+    }
+  }
+  expect_true(!used_mismatched_direct_assign,
+              "compound-literal aggregate direct assignment must reject mismatched structured owner identity despite equal rendered tags");
+}
+
 void test_local_anonymous_aggregate_init_uses_record_owner_key() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -6203,6 +6349,7 @@ int main() {
   test_local_function_prototype_prefers_structured_decl_over_stale_rendered_name();
   test_var_expr_global_fallback_prefers_structured_decl_over_stale_rendered_name();
   test_local_decl_direct_agg_structured_owner_miss_rejects_stale_tag();
+  test_compound_literal_direct_agg_structured_identity_rejects_stale_tag();
   test_local_anonymous_aggregate_init_uses_record_owner_key();
   test_deferred_member_typedef_record_def_miss_rejects_stale_tag();
   test_deferred_member_typedef_owner_key_miss_rejects_stale_node_tag();

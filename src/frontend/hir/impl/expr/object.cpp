@@ -40,16 +40,65 @@ bool typespec_has_aggregate_nominal_carrier(const TypeSpec& ts) {
          (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0);
 }
 
+bool typespec_has_aggregate_structured_identity_metadata(const TypeSpec& ts) {
+  const bool has_named_record_def =
+      ts.record_def && ts.record_def->kind == NK_STRUCT_DEF &&
+      !is_generated_anonymous_record_tag(ts.record_def->name);
+  return has_named_record_def || ts.tag_text_id != kInvalidText ||
+         (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) ||
+         (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0);
+}
+
+std::optional<HirRecordOwnerKey> aggregate_direct_assign_owner_key(
+    const TypeSpec& ts,
+    TextTable* texts) {
+  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF &&
+      !is_generated_anonymous_record_tag(ts.record_def->name)) {
+    HirRecordOwnerKey key = make_hir_record_owner_key(
+        make_ns_qual(ts.record_def, texts),
+        make_unqualified_text_id(ts.record_def, texts));
+    if (hir_record_owner_key_has_complete_metadata(key)) return key;
+  }
+  if (ts.tag_text_id != kInvalidText) {
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = ts.namespace_context_id;
+    ns_qual.is_global_qualified = ts.is_global_qualified;
+    if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          ts.qualifier_text_ids,
+          ts.qualifier_text_ids + ts.n_qualifier_segments);
+    }
+    HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
+    if (hir_record_owner_key_has_complete_metadata(key)) return key;
+  }
+  return std::nullopt;
+}
+
 bool same_aggregate_direct_assign_type(const TypeSpec& lhs_ts,
-                                       const TypeSpec& rhs_ts) {
+                                       const TypeSpec& rhs_ts,
+                                       const Module* module) {
   if (!generic_type_compatible(lhs_ts, rhs_ts)) return false;
   if (lhs_ts.base != TB_STRUCT && lhs_ts.base != TB_UNION &&
       lhs_ts.base != TB_ENUM) {
     return true;
   }
+  TextTable* texts = module ? module->link_name_texts.get() : nullptr;
+  const bool lhs_has_structured_metadata =
+      typespec_has_aggregate_structured_identity_metadata(lhs_ts);
+  const bool rhs_has_structured_metadata =
+      typespec_has_aggregate_structured_identity_metadata(rhs_ts);
+  if (lhs_has_structured_metadata || rhs_has_structured_metadata) {
+    const std::optional<HirRecordOwnerKey> lhs_key =
+        aggregate_direct_assign_owner_key(lhs_ts, texts);
+    const std::optional<HirRecordOwnerKey> rhs_key =
+        aggregate_direct_assign_owner_key(rhs_ts, texts);
+    if (!lhs_key || !rhs_key || *lhs_key != *rhs_key || !module) return false;
+    const SymbolName* owner_tag = module->find_struct_def_tag_by_owner(*lhs_key);
+    return owner_tag && module->struct_defs.count(*owner_tag) != 0;
+  }
   if (typespec_has_aggregate_nominal_carrier(lhs_ts) ||
       typespec_has_aggregate_nominal_carrier(rhs_ts)) {
-    return true;
+    return false;
   }
   const std::string_view lhs_tag = typespec_legacy_tag_if_present(lhs_ts, 0);
   const std::string_view rhs_tag = typespec_legacy_tag_if_present(rhs_ts, 0);
@@ -716,7 +765,7 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
       if (!is_agg(lhs_ts)) return false;
       const TypeSpec rhs_ts = infer_generic_ctrl_type(ctx, rhs_node);
       if (rhs_ts.ptr_level != 0 || rhs_ts.array_rank != 0) return false;
-      return same_aggregate_direct_assign_type(lhs_ts, rhs_ts);
+      return same_aggregate_direct_assign_type(lhs_ts, rhs_ts, module_);
     };
     auto is_direct_char_array_init = [&](const TypeSpec& lhs_ts, const Node* rhs_node) -> bool {
       if (!rhs_node) return false;
