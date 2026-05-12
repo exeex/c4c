@@ -52,6 +52,13 @@ BirFunctionLowerer::lower_intrinsic_aggregate_layout(
     std::string_view text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
+  // Step 4 no-id compatibility bridge: local memset/memcpy intrinsic lowering
+  // owns raw rendered aggregate type text from LocalAggregateSlots and pointer
+  // slot state. Structured layouts remain authoritative when available, but
+  // these intrinsic helpers do not yet receive LirTypeRef/StructNameId metadata
+  // for the aggregate object being filled or copied. Remove this bridge once
+  // intrinsic memory lowering threads structured type identity through local
+  // aggregate and pointer-derived leaf views.
   if (structured_layouts == nullptr) {
     return lower_byval_aggregate_layout(text, type_decls);
   }

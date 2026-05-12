@@ -8,45 +8,29 @@ Current Step Title: Fence Type And Aggregate Layout Compatibility
 
 ## Just Finished
 
-Step 4 - Fence Type And Aggregate Layout Compatibility reviewed and fenced the
-remaining non-memory aggregate layout raw-text wrappers/callers in
-`global_initializers.cpp`, `globals.cpp`, and `call_abi.cpp`.
+Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the
+`memory/intrinsics.cpp` aggregate-layout wrapper and fenced
+`lower_intrinsic_aggregate_layout()` as a retained no-id compatibility bridge.
 
-`lookup_global_initializer_layout_result()` now has an explicit Step 4 no-id
-compatibility fence for aggregate zero-fill, recursive field descent, and raw
-GEP initializer offsets. The owner is global initializer lowering; the
-limitation is that recursive initializer carriers still pass rendered type text
-from the LIR initializer and computed layout fields rather than `LirTypeRef` /
-`StructNameId` per subobject. The removal condition is aggregate initializer
-recursion threading structured type identity through array, field, and GEP
-initializer paths.
-
-`lookup_global_layout_result()` now has an explicit Step 4 no-id compatibility
-fence for legacy aggregate globals whose `LirGlobal` records do not carry
-`llvm_type_ref` metadata. Metadata-bearing globals stay on
-`lookup_structured_global_layout_result()` and fail closed on `StructNameId`,
-parity, or spelling mismatch. The removal condition is aggregate `LirGlobal`
-records always carrying structured type identity.
-
-`call_abi.cpp` now explicitly fences the raw signature aggregate layout branch
-and the legacy byval parameter call sites. The owner is call ABI lowering for
-legacy aggregate returns and byval parameters; the limitation is normalized
-rendered signature text, including byval pointee text parsed from final LIR
-spelling, when no `LirTypeRef` / `StructNameId` carrier is available or the
-target ABI does not yet enforce structured aggregate signature identity. The
-removal condition is all call-signature aggregate ABI paths threading
-structured type refs and no longer depending on raw parsed signature text.
+The owner is local memset/memcpy intrinsic lowering. The limitation is that the
+intrinsic helpers receive raw rendered aggregate type text from
+`LocalAggregateSlots` and pointer slot state rather than `LirTypeRef` /
+`StructNameId` metadata for the aggregate object being filled or copied.
+Structured layouts remain authoritative when available through the existing
+`lower_byval_aggregate_layout()` path. The removal condition is intrinsic
+memory lowering threading structured type identity through local aggregate and
+pointer-derived leaf views.
 
 No test expectations were changed; the slice is comment-only and
 behavior-preserving.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing any remaining aggregate-layout compatibility
-bridges outside the memory files and the just-fenced global/call ABI paths.
-Prefer converting to structured lookup where carriers already have
-`LirTypeRef` / `StructNameId`; otherwise leave an explicit no-id fence with
-owner, limitation, and removal condition.
+Continue Step 4 by inventorying remaining `lower_byval_aggregate_layout()` or
+aggregate-layout callers that are not yet explicitly classified. Prefer
+converting to structured lookup where carriers already have `LirTypeRef` /
+`StructNameId`; otherwise leave an explicit no-id fence with owner, limitation,
+and removal condition.
 
 ## Watchouts
 
@@ -120,6 +104,9 @@ owner, limitation, and removal condition.
   deliberately preserve current compatibility behavior. Structured global
   layout and enforced AArch64 signature aggregate layout paths still fail
   closed when `LirTypeRef` / `StructNameId` metadata is missing or mismatched.
+- The `memory/intrinsics.cpp` wrapper fence is comment-only. It deliberately
+  preserves local memset/memcpy compatibility for aggregate and pointer-derived
+  leaf views that still carry only rendered type text.
 - `tests/backend/backend_lir_to_bir_notes_test.cpp` was reviewed only through
   the delegated backend proof; no expectation changes were needed or made.
 
