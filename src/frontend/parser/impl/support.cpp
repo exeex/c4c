@@ -548,7 +548,8 @@ bool eval_const_int(Node* n, long long* out,
 bool eval_const_int_with_rendered_named_const_compatibility(
     Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
-    const std::unordered_map<std::string, long long>* compatibility_named_consts);
+    const std::unordered_map<std::string, long long>* compatibility_named_consts,
+    const std::unordered_map<TextId, long long>* structured_named_consts);
 
 // Resolve the parser's provisional record carrier for parser-side constant
 // layout. The carrier is structured parser output: record kind, tag TextId,
@@ -763,6 +764,11 @@ static bool lookup_unqualified_text_id_const_int_binding(
     return true;
 }
 
+static bool node_has_parser_named_const_metadata(const Node* n) {
+    return n && (n->unqualified_text_id != kInvalidText ||
+                 n->is_global_qualified || n->n_qualifier_segments != 0);
+}
+
 // Primary parser-owned const-int surface: named constants are keyed by TextId.
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
@@ -853,19 +859,25 @@ bool eval_const_int(Node* n, long long* out,
     return false;
 }
 
-// Compatibility bridge for callers that only have rendered names. Keep this
-// path behavior-identical until those non-parser surfaces gain structured IDs,
-// but force callers to opt into the compatibility boundary by name.
+// Compatibility bridge for callers that only have rendered names. Structured
+// TextId metadata is authoritative when supplied; the rendered lookup below is
+// retained only for legacy/no-metadata callers such as HIR template probes that
+// still pass rendered NTTP names. Remove it once those callers carry TextIds.
 bool eval_const_int_with_rendered_named_const_compatibility(
     Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* compatibility_tag_map,
-    const std::unordered_map<std::string, long long>* compatibility_named_consts) {
+    const std::unordered_map<std::string, long long>* compatibility_named_consts,
+    const std::unordered_map<TextId, long long>* structured_named_consts) {
     if (!n) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
         *out = n->ival;
         return true;
     }
     if (n->kind == NK_VAR && n->name) {
+        if (structured_named_consts && node_has_parser_named_const_metadata(n)) {
+            return lookup_unqualified_text_id_const_int_binding(
+                n, structured_named_consts, out);
+        }
         if (compatibility_named_consts) {
             auto it = compatibility_named_consts->find(n->name);
             if (it != compatibility_named_consts->end()) {
@@ -877,7 +889,8 @@ bool eval_const_int_with_rendered_named_const_compatibility(
     }
     if (n->kind == NK_CAST && n->left) {
         return eval_const_int_with_rendered_named_const_compatibility(
-            n->left, out, compatibility_tag_map, compatibility_named_consts);
+            n->left, out, compatibility_tag_map, compatibility_named_consts,
+            structured_named_consts);
     }
     if (n->kind == NK_OFFSETOF) {
         if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
@@ -915,7 +928,9 @@ bool eval_const_int_with_rendered_named_const_compatibility(
         long long v;
         if (!eval_const_int_with_rendered_named_const_compatibility(
                 n->left, &v, compatibility_tag_map,
-                compatibility_named_consts)) return false;
+                compatibility_named_consts, structured_named_consts)) {
+            return false;
+        }
         if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
         if (strcmp(n->op, "+") == 0) { *out = v; return true; }
         if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
@@ -925,10 +940,14 @@ bool eval_const_int_with_rendered_named_const_compatibility(
         long long l, r;
         if (!eval_const_int_with_rendered_named_const_compatibility(
                 n->left, &l, compatibility_tag_map,
-                compatibility_named_consts)) return false;
+                compatibility_named_consts, structured_named_consts)) {
+            return false;
+        }
         if (!eval_const_int_with_rendered_named_const_compatibility(
                 n->right, &r, compatibility_tag_map,
-                compatibility_named_consts)) return false;
+                compatibility_named_consts, structured_named_consts)) {
+            return false;
+        }
         if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
         if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
         if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
@@ -952,10 +971,12 @@ bool eval_const_int_with_rendered_named_const_compatibility(
         long long c;
         if (!eval_const_int_with_rendered_named_const_compatibility(
                 n->cond, &c, compatibility_tag_map,
-                compatibility_named_consts)) return false;
+                compatibility_named_consts, structured_named_consts)) {
+            return false;
+        }
         return eval_const_int_with_rendered_named_const_compatibility(
             c ? n->then_ : n->else_, out, compatibility_tag_map,
-            compatibility_named_consts);
+            compatibility_named_consts, structured_named_consts);
     }
     return false;
 }

@@ -8,32 +8,28 @@ Current Step Title: Retire Rendered Named-Const Compatibility
 
 ## Just Finished
 
-Step 3 is complete. The qualified template member typedef route now resolves
-owner records through structured template instance keys and direct
-`record_def` carriers instead of retrying `struct_tag_def_map` with rendered
-owner spelling after a complete structured miss.
+Step 4 hard-fenced
+`eval_const_int_with_rendered_named_const_compatibility`.
 
-The expression-construction route for `Template<Args>::member` now marks an
-owner as requiring structured metadata when the qualified owner has a TextId or
-any parsed template argument carries structured identity. If complete owner
-construction still misses, the expression route no longer falls through to
-rendered owner segment splitting. The retained rendered segment split is
-documented as legacy/no-metadata compatibility with owner, limitation, and
-removal condition.
+The compatibility bridge now accepts an optional structured named-constant
+`TextId` table. When that table is supplied and the node carries parser
+named-constant metadata, structured lookup is authoritative: a hit returns the
+`TextId` value, and a miss fails closed before rendered named-constant lookup.
+The retained rendered lookup is explicitly documented as legacy/no-metadata
+compatibility for callers such as HIR template probes that still pass rendered
+NTTP names, with the removal condition tied to those callers carrying TextIds.
 
-Reviewer report `review/step3_parser_owner_recovery_review.md` found no
-blocking issues, no testcase-overfit, and recommended advancing to Step 4. It
-kept retained no-metadata/template-instantiation fallbacks as a Step 5/Step 6
-watch item, not a Step 3 blocker.
+The direct parser-support residual metadata test now proves that stale rendered
+named constants cannot override complete parser metadata in the compatibility
+bridge, including a qualified metadata miss, while preserving explicit
+rendered no-metadata behavior.
 
 ## Suggested Next
 
-Begin Step 4 by inspecting
-`eval_const_int_with_rendered_named_const_compatibility` and nearby
-parser-facing named-constant lookup or consteval handoff surfaces. Identify
-which callers already have structured named-constant metadata or
-domain-scoped TextId carriers, then choose one narrow stale-rendered
-named-const proof before changing behavior.
+Hand this Step 4 named-constant fence slice back to the supervisor for review
+and commit. If the supervisor wants additional Step 4 coverage, inspect
+parser-side `eval_const_int` call sites for any remaining rendered
+named-constant handoff before asking the plan owner to advance.
 
 ## Watchouts
 
@@ -50,23 +46,20 @@ named-const proof before changing behavior.
 - Step 4 owns named-const identity only. Do not drift back into record layout,
   owner recovery, template instantiated record lookup, or backend consteval
   work unless a separate lifecycle packet says so.
-- The target helper is explicitly named in the runbook:
-  `eval_const_int_with_rendered_named_const_compatibility`.
-- Do not treat rendered const names, AST display names, diagnostics, or source
-  spelling as semantic identity when structured named-constant metadata is
-  complete.
-- A retained rendered named-const path must be fenced as no-metadata
-  compatibility or deleted when no production caller still needs it.
+- Existing HIR template callers still use the rendered bridge without a
+  structured table. That behavior is intentionally preserved by the optional
+  parameter and should be retired only when those callers carry TextIds.
+- The compatibility helper treats parser name metadata as authoritative only
+  when a structured table is supplied. Rendered no-metadata behavior remains
+  available for explicit legacy callers.
 - Step 3 reviewer watch item: retained no-metadata/template-instantiation
   fallbacks in `base.cpp` should be accounted for in Step 5 and the Step 6
   closure ledger.
 
 ## Proof
 
-Step 3 proof passed:
+Step 4 proof passed:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_parser_debug_qualified_type_spelling_stack)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^cpp_hir_parser_support_residual_structured_metadata$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.
-
-Step 3 review: `review/step3_parser_owner_recovery_review.md`, no blockers.

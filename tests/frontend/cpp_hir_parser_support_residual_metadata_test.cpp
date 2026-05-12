@@ -162,11 +162,30 @@ void test_const_int_eval_uses_structured_named_constants() {
   expect_true(!c4c::eval_const_int(&ref, &out, nullptr, &structured),
               "parser const-int eval should fail closed after a complete TextId miss");
 
+  structured.emplace(ref.unqualified_text_id, 7);
+  expect_true(c4c::eval_const_int_with_rendered_named_const_compatibility(
+                  &ref, &out, nullptr, &rendered, &structured),
+              "rendered named-constant compatibility should use complete TextId metadata first");
+  expect_true(out == 7,
+              "TextId named constant should win inside explicit compatibility bridge");
+
+  structured.clear();
+  expect_true(!c4c::eval_const_int_with_rendered_named_const_compatibility(
+                  &ref, &out, nullptr, &rendered, &structured),
+              "rendered named-constant compatibility should fail closed after a complete TextId miss");
+
+  ref.is_global_qualified = true;
+  expect_true(!c4c::eval_const_int_with_rendered_named_const_compatibility(
+                  &ref, &out, nullptr, &rendered, &structured),
+              "rendered named-constant compatibility should not treat a qualified TextId miss as no-metadata");
+
+  ref.is_global_qualified = false;
+  ref.unqualified_text_id = c4c::kInvalidText;
   expect_true(c4c::eval_const_int_with_rendered_named_const_compatibility(
                   &ref, &out, nullptr, &rendered),
-              "rendered named-constant lookup remains explicit compatibility");
+              "rendered named-constant lookup remains explicit no-metadata compatibility");
   expect_true(out == 99,
-              "explicit rendered compatibility should preserve no-metadata behavior");
+              "explicit rendered no-metadata compatibility should preserve legacy behavior");
 }
 
 }  // namespace
