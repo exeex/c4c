@@ -1,7 +1,8 @@
 # HIR Template Registry Structured Generated Paths
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
@@ -68,6 +69,19 @@ generated template identity is structured.
   path fails closed or resolves by structured identity.
 - The closure notes state whether idea 195's HIR template-registry blocker is
   cleared.
+
+## Closure Notes
+
+Closed after the generated call, replay, deduction, collection, seed, and retry
+authority paths were fenced or documented as no-metadata compatibility. Focused
+HIR proof passed `frontend_hir_tests` and `frontend_hir_lookup_tests` 2/2 in
+`test_after.log`; the close-time regression guard passed with
+`--allow-non-decreasing-passed` against matching 2/2 `test_before.log` evidence.
+The accepted full-suite baseline for implementation commit `a07fa8929` passed
+3137/3137 in `test_baseline.log`.
+
+This clears idea 195's HIR template-registry blocker. Broader frontend-to-BIR
+closure and backend restart readiness remain separate lifecycle decisions.
 
 ## Reviewer Reject Signals
 
