@@ -8,55 +8,34 @@ Current Step Title: Fence Static-Eval Enum Compatibility
 
 ## Just Finished
 
-Step 1 is complete. Commit `acb2a34db` recorded the Sema-owned rendered
-compatibility route inventory and classified static-eval enum compatibility as
-the first conversion/fencing target.
+Step 2 fenced the static-eval enum compatibility route in
+`StaticEvalIntEnumLookupInput` and `static_eval_lookup_enum`.
 
-The inventory covers static-eval enum helpers, rendered type identity
-compatibility, consteval type-binding and NTTP bridges, rendered consteval
-function lookup, interpreter/local const by-name mirrors, and
-`ConstEvalEnv::struct_defs` layout handoff. It also records broad HIR lowerer
-rendered maps and local-name sets as later HIR compatibility-track scope unless
-a Sema proof specifically needs a boundary caller.
+Rendered enum lookup is now documented as legacy/no-metadata compatibility
+owned by Sema static-eval enum evaluation for older HIR/static-member callers.
+The comments record the limitation and removal condition: complete structured
+key or TextId misses fail closed before rendered lookup, and the rendered
+bridge can be removed once every static-eval enum caller passes structured enum
+metadata. The focused metadata test also proves direct named opt-in through
+`StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility` remains
+available for no-metadata callers.
 
 ## Suggested Next
 
-Execute Step 2: fence the static-eval enum compatibility route.
-
-Owned implementation surface for the executor packet:
-- `StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility`
-- `static_eval_int_with_rendered_enum_compatibility`
-- Existing HIR/static-eval enum initializer callers needed to prove the route
-
-Required behavior:
-- Prefer `enum_consts_by_key`, `enum_consts_by_text`, structured enum identity,
-  domain-scoped `TextId`, and owner-aware enum metadata where available.
-- A complete structured enum key or TextId miss must fail closed and must not
-  recover through stale `rendered_enum_consts`.
-- Delete rendered enum recovery if no production no-metadata caller needs it.
-  Otherwise retain it only as explicit legacy/no-metadata compatibility with
-  owner, limitation, and removal condition in nearby comments.
-- Add or tighten stale-rendered enum proof for the converted or fenced route.
+Hand Step 2 back to the supervisor for review, commit, and lifecycle routing.
+The likely next plan packet is Step 3, the `same_rendered_type_name_compatibility`
+route, unless supervisor review finds another static-eval enum gap.
 
 ## Watchouts
 
-- Keep the work Sema-owned; do not expand into parser, broad HIR lowerer, BIR,
-  LIR, backend, or full consteval-engine rewrites.
-- Do not claim progress through helper renames, diagnostics-only changes, or
-  expectation rewrites.
-- Covered metadata-rich Sema misses must not recover through rendered enum,
-  consteval function, NTTP, type-binding, local-const, or struct-def maps.
-- Retained Sema bridges need `legacy` or `deprecated` comments with owner,
-  limitation, and removal condition.
-- Several static-eval enum paths already appear to fail closed before rendered
-  lookup. Step 2 still needs stale-rendered proof and any needed comment/fence
-  tightening before it can be accepted as implementation progress.
+- The rendered enum bridge is intentionally retained because HIR/static-member
+  no-metadata callers still opt in through the named compatibility API.
+- Do not broaden Step 3 into HIR lowerer cleanup unless the supervisor assigns
+  that scope; the current plan is Sema-owned compatibility retirement.
 
 ## Proof
 
-Step 1 was inventory-only. No code validation was required by that delegated
-packet, and no `test_after.log` was produced.
+Passed delegated proof:
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^cpp_hir_sema_consteval_type_utils_structured_metadata$"' > test_after.log 2>&1`
 
-Step 2 requires a fresh build plus a supervisor-selected focused CTest subset
-covering static-eval enum compatibility after the executor changes code or
-tests.
+Result: passed, 1/1 focused test green. Proof log: `test_after.log`.

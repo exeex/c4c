@@ -72,9 +72,11 @@ struct StaticEvalIntEnumLookupInput {
   static StaticEvalIntEnumLookupInput with_rendered_enum_compatibility(
       const std::unordered_map<std::string, long long>& rendered_enum_consts);
 
-  // Retained no-metadata compatibility mirror. It is not ordinary semantic
-  // authority; complete structured key/text misses fail closed before this
-  // rendered spelling map is consulted.
+  // Legacy/no-metadata compatibility mirror owned by Sema static-eval enum
+  // evaluation for older HIR/static-member callers. It is not semantic
+  // authority: complete structured key or TextId misses fail closed before this
+  // rendered spelling map is consulted. Remove once all static-eval enum
+  // callers pass structured enum metadata instead of rendered mirrors.
   const std::unordered_map<std::string, long long>* rendered_enum_consts = nullptr;
   const hir::ConstTextMap* enum_consts_by_text = nullptr;
   const hir::ConstStructuredMap* enum_consts_by_key = nullptr;

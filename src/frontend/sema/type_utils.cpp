@@ -63,7 +63,11 @@ StaticEvalEnumLookupResult static_eval_lookup_enum(
     }
     return {StaticEvalEnumLookupStatus::Miss, 0};
   }
-  // Rendered lookup is retained only as a no-metadata compatibility bridge.
+  // Legacy/no-metadata compatibility owned by Sema static-eval enum
+  // evaluation for older HIR/static-member callers. Structured key/TextId
+  // misses return Miss above, so this rendered spelling bridge is limited to
+  // callers that provide no enum identity metadata. Remove it once every
+  // static-eval enum caller passes structured enum metadata.
   if (enum_lookup.rendered_enum_consts) {
     auto it = enum_lookup.rendered_enum_consts->find(n->name);
     if (it != enum_lookup.rendered_enum_consts->end()) {
@@ -79,6 +83,8 @@ StaticEvalIntEnumLookupInput
 StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(
     const std::unordered_map<std::string, long long>& rendered_enum_consts) {
   StaticEvalIntEnumLookupInput enum_lookup;
+  // Named opt-in for the legacy/no-metadata enum bridge; ordinary
+  // StaticEvalIntEnumLookupInput construction keeps rendered lookup disabled.
   enum_lookup.rendered_enum_consts = &rendered_enum_consts;
   return enum_lookup;
 }

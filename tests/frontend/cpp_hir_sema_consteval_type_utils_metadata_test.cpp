@@ -578,6 +578,12 @@ void test_static_eval_int_named_rendered_enum_compatibility_requires_opt_in() {
   expect_eq_int(static_cast<int>(c4c::static_eval_int(&ref, ordinary_lookup)), 0,
                 "ordinary static_eval_int should not infer rendered enum compatibility");
 
+  c4c::StaticEvalIntEnumLookupInput compatibility_lookup =
+      c4c::StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility(
+          rendered_enums);
+  expect_eq_int(static_cast<int>(c4c::static_eval_int(&ref, compatibility_lookup)), 77,
+                "no-metadata rendered enum compatibility should require named opt-in");
+
   expect_eq_int(
       static_cast<int>(
           c4c::static_eval_int_with_rendered_enum_compatibility(
