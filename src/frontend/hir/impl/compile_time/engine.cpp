@@ -295,7 +295,7 @@ struct TemplateInstantiationStep {
       const auto* call = std::get_if<CallExpr>(&expr.payload);
       if (!call || !call->template_info.has_value()) continue;
 
-      const auto& tci = *call->template_info;
+      TemplateCallInfo tci = *call->template_info;
 
       // Find the callee name from the DeclRef.
       const auto* callee_expr = module.find_expr(call->callee);
@@ -314,7 +314,7 @@ struct TemplateInstantiationStep {
       }
 
       // The callee DeclRef name is the mangled instantiation name (e.g., "add_i").
-      const std::string& target_name = decl_ref->name;
+      std::string target_name = decl_ref->name;
 
       // Check if the target function exists in the module.
       if (instantiated_fns.count(target_name)) {
