@@ -77,6 +77,9 @@ int expect_legacy_byval_call_arg_without_type_refs_still_lowers();
 int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed();
 int expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
 int expect_structured_incoming_byval_param_materializes_from_type_ref();
+int expect_incoming_byval_param_with_missing_struct_layout_fails_closed();
+int expect_incoming_byval_param_with_mismatched_struct_id_fails_closed();
+int expect_incoming_byval_param_with_opaque_struct_layout_fails_closed();
 int expect_incoming_byval_param_without_struct_id_uses_legacy_layout();
 
 int expect_failure_notes(std::string_view case_name,
@@ -2155,7 +2158,76 @@ int expect_structured_incoming_byval_param_materializes_from_type_ref() {
   return 0;
 }
 
+int expect_incoming_byval_param_with_missing_struct_layout_fails_closed() {
+  LirModule module = make_incoming_byval_param_boundary_module(lir::LirTypeRef(""));
+  const c4c::StructNameId payload_id = module.struct_names.find("%struct.Payload");
+  module.functions.front().signature_param_type_refs.front() =
+      lir::LirTypeRef::struct_type("ptr byval(%struct.Payload)", payload_id);
+  module.struct_decls.clear();
+  module.struct_decl_index.clear();
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("ID-bearing incoming byval parameter with missing structured layout should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in local-memory semantic family")) {
+    return fail("missing local-memory failure for incoming byval parameter without structured layout");
+  }
+  return 0;
+}
+
+int expect_incoming_byval_param_with_mismatched_struct_id_fails_closed() {
+  LirModule module = make_incoming_byval_param_boundary_module(lir::LirTypeRef(""));
+  module.type_decls.push_back("%struct.OtherPayload = type { i32, i32 }");
+  const c4c::StructNameId other_payload_id =
+      module.struct_names.intern("%struct.OtherPayload");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = other_payload_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+  module.functions.front().signature_param_type_refs.front() =
+      lir::LirTypeRef::struct_type("ptr byval(%struct.Payload)", other_payload_id);
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("ID-bearing incoming byval parameter with mismatched StructNameId should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in local-memory semantic family")) {
+    return fail("missing local-memory failure for incoming byval parameter with mismatched StructNameId");
+  }
+  return 0;
+}
+
+int expect_incoming_byval_param_with_opaque_struct_layout_fails_closed() {
+  LirModule module = make_incoming_byval_param_boundary_module(lir::LirTypeRef(""));
+  const c4c::StructNameId payload_id = module.struct_names.find("%struct.Payload");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = payload_id,
+      .is_opaque = true,
+  });
+  module.functions.front().signature_param_type_refs.front() =
+      lir::LirTypeRef::struct_type("ptr byval(%struct.Payload)", payload_id);
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("ID-bearing incoming byval parameter with opaque structured layout should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in local-memory semantic family")) {
+    return fail("missing local-memory failure for incoming byval parameter with opaque structured layout");
+  }
+  return 0;
+}
+
 int expect_incoming_byval_param_without_struct_id_uses_legacy_layout() {
+  // Legacy no-ID compatibility remains fenced for hand-built/generated routes
+  // that carry rendered byval text but no structured identity metadata.
   auto result = try_lower_to_bir_with_options(
       make_incoming_byval_param_boundary_module(
           lir::LirTypeRef("ptr byval(%struct.Payload) align 8")),
@@ -3980,6 +4052,24 @@ int main() {
           expect_structured_incoming_byval_param_materializes_from_type_ref();
       structured_incoming_byval_status != 0) {
     return structured_incoming_byval_status;
+  }
+
+  if (const int missing_structured_incoming_byval_status =
+          expect_incoming_byval_param_with_missing_struct_layout_fails_closed();
+      missing_structured_incoming_byval_status != 0) {
+    return missing_structured_incoming_byval_status;
+  }
+
+  if (const int mismatched_structured_incoming_byval_status =
+          expect_incoming_byval_param_with_mismatched_struct_id_fails_closed();
+      mismatched_structured_incoming_byval_status != 0) {
+    return mismatched_structured_incoming_byval_status;
+  }
+
+  if (const int opaque_structured_incoming_byval_status =
+          expect_incoming_byval_param_with_opaque_struct_layout_fails_closed();
+      opaque_structured_incoming_byval_status != 0) {
+    return opaque_structured_incoming_byval_status;
   }
 
   if (const int missing_incoming_byval_metadata_status =

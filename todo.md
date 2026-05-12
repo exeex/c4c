@@ -1,30 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/179_byval_copy_layout_structured_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Validate and Summarize
+Current Step ID: 3
+Current Step Title: Fail Closed on Missing or Mismatched Structured Metadata
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 implementation for the selected incoming byval parameter
-materialization route. `collect_aggregate_params` now uses
-`function_.signature_param_type_refs[index]` and
-`lookup_backend_aggregate_type_ref_layout_result` only when an explicit incoming
-byval parameter has a structured `StructNameId`; no-ID incoming byval params and
-ABI-generated/direct aggregate params keep the rendered-text layout fallback.
-`materialize_aggregate_param_aliases` rejects invalid aggregate-param layouts
-before declaring local slots.
+Completed Step 3 for the selected incoming byval parameter materialization route.
+Explicit incoming byval params with a `StructNameId` now always use the
+structured type-ref lookup path, so missing, stale/mismatched, or opaque
+structured metadata fails closed instead of falling back to rendered type text.
 
-Added focused notes-test coverage for incoming byval params: matching
-`StructNameId` metadata materializes leaf-slot copies from the pointer param,
-and no-ID incoming byval params preserve the legacy layout path so generated
-direct aggregate/byval ABI routes such as `00204.c::fa_s17` do not regress.
+Added focused notes-test coverage for ID-bearing incoming byval parameters with
+missing structured layout entries, mismatched `StructNameId` entries, and opaque
+structured declarations. Kept the no-ID incoming byval compatibility test fenced
+as the legacy rendered-text fallback path for routes that do not carry
+structured identity metadata.
 
 ## Suggested Next
 
-Step 3 packet: review the adjacent incoming-param local-store copy loop in
+Step 4 packet: review the adjacent incoming-param local-store copy loop in
 `src/backend/bir/lir_to_bir/memory/local_slots.cpp` against the now-structured
 `aggregate_params_` contract, and add guard coverage only if it consumes
 aggregate-param layout facts differently from the materialization route.
@@ -35,9 +32,9 @@ aggregate-param layout facts differently from the materialization route.
   unchanged; existing call-argument metadata fail-closed tests remain guard
   coverage.
 - `declare_local_aggregate_slots` still recurses by layout type spelling after
-  the top-level byval param layout has been resolved. The invalid-layout guard
-  now applies only after an ID-bearing structured lookup fails, not to legacy
-  fallback aggregate params.
+  the top-level byval param layout has been resolved. Step 3 closes the
+  ID-bearing incoming-byval selection gap, but no-ID incoming byval parameters
+  intentionally continue through the legacy rendered-text path.
 - `clang-format` is not installed in this environment, so formatting was kept
   manual.
 
@@ -52,7 +49,7 @@ CTest run.
 
 Also ran the delegated broader validation:
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee /tmp/c4c_backend_validation_byval_step2_fix.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee /tmp/c4c_backend_validation_byval_step3.log`
 
-Result: passed. `/tmp/c4c_backend_validation_byval_step2_fix.log` contains the
+Result: passed. `/tmp/c4c_backend_validation_byval_step3.log` contains the
 green build and `^backend_` CTest run.
