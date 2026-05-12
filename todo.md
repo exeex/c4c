@@ -1,49 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/191_bir_function_signature_byval_metadata_text_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Prove Stale Signature Text Cannot Override Metadata
+Current Step ID: Step 5
+Current Step Title: Validate And Prepare Completion Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 by routing incoming aggregate parameter collection through
-structured byval metadata when structured signature params exist.
+Completed Step 4 by recording the existing focused evidence that stale
+`signature_text` cannot override structured function-signature byval metadata.
 
-Changes:
-- Extended `ParsedFunctionSignatureParam` with an explicit `is_byval` fact.
-- Made `structured_signature_params` populate that fact from
-  `LirSignatureParam::is_byval`.
-- Removed the metadata-rich `collect_aggregate_params` parse of
-  `function_.signature_text` for byval detection.
-- Kept `parse_function_signature_params(function_.signature_text)` as the
-  no-structured-metadata fallback, where parsed text still supplies legacy
-  byval state.
-- Added backend coverage proving stale byval spelling in `signature_text` does
-  not rescue structured metadata when the structured byval flag is absent.
+Evidence recorded:
+- Positive structured byval: `expect_structured_incoming_byval_param_materializes_from_type_ref`
+  lowers a metadata-rich incoming byval parameter through `StructNameId`,
+  preserves BIR byval ABI metadata, and materializes the structured leaf loads.
+- Stale/missing metadata rejection: `expect_metadata_rich_incoming_byval_param_without_byval_flag_fails_closed`
+  leaves stale byval spelling in `signature_text` but clears
+  `signature_params[0].is_byval`; lowering must fail instead of recovering the
+  byval fact from rendered text.
+- Structured metadata validity: frontend verifier coverage rejects byval mirror
+  text without explicit `LirSignatureParam::is_byval`, rejects explicit byval
+  metadata without a byval mirror, and accepts stale rendered parameter text
+  when the structured `signature_param_type_refs` fact remains authoritative.
+- Legacy fallback boundary: `expect_legacy_incoming_byval_param_without_signature_type_ref_uses_legacy_layout`
+  clears `signature_params` and `signature_param_type_refs`, proving the
+  remaining `signature_text` parsing path is isolated to no-metadata fixtures.
 
 ## Suggested Next
 
-Execute Step 4: add or review focused stale-text evidence around structured
-function-signature byval authority, including positive structured byval and
-legacy no-metadata fallback behavior.
+Execute Step 5: run the supervisor-selected final validation, then record the
+implementation summary, compatibility boundary, and completion proof for
+lifecycle review.
 
 ## Watchouts
 
-- `lower_function_params_with_layouts` now uses `param.is_byval` for the
-  structured aggregate-layout requirement, but valid structured byval layout
-  still depends on the existing `signature_param_type_refs` type text and
-  `StructNameId` boundary.
-- The no-metadata compatibility path still parses `signature_text`; that is
-  intentional and should remain isolated to `!has_structured_signature_params`.
-- The new backend failure case reports through the local-memory semantic family
-  because aggregate-param alias materialization is where the stale structured
-  byval fact becomes fatal.
+- Step 5 should preserve the distinction between metadata-rich generated LIR
+  and raw/no-metadata compatibility fixtures; final evidence should call out
+  that `signature_text` remains output spelling and legacy fallback input only.
+- The stale structured byval failure reports through the local-memory semantic
+  family because aggregate-param alias materialization is where the missing
+  structured byval fact becomes fatal.
+- Final validation should refresh the canonical proof log requested by the
+  supervisor; this packet did not touch proof logs.
 
 ## Proof
 
-Ran:
+No new command run; this was an evidence-only packet per delegation.
+
+Existing focused proof cited:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_function_signature_type_ref|backend_lir_to_bir_notes)$' > test_after.log`
 
@@ -51,7 +56,7 @@ Result: passed, `2/2` tests green.
 
 Proof log: `test_after.log`.
 
-Supervisor also ran:
+Existing backend subset cited:
 
 `ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
