@@ -1,4 +1,5 @@
 #include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/bir/lir_to_bir/lowering.hpp"
 
 #include <array>
 #include <iostream>
@@ -86,6 +87,7 @@ int expect_link_name_id_symbol_identity_survives_drifted_display_names();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_pointer_initializer_symbol_names_carry_link_name_id();
 int expect_pointer_value_symbol_identity_carrier();
+int expect_addressed_global_pointer_provenance_uses_link_name_id_keys();
 int expect_bir_verifier_rejects_known_link_name_mismatches();
 int expect_bir_verifier_rejects_local_slot_id_mismatches();
 int expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
@@ -951,6 +953,187 @@ int expect_pointer_value_symbol_identity_carrier() {
       direct_call.args[1] ==
           c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_byval_payload")) {
     return fail("symbol pointer values should not compare equal to raw display-only values");
+  }
+
+  return 0;
+}
+
+int expect_addressed_global_pointer_provenance_uses_link_name_id_keys() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.PointerBox = type { ptr }");
+
+  const c4c::LinkNameId target_id = module.link_names.intern("semantic_target");
+  const c4c::LinkNameId replacement_id = module.link_names.intern("semantic_replacement");
+  const c4c::LinkNameId box_id = module.link_names.intern("semantic_pointer_box");
+  const c4c::LinkNameId user_id = module.link_names.intern("semantic_addressed_user");
+
+  LirGlobal target;
+  target.name = "drifted_target_display";
+  target.link_name_id = target_id;
+  target.llvm_type = "i32";
+  target.init_text = "i32 11";
+  target.align_bytes = 4;
+  module.globals.push_back(std::move(target));
+
+  LirGlobal replacement;
+  replacement.name = "drifted_replacement_display";
+  replacement.link_name_id = replacement_id;
+  replacement.llvm_type = "i32";
+  replacement.init_text = "i32 19";
+  replacement.align_bytes = 4;
+  module.globals.push_back(std::move(replacement));
+
+  LirGlobal box;
+  box.name = "drifted_pointer_box_display";
+  box.link_name_id = box_id;
+  box.llvm_type = "%struct.PointerBox";
+  box.init_text = "{ ptr null }";
+  box.align_bytes = 8;
+  module.globals.push_back(std::move(box));
+
+  LirFunction function;
+  function.name = "drifted_addressed_user_display";
+  function.link_name_id = user_id;
+  function.signature_text = "define i32 @semantic_addressed_user()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%slot"),
+      .element_type = "%struct.PointerBox",
+      .ptr = LirOperand("@semantic_pointer_box"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 0")},
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("@semantic_target"),
+      .ptr = LirOperand("%slot"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.ptr"),
+      .type_str = "ptr",
+      .ptr = LirOperand("%slot"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.value"),
+      .type_str = "i32",
+      .ptr = LirOperand("%loaded.ptr"),
+  });
+  entry.terminator = LirRet{
+      .value_str = "%loaded.value",
+      .type_str = "i32",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("addressed global pointer provenance fixture should lower to BIR");
+  }
+
+  const c4c::backend::bir::Function* lowered_user = nullptr;
+  for (const auto& lowered_function : result.module->functions) {
+    if (lowered_function.link_name_id == user_id) {
+      lowered_user = &lowered_function;
+      break;
+    }
+  }
+  if (lowered_user == nullptr || lowered_user->blocks.empty()) {
+    return fail("addressed global pointer provenance fixture should lower the user function");
+  }
+
+  const c4c::backend::bir::StoreGlobalInst* pointer_store = nullptr;
+  const c4c::backend::bir::LoadGlobalInst* pointer_load = nullptr;
+  const c4c::backend::bir::LoadGlobalInst* recovered_load = nullptr;
+  for (const auto& inst : lowered_user->blocks.front().insts) {
+    if (const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst);
+        store != nullptr && store->value.type == TypeKind::Ptr) {
+      pointer_store = store;
+    }
+    if (const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst);
+        load != nullptr && load->result.type == TypeKind::Ptr) {
+      pointer_load = load;
+    }
+    if (const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst);
+        load != nullptr && load->result.name == "%loaded.value") {
+      recovered_load = load;
+    }
+  }
+
+  if (pointer_store == nullptr || pointer_store->global_name != "semantic_pointer_box" ||
+      pointer_store->global_name_id != box_id || pointer_store->byte_offset != 0 ||
+      pointer_store->value.pointer_symbol_link_name_id != target_id) {
+    return fail("addressed global pointer store should carry structured box and target identities");
+  }
+  if (pointer_load == nullptr || pointer_load->global_name != "semantic_pointer_box" ||
+      pointer_load->global_name_id != box_id || pointer_load->byte_offset != 0) {
+    return fail("addressed global pointer load should carry structured box identity");
+  }
+  if (recovered_load == nullptr || recovered_load->global_name != "semantic_target" ||
+      recovered_load->global_name_id != target_id) {
+    return fail("addressed global pointer load should recover the stored target LinkNameId");
+  }
+  if (recovered_load->global_name_id == replacement_id) {
+    return fail("addressed global pointer load must not recover a stale same-spelling target id");
+  }
+
+  namespace backend = c4c::backend;
+  namespace detail = c4c::backend::lir_to_bir_detail;
+
+  const backend::GlobalPointerSlotKey structured_key{
+      .link_name_id = box_id,
+      .global_name = "same_rendered_box",
+      .byte_offset = 0,
+  };
+  const backend::GlobalPointerSlotKey stale_same_spelling_key{
+      .link_name_id = replacement_id,
+      .global_name = "same_rendered_box",
+      .byte_offset = 0,
+  };
+  const backend::GlobalPointerSlotKey raw_same_spelling_key{
+      .link_name_id = c4c::kInvalidLinkName,
+      .global_name = "same_rendered_box",
+      .byte_offset = 0,
+  };
+
+  backend::AddressedGlobalPointerSlots addressed_slots;
+  addressed_slots.emplace(structured_key,
+                          detail::GlobalAddress{
+                              .global_name = "semantic_target",
+                              .link_name_id = target_id,
+                              .value_type = TypeKind::I32,
+                              .byte_offset = 0,
+                          });
+  addressed_slots.emplace(raw_same_spelling_key, std::nullopt);
+  if (addressed_slots.find(structured_key) == addressed_slots.end()) {
+    return fail("structured addressed global pointer key should be retrievable by LinkNameId");
+  }
+  if (addressed_slots.find(stale_same_spelling_key) != addressed_slots.end()) {
+    return fail("structured addressed global pointer key must reject stale same-spelling LinkNameId");
+  }
+  if (addressed_slots.find(raw_same_spelling_key) == addressed_slots.end()) {
+    return fail("raw/no-id addressed global pointer key should remain distinct via kInvalidLinkName");
+  }
+
+  backend::AddressedGlobalPointerValueSlots addressed_value_slots;
+  addressed_value_slots.emplace(
+      structured_key,
+      backend::PointerAddress{
+          .base_value = c4c::backend::bir::Value::named_symbol_pointer(
+              "@semantic_target", target_id),
+          .value_type = TypeKind::Ptr,
+      });
+  addressed_value_slots.emplace(raw_same_spelling_key, std::nullopt);
+  if (addressed_value_slots.find(stale_same_spelling_key) != addressed_value_slots.end()) {
+    return fail("structured addressed global pointer-value key must reject stale same-spelling LinkNameId");
+  }
+  if (addressed_value_slots.find(raw_same_spelling_key) == addressed_value_slots.end()) {
+    return fail("raw/no-id addressed global pointer-value key should remain distinguishable");
   }
 
   return 0;
@@ -5213,6 +5396,12 @@ int main() {
   if (const int pointer_value_identity_status = expect_pointer_value_symbol_identity_carrier();
       pointer_value_identity_status != 0) {
     return pointer_value_identity_status;
+  }
+
+  if (const int addressed_global_pointer_identity_status =
+          expect_addressed_global_pointer_provenance_uses_link_name_id_keys();
+      addressed_global_pointer_identity_status != 0) {
+    return addressed_global_pointer_identity_status;
   }
 
   if (const int store_status = expect_failure_notes(
