@@ -8,8 +8,8 @@ Current Step Title: Run Milestone Validation
 
 ## Just Finished
 
-Step 2 - Build The Freeze Closure Ledger completed for the current targets in
-`plan.md`.
+Step 3 - Run Milestone Validation is complete for idea 188 using the existing
+green full-suite proof from the idea 189 plan-owner close gate.
 
 Idea 189 was accepted and closed. Lifecycle control returned to idea 188 after
 the direct-call no-prototype/variadic signature blocker was resolved.
@@ -61,22 +61,23 @@ High-risk generated-path assessment:
 
 ## Suggested Next
 
-Supervisor should delegate Step 3 or decide whether the existing full-suite
-proof from the idea 189 closure gate is sufficient to record milestone
-validation for idea 188.
+Supervisor should delegate Step 4 - Closure Decision to decide whether the
+ledger plus milestone validation clear backend restart, or whether a new narrow
+blocker idea is required first.
 
 ## Watchouts
 
 - Idea 188 is active again; do not start backend restart work inside this gate.
-- Treat narrow-only validation as insufficient for closure unless explicitly
-  justified by the supervisor.
+- Step 3 used milestone-level full-suite validation, not a narrow-only proof.
+- No baseline difference is present: before and after both report `3137/3137`.
+- No expectation downgrade was made or needed for this validation record.
 - If milestone validation reveals a new blocker, capture it as a separate open
   idea before backend restart.
 
 ## Proof
 
-Step 2 was a ledger-only packet; no build/test proof was required by that
-delegation.
+No new validation was run for this todo-only packet. No proof logs were created
+or modified.
 
 Plan-owner close gate for idea 189 reran:
 
@@ -86,4 +87,5 @@ Regression guard comparison:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
-Result: `PASS`; before `3137/3137`, after `3137/3137`, no new failures.
+Result: `PASS`; before `3137/3137`, after `3137/3137`, no new failures, no
+baseline difference, and no expectation downgrade.
