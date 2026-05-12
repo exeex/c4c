@@ -1,7 +1,8 @@
 # Byval Copy Layout Structured Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/173_aggregate_layout_identity_structured_boundary.md`
@@ -56,6 +57,28 @@ trust text-shaped aggregate identity.
 - Focused tests prove the structured path and a mismatch/fail-closed case.
 - Legacy/no-metadata compatibility is named and fenced.
 - Validation includes targeted byval/backend route coverage.
+
+## Completion Notes
+
+The selected route was incoming byval parameter materialization into BIR local
+slots. ID-bearing incoming byval parameters now use the structured type-ref
+lookup path, fail closed on missing, stale, mismatched, opaque, invalid,
+zero-sized, or zero-aligned structured metadata, and do not recover semantic
+layout by reparsing rendered type text.
+
+Focused notes-test coverage proves successful structured materialization from
+the byval pointer, missing structured layout rejection, mismatched
+`StructNameId` rejection, opaque declaration rejection, and the fenced legacy
+no-ID compatibility path. The Step 3 route review found no testcase overfit,
+expectation weakening, or route drift, and no additional implementation packet
+was required before closure.
+
+Close proof used the canonical focused before/after logs:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed with both logs at 6 passed, 0 failed. Broader `^backend_`
+validation also passed at `/tmp/c4c_backend_validation_byval_step3.log`.
 
 ## Reviewer Reject Signals
 
