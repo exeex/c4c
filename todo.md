@@ -1,30 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/198_parser_legacy_compatibility_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Fence Record Type And Layout Tag Map Compatibility
+Current Step ID: 3
+Current Step Title: Convert Parser Qualified-Name And Owner Recovery
 
 # Current Packet
 
 ## Just Finished
 
-Fenced the remaining template static-member owner-resolution callers in
-`src/frontend/parser/impl/types/base.cpp`. Both metadata-rich owner
-instantiation paths now use
-`parse_base_type_static_member_base_record_definition`, so complete structured
-misses do not re-enter `struct_tag_def_map`; the old unconditional
-`owner_mangled` rendered-map retry was removed.
+Step 2 was accepted by `review/step2_parser_tag_map_review.md` with no
+blocking findings. The review judged the record/layout tag-map fencing
+route-aligned, narrow proof sufficient, and complete enough to advance.
 
-No test expectations were changed. Existing focused stale-rendered coverage in
-`tests/frontend/frontend_parser_lookup_authority_tests.cpp` was preserved by
-the delegated proof.
+Accepted Step 2 state: metadata-rich static-member base and owner record routes
+in `src/frontend/parser/impl/types/base.cpp` now use structured
+`record_def`/`TextId`/context/qualifier carrier lookup, while TextId-less,
+context-less helper-local tails remain explicit legacy compatibility. No test
+expectations were changed.
 
 ## Suggested Next
 
-Review Step 2 for completeness against the source idea. The only remaining
-`resolve_record_type_spec_with_parser_tag_map_compatibility` call in
-`src/frontend/parser/impl/types/base.cpp` is the helper-local TextId-less,
-context-less legacy compatibility tail.
+Start Step 3 at `src/frontend/parser/impl/types/base.cpp:3141`: the review
+identified this as a non-blocking owner/qualified-name watch where a qualified
+template member-typedef owner can still recover through
+`definition_state_.struct_tag_def_map.find(mangled)` when
+`ensure_template_struct_instantiated_from_args` does not return
+`resolved_owner.record_def`.
+
+Convert that route to consume structured owner or `record_def` carriers where
+complete, or fence the fallback as parser-local compatibility with owner,
+limitation, and removal condition.
 
 ## Watchouts
 
@@ -48,6 +53,9 @@ context-less legacy compatibility tail.
   `ensure_template_struct_instantiated_from_args` because that API requires an
   output buffer; they are no longer used for base.cpp owner-definition lookup
   fallback.
+- Treat `src/frontend/parser/impl/types/base.cpp:3141` as the first Step 3
+  target/watch; it is owner/qualified-name recovery scope, not a Step 2
+  record/layout blocker.
 
 ## Proof
 
@@ -56,3 +64,5 @@ Passed:
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_lookup_authority_tests|frontend_parser_tests)$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.
+
+Review artifact: `review/step2_parser_tag_map_review.md`.
