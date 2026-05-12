@@ -1,39 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/190_lir_call_argument_structured_payload_boundary.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Route Generated LIR-To-BIR Calls Through Structured Facts
+Current Step ID: Step 5
+Current Step Title: Validate And Prepare Completion Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by routing LIR-to-BIR typed call parsing through
-`LirCallOp::structured_args` when the carrier is present.
+Completed `plan.md` Step 4 as evidence bookkeeping. The already-committed
+focused tests prove generated call lowering uses structured metadata instead of
+stale rendered call text when `LirCallOp::structured_args` is present.
 
-`BirFunctionLowerer::parse_typed_call` now builds argument views from
-structured argument type text and operands before using rendered `args_str`.
-Text parsing remains the empty-carrier compatibility path. Direct global call
-parsing also uses this route when structured arguments exist.
+The Step 3 backend coverage records four stale-text cases:
+- direct scalar calls prefer structured argument type/operand facts over stale
+  `args_str`;
+- direct byval calls materialize aggregate ABI facts from
+  `structured_args[index].type_ref` instead of stale rendered argument text;
+- indirect calls prefer structured callee and argument metadata over stale
+  rendered suffix or argument text;
+- no-signature structured intrinsic calls infer argument facts from
+  `structured_args` even when rendered signature metadata is absent and
+  `args_str` is stale.
 
-Byval call argument layout lookup now prefers `structured_args[index].type_ref`
-when present, while preserving legacy `arg_type_refs` and rendered text
-fallbacks for raw compatibility. Focused backend tests make `args_str`
-deliberately stale for direct scalar, direct byval, and indirect calls to prove
-stale text cannot override structured argument facts.
-
-Follow-up repair: no-signature calls with non-empty `structured_args` now infer
-parameter facts from structured argument types when rendered suffix metadata is
-absent, including builtin/intrinsic calls emitted with an empty
-`callee_type_suffix`. Fixed rendered suffix entries are still validated when
-present. Added focused coverage for a no-signature `llvm.fabs.double` call with
-stale `args_str`.
+Raw/no-carrier compatibility remains explicit: empty `structured_args` keeps the
+legacy rendered-text parser path, and the raw direct-call compatibility test
+continues to prove hand-authored/no-metadata LIR still lowers through text.
 
 ## Suggested Next
 
-Run the next supervisor-selected lifecycle packet for idea 190, likely a review
-or Step 4 handoff if the runbook has remaining structured-call payload closure
-work.
+Run `plan.md` Step 5: collect final validation/completion evidence for idea
+190. Suggested proof is the already-green focused build/test command plus the
+backend subset from Step 3, followed by any supervisor-requested broader
+validation before closure.
 
 ## Watchouts
 
@@ -45,18 +44,23 @@ work.
 - Empty `callee_type_suffix` on a structured call is intentionally treated as
   absent parameter metadata, not as an authoritative zero-argument signature.
 - The printer still uses `callee_type_suffix` and `args_str`, so stale rendered
-  text can still affect printed LLVM text until a later semantic proof separates
-  backend authority from spelling.
+  text can still affect printed LLVM text; Step 4 proves backend lowering
+  authority, not printer spelling authority.
+- Step 5 should decide whether the focused `frontend_lir_call_type_ref` plus
+  `backend_lir_to_bir_notes` proof and the broader `^backend_` subset are
+  enough to recommend closing idea 190, or whether the supervisor wants an
+  additional regression guard before lifecycle closure.
 
 ## Proof
 
-Ran:
+No new command was required for this evidence-only packet. Cited existing Step 3
+proof:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_call_type_ref|backend_lir_to_bir_notes)$' > test_after.log`
 
 Result: passed, `2/2` tests green. Proof log: `test_after.log`.
 
-Also ran:
+Also cited existing Step 3 backend subset:
 
 `ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
