@@ -186,10 +186,11 @@ struct ConstEvalEnv {
   const TypeBindingNameTextMap* type_binding_text_ids_by_name = nullptr;
   const TypeBindingNameStructuredMap* type_binding_keys_by_name = nullptr;
 
-  // NTTP substitution. Owner: call-env compatibility for legacy forwarded
-  // parameter spellings. Limitation: the rendered map is a no-metadata mirror;
-  // text/key maps are authoritative for forwarded NTTP metadata. Removal
-  // condition: all NTTP forwarding carries TextId/key metadata.
+  // NTTP substitution. Owner: call-env compatibility for legacy/deprecated
+  // forwarded/default parameter spellings. Limitation: the rendered map is a
+  // no-metadata mirror; text/key maps are authoritative for forwarded/default
+  // NTTP metadata. Removal condition: all NTTP forwarding/default consumers
+  // carry TextId/key metadata.
   const std::unordered_map<std::string, long long>* nttp_bindings = nullptr;
   const ConstTextMap* nttp_bindings_by_text = nullptr;
   const ConstStructuredMap* nttp_bindings_by_key = nullptr;
@@ -411,11 +412,11 @@ struct ConstEvalEnv {
   std::optional<long long>
   lookup_nttp_binding_by_legacy_rendered_no_metadata_bridge(
       const std::string& name) const {
-    // Owner: call-env compatibility for legacy NTTP references that still have
-    // only rendered parameter spelling. Limitation: this bridge is not binding
-    // authority for metadata-rich nodes; complete TextId/key misses must not
-    // reach it. Removal condition: all NTTP forwarding and consteval lookup
-    // consumers carry TextId/key metadata.
+    // Owner: call-env compatibility for legacy/deprecated NTTP references that
+    // still have only rendered parameter spelling. Limitation: this bridge is
+    // not binding authority for metadata-rich nodes; complete TextId/key misses
+    // must not reach it. Removal condition: all NTTP forwarding/default and
+    // consteval lookup consumers carry TextId/key metadata.
     if (!nttp_bindings) return std::nullopt;
     auto it = nttp_bindings->find(name);
     return it != nttp_bindings->end() ? std::optional<long long>(it->second)

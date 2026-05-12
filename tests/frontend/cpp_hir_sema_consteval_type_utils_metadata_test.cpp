@@ -436,6 +436,66 @@ void test_consteval_forwarded_nttp_binding_fallback_is_metadata_fenced() {
               "no-metadata forwarded NTTP compatibility should keep rendered lookup available");
 }
 
+void test_consteval_default_nttp_binding_mirror_is_metadata_fenced() {
+  c4c::TextTable texts;
+  const c4c::TextId default_text = texts.intern("DefaultN");
+  const c4c::TextId other_text = texts.intern("OtherDefaultN");
+
+  c4c::Node func_def{};
+  func_def.kind = c4c::NK_FUNCTION;
+  func_def.name = "fn";
+  func_def.unqualified_name = "fn";
+  func_def.unqualified_text_id = texts.intern("fn");
+  func_def.n_template_params = 1;
+  const char* param_names[] = {"DefaultN"};
+  c4c::TextId param_text_ids[] = {default_text};
+  bool param_is_nttp[] = {true};
+  bool param_has_default[] = {true};
+  long long param_default_values[] = {13};
+  func_def.template_param_names = param_names;
+  func_def.template_param_name_text_ids = param_text_ids;
+  func_def.template_param_is_nttp = param_is_nttp;
+  func_def.template_param_has_default = param_has_default;
+  func_def.template_param_default_values = param_default_values;
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "fn";
+  callee.has_template_args = true;
+  callee.n_template_args = 0;
+
+  c4c::hir::ConstEvalEnv outer_env{};
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::ConstMap nttp_bindings;
+  c4c::hir::ConstTextMap nttp_bindings_by_text;
+  c4c::hir::ConstStructuredMap nttp_bindings_by_key;
+  const c4c::hir::ConstEvalEnv default_env =
+      c4c::hir::bind_consteval_call_env(
+          &callee, &func_def, outer_env, &type_bindings, &nttp_bindings,
+          nullptr, nullptr, nullptr, nullptr, &nttp_bindings_by_text,
+          &nttp_bindings_by_key);
+
+  c4c::Node default_ref = var_ref("DefaultN", "DefaultN", default_text, -1);
+  std::optional<long long> value = default_env.lookup(&default_ref);
+  expect_true(value.has_value(),
+              "default NTTP TextId metadata should resolve the binding");
+  expect_eq_int(static_cast<int>(*value), 13,
+                "default NTTP metadata should carry default value authority");
+
+  c4c::Node stale_ref = var_ref("DefaultN", "DefaultN", other_text, -1);
+  value = default_env.lookup(&stale_ref);
+  expect_true(!value.has_value(),
+              "default NTTP metadata miss must not recover through rendered mirror");
+
+  c4c::Node no_metadata_ref =
+      var_ref("DefaultN", "DefaultN", c4c::kInvalidText, -1);
+  value = default_env.lookup(&no_metadata_ref);
+  expect_true(value.has_value(),
+              "no-metadata default NTTP compatibility should keep rendered lookup available");
+  expect_eq_int(static_cast<int>(*value), 13,
+                "rendered default NTTP map should remain a no-metadata bridge");
+}
+
 void test_static_eval_int_prefers_structured_enum_metadata() {
   constexpr int kNamespaceContext = 7;
   c4c::TextTable texts;
@@ -652,6 +712,7 @@ int main() {
   test_consteval_type_binding_name_mirrors_are_legacy_bridge_only();
   test_consteval_nttp_binding_mirrors_are_metadata_authority();
   test_consteval_forwarded_nttp_binding_fallback_is_metadata_fenced();
+  test_consteval_default_nttp_binding_mirror_is_metadata_fenced();
   test_static_eval_int_prefers_structured_enum_metadata();
   test_static_eval_int_structured_enum_miss_rejects_rendered_bridge();
   test_static_eval_int_uses_text_id_enum_metadata_before_rendered_bridge();

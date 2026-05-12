@@ -417,10 +417,10 @@ void record_nttp_binding_mirrors(
     ConstTextMap* out_nttp_bindings_by_text,
     ConstStructuredMap* out_nttp_bindings_by_key) {
   // Owner: consteval call-env construction. Limitation: rendered
-  // `nttp_bindings` is retained only as a no-metadata compatibility mirror;
-  // these TextId/key maps are the authoritative mirrors for covered NTTP
-  // lookup. Removal condition: all consteval NTTP consumers read metadata maps
-  // directly and the rendered call-env map can be deleted.
+  // `nttp_bindings` is retained only as a legacy/deprecated no-metadata
+  // compatibility mirror; these TextId/key maps are the authoritative mirrors
+  // for covered NTTP lookup. Removal condition: all consteval NTTP consumers
+  // read metadata maps directly and the rendered call-env map can be deleted.
   if (!structured_key.valid()) return;
   if (out_nttp_bindings_by_text) {
     (*out_nttp_bindings_by_text)[structured_key.base_text_id] = value;
@@ -862,9 +862,9 @@ ConstEvalEnv bind_consteval_call_env(
             evaluate_constant_expr(callee_expr->template_arg_exprs[i], outer_env);
         if (expr_value.ok()) {
           // Owner: consteval call-env construction. Limitation: rendered NTTP
-          // output is a compatibility mirror for callers that still lack the
-          // text/key metadata emitted beside it. Removal condition: all
-          // consteval NTTP consumers read text/key binding maps.
+          // output is a legacy/deprecated compatibility mirror for callers
+          // that still lack the text/key metadata emitted beside it. Removal
+          // condition: all consteval NTTP consumers read text/key binding maps.
           (*out_nttp_bindings)[param_name] = expr_value.as_int();
           record_nttp_binding_mirrors(
               expr_value.as_int(), nttp_binding_key_for_param(func_def, i),
@@ -881,8 +881,8 @@ ConstEvalEnv bind_consteval_call_env(
       if (text_result.status == ConstEvalValueLookupStatus::Found) {
         // Owner: forwarded-NTTP call-env compatibility. Limitation: text/key
         // lookup is authority; this rendered assignment only mirrors the
-        // result into the legacy call environment. Removal condition: all
-        // nested consteval calls consume text/key NTTP maps.
+        // result into the legacy/deprecated call environment. Removal
+        // condition: all nested consteval calls consume text/key NTTP maps.
         (*out_nttp_bindings)[param_name] = text_result.value;
         record_nttp_binding_mirrors(
             text_result.value, nttp_binding_key_for_param(func_def, i),
@@ -900,10 +900,10 @@ ConstEvalEnv bind_consteval_call_env(
       }
       if (callee_expr->template_arg_nttp_names && callee_expr->template_arg_nttp_names[i] &&
           outer_env.nttp_bindings) {
-        // Owner: legacy forwarded NTTP spelling. Limitation: no-metadata
-        // fallback only; a valid forwarded TextId miss above intentionally
-        // blocks this path. Removal condition: forwarded NTTP args always
-        // carry TextId/key metadata.
+        // Owner: legacy/deprecated forwarded NTTP spelling. Limitation:
+        // no-metadata fallback only; a valid forwarded TextId miss above
+        // intentionally blocks this path. Removal condition: forwarded NTTP
+        // args always carry TextId/key metadata.
         auto it = outer_env.nttp_bindings->find(callee_expr->template_arg_nttp_names[i]);
         if (it != outer_env.nttp_bindings->end()) {
           (*out_nttp_bindings)[param_name] = it->second;
@@ -951,9 +951,10 @@ ConstEvalEnv bind_consteval_call_env(
       if (is_nttp) {
         if (!out_nttp_bindings) continue;
         // Owner: template default syntax payloads. Limitation: default values
-        // are mirrored into the legacy rendered NTTP map and metadata maps when
-        // available; lookup authority still belongs to text/key maps. Removal
-        // condition: default NTTP consumers read only metadata maps.
+        // are mirrored into the legacy/deprecated rendered NTTP map and
+        // metadata maps when available; lookup authority still belongs to
+        // text/key maps. Removal condition: default NTTP consumers read only
+        // metadata maps.
         (*out_nttp_bindings)[param_name] = func_def->template_param_default_values[i];
         record_nttp_binding_mirrors(
             func_def->template_param_default_values[i], nttp_binding_key_for_param(func_def, i),

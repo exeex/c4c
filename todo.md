@@ -8,27 +8,21 @@ Current Step Title: Convert Type-Binding And NTTP Bridges
 
 ## Just Finished
 
-Step 3 fenced the first type-binding bridge slice without broad HIR cleanup.
+Step 3 fenced the remaining localized Sema NTTP bridges for forwarded and
+default compatibility without broad HIR cleanup. Retained rendered NTTP maps
+and call-env assignments now have nearby legacy/deprecated owner, limitation,
+and removal-condition notes.
 
-`same_rendered_type_name_compatibility` is now explicitly documented as
-legacy/no-metadata compatibility owned by Sema type-binding equivalence, with
-its limitation and removal condition recorded. The final consteval rendered
-`TypeBindings` fallback in `resolve_type` now has matching owner, limitation,
-and removal-condition notes: complete key/TextId misses and name-mirror misses
-fail closed before the rendered map can be consulted.
-
-Focused stale-rendered coverage already existed in
-`cpp_hir_sema_consteval_type_utils_structured_metadata` for complete
-structured-key and TextId type-binding misses, name mirrors not acting as
-ordinary lookup authority, and direct metadata authority winning over rendered
-maps, so this packet did not add testcase-shaped coverage.
+`cpp_hir_sema_consteval_type_utils_structured_metadata` now covers default NTTP
+call-env output as a metadata-rich path: TextId metadata resolves the default,
+a complete stale TextId miss cannot recover through the rendered mirror, and
+no-metadata callers still retain the rendered compatibility bridge.
 
 ## Suggested Next
 
-Continue Step 3 with the next bounded Sema-owned type-binding or NTTP bridge:
-audit `record_type_binding_mirrors`, `record_nttp_binding_mirrors`, and
-`bind_consteval_call_env` output mirrors for any remaining rendered-map
-authority after complete metadata misses, without broad HIR lowerer cleanup.
+Continue Step 3 by having the supervisor/reviewer decide whether the
+type-binding and NTTP bridge fencing is sufficient for this runbook step, or
+whether one more bounded Sema-only bridge remains before moving on.
 
 ## Watchouts
 
@@ -41,12 +35,14 @@ authority after complete metadata misses, without broad HIR lowerer cleanup.
   manufacture a rendered typedef display tag through
   `set_legacy_tag_if_present`; rely on existing key/TextId stale-rendered
   coverage for this ABI and avoid adding impossible rendered-tag assertions.
+- Forwarded/default NTTP rendered maps are now covered in the focused metadata
+  test; remaining Step 3 work should avoid broad HIR cleanup unless assigned.
 - Do not broaden Step 3 into HIR lowerer cleanup unless the supervisor assigns
   that scope; the current plan is Sema-owned compatibility retirement.
 
 ## Proof
 
 Passed delegated proof:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(cpp_hir_sema_consteval_type_utils_structured_metadata|frontend_parser_tests)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(cpp_hir_sema_consteval_type_utils_structured_metadata|frontend_parser_lookup_authority_tests)$"' > test_after.log 2>&1`
 
 Result: passed, 2/2 focused tests green. Proof log: `test_after.log`.
