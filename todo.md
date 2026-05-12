@@ -8,40 +8,98 @@ Current Step Title: Closure Ledger And Broader Proof
 
 ## Just Finished
 
-Step 5 - Audit Backend-Prepared Route-Local Names is lifecycle-accepted based
-on `review/step5_route_local_names_review.md`.
+Step 6 - Closure Ledger And Broader Proof is complete.
 
-Acceptance result:
-- Reviewer found no blocking findings and no testcase-overfit evidence.
-- Reviewer judged the Step 5 route aligned with
-  `ideas/open/197_bir_backend_compatibility_string_retirement.md` and the
-  active runbook.
-- Step 5 classified retained backend-prepared, route-debug, x86 route summary,
-  module label, prepared query/dispatch/operand, and lowering-helper names as
-  route-local, diagnostics/display, final assembler spelling, target-physical
-  register spelling, interned-id display, or explicit no-id compatibility.
-- Step 5 made no supported-path contract or test expectation changes.
-- Step 5 proof was build plus backend CTest; 109 backend tests passed, with the
-  disabled route-debug focus CLI tests still not run.
+Closure ledger:
+- Text/string-constant identity: `bir::StringConstant` now carries
+  `name_id`, metadata-rich LIR-to-BIR string-pool lowering materializes BIR
+  constants through the module text table, and route-local string pointer
+  aliases carry `TextId` payloads instead of treating raw spelling as identity.
+  `StringConstant::name` is retained as display/raw-only compatibility and
+  final output spelling. Step 2 intentionally did not add an upstream
+  `TextId` field to `LirStringConst`; the structured carrier is created at the
+  LIR-to-BIR boundary. Producer-owned text-pool ids, if later needed, belong in
+  a separate upstream carrier idea.
+- Link-visible symbol identity: metadata-rich globals, functions, extern
+  declarations, direct calls, pointer initializers, pointer-store bridges, call
+  pointer arguments, local aggregate pointer aliases, provenance/address
+  tracking, and global-address initializers now use `LinkNameId` /
+  `FunctionSymbolSet` authority when metadata is present. Present-but-unresolved
+  `LinkNameId` metadata fails closed. Raw spelling lookup is retained only as
+  named no-id import compatibility after the module-boundary structured checks.
+- Type/layout compatibility: metadata-bearing aggregate refs stay on
+  structured lookup paths such as `lookup_backend_aggregate_type_ref_layout_result`
+  and fail closed on stale `StructNameId`, missing id, or parity mismatch.
+  `TypeDeclMap`, selected raw layout helpers, local aggregate slot paths,
+  call ABI raw signature branches, aggregate PHI layout, and memory intrinsic
+  leaf views are fenced as no-id/rendered-text compatibility where the current
+  carriers do not yet include `LirTypeRef` / `StructNameId` authority.
+- Route-local names: backend-prepared value homes, move bundles, block indices,
+  route-debug focus selectors, prepared-printer fallback names, x86 debug route
+  summaries, module labels, prepared dispatch/query/operand names, and lowering
+  helper spellings are classified as route-local state, diagnostics/display,
+  final assembler spelling, target physical register spelling, or explicit
+  no-id compatibility. Step 5 was comment-only and did not broaden backend or
+  MIR interfaces.
+- Diagnostics/final spelling: printer text, diagnostic notes, route-debug CLI
+  filters, assembler labels/registers, linker/output names, `frame_comment()`,
+  and `stack_mem()` remain valid rendered spelling consumers. They are not
+  semantic identity and must not be used to recover metadata-rich lookup misses.
+- Deleted/converted/fenced/retained summary: the plan converted text-pool
+  string identity to BIR `TextId`, converted covered link-visible identity to
+  `LinkNameId`, routed covered aggregate layout through structured lookup,
+  fenced unavoidable rendered/raw helpers with owner/limitation/removal notes,
+  and intentionally retained printer, assembler, linker, diagnostics, debug,
+  route-local, and no-id import compatibility strings.
+
+Backend restart consumption decision:
+- New backend restart work may consume the post-retirement BIR/prepared
+  interface without adding rendered-name recovery fallbacks for covered
+  metadata-rich text, link-visible symbol, and type/layout identity. If a
+  consumer lacks the needed structured carrier, it should either stay behind the
+  existing named no-id compatibility boundary or record a separate upstream
+  carrier initiative; it should not recover stale or missing metadata by
+  matching rendered text.
+
+Retained no-id compatibility owners, limitations, and removal conditions:
+- `StringConstant::name`: owned by BIR/LIR-to-BIR string-pool compatibility and
+  final output emission. Limitation: display/raw-only compatibility when no
+  structured text identity exists. Removal condition: upstream LIR string-pool
+  constants carry producer-owned `TextId` identity and all consumers use it.
+- Raw function/global symbol lookup bridges: owned by LIR-to-BIR module
+  import compatibility. Limitation: no-id payloads only after
+  `LinkNameId`/`FunctionSymbolSet` checks; metadata-bearing misses must fail
+  closed. Removal condition: all imported globals/functions/pointer operands
+  carry resolvable `LinkNameId` metadata.
+- `TypeDeclMap` and raw aggregate layout helpers: owned by LIR-to-BIR
+  type/layout compatibility. Limitation: no-id legacy declarations, local
+  aggregate slots, selected call ABI branches, aggregate PHI plans, and memory
+  intrinsic leaf views whose carriers still expose rendered type text only.
+  Removal condition: those producers carry `LirTypeRef` / `StructNameId`
+  metadata through the relevant helper signatures.
+- Backend-prepared route-local block/value/focus fallbacks: owned by prealloc,
+  backend debug/focus, prepared-printer, and x86 route/debug/module surfaces.
+  Limitation: route-local lookup, public dump filtering, display, final asm
+  spelling, or no-id block-label compatibility only. Removal condition:
+  prepared control-flow/debug consumers carry structured BIR block/value
+  handles through the producer boundary.
+
+Focused proof coverage:
+- Structured success and stale-id fail-closed behavior are covered for BIR
+  string constants, unresolved global/function/extern `LinkNameId`, direct call
+  and pointer-symbol identity, structured global/type layout lookup, byval and
+  aggregate layout mismatch, and retained no-id layout compatibility.
+- Retained no-id compatibility is covered where executable behavior exists,
+  including raw-only string pointer lowering, no-id global/function symbol
+  bridges, and legacy/no-id `TypeDeclMap` layout fallback. Step 5 route-local
+  audit was review-accepted as comment-only classification, with no test or
+  supported-contract changes.
 
 ## Suggested Next
 
-Step 6 - Closure Ledger And Broader Proof should produce the final
-reviewer-auditable compatibility ledger in this file before closure.
-
-Closure ledger work to do:
-- Summarize deleted, converted, fenced, and intentionally retained string paths
-  across text/string-constant identity, link-visible symbol identity,
-  type/layout compatibility, route-local names, diagnostics, final spelling,
-  and explicit raw/no-id compatibility.
-- State whether new backend restart work may consume the BIR/prepared
-  interface without adding rendered-name recovery fallbacks.
-- Identify any retained no-id compatibility paths and their owner, limitation,
-  and removal condition.
-- Record the supervisor-selected broader validation command and result for the
-  final compatibility retirement slice.
-- Confirm focused proofs cover structured success, stale-id fail-closed
-  behavior, and retained no-id compatibility where applicable.
+Supervisor should route to plan-owner for lifecycle closure review of
+`ideas/open/197_bir_backend_compatibility_string_retirement.md`, using this
+ledger plus `test_before.log` / `test_after.log` as the closure evidence.
 
 ## Watchouts
 
@@ -50,14 +108,8 @@ Closure ledger work to do:
   rewrites.
 - Do not treat printer, assembler, linker, diagnostic, debug-focus, or
   route-local spelling as semantic identity.
-- If parser, Sema, HIR, or LIR source intent blocks this work, record a
-  separate open idea instead of expanding this plan.
-- Step 5 should not rewrite backend-prepared or MIR interfaces broadly. Rename
-  or comment retained route-local spellings only where that clarifies ownership
-  for backend restart consumers.
-- Step 4 is lifecycle-accepted, but the broader/full validation remains a Step 6
-  closure requirement because central layout resolver and shared backend
-  wrapper surfaces changed during Step 4.
+- If parser, Sema, HIR, or LIR source intent blocks follow-up backend restart
+  work, record a separate open idea instead of expanding this plan.
 - Step 2 intentionally did not add an upstream `TextId` field to
   `LirStringConst`; the structured carrier is created at the LIR-to-BIR
   boundary in the BIR module text table. If a later slice needs producer-owned
@@ -164,14 +216,16 @@ Closure ledger work to do:
 - Step 6 is a closure/proof ledger step, not an implementation expansion. If
   the ledger exposes a missing upstream carrier or separate backend restart
   requirement, record a separate open idea instead of widening this plan.
-- Step 6 broader validation must not treat the Step 5 backend-only proof as
-  full acceptance proof; the review noted disabled route-debug focus CLI tests.
 
 ## Proof
 
 Delegated proof run:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure' > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains the build and backend CTest output;
-CTest reported 100% tests passed, 0 tests failed out of 109 run, with 12
-disabled backend CLI trace/focus tests not run.
+Result: passed. `test_after.log` contains the build and full-suite CTest
+output. CTest reported 100% tests passed, 0 tests failed out of 3137 run, with
+12 disabled backend CLI trace/focus tests not run.
+
+Matching baseline: supervisor-provided `test_before.log` is the same full-suite
+command shape and reported 100% tests passed, 0 tests failed out of 3137 run,
+with the same 12 disabled backend CLI trace/focus tests not run.
