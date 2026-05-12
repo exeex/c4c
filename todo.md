@@ -1,52 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/186_bir_direct_symbol_identity_validation_closure.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Strengthen metadata-rich direct-symbol validation
+Current Step ID: Step 3
+Current Step Title: Add focused direct-symbol tests
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 completed for idea 186. LIR-to-BIR direct-call lowering now treats a
-direct global `LirCallOp` with structured `callee_signature` as generated
-metadata-rich user/extern call metadata and requires
-`direct_callee_link_name_id` to name a declared function symbol before it can
-fall through to raw callee spelling. Missing ids and present-but-unknown ids
-fail closed in the direct-call semantic family.
+Step 3 completed for idea 186. Focused direct-symbol coverage was reviewed and
+no additional tests were needed in this packet.
 
-Focused backend coverage was added for:
+The existing focused backend tests account for:
 
-- structured direct call with missing `direct_callee_link_name_id` failing
-  closed
-- structured direct call with an unknown/stale present `LinkNameId` failing
-  closed
-- raw/no-metadata direct call compatibility still lowering with an invalid id
-- existing structured direct-call success fixtures declaring their semantic
-  callees explicitly
-
-Existing pointer-initializer coverage still exercises present
-`initializer_function_link_name_ids` failing closed instead of falling back to
-raw function-symbol lookup.
+- structured direct-call success with `direct_callee_link_name_id` selecting the
+  declared semantic callee despite drifted display spelling
+- structured direct-call missing `direct_callee_link_name_id` rejection
+- structured direct-call present-but-unknown/stale `LinkNameId` rejection
+- direct-call verifier rejection for known id/display-name mismatches, unknown
+  ids, and id-only references to undeclared functions
+- pointer-initializer present `initializer_function_link_name_ids` fail-closed
+  behavior instead of raw function-symbol fallback
+- pointer-initializer and direct-call raw/no-id compatibility paths
+- runtime/intrinsic placeholder coverage remaining in explicit runtime
+  families rather than the metadata-rich direct-call route
 
 ## Suggested Next
 
-Run Step 3 validation review for idea 186: confirm direct-symbol closure still
-has the intended raw/no-id and runtime/placeholder carveouts, and decide
-whether additional BIR verifier coverage is needed before lifecycle closeout.
+Run Step 4 validation and handoff for idea 186: preserve the backend proof log,
+record final residual risks, and recommend supervisor lifecycle close/switch
+review if the proof remains green.
 
 ## Watchouts
 
-- The new direct-call fence keys on structured `callee_signature`; runtime and
+- The direct-call fence keys on structured `callee_signature`; runtime and
   placeholder compatibility should remain on no-signature/raw call routes.
 - Raw/no-id direct calls without structured callee metadata remain accepted.
 - Pointer initializer `initializer_function_link_name_ids` already fails
   closed on present-but-unknown ids and should not be widened through raw
   lookup.
+- Step 3 did not edit test source because the required coverage already exists
+  across focused lowering tests and BIR verifier tests.
 
 ## Proof
 
-`git diff --check -- src/backend/bir/lir_to_bir/calling.cpp tests/backend/backend_lir_to_bir_notes_test.cpp todo.md` passed.
+`git diff --check -- todo.md` passed.
 
 Proof command passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
