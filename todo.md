@@ -8,30 +8,74 @@ Current Step Title: Inventory memory/provenance global-handle surfaces
 
 ## Just Finished
 
-Lifecycle close/switch completed: idea 186 was closed after close-time backend
-regression guard passed, and idea 187 is now active at Step 1.
+Step 1 inventory completed for memory/provenance global-handle surfaces.
+
+Classification:
+
+- Route-local SSA/slot state:
+  `ValueMap`, `LocalSlotTypes`, `LocalPointerSlots`,
+  `LocalIndirectPointerSlotSet`, `LocalAddressSlots`,
+  `LocalSlotAddressSlots`, `LocalSlotPointerValues`, `LocalArraySlotMap`,
+  `DynamicLocalPointerArrayMap`, `DynamicLocalAggregateArrayMap`,
+  `DynamicPointerValueArrayMap`, `LocalPointerArrayBaseMap`,
+  `LocalAggregateSlotMap`, `LocalAggregateFieldSet`,
+  `LocalPointerValueAliasMap`, `PointerAddressMap`, and
+  `PointerAddressIntMap`. These are keyed by function-local SSA names, slot
+  names, scratch names, or byte offsets inside local aggregate layout, and are
+  not module global identity.
+- Global symbol identity/provenance:
+  `GlobalAddress`, `GlobalTypes`, `GlobalPointerMap`,
+  `GlobalObjectPointerMap`, `GlobalAddressIntMap`,
+  `GlobalObjectAddressIntMap`, `GlobalAddressSlots`,
+  `AddressedGlobalPointerSlots`, `GlobalPointerValueSlots`,
+  `AddressedGlobalPointerValueSlots`, `DynamicGlobalPointerArrayMap`,
+  `DynamicGlobalAggregateArrayMap`, and `DynamicGlobalScalarArrayMap`.
+  These carry or recover global provenance through direct global load/store,
+  global GEP, ptrtoint/inttoptr, pointer-initializer, and dynamic global array
+  paths.
+- Display/diagnostics or layout text:
+  `GlobalAddress::global_name`, dynamic global access `global_name` fields,
+  `GlobalInfo::type_text`, `initializer_symbol_name`, local aggregate
+  `type_text`/`storage_type_text`, and `GlobalPointerSlotKey::global_name`
+  currently bridge to raw LIR operands, final BIR spelling, or compatibility
+  aggregate layout text. They should not become independent semantic authority
+  when a `LinkNameId` exists.
+- Raw/no-id compatibility:
+  `FunctionSymbolSet::raw_symbol_link_name_ids`,
+  `GlobalTypes`/`TypeDeclMap` raw-name keys, direct `@global` LIR operand
+  parsing, and textual pointer initializer import paths remain compatibility
+  bridges for generated input that has not supplied a structured id. They must
+  stay distinguishable from metadata-rich generated paths.
+
+Selected Step 2 hardening target: `AddressedGlobalPointerSlots` and
+`AddressedGlobalPointerValueSlots` keying through
+`make_global_pointer_slot_key(const GlobalAddress&)`. The key currently uses
+only `{global_name, byte_offset}` even when the source `GlobalAddress` carries
+`link_name_id`; hardening should make generated global provenance keyed or
+validated by `LinkNameId` and fail closed on stale/mismatched ids while
+preserving raw/no-id compatibility.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: inventory memory/provenance global-handle
-surfaces under `src/backend/bir/lir_to_bir/memory`, classify route-local versus
-global symbol identity uses, and record the selected Step 2 hardening target.
+Execute Step 2 from `plan.md`: harden
+`AddressedGlobalPointerSlots`/`AddressedGlobalPointerValueSlots` by extending
+`GlobalPointerSlotKey` or its validation path to include `LinkNameId` authority
+for generated global provenance, then update load/store lookups that call
+`make_global_pointer_slot_key`.
 
 ## Watchouts
 
-- The source idea's dependency metadata still names the old `ideas/open/185...`
-  and `ideas/open/186...` paths; those dependencies are now closed and the
-  active runbook points readers at the closed archive paths.
-- Do not treat every string-keyed memory/provenance map as semantic global
-  identity. Local slots, local SSA names, temporaries, and explicit raw-import
-  compatibility may remain route-local strings.
-- Idea 187 is still a prerequisite before the final freeze gate in idea 188.
+- Retain compatibility for `kInvalidLinkName` paths: raw function-symbol import
+  through `FunctionSymbolSet`, direct textual global operands before structured
+  metadata exists, and legacy aggregate/type spelling used only for layout.
+- Do not harden route-local maps such as local slots, SSA aliases, pointer
+  value addresses, or dynamic local arrays; their string keys are intentional
+  function-local handles.
+- Direct global BIR operations already emit `global_name_id` through
+  `link_name_id_for_global`; Step 2 should focus on provenance side-table
+  identity, not final dump spelling.
 
 ## Proof
 
-Close-time regression guard for idea 186 passed using existing canonical
-backend logs:
-
-- command: `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-- before: 109 passed, 0 failed
-- after: 109 passed, 0 failed
+Inventory-only packet. No build/test proof was required or run, and no proof
+logs were created or modified.
