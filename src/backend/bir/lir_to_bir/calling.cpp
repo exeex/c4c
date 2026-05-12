@@ -725,6 +725,10 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     if (metadata_rich_direct_call && !call.callee_signature.has_value()) {
       return fail_call_family(call_family);
     }
+    if (call.callee_signature.has_value() &&
+        !function_symbols.contains_link_name_id(call.direct_callee_link_name_id)) {
+      return fail_call_family(call_family);
+    }
 
     if (const auto inferred_call = parse_typed_call(call); inferred_call.has_value()) {
       const std::string semantic_direct_callee =

@@ -95,6 +95,9 @@ int expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
 int expect_direct_call_prefers_structured_callee_signature_over_stale_suffix();
 int expect_direct_call_structured_byval_signature_materializes_aggregate_abi();
 int expect_direct_call_structured_byval_signature_mismatch_fails_closed();
+int expect_metadata_rich_direct_call_without_link_name_id_fails_closed();
+int expect_metadata_rich_direct_call_with_unknown_link_name_id_fails_closed();
+int expect_raw_direct_call_without_metadata_still_lowers();
 int expect_metadata_rich_direct_call_without_signature_fails_closed();
 int expect_indirect_call_prefers_structured_callee_signature_over_stale_suffix();
 int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
@@ -2117,6 +2120,13 @@ LirModule make_direct_structured_call_signature_module(bool with_signature) {
   module.struct_names.attach_text_table(module.link_name_texts.get());
   const c4c::LinkNameId callee_id = module.link_names.intern("semantic_direct_sink");
 
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_direct_sink";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
   LirFunction function;
   function.name = with_signature ? "direct_call_prefers_structured_signature"
                                  : "direct_call_missing_structured_signature";
@@ -2188,6 +2198,13 @@ LirModule make_direct_structured_byval_call_signature_module(bool mismatched_sig
   module.type_decls.push_back("%struct.OtherPayload = type { i32, i32 }");
 
   const c4c::LinkNameId callee_id = module.link_names.intern("semantic_byval_sink");
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_byval_sink";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
   const c4c::StructNameId payload_id = module.struct_names.intern("%struct.Payload");
   const c4c::StructNameId other_payload_id = module.struct_names.intern("%struct.OtherPayload");
   module.record_struct_decl(lir::LirStructDecl{
@@ -2284,6 +2301,100 @@ int expect_direct_call_structured_byval_signature_mismatch_fails_closed() {
                      "function",
                      "failed in semantic call family 'direct-call semantic family'")) {
     return fail("missing direct-call family failure for mismatched direct byval signature metadata");
+  }
+  return 0;
+}
+
+LirModule make_direct_call_symbol_identity_boundary_module(bool structured_metadata,
+                                                           c4c::LinkNameId override_callee_id) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_direct_boundary_sink");
+
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "semantic_direct_boundary_sink";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
+  LirFunction function;
+  function.name = structured_metadata ? "direct_call_missing_link_name_id"
+                                      : "raw_direct_call_without_metadata";
+  function.signature_text = std::string("define void @") + function.name + "()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  LirCallOp call{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@semantic_direct_boundary_sink"),
+      .direct_callee_link_name_id = override_callee_id,
+      .callee_type_suffix = "()",
+      .args_str = "",
+  };
+  if (structured_metadata) {
+    call.callee_signature = void_call_signature({});
+  }
+  entry.insts.push_back(std::move(call));
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_metadata_rich_direct_call_without_link_name_id_fails_closed() {
+  auto result = try_lower_to_bir_with_options(
+      make_direct_call_symbol_identity_boundary_module(true, c4c::kInvalidLinkName),
+      BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("metadata-rich direct call without direct callee LinkNameId should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'direct-call semantic family'")) {
+    return fail("missing direct-call family failure for missing direct callee LinkNameId");
+  }
+  return 0;
+}
+
+int expect_metadata_rich_direct_call_with_unknown_link_name_id_fails_closed() {
+  LirModule module =
+      make_direct_call_symbol_identity_boundary_module(true, c4c::kInvalidLinkName);
+  const c4c::LinkNameId stale_callee_id =
+      module.link_names.intern("semantic_missing_direct_boundary_sink");
+  auto* call =
+      std::get_if<LirCallOp>(&module.functions.front().blocks.front().insts.front());
+  if (call == nullptr) {
+    return fail("direct-call symbol identity fixture lost its call instruction");
+  }
+  call->direct_callee_link_name_id = stale_callee_id;
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("metadata-rich direct call with unknown LinkNameId should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'direct-call semantic family'")) {
+    return fail("missing direct-call family failure for unknown direct callee LinkNameId");
+  }
+  return 0;
+}
+
+int expect_raw_direct_call_without_metadata_still_lowers() {
+  auto result = try_lower_to_bir_with_options(
+      make_direct_call_symbol_identity_boundary_module(false, c4c::kInvalidLinkName),
+      BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("raw direct call without structured metadata should still lower");
   }
   return 0;
 }
@@ -4500,6 +4611,24 @@ int main() {
           expect_direct_call_structured_byval_signature_mismatch_fails_closed();
       direct_structured_byval_mismatch_status != 0) {
     return direct_structured_byval_mismatch_status;
+  }
+
+  if (const int missing_direct_link_name_status =
+          expect_metadata_rich_direct_call_without_link_name_id_fails_closed();
+      missing_direct_link_name_status != 0) {
+    return missing_direct_link_name_status;
+  }
+
+  if (const int unknown_direct_link_name_status =
+          expect_metadata_rich_direct_call_with_unknown_link_name_id_fails_closed();
+      unknown_direct_link_name_status != 0) {
+    return unknown_direct_link_name_status;
+  }
+
+  if (const int raw_direct_call_status =
+          expect_raw_direct_call_without_metadata_still_lowers();
+      raw_direct_call_status != 0) {
+    return raw_direct_call_status;
   }
 
   if (const int missing_direct_signature_status =
