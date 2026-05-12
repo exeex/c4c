@@ -1,8 +1,9 @@
 Status: Active
 Source Idea Path: ideas/open/179_byval_copy_layout_structured_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Fail Closed on Missing or Mismatched Structured Metadata
+Current Step ID: 5
+Current Step Title: Validate and Summarize
+你該做code review了
 
 # Current Packet
 
