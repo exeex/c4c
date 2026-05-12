@@ -274,6 +274,15 @@ struct LirGepOp {
   std::vector<std::string> indices;  // each entry is "type value" (e.g. "i32 0", "i64 5")
 };
 
+struct LirCallSignature {
+  std::optional<LirTypeRef> return_type_ref;
+  std::vector<std::string> fixed_param_types;
+  std::vector<LirTypeRef> fixed_param_type_refs;
+  bool is_variadic = false;
+  bool has_unspecified_params = false;
+  bool has_void_param_list = false;
+};
+
 // Typed call instruction.
 // Covers both direct calls, indirect calls, and intrinsic calls.
 struct LirCallOp {
@@ -284,6 +293,7 @@ struct LirCallOp {
   std::string callee_type_suffix;  // optional fn ptr type suffix (empty for direct calls)
   std::string args_str;            // pre-formatted argument string (e.g. "i32 %t1, i32 %t2")
   std::vector<LirTypeRef> arg_type_refs;  // Mirrors argument type fragments when available
+  std::optional<LirCallSignature> callee_signature;  // Structured fn-ptr callee signature.
 };
 
 // Typed binary arithmetic/bitwise/unary operation.

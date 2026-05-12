@@ -234,6 +234,48 @@ void verify_call_arg_type_ref_mirror(const LirModule& mod,
   }
 }
 
+void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call) {
+  if (!call.callee_signature.has_value()) return;
+
+  const LirCallSignature& sig = *call.callee_signature;
+  if (sig.return_type_ref.has_value()) {
+    verify_call_return_type_ref_mirror(mod, *sig.return_type_ref);
+    if (*sig.return_type_ref != call.return_type) {
+      fail_verify("LirCallOp.callee_signature.return_type_ref",
+                  "structured callee return type must match call return type");
+    }
+  }
+
+  if (sig.has_void_param_list) {
+    if (!sig.fixed_param_types.empty() || !sig.fixed_param_type_refs.empty()) {
+      fail_verify("LirCallOp.callee_signature",
+                  "void parameter list must not carry fixed parameter mirrors");
+    }
+    if (sig.is_variadic) {
+      fail_verify("LirCallOp.callee_signature",
+                  "void parameter list must not be variadic");
+    }
+  }
+
+  if (sig.fixed_param_types.size() != sig.fixed_param_type_refs.size()) {
+    fail_verify("LirCallOp.callee_signature.fixed_param_type_refs",
+                "fixed parameter type mirrors must match fixed parameter count");
+  }
+
+  for (size_t index = 0; index < sig.fixed_param_type_refs.size(); ++index) {
+    verify_call_arg_type_ref_mirror(
+        mod, sig.fixed_param_type_refs[index], sig.fixed_param_types[index], index);
+  }
+
+  if (!sig.has_unspecified_params) {
+    const auto parsed = parse_lir_typed_call_or_infer_params(call);
+    if (!parsed.has_value()) {
+      fail_verify("LirCallOp.callee_signature",
+                  "structured callee signature does not match call arguments");
+    }
+  }
+}
+
 void verify_result_operand(const LirOperand& operand, std::string_view field) {
   require_operand_kind(operand, field, {LirOperandKind::SsaValue});
 }
@@ -349,6 +391,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
                          {LirOperandKind::SsaValue}, true);
     verify_call_return_type_ref_mirror(mod, op->return_type);
     verify_pointer_operand(op->callee, "LirCallOp.callee");
+    verify_call_callee_signature(mod, *op);
     if (!op->arg_type_refs.empty()) {
       auto parsed = parse_lir_typed_call_or_infer_params(*op);
       if (!parsed.has_value()) {

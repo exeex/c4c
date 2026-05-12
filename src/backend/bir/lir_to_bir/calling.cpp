@@ -137,6 +137,23 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_minimal_scalar_type(const
 
 std::optional<BirFunctionLowerer::ParsedTypedCall> BirFunctionLowerer::parse_typed_call(
     const c4c::codegen::lir::LirCallOp& call) {
+  if (call.callee_signature.has_value()) {
+    if (const auto parsed = c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
+        parsed.has_value()) {
+      ParsedTypedCall view;
+      view.is_variadic = call.callee_signature->is_variadic;
+      view.owned_param_types.reserve(parsed->param_types.size());
+      view.param_types.reserve(parsed->param_types.size());
+      view.args = parsed->args;
+      for (std::string_view param_type : parsed->param_types) {
+        view.owned_param_types.push_back(std::string(param_type));
+        view.param_types.push_back(view.owned_param_types.back());
+      }
+      return view;
+    }
+    return std::nullopt;
+  }
+
   if (const auto param_types =
           c4c::codegen::lir::parse_lir_call_param_types(call.callee_type_suffix);
       param_types.has_value()) {

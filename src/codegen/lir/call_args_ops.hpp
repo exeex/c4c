@@ -67,7 +67,8 @@ inline LirCallOp make_lir_call_op_with_return_type_ref(
     std::string callee,
     std::string_view callee_type_suffix,
     const std::vector<OwnedLirTypedCallArg>& args,
-    LinkNameId direct_callee_link_name_id = kInvalidLinkName) {
+    LinkNameId direct_callee_link_name_id = kInvalidLinkName,
+    std::optional<LirCallSignature> callee_signature = std::nullopt) {
   const auto formatted = format_lir_call_fields(callee_type_suffix, args);
   return LirCallOp{std::string(trim_lir_arg_text(result)),
                    std::move(return_type),
@@ -75,7 +76,8 @@ inline LirCallOp make_lir_call_op_with_return_type_ref(
                    direct_callee_link_name_id,
                    formatted.callee_type_suffix,
                    formatted.args_str,
-                   lir_call_arg_type_refs(formatted, args)};
+                   lir_call_arg_type_refs(formatted, args),
+                   std::move(callee_signature)};
 }
 
 inline LirCallOp make_lir_call_op(std::string result,
@@ -83,14 +85,16 @@ inline LirCallOp make_lir_call_op(std::string result,
                                   std::string callee,
                                   std::string_view callee_type_suffix,
                                   const std::vector<OwnedLirTypedCallArg>& args,
-                                  LinkNameId direct_callee_link_name_id = kInvalidLinkName) {
+                                  LinkNameId direct_callee_link_name_id = kInvalidLinkName,
+                                  std::optional<LirCallSignature> callee_signature = std::nullopt) {
   return make_lir_call_op_with_return_type_ref(
       std::move(result),
       LirTypeRef(std::string(trim_lir_arg_text(return_type))),
       std::move(callee),
       callee_type_suffix,
       args,
-      direct_callee_link_name_id);
+      direct_callee_link_name_id,
+      std::move(callee_signature));
 }
 
 inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(
@@ -100,6 +104,44 @@ inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(
 
 inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call_or_infer_params(
     const LirCallOp& call) {
+  if (call.callee_signature.has_value() &&
+      !call.callee_signature->has_unspecified_params) {
+    const auto args = parse_lir_typed_call_args(call.args_str);
+    if (!args.has_value()) {
+      return std::nullopt;
+    }
+
+    const LirCallSignature& sig = *call.callee_signature;
+    if (sig.has_void_param_list) {
+      if (!sig.fixed_param_types.empty() || sig.is_variadic || !args->empty()) {
+        return std::nullopt;
+      }
+      return ParsedLirTypedCallView{{}, *args};
+    }
+
+    const std::size_t fixed_count = sig.fixed_param_types.size();
+    if ((!sig.is_variadic && args->size() != fixed_count) ||
+        (sig.is_variadic && args->size() < fixed_count)) {
+      return std::nullopt;
+    }
+
+    std::vector<std::string_view> param_types;
+    param_types.reserve(args->size());
+    for (std::size_t index = 0; index < args->size(); ++index) {
+      if (index < fixed_count) {
+        if (!lir_call_param_type_accepts_arg_type(sig.fixed_param_types[index],
+                                                  (*args)[index].type) &&
+            trim_lir_arg_text(sig.fixed_param_types[index]) !=
+                trim_lir_arg_text((*args)[index].type)) {
+          return std::nullopt;
+        }
+        param_types.push_back(sig.fixed_param_types[index]);
+      } else {
+        param_types.push_back((*args)[index].type);
+      }
+    }
+    return ParsedLirTypedCallView{std::move(param_types), *args};
+  }
   return parse_lir_typed_call_or_infer_params(call.callee_type_suffix, call.args_str);
 }
 

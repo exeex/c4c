@@ -1,9 +1,11 @@
 #include "call.hpp"
 #include "call_args_ops.hpp"
 #include "canonical_symbol.hpp"
+#include "../../../llvm/calling_convention.hpp"
 
 namespace c4c::codegen::lir {
 
+namespace llvm_cc = c4c::codegen::llvm_backend;
 using namespace stmt_emitter_detail;
 
 namespace {
@@ -59,6 +61,53 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
   if (name_id == kInvalidStructName) return LirTypeRef(rendered_text);
   return type.base == TB_UNION ? LirTypeRef::union_type(rendered_text, name_id)
                                : LirTypeRef::struct_type(rendered_text, name_id);
+}
+
+std::string rendered_call_signature_param_type(const c4c::hir::Module& mod,
+                                               const LirModule* lir_module,
+                                               const TypeSpec& param_ts) {
+  if (amd64_fixed_aggregate_byval(mod, param_ts)) {
+    const std::string byval_pointee_ty = llvm_value_ty(mod, param_ts);
+    return "ptr byval(" + byval_pointee_ty + ") align " +
+           std::to_string(std::max(8, object_align_bytes(mod, lir_module, param_ts)));
+  }
+  if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) return "i32";
+  return llvm_value_ty(mod, param_ts);
+}
+
+LirCallSignature lir_call_signature_from_fn_ptr_sig(const c4c::hir::Module& mod,
+                                                    LirModule* lir_module,
+                                                    const FnPtrSig& sig) {
+  LirCallSignature out;
+  const TypeSpec return_ts = sig_return_type(sig);
+  out.return_type_ref = lir_call_type_ref(
+      llvm_return_ty(mod, return_ts), lir_module, mod, return_ts);
+  out.is_variadic = sig_is_variadic(sig);
+  out.has_unspecified_params = sig.unspecified_params;
+  out.has_void_param_list = sig_has_void_param_list(sig);
+  if (out.has_void_param_list) return out;
+
+  const size_t param_count = sig_param_count(sig);
+  out.fixed_param_types.reserve(param_count);
+  out.fixed_param_type_refs.reserve(param_count);
+  for (size_t index = 0; index < param_count; ++index) {
+    const TypeSpec param_ts = sig_param_type(sig, index);
+    const std::string rendered_type =
+        rendered_call_signature_param_type(mod, lir_module, param_ts);
+    out.fixed_param_types.push_back(rendered_type);
+    out.fixed_param_type_refs.push_back(
+        lir_call_type_ref(rendered_type, lir_module, mod, param_ts));
+  }
+  return out;
+}
+
+std::optional<LirCallSignature> structured_callee_signature(
+    const c4c::hir::Module& mod,
+    LirModule* lir_module,
+    const CallTargetInfo& call_target) {
+  if (!call_target.callee_fn_ptr_sig) return std::nullopt;
+  return lir_call_signature_from_fn_ptr_sig(
+      mod, lir_module, *call_target.callee_fn_ptr_sig);
 }
 
 }  // namespace
@@ -148,7 +197,9 @@ void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                                                     call_target.callee_val,
                                                     call_target.callee_type_suffix,
                                                     args,
-                                                    call_target.callee_link_name_id));
+                                                    call_target.callee_link_name_id,
+                                                    structured_callee_signature(
+                                                        mod_, module_, call_target)));
 }
 
 std::string StmtEmitter::emit_call_with_result(
@@ -163,7 +214,8 @@ std::string StmtEmitter::emit_call_with_result(
           call_target.callee_val,
           call_target.callee_type_suffix,
           args,
-          call_target.callee_link_name_id));
+          call_target.callee_link_name_id,
+          structured_callee_signature(mod_, module_, call_target)));
   return tmp;
 }
 
