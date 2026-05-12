@@ -3,7 +3,6 @@ Source Idea Path: ideas/open/198_parser_legacy_compatibility_retirement.md
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Convert Parser Qualified-Name And Owner Recovery
-你該做test baseline review了
 
 # Current Packet
 
