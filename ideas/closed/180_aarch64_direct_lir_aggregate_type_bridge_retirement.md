@@ -1,7 +1,8 @@
 # AArch64 Direct LIR Aggregate Type Bridge Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/174_aggregate_abi_classification_structured_facts.md`
@@ -50,6 +51,23 @@ for one AArch64 path that can now provide structured facts.
 - Legacy no-id direct-LIR compatibility remains explicit.
 - Tests cover structured success and stale/missing structured metadata.
 - Validation includes targeted AArch64/direct-LIR or backend ABI coverage.
+
+## Completion Notes
+
+Closed after the selected AArch64 direct-LIR function signature ABI route
+stopped using rendered aggregate type text as normal semantic authority for
+metadata-rich aggregate returns and byval parameters. The route now resolves
+aggregate layout through structured `LirTypeRef` / `StructNameId` facts, fails
+closed for stale, missing, opaque, or no-ID metadata-rich AArch64 signature
+facts, and keeps legacy no-id compatibility fenced to explicit no-signature or
+non-selected compatibility paths.
+
+Focused coverage proves structured success, stale or missing metadata
+rejection, return and byval enforcement, and retained no-id compatibility
+boundaries. The close review reported no blocking findings and no testcase
+overfit. The close gate used matching canonical focused logs with 3/3 before
+and 3/3 after and no new failures; broader `^backend_` validation also passed
+109 executed tests with only the expected disabled MIR CLI tests skipped.
 
 ## Reviewer Reject Signals
 
