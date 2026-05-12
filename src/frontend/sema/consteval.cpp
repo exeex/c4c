@@ -562,10 +562,12 @@ const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv&
   }
 
   // Path 3: bare rendered-tag fallback. Owner: legacy HIR layout handoff with
-  // no owner index. Limitation: only safe when no owner_index is available;
-  // otherwise stale spelling could silently override structured identity.
-  // Removal condition: all HIR layout handoff provides struct_def_owner_index.
+  // no owner index and no record metadata. Limitation: only safe for
+  // no-metadata callers; otherwise stale spelling could silently override
+  // structured identity. Removal condition: all HIR layout handoff provides
+  // struct_def_owner_index.
   if (env.struct_def_owner_index) return nullptr;
+  if (record_owner_key_from_typespec(ts).has_value()) return nullptr;
   if (!compatibility_tag || !compatibility_tag[0]) return nullptr;
   auto it = env.struct_defs->find(compatibility_tag);
   if (it == env.struct_defs->end()) return nullptr;

@@ -169,6 +169,39 @@ void test_consteval_sizeof_metadata_miss_rejects_stale_rendered_tag() {
               "alignof owner metadata miss should not recover through stale rendered tag");
 }
 
+void test_consteval_struct_def_rendered_fallback_is_no_metadata_only() {
+  c4c::TextTable link_texts;
+  const c4c::TextId real_text = link_texts.intern("RealRecord");
+  const c4c::TextId stale_text = link_texts.intern("StaleRecord");
+
+  std::unordered_map<std::string, c4c::hir::HirStructDef> struct_defs;
+  struct_defs.emplace("StaleRecord", struct_def("StaleRecord", stale_text, 16, 4));
+
+  c4c::hir::ConstEvalEnv env{};
+  env.struct_defs = &struct_defs;
+  env.link_name_texts = &link_texts;
+
+  c4c::Node structured_size =
+      sizeof_type_node(record_ref(real_text, "StaleRecord"));
+  const c4c::hir::ConstEvalResult structured_size_result =
+      c4c::hir::evaluate_constant_expr(&structured_size, env);
+  expect_true(!structured_size_result.ok(),
+              "metadata-rich layout miss without owner index must not recover through rendered struct_defs");
+
+  c4c::Node structured_align =
+      alignof_type_node(record_ref(real_text, "StaleRecord"));
+  const c4c::hir::ConstEvalResult structured_align_result =
+      c4c::hir::evaluate_constant_expr(&structured_align, env);
+  expect_true(!structured_align_result.ok(),
+              "metadata-rich alignof miss without owner index must not recover through rendered struct_defs");
+
+  c4c::Node no_tag_size = sizeof_type_node(scalar_type(c4c::TB_STRUCT));
+  const c4c::hir::ConstEvalResult no_tag_size_result =
+      c4c::hir::evaluate_constant_expr(&no_tag_size, env);
+  expect_true(!no_tag_size_result.ok(),
+              "layout lookup without record metadata or rendered tag should stay unresolved");
+}
+
 void test_type_binding_equivalence_rejects_rendered_name_when_metadata_exists() {
   c4c::TypeSpec lhs = record_ref(51, "RenderedSame");
   c4c::TypeSpec rhs = record_ref(52, "RenderedSame");
@@ -763,6 +796,7 @@ void test_consteval_env_local_const_metadata_fences_rendered_mirror() {
 int main() {
   test_consteval_sizeof_prefers_owner_metadata_over_stale_rendered_tag();
   test_consteval_sizeof_metadata_miss_rejects_stale_rendered_tag();
+  test_consteval_struct_def_rendered_fallback_is_no_metadata_only();
   test_type_binding_equivalence_rejects_rendered_name_when_metadata_exists();
   test_type_binding_equivalence_keeps_no_metadata_rendered_compatibility();
   test_consteval_type_binding_intrinsic_metadata_fails_closed();
