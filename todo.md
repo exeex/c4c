@@ -1,77 +1,68 @@
 Status: Active
 Source Idea Path: ideas/open/183_lir_bir_backend_freeze_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory LIR/BIR identity surfaces
+Current Step ID: Step 2
+Current Step Title: Classify authority and compatibility boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 inventory completed for LIR/BIR/backend-prealloc identity surfaces.
+Step 2 classification completed for the Step 1 LIR/BIR/backend-prealloc
+identity inventory.
 
-Freeze-ledger inventory:
+Freeze-ledger classification:
 
-| Domain | Surface | Stored spelling/id fields | Source references | Current role / notes |
-| --- | --- | --- | --- | --- |
-| LIR symbol tables | `LirModule::link_name_texts`, `link_names`, `struct_names` | `LinkNameId`, `StructNameId`, shared text storage | `src/codegen/lir/ir.hpp:623`, `src/codegen/lir/ir.hpp:627`, `src/codegen/lir/ir.hpp:628` | Semantic source tables for link-visible names and structured type names on generated paths. |
-| LIR direct calls | `LirCallOp` plus `LirCallSignature` | `callee.str()`, `direct_callee_link_name_id`, `callee_type_suffix`, `args_str`, `arg_type_refs`, `callee_signature`, signature type refs | `src/codegen/lir/ir.hpp:277`, `src/codegen/lir/ir.hpp:288`, `src/codegen/lir/ir.hpp:292`, `src/codegen/lir/ir.hpp:295`, `src/codegen/lir/ir.hpp:296` | Mixed boundary: direct callee id is semantic when present; signature/arg strings remain compatibility and parsing input, with structured mirrors available for generated aggregate args/results. |
-| LIR functions/externs | `LirFunction`, `LirExternDecl`, extern dedup maps | final `name`, `link_name_id`, `signature_text`, `signature_*_type_ref`, `extern_decl_link_name_map`, `extern_decl_name_map` | `src/codegen/lir/ir.hpp:500`, `src/codegen/lir/ir.hpp:514`, `src/codegen/lir/ir.hpp:525`, `src/codegen/lir/ir.hpp:526`, `src/codegen/lir/ir.hpp:539`, `src/codegen/lir/ir.hpp:644` | `LinkNameId` is the semantic identity. `signature_text` and name-map dedup are retained output/no-metadata compatibility surfaces. Comment notes function refs inside `signature_text` have no structured producer carrier yet. |
-| LIR globals/initializers | `LirGlobal` and global initializer metadata | final `name`, `link_name_id`, `llvm_type`, `llvm_type_ref`, `init_text`, `initializer_function_link_name_ids` | `src/codegen/lir/ir.hpp:554`, `src/codegen/lir/ir.hpp:557`, `src/codegen/lir/ir.hpp:566`, `src/codegen/lir/ir.hpp:571`, `src/codegen/lir/ir.hpp:572` | Global identity uses `LinkNameId`; `init_text` scanning is a compatibility fallback for legacy initializer producers, while function refs in initializers can carry semantic ids. |
-| LIR type/layout facts | `LirTypeRef`, `LirStructDecl`, structured layout observations | rendered text, `LirTypeKind`, `StructNameId`, `struct_decls`, `struct_decl_index`, parity observation fields | `src/codegen/lir/types.hpp:33`, `src/codegen/lir/types.hpp:54`, `src/codegen/lir/types.hpp:72`, `src/codegen/lir/types.hpp:90`, `src/codegen/lir/ir.hpp:583`, `src/codegen/lir/ir.hpp:590`, `src/codegen/lir/ir.hpp:721`, `src/codegen/lir/ir.hpp:728` | `StructNameId` wins equality when both sides carry it; rendered type text is still final spelling and legacy/layout compatibility input. |
-| LIR verification | type/id mirror validation helpers | `require_type_ref`, `StructNameId` mirror checks, direct aggregate signature checks | `src/codegen/lir/verify.cpp:53`, `src/codegen/lir/verify.cpp:118`, `src/codegen/lir/verify.cpp:736`, `src/codegen/lir/verify.cpp:787`, `src/codegen/lir/verify.cpp:986` | Source-level guard surface ensuring generated type mirrors remain consistent with rendered text and declared struct ids. |
-| BIR name tables | `bir::NameTables` | `LinkNameTable`, `BlockLabelTable`, `SlotNameTable` | `src/backend/bir/bir.hpp:17`, `src/backend/bir/bir.hpp:60`, `src/backend/bir/bir.hpp:67` | BIR imports LIR link-name tables and adds route-local block/slot ids. |
-| BIR values/symbol pointers | `bir::Value` | display `name`, `pointer_symbol_link_name_id` | `src/backend/bir/bir.hpp:127`, `src/backend/bir/bir.hpp:133`, `src/backend/bir/bir.cpp:74` | Named value text is display/SSA spelling except pointer values denoting globals/functions, where `pointer_symbol_link_name_id` is semantic when valid. |
-| BIR globals/functions | `bir::Global`, `bir::Function` | final `name`, `link_name_id`, initializer symbol text/id | `src/backend/bir/bir.hpp:219`, `src/backend/bir/bir.hpp:221`, `src/backend/bir/bir.hpp:229`, `src/backend/bir/bir.hpp:235`, `src/backend/bir/bir.hpp:521`, `src/backend/bir/bir.hpp:525` | Link id is semantic identity; initializer symbol text is compatibility/display unless resolved to `initializer_symbol_name_id`. |
-| BIR calls and memory ops | `CallInst`, `MemoryAddress`, `LoadGlobalInst`, `StoreGlobalInst`, local slot accesses | `callee`, `callee_link_name_id`, `callee_value`, `sret_storage_name_id`, `base_link_name_id`, `base_label_id`, `base_slot_id`, `global_name_id`, `slot_id` | `src/backend/bir/bir.hpp:280`, `src/backend/bir/bir.hpp:288`, `src/backend/bir/bir.hpp:372`, `src/backend/bir/bir.hpp:378`, `src/backend/bir/bir.hpp:396`, `src/backend/bir/bir.hpp:399`, `src/backend/bir/bir.hpp:417`, `src/backend/bir/bir.hpp:429` | Calls/globals/memory carry ids when known; raw names remain accepted for unresolved compatibility and dump/display routes. |
-| BIR validation | validator lookup and id/name consistency checks | `validate_link_name_id`, `find_global`, `find_function`, duplicate id checks | `src/backend/bir/bir_validate.cpp:20`, `src/backend/bir/bir_validate.cpp:42`, `src/backend/bir/bir_validate.cpp:347`, `src/backend/bir/bir_validate.cpp:360`, `src/backend/bir/bir_validate.cpp:409`, `src/backend/bir/bir_validate.cpp:723` | Validation already fails mismatched present ids against visible names and declared globals/functions. Raw-name lookup still exists for invalid-id compatibility. |
-| LIR-to-BIR function identity | `LirFunctionIdentityLookup`, direct-call collection/repair | `by_link_name_id`, `fallback_by_name`, BIR/LIR direct call lists | `src/backend/bir/lir_to_bir.cpp:202`, `src/backend/bir/lir_to_bir.cpp:216`, `src/backend/bir/lir_to_bir.cpp:223`, `src/backend/bir/lir_to_bir.cpp:238` | Semantic function match by `LinkNameId`; fallback by final name only for raw-only LIR functions. |
-| LIR-to-BIR globals/types | `GlobalTypes`, `TypeDeclMap`, `FunctionSymbolSet`, structured layout table | raw string keys, `GlobalInfo::link_name_id`, structured layout `name_id`, legacy/structured parity flags | `src/backend/bir/lir_to_bir/lowering.hpp:52`, `src/backend/bir/lir_to_bir/lowering.hpp:78`, `src/backend/bir/lir_to_bir/lowering.hpp:84`, `src/backend/bir/lir_to_bir/lowering.hpp:138`, `src/backend/bir/lir_to_bir/lowering.hpp:157`, `src/backend/bir/lir_to_bir/module.cpp:904`, `src/backend/bir/lir_to_bir/module.cpp:920`, `src/backend/bir/lir_to_bir/module.cpp:924` | Explicit compatibility tables keyed by producer final spellings. Generated BIR output should carry ids where metadata exists; type-decl text remains a compatibility/layout bridge. |
-| LIR-to-BIR direct-call signatures | `parse_direct_global_typed_call`, byval layout lowering | parsed callee symbol string, param type strings, `arg_type_refs`, `StructNameId` checks | `src/backend/bir/lir_to_bir/calling.cpp:207`, `src/backend/bir/lir_to_bir/calling.cpp:247`, `src/backend/bir/lir_to_bir/calling.cpp:582`, `src/backend/bir/lir_to_bir/calling.cpp:590`, `src/backend/bir/lir_to_bir/calling.cpp:599` | Still parses rendered signature/arg text. Structured arg mirrors fence generated aggregate byval paths; absence of mirrors intentionally falls back to legacy text. |
-| LIR-to-BIR pointer initializers | global and aggregate initializer lowering | `initializer_symbol_name`, `initializer_function_link_name_id`, pointer offset maps keyed by byte offset | `src/backend/bir/lir_to_bir/globals.cpp:55`, `src/backend/bir/lir_to_bir/globals.cpp:85`, `src/backend/bir/lir_to_bir/globals.cpp:132`, `src/backend/bir/lir_to_bir/globals.cpp:142`, `src/backend/bir/lir_to_bir/globals.cpp:443`, `src/backend/bir/lir_to_bir/module.cpp:119`, `src/backend/bir/lir_to_bir/module.cpp:958` | Present initializer ids fail closed through `resolve_initializer_symbol_link_name_id`; raw symbol fallback is retained only when no id exists. |
-| LIR-to-BIR memory provenance | global/pointer/address maps | `GlobalAddress::global_name/link_name_id`, `GlobalPointerSlotKey`, local slot maps keyed by SSA/slot strings | `src/backend/bir/lir_to_bir/lowering.hpp:43`, `src/backend/bir/lir_to_bir/lowering.hpp:118`, `src/backend/bir/lir_to_bir/memory/provenance.cpp:20`, `src/backend/bir/lir_to_bir/memory/provenance.cpp:85`, `src/backend/bir/lir_to_bir/memory/provenance.cpp:116`, `src/backend/bir/lir_to_bir/memory/provenance.cpp:154` | Global provenance carries `LinkNameId` after resolution. Function-local SSA/slot maps are route-local handles, not module semantic identity. |
-| Prealloc name tables | `PreparedNameTables` and lookup helpers | function/block/value/slot/link tables, prepared ids | `src/backend/prealloc/prealloc.hpp:40`, `src/backend/prealloc/prealloc.hpp:91`, `src/backend/prealloc/prealloc.hpp:114`, `src/backend/prealloc/prealloc.hpp:120`, `src/backend/prealloc/prealloc.hpp:126`, `src/backend/prealloc/prealloc.hpp:141`, `src/backend/prealloc/prealloc.hpp:161` | Prepared ids are route-local publication handles for backend preparation. `link_names` is retained for same-module/global-symbol references. |
-| Prealloc addressing/calls/storage | prepared address, memory access, call/storage plans | `symbol_name`, `source_symbol_name/source_symbol_name_id`, `PreparedComputedBase` global ids, storage `symbol_name` | `src/backend/prealloc/prealloc.hpp:430`, `src/backend/prealloc/prealloc.hpp:441`, `src/backend/prealloc/prealloc.hpp:944`, `src/backend/prealloc/prealloc.hpp:952`, `src/backend/prealloc/prealloc.hpp:1105`, `src/backend/prealloc/prealloc.hpp:1390` | Route-local plans carry prepared ids plus display strings. Symbol ids should be preferred where present; register names are target/final spelling. |
-| Prealloc same-module globals | materialized compare/join render contracts | `PreparedSameModuleGlobalRef::name/name_id`, `same_module_global_refs`, `bir_link_name_or_raw` | `src/backend/prealloc/prealloc.hpp:1801`, `src/backend/prealloc/prealloc.hpp:1827`, `src/backend/prealloc/prealloc.hpp:3778`, `src/backend/prealloc/prealloc.hpp:3791` | Same-module globals can be resolved by prepared link id; raw-name fallback remains for invalid-id compatibility. |
-| Prealloc CFG/SSA names | out-of-SSA and control-flow helpers | preferred block labels, value names, slot names, join-transfer ids | `src/backend/prealloc/out_of_ssa.cpp:36`, `src/backend/prealloc/out_of_ssa.cpp:69`, `src/backend/prealloc/out_of_ssa.cpp:117`, `src/backend/prealloc/out_of_ssa.cpp:550`, `src/backend/prealloc/out_of_ssa.cpp:973`, `src/backend/prealloc/out_of_ssa.cpp:1065` | Block/value/slot names are route-local identity for prepared control flow and phi materialization; `preferred_bir_block_label` uses BIR ids when available, otherwise raw labels. |
-| Prealloc stack layout | symbol-backed prepared addresses | fallback symbol text/id, prepared `LinkNameId` intern | `src/backend/prealloc/stack_layout/coordinator.cpp:247`, `src/backend/prealloc/stack_layout/coordinator.cpp:256`, `src/backend/prealloc/stack_layout/coordinator.cpp:304` | Present BIR link ids are checked against display text before interning; raw fallback accepted only when no id is available. |
+| Domain | Authority / compatibility classification | Evidence | Follow-up owner |
+| --- | --- | --- | --- |
+| Direct-call signatures | High-risk generated-path fallback. `LirCallOp` has structured mirrors (`direct_callee_link_name_id`, `arg_type_refs`, `callee_signature`), but direct lowering still accepts rendered signature pieces through `parse_direct_global_typed_call`, byval type parsing, and `args_str`/`callee_type_suffix`. Retained text is valid only for display/final spelling or explicit no-metadata compatibility. | `src/codegen/lir/ir.hpp:290`, `src/codegen/lir/ir.hpp:292`, `src/codegen/lir/ir.hpp:295`, `src/codegen/lir/ir.hpp:296`, `src/backend/bir/lir_to_bir/calling.cpp:248`, `src/backend/bir/lir_to_bir/calling.cpp:582`, `src/backend/bir/lir_to_bir/calling.cpp:590` | Covered by `ideas/open/184_direct_call_signature_metadata_structured_boundary.md`. |
+| Direct callee identity | Semantic authority is `LinkNameId` when present. Final callee strings are ABI/final spelling, diagnostics, runtime/intrinsic placeholder spelling, or raw/no-id compatibility only. BIR validation already checks many present-id/name pairings, but generated direct-symbol fail-closed closure remains high risk. | `src/codegen/lir/ir.hpp:292`, `src/backend/bir/bir.hpp:376`, `src/backend/bir/bir.hpp:378`, `src/backend/bir/bir_validate.cpp:213`, `src/backend/bir/bir_validate.cpp:216`, `src/backend/bir/bir_validate.cpp:220`, `src/backend/bir/bir_validate.cpp:228` | Covered by `ideas/open/186_bir_direct_symbol_identity_validation_closure.md`; final gate covered by 188. |
+| Globals and pointer-initializer symbols | Semantic authority is `LinkNameId` for generated globals/functions and pointer initializer references when present. `initializer_symbol_name`, `init_text`, and raw symbol lookup are compatibility/display bridges and must not become string-first authority on metadata-rich paths. | `src/codegen/lir/ir.hpp:557`, `src/codegen/lir/ir.hpp:568`, `src/codegen/lir/ir.hpp:572`, `src/backend/bir/bir.hpp:232`, `src/backend/bir/bir.hpp:235`, `src/backend/bir/bir_validate.cpp:412`, `src/backend/bir/bir_validate.cpp:421`, `src/backend/bir/bir_validate.cpp:433`, `src/backend/bir/lir_to_bir/globals.cpp:132`, `src/backend/bir/lir_to_bir/globals.cpp:137`, `src/backend/bir/lir_to_bir/globals.cpp:150` | Covered by `ideas/open/186_bir_direct_symbol_identity_validation_closure.md`; GlobalTypes interactions also covered by 185. |
+| `GlobalTypes` compatibility table | Explicit raw/final-spelling compatibility table. `GlobalInfo::link_name_id` carries semantic identity, while the map key remains producer spelling for raw import and legacy lookup. Generated metadata-rich use of the string key is a freeze blocker unless fenced to `LinkNameId`. | `src/backend/bir/lir_to_bir/lowering.hpp:43`, `src/backend/bir/lir_to_bir/lowering.hpp:46`, `src/backend/bir/lir_to_bir/lowering.hpp:47`, `src/backend/bir/lir_to_bir/lowering.hpp:78`, `src/backend/bir/lir_to_bir/lowering.hpp:82`, `src/backend/bir/lir_to_bir/globals.cpp:150` | Covered by `ideas/open/185_lir_to_bir_global_typedecl_compatibility_fence.md`. |
+| `TypeDeclMap` and structured layout tables | `TypeDeclMap` is a legacy rendered-type compatibility bridge. `LirTypeRef`, `StructNameId`, and `BackendStructuredLayoutEntry::name_id` are the structured authorities for generated aggregate layout facts. Layout lookups that accept text are acceptable for raw/no-id compatibility; generated metadata-rich paths must prefer structured facts or fail closed. | `src/codegen/lir/types.hpp:54`, `src/codegen/lir/types.hpp:72`, `src/codegen/lir/types.hpp:90`, `src/backend/bir/lir_to_bir/lowering.hpp:83`, `src/backend/bir/lir_to_bir/lowering.hpp:161`, `src/backend/bir/lir_to_bir/lowering.hpp:170`, `src/backend/bir/lir_to_bir/globals.cpp:103`, `src/backend/bir/lir_to_bir/globals.cpp:123` | Covered by `ideas/open/185_lir_to_bir_global_typedecl_compatibility_fence.md`. |
+| Aggregate layout facts in call/global/memory lowering | Semantic authority is structured layout metadata where available (`StructNameId`, `LirTypeRef`, `BackendStructuredLayoutTable`). Rendered aggregate text can remain output spelling and compatibility input. Direct call byval/sret and global aggregate initializer consumers are high-risk where text lookup remains in the normal path. | `src/codegen/lir/verify.cpp:736`, `src/codegen/lir/verify.cpp:787`, `src/codegen/lir/verify.cpp:894`, `src/backend/bir/lir_to_bir/calling.cpp:371`, `src/backend/bir/lir_to_bir/calling.cpp:599`, `src/backend/bir/lir_to_bir/global_initializers.cpp:206`, `src/backend/bir/lir_to_bir/memory/addressing.cpp:883` | Covered by 184 for direct calls, 185 for global/type/layout tables, and 188 for final freeze closure. |
+| BIR direct global load/store identity | `LoadGlobalInst::global_name_id` and `StoreGlobalInst::global_name_id` are semantic when present. `global_name` is final spelling/display and raw compatibility. Validator lookup accepts raw names only when ids are invalid; metadata-rich generated paths should not rely on that fallback. | `src/backend/bir/bir.hpp:417`, `src/backend/bir/bir.hpp:429`, `src/backend/bir/bir_validate.cpp:526`, `src/backend/bir/bir_validate.cpp:530`, `src/backend/bir/bir_validate.cpp:584`, `src/backend/bir/bir_validate.cpp:588` | Covered by `ideas/open/186_bir_direct_symbol_identity_validation_closure.md`. |
+| BIR pointer values and symbol pointers | `Value::pointer_symbol_link_name_id` is semantic for symbol pointer values. `Value::name` remains SSA/display spelling except for named symbol pointer compatibility; mismatched present ids are validation failures. | `src/backend/bir/bir.hpp:127`, `src/backend/bir/bir.hpp:133`, `src/backend/bir/bir.cpp:76`, `src/backend/bir/bir_validate.cpp:49`, `src/backend/bir/bir_validate.cpp:64`, `src/backend/bir/bir_validate.cpp:76` | Covered by `ideas/open/186_bir_direct_symbol_identity_validation_closure.md` and memory cleanup in 187. |
+| Memory provenance global handles | Global provenance should be `LinkNameId`-backed (`GlobalAddress::link_name_id`, `link_name_id_for_global`, `known_global_address`) where possible. `global_name` and string-keyed provenance maps are compatibility bridges until resolved; local SSA/slot/pointer maps are route-local handles, not module symbol authority. | `src/backend/bir/lir_to_bir/lowering.hpp:43`, `src/backend/bir/lir_to_bir/lowering.hpp:47`, `src/backend/bir/lir_to_bir/lowering.hpp:118`, `src/backend/bir/lir_to_bir/memory/provenance.cpp:20`, `src/backend/bir/lir_to_bir/memory/provenance.cpp:141`, `src/backend/bir/lir_to_bir/memory/provenance.cpp:303`, `src/backend/bir/lir_to_bir/memory/local_slots.cpp:1256` | Covered by `ideas/open/187_bir_memory_provenance_global_handle_cleanup.md`; depends on 185/186. |
+| Prealloc route-local function/block/value/slot names | Prepared function, block, value, slot, frame-slot, and join-transfer ids are route-local backend-preparation handles. Their strings can remain route-local labels or diagnostics. They are not LIR/BIR semantic symbol authority unless they reference `LinkNameId` tables. | `src/backend/prealloc/prealloc.hpp:40`, `src/backend/prealloc/prealloc.hpp:91`, `src/backend/prealloc/out_of_ssa.cpp:36`, `src/backend/prealloc/out_of_ssa.cpp:69`, `src/backend/prealloc/regalloc.cpp:1589`, `src/backend/prealloc/stack_layout/coordinator.cpp:77` | No separate blocker found; closure confirmation belongs to `ideas/open/188_lir_bir_freeze_closure_gate.md`. |
+| Prealloc symbol-backed addresses and same-module globals | `LinkNameId`/prepared link-name ids are semantic when present. Raw `symbol_name`, `source_symbol_name`, and `bir_link_name_or_raw` fallbacks are raw/no-id compatibility or prepared-printer output. The stack-layout path already rejects mismatched present ids against spelling before interning. | `src/backend/prealloc/prealloc.hpp:430`, `src/backend/prealloc/prealloc.hpp:944`, `src/backend/prealloc/prealloc.hpp:1801`, `src/backend/prealloc/prealloc.hpp:3778`, `src/backend/prealloc/stack_layout/coordinator.cpp:247`, `src/backend/prealloc/stack_layout/coordinator.cpp:256`, `src/backend/prealloc/stack_layout/coordinator.cpp:304`, `src/backend/prealloc/prepared_printer.cpp:65` | No uncovered blocker found; direct symbol/global closure belongs to 186 and final confirmation to 188. |
 
-Uncertain / follow-up classification targets for Step 2:
+High-risk generated metadata-rich text fallbacks and owners:
 
-- Direct-call signature parsing still has multiple rendered-text entry points
-  (`callee_type_suffix`, `args_str`, parsed byval text). Generated aggregate
-  paths appear fenced by `arg_type_refs`/`StructNameId`, but direct-call
-  signature authority needs explicit classification against idea 184.
-- `LirFunction::signature_text` notes unresolved producer-boundary function
-  references. This is an inventory item for idea 184/188 classification, not a
-  fix in this audit.
-- `GlobalTypes` and `TypeDeclMap` are intentionally string-keyed compatibility
-  tables. Step 2 should verify every generated metadata-rich path entering
-  them has a structured/id carrier or is owned by idea 185.
-- Memory provenance keeps route-local SSA/slot string maps while also carrying
-  `LinkNameId` for global handles. Step 2 should separate local storage handles
-  from global semantic authority and map remaining cleanup to idea 187.
-- Prealloc uses prepared function/block/value/slot ids as route-local backend
-  handles. Same-module global and symbol-backed address paths retain raw
-  fallback behavior; Step 2 should classify those fallbacks as compatibility
-  only unless a present id is missing or ignored.
+| Fallback | Classification | Owner / blocker note |
+| --- | --- | --- |
+| Direct-call rendered signature parsing for generated calls | Freeze blocker unless the path requires structured call signature facts and reserves parsing for explicit no-metadata inputs. | Owned by 184. |
+| Direct-call aggregate byval/sret/layout text lookup | Freeze blocker when generated aggregate metadata exists but lowering trusts rendered fragments. | Owned by 184; shared layout table boundary owned by 185. |
+| `GlobalTypes` string-keyed global lookup on generated globals | Freeze blocker unless treated as raw/no-id compatibility and cross-checked with `LinkNameId`. | Owned by 185. |
+| `TypeDeclMap` and rendered aggregate type lookup on generated metadata-rich layout paths | Freeze blocker unless structured `LirTypeRef`/`StructNameId`/layout facts are authoritative. | Owned by 185. |
+| BIR direct call/global/pointer-initializer raw symbol fallback with available ids | Freeze blocker if generated paths accept the fallback as semantic identity. | Owned by 186. |
+| Memory/provenance global maps keyed by final spelling after `LinkNameId` is available | Freeze blocker if used as the global authority instead of a bridge to `GlobalAddress::link_name_id`. | Owned by 187. |
+| Prealloc raw symbol fallback for same-module or symbol-backed prepared addresses | Compatibility/display only when no valid id exists; closure gate should verify this remains fenced. | Covered by 186/188; no new blocker idea found. |
+
+No uncovered high-risk generated metadata-rich text fallback was found in this
+Step 2 classification. The known blocker families are covered by existing open
+ideas 184-188.
 
 ## Suggested Next
 
-Proceed to Step 2 classification: turn this inventory into authority categories
-and map any generated metadata-rich text fallback to existing ideas 184-188 or
-a blocker note.
+Proceed to Step 3: map the classified blocker families to ideas 184-188 in a
+short closeout matrix and confirm whether any additional open idea is needed
+before backend restart.
 
 ## Watchouts
 
-- This active plan is an audit, not a backend implementation slice.
-- Do not treat every retained string as a defect; classify display, diagnostic,
-  output, compatibility, and route-local uses separately from semantic
-  authority.
-- Ideas 184-188 already exist as likely follow-up owners; only propose a new
-  source idea if a blocker is genuinely uncovered.
+- This audit classifies authority boundaries only; do not implement backend,
+  lowering, validator, prealloc, or test changes inside idea 183.
+- Treat local SSA, block, slot, prepared-frame, and register strings as
+  route-local or final target spelling unless they cross into global symbol
+  identity.
+- Ideas 184-187 own the specific repair families; 188 owns the milestone gate
+  after those repairs complete.
 
 ## Proof
 
-Source-level audit only. Ran `git diff --check -- todo.md`; no build/tests were
-run because only `todo.md` changed.
+Source-level audit only. Used `rg` plus targeted `c4c-clang-tool-ccdb
+function-signatures` queries for direct-call lowering, global lowering,
+memory/provenance, and prealloc stack-layout symbol handling. Ran
+`git diff --check -- todo.md`; no build/tests were run because only `todo.md`
+changed.
