@@ -3,209 +3,173 @@
 Status: Active
 Source Idea Path: ideas/open/172_type_identity_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Inventory LIR/BIR Type And Layout Authority
+Current Step ID: 4
+Current Step Title: Cross-Domain Risk Map
 
 ## Just Finished
 
-Step 3 - Inventory LIR/BIR Type And Layout Authority completed as a
-code-reading audit.
+Step 4 - Cross-Domain Risk Map completed as a synthesis-only audit from the
+completed Step 1 sema, Step 2 HIR, and Step 3 LIR/BIR/backend findings. No
+implementation behavior, tests, `plan.md`, or source idea files were changed.
 
-Files inspected:
-- `src/codegen/lir/types.hpp`: `LirTypeRef`, `LirTypeKind`,
-  `StructNameId`-backed struct refs, integer bit-width extraction, and
-  text-based equality.
-- `src/codegen/lir/ir.hpp`: LIR instruction/function/global type carriers,
-  `TypeSpec` preservation, structured signature mirrors, `LinkNameId`
-  handoffs, `LirStructDecl`, `LirStructuredLayoutObservation`,
-  `type_decls`, and extern-decl dedup.
-- `src/codegen/lir/hir_to_lir/types.cpp`: HIR-to-LIR field-chain layout
-  lookup, `StructuredLayoutLookup`, `StructNameId` propagation, base/anonymous
-  aggregate fallback, and `MemberSymbolId` field lookup.
-- `src/codegen/lir/lir_printer.cpp`: final LLVM rendering for structured type
-  refs, link-name replacement, call targets, and instruction type spellings.
-- `src/backend/bir/bir.hpp`: BIR scalar `TypeKind`, ABI metadata structs,
-  link/block/slot id carriers, structured type spelling context, aggregate
-  call spelling fields, memory-address metadata, and display/compatibility
-  names.
-- `src/backend/bir/lir_to_bir/lowering.hpp`: lowering context authority
-  tables, `GlobalTypes`, `TypeDeclMap`, `FunctionSymbolSet`,
-  `BackendStructuredLayoutTable`, `AggregateTypeLayout`, function-local
-  route maps, and aggregate parameter metadata.
-- `src/backend/bir/lir_to_bir/types.cpp`: structured vs legacy layout table
-  construction, type-decl parsing, aggregate layout computation, parity notes,
-  scalar lowering, array parsing, and structured-first layout lookup.
-- `src/backend/bir/lir_to_bir/call_abi.cpp`: scalar ABI classification,
-  structured signature parameter path, signature-text fallback, sret/byval
-  metadata, aggregate return lowering, and target-profile ABI decisions.
-- `src/backend/bir/lir_to_bir/aggregate.cpp`: byval type normalization,
-  aggregate parameter collection, local aggregate slot materialization,
-  structured layout selection, leaf-slot traversal, and aggregate copy paths.
-- `src/backend/bir/lir_to_bir/module.cpp` and
-  `src/backend/bir/lir_to_bir/globals.cpp`: module-level type/layout table
-  setup, global/function link-name identity, pointer-initializer resolution,
-  global layout lowering, and raw-symbol fallback boundaries.
-- `src/backend/bir/bir_printer.cpp` and `src/backend/bir/bir_validate.cpp`:
-  BIR dump spelling, structured type rendering, link-name validation, and
-  id-aware fallback checks.
-- `src/backend/prealloc/legalize.cpp`,
-  `src/backend/prealloc/stack_layout/stack_layout.hpp`,
-  `src/backend/prealloc/stack_layout/coordinator.cpp`,
-  `src/backend/prealloc/stack_layout/analysis.cpp`,
-  `src/backend/prealloc/liveness.cpp`, and
-  `src/backend/prealloc/regalloc.cpp`: post-BIR type legalization, ABI
-  legalization, stack-object layout, prepared value identity, and register
-  allocation use of BIR type/size/align metadata.
-- `src/backend/mir/aarch64/codegen/emit.cpp`,
-  `src/backend/mir/riscv/codegen/emit.cpp`, and live x86 backend/prepared
-  files were searched for downstream spelling consumers and target route
-  layout decisions.
+Cross-domain authority map:
 
-Authority classifications found:
-- LIR structured type/layout authority: `LirTypeRef` carries `LirTypeKind`,
-  integer bit width, and optional `StructNameId`. `LirStructDecl` plus
-  `LirModule::struct_decls`/`struct_decl_index` is the structured declaration
-  mirror for backend layout. `LirFunction::signature_return_type_ref`,
-  `signature_param_type_refs`, `signature_params`, and
-  `signature_is_variadic` are the structured signature mirrors; `LinkNameId`
-  is semantic function/global identity where populated.
-- LIR semantic type-string authority: `LirTypeRef::operator==` still compares
-  only rendered text, and many LIR operations (`type_str`, `return_type`,
-  `args_str`, `LirRet::type_str`, `LirGepOp::element_type`, aggregate
-  insert/extract types, global `llvm_type`) carry final LLVM spellings that
-  lowering reads as type input. `TypeSpec` remains preserved on older LIR
-  structs, function params, stack objects, and globals, but backend-facing
-  aggregate layout generally flows through LIR type text plus structured
-  mirrors, not through sema canonical type identity.
-- LIR ABI/output spelling: `signature_text`, `return_type_str`,
-  `llvm_type`, `init_text`, instruction render types, mangled/spec-entry
-  strings, and printer replacements are final LLVM/output spelling. They are
-  acceptable output surfaces when structured mirrors are present, but become
-  compatibility authority when a producer omits the mirror.
-- LIR compatibility bridges: `type_decls` is explicitly a legacy textual type
-  declaration shadow. `extern_decl_name_map` and raw-name extern dedup are
-  fallbacks when no `LinkNameId` exists. HIR-to-LIR field-chain logic still
-  recovers nested/base aggregates through rendered tags when `StructNameId`
-  metadata is incomplete.
-- BIR structured scalar/ABI authority: BIR lowers scalar type identity into
-  `bir::TypeKind`; ABI decisions are represented by `CallArgAbiInfo`,
-  `CallResultAbiInfo`, `AbiValueClass`, `size_bytes`, `align_bytes`,
-  `is_byval`, `is_sret`, and `returned_in_memory`. `legalize.cpp`,
-  prealloc stack layout, liveness, and regalloc mostly consume these
-  structured fields rather than type strings.
-- BIR semantic name authority: `LinkNameId`, `BlockLabelId`, and `SlotNameId`
-  are semantic ids when valid. BIR validation rejects mismatched link ids for
-  declared functions/globals, and module lowering fails closed when a present
-  initializer function id is unknown instead of falling back through raw text.
-- BIR structured aggregate layout authority: `BackendStructuredLayoutTable`
-  computes layout from `LirStructDecl` entries and `StructNameTable` spelling,
-  records structured/legacy parity, and `lookup_backend_aggregate_type_layout`
-  prefers structured layout for `%` type names before legacy type-decl parsing.
-  Once BIR aggregate params/calls are lowered, downstream code carries
-  size/align/ABI flags and scalar slot types.
-- BIR semantic type-string authority: aggregate layout lookup is still keyed
-  by final type spelling. `BackendStructuredLayoutTable` itself is keyed by
-  type-name string, `TypeDeclMap` is string-to-body, and
-  `AggregateTypeLayout::element_type_text`/`AggregateField::type_text` recurse
-  through text. These strings currently decide aggregate size, alignment,
-  byval/sret classification, aggregate slot decomposition, global storage
-  size, and initializer lowering when structured layout is absent or when a
-  type is inline text.
-- BIR display/output spelling: `StructuredTypeSpellingContext`,
-  `StructuredTypeDeclSpelling`, `CallInst::structured_return_type_name`,
-  `CallInst::return_type_name`, `Value::name`, block labels, slot names,
-  call target text, inline asm payloads, and BIR printer output are display or
-  final-dump spelling when paired with ids/structured fields.
-- Route-local rendering: LIR SSA names, BIR `ValueMap`, local slot names,
-  aggregate leaf slot suffixes, `%ret.sret`, temporary copy names, phi/copy
-  plans, block lookup strings, and prealloc prepared value names are
-  route-local handles. They are not module semantic type identity, but some
-  prepared stack-slot recovery parses aggregate leaf-slot spelling suffixes.
-- Target-route legacy spelling authority: the active AArch64 LIR route still
-  has many direct decisions over `LirTypeRef::str()`/`type_decls`:
-  `gen_type_layout`, `gen_resolve_type_decl_body`,
-  `gen_is_direct_gp_aggregate_type`, `gen_try_parse_hfa_type`,
-  `gen_type_is_sret_aggregate_type`, `gen_type_is_memory_value`, and multiple
-  scalar checks such as `type_str == "i32"`. These are semantic ABI/layout
-  authority on that route, not mere output spelling.
+- Syntax payload: `TypeSpec` remains the common syntax-and-metadata carrier
+  from parser/sema through HIR and into older LIR surfaces. Safe syntax payload
+  includes declarator shape, qualifiers, template-origin payload, unresolved
+  array expressions, and final LLVM spelling fields. Risk begins when those
+  fields feed equality, binding, record lookup, layout, or ABI decisions.
+  Collision priority is high for function pointers, arrays, records, and
+  template-origin fields because Step 1 found partial raw `TypeSpec`
+  equivalence and Step 2 found HIR ordinary type refs still `TypeSpec`-first.
+  Nearby evidence includes `cpp_hir_sema_canonical_symbol_structured_metadata`,
+  `cpp_hir_sema_consteval_type_utils_structured_metadata`,
+  `cpp_hir_template_function_deduction_binding`, and
+  `frontend_lir_function_signature_type_ref`.
+- Resolved type identity: sema owns the strongest resolved identity with
+  `CanonicalType`, `CanonicalTypeIdentity`, `ResolvedTypeTable`,
+  `types_equal`, owner-aware template parameter ids, and structured
+  declaration/name ids. HIR preserves some of that identity for callable
+  function-pointer signatures and owner-aware template bindings, but ordinary
+  `QualType`, field, local, global, and parameter paths still mostly carry
+  `TypeSpec`. LIR adds `LirTypeRef` and optional `StructNameId`, but
+  `LirTypeRef::operator==` still compares rendered text. Priority is high for
+  any migration that expects ids to guard dedup/equality before these
+  comparison sites stop treating equal spelling as equal identity. Existing
+  probes include the frontend structured-metadata tests, HIR template binding
+  tests, and `frontend_lir_global_type_ref`, `frontend_lir_extern_decl_type_ref`,
+  and `frontend_lir_call_type_ref`.
+- Layout identity: sema/HIR can identify records through `record_def`,
+  `HirRecordOwnerKey`, owner indexes, and computed `HirStructDef` layout, but
+  layout still crosses multiple rendered bridges: HIR `base_tags`,
+  `Module::struct_defs` rendered tags, LIR `type_decls`, BIR
+  `BackendStructuredLayoutTable` keyed by final `%struct...` spelling, and
+  recursive `AggregateTypeLayout` field text. This is the highest collision
+  and stale-compatibility risk because one stale spelling can change size,
+  align, GEP, aggregate copies, globals, and downstream stack layout. Nearby
+  route outputs/tests: `cpp_hir_record_packed_aligned_layout`,
+  `cpp_hir_record_field_array_layout`,
+  `cpp_hir_builtin_layout_query_sizeof_type`,
+  `backend_lir_to_bir_notes`, `backend_prepare_structured_context`,
+  `local_aggregate_member_offsets.c`, `packed_local_member_offsets.c`,
+  `nested_param_member_array.c`, and `global_nested_struct_array_store.c`.
+- ABI class: sema mangling and display names are output, but ABI class becomes
+  semantic in LIR/BIR/backend. BIR lowers scalars to `bir::TypeKind` and
+  records `CallArgAbiInfo`, `CallResultAbiInfo`, byval/sret flags, size, and
+  alignment, but aggregate classification still depends on spelling-keyed
+  layout before structured metadata fully stabilizes. The AArch64 direct LIR
+  route is the largest remaining spelling-authority island, parsing
+  `type_decls`, signature text, return/arg type strings, and instruction type
+  strings for HFA, direct-GP, sret, memory-value, stack, and global decisions.
+  Priority is high because backend observability is strong and regressions
+  become concrete ABI/route changes. Nearby tests/routes include
+  `backend_aarch64_signature_metadata`, `backend_lir_to_bir_notes`,
+  `aggregate_param_return_pair.c`, `aggregate_return_pair.c`,
+  `aggregate_param_return_pair_fn_param.c`,
+  `indirect_aggregate_param_return_pair.c`,
+  `byval_helper_payload_8_to_13.c`, `byval_helper_payload_9_to_14.c`, and
+  `byval_helper_mixed_hfa_payload.c`.
+- Display spelling: sema canonical formatting, HIR dump keys, mangled template
+  names, LIR printer strings, BIR printer strings, LLVM type spellings, SSA
+  names, block labels, slot names, inline asm text, call target text, and
+  route-local temporary names are acceptable display/final-output surfaces when
+  paired with structured ids or metadata. Priority is low unless a display
+  string is reused for equality, lookup, layout, ABI class, storage size, or
+  route selection. Evidence tests should keep their output expectations strong
+  rather than being weakened: HIR dump regex tests, frontend LIR type-ref
+  tests, backend route-output cases, and BIR/prepared printer tests are useful
+  observability points.
+- Diagnostics: `format_canonical_type`, `format_canonical_result`,
+  pending-template display keys, template argument debug text, layout mismatch
+  notes, LIR verify messages, and BIR validation errors are diagnostic
+  surfaces. They should not become new identity authorities. Priority is
+  medium only where diagnostics recover from missing metadata by rendering a
+  fallback and that same helper is later reused by lookup or compatibility
+  code. Nearby evidence includes HIR pending-template tests such as
+  `cpp_hir_template_deferred_nttp_expr`,
+  `cpp_hir_template_deferred_nttp_static_member_expr`, and LIR structured
+  layout verification output.
+- Compatibility bridges: rendered fallbacks are still necessary at old
+  boundaries: consteval rendered maps, legacy type binding bridges,
+  parser/HIR record-tag maps, HIR rendered owner recovery, `base_tags`,
+  `struct_defs`, LIR `type_decls`, missing-`LinkNameId` extern maps,
+  `signature_text` parsing, BIR legacy `TypeDeclMap`, and AArch64 direct
+  route type-string parsing. Priority is highest where compatibility behavior
+  is stale but still accepts generated-LIR paths, not just hand-built legacy
+  fixtures. Follow-up work should fail closed for metadata-rich misses and
+  shrink bridges behind structured identity instead of adding new spelling
+  parser branches.
 
-Highest-risk LIR/BIR/backend gaps:
-- Aggregate layout identity is still spelling-keyed at the BIR boundary.
-  Structured `LirStructDecl` is preferred, but the lookup key is final
-  `%struct...` spelling and field recursion stores type text. Two spellings
-  for the same structured type, or one stale `type_decls` shadow, can change
-  size/align, byval/sret lowering, and aggregate slot decomposition.
-- BIR aggregate ABI classification depends on lowered layout from type text
-  before it becomes stable structured metadata. `lower_return_info_from_type`,
-  `lower_function_params_with_layouts`, `collect_aggregate_params`, and
-  global lowering all use text-normalized aggregate names as decision input.
-- The AArch64 backend remains a major spelling-authority island. It parses
-  `module.type_decls`, `LirRet::type_str`, `LirCallOp::return_type`,
-  `LirCallOp::args_str`/arg text, signature parameter type strings, and
-  alloca/load/store type strings to decide ABI class, HFA handling,
-  direct-GP aggregate handling, sret, memory-value lowering, stack slot size,
-  global initialization, and GEP/struct sizes.
-- Structured signature metadata is present but not universal. When
-  `signature_return_type_ref` or structured params are missing,
-  `signature_text` parsing becomes compatibility authority for return and
-  parameter ABI/layout. That is acceptable for hand-built legacy fixtures, but
-  unsafe as a generated-LIR producer boundary.
-- `LirTypeRef` has structured payload but equality ignores it. A struct type
-  with a valid `StructNameId` compares equal to a raw text-only type with the
-  same spelling, so ids cannot yet guard all dedup/comparison sites.
-- `TypeSpec` still crosses into LIR as preserved C type info for functions,
-  globals, stack objects, and older instruction structs. Backend lowering does
-  not consistently use sema canonical type identity, so `TypeSpec` fields and
-  final LLVM type text can diverge without one authoritative key.
-- `type_decls` remains a broad compatibility bridge. BIR uses it as fallback;
-  AArch64 uses it directly as layout/ABI authority. Until target routes
-  consume structured declarations or BIR-prepared metadata, `type_decls` is
-  still a priority spelling-based risk.
-- Prepared stack layout and regalloc are mostly structured after BIR, but they
-  still inherit earlier aggregate size/align decisions and parse some
-  route-local slot-name suffixes for aggregate slices. Bugs in upstream
-  aggregate spelling/layout classification become durable prepared metadata.
-- Function/global names are mostly id-backed, but raw-name maps remain for
-  no-id extern declarations, pointer initializers, and compatibility imports.
-  Present ids often fail closed, which is good; missing ids still leave raw
-  spelling as semantic bridge.
+Prioritized gaps:
+
+1. Aggregate layout identity across HIR -> LIR -> BIR/backend. Highest risk:
+   spelling collisions or stale `type_decls` can affect layout, ABI class,
+   stack layout, globals, and copies after structured record identity already
+   exists upstream.
+2. Aggregate ABI classification at the BIR and AArch64 boundaries. High risk:
+   classification depends on spelling-derived layout before byval/sret/HFA and
+   size/align metadata become durable structured facts.
+3. `TypeSpec`-first HIR ordinary type refs and raw `TypeSpec` equivalence.
+   High collision risk for function pointers, arrays, typedefs, template
+   records, and no-metadata record carriers.
+4. `LirTypeRef` structured payload with text-only equality. Medium-high risk:
+   ids cannot reliably defend dedup or mirror checks while equal spelling masks
+   missing or mismatched `StructNameId`.
+5. Template record owner identity carrying serialized
+   `SpecializationKey::canonical`. Medium-high stale-compatibility risk:
+   structured specialization identity exists, but record/layout owner keys
+   still embed a rendered component.
+6. Name-identity compatibility bridges that gate type migration. Medium risk:
+   missing `LinkNameId`, rendered extern dedup, raw initializer symbol
+   fallbacks, and rendered member/base maps block clean type-identity
+   classification when ids are absent. Present ids generally fail closed; the
+   blocker is no-id compatibility, not the id-backed path.
+7. Display and diagnostics reuse. Lower direct risk, but helpers must stay out
+   of semantic authority paths during migration.
+
+Name-identity migration blockers flagged:
+
+- Generated LIR producers must populate `LinkNameId`, `StructNameId`,
+  structured signature refs, and structured layout declarations consistently
+  before backend bridges can reject raw spelling safely.
+- HIR record/layout migration depends on complete `HirRecordOwnerKey` and
+  member/base owner metadata; missing owner data still forces rendered
+  `struct_defs`, `base_tags`, and tag/member lookup bridges.
+- Template record identity cannot be treated as fully structured while
+  `HirRecordOwnerTemplateIdentity` stores the rendered
+  `SpecializationKey::canonical` string as part of the owner key.
+- Function/global name ids are mostly stable, but no-id extern declarations
+  and compatibility imports still leave raw names as semantic bridges.
 
 ## Suggested Next
 
-Proceed to Step 4 by building the cross-domain risk map from the Step 1 sema,
-Step 2 HIR, and Step 3 LIR/BIR/backend findings. Prioritize gaps where
-rendered type spelling still controls equality, layout, ABI class, or route
-selection after structured identity exists upstream.
+Proceed to Step 5 by writing bounded follow-up implementation ideas for the
+highest-risk gaps, starting with aggregate layout identity through the
+HIR/LIR/BIR boundary and aggregate ABI classification. Each idea should name
+its structured authority source, the compatibility bridge it shrinks, focused
+proof routes, and reviewer reject signals for testcase-overfit fixes.
 
 ## Watchouts
 
-- Do not classify all backend strings as bugs. Printer output, BIR dumps,
-  LLVM type spelling, inline asm text, SSA names, block labels, and local slot
-  names are often display/final-output or route-local rendering.
-- The priority distinction is whether the string feeds equality, lookup,
-  layout, ABI class, storage size, or target route selection. Those are
-  semantic authority even when the string is also valid LLVM spelling.
-- `BackendStructuredLayoutTable` is a bridge, not a complete identity fix: it
-  prefers structured declarations but is still keyed/correlated by final type
-  spelling.
-- AArch64 direct LIR emission should be treated separately from BIR/prealloc
-  preparation. BIR/prealloc is more structured; AArch64 still has extensive
-  direct type-string layout authority.
-- Follow-up implementation ideas should avoid testcase-shaped fixes such as
-  adding one more spelling parser branch. The durable direction is structured
-  aggregate/type identity through the backend boundary.
+- Do not weaken existing output or route expectations to match current
+  spelling-authority behavior. Existing tests should remain evidence and proof
+  targets, not acceptance downgrades.
+- Treat AArch64 direct LIR emission separately from BIR/prealloc: both see
+  aggregate layout/ABI risk, but their authority sources and proofs differ.
+- Avoid follow-up ideas that merely add another rendered-name parser branch.
+  The durable direction is structured identity first with compatibility bridges
+  isolated and fail-closed for metadata-rich misses.
+- Name-id migration gaps are blockers only where missing ids force raw spelling
+  to decide type/layout/ABI behavior; id-backed display spelling is not itself
+  a type-identity bug.
 
 ## Proof
 
-- No tests executed; the delegated packet explicitly required code-reading
-  audit evidence in `todo.md` and did not require test execution.
-- AST-backed inventory used:
-  `c4c-clang-tool-ccdb list-symbols` on
-  `src/backend/bir/lir_to_bir/types.cpp`,
-  `src/backend/bir/lir_to_bir/aggregate.cpp`, and
-  `src/backend/bir/lir_to_bir/call_abi.cpp`.
-- Direct-read/search evidence used:
-  targeted `sed` reads of the files listed above plus `rg` searches for
-  `TypeSpec`, `LirTypeRef`, `TypeKind`, `type_decls`, `layout`, `ABI`,
-  `byval`, `sret`, `LinkNameId`, `MemberSymbolId`, `gen_type_layout`, and
-  target-route type-string consumers.
+- No tests executed; the delegated packet explicitly required a synthesis-only
+  `todo.md` risk map and no test execution.
+- Evidence used: prior completed `todo.md` packet summaries from commits
+  `f69a00f0f` (Step 1 sema), `dfa82789e` (Step 2 HIR), and the active Step 3
+  LIR/BIR/backend audit summary in `todo.md`.
+- Targeted route/test discovery used `tests/frontend/CMakeLists.txt`,
+  `tests/cpp/internal/hir_case/CMakeLists.txt`, `tests/backend/CMakeLists.txt`,
+  and backend case filenames to cite nearby existing tests and route outputs.
