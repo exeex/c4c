@@ -1,7 +1,8 @@
 # Type Identity Authority Audit
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/171_identity_authority_migration_closure_gate.md`
@@ -85,3 +86,18 @@ This idea should map those domains before implementation work begins.
 - A rendered type spelling remains semantic authority without classification.
 - The work expands into a large type-system rewrite before follow-up ideas are
   written.
+
+## Closure Notes
+
+- The audit completed as read-only lifecycle work across sema, HIR, LIR, BIR,
+  and backend type/layout/ABI authority surfaces.
+- The audit distinguished syntax payload, resolved type identity, layout
+  identity, ABI class, display spelling, diagnostics, and compatibility
+  bridges in the Step 1-4 `todo.md` history.
+- Remaining spelling-based type authority was classified and prioritized in
+  the Step 4 cross-domain risk map.
+- Follow-up implementation work was separated into open ideas 173-177 for the
+  highest-risk gaps: aggregate layout identity, aggregate ABI classification,
+  HIR `TypeSpec` ref equivalence, `LirTypeRef` structured equality, and
+  template record owner identity.
+- No implementation code or tests were weakened as part of this audit.
