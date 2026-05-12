@@ -1286,6 +1286,37 @@ void test_hir_template_call_replay_rejects_rendered_fallback_after_primary_miss(
               "structured primary miss should be reported as an unresolved template call");
 }
 
+void test_hir_template_seed_and_retry_reject_rendered_fallback_after_decl_miss() {
+  c4c::TextTable texts;
+  c4c::hir::Lowerer lowerer;
+
+  c4c::Node rendered_template = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "stale_template", texts.intern("stale_template"));
+  rendered_template.n_template_params = 1;
+  lowerer.ct_state_->register_template_def("stale_template", &rendered_template);
+
+  c4c::Node missing_primary = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "missing_primary", texts.intern("missing_primary"));
+  missing_primary.n_template_params = 1;
+  lowerer.function_decl_nodes_.emplace("stale_template", &missing_primary);
+
+  c4c::TypeSpec int_type;
+  int_type.base = c4c::TB_INT;
+  c4c::hir::TypeBindings bindings;
+  bindings["T"] = int_type;
+
+  const std::string seeded = lowerer.record_template_seed(
+      "stale_template", c4c::hir::TypeBindings(bindings), {},
+      {}, c4c::hir::TemplateSeedOrigin::DirectCall, {}, {});
+  expect_true(seeded.empty(),
+              "template seed recording should fail closed after a structured declaration miss");
+
+  const bool retried = lowerer.instantiate_deferred_template(
+      "stale_template", bindings, {}, {}, "stale_template_i");
+  expect_true(!retried,
+              "deferred retry should not recover through rendered spelling after a structured declaration miss");
+}
+
 void test_hir_consteval_call_metadata_preserves_text_ids_for_function_names() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 consteval int fold(int value, int scale) { return value * scale; }
@@ -7290,6 +7321,7 @@ int main() {
   test_hir_struct_defs_preserve_text_ids_for_tags_and_bases();
   test_hir_template_calls_preserve_text_ids_for_source_template_names();
   test_hir_template_call_replay_rejects_rendered_fallback_after_primary_miss();
+  test_hir_template_seed_and_retry_reject_rendered_fallback_after_decl_miss();
   test_hir_consteval_call_metadata_preserves_text_ids_for_function_names();
   test_hir_member_exprs_preserve_text_ids_for_field_names();
   test_hir_global_init_designators_preserve_text_ids_for_field_names();

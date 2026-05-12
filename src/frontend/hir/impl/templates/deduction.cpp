@@ -938,7 +938,14 @@ std::optional<TypeSpec> Lowerer::try_infer_template_call_result_for_deduction(
     return std::nullopt;
   }
 
-  const Node* callee_def = ct_state_->find_template_def(call_node->left->name);
+  const Node* callee_def = nullptr;
+  if (auto decl_it = function_decl_nodes_.find(call_node->left->name);
+      decl_it != function_decl_nodes_.end() && decl_it->second) {
+    callee_def = ct_state_->find_template_def(
+        decl_it->second, call_node->left->name);
+  } else {
+    callee_def = ct_state_->find_template_def(call_node->left->name);
+  }
   if (!callee_def || callee_def->n_template_params <= 0) return std::nullopt;
 
   HirTemplateTypeBindings structured_call_bindings;

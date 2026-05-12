@@ -116,6 +116,36 @@ TextId make_ast_node_unqualified_text_id_for_owner_key(
 
 namespace {
 
+struct TemplateRegistryLookup {
+  const Node* def = nullptr;
+  bool has_structured_decl = false;
+};
+
+TemplateRegistryLookup find_template_def_for_registered_name(
+    const CompileTimeState* ct_state,
+    const std::unordered_map<std::string, const Node*>& function_decl_nodes,
+    const std::string& rendered_name) {
+  TemplateRegistryLookup result;
+  if (!ct_state || rendered_name.empty()) return result;
+  auto decl_it = function_decl_nodes.find(rendered_name);
+  if (decl_it != function_decl_nodes.end() && decl_it->second) {
+    result.has_structured_decl = true;
+    result.def = ct_state->find_template_def(decl_it->second, rendered_name);
+    return result;
+  }
+  result.def = ct_state->find_template_def(rendered_name);
+  return result;
+}
+
+TemplateRegistryLookup find_template_def_for_call_var(
+    const CompileTimeState* ct_state,
+    const std::unordered_map<std::string, const Node*>& function_decl_nodes,
+    const Node* call_var) {
+  if (!call_var || !call_var->name) return {};
+  return find_template_def_for_registered_name(
+      ct_state, function_decl_nodes, call_var->name);
+}
+
 void collect_late_static_asserts_recursive(
     const Node* n,
     CompileTimeState* ct_state,
@@ -466,7 +496,9 @@ void Lowerer::collect_function_template_specializations(
   for (const Node* item : items) {
     if (item->kind == NK_FUNCTION && item->name && item->is_explicit_specialization &&
         item->n_template_args > 0) {
-      const Node* tpl_def = ct_state_->find_template_def(item->name);
+      const Node* tpl_def =
+          find_template_def_for_registered_name(
+              ct_state_.get(), function_decl_nodes_, item->name).def;
       if (tpl_def) ct_state_->register_function_specialization(tpl_def, item);
     }
   }
@@ -483,7 +515,9 @@ void Lowerer::collect_depth0_template_instantiations(
 
 std::vector<std::string> Lowerer::get_template_param_order_from_instances(
     const std::string& fn_name) {
-  const Node* tpl_def = ct_state_->find_template_def(fn_name);
+  const Node* tpl_def =
+      find_template_def_for_registered_name(
+          ct_state_.get(), function_decl_nodes_, fn_name).def;
   if (tpl_def) return get_template_param_order(tpl_def);
   return {};
 }
@@ -495,7 +529,11 @@ std::string Lowerer::record_template_seed(const std::string& fn_name,
                                           TemplateSeedOrigin origin,
                                           HirTemplateTypeBindings structured_type_bindings,
                                           HirTemplateNttpBindings structured_nttp_bindings) {
-  const Node* primary_def = ct_state_->find_template_def(fn_name);
+  const TemplateRegistryLookup lookup =
+      find_template_def_for_registered_name(
+          ct_state_.get(), function_decl_nodes_, fn_name);
+  if (lookup.has_structured_decl && !lookup.def) return "";
+  const Node* primary_def = lookup.def;
   auto param_order =
       get_template_param_order(primary_def, &bindings, &nttp_bindings);
   return registry_.record_seed(fn_name, std::move(bindings),
@@ -514,7 +552,9 @@ std::string Lowerer::resolve_template_call_name(
       (call_var->n_template_args <= 0 && !call_var->has_template_args)) {
     return call_var ? (call_var->name ? call_var->name : "") : "";
   }
-  const Node* fn_def = ct_state_->find_template_def(call_var->name);
+  const Node* fn_def =
+      find_template_def_for_call_var(
+          ct_state_.get(), function_decl_nodes_, call_var).def;
   if (!fn_def) return call_var->name;
   if (fn_def->is_consteval) return call_var->name;
   TypeBindings bindings = merge_explicit_and_deduced_type_bindings(
@@ -530,7 +570,9 @@ void Lowerer::collect_template_instantiations(const Node* n,
   if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
       n->left->name &&
       (n->left->n_template_args > 0 || n->left->has_template_args)) {
-    const Node* fn_def = ct_state_->find_template_def(n->left->name);
+    const Node* fn_def =
+        find_template_def_for_call_var(
+            ct_state_.get(), function_decl_nodes_, n->left).def;
     if (fn_def && !fn_def->is_consteval && fn_def->n_template_params > 0) {
       if (enclosing_fn && enclosing_fn->name) {
         auto* enc_list = registry_.find_instances(enclosing_fn->name);
@@ -581,7 +623,9 @@ void Lowerer::collect_template_instantiations(const Node* n,
   if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
       n->left->name && n->left->n_template_args == 0 &&
       !n->left->has_template_args) {
-    const Node* fn_def = ct_state_->find_template_def(n->left->name);
+    const Node* fn_def =
+        find_template_def_for_call_var(
+            ct_state_.get(), function_decl_nodes_, n->left).def;
     if (fn_def && !fn_def->is_consteval && fn_def->n_template_params > 0) {
       TypeBindings deduced =
           try_deduce_template_type_args(n, fn_def, enclosing_fn);
@@ -645,7 +689,9 @@ void Lowerer::collect_consteval_template_instantiations(
   if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
       n->left->name &&
       (n->left->n_template_args > 0 || n->left->has_template_args)) {
-    const Node* fn_def = ct_state_->find_template_def(n->left->name);
+    const Node* fn_def =
+        find_template_def_for_call_var(
+            ct_state_.get(), function_decl_nodes_, n->left).def;
     if (fn_def && fn_def->is_consteval && fn_def->n_template_params > 0) {
       if (enclosing_fn && enclosing_fn->name) {
         auto* enc_list = registry_.find_instances(enclosing_fn->name);
@@ -1004,7 +1050,11 @@ bool Lowerer::instantiate_deferred_template(const std::string& tpl_name,
                                             const NttpBindings& nttp_bindings,
                                             const NttpTextBindings& nttp_bindings_by_text,
                                             const std::string& mangled) {
-  const Node* fn_def = ct_state_->find_template_def(tpl_name);
+  const TemplateRegistryLookup lookup =
+      find_template_def_for_registered_name(
+          ct_state_.get(), function_decl_nodes_, tpl_name);
+  if (lookup.has_structured_decl && !lookup.def) return false;
+  const Node* fn_def = lookup.def;
   if (!fn_def) return false;
 
   SpecializationKey sk;
