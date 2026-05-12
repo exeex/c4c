@@ -320,20 +320,27 @@ struct TemplateInstantiationStep {
       if (instantiated_fns.count(target_name)) {
         ++resolved;
       } else if (instantiate_fn) {
+        const Node* primary_def = nullptr;
         // Pre-check: does the compile-time state know about this template?
         // This gives the engine direct visibility into available definitions
         // rather than blindly probing the callback.
-        if (ct_state && !ct_state->has_template_def(tci.source_template)) {
-          ++pending;
-          pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnresolvedTemplate,
-              "unresolved template call: " + tci.source_template +
-              " (no definition registered in compile-time state)"));
-          continue;
+        if (ct_state) {
+          primary_def = tci.primary_template_decl
+              ? ct_state->find_template_def(tci.primary_template_decl,
+                                            tci.source_template)
+              : ct_state->find_template_def(tci.source_template);
+          if (!primary_def) {
+            ++pending;
+            pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnresolvedTemplate,
+                "unresolved template call: " + tci.source_template +
+                " (no definition registered in compile-time state)"));
+            continue;
+          }
         }
 
         // Pre-check: consteval templates are handled by the consteval
         // evaluation path, not by deferred instantiation.
-        if (ct_state && ct_state->is_consteval_template(tci.source_template)) {
+        if (primary_def && primary_def->is_consteval) {
           ++pending;
           continue;
         }
@@ -370,9 +377,6 @@ struct TemplateInstantiationStep {
             if (module.functions.size() > fn_count_before) {
               auto& new_fn = module.functions.back();
               new_fn.template_origin = tci.source_template;
-              const Node* primary_def =
-                  ct_state ? ct_state->find_template_def(tci.source_template)
-                           : nullptr;
               new_fn.spec_key = nttp_bindings.empty()
                   ? make_specialization_key(
                       tci.source_template, tdef->template_params, bindings,
@@ -386,7 +390,7 @@ struct TemplateInstantiationStep {
               auto hi = ct_state->record_deferred_instance(
                   tci.source_template, bindings, nttp_bindings,
                   nttp_bindings_by_text,
-                  target_name, tdef->template_params);
+                  target_name, tdef->template_params, primary_def);
               tdef->instances.push_back(std::move(hi));
             }
           } else {

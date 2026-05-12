@@ -1793,8 +1793,11 @@ struct CompileTimeState {
       const NttpBindings& nttp_bindings,
       const NttpTextBindings& nttp_bindings_by_text,
       const std::string& mangled_name,
-      const std::vector<std::string>& template_params) {
-    const Node* primary_def = find_template_def(source_template);
+      const std::vector<std::string>& template_params,
+      const Node* primary_def = nullptr) {
+    if (!primary_def) {
+      primary_def = find_template_def(source_template);
+    }
     registry.record_seed(source_template, bindings, nttp_bindings,
                          nttp_bindings_by_text,
                          template_params,

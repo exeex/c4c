@@ -1210,6 +1210,80 @@ int use_template() { return id<int>(7); }
   expect_eq(hir_module.link_name_texts->lookup(template_info->source_template_text_id),
             template_info->source_template,
             "template-call source-template TextIds should resolve through the HIR text table");
+  expect_true(template_info->primary_template_decl != nullptr,
+              "template-call metadata should preserve structured primary template identity");
+}
+
+void test_hir_template_call_replay_rejects_rendered_fallback_after_primary_miss() {
+  c4c::TextTable texts;
+  c4c::hir::CompileTimeState state;
+
+  c4c::Node rendered_template = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "stale_template", texts.intern("stale_template"));
+  rendered_template.n_template_params = 1;
+  state.register_template_def("stale_template", &rendered_template);
+
+  c4c::Node missing_primary = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "missing_primary", texts.intern("missing_primary"));
+  missing_primary.n_template_params = 1;
+
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::hir::HirTemplateDef tdef;
+  tdef.name = "stale_template";
+  tdef.name_text_id = module.link_name_texts->intern("stale_template");
+  tdef.template_params.push_back("T");
+  tdef.template_param_text_ids.push_back(module.link_name_texts->intern("T"));
+  tdef.param_is_nttp.push_back(false);
+  module.template_defs.emplace("stale_template", std::move(tdef));
+
+  c4c::hir::DeclRef callee;
+  callee.name = "stale_template_i";
+  module.expr_pool.push_back(
+      c4c::hir::Expr{c4c::hir::ExprId{0}, {}, {}, std::move(callee)});
+
+  c4c::hir::TemplateCallInfo tci;
+  tci.source_template = "stale_template";
+  tci.source_template_text_id = module.link_name_texts->intern("stale_template");
+  tci.primary_template_decl = &missing_primary;
+  c4c::TypeSpec int_type;
+  int_type.base = c4c::TB_INT;
+  tci.template_args.push_back(int_type);
+
+  c4c::hir::CallExpr call;
+  call.callee = c4c::hir::ExprId{0};
+  call.template_info = std::move(tci);
+  module.expr_pool.push_back(
+      c4c::hir::Expr{c4c::hir::ExprId{1}, {}, {}, std::move(call)});
+
+  c4c::hir::Function caller;
+  caller.id = c4c::hir::FunctionId{0};
+  caller.name = "caller";
+  caller.blocks.push_back(c4c::hir::Block{});
+  c4c::hir::ReturnStmt ret;
+  ret.expr = c4c::hir::ExprId{1};
+  caller.blocks.back().stmts.push_back(c4c::hir::Stmt{ret, {}});
+  module.functions.push_back(std::move(caller));
+
+  bool instantiate_called = false;
+  auto instantiate = [&](const std::string&,
+                         const c4c::hir::TypeBindings&,
+                         const c4c::hir::NttpBindings&,
+                         const c4c::hir::NttpTextBindings&,
+                         const std::string&) {
+    instantiate_called = true;
+    return true;
+  };
+
+  auto stats = c4c::hir::run_compile_time_engine(
+      module, std::make_shared<c4c::hir::CompileTimeState>(state),
+      instantiate, nullptr);
+  expect_true(!instantiate_called,
+              "deferred replay should not recover through rendered spelling after a structured primary miss");
+  expect_true(stats.templates_pending == 1,
+              "structured primary miss should leave the stale rendered template call pending");
+  expect_true(!stats.diagnostics.empty(),
+              "structured primary miss should be reported as an unresolved template call");
 }
 
 void test_hir_consteval_call_metadata_preserves_text_ids_for_function_names() {
@@ -7215,6 +7289,7 @@ int main() {
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();
   test_hir_struct_defs_preserve_text_ids_for_tags_and_bases();
   test_hir_template_calls_preserve_text_ids_for_source_template_names();
+  test_hir_template_call_replay_rejects_rendered_fallback_after_primary_miss();
   test_hir_consteval_call_metadata_preserves_text_ids_for_function_names();
   test_hir_member_exprs_preserve_text_ids_for_field_names();
   test_hir_global_init_designators_preserve_text_ids_for_field_names();

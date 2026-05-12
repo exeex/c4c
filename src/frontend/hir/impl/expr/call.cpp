@@ -428,6 +428,7 @@ bool Lowerer::try_expand_pack_call_arg(FunctionCtx* ctx,
     tci.source_template = "forward";
     tci.source_template_text_id =
         make_text_id(tci.source_template, module_ ? module_->link_name_texts.get() : nullptr);
+    tci.primary_template_decl = tpl_fn;
     tci.template_args.push_back(elem.type);
     expanded_call.template_info = std::move(tci);
 
@@ -656,6 +657,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
     tci.source_template = n->left->name;
     tci.source_template_text_id =
         make_text_id(tci.source_template, module_ ? module_->link_name_texts.get() : nullptr);
+    tci.primary_template_decl = tpl_fn;
     if (tpl_fn) {
       for (const auto& pname : get_template_param_order(tpl_fn, &bindings, &nttp_bindings)) {
         auto bit = bindings.find(pname);
@@ -676,6 +678,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
     tci.source_template_text_id =
         make_text_id(tci.source_template, module_ ? module_->link_name_texts.get() : nullptr);
     const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
+    tci.primary_template_decl = tpl_fn;
     if (tpl_fn) {
       for (const auto& pname : get_template_param_order(
                tpl_fn, &ded_it->second.bindings, &ded_it->second.nttp_bindings)) {
