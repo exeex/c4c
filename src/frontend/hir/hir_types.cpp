@@ -785,11 +785,48 @@ std::string Lowerer::resolve_struct_method_lookup_owner_tag(
     const std::string* current_struct_tag,
     const Node* span_node,
     const std::string& context_name) {
+  if (owner_ts.record_def && owner_ts.record_def->kind == NK_STRUCT_DEF) {
+    if (const std::optional<HirRecordOwnerKey> owner_key =
+            make_struct_def_node_owner_key(owner_ts.record_def);
+        owner_key && hir_record_owner_key_has_complete_metadata(*owner_key)) {
+      if (const SymbolName* owner_tag =
+              module_ ? module_->find_struct_def_tag_by_owner(*owner_key)
+                      : nullptr;
+          owner_tag && module_->struct_defs.count(*owner_tag)) {
+        return std::string(*owner_tag);
+      }
+      return {};
+    }
+  }
+  if (owner_ts.namespace_context_id >= 0 &&
+      owner_ts.tag_text_id != kInvalidText) {
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = owner_ts.namespace_context_id;
+    ns_qual.is_global_qualified = owner_ts.is_global_qualified;
+    if (owner_ts.qualifier_text_ids && owner_ts.n_qualifier_segments > 0) {
+      ns_qual.segment_text_ids.assign(
+          owner_ts.qualifier_text_ids,
+          owner_ts.qualifier_text_ids + owner_ts.n_qualifier_segments);
+    }
+    const HirRecordOwnerKey owner_key =
+        make_hir_record_owner_key(ns_qual, owner_ts.tag_text_id);
+    if (hir_record_owner_key_has_complete_metadata(owner_key)) {
+      if (const SymbolName* owner_tag =
+              module_ ? module_->find_struct_def_tag_by_owner(owner_key)
+                      : nullptr;
+          owner_tag && module_->struct_defs.count(*owner_tag)) {
+        return std::string(*owner_tag);
+      }
+      return {};
+    }
+  }
   if (auto owner_tag = resolve_member_lookup_owner_tag(
           owner_ts, is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
           span_node, context_name)) {
     return *owner_tag;
   }
+  // No-owner rendered compatibility for legacy method lookup callers. Complete
+  // owner-key misses are closed above before tag_text_id or legacy tag recovery.
   if (module_ && module_->link_name_texts &&
       owner_ts.tag_text_id != kInvalidText) {
     const std::string_view rendered_tag =

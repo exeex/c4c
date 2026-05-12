@@ -8,40 +8,34 @@ Current Step Title: Fence Metadata-Rich Module And Owner Lookups
 
 ## Just Finished
 
-Completed `plan.md` Step 2 repair for module function/global declaration
-lookup after the d479fec40 full-suite regressions. Complete structured misses
-with mismatched TextIds still fail closed before rendered `fn_index` or
-`global_index`, but same-TextId owner-metadata gaps can recover through the
-explicit rendered compatibility path. Direct-call synthesized callees also keep
-rendered compatibility after a structured miss so generated template-call
-helpers can recover their semantic `LinkNameId`.
+Completed `plan.md` Step 2 owner-fallback slice for HIR record/aggregate
+lookup. `resolve_struct_method_lookup_owner_tag` now resolves complete
+record/tag owner keys before delegating to rendered compatibility helpers, so
+complete owner-key misses fail closed before `tag_text_id`, legacy tag, or
+rendered `struct_defs` recovery.
 
-Focused lookup coverage in `tests/frontend/frontend_hir_lookup_tests.cpp` now
-proves both same-TextId owner recovery and direct-call generated-callee
-compatibility, while the existing stale rendered function/global tests still
-reject mismatched complete structured misses. The HIR dump structured mirror
-expectation records the repaired legacy owner recovery plus later
-global-id/structured/link-name hits without parity mismatches.
+Retained direct-constructor `callee_name` and aggregate `typespec_legacy_tag`
+bridges are documented as no-owner compatibility only. Focused lookup coverage
+now proves a complete method owner-key miss rejects rendered/tag compatibility
+even when a stale rendered `struct_defs` entry exists.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 with the next owner-lookup fence only after the
-supervisor reviews whether same-TextId missing-owner compatibility should be
-mirrored in record-owner helpers or kept module-decl specific.
+Continue `plan.md` Step 2 by reviewing the remaining non-owned
+`resolve_member_lookup_owner_tag` rendered recovery in
+`src/frontend/hir/impl/templates/value_args.cpp`; this packet fenced the owned
+method wrapper without editing that broader helper.
 
 ## Watchouts
 
-- Mismatched complete declaration-key misses remain fenced; the recovery added
-  here only applies when the rendered compatibility target carries the same
-  `TextId` as the `DeclRef`.
-- Direct-call compatibility is deliberately narrower than general
-  `resolve_function_decl`; strict declaration lookup still returns null for
-  complete mismatched misses.
-- The HIR dump regex now includes the same-TextId legacy owner recovery before
-  later authoritative hits, while still rejecting parity mismatches.
+- The method-wrapper fence intentionally resolves or rejects complete owner
+  keys before calling `resolve_member_lookup_owner_tag`, because that helper is
+  outside this packet's owned files and still has a rendered tag recovery path.
+- No-owner direct constructor and aggregate compatibility remain intact; this
+  slice only rejects complete owner-key misses.
 
 ## Proof
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|frontend_hir_tests|cpp_hir_module_decl_lookup_structured_mirror|cpp_positive_sema_anon_namespace_fn_lookup_cpp|cpp_positive_sema_namespace_global_var_runtime_cpp|cpp_positive_sema_namespace_reopen_runtime_cpp|cpp_positive_sema_rvalue_ref_param_basic_cpp|cpp_positive_sema_rvalue_ref_param_call_basic_cpp|cpp_positive_sema_tag_brace_forward_runtime_cpp)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_lookup_tests|frontend_hir_tests|cpp_hir_expr_object_materialization_helper)$"' > test_after.log 2>&1`
 
 Result: passed. `test_after.log` is the proof log.

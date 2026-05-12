@@ -220,6 +220,8 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
           ctx ? &ctx->nttp_bindings : nullptr, current_struct_tag, n->left,
           "direct-ctor-owner", &callee_name);
     } else {
+      // No-owner direct-constructor compatibility for legacy callees that only
+      // carry the rendered constructor name.
       lookup_callee_tag = callee_name;
     }
   }
@@ -875,6 +877,8 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
       }
       const std::string_view legacy_tag = typespec_legacy_tag_if_present(owner_ts, 0);
       if (!has_structured_owner && !legacy_tag.empty()) {
+        // No-owner aggregate compatibility for legacy TypeSpecs. Structured
+        // owner misses are fenced before this rendered tag bridge.
         const auto sit = module_->struct_defs.find(std::string(legacy_tag));
         if (sit != module_->struct_defs.end()) {
           return AggregateOwner{std::string(legacy_tag), &sit->second};

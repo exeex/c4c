@@ -6547,6 +6547,50 @@ void test_direct_struct_constructor_owner_miss_rejects_stale_rendered_fallback()
               "stale rendered constructor fallback must not append constructor expressions after a complete structured miss");
 }
 
+void test_struct_method_owner_tag_complete_miss_rejects_rendered_fallbacks() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId missing_ns_text =
+      module.link_name_texts->intern("MissingMethodNs");
+  const c4c::TextId rendered_owner_text =
+      module.link_name_texts->intern("RenderedMethodOwner");
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "RenderedMethodOwner";
+  stale_def.tag_text_id = rendered_owner_text;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TextId qualifier_text_ids[] = {missing_ns_text};
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.namespace_context_id = 81;
+  owner_ts.tag_text_id = rendered_owner_text;
+  owner_ts.qualifier_text_ids = qualifier_text_ids;
+  owner_ts.n_qualifier_segments = 1;
+  set_legacy_tag_if_present(
+      owner_ts, arena.strdup("RenderedMethodOwner"), 0);
+
+  c4c::hir::NamespaceQualifier missing_ns;
+  missing_ns.context_id = 81;
+  missing_ns.segment_text_ids.push_back(missing_ns_text);
+  const c4c::hir::HirRecordOwnerKey missing_key =
+      c4c::hir::make_hir_record_owner_key(missing_ns, rendered_owner_text);
+  expect_true(module.find_struct_def_tag_by_owner(missing_key) == nullptr,
+              "fixture should start with a complete method owner-key miss");
+
+  const std::string owner_tag = lowerer.resolve_struct_method_lookup_owner_tag(
+      owner_ts, false, nullptr, nullptr, nullptr, nullptr,
+      "method-owner-complete-miss");
+  expect_true(owner_tag.empty(),
+              "complete method owner-key misses must not recover through "
+              "tag_text_id, legacy tag, or rendered struct_defs compatibility");
+}
+
 void test_out_of_class_nested_method_attach_uses_structured_owner_key() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6863,6 +6907,7 @@ int main() {
   test_lower_struct_def_base_owner_miss_rejects_stale_rendered_base_tag();
   test_direct_struct_constructor_uses_structured_owner_key();
   test_direct_struct_constructor_owner_miss_rejects_stale_rendered_fallback();
+  test_struct_method_owner_tag_complete_miss_rejects_rendered_fallbacks();
   test_out_of_class_nested_method_attach_uses_structured_owner_key();
   test_out_of_class_method_attach_rejects_rendered_name_without_structured_key();
   test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback();
