@@ -811,7 +811,7 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
                                                              const Node* n) {
   if (!(n->kind == NK_CALL && n->left && n->left->kind == NK_VAR && n->left->name))
     return std::nullopt;
-  const Node* ce_fn_def = ct_state_->find_consteval_def(n->left->name);
+  const Node* ce_fn_def = ct_state_->find_consteval_def(n->left, n->left->name);
   if (!ce_fn_def) return std::nullopt;
 
   LowererConstEvalStructuredMaps structured_maps;
