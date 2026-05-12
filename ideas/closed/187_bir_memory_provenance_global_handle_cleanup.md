@@ -1,7 +1,8 @@
 # BIR Memory Provenance Global Handle Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/185_lir_to_bir_global_typedecl_compatibility_fence.md`
@@ -52,6 +53,22 @@ Before backend restart, this boundary should be reduced or explicitly fenced.
 - Tests cover structured success and stale/missing global-id rejection or
   documented compatibility behavior.
 - Validation includes targeted BIR memory/provenance coverage.
+
+## Closure Notes
+
+- Step 1 inventory classified memory/provenance handles and selected the
+  addressed-global pointer provenance path for hardening.
+- Step 2 keyed `AddressedGlobalPointerSlots` and
+  `AddressedGlobalPointerValueSlots` by `LinkNameId`, preserving route-local
+  and compatibility string paths.
+- Step 3 added focused backend coverage for structured success and stale,
+  missing, or mismatched global-id rejection on the selected path.
+- Step 4 validated the backend handoff with
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+- Idea 188 still owns the final LIR/BIR freeze gate; this closure does not
+  accept or replace that broader milestone.
+- The rejected `test_baseline.new.log` full-suite candidate had unrelated
+  failures and was not accepted as a baseline refresh for this idea.
 
 ## Reviewer Reject Signals
 
