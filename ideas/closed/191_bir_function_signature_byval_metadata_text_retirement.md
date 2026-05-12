@@ -1,7 +1,8 @@
 # BIR Function Signature Byval Metadata Text Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/190_lir_call_argument_structured_payload_boundary.md`
@@ -50,6 +51,22 @@ decisions.
 - Structured byval metadata drives aggregate parameter layout and ABI facts.
 - Legacy no-metadata fallback is explicit and tested.
 - Focused BIR aggregate/function-signature tests cover stale text rejection.
+
+## Completion Notes
+
+- `LirSignatureParam::is_byval` is now the structured signature metadata
+  carrier for explicit incoming byval aggregate parameters.
+- Generated HIR-to-LIR signatures populate the structured byval fact alongside
+  signature parameter type refs, and verification rejects inconsistent
+  metadata-rich mirror state instead of recovering from rendered text.
+- BIR aggregate parameter collection consumes structured signature metadata
+  when available, so generated metadata-rich lowering no longer parses
+  `signature_text` to decide explicit byval handling.
+- Legacy `signature_text` parsing remains only for raw/no-metadata LIR fixture
+  compatibility, with tests covering that boundary.
+- Focused frontend/backend coverage proves stale rendered signature text cannot
+  override structured metadata, and close-time full-suite regression guard
+  passed with `3137/3137` runnable tests green before and after.
 
 ## Reviewer Reject Signals
 
