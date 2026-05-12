@@ -103,6 +103,82 @@ static void set_parse_base_type_enum_metadata(Parser& parser,
         ts, parse_base_type_final_spelling_compat(parser, ts, enum_def), 0);
 }
 
+static const Node* parse_base_type_static_member_base_record_definition(
+    Parser& parser,
+    const TypeSpec& base_ts) {
+    if (base_ts.record_def && base_ts.record_def->kind == NK_STRUCT_DEF &&
+        base_ts.record_def->n_fields >= 0) {
+        return base_ts.record_def;
+    }
+
+    TextId record_text_id = base_ts.tag_text_id;
+    int context_id = base_ts.namespace_context_id >= 0
+                         ? base_ts.namespace_context_id
+                         : parser.current_namespace_context_id();
+    bool is_union = base_ts.base == TB_UNION;
+    bool is_global_qualified = base_ts.is_global_qualified;
+    int n_qualifier_segments = base_ts.n_qualifier_segments;
+    TextId* qualifier_text_ids = base_ts.qualifier_text_ids;
+    if (base_ts.record_def && base_ts.record_def->kind == NK_STRUCT_DEF) {
+        if (base_ts.record_def->unqualified_text_id != kInvalidText) {
+            record_text_id = base_ts.record_def->unqualified_text_id;
+        }
+        if (base_ts.record_def->namespace_context_id >= 0) {
+            context_id = base_ts.record_def->namespace_context_id;
+        }
+        is_union = base_ts.record_def->is_union;
+        is_global_qualified = base_ts.record_def->is_global_qualified;
+        if (base_ts.record_def->n_qualifier_segments >= 0) {
+            n_qualifier_segments = base_ts.record_def->n_qualifier_segments;
+            qualifier_text_ids = base_ts.record_def->qualifier_text_ids;
+        }
+    }
+
+    if (record_text_id != kInvalidText) {
+        const Node* match = nullptr;
+        for (Node* candidate : parser.definition_state_.struct_defs) {
+            if (!candidate || candidate->kind != NK_STRUCT_DEF ||
+                candidate->n_fields < 0) {
+                continue;
+            }
+            if (candidate->namespace_context_id != context_id ||
+                candidate->unqualified_text_id != record_text_id) {
+                continue;
+            }
+            if (candidate->is_union != is_union ||
+                candidate->is_global_qualified != is_global_qualified ||
+                candidate->n_qualifier_segments != n_qualifier_segments) {
+                continue;
+            }
+            bool qualifier_match = true;
+            for (int qi = 0; qi < n_qualifier_segments; ++qi) {
+                if (!qualifier_text_ids || !candidate->qualifier_text_ids ||
+                    qualifier_text_ids[qi] == kInvalidText ||
+                    candidate->qualifier_text_ids[qi] !=
+                        qualifier_text_ids[qi]) {
+                    qualifier_match = false;
+                    break;
+                }
+            }
+            if (!qualifier_match) continue;
+            if (match && match != candidate) return nullptr;
+            match = candidate;
+        }
+        return match;
+    }
+
+    const bool text_id_less_legacy_carrier =
+        !base_ts.record_def && base_ts.tag_text_id == kInvalidText &&
+        base_ts.namespace_context_id < 0 && !base_ts.is_global_qualified &&
+        base_ts.n_qualifier_segments <= 0;
+    if (!text_id_less_legacy_carrier) return nullptr;
+
+    // Legacy parser compatibility only: old rendered carriers may still lack
+    // TextId/context metadata, but structured misses above fail closed.
+    return resolve_record_type_spec_with_parser_tag_map_compatibility(
+        base_ts, &parser.definition_state_.struct_tag_def_map);
+}
+
 static bool parse_base_type_has_structured_identity_metadata(const TypeSpec& ts) {
     return ts.tag_text_id != kInvalidText ||
            ts.template_param_text_id != kInvalidText ||
@@ -5304,10 +5380,8 @@ TypeSpec Parser::parse_base_type() {
                                         resolve_typedef_type_chain(
                                             cur->base_types[bi]);
                                     const Node* base_def =
-                                        resolve_record_type_spec_with_parser_tag_map_compatibility(
-                                            base_ts,
-                                            &definition_state_
-                                                 .struct_tag_def_map);
+                                        parse_base_type_static_member_base_record_definition(
+                                            *this, base_ts);
                                     if (base_def &&
                                         lookup_static_member_recursive(
                                             base_def, member_name, value)) {
@@ -6771,10 +6845,8 @@ TypeSpec Parser::parse_base_type() {
                                                 resolve_typedef_type_chain(
                                                     cur->base_types[bi]);
                                             const Node* base_def =
-                                                resolve_record_type_spec_with_parser_tag_map_compatibility(
-                                                    base_ts,
-                                                    &definition_state_
-                                                         .struct_tag_def_map);
+                                                parse_base_type_static_member_base_record_definition(
+                                                    *this, base_ts);
                                             if (base_def &&
                                                 lookup_static_member_recursive(
                                                     base_def, member_name,
