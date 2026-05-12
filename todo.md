@@ -1,36 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/197_bir_backend_compatibility_string_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Fence Or Convert Text-Pool And String-Constant Identity
+Current Step ID: 3
+Current Step Title: Convert Link-Visible Symbol Identity
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Fence Or Convert Text-Pool And String-Constant Identity completed for
-the LIR string-pool to BIR direct-call bridge.
+Step 3 - Convert Link-Visible Symbol Identity completed a narrow LIR-to-BIR
+global identity fence.
 
-`bir::StringConstant` now carries `TextId name_id` as the structured
-text-pool identity. `StringConstant::name` remains compatibility/display
-spelling for raw-only BIR and output, with the owner/removal condition noted in
-the BIR field comment.
+`src/backend/bir/lir_to_bir/module.cpp` now treats a non-invalid
+`LirGlobal::link_name_id` as semantic authority for lowered BIR global
+identity. If the id cannot resolve through the LIR link-name table, lowering
+fails closed instead of recovering through `LirGlobal::name`. Raw global names
+remain compatibility identity only for no-id globals.
 
-`src/backend/bir/lir_to_bir.cpp` now materializes BIR string constants into the
-lowered module's `NameTables::texts` and rewrites direct-call string pointer
-args through the carried `TextId`. The rewrite no longer owns a separate raw
-name table that can become semantic authority.
-
-`tests/backend/backend_lir_to_bir_notes_test.cpp` now checks that lowered BIR
-string constants carry resolvable `TextId` identity, and adds a raw-only global
-fixture proving the string-pool bridge does not recover through identical raw
-spelling when no BIR string-constant `TextId` exists.
+`tests/backend/backend_lir_to_bir_notes_test.cpp` now includes a focused stale
+global `LinkNameId` fixture proving an unresolved metadata-rich global does not
+lower through its raw rendered spelling, and records the fail-closed module
+note.
 
 ## Suggested Next
 
-Execute Step 3 against link-visible symbol identity. Start with the smallest
-metadata-rich BIR/prealloc path that can prove a stale or mismatched
-`LinkNameId` does not recover through raw rendered symbol spelling.
+Continue Step 3 with the next smallest link-visible identity fence. A natural
+next packet is to apply the same unresolved-id fail-closed rule to
+function/extern symbol identity at the LIR-to-BIR module boundary, while
+preserving raw-name compatibility only for no-id functions or declarations.
 
 ## Watchouts
 
@@ -49,6 +46,9 @@ metadata-rich BIR/prealloc path that can prove a stale or mismatched
 - x86 `module/data.cpp` raw same-module global lookup is currently final
   assembler/output spelling territory. Do not convert that before the upstream
   BIR/prepared link-name carriers are fenced.
+- This slice intentionally fenced only LIR global identity. Function and extern
+  `LinkNameId` spelling helpers still need separate review before claiming
+  Step 3 broadly complete.
 
 ## Proof
 

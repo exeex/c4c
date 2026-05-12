@@ -96,12 +96,15 @@ std::string function_name_for_reporting(const c4c::codegen::lir::LirModule& modu
   return function.name;
 }
 
-std::string global_name_for_identity(const c4c::codegen::lir::LirModule& module,
-                                     const c4c::codegen::lir::LirGlobal& global) {
+std::optional<std::string> global_name_for_identity(const c4c::codegen::lir::LirModule& module,
+                                                    const c4c::codegen::lir::LirGlobal& global) {
   const std::string_view resolved_name = resolve_link_name(module.link_names,
                                                            global.link_name_id);
   if (!resolved_name.empty()) {
     return std::string(resolved_name);
+  }
+  if (global.link_name_id != c4c::kInvalidLinkName) {
+    return std::nullopt;
   }
   return global.name;
 }
@@ -936,9 +939,16 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       return std::nullopt;
     }
     info.link_name_id = global.link_name_id;
-    const std::string global_name = global_name_for_identity(context.lir_module, global);
-    lowered_global->name = global_name;
-    global_types.emplace(global_name, info);
+    const auto global_name = global_name_for_identity(context.lir_module, global);
+    if (!global_name.has_value()) {
+      context.note(
+          "module",
+          "LinkNameId-bearing LIR global must resolve through the link-name table before "
+          "raw-name compatibility is allowed");
+      return std::nullopt;
+    }
+    lowered_global->name = *global_name;
+    global_types.emplace(*global_name, info);
     module.globals.push_back(std::move(*lowered_global));
   }
 

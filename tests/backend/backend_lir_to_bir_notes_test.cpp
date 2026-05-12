@@ -84,6 +84,7 @@ LirModule make_structured_block_label_id_module();
 LirModule make_dynamic_indexed_gep_global_member_array_module();
 
 int expect_link_name_id_symbol_identity_survives_drifted_display_names();
+int expect_link_name_id_global_identity_rejects_unresolved_id();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_dynamic_global_scalar_array_loads_reject_missing_link_name_spelling();
 int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
@@ -328,6 +329,32 @@ int expect_link_name_id_symbol_identity_survives_drifted_display_names() {
   if (load == nullptr || load->global_name != "semantic_global" ||
       load->global_name_id != global_id) {
     return fail("BIR global load should carry LinkNameId identity for semantic global refs");
+  }
+  return 0;
+}
+
+int expect_link_name_id_global_identity_rejects_unresolved_id() {
+  LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  LirGlobal global;
+  global.name = "stale_raw_global";
+  global.link_name_id = 9999;
+  global.llvm_type = "i32";
+  global.init_text = "i32 7";
+  global.align_bytes = 4;
+  module.globals.push_back(std::move(global));
+
+  const auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("unresolved global LinkNameId should not recover through raw LIR global name");
+  }
+  if (!contains_note(result.notes,
+                     "module",
+                     "LinkNameId-bearing LIR global must resolve through the link-name table")) {
+    return fail("unresolved global LinkNameId failure should identify the fail-closed path");
   }
   return 0;
 }
@@ -5390,6 +5417,11 @@ int main() {
           expect_link_name_id_symbol_identity_survives_drifted_display_names();
       link_name_identity_status != 0) {
     return link_name_identity_status;
+  }
+  if (const int link_name_unresolved_global_status =
+          expect_link_name_id_global_identity_rejects_unresolved_id();
+      link_name_unresolved_global_status != 0) {
+    return link_name_unresolved_global_status;
   }
 
   if (const int string_pool_link_name_status =
