@@ -32,6 +32,11 @@ BackendAggregateLayoutLookup lookup_local_gep_layout_result(
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
   if (structured_layouts != nullptr) {
+    // Step 4 no-id compatibility bridge: local GEP lowering still threads
+    // rendered aggregate type text through its projection helpers. Structured
+    // layouts remain authoritative when present; metadata-rich type refs must
+    // use the central type-ref layout lookup and fail closed there. Remove this
+    // bridge once local GEP callers carry LirTypeRef/StructNameId metadata.
     const auto lookup =
         lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
     const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
