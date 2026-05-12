@@ -274,6 +274,12 @@ struct Pair {
   int right;
 };
 
+struct Big {
+  long long a;
+  long long b;
+  long long c;
+};
+
 struct Slot {
   int value;
 };
@@ -284,6 +290,14 @@ struct Pair make_pair(struct Pair input) {
 
 struct Pair call_pair(struct Pair value) {
   return make_pair(value);
+}
+
+int consume_big(struct Big input) {
+  return (int)input.a;
+}
+
+int call_big(struct Big value) {
+  return consume_big(value);
 }
 
 int sink(int seed, ...);
@@ -311,11 +325,28 @@ int call_variadic(struct Pair tail) {
   expect_true(formatted.find("@make_pair(%struct.Pair ") != std::string::npos,
               "format_lir_call_site should keep the existing call text shape");
 
+  c4c::codegen::lir::LirFunction& call_big = require_function(lir_module, "call_big");
+  c4c::codegen::lir::LirCallOp& byval_call =
+      require_call_to(call_big, "@consume_big");
+  expect_eq(std::to_string(byval_call.arg_type_refs.size()), "1",
+            "fixed byval aggregate call should carry one argument mirror");
+  expect_eq(byval_call.args_str.find("ptr byval(%struct.Big) align 8") ==
+                    std::string::npos
+                ? "missing"
+                : "present",
+            "present",
+            "fixed byval aggregate call should keep the emitted ABI fragment");
+  expect_struct_type_ref(lir_module, byval_call.arg_type_refs[0], "%struct.Big",
+                         "fixed byval call argument mirror");
+
   c4c::codegen::lir::verify_module(lir_module);
   const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
   expect_true(llvm_ir.find("call %struct.Pair (%struct.Pair) @make_pair(%struct.Pair ") !=
                   std::string::npos,
               "printer should keep using formatted call-site text");
+  expect_true(llvm_ir.find("call i32 (ptr) @consume_big(ptr byval(%struct.Big) align 8 ") !=
+                  std::string::npos,
+              "printer should keep using formatted byval call-site text");
 
   const c4c::StructNameId pair_id = direct_call.return_type.struct_name_id();
   const c4c::StructNameId slot_id = lir_module.struct_names.find("%struct.Slot");

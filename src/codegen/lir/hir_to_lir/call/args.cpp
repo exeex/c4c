@@ -281,9 +281,11 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       obj_ptr = tmp_addr;
     }
     const int align = std::max(8, object_align_bytes(mod_, module_, out_arg_ts));
-    PreparedCallArg out{{{"ptr byval(" + llvm_value_ty(mod_, out_arg_ts) + ") align " +
+    const std::string byval_pointee_ty = llvm_value_ty(mod_, out_arg_ts);
+    PreparedCallArg out{{{"ptr byval(" + byval_pointee_ty + ") align " +
                               std::to_string(align),
-                          obj_ptr}},
+                          obj_ptr,
+                          lir_call_type_ref(byval_pointee_ty, module_, mod_, out_arg_ts)}},
                         false};
     return out;
   }

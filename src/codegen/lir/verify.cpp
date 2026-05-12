@@ -155,6 +155,12 @@ void verify_declared_struct_type_ref_mirror(const LirModule& mod,
   }
 }
 
+bool call_arg_type_matches_byval_pointee(std::string_view formatted_type,
+                                         std::string_view pointee_type) {
+  const std::string byval_fragment = "byval(" + std::string(pointee_type) + ")";
+  return formatted_type.find(byval_fragment) != std::string_view::npos;
+}
+
 void verify_call_return_type_ref_mirror(const LirModule& mod,
                                         const LirTypeRef& mirror) {
   const std::string& shadow =
@@ -194,6 +200,8 @@ void verify_call_arg_type_ref_mirror(const LirModule& mod,
 
   if (mirror.has_struct_name_id()) {
     verify_declared_struct_type_ref_mirror(mod, mirror, "LirCallOp.arg_type_refs");
+    const std::string_view rendered_name =
+        mod.struct_names.spelling(mirror.struct_name_id());
     if (formatted_struct_name_id != kInvalidStructName) {
       if (mirror.struct_name_id() != formatted_struct_name_id) {
         std::ostringstream detail;
@@ -201,6 +209,9 @@ void verify_call_arg_type_ref_mirror(const LirModule& mod,
                << " mirror StructNameId does not match call text";
         fail_verify("LirCallOp.arg_type_refs", detail.str());
       }
+      return;
+    }
+    if (call_arg_type_matches_byval_pointee(formatted_type, rendered_name)) {
       return;
     }
   } else if (formatted_struct_name_id != kInvalidStructName) {
@@ -339,7 +350,25 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_call_return_type_ref_mirror(mod, op->return_type);
     verify_pointer_operand(op->callee, "LirCallOp.callee");
     if (!op->arg_type_refs.empty()) {
-      const auto parsed = parse_lir_typed_call_or_infer_params(*op);
+      auto parsed = parse_lir_typed_call_or_infer_params(*op);
+      if (!parsed.has_value()) {
+        const auto param_types = parse_lir_call_param_types(op->callee_type_suffix);
+        const auto args = parse_lir_typed_call_args(op->args_str);
+        if (param_types.has_value() && args.has_value() &&
+            param_types->size() == args->size()) {
+          bool mirrorable = true;
+          for (std::size_t index = 0; index < args->size(); ++index) {
+            if (!lir_call_param_type_accepts_arg_type((*param_types)[index],
+                                                      (*args)[index].type)) {
+              mirrorable = false;
+              break;
+            }
+          }
+          if (mirrorable) {
+            parsed = ParsedLirTypedCallView{*param_types, *args};
+          }
+        }
+      }
       if (!parsed.has_value()) {
         fail_verify("LirCallOp.arg_type_refs",
                     "cannot validate argument mirrors against malformed call arguments");

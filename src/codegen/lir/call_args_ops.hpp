@@ -10,6 +10,36 @@
 
 namespace c4c::codegen::lir {
 
+inline bool lir_call_param_type_accepts_arg_type(std::string_view param_type,
+                                                 std::string_view arg_type) {
+  param_type = trim_lir_arg_text(param_type);
+  arg_type = trim_lir_arg_text(arg_type);
+  if (param_type == arg_type) return true;
+  return param_type == "ptr" && arg_type.rfind("ptr byval(", 0) == 0;
+}
+
+inline bool lir_call_args_are_mirrorable(const FormattedLirTypedCall& formatted) {
+  if (const auto parsed = parse_lir_typed_call_or_infer_params(
+          formatted.callee_type_suffix, formatted.args_str);
+      parsed.has_value()) {
+    return true;
+  }
+
+  const auto param_types = parse_lir_call_param_types(formatted.callee_type_suffix);
+  const auto args = parse_lir_typed_call_args(formatted.args_str);
+  if (!param_types.has_value() || !args.has_value() ||
+      param_types->size() != args->size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < args->size(); ++index) {
+    if (!lir_call_param_type_accepts_arg_type((*param_types)[index],
+                                              (*args)[index].type)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 inline std::vector<LirTypeRef> lir_call_arg_type_refs(
     const FormattedLirTypedCall& formatted,
     const std::vector<OwnedLirTypedCallArg>& args) {
@@ -19,8 +49,7 @@ inline std::vector<LirTypeRef> lir_call_arg_type_refs(
       });
   if (!has_explicit_mirror) return {};
 
-  if (!parse_lir_typed_call_or_infer_params(formatted.callee_type_suffix,
-                                            formatted.args_str)) {
+  if (!lir_call_args_are_mirrorable(formatted)) {
     return {};
   }
 
