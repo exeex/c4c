@@ -61,6 +61,8 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
 [[nodiscard]] PreparedRegisterClass resolve_register_class(
     const PreparedBirModule& prepared,
     const PreparedLivenessValue& value) {
+  // Step 5 fence: overrides are prepared-route annotations keyed by interned
+  // function/value IDs; they select target register classes, not value identity.
   if (const auto* override =
           find_prepared_register_group_override(prepared, value.function_name, value.value_name);
       override != nullptr && override->register_class != PreparedRegisterClass::None) {
@@ -71,6 +73,8 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
 
 [[nodiscard]] std::size_t resolve_register_group_width(const PreparedBirModule& prepared,
                                                        const PreparedLivenessValue& value) {
+  // Step 5 fence: contiguous width follows the same prepared-route override as
+  // register class and is not a raw spelling lookup.
   if (const auto* override =
           find_prepared_register_group_override(prepared, value.function_name, value.value_name);
       override != nullptr) {

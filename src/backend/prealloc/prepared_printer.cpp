@@ -27,6 +27,9 @@ std::string render_value(const c4c::backend::bir::Value& value) {
   return std::to_string(value.immediate);
 }
 
+// Step 5 fence: prepared-printer helpers expand interned IDs and route-local
+// spellings only for debug/display output. They do not make raw text an
+// authority for prepared or semantic identity.
 std::string_view maybe_function_name(const PreparedNameTables& names, FunctionNameId id) {
   if (id == kInvalidFunctionName) {
     return "<none>";
@@ -112,6 +115,9 @@ const bir::Function* find_prepared_function(const PreparedBirModule& module,
   if (function_name == kInvalidFunctionName) {
     return nullptr;
   }
+  // Step 5 fence: this raw-name comparison is printer-local module lookup used
+  // to enrich diagnostics. It must not be used as a semantic link identity
+  // check outside prepared debug rendering.
   const auto name = prepared_function_name(module.names, function_name);
   for (const auto& function : module.module.functions) {
     if (function.name == name) {

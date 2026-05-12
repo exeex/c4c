@@ -640,6 +640,9 @@ struct PreparedRegisterGroupOverride {
   std::size_t contiguous_width = 1;
 };
 
+// Step 5 fence: register-group overrides are keyed by prepared interned
+// function/value IDs. Any raw register spellings downstream are target-physical
+// route names, not semantic value identity.
 struct PreparedRegisterGroupOverrides {
   std::vector<PreparedRegisterGroupOverride> values;
 };
@@ -900,6 +903,10 @@ struct PreparedValueHome {
   std::optional<std::int64_t> pointer_byte_delta;
 };
 
+// Step 5 fence: value homes and move bundles are backend-prepared route-local
+// lookup state. Block indexes, instruction indexes, and physical register
+// spellings here describe the prepared route only; semantic identity stays in
+// PreparedValueId plus interned function/value/block IDs.
 struct PreparedMoveBundle {
   FunctionNameId function_name = kInvalidFunctionName;
   PreparedMovePhase phase = PreparedMovePhase::BeforeInstruction;
@@ -4245,6 +4252,10 @@ struct PreparedBirModule {
   return nullptr;
 }
 
+// Step 5 fence: this spelling bridge is for prepared-route diagnostics and
+// legacy callers that still name a value by text. It resolves through the
+// prepared value table before lookup; callers with structured state should pass
+// ValueNameId directly.
 [[nodiscard]] inline const PreparedValueHome* find_prepared_value_home(
     const PreparedNameTables& names,
     const PreparedValueLocationFunction& function_locations,
@@ -4270,6 +4281,10 @@ struct PreparedBirModule {
   return nullptr;
 }
 
+// Step 5 fence: block-index lookup compares a prepared block-label ID against
+// the route-local BIR block label text because prepared move bundles are still
+// keyed by block index. Remove this bridge when prepared control-flow consumers
+// carry a structured BIR block handle/index from the producer.
 [[nodiscard]] inline std::optional<std::size_t> find_prepared_block_index_in_function(
     const PreparedNameTables& names,
     const bir::Function& function,
@@ -4286,6 +4301,9 @@ struct PreparedBirModule {
   return std::nullopt;
 }
 
+// Step 5 fence: parallel-copy execution indexes are route-local scheduling
+// coordinates. The authoritative ownership remains the prepared parallel-copy
+// bundle labels plus OutOfSsaParallelCopy authority, not a semantic name.
 [[nodiscard]] inline std::optional<std::size_t>
 published_prepared_parallel_copy_execution_block_index(
     const PreparedNameTables& names,
@@ -4299,6 +4317,9 @@ published_prepared_parallel_copy_execution_block_index(
   return find_prepared_block_index_in_function(names, function, *execution_block_label);
 }
 
+// Step 5 fence: this helper intentionally matches the out-of-SSA move bundle
+// by prepared execution site, source edge labels, and authority kind. It is
+// route-local parallel-copy state and must not be reused as semantic identity.
 [[nodiscard]] inline const PreparedMoveBundle*
 find_prepared_out_of_ssa_parallel_copy_move_bundle(
     const PreparedNameTables& names,
@@ -4341,6 +4362,9 @@ find_prepared_out_of_ssa_parallel_copy_move_bundle(
       parallel_copy_bundle));
 }
 
+// Step 5 fence: the step index is the prepared parallel-copy plan's local move
+// resolution coordinate. It is valid only with the matched bundle/edge authority
+// above.
 [[nodiscard]] inline const PreparedMoveResolution*
 find_prepared_out_of_ssa_parallel_copy_move_for_step(
     const PreparedMoveBundle& move_bundle,
@@ -4392,6 +4416,8 @@ find_prepared_out_of_ssa_parallel_copy_move_for_step(
       parallel_copy_step_index));
 }
 
+// Step 5 fence: uniqueness is scoped to one prepared route phase/block index.
+// This is a scheduling lookup for move insertion, not a semantic identity map.
 [[nodiscard]] inline const PreparedMoveBundle* find_prepared_unique_move_bundle(
     const PreparedValueLocationFunction& function_locations,
     PreparedMovePhase phase,

@@ -8,29 +8,35 @@ Current Step Title: Audit Backend-Prepared Route-Local Names
 
 ## Just Finished
 
-Plan-owner Step 4 lifecycle review accepted Step 4 - Fence Type And Aggregate
-Layout Compatibility as complete enough to advance.
+Step 5 - Audit Backend-Prepared Route-Local Names started with an owned
+prepared/prealloc inventory packet.
 
-Evidence reviewed:
-- Recent Step 4 executor packets report all remaining owned raw aggregate/byval
-  layout calls are either behind explicit Step 4 no-id compatibility fences or
-  on existing structured `LirTypeRef` / `StructNameId` fail-closed paths.
-- `review/step4_layout_fence_review.md` reports no blocking findings, no
-  testcase overfit, no expectation downgrade, and route alignment with idea 197.
-- The final inventory notes in this file cover the post-review additions in
-  `memory/intrinsics.cpp`, `calling.cpp`, `cfg.cpp`, `aggregate.cpp`, and
-  `memory/local_slots.cpp`.
-- No source-idea intent changed, so no source idea or `plan.md` rewrite is
-  needed for this routine lifecycle advance.
+Inventory result:
+- `PreparedRegisterGroupOverride` lookup is keyed by interned
+  `FunctionNameId` / `ValueNameId`; retained register spellings downstream are
+  target-physical route names, not semantic value identity.
+- `PreparedValueHome` lookup has structured `PreparedValueId` and
+  `ValueNameId` entry points. The remaining `std::string_view` value-name
+  overload is fenced as a prepared-route diagnostic/legacy bridge that resolves
+  through `PreparedNameTables` before lookup.
+- `PreparedMoveBundle` lookup by phase, block index, and instruction index is
+  route-local scheduling state for move insertion.
+- `find_prepared_block_index_in_function()` is fenced as the remaining
+  route-local bridge from prepared block-label IDs back to BIR block indexes.
+- Out-of-SSA parallel-copy helpers are fenced as route-local lookup state keyed
+  by execution site, source edge labels, authority kind, and local step index.
+- `prepared_printer.cpp` retained raw spelling expansion is classified as
+  debug/display only, including the printer-local function-name comparison used
+  to enrich prepared control-flow output.
+- `regalloc.cpp` override use is documented as target register-class/width
+  selection keyed by interned prepared IDs.
 
 ## Suggested Next
 
-Start Step 5 - Audit Backend-Prepared Route-Local Names.
-
-First executor packet should inventory backend-prepared route-local lookup
-tables, prealloc local handles, debug-focus naming, and nearby route-local maps
-that could be mistaken for semantic identity. Keep the packet narrow and classify
-retained names as route-local/display/debug ownership, not semantic authority.
+Continue Step 5 with the next backend-prepared naming packet: audit debug-focus
+name handling and any remaining nearby prepared route-local maps outside the
+owned prepared value/home, register override, block-index, and parallel-copy
+lookup cluster.
 
 ## Watchouts
 
@@ -126,6 +132,10 @@ retained names as route-local/display/debug ownership, not semantic authority.
   memory load/store ops.
 - `tests/backend/backend_lir_to_bir_notes_test.cpp` was reviewed only through
   the delegated backend proof; no expectation changes were needed or made.
+- The Step 5 fences added here are comment-only and intentionally do not broaden
+  backend-prepared or MIR interfaces. The block-index bridge remains until
+  prepared control-flow consumers carry a structured BIR block handle/index from
+  the producer.
 
 ## Proof
 
