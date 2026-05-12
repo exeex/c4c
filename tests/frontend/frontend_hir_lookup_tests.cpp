@@ -6711,6 +6711,36 @@ void test_member_lookup_owner_tag_complete_miss_rejects_rendered_fallbacks() {
               "tag_text_id, legacy tag, or rendered struct_defs compatibility");
 }
 
+void test_member_lookup_owner_tag_allows_materialized_tag_carrier() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId materialized_text =
+      module.link_name_texts->intern("Box_T_struct_Pair_T_int");
+
+  c4c::hir::HirStructDef materialized_def;
+  materialized_def.tag = "Box_T_struct_Pair_T_int";
+  materialized_def.tag_text_id = materialized_text;
+  module.struct_defs[materialized_def.tag] = materialized_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.namespace_context_id = 0;
+  owner_ts.tag_text_id = materialized_text;
+
+  const std::optional<std::string> owner_tag =
+      lowerer.resolve_member_lookup_owner_tag(
+          owner_ts, false, nullptr, nullptr, nullptr, nullptr,
+          "member-owner-materialized-tag");
+  expect_true(owner_tag.has_value() && *owner_tag == materialized_def.tag,
+              "unqualified materialized template tags should remain usable as "
+              "member owner carriers without reopening mismatched owner-key "
+              "fallbacks");
+}
+
 void test_out_of_class_nested_method_attach_uses_structured_owner_key() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -7031,6 +7061,7 @@ int main() {
   test_direct_struct_constructor_owner_miss_rejects_stale_rendered_fallback();
   test_struct_method_owner_tag_complete_miss_rejects_rendered_fallbacks();
   test_member_lookup_owner_tag_complete_miss_rejects_rendered_fallbacks();
+  test_member_lookup_owner_tag_allows_materialized_tag_carrier();
   test_out_of_class_nested_method_attach_uses_structured_owner_key();
   test_out_of_class_method_attach_rejects_rendered_name_without_structured_key();
   test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback();

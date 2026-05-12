@@ -333,6 +333,30 @@ std::optional<std::string> structured_owner_tag_from_type(
   return std::nullopt;
 }
 
+std::optional<std::string> structured_template_instance_tag_from_type(
+    const TypeSpec& ts,
+    const Module* module) {
+  if (!module || !module->link_name_texts ||
+      ts.tag_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+  const std::string_view tag_text = module->link_name_texts->lookup(ts.tag_text_id);
+  if (tag_text.empty()) return std::nullopt;
+  const auto def_it = module->struct_defs.find(std::string(tag_text));
+  if (def_it == module->struct_defs.end()) return std::nullopt;
+  if (ts.namespace_context_id == 0 && ts.n_qualifier_segments == 0 &&
+      !typespec_legacy_tag_if_present(ts, 0)) {
+    return def_it->first;
+  }
+  for (const auto& [owner_key, rendered_tag] : module->struct_def_owner_index) {
+    if (owner_key.kind == HirRecordOwnerKeyKind::TemplateInstantiation &&
+        rendered_tag == def_it->first) {
+      return def_it->first;
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string> legacy_owner_tag_from_type_if_no_metadata(
     const TypeSpec& ts,
     const Module* module) {
@@ -612,6 +636,10 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
       (!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) &&
       base_ts.tpl_struct_origin_key.base_text_id == kInvalidText &&
       !(base_ts.tpl_struct_args.data && base_ts.tpl_struct_args.size > 0)) {
+    if (auto owner_tag =
+            structured_template_instance_tag_from_type(base_ts, module_)) {
+      return owner_tag;
+    }
     return std::nullopt;
   }
   if (auto owner_tag = structured_owner_tag_from_type(base_ts, module_)) {
@@ -1060,6 +1088,37 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
         has_complete_owner_key = true;
         auto it = template_struct_defs_by_owner_.find(owner_key);
         if (it != template_struct_defs_by_owner_.end()) primary = it->second;
+        if (!primary && module_ && module_->link_name_texts) {
+          std::string qualified_primary;
+          for (int i = 0; i < ref->n_qualifier_segments; ++i) {
+            const std::string_view segment =
+                module_->link_name_texts->lookup(ref->qualifier_text_ids[i]);
+            if (segment.empty()) {
+              qualified_primary.clear();
+              break;
+            }
+            if (!qualified_primary.empty()) qualified_primary += "::";
+            qualified_primary += segment;
+          }
+          if (!qualified_primary.empty()) {
+            primary = find_template_struct_primary(qualified_primary);
+          }
+        }
+        if (!primary && ref->qualifier_segments) {
+          std::string qualified_primary;
+          for (int i = 0; i < ref->n_qualifier_segments; ++i) {
+            const char* segment = ref->qualifier_segments[i];
+            if (!segment || !segment[0]) {
+              qualified_primary.clear();
+              break;
+            }
+            if (!qualified_primary.empty()) qualified_primary += "::";
+            qualified_primary += segment;
+          }
+          if (!qualified_primary.empty()) {
+            primary = find_template_struct_primary(qualified_primary);
+          }
+        }
       }
     }
   }
@@ -1154,6 +1213,9 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
         std::optional<std::string> owner_tag =
             structured_owner_tag_from_type(ts, module_);
         if (!owner_tag) {
+          owner_tag = structured_template_instance_tag_from_type(ts, module_);
+        }
+        if (!owner_tag) {
           owner_tag = legacy_owner_tag_from_type_if_no_metadata(ts, module_);
         }
         if (owner_tag &&
@@ -1222,25 +1284,62 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
     }
   }
 
+  auto remember_structured_value = [&](long long value) -> long long {
+    if (!ref || !module_ || !ref->qualifier_text_ids ||
+        ref->n_qualifier_segments <= 0 ||
+        ref->unqualified_text_id == kInvalidText) {
+      return value;
+    }
+    const TextId owner_text_id =
+        ref->qualifier_text_ids[ref->n_qualifier_segments - 1];
+    if (owner_text_id == kInvalidText) return value;
+    NamespaceQualifier owner_ns;
+    owner_ns.context_id = ref->namespace_context_id;
+    owner_ns.is_global_qualified = ref->is_global_qualified;
+    owner_ns.segment_text_ids.reserve(ref->n_qualifier_segments - 1);
+    for (int i = 0; i + 1 < ref->n_qualifier_segments; ++i) {
+      if (ref->qualifier_text_ids[i] == kInvalidText) {
+        owner_ns.segment_text_ids.clear();
+        return value;
+      }
+      owner_ns.segment_text_ids.push_back(ref->qualifier_text_ids[i]);
+    }
+    const HirRecordOwnerKey owner_key =
+        make_hir_record_owner_key(owner_ns, owner_text_id);
+    if (auto member_key =
+            make_struct_member_lookup_key(owner_key, ref->unqualified_text_id)) {
+      struct_static_member_const_values_by_owner_[*member_key] = value;
+    }
+    return value;
+  };
+
   if (member == "value" && actual_args.size() == 1 && !actual_args[0].is_value) {
     if (matches_trait_family(tpl_name, "is_signed")) {
-      return is_signed_trait_type(actual_args[0].type) ? 1LL : 0LL;
+      return remember_structured_value(
+          is_signed_trait_type(actual_args[0].type) ? 1LL : 0LL);
     }
     if (matches_trait_family(tpl_name, "is_unsigned")) {
-      return is_unsigned_trait_type(actual_args[0].type) ? 1LL : 0LL;
+      return remember_structured_value(
+          is_unsigned_trait_type(actual_args[0].type) ? 1LL : 0LL);
     }
     if (matches_trait_family(tpl_name, "is_const")) {
-      return is_const_trait_type(actual_args[0].type) ? 1LL : 0LL;
+      return remember_structured_value(
+          is_const_trait_type(actual_args[0].type) ? 1LL : 0LL);
     }
     if (matches_trait_family(tpl_name, "is_enum")) {
-      return is_enum_trait_type(actual_args[0].type) ? 1LL : 0LL;
+      return remember_structured_value(
+          is_enum_trait_type(actual_args[0].type) ? 1LL : 0LL);
     }
     if (matches_trait_family(tpl_name, "is_reference")) {
       if (is_reference_trait_type(actual_args[0].type)) {
-        return 1LL;
+        return remember_structured_value(1LL);
       }
       std::optional<std::string> structured_owner_tag =
           structured_owner_tag_from_type(actual_args[0].type, module_);
+      if (!structured_owner_tag) {
+        structured_owner_tag =
+            structured_template_instance_tag_from_type(actual_args[0].type, module_);
+      }
       std::optional<std::string> legacy_owner_tag;
       if (!structured_owner_tag) {
         legacy_owner_tag =
@@ -1252,7 +1351,8 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
         TypeSpec resolved_member{};
         if (resolve_struct_member_typedef_type(
                 *owner_tag, "type", &resolved_member)) {
-          return is_reference_trait_type(resolved_member) ? 1LL : 0LL;
+          return remember_structured_value(
+              is_reference_trait_type(resolved_member) ? 1LL : 0LL);
         }
         auto owner_it = struct_def_nodes_.find(*owner_tag);
         if (owner_it != struct_def_nodes_.end() && owner_it->second) {
@@ -1264,25 +1364,26 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
           if (origin &&
               (matches_trait_family(origin, "add_lvalue_reference") ||
                matches_trait_family(origin, "add_rvalue_reference"))) {
-            return 1LL;
+            return remember_structured_value(1LL);
           }
         }
         if (legacy_owner_tag &&
             (legacy_owner_tag->find("::add_lvalue_reference_") != std::string::npos ||
              legacy_owner_tag->find("::add_rvalue_reference_") != std::string::npos)) {
-          return 1LL;
+          return remember_structured_value(1LL);
         }
       }
-      return 0LL;
+      return remember_structured_value(0LL);
     }
   }
   if (member == "value" && actual_args.size() == 2 &&
       !actual_args[0].is_value && !actual_args[1].is_value) {
     if (matches_trait_family(tpl_name, "is_same")) {
-      return specialization_type_identity_equal(actual_args[0].type,
-                                                actual_args[1].type)
-                 ? 1LL
-                 : 0LL;
+      return remember_structured_value(
+          specialization_type_identity_equal(actual_args[0].type,
+                                            actual_args[1].type)
+              ? 1LL
+              : 0LL);
     }
   }
   TemplateStructEnv env = build_template_struct_env(primary);
