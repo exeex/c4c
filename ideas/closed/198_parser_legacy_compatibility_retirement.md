@@ -1,6 +1,6 @@
 # Parser Legacy Compatibility Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
 
 Depends On:
@@ -86,3 +86,34 @@ and make any newly discovered leftovers grep-friendly through explicit
   parser-domain behavior.
 - The route expands into Sema/HIR/backend cleanup instead of staying parser
   owned.
+
+## Closure Notes
+
+Closed: 2026-05-12
+
+The parser-owned compatibility retirement runbook completed. The final ledger
+in `todo.md` before closure classified deleted, converted, fenced, and
+intentionally retained parser compatibility routes for record/layout lookup,
+qualified-name and owner recovery, named-constant const-int lookup, and
+template instantiated record lookup.
+
+Parser metadata-rich routes now use structured carriers such as direct
+`record_def`, scoped `TextId`, qualifier/owner metadata, structured template
+instantiation keys, or structured named-constant tables. Covered complete
+structured misses no longer recover semantic identity through stale rendered
+parser spelling.
+
+Retained parser bridges are fenced as legacy/no-metadata, display/diagnostic,
+or parser-local scratch behavior with owner, limitation, and removal condition.
+Residual HIR or Sema template callers that still require rendered record,
+owner, template-origin, or named-constant compatibility are outside this
+parser-owned idea and should be tracked by a separate open idea if pursued.
+
+Close proof:
+
+- Broader parser/frontend close scope passed 7/7 in `test_after.log`.
+- Regression guard passed with matching `test_before.log` and `test_after.log`
+  using non-decreasing pass-count mode: 7 passed before, 7 passed after, 0 new
+  failures.
+- Latest accepted full-suite baseline at `a654583f2` recorded 3137 passed, 0
+  failed, with the existing 12 disabled backend CLI tests.
