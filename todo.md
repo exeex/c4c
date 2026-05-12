@@ -1,43 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/197_bir_backend_compatibility_string_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Fence Type And Aggregate Layout Compatibility
+Current Step ID: 5
+Current Step Title: Audit Backend-Prepared Route-Local Names
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Fence Type And Aggregate Layout Compatibility reviewed and classified
-the remaining owned aggregate/byval layout call sites in `aggregate.cpp` and
-`memory/local_slots.cpp`.
+Plan-owner Step 4 lifecycle review accepted Step 4 - Fence Type And Aggregate
+Layout Compatibility as complete enough to advance.
 
-`aggregate.cpp` now explicitly fences the shared rendered-text
-`lower_byval_aggregate_layout()` entrypoint, the legacy byval parameter
-collection branch that lacks `StructNameId` metadata, and local aggregate
-copy-size validation from `LocalAggregateSlots` rendered type text. The existing
-metadata-bearing byval parameter branch still uses the `LirTypeRef` /
-`StructNameId` lookup path and fails closed there.
-
-`memory/local_slots.cpp` now explicitly fences aggregate store and aggregate
-load lowering from `LirStoreOp::type_str` / `LirLoadOp::type_str`. Both paths
-remain compatibility bridges until aggregate memory ops carry structured type
-identity.
-
-Final Step 4 inventory for the owned files:
-`rg -n "lower_byval_aggregate_layout\\(|lookup_backend_aggregate_type_layout|Step 4 no-id compatibility bridge" src/backend/bir/lir_to_bir/aggregate.cpp src/backend/bir/lir_to_bir/memory/local_slots.cpp`
-shows each remaining raw-text aggregate/byval layout call in these files is
-either behind a Step 4 no-id compatibility fence or on the existing structured
-`LirTypeRef` / `StructNameId` fail-closed path.
-
-No test expectations were changed; `tests/backend/backend_lir_to_bir_notes_test.cpp`
-was not modified.
+Evidence reviewed:
+- Recent Step 4 executor packets report all remaining owned raw aggregate/byval
+  layout calls are either behind explicit Step 4 no-id compatibility fences or
+  on existing structured `LirTypeRef` / `StructNameId` fail-closed paths.
+- `review/step4_layout_fence_review.md` reports no blocking findings, no
+  testcase overfit, no expectation downgrade, and route alignment with idea 197.
+- The final inventory notes in this file cover the post-review additions in
+  `memory/intrinsics.cpp`, `calling.cpp`, `cfg.cpp`, `aggregate.cpp`, and
+  `memory/local_slots.cpp`.
+- No source-idea intent changed, so no source idea or `plan.md` rewrite is
+  needed for this routine lifecycle advance.
 
 ## Suggested Next
 
-Ask the plan owner or reviewer to decide whether Step 4 is complete enough to
-advance to the next plan step, using the existing Step 4 review artifact plus
-this final owned-file inventory.
+Start Step 5 - Audit Backend-Prepared Route-Local Names.
+
+First executor packet should inventory backend-prepared route-local lookup
+tables, prealloc local handles, debug-focus naming, and nearby route-local maps
+that could be mistaken for semantic identity. Keep the packet narrow and classify
+retained names as route-local/display/debug ownership, not semantic authority.
 
 ## Watchouts
 
@@ -48,6 +41,12 @@ this final owned-file inventory.
   route-local spelling as semantic identity.
 - If parser, Sema, HIR, or LIR source intent blocks this work, record a
   separate open idea instead of expanding this plan.
+- Step 5 should not rewrite backend-prepared or MIR interfaces broadly. Rename
+  or comment retained route-local spellings only where that clarifies ownership
+  for backend restart consumers.
+- Step 4 is lifecycle-accepted, but the broader/full validation remains a Step 6
+  closure requirement because central layout resolver and shared backend
+  wrapper surfaces changed during Step 4.
 - Step 2 intentionally did not add an upstream `TextId` field to
   `LirStringConst`; the structured carrier is created at the LIR-to-BIR
   boundary in the BIR module text table. If a later slice needs producer-owned
