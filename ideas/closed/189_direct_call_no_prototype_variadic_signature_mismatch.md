@@ -1,7 +1,8 @@
 # Direct Call No-Prototype Variadic Signature Mismatch
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 Blocks:
 - `ideas/open/188_lir_bir_freeze_closure_gate.md`
 
@@ -59,6 +60,18 @@ fixed prototype matching every call argument.
   supervisor-delegated proof command.
 - A broader regression check selected by the supervisor is green before the
   blocker is treated as resolved.
+
+## Closure Notes
+
+- 2026-05-12: Closed after the direct-call signature repair landed in
+  `3ea8793b6 preserve no-prototype direct-call signatures`.
+- The blocker subset proof passed for the 9 known milestone failures plus
+  nearby direct-call signature coverage.
+- Step 3 full-suite proof passed with `3137/3137` tests.
+- Plan-owner close gate reran the full suite into `test_after.log` and compared
+  it with the rolled-forward green `test_before.log`; both logs reported
+  `3137/3137` with no new failures under the non-decreasing regression guard.
+- Lifecycle control returned to `ideas/open/188_lir_bir_freeze_closure_gate.md`.
 
 ## Reviewer Reject Signals
 

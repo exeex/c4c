@@ -1,137 +1,106 @@
-# Direct Call No-Prototype Variadic Signature Mismatch Runbook
+# LIR/BIR Freeze Closure Gate Runbook
 
 Status: Active
-Source Idea: ideas/open/189_direct_call_no_prototype_variadic_signature_mismatch.md
+Source Idea: ideas/open/188_lir_bir_freeze_closure_gate.md
 
 ## Purpose
 
-Clear the direct-call signature blocker discovered by the idea 188 milestone
-validation gate.
+Close the LIR/BIR freeze wave as the final pre-backend-restart gate.
 
 ## Goal
 
-Make structured direct-call callee signature metadata compatible with valid C
-old-style/no-prototype and variadic direct calls while preserving the stricter
-prototype path.
+Produce a freeze closure ledger, prove the milestone with broad validation, and decide whether backend restart is clear or a narrow blocker idea must be opened first.
 
 ## Core Rule
 
-Repair call signature semantics; do not weaken tests, bypass verification
-broadly, or replace structured call metadata with rendered text.
+This plan is a gate, not backend restart work. Do not start target MIR, assembler, linker, object emission, or backend restart implementation inside this runbook.
 
 ## Read First
 
-- `ideas/open/189_direct_call_no_prototype_variadic_signature_mismatch.md`
-- `todo.md` for the current packet pointer and delegated proof command.
-- Direct-call signature construction and verification surfaces in the frontend,
-  LIR, and LIR-to-BIR path.
-- `test_after.log` only as historical context for the 9 failing test names; do
-  not edit logs.
+- `ideas/open/188_lir_bir_freeze_closure_gate.md`
+- The completed dependency records for ideas 183-187, using closed archive files only as historical input for this gate.
+- Current LIR/BIR/backend-prealloc implementation surfaces only as needed to verify classification and validation claims.
 
 ## Current Targets
 
-- Structured callee signature metadata on direct calls.
-- C old-style/no-prototype declaration and call handling.
-- C variadic direct-call handling.
-- Prototype direct-call mismatch checks that must remain strict.
+- Direct-call signature metadata and generated direct-call paths.
+- Global and type declaration tables.
+- Direct symbol identity validation surfaces.
+- Memory provenance global handles.
+- Backend prealloc route-local naming.
+- Retained strings at compatibility, diagnostics, display/output, ABI/final spelling, and explicit no-metadata boundaries.
 
 ## Non-Goals
 
 - Do not begin backend restart implementation.
 - Do not rewrite target MIR, assemblers, linkers, or object emission.
-- Do not downgrade or weaken tests to make the 9 failures pass.
-- Do not remove structured direct-call signature metadata for prototype calls.
-- Do not broadly suppress `LirCallOp.callee_signature` verification.
-- Do not perform unrelated call-lowering or backend refactors.
+- Do not try to remove all final spelling strings from output layers.
+- Do not accept testcase expectation downgrades as freeze progress.
+- Do not create broad implementation rewrites while performing the closure gate.
 
 ## Working Model
 
-- Idea 188 is parked because milestone validation found 9 regressions against a
-  green accepted baseline.
-- The common observed error is `LirCallOp.callee_signature: structured callee
-  signature does not match call arguments`.
-- Valid C no-prototype and variadic direct calls need intentional structured
-  representation instead of a fixed-arity prototype signature check.
-- Ordinary prototype direct calls should keep strict structured metadata and
-  mismatch detection.
+- Ideas 183-187 are the convergence batch being gated.
+- The ledger must distinguish semantic identity authority from final spelling, printer, diagnostic, route-local, and no-metadata compatibility boundaries.
+- The direct-call signature blocker found during milestone validation has been closed by idea 189.
+- If a generated path still relies on rendered text as semantic authority, the gate is not closed; capture a narrow blocker idea instead of starting backend restart.
 
 ## Execution Rules
 
 - Keep routine evidence and intermediate findings in `todo.md`.
-- The executor must run the exact proof command delegated by the supervisor.
-- Treat named-test shortcuts and expectation rewrites as route failures.
-- Preserve structured direct-call metadata and only adjust the semantic model
-  for no-prototype and variadic flexibility.
-- If investigation reveals a separate blocker outside direct-call
-  no-prototype/variadic signature semantics, record it in `todo.md` and return
-  to the supervisor for lifecycle routing.
+- Edit the source idea only if durable source intent changes or a separate blocker initiative must be recorded.
+- If a new blocker is discovered, create a new open idea with concrete reviewer reject signals before clearing backend restart.
+- Use milestone-level validation. Full suite is the normal expectation unless supervisor baseline policy delegates an equivalent regression-guard workflow.
+- Treat narrow-only validation as insufficient for closure unless explicitly justified by the supervisor.
 
-## Step 1: Locate Signature Construction And Failing Shape
+## Step 1: Collect Dependency Evidence
 
-Goal: identify where direct-call callee signatures are created, stored, and
-verified for prototype, no-prototype, old-style, and variadic calls.
+Goal: inspect the completed 183-187 records and identify what each one claims about LIR/BIR identity authority.
 
 Concrete actions:
-- Inspect the direct-call lowering path and `LirCallOp.callee_signature`
-  verifier.
-- Reproduce or inspect at least one no-prototype/old-style failure and one
-  variadic failure under the supervisor-delegated narrow command.
-- Determine whether the mismatch comes from signature construction, call
-  argument modeling, verifier rules, or a conversion boundary.
-- Record the concrete failing shape and owned implementation surface in
-  `todo.md`.
+- Locate the closed or historical records for ideas 183-187.
+- Extract the claimed closure facts for direct-call signatures, global/type declarations, direct symbol identity, memory provenance handles, and prealloc route-local names.
+- Note any explicit compatibility fences, fallback boundaries, and validation evidence already produced.
+- Record findings in `todo.md` without editing implementation files.
 
 Completion check:
-- `todo.md` names the failing call categories, the structured signature values
-  involved, and the implementation surface selected for repair.
+- `todo.md` names each dependency and summarizes the identity domain, retained boundary, and proof status it contributes to the freeze gate.
 
-## Step 2: Repair No-Prototype And Variadic Semantics
+## Step 2: Build The Freeze Closure Ledger
 
-Goal: implement the smallest semantic repair that represents valid flexible C
-direct calls without weakening prototype-call checking.
+Goal: create the ledger that classifies every in-scope LIR/BIR identity domain and retained string boundary.
 
 Concrete actions:
-- Add or adjust structured metadata so no-prototype/old-style calls are not
-  forced through an exact fixed-arity prototype signature contract.
-- Add or adjust structured metadata so variadic calls distinguish fixed
-  parameters from accepted variadic tail arguments.
-- Keep prototype calls on the strict structured signature path.
-- Avoid rendered-name or printed-signature authority for semantic decisions.
+- Map each generated metadata-rich path to its structured fact authority.
+- Classify retained strings as display/output, diagnostics, route-local handles, ABI/final spelling, or explicit no-metadata compatibility.
+- Flag any high-risk generated path where rendered text still appears to decide semantic identity.
+- Keep the ledger concise enough for reviewer use and supervisor closure decisions.
 
 Completion check:
-- The known no-prototype/old-style and variadic failure samples no longer hit
-  the structured callee signature mismatch, while prototype-call behavior is
-  unchanged.
+- `todo.md` contains a freeze closure ledger covering all current targets and no unclassified high-risk generated-path string authority remains hidden.
 
-## Step 3: Prove The Blocker Fix
+## Step 3: Run Milestone Validation
 
-Goal: prove the direct-call blocker is resolved under the delegated narrow and
-broader validation commands.
+Goal: prove the closure gate with broad validation appropriate for a milestone.
 
 Concrete actions:
-- Run the exact supervisor-delegated proof command covering the 9 failing tests
-  and nearby direct-call signature cases.
+- Use the supervisor-delegated broad validation command, normally the full suite or regression-guard equivalent.
 - Preserve canonical validation state according to supervisor policy.
-- Record proof commands and results in `todo.md`.
-- Do not claim closure from one named testcase alone.
+- If the baseline differs, record the regression-guard acceptance path or blocker details.
+- Do not downgrade expectations or narrow contracts to make the gate pass.
 
 Completion check:
-- The delegated blocker proof is green and `todo.md` records the exact command,
-  result, and remaining risk.
+- Broad validation is green, or any baseline difference is explicitly accepted through the regression guard workflow and recorded in `todo.md`.
 
-## Step 4: Return To Freeze Gate
+## Step 4: Closure Decision
 
-Goal: hand lifecycle control back to the idea 188 freeze closure gate after the
-blocker is fixed.
+Goal: decide whether backend restart can proceed or whether a new blocker idea is required first.
 
 Concrete actions:
-- Confirm the blocker acceptance criteria are satisfied.
-- Record in `todo.md` that idea 188 should be reactivated for milestone
-  validation.
-- Do not close idea 188 from this runbook.
-- Let the supervisor decide whether broader/full validation is already
-  sufficient or whether idea 188 Step 3 must rerun.
+- Compare the ledger and validation result against the source idea acceptance criteria.
+- If clear, record the closure recommendation for supervisor/plan-owner close handling.
+- If blocked, create or request a narrow `ideas/open/` blocker that names the failing authority path and concrete reject signals.
+- Do not treat runbook exhaustion alone as source-idea completion.
 
 Completion check:
-- `todo.md` contains a clear `return to idea 188` note with blocker proof
-  evidence and no backend restart work has begun.
+- `todo.md` contains an explicit `backend restart clear` or `blocked by new open idea` decision, with enough evidence for supervisor review.

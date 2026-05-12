@@ -57,14 +57,13 @@ starting while freeze blockers are still implicit.
 
 ## Lifecycle Notes
 
-- 2026-05-12: Milestone validation is blocked, not closed. The accepted
-  `test_before.log` baseline was green at 3137 passed / 0 failed, while the
-  Step 3 full-suite `test_after.log` result has 3128 passed / 9 failed. The
-  common observed failure is
-  `LirCallOp.callee_signature: structured callee signature does not match call
-  arguments`, including old-style/no-prototype and variadic direct-call cases.
-  This gate is parked until `ideas/open/189_direct_call_no_prototype_variadic_signature_mismatch.md`
-  resolves the direct-call signature mismatch blocker.
+- 2026-05-12: Milestone validation was blocked by direct-call signature
+  mismatches in old-style/no-prototype and variadic C calls. The blocker was
+  split into
+  `ideas/closed/189_direct_call_no_prototype_variadic_signature_mismatch.md`
+  and closed after the semantic repair landed in `3ea8793b6 preserve
+  no-prototype direct-call signatures`. The freeze gate is reactivated at
+  milestone validation with full-suite proof available at `3137/3137`.
 
 ## Reviewer Reject Signals
 
