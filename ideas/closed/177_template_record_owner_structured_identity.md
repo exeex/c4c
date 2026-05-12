@@ -1,7 +1,8 @@
 # Template Record Owner Structured Identity
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/172_type_identity_authority_audit.md`
@@ -58,6 +59,23 @@ semantic identity.
   structured identity matters beyond equal display spelling.
 - The proof includes a fresh build or compile check plus targeted HIR/frontend
   CTest coverage.
+
+## Closure Summary
+
+Closed after the bounded `Lowerer::make_template_struct_instance_owner_key`
+path was moved to structured `SpecializationKey` owner identity for
+`HirRecordOwnerTemplateIdentity` equality, hashing, and completeness while
+preserving rendered canonical text as display and compatibility payload.
+
+Validation accepted for closure:
+
+- Step 2 focused proof passed 3/3.
+- Regression-fix proof passed 4/4, including `frontend_hir_lookup_tests`.
+- Step 3 display proof passed 5/5.
+- Broader frontend/template subset passed 43/43.
+- Fresh full-suite baseline at `92f3a4658` passed 3137/3137.
+- Close-time canonical focused display proof logs passed regression guard in
+  non-decreasing mode: 5/5 before and 5/5 after, with runtime-only log diff.
 
 ## Reviewer Reject Signals
 
