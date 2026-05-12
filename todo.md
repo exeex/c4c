@@ -3,52 +3,46 @@
 Status: Active
 Source Idea Path: ideas/open/181_function_pointer_signature_type_identity.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Propagate Structured Signature Identity
+Current Step ID: 4
+Current Step Title: Add Collision-Prone Coverage
 
 ## Just Finished
 
-Step 3 from `plan.md`: added the first structured indirect-call signature
-carrier on `LirCallOp` and populated it from
-`CallTargetInfo::callee_fn_ptr_sig` without changing rendered LIR syntax.
+Step 4 from `plan.md`: added collision-prone coverage for structured
+function-pointer call signatures on the selected indirect-call path.
 
-Changed boundary:
+Coverage added:
 
-- `LirCallOp` now has optional `callee_signature` metadata carrying a structured
-  return type ref, fixed parameter ABI type spellings, fixed parameter type
-  refs, variadic state, unspecified-parameter-list state, and void-parameter
-  list state.
-- `make_lir_call_op_with_return_type_ref()` and `make_lir_call_op()` accept the
-  optional carrier while preserving the existing `callee_type_suffix` and
-  `args_str` display/compatibility text.
-- `src/codegen/lir/hir_to_lir/call/target.cpp` populates the carrier only for
-  indirect calls with `CallTargetInfo::callee_fn_ptr_sig`; direct calls and
-  calls without structured function-pointer metadata continue using the
-  rendered suffix path.
-- LIR verification checks the structured carrier against return/parameter
-  mirrors and call arguments when metadata is available.
-- BIR indirect-call parsing now prefers `LirCallOp::callee_signature` before
-  falling back to reparsing `callee_type_suffix`, keeping the rendered suffix as
-  compatibility spelling rather than semantic authority for metadata-rich
-  indirect calls.
+- `tests/frontend/frontend_lir_call_type_ref_test.cpp` now asserts lowered
+  metadata-rich indirect calls carry `LirCallOp::callee_signature` with
+  structured return/parameter refs for fixed scalar function-pointer calls.
+- The frontend test also covers stale rendered suffix compatibility, verifier
+  rejection when the structured callee signature no longer matches call
+  arguments, variadic function-pointer state, and unspecified-parameter-list
+  state.
+- `tests/backend/backend_lir_to_bir_notes_test.cpp` now constructs indirect
+  LIR calls where the rendered `callee_type_suffix` intentionally disagrees
+  with `callee_signature`. BIR lowering succeeds when the structured carrier
+  matches the real argument and the stale suffix would not, and fails closed
+  when stale suffix text would match but the structured carrier rejects the
+  argument.
 
 ## Suggested Next
 
-Add collision-prone coverage for metadata-rich indirect calls whose rendered
-suffix or lowered ABI shape would otherwise collide, especially nominal record
-parameter identity and variadic function-pointer calls.
+Validate and record final boundaries for the selected path, including whether
+additional nominal aggregate function-pointer parameter coverage belongs in
+this runbook or a follow-up.
 
 ## Watchouts
 
 - Keep display text intact: `callee_type_suffix`, `signature_text`, and printed
   LIR/BIR output remain output/compatibility spelling.
-- The remaining high-risk boundary is proof coverage: existing targeted tests
-  validate build, LIR verifier compatibility, and BIR handoff, but they do not
-  yet add a new collision-prone function-pointer identity fixture.
-- Guard same-feature cases, not just one fixture: fixed-arity indirect call,
-  variadic function pointer, unspecified params, typedef-backed function
-  pointer param, nested return function pointer, and nominal record parameter
-  identity.
+- Frontend lowering currently proves the carrier for scalar fixed params plus
+  variadic and unspecified state. The new backend handoff fixture proves stale
+  suffix preference/fail-closed behavior directly on the structured carrier.
+- Nominal aggregate function-pointer parameter identity remains the important
+  adjacent watchout if later frontend coverage starts carrying aggregate
+  signature refs for function-pointer params end to end.
 - Do not expand into full parser or canonical type replacement. The selected
   path should be one call-site metadata bridge plus verifier/BIR preference.
 - `ideas/open/182_type_identity_migration_closure_gate.md` remains blocked
@@ -60,8 +54,12 @@ Passed. Log: `test_after.log`.
 
 Command:
 
-`( cmake --build build --target frontend_lir_call_type_ref_test frontend_lir_function_signature_type_ref_test backend_lir_to_bir_notes_test -j && ctest --test-dir build -R '^(frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|backend_lir_to_bir_notes)$' --output-on-failure ) > test_after.log 2>&1`
+`( cmake --build build --target frontend_lir_call_type_ref_test frontend_lir_function_signature_type_ref_test backend_lir_to_bir_notes_test -j && ctest --test-dir build -R '^(frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|backend_lir_to_bir_notes|backend_codegen_route_x86_64_indirect_aggregate_param_return_pair_observe_semantic_bir|backend_codegen_route_x86_64_indirect_variadic_sum2_observe_semantic_bir|backend_codegen_route_x86_64_indirect_variadic_pair_second_observe_semantic_bir)$' --output-on-failure ) > test_after.log 2>&1`
 
 Result: build completed and CTest passed
-`frontend_lir_function_signature_type_ref`, `frontend_lir_call_type_ref`, and
-`backend_lir_to_bir_notes` (3/3).
+`frontend_lir_function_signature_type_ref`, `frontend_lir_call_type_ref`,
+`backend_lir_to_bir_notes`,
+`backend_codegen_route_x86_64_indirect_aggregate_param_return_pair_observe_semantic_bir`,
+`backend_codegen_route_x86_64_indirect_variadic_sum2_observe_semantic_bir`, and
+`backend_codegen_route_x86_64_indirect_variadic_pair_second_observe_semantic_bir`
+(6/6).

@@ -79,6 +79,19 @@ c4c::codegen::lir::LirCallOp& require_call_to(
   fail("fixture function should contain call to " + std::string(callee));
 }
 
+c4c::codegen::lir::LirCallOp& require_indirect_call(
+    c4c::codegen::lir::LirFunction& fn) {
+  for (auto& block : fn.blocks) {
+    for (auto& inst : block.insts) {
+      auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
+      if (call && call->callee.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        return *call;
+      }
+    }
+  }
+  fail("fixture function should contain an indirect call");
+}
+
 c4c::hir::Expr& require_member_expr(c4c::hir::Module& module,
                                     std::string_view field) {
   for (c4c::hir::Expr& expr : module.expr_pool) {
@@ -115,6 +128,34 @@ void expect_struct_type_ref(
   expect_true(type_ref.has_struct_name_id(), msg + " should carry a StructNameId");
   expect_eq(module.struct_names.spelling(type_ref.struct_name_id()), expected_text,
             msg + " StructNameId should resolve to mirrored text");
+}
+
+void expect_indirect_int_signature(
+    const c4c::codegen::lir::LirCallOp& call) {
+  expect_true(call.callee_signature.has_value(),
+              "metadata-rich indirect int call should carry callee signature");
+  const c4c::codegen::lir::LirCallSignature& sig = *call.callee_signature;
+  expect_true(sig.return_type_ref.has_value(),
+              "indirect int call should carry structured return type ref");
+  expect_eq(sig.return_type_ref->str(), "i32",
+            "indirect int callee scalar return signature should match");
+  expect_true(!sig.return_type_ref->has_struct_name_id(),
+              "indirect int scalar return should not carry aggregate identity");
+  expect_eq(std::to_string(sig.fixed_param_types.size()), "1",
+            "indirect int call should carry one fixed signature param");
+  expect_eq(sig.fixed_param_types[0], "i32",
+            "indirect int call should retain fixed param ABI spelling");
+  expect_eq(std::to_string(sig.fixed_param_type_refs.size()), "1",
+            "indirect int call should carry one fixed signature param ref");
+  expect_eq(sig.fixed_param_type_refs[0].str(), "i32",
+            "indirect int call should carry fixed parameter type ref text");
+  expect_true(!sig.fixed_param_type_refs[0].has_struct_name_id(),
+              "indirect int parameter should not carry aggregate identity");
+  expect_true(!sig.is_variadic, "indirect int call should not be variadic");
+  expect_true(!sig.has_unspecified_params,
+              "indirect int call should have a specified parameter list");
+  expect_true(!sig.has_void_param_list,
+              "indirect int call should not model a void parameter list");
 }
 
 void expect_type_ref_structured_equality_uses_name_id(
@@ -326,6 +367,18 @@ int sink(int seed, ...);
 int call_variadic(struct Pair tail) {
   return sink(1, tail);
 }
+
+int call_int_indirect(int (*fp)(int), int value) {
+  return fp(value);
+}
+
+int call_variadic_indirect(int (*fp)(int, ...), struct Pair tail) {
+  return fp(1, tail);
+}
+
+int call_unspecified_indirect(int (*fp)()) {
+  return fp(1);
+}
 )c");
   hir_module.target_profile =
       c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -432,6 +485,65 @@ int call_variadic(struct Pair tail) {
   expect_eq(std::to_string(variadic_call.arg_type_refs.size()), "0",
             "variadic aggregate call should not carry argument mirrors when "
             "the call signature cannot parse against emitted ABI arguments");
+
+  c4c::codegen::lir::LirFunction& call_int_indirect =
+      require_function(lir_module, "call_int_indirect");
+  c4c::codegen::lir::LirCallOp& indirect_int_call =
+      require_indirect_call(call_int_indirect);
+  expect_indirect_int_signature(indirect_int_call);
+  c4c::codegen::lir::verify_module(lir_module);
+
+  const std::string indirect_formatted =
+      c4c::codegen::lir::format_lir_call_site(indirect_int_call);
+  expect_true(indirect_formatted.find("(i32) %") != std::string::npos,
+              "indirect int call should preserve rendered function-pointer suffix");
+
+  c4c::codegen::lir::LirModule stale_indirect_suffix = lir_module;
+  c4c::codegen::lir::LirCallOp& stale_indirect_call =
+      require_indirect_call(require_function(stale_indirect_suffix, "call_int_indirect"));
+  stale_indirect_call.callee_type_suffix = "(ptr)";
+  c4c::codegen::lir::verify_module(stale_indirect_suffix);
+
+  c4c::codegen::lir::LirModule mismatched_indirect_sig = lir_module;
+  c4c::codegen::lir::LirCallOp& mismatched_indirect_call =
+      require_indirect_call(require_function(mismatched_indirect_sig, "call_int_indirect"));
+  mismatched_indirect_call.callee_signature->fixed_param_types[0] = "ptr";
+  mismatched_indirect_call.callee_signature->fixed_param_type_refs[0] =
+      c4c::codegen::lir::LirTypeRef("ptr");
+  try {
+    c4c::codegen::lir::verify_module(mismatched_indirect_sig);
+    fail("verifier should reject indirect callee signature that mismatches arguments");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
+  c4c::codegen::lir::LirFunction& call_variadic_indirect =
+      require_function(lir_module, "call_variadic_indirect");
+  c4c::codegen::lir::LirCallOp& indirect_variadic_call =
+      require_indirect_call(call_variadic_indirect);
+  expect_true(indirect_variadic_call.callee_signature.has_value(),
+              "metadata-rich indirect variadic call should carry callee signature");
+  expect_true(indirect_variadic_call.callee_signature->is_variadic,
+              "indirect variadic call should carry variadic state");
+  expect_true(!indirect_variadic_call.callee_signature->has_unspecified_params,
+              "indirect variadic call should not be modeled as unspecified");
+  expect_eq(std::to_string(indirect_variadic_call.callee_signature->fixed_param_types.size()),
+            "1",
+            "indirect variadic call should carry one fixed parameter");
+  expect_eq(indirect_variadic_call.callee_signature->fixed_param_types[0], "i32",
+            "indirect variadic call should retain fixed i32 parameter type");
+
+  c4c::codegen::lir::LirFunction& call_unspecified_indirect =
+      require_function(lir_module, "call_unspecified_indirect");
+  c4c::codegen::lir::LirCallOp& indirect_unspecified_call =
+      require_indirect_call(call_unspecified_indirect);
+  expect_true(indirect_unspecified_call.callee_signature.has_value(),
+              "metadata-rich indirect unspecified call should carry callee signature");
+  expect_true(indirect_unspecified_call.callee_signature->has_unspecified_params,
+              "indirect unspecified call should carry unspecified-parameter-list state");
+  expect_true(!indirect_unspecified_call.callee_signature->is_variadic,
+              "indirect unspecified call should not be modeled as variadic");
+  expect_true(indirect_unspecified_call.callee_signature->fixed_param_types.empty(),
+              "indirect unspecified call should not invent fixed params");
 
   c4c::codegen::lir::LirModule missing_return_name = lir_module;
   c4c::codegen::lir::LirCallOp& missing_return_call =

@@ -76,6 +76,8 @@ int expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
 int expect_legacy_byval_call_arg_without_type_refs_still_lowers();
 int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed();
 int expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
+int expect_indirect_call_prefers_structured_callee_signature_over_stale_suffix();
+int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
 int expect_structured_incoming_byval_param_materializes_from_type_ref();
 int expect_incoming_byval_param_with_missing_struct_layout_fails_closed();
 int expect_incoming_byval_param_with_mismatched_struct_id_fails_closed();
@@ -2078,6 +2080,92 @@ int expect_metadata_rich_byval_call_arg_mismatch_fails_closed() {
                      "function",
                      "failed in semantic call family 'direct-call semantic family'")) {
     return fail("missing direct-call family failure for mismatched byval call argument StructNameId");
+  }
+  return 0;
+}
+
+LirModule make_indirect_structured_call_signature_module(bool matching_structured_signature) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  c4c::TypeSpec ptr_type{};
+  ptr_type.base = c4c::TB_VOID;
+  ptr_type.ptr_level = 1;
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+
+  LirFunction function;
+  function.name = matching_structured_signature
+                      ? "indirect_call_prefers_structured_signature"
+                      : "indirect_call_rejects_structured_signature_mismatch";
+  function.signature_text =
+      matching_structured_signature
+          ? "define void @indirect_call_prefers_structured_signature(ptr %fp, ptr %arg)"
+          : "define void @indirect_call_rejects_structured_signature_mismatch(ptr %fp, i32 %x)";
+  function.params.push_back({"%fp", ptr_type});
+  function.params.push_back(
+      matching_structured_signature ? std::pair<std::string, c4c::TypeSpec>{"%arg", ptr_type}
+                                    : std::pair<std::string, c4c::TypeSpec>{"%x", int_type});
+
+  lir::LirCallSignature callee_signature;
+  callee_signature.return_type_ref = lir::LirTypeRef("void");
+  callee_signature.fixed_param_types.push_back("ptr");
+  callee_signature.fixed_param_type_refs.push_back(lir::LirTypeRef("ptr"));
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("%fp"),
+      .callee_type_suffix = "(i32)",
+      .args_str = matching_structured_signature ? "ptr %arg" : "i32 %x",
+      .callee_signature = std::move(callee_signature),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_indirect_call_prefers_structured_callee_signature_over_stale_suffix() {
+  auto result = try_lower_to_bir_with_options(
+      make_indirect_structured_call_signature_module(true), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("indirect call should lower using structured callee signature despite stale suffix");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.name != "indirect_call_prefers_structured_signature" ||
+        function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) continue;
+      if (call->is_indirect && call->arg_types.size() == 1 &&
+          call->arg_types.front() == TypeKind::Ptr) {
+        return 0;
+      }
+    }
+  }
+  return fail("indirect call should preserve structured pointer parameter type in BIR");
+}
+
+int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match() {
+  auto result = try_lower_to_bir_with_options(
+      make_indirect_structured_call_signature_module(false), BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("indirect call with structured callee signature mismatch should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'indirect-call semantic family'")) {
+    return fail("missing indirect-call family failure for structured callee signature mismatch");
   }
   return 0;
 }
@@ -4178,6 +4266,18 @@ int main() {
           expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
       mismatched_byval_metadata_status != 0) {
     return mismatched_byval_metadata_status;
+  }
+
+  if (const int indirect_structured_signature_status =
+          expect_indirect_call_prefers_structured_callee_signature_over_stale_suffix();
+      indirect_structured_signature_status != 0) {
+    return indirect_structured_signature_status;
+  }
+
+  if (const int indirect_structured_signature_mismatch_status =
+          expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
+      indirect_structured_signature_mismatch_status != 0) {
+    return indirect_structured_signature_mismatch_status;
   }
 
   if (const int structured_incoming_byval_status =
