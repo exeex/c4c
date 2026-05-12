@@ -8,28 +8,26 @@ Current Step Title: Audit Template Instantiated Record Lookup
 
 ## Just Finished
 
-Step 5 converted the structured base-instantiation materialization path in
+Step 5 fenced the direct template-emission existing-instantiation reuse path in
 `src/frontend/parser/impl/types/base.cpp`.
 
-`materialize_structured_base_record` no longer begins from
-`definition_state_.struct_tag_def_map.find(base_mangled)`. For metadata-rich
-base instantiation routes it now constructs the structured template
-instantiation key from the primary template and parsed argument metadata, then
-resolves the record through the structured instantiated-record scan. Rendered
-`base_mangled` tag-map lookup remains only in the existing explicit
-legacy/no-carrier compatibility branches.
+When the parser has a structured direct-emission instantiation key, a miss from
+`find_template_instantiated_record_for_direct_emit` no longer falls through to
+`definition_state_.struct_tag_def_map[mangled]`. Rendered-map reuse is retained
+only before concrete emission on the explicit legacy/no-structured-key path,
+with a comment naming that owner, limitation, and removal condition.
 
-The pending base-substitution metadata test now poisons the rendered
-`Base<int>` tag-map entry with a stale record and asserts that structured
-`Base<T>` materialization does not return that stale rendered-map record.
+The direct-emission parser test now marks the structured key, removes the
+structured concrete records, poisons the rendered tag map, and verifies that the
+stale rendered record is not returned after the structured scan misses.
 
 ## Suggested Next
 
 Continue Step 5 with the remaining parser-owned template instantiated record
-lookup surfaces in `src/frontend/parser/impl/types/base.cpp`, especially the
-existing-instantiation reuse branch near concrete template struct emission.
-Classify each retained rendered map lookup as structured-key authority,
-legacy/no-carrier compatibility, or closure-ledger debt.
+lookup surfaces in `src/frontend/parser/impl/types/base.cpp`. Classify each
+retained rendered map lookup as structured-key authority, legacy/no-carrier
+compatibility, or closure-ledger debt, then consider a Step 5 route review once
+the remaining rendered `struct_tag_def_map` reads are accounted for.
 
 ## Watchouts
 
@@ -51,9 +49,9 @@ legacy/no-carrier compatibility, or closure-ledger debt.
   proves parser-owned metadata is complete.
 - Do not treat `template_origin_name` or rendered candidate keys as semantic
   authority when structured instantiated-record metadata is available.
-- The retained rendered `base_mangled` lookups around base materialization are
-  intended only for no-carrier compatibility. Do not move them back into
-  metadata-rich paths.
+- The retained rendered `base_mangled` lookups around base materialization and
+  direct-emission reuse are intended only for no-carrier compatibility. Do not
+  move them back into metadata-rich paths.
 - Step 3 reviewer watch item: retained no-metadata/template-instantiation
   fallbacks in `base.cpp` should be accounted for in Step 5 and the Step 6
   closure ledger.
@@ -62,6 +60,6 @@ legacy/no-carrier compatibility, or closure-ledger debt.
 
 Step 5 focused proof passed:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(cpp_hir_parser_type_base_pending_base_substitution_structured_metadata|cpp_hir_parser_type_base_instantiated_deferred_member_structured_metadata)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^frontend_parser_tests$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.

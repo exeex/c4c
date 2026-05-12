@@ -6127,6 +6127,19 @@ TypeSpec Parser::parse_base_type() {
                             : nullptr;
                     if (!instantiated_record &&
                         !has_structured_instantiation_key) {
+                        auto existing_inst =
+                            definition_state_.struct_tag_def_map.find(mangled);
+                        if (existing_inst !=
+                            definition_state_.struct_tag_def_map.end()) {
+                            // Legacy/no-structured-key compatibility only:
+                            // structured instance keys above own semantic
+                            // reuse, so a structured-key miss must not recover
+                            // through rendered tag spelling.
+                            instantiated_record = existing_inst->second;
+                        }
+                    }
+                    if (!instantiated_record &&
+                        !has_structured_instantiation_key) {
                         mark_template_instantiation_dedup_key_for_direct_emit(
                             *this, structured_emitted_instance_key);
                         // Create a concrete NK_STRUCT_DEF with substituted field types
@@ -8319,19 +8332,6 @@ TypeSpec Parser::parse_base_type() {
                         definition_state_.struct_tag_def_map[mangled] = inst;
                         definition_state_.defined_struct_tags.insert(mangled);
                         instantiated_record = inst;
-                    } else {
-                        if (!instantiated_record) {
-                            auto existing_inst =
-                                definition_state_.struct_tag_def_map.find(
-                                    mangled);
-                            if (existing_inst !=
-                                definition_state_.struct_tag_def_map.end()) {
-                                // Compatibility fallback only: structured
-                                // instance keys above own semantic reuse when
-                                // a concrete record carrier exists.
-                                instantiated_record = existing_inst->second;
-                            }
-                        }
                     }
                     if (instantiated_record) {
                         mark_template_instantiation_dedup_key_for_direct_emit(

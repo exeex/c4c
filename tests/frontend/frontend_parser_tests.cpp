@@ -6896,6 +6896,20 @@ void test_parser_template_instantiation_dedup_keys_structure_direct_emission() {
               "structured direct-emission de-dup should ignore stale rendered map entries");
   expect_true(fourth.record_def != stale_instantiation,
               "stale rendered template tag-map entries must not override structured instantiation identity");
+
+  for (auto it = parser.definition_state_.struct_defs.begin();
+       it != parser.definition_state_.struct_defs.end();) {
+    if (*it == first.record_def || *it == second.record_def) {
+      it = parser.definition_state_.struct_defs.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  c4c::TypeSpec fifth = parse_box_int();
+  expect_true(fifth.record_def == nullptr,
+              "structured direct-emission key misses should not recover through rendered tag maps");
+  expect_true(fifth.record_def != stale_instantiation,
+              "removed structured direct-emission records must not fall back to stale rendered map records");
 }
 
 void test_parser_nttp_array_size_substitution_uses_param_text_metadata() {
