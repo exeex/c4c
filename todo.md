@@ -1,39 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/197_bir_backend_compatibility_string_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Convert Link-Visible Symbol Identity
+Current Step ID: 4
+Current Step Title: Fence Type And Aggregate Layout Compatibility
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Convert Link-Visible Symbol Identity reviewed the raw function-symbol
-uses in `src/backend/bir/lir_to_bir/globals.cpp` across
-`is_known_raw_function_symbol()`, `is_known_function_global_address()`,
-`resolve_known_global_address()`, and `resolve_pointer_initializer_offsets()`.
+Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the central
+aggregate layout lookup in `src/backend/bir/lir_to_bir/types.cpp`, especially
+`lookup_backend_aggregate_type_layout_result()` and
+`lookup_backend_aggregate_type_ref_layout_result()`.
 
-The globals pointer-initializer/global-address raw lookup is now explicitly
-fenced as a Step 3 no-id compatibility bridge. Its owner is the globals
-pointer-initializer/global-address resolver in `globals.cpp`, its limitation is
-that `FunctionSymbolSet` is populated only after module-boundary `LinkNameId`
-resolution so metadata-rich missing ids cannot recover through raw initializer
-spelling here, and its removal condition is LIR pointer initializers and
-aggregate pointer fields carrying resolvable `LinkNameId` metadata.
+The retained raw `TypeDeclMap` rendered-spelling fallback is now explicitly
+fenced as a Step 4 no-id compatibility bridge. Its owner is the central
+aggregate layout resolver in `types.cpp`, its limitation is that metadata-rich
+type refs must use `lookup_backend_aggregate_type_ref_layout_result()` and fail
+closed on stale or mismatched structured text, and its removal condition is all
+aggregate layout callers passing structured type refs or inline aggregate
+syntax.
 
-No focused test was added because this packet only documents/fences existing
-behavior. Existing pointer-initializer tests already cover raw/no-id
-compatibility and metadata-rich missing-id fail-closed behavior for scalar and
-aggregate pointer initializers.
+Added focused coverage in `backend_prepare_structured_context_test.cpp` proving
+the central lookup reports `used_legacy_fallback` for a legacy-only no-id
+`TypeDeclMap` declaration even while the structured layout table is populated
+for another type. Existing stale and mismatched `LirTypeRef` checks continue to
+prove metadata-bearing structured layout lookup fails closed instead of
+recovering through rendered type spelling.
 
 ## Suggested Next
 
-Continue Step 3 by searching for any remaining semantic
-`find_raw_symbol_link_name_id` or raw link-visible symbol fallback outside the
-already fenced pointer-store address resolver, local-slot pointer-store
-value/address, call-pointer argument, local-aggregate pointer-value alias,
-declaration identity, direct-call, and globals pointer-initializer/global-address
-paths.
+Continue Step 4 by reviewing aggregate layout callers that still pass raw type
+text instead of `LirTypeRef`, starting with local memory/addressing and global
+initializer paths. Fence each retained raw-text path as no-id compatibility, or
+add fail-closed proof where a structured carrier is already available.
 
 ## Watchouts
 
@@ -74,6 +74,11 @@ paths.
   boundary assumption: scalar and aggregate pointer initializers with present
   function `LinkNameId` metadata must pass `FunctionSymbolSet` membership and
   must not recover through raw initializer spelling.
+- The central `TypeDeclMap` layout fallback is retained only for no-id legacy
+  declarations. Metadata-bearing type refs must stay on
+  `lookup_backend_aggregate_type_ref_layout_result()` so stale `StructNameId`
+  text and parity mismatches fail closed instead of recovering through rendered
+  type spelling.
 
 ## Proof
 

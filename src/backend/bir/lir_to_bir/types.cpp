@@ -549,6 +549,13 @@ BackendAggregateLayoutLookup lookup_backend_aggregate_type_layout_result(
     }
   }
 
+  // Step 4 no-id compatibility bridge: this raw TypeDeclMap lookup is owned by
+  // the central aggregate layout resolver for LIR inputs that have not carried
+  // StructNameId metadata to this boundary. The limitation is intentional:
+  // metadata-bearing type refs must use lookup_backend_aggregate_type_ref_layout_result(),
+  // which fails closed on stale or mismatched structured text instead of
+  // recovering through rendered spelling. Remove this bridge once all aggregate
+  // layout callers pass structured type refs or inline aggregate syntax.
   const auto layout = compute_aggregate_type_layout(trimmed, type_decls);
   const bool used_legacy_fallback = resolve_type_decl_body(trimmed, type_decls).has_value();
   return BackendAggregateLayoutLookup{

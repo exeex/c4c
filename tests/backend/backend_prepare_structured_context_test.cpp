@@ -465,6 +465,22 @@ int check_backend_layout_lookup_prefers_structured_table() {
     return fail("structured-missing layout lookup did not preserve legacy TypeDeclMap fallback");
   }
 
+  const auto legacy_only_decls = build_type_decl_map({
+      "%struct.Pair = type { i32, i32 }",
+      "%struct.LegacyOnly = type { i64, i64 }",
+  });
+  const auto legacy_only_table = build_backend_structured_layout_table(
+      module.struct_decls, module.struct_names, legacy_only_decls);
+  const auto legacy_only_lookup = lookup_backend_aggregate_type_layout_result(
+      "%struct.LegacyOnly", legacy_only_decls, legacy_only_table);
+  if (legacy_only_lookup.used_structured_layout || !legacy_only_lookup.used_legacy_fallback ||
+      legacy_only_lookup.structured_text_mismatch ||
+      legacy_only_lookup.layout.kind != AggregateTypeLayout::Kind::Struct ||
+      legacy_only_lookup.layout.size_bytes != 16 ||
+      legacy_only_lookup.layout.fields.size() != 2) {
+    return fail("no-id legacy-only layout lookup did not expose fenced TypeDeclMap fallback");
+  }
+
   const auto scalar_lookup = lookup_backend_aggregate_type_layout_result(
       "i32", matching_legacy_decls, empty_structured_table);
   if (scalar_lookup.used_structured_layout || scalar_lookup.used_legacy_fallback ||
