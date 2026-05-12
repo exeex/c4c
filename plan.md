@@ -1,127 +1,170 @@
-# LIR/BIR Freeze Closure Gate Runbook
+# LIR Call Argument Structured Payload Boundary Runbook
 
 Status: Active
-Source Idea: ideas/open/188_lir_bir_freeze_closure_gate.md
+Source Idea: ideas/open/190_lir_call_argument_structured_payload_boundary.md
+Supersedes: blocked active gate from ideas/open/188_lir_bir_freeze_closure_gate.md
 
 ## Purpose
 
-Close the LIR/BIR freeze wave as the final pre-backend-restart gate.
+Move metadata-rich LIR call lowering away from semantic recovery through
+rendered `callee_type_suffix` / `args_str` text.
 
 ## Goal
 
-Review the completed dependency set for ideas 183-187, 189-191, and 194, produce a current freeze closure ledger, prove the milestone with broad validation, and decide whether backend restart is clear or still blocked.
+Give generated metadata-rich LIR call sites a structured argument payload that
+LIR-to-BIR lowering can use as the authority for argument operand, type, and ABI
+facts while retaining rendered call text for output and compatibility paths.
 
 ## Core Rule
 
-This plan is dependency-gated. Do not recommend `backend restart clear` until ideas 190, 191, and 194 have been completed or the source idea is explicitly narrowed by lifecycle action.
+When structured call metadata is present, generated LIR-to-BIR call lowering
+must prefer structured argument facts over reparsed rendered call text. Text
+parsing may remain only as an explicit raw/no-metadata compatibility path.
 
 ## Read First
 
-- `ideas/open/188_lir_bir_freeze_closure_gate.md`
 - `ideas/open/190_lir_call_argument_structured_payload_boundary.md`
-- `ideas/open/191_bir_function_signature_byval_metadata_text_retirement.md`
-- `ideas/open/194_bir_global_memory_provenance_linknameid_expansion.md`
-- The completed dependency records for ideas 183-187 and 189, using closed archive files only as historical input for this gate.
-- Current LIR/BIR/backend-prealloc implementation surfaces only as needed to verify classification and validation claims.
+- `ideas/closed/184_direct_call_signature_metadata_structured_boundary.md`
+- `ideas/closed/189_direct_call_no_prototype_variadic_signature_mismatch.md`
+- `src/codegen/lir/ir.hpp`
+- `src/codegen/lir/call_args.hpp`
+- `src/codegen/lir/call_args_ops.hpp`
+- `src/codegen/lir/hir_to_lir/call/`
+- `src/backend/bir/lir_to_bir/calling.cpp`
+- LIR-to-BIR call lowering and call parsing helpers located by `rg "args_str|callee_type_suffix|LirCall" src tests`
 
 ## Current Targets
 
-- Direct-call signature metadata and generated direct-call paths.
-- Structured LIR call argument payloads for metadata-rich call lowering.
-- BIR function-signature byval metadata that avoids semantic parsing of `signature_text`.
-- Global and type declaration tables.
-- Direct symbol identity validation surfaces.
-- Memory provenance global handles, including the additional `LinkNameId` route required by idea 194.
-- Backend prealloc route-local naming.
-- Retained strings at compatibility, diagnostics, display/output, ABI/final spelling, and explicit no-metadata boundaries.
+- `LirCallOp` call payload shape.
+- `LirCallSignature` metadata boundaries.
+- `call_args.hpp` helper APIs and parsed/printed call argument structures.
+- LIR-to-BIR direct and indirect call lowering.
+- Tests that prove structured metadata, not stale rendered text, owns generated
+  call argument facts.
 
 ## Non-Goals
 
-- Do not begin backend restart implementation.
-- Do not rewrite target MIR, assemblers, linkers, or object emission.
-- Do not try to remove all final spelling strings from output layers.
-- Do not accept testcase expectation downgrades as freeze progress.
-- Do not create broad implementation rewrites while performing the closure gate.
-- Do not treat green validation alone as closure while source-idea dependencies remain open.
+- Do not rewrite all LIR instruction operands.
+- Do not remove printed call syntax or raw hand-authored LIR fixtures.
+- Do not redesign target ABI lowering.
+- Do not reopen frontend overload resolution unless a concrete missing fact is
+  exposed by the structured payload boundary.
+- Do not claim progress through parser renames, printer-only tests, or
+  expectation downgrades.
 
 ## Working Model
 
-- Ideas 183-187 were the first convergence batch gated by this idea.
-- Idea 189 closed the direct-call no-prototype and variadic signature mismatch found during milestone validation.
-- Ideas 190, 191, and 194 are still part of the gate because the source idea lists them as dependencies and says the closure ledger must review completed 189-191 and 194.
-- Idea 191 depends on idea 190, so byval signature text retirement cannot be considered closed before the structured LIR call argument boundary is complete.
-- If any generated path still relies on rendered text as semantic authority, the gate is not closed; capture or keep the narrow blocker idea instead of starting backend restart.
+- Ideas 184 and 189 established direct-call signature metadata and repaired a
+  no-prototype/variadic signature mismatch.
+- That metadata is not enough if the actual generated call argument view is
+  still reconstructed from rendered call text.
+- Idea 190 is a dependency of idea 191 and a blocker for the idea 188 closure
+  gate, so this route should create the structured payload boundary before any
+  byval signature-text retirement work.
+- Raw/no-id or hand-authored LIR may continue using textual compatibility, but
+  that fallback must be explicit and must not silently override structured
+  metadata-rich generated calls.
 
 ## Execution Rules
 
-- Keep routine evidence and intermediate findings in `todo.md`.
-- Edit the source idea only if durable source intent changes or a separate blocker initiative must be recorded.
-- If a new blocker is discovered, create a new open idea with concrete reviewer reject signals before clearing backend restart.
-- Use milestone-level validation after dependency completion. Full suite is the normal expectation unless supervisor baseline policy delegates an equivalent regression-guard workflow.
-- Treat narrow-only validation as insufficient for closure unless explicitly justified by the supervisor.
-- Treat existing full-suite proof as useful historical evidence, not a substitute for reviewing the current dependency scope.
+- Keep packet progress and proof results in `todo.md`.
+- Prefer small semantic slices: inventory first, carrier/API next, lowering
+  adoption next, tests and cleanup last.
+- Preserve existing printer/output spelling unless changing it is required to
+  expose a structured-vs-text authority bug.
+- Add or adjust tests to prove stale rendered call text cannot override
+  structured metadata when that metadata exists.
+- Run build proof after code changes and focused LIR-to-BIR call tests after
+  the first semantic lowering change. Escalate to a broader subset before
+  claiming idea completion.
 
-## Step 1: Dependency Readiness Check
+## Step 1: Inventory Existing Call Argument Authority
 
-Goal: determine whether the closure gate can proceed or must remain blocked behind open source-idea dependencies.
-
-Concrete actions:
-- Confirm the lifecycle status of ideas 190, 191, and 194.
-- If any remain open, record that the freeze gate is blocked and identify the next blocker route for supervisor lifecycle handling.
-- If all are closed, collect their completion records and continue to Step 2.
-- Do not mark backend restart clear from the older 183-187/189 evidence alone.
-
-Completion check:
-- `todo.md` records either `blocked by open dependencies 190/191/194` with the next lifecycle target, or confirms that 190, 191, and 194 are closed and ready for ledger review.
-
-## Step 2: Collect Completed Dependency Evidence
-
-Goal: inspect the completed dependency records and identify what each one claims about LIR/BIR identity authority.
+Goal: identify every current generated-call path where BIR lowering derives
+argument facts from rendered `callee_type_suffix` or `args_str` text.
 
 Concrete actions:
-- Locate the closed or historical records for ideas 183-187, 189-191, and 194.
-- Extract the claimed closure facts for direct-call signatures, structured call arguments, function-signature byval metadata, global/type declarations, direct symbol identity, memory provenance handles, and prealloc route-local names.
-- Note any explicit compatibility fences, fallback boundaries, and validation evidence already produced.
-- Record findings in `todo.md` without editing implementation files.
+- Inspect `LirCallOp`, `LirCallSignature`, `call_args.hpp`, and call lowering
+  helpers.
+- Trace generated direct and indirect call construction into LIR-to-BIR
+  lowering.
+- Distinguish metadata-rich generated paths from raw/no-metadata compatibility
+  paths.
+- Record exact text-authority sites and any existing structured facts in
+  `todo.md`.
 
 Completion check:
-- `todo.md` names each dependency and summarizes the identity domain, retained boundary, and proof status it contributes to the freeze gate.
+- `todo.md` names the generated metadata-rich paths, raw compatibility paths,
+  and first implementation target for adding or selecting the structured
+  argument carrier.
 
-## Step 3: Build The Freeze Closure Ledger
+## Step 2: Define The Structured Argument Carrier
 
-Goal: create the ledger that classifies every in-scope LIR/BIR identity domain and retained string boundary.
+Goal: add or select the narrow structured payload shape needed by BIR call
+lowering.
 
 Concrete actions:
-- Map each generated metadata-rich path to its structured fact authority.
-- Classify retained strings as display/output, diagnostics, route-local handles, ABI/final spelling, or explicit no-metadata compatibility.
-- Flag any high-risk generated path where rendered text still appears to decide semantic identity.
-- Keep the ledger concise enough for reviewer use and supervisor closure decisions.
+- Define the carrier at the existing LIR call boundary instead of creating a
+  parallel broad backend abstraction.
+- Include argument operand identity, argument type ref or type-text mirror, and
+  byval/sret/variadic markers only as needed by current BIR lowering.
+- Keep `callee_type_suffix` and `args_str` as final spelling and raw
+  compatibility payloads.
+- Preserve existing direct-call signature metadata from ideas 184 and 189.
 
 Completion check:
-- `todo.md` contains a freeze closure ledger covering all current targets and no unclassified high-risk generated-path string authority remains hidden.
+- Metadata-rich call construction can carry the structured argument facts
+  needed by lowering without changing target ABI semantics.
 
-## Step 4: Run Milestone Validation
+## Step 3: Route Generated LIR-To-BIR Calls Through Structured Facts
 
-Goal: prove the closure gate with broad validation appropriate for a milestone after all dependency evidence has been reviewed.
+Goal: make structured argument metadata the semantic authority when available.
 
 Concrete actions:
-- Use the supervisor-delegated broad validation command, normally the full suite or regression-guard equivalent.
-- Preserve canonical validation state according to supervisor policy.
-- If the baseline differs, record the regression-guard acceptance path or blocker details.
-- Do not downgrade expectations or narrow contracts to make the gate pass.
+- Update LIR-to-BIR call lowering to consume the structured carrier for
+  metadata-rich calls.
+- Keep the text parser reachable only for explicit no-metadata compatibility
+  cases.
+- Ensure stale rendered `callee_type_suffix` or `args_str` cannot silently
+  change selected argument type, byval/sret marker, or variadic fact when
+  structured metadata is present.
+- Keep direct and indirect call behavior aligned unless the inventory proves a
+  justified narrower first slice.
 
 Completion check:
-- Broad validation is green, or any baseline difference is explicitly accepted through the regression guard workflow and recorded in `todo.md`.
+- Generated metadata-rich call lowering no longer reparses rendered call text
+  as semantic authority for argument facts.
 
-## Step 5: Closure Decision
+## Step 4: Prove Structured Metadata Beats Stale Text
 
-Goal: decide whether backend restart can proceed or whether a new blocker idea is required first.
+Goal: add focused tests that would fail if generated calls still trusted stale
+rendered call text.
 
 Concrete actions:
-- Compare the ledger and validation result against the source idea acceptance criteria.
-- If clear, record the closure recommendation for supervisor/plan-owner close handling.
-- If blocked, create or request a narrow `ideas/open/` blocker that names the failing authority path and concrete reject signals.
-- Do not treat runbook exhaustion alone as source-idea completion.
+- Add or update focused LIR-to-BIR direct call coverage.
+- Add or update indirect call coverage if the structured carrier applies to
+  indirect calls in the implementation slice.
+- Include a stale rendered text scenario where structured metadata remains
+  authoritative.
+- Avoid printer-only assertions as the primary proof.
 
 Completion check:
-- `todo.md` contains an explicit `backend restart clear` or `blocked by new/open idea` decision, with enough evidence for supervisor review.
+- Focused call tests prove structured argument metadata controls generated call
+  lowering and raw/no-metadata compatibility remains explicit.
+
+## Step 5: Validate And Prepare Completion Evidence
+
+Goal: establish enough proof for supervisor acceptance and for idea 188 to
+eventually review idea 190 as a closed dependency.
+
+Concrete actions:
+- Run the supervisor-delegated build and focused LIR-to-BIR call test subset.
+- Escalate to the broader validation subset requested by the supervisor before
+  claiming the idea is complete.
+- Record retained compatibility boundaries and proof commands in `todo.md`.
+- Do not close idea 190 until the source acceptance criteria are met.
+
+Completion check:
+- `todo.md` contains implementation summary, compatibility boundary notes, and
+  green proof for focused direct/indirect call coverage or a specific blocker
+  that must be handled before closure.

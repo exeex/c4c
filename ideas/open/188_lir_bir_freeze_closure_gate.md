@@ -71,6 +71,11 @@ from starting while freeze blockers are still implicit.
   and closed after the semantic repair landed in `3ea8793b6 preserve
   no-prototype direct-call signatures`. The freeze gate is reactivated at
   milestone validation with full-suite proof available at `3137/3137`.
+- 2026-05-12: Close was rejected because open dependencies 190, 191, and 194
+  remain part of this gate. Lifecycle work switched the active plan to
+  `ideas/open/190_lir_call_argument_structured_payload_boundary.md` first
+  because idea 191 depends on 190. Reactivate this gate only after the open
+  dependencies are closed or the source scope is explicitly narrowed.
 
 ## Reviewer Reject Signals
 
