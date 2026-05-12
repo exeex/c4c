@@ -125,6 +125,10 @@ c4c::backend::prepare::PreparedBirModule prepare_semantic_bir_pipeline(
   return c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, target_profile);
 }
 
+// Step 5 fence: route-debug focus options are public dump filters over rendered
+// function, block, and value spellings. They may resolve those spellings back to
+// prepared IDs to trim route-local debug output, but they are not semantic
+// identity recovery paths for backend lowering.
 std::size_t count_matching_functions(const c4c::backend::bir::Module& module,
                                      std::string_view function_name);
 const c4c::backend::bir::Function* find_function(const c4c::backend::bir::Module& module,
@@ -620,6 +624,9 @@ c4c::backend::prepare::PreparedBirModule filter_prepared_module_to_function(
     filtered.stack_layout.frame_alignment_bytes = 0;
   }
 
+  // Step 5 fence: prepare notes are rendered diagnostics, so this marker is a
+  // route-debug text filter only. Structured prepared state above is already
+  // filtered by the resolved FunctionNameId.
   const std::string function_note_marker = std::string("function '") + std::string(function_name) + "'";
   filtered.notes.erase(std::remove_if(filtered.notes.begin(),
                                       filtered.notes.end(),
@@ -939,6 +946,9 @@ std::size_t count_matching_prepared_value_lines(
   }
 
   for (const auto& object : module.stack_layout.objects) {
+    // Step 5 fence: prepared stack-object names are synthesized debug/display
+    // labels. The focus filter also checks the interned ValueNameId and does
+    // not use this rendered spelling as semantic value identity.
     const bool object_matches =
         object.value_name == *focus_value_id ||
         c4c::backend::prepare::prepared_stack_object_name(module.names, object) == focus_value;
@@ -1167,6 +1177,10 @@ c4c::backend::prepare::PreparedBirModule filter_prepared_module_to_value(
       std::remove_if(filtered.stack_layout.objects.begin(),
                      filtered.stack_layout.objects.end(),
                      [&](const c4c::backend::prepare::PreparedStackObject& object) {
+                       // Step 5 fence: prepared stack-object names are
+                       // synthesized display labels used only to trim focused
+                       // debug output after the focus value has resolved to an
+                       // interned ValueNameId.
                        const bool keep_object =
                            object.value_name == *focus_value_id ||
                            c4c::backend::prepare::prepared_stack_object_name(filtered.names,

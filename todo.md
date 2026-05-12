@@ -8,35 +8,37 @@ Current Step Title: Audit Backend-Prepared Route-Local Names
 
 ## Just Finished
 
-Step 5 - Audit Backend-Prepared Route-Local Names started with an owned
-prepared/prealloc inventory packet.
+Step 5 - Audit Backend-Prepared Route-Local Names continued with a
+route-debug focus filtering and prepared-printer display-name packet.
 
-Inventory result:
-- `PreparedRegisterGroupOverride` lookup is keyed by interned
-  `FunctionNameId` / `ValueNameId`; retained register spellings downstream are
-  target-physical route names, not semantic value identity.
-- `PreparedValueHome` lookup has structured `PreparedValueId` and
-  `ValueNameId` entry points. The remaining `std::string_view` value-name
-  overload is fenced as a prepared-route diagnostic/legacy bridge that resolves
-  through `PreparedNameTables` before lookup.
-- `PreparedMoveBundle` lookup by phase, block index, and instruction index is
-  route-local scheduling state for move insertion.
-- `find_prepared_block_index_in_function()` is fenced as the remaining
-  route-local bridge from prepared block-label IDs back to BIR block indexes.
-- Out-of-SSA parallel-copy helpers are fenced as route-local lookup state keyed
-  by execution site, source edge labels, authority kind, and local step index.
-- `prepared_printer.cpp` retained raw spelling expansion is classified as
-  debug/display only, including the printer-local function-name comparison used
-  to enrich prepared control-flow output.
-- `regalloc.cpp` override use is documented as target register-class/width
-  selection keyed by interned prepared IDs.
+Audit result:
+- `backend.cpp` route-debug focus options are now explicitly fenced as public
+  dump filters over rendered function, block, and value spellings. The focus
+  path may resolve those spellings back to prepared IDs to trim debug output,
+  but it is not semantic identity recovery for backend lowering.
+- Prepared function and block focus filtering already resolves the requested
+  spelling through `PreparedNameTables` before trimming structured prepared
+  state; no behavior change was needed.
+- Prepared value focus filtering already resolves the requested spelling to a
+  `ValueNameId` and then follows `PreparedValueId` ownership where available;
+  no behavior change was needed.
+- The remaining focus-path raw comparisons for prepare-note text markers and
+  synthesized prepared stack-object names are now documented as debug/display
+  filtering only.
+- `prepared_printer.cpp` already carried the broad Step 5 display fence for
+  interned-name expansion and the printer-local function-name comparison. This
+  packet added the missing nearby fence for legacy raw call-argument source
+  symbol spellings, which are printed only as prepared route-debug text when no
+  `LinkNameId` is present.
+- `tests/backend/backend_x86_route_debug_test.cpp` was audited as route-debug
+  expectation coverage only; no expectation change was needed or made.
 
 ## Suggested Next
 
-Continue Step 5 with the next backend-prepared naming packet: audit debug-focus
-name handling and any remaining nearby prepared route-local maps outside the
-owned prepared value/home, register override, block-index, and parallel-copy
-lookup cluster.
+Continue Step 5 with the next backend-prepared naming packet: audit any
+remaining target-local route summaries/traces outside `backend.cpp` and
+`prepared_printer.cpp`, especially x86 debug-route helpers that print or filter
+route-local labels.
 
 ## Watchouts
 
@@ -136,6 +138,13 @@ lookup cluster.
   backend-prepared or MIR interfaces. The block-index bridge remains until
   prepared control-flow consumers carry a structured BIR block handle/index from
   the producer.
+- The route-debug focus fences added here are comment-only and intentionally do
+  not change public focus behavior. Focus function/block/value strings are CLI
+  dump selectors over rendered text; prepared-side trimming should keep using
+  interned IDs where those IDs exist.
+- The prepared-printer legacy `source_symbol_name` fallback remains display
+  only. Do not treat it as a replacement for `LinkNameId` on metadata-bearing
+  call plans.
 
 ## Proof
 

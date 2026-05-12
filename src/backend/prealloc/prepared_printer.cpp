@@ -74,6 +74,8 @@ std::string source_symbol_name(const PreparedNameTables& names,
     }
     return "@" + std::string(semantic_name);
   }
+  // Step 5 fence: the legacy raw symbol spelling is printed only as prepared
+  // route-debug text. Metadata-bearing call plans should prefer LinkNameId.
   if (arg.source_symbol_name.has_value()) {
     return *arg.source_symbol_name;
   }
