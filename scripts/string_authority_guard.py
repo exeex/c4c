@@ -50,6 +50,25 @@ IDENT_RE = re.compile(r"[A-Za-z_]\w*")
 
 HELPER_ACTION_WORDS = ("find", "lookup")
 
+CLASSIFICATION_GUIDANCE = """\
+developer workflow:
+  python3 scripts/string_authority_guard.py
+  python3 scripts/test_string_authority_guard.py
+  ctest --test-dir build -R string_authority_guard --output-on-failure
+
+classification guidance:
+  Add exact entries to scripts/string_authority_classifications.json only for
+  retained declaration-level hits. Each entry must name path, symbol, pattern,
+  owner, domain, category, reason, removal_condition, and evidence. Reviewers
+  should expect evidence that the string use is structured authority already,
+  a compatibility bridge, display/output, diagnostic/debug, route-local
+  identity, generated temporary naming, ABI spelling, or a false positive.
+  Prefer replacing semantic lookup authority with structured authority instead
+  of classifying a new string-keyed map. Keep entries exact by path+symbol;
+  do not add broad regex-style exceptions for new scanner roots or ordinary
+  .find(name) call sites.
+"""
+
 
 @dataclasses.dataclass(frozen=True)
 class Hit:
@@ -379,7 +398,11 @@ def run_guard(repo_root: Path, classifications_path: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=CLASSIFICATION_GUIDANCE,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument(
         "--classifications",

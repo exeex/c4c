@@ -70,6 +70,38 @@ add_custom_target(ctest_core
   VERBATIM
 )
 
+if(PYTHON3_EXECUTABLE)
+  add_custom_target(string_authority_guard
+    COMMAND "${PYTHON3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/string_authority_guard.py"
+    COMMAND "${PYTHON3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/test_string_authority_guard.py"
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    COMMENT "Run the string authority guard and focused self-test"
+    VERBATIM
+  )
+
+  add_test(
+    NAME string_authority_guard
+    COMMAND "${PYTHON3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/string_authority_guard.py"
+  )
+  set_tests_properties(string_authority_guard PROPERTIES
+    LABELS "workflow;string_authority"
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    TIMEOUT 30
+  )
+
+  add_test(
+    NAME string_authority_guard_self_test
+    COMMAND "${PYTHON3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/test_string_authority_guard.py"
+  )
+  set_tests_properties(string_authority_guard_self_test PROPERTIES
+    LABELS "workflow;string_authority"
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    TIMEOUT 30
+  )
+else()
+  message(WARNING "python3 not found: skipping string authority guard workflow tests")
+endif()
+
 # ── Test suites ───────────────────────────────────────────────────────────────
 
 add_subdirectory(frontend)
