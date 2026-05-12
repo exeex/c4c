@@ -1,15 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/173_aggregate_layout_identity_structured_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Thread Structured Layout Identity To The Consumer
+Current Step ID: 3
+Current Step Title: Fail Closed On Metadata-Rich Mismatches
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by threading structured layout identity into the
-selected local aggregate GEP consumer.
+Completed `plan.md` Step 3 by making the selected local aggregate GEP consumer
+fail closed on metadata-rich structured-vs-legacy layout mismatches.
 
 Files changed:
 - `src/backend/bir/lir_to_bir/memory/local_gep.cpp`
@@ -17,37 +17,38 @@ Files changed:
 - `todo.md`
 
 Behavior:
-- `lookup_local_gep_layout_result()` now preserves legacy/no-structured-layout
-  fallback when no structured table is supplied.
-- When a structured table is supplied and contains the named `%struct...` key,
-  local GEP lookup no longer accepts a legacy `TypeDeclMap` fallback if the
-  keyed structured entry does not produce a structured layout.
-- Existing structured-vs-legacy mismatch behavior remains authority-preserving:
-  local GEP still succeeds through structured layout when the structured entry
-  is valid and the legacy text disagrees.
+- `lookup_local_gep_layout_result()` now rejects a lookup result with
+  `structured_text_mismatch`, so a valid structured entry whose legacy
+  `TypeDeclMap` layout disagrees no longer passes local GEP lowering.
+- The committed Step 2 keyed-entry rejection remains: when a structured table
+  contains the named `%struct...` key but cannot produce a structured layout,
+  local GEP lookup fails instead of silently using the legacy layout.
+- The legacy/no-metadata fallback remains only when no structured table is
+  supplied, or when the structured table has no entry for that named type and
+  the route is still an explicit compatibility path.
 
-Focused tests added:
-- `local_gep_structured_mismatch` covers valid structured metadata with
-  mismatched legacy type text and expects local GEP lowering to keep succeeding.
+Focused tests updated:
+- `local_gep_rejects_structured_mismatch` covers valid structured metadata with
+  mismatched legacy type text and now expects local GEP lowering to fail closed.
 - `local_gep_rejects_structured_opaque_legacy_fallback` covers a keyed
   structured entry without usable structured layout and expects local GEP
   lowering to fail instead of silently using legacy layout.
 
 ## Suggested Next
 
-Review or implement the next boundary called out by the supervisor, likely
-starting from the same structured-layout status bits rather than broadening the
-local GEP packet into globals, byval copies, or call ABI.
+Proceed to `plan.md` Step 4 for focused layout behavior and collision coverage
+at the selected local aggregate GEP boundary.
 
 ## Watchouts
 
-- `declare_local_aggregate_slots()` still uses the shared selected-layout helper
-  outside this packet; this slice only closes the selected local GEP lookup
-  boundary.
-- The rejection is keyed to a present structured table entry for the same named
-  type; unrelated legacy-only named types retain the shared fallback behavior.
-- `tests/backend/backend_prepare_structured_context_test.cpp` was inspected but
-  did not need changes for this local GEP consumer packet.
+- Step 3 intentionally stayed inside local aggregate GEP lookup; globals, byval
+  copies, call ABI, and broad backend layout migration remain out of scope.
+- The no-metadata compatibility path still exists for legacy hand-authored
+  inputs, but metadata-rich mismatches at this selected consumer now fail
+  closed.
+- `backend_prepare_structured_context_test` already covers the
+  `structured_text_mismatch` lookup bit; this packet changed the local GEP
+  consumer response to that bit.
 
 ## Proof
 

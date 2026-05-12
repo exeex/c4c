@@ -35,9 +35,10 @@ BackendAggregateLayoutLookup lookup_local_gep_layout_result(
     const auto lookup =
         lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
     const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
-    if (!trimmed.empty() && trimmed.front() == '%' &&
-        structured_layouts->find(std::string(trimmed)) != structured_layouts->end() &&
-        !lookup.used_structured_layout) {
+    if (lookup.structured_text_mismatch ||
+        (!trimmed.empty() && trimmed.front() == '%' &&
+         structured_layouts->find(std::string(trimmed)) != structured_layouts->end() &&
+         !lookup.used_structured_layout)) {
       return BackendAggregateLayoutLookup{};
     }
     return lookup;

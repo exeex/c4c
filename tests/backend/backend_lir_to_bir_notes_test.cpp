@@ -3175,7 +3175,7 @@ LirModule make_local_aggregate_raw_float_tail_memcpy_module() {
   return module;
 }
 
-LirModule make_local_gep_structured_mismatch_module() {
+LirModule make_local_gep_rejects_structured_mismatch_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
   module.link_name_texts = std::make_shared<c4c::TextTable>();
@@ -3191,8 +3191,8 @@ LirModule make_local_gep_structured_mismatch_module() {
   module.type_decls.push_back("%struct.Pair = type { i64, i64 }");
 
   LirFunction function;
-  function.name = "local_gep_structured_mismatch";
-  function.signature_text = "define void @local_gep_structured_mismatch()";
+  function.name = "local_gep_rejects_structured_mismatch";
+  function.signature_text = "define void @local_gep_rejects_structured_mismatch()";
   function.alloca_insts.push_back(LirAllocaOp{
       .result = LirOperand("%lv.pair"),
       .type_str = lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
@@ -4126,15 +4126,17 @@ int main() {
     return local_aggregate_raw_float_tail_memcpy_status;
   }
 
-  if (const int local_gep_structured_mismatch_status = expect_success_without_function_note(
-          "local_gep_structured_mismatch",
-          make_local_gep_structured_mismatch_module(),
-          "latest function failure: semantic lir_to_bir function "
-          "'local_gep_structured_mismatch' failed in gep local-memory semantic family",
+  if (const int local_gep_structured_mismatch_status = expect_failure_notes(
+          "local_gep_rejects_structured_mismatch",
+          make_local_gep_rejects_structured_mismatch_module(),
+          kModuleSummary,
           "failed in gep local-memory semantic family",
-          "structured local GEP should use structured layout despite mismatched legacy text",
-          "structured local GEP mismatch should not keep the module on the gep local-memory "
-          "semantic-family note");
+          "latest function failure: semantic lir_to_bir function "
+          "'local_gep_rejects_structured_mismatch' failed in gep local-memory semantic family",
+          "missing module capability-bucket summary note for structured local GEP parity "
+          "mismatch rejection",
+          "missing specific structured local GEP parity mismatch rejection function note",
+          "missing module note carrying structured local GEP parity mismatch rejection failure");
       local_gep_structured_mismatch_status != 0) {
     return local_gep_structured_mismatch_status;
   }
