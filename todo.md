@@ -1,38 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/194_bir_global_memory_provenance_linknameid_expansion.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Or Tighten LinkNameId Authority For The Selected Route
+Current Step ID: Step 3
+Current Step Title: Route Downstream Memory Or Prepared Handoff Through Structured Facts
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 by adding `LinkNameId` authority to the selected dynamic
-global scalar-array materialization route.
+Completed Step 3 by checking downstream consumers of the selected dynamic
+global scalar-array route.
 
-Implementation summary:
-- `DynamicGlobalAggregateArrayAccess` and `DynamicGlobalScalarArrayAccess` now
-  carry `LinkNameId` metadata alongside final global spelling.
-- Dynamic global aggregate-to-aggregate, aggregate-to-scalar, and scalar
-  GEP projections preserve the carried id.
-- `load_dynamic_global_scalar_array_value(...)` resolves the emitted
-  `LoadGlobalInst::global_name_id` from the carried id when present, validates
-  it against the current module global table and link-name table, and fails
-  closed on mismatch or missing structured identity instead of falling back
-  through raw spelling.
-- Raw/no-id compatibility is retained only for `kInvalidLinkName` accesses.
-- `backend_lir_to_bir_notes_test` now keeps the existing matching-id drifted
-  display success case, adds a missing-link-name-spelling rejection case, and
-  adds an explicit raw/no-id compatibility case that proves the route does not
-  invent `LinkNameId` metadata.
+Downstream check:
+- The selected route reaches BIR at
+  `load_dynamic_global_scalar_array_value(...)`, which emits each materialized
+  scalar load as `bir::LoadGlobalInst`.
+- `LoadGlobalInst` carries `global_name_id` separately from final
+  `global_name` spelling, so the structured identity survives the BIR boundary.
+- `bir_validate.cpp` validates a present `global_name_id`, finds the declared
+  global by `LinkNameId` before spelling, and rejects visible-name/id conflicts
+  when both are declared.
+- `bir_printer.cpp` keeps final display spelling only; it does not feed
+  semantic global identity back into lowering for this route.
+- The remaining raw/no-id fallback is visibly separated: only
+  `kInvalidLinkName` accesses use the compatibility lookup by final global
+  spelling.
+
+No implementation edit was needed for this packet.
 
 ## Suggested Next
 
-Execute Step 3 by checking the downstream selected-route consumers for any
-remaining spelling-first semantics after dynamic scalar-array materialization,
-then record whether the BIR `LoadGlobalInst` boundary is already sufficient or
-whether another owned handoff needs to preserve the structured id.
+Execute Step 4 by recording or adding focused proof for the selected route:
+matching structured success despite drifted display spelling, stale or missing
+`LinkNameId` failure, and raw/no-id compatibility.
 
 ## Watchouts
 
@@ -40,25 +40,18 @@ whether another owned handoff needs to preserve the structured id.
   idea 187.
 - Do not treat local route names, local slots, SSA temporaries, or block labels
   as semantic global symbols.
-- The new fail-closed check lives at materialization time. Public LIR fixtures
-  can cover missing carried-id spelling, while mismatched carried-id proof may
-  still need consumer-level evidence or a narrower test harness because the
-  producer derives the id from the same `GlobalInfo` entry as final spelling.
-- Raw/no-id fallback remains available only when the selected access has no
-  structured id; preserving final BIR spelling is not the same as using raw
-  spelling as semantic identity.
+- The fail-closed check still lives at materialization time; the BIR boundary
+  preserves the selected route's carried id rather than re-deriving identity
+  from spelling.
+- Public LIR fixtures already cover matching structured success, missing
+  link-name spelling rejection, and raw/no-id compatibility. A mismatched
+  carried-id fixture may need a consumer-level harness because normal producers
+  derive the id from the same `GlobalInfo` entry as final spelling.
+- Raw/no-id fallback remains available only when the selected access carries
+  `kInvalidLinkName`; that fallback is compatibility lookup, not semantic
+  global identity.
 
 ## Proof
 
-Ran delegated proof:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$' > test_after.log`
-
-Result: passed, `1/1` selected test green. Proof log: `test_after.log`.
-
-Supervisor then ran broader same-scope acceptance proof:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log`
-
-Regression guard against `test_baseline.log`: passed, before `3137/3137`,
-after `3137/3137`, no new failures.
+Downstream-check packet only; no implementation files were changed, so the
+delegated proof did not require a new command or a new `test_after.log`.
