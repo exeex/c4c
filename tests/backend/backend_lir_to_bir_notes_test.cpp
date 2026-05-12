@@ -2331,10 +2331,15 @@ LirModule make_direct_structured_call_signature_module(bool with_signature) {
       .callee = LirOperand("@stale_direct_sink"),
       .direct_callee_link_name_id = callee_id,
       .callee_type_suffix = with_signature ? "(i32)" : "",
-      .args_str = with_signature ? "ptr %arg" : "",
+      .args_str = with_signature ? "i32 7" : "",
   };
   if (with_signature) {
     call.callee_signature = void_call_signature({"ptr"});
+    call.structured_args.push_back(lir::LirCallArg{
+        .type = "ptr",
+        .operand = LirOperand("%arg"),
+        .type_ref = lir::LirTypeRef("ptr"),
+    });
   }
   entry.insts.push_back(std::move(call));
   entry.terminator = LirRet{
@@ -2430,10 +2435,18 @@ LirModule make_direct_structured_byval_call_signature_module(bool mismatched_sig
       .callee = LirOperand("@stale_byval_sink"),
       .direct_callee_link_name_id = callee_id,
       .callee_type_suffix = "(i32)",
-      .args_str = "ptr byval(%struct.Payload) @payload",
+      .args_str = "i32 7",
       .arg_type_refs = {
           lir::LirTypeRef::struct_type("ptr byval(%struct.Payload)", signature_arg_id)},
       .callee_signature = std::move(signature),
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "ptr byval(%struct.Payload)",
+              .operand = LirOperand("@payload"),
+              .type_ref = lir::LirTypeRef::struct_type(
+                  "ptr byval(%struct.Payload)", signature_arg_id),
+          },
+      },
   });
   entry.terminator = LirRet{
       .value_str = std::nullopt,
@@ -2631,8 +2644,16 @@ LirModule make_indirect_structured_call_signature_module(bool matching_structure
       .return_type = "void",
       .callee = LirOperand("%fp"),
       .callee_type_suffix = "(i32)",
-      .args_str = matching_structured_signature ? "ptr %arg" : "i32 %x",
+      .args_str = matching_structured_signature ? "i32 7" : "ptr null",
       .callee_signature = std::move(callee_signature),
+      .structured_args = {
+          lir::LirCallArg{
+              .type = matching_structured_signature ? "ptr" : "i32",
+              .operand = matching_structured_signature ? LirOperand("%arg") : LirOperand("%x"),
+              .type_ref = matching_structured_signature ? lir::LirTypeRef("ptr")
+                                                        : lir::LirTypeRef("i32"),
+          },
+      },
   });
   entry.terminator = LirRet{
       .value_str = std::nullopt,
@@ -2680,6 +2701,68 @@ int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match() {
     return fail("missing indirect-call family failure for structured callee signature mismatch");
   }
   return 0;
+}
+
+LirModule make_no_signature_structured_fabs_intrinsic_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  c4c::TypeSpec double_type{};
+  double_type.base = c4c::TB_DOUBLE;
+
+  LirFunction function;
+  function.name = "no_signature_structured_fabs_intrinsic";
+  function.signature_text = "define void @no_signature_structured_fabs_intrinsic(double %x)";
+  function.params.push_back({"%x", double_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand("%abs"),
+      .return_type = "double",
+      .callee = LirOperand("@llvm.fabs.double"),
+      .callee_type_suffix = "",
+      .args_str = "i32 7",
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "double",
+              .operand = LirOperand("%x"),
+              .type_ref = lir::LirTypeRef("double"),
+          },
+      },
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_no_signature_structured_fabs_intrinsic_infers_arg_type() {
+  auto result = try_lower_to_bir_with_options(
+      make_no_signature_structured_fabs_intrinsic_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("no-signature structured fabs intrinsic should infer parameter facts from structured args");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.name != "no_signature_structured_fabs_intrinsic" ||
+        function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) continue;
+      if (call->callee == "llvm.fabs.double" && call->arg_types.size() == 1 &&
+          call->arg_types.front() == TypeKind::F64 && call->return_type == TypeKind::F64) {
+        return 0;
+      }
+    }
+  }
+  return fail("no-signature structured fabs intrinsic should materialize F64 BIR call facts");
 }
 
 LirModule make_incoming_byval_param_boundary_module(
@@ -4830,6 +4913,11 @@ int main() {
           expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
       indirect_structured_signature_mismatch_status != 0) {
     return indirect_structured_signature_mismatch_status;
+  }
+  if (const int no_signature_structured_fabs_status =
+          expect_no_signature_structured_fabs_intrinsic_infers_arg_type();
+      no_signature_structured_fabs_status != 0) {
+    return no_signature_structured_fabs_status;
   }
 
   if (const int structured_incoming_byval_status =

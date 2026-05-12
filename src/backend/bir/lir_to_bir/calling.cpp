@@ -137,6 +137,101 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_minimal_scalar_type(const
 
 std::optional<BirFunctionLowerer::ParsedTypedCall> BirFunctionLowerer::parse_typed_call(
     const c4c::codegen::lir::LirCallOp& call) {
+  if (!call.structured_args.empty()) {
+    ParsedTypedCall parsed;
+    parsed.args.reserve(call.structured_args.size());
+    for (const auto& arg : call.structured_args) {
+      parsed.args.push_back(c4c::codegen::lir::LirTypedCallArgView{
+          .type = arg.type,
+          .operand = arg.operand.str(),
+      });
+    }
+
+    auto push_param_type = [&](std::string_view type) {
+      parsed.owned_param_types.push_back(
+          std::string(c4c::codegen::lir::trim_lir_arg_text(type)));
+      parsed.param_types.push_back(parsed.owned_param_types.back());
+    };
+    auto fixed_param_accepts_arg = [](std::string_view param_type,
+                                      std::string_view arg_type) {
+      param_type = c4c::codegen::lir::trim_lir_arg_text(param_type);
+      arg_type = c4c::codegen::lir::trim_lir_arg_text(arg_type);
+      if (param_type == arg_type) return true;
+      return param_type == "ptr" && parse_byval_pointee_type(arg_type).has_value();
+    };
+
+    if (call.callee_signature.has_value()) {
+      parsed.is_variadic = call.callee_signature->is_variadic;
+      const std::size_t fixed_param_count = call.callee_signature->fixed_param_types.size();
+      if (call.structured_args.size() < fixed_param_count) {
+        return std::nullopt;
+      }
+      if (!call.callee_signature->is_variadic &&
+          !call.callee_signature->has_unspecified_params &&
+          call.structured_args.size() != fixed_param_count) {
+        return std::nullopt;
+      }
+      parsed.owned_param_types.reserve(call.structured_args.size());
+      parsed.param_types.reserve(call.structured_args.size());
+      for (std::size_t index = 0; index < call.structured_args.size(); ++index) {
+        if (index < fixed_param_count) {
+          const std::string_view expected_type =
+              call.callee_signature->fixed_param_types[index];
+          if (!fixed_param_accepts_arg(expected_type, call.structured_args[index].type)) {
+            return std::nullopt;
+          }
+          push_param_type(expected_type);
+          continue;
+        }
+        if (!call.callee_signature->is_variadic &&
+            !call.callee_signature->has_unspecified_params) {
+          return std::nullopt;
+        }
+        push_param_type(call.structured_args[index].type);
+      }
+      return parsed;
+    }
+
+    const auto rendered_suffix = c4c::codegen::lir::trim_lir_arg_text(call.callee_type_suffix);
+    const auto param_types =
+        rendered_suffix.empty()
+            ? std::optional<std::vector<std::string_view>>{}
+            : c4c::codegen::lir::parse_lir_call_param_types(rendered_suffix);
+
+    bool saw_varargs = false;
+    std::size_t fixed_param_count = 0;
+    if (param_types.has_value()) {
+      for (std::string_view type : *param_types) {
+        if (c4c::codegen::lir::trim_lir_arg_text(type) == "...") {
+          saw_varargs = true;
+          break;
+        }
+        ++fixed_param_count;
+      }
+    }
+    if (param_types.has_value() &&
+        ((!saw_varargs && call.structured_args.size() != param_types->size()) ||
+         (saw_varargs && call.structured_args.size() < fixed_param_count))) {
+      return std::nullopt;
+    }
+
+    parsed.is_variadic = saw_varargs;
+    parsed.owned_param_types.reserve(call.structured_args.size());
+    parsed.param_types.reserve(call.structured_args.size());
+    for (std::size_t index = 0; index < call.structured_args.size(); ++index) {
+      if (index < fixed_param_count) {
+        const std::string_view expected_type = (*param_types)[index];
+        if (!fixed_param_accepts_arg(expected_type, call.structured_args[index].type)) {
+          return std::nullopt;
+        }
+        push_param_type(expected_type);
+      } else {
+        push_param_type(call.structured_args[index].type);
+      }
+    }
+    return parsed;
+  }
+
   if (call.callee_signature.has_value()) {
     if (const auto parsed = c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
         parsed.has_value()) {
@@ -251,7 +346,7 @@ BirFunctionLowerer::parse_direct_global_typed_call(const c4c::codegen::lir::LirC
     return std::nullopt;
   }
 
-  if (call.callee_signature.has_value()) {
+  if (call.callee_signature.has_value() || !call.structured_args.empty()) {
     const auto parsed = parse_typed_call(call);
     if (!parsed.has_value()) {
       return std::nullopt;
@@ -608,6 +703,45 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   const auto lower_byval_call_arg_layout =
       [&](std::size_t index, std::string_view legacy_type_text)
           -> std::optional<AggregateTypeLayout> {
+    if (!call.structured_args.empty()) {
+      if (index >= call.structured_args.size()) {
+        return std::nullopt;
+      }
+      const auto& type_ref = call.structured_args[index].type_ref;
+      if (type_ref.empty()) {
+        return lower_byval_aggregate_layout(legacy_type_text, type_decls, &structured_layouts_);
+      }
+      if (!type_ref.has_struct_name_id()) {
+        return std::nullopt;
+      }
+      const auto legacy_byval_type = parse_byval_pointee_type(legacy_type_text);
+      const std::string_view legacy_struct_type =
+          legacy_byval_type.has_value()
+              ? std::string_view(*legacy_byval_type)
+              : c4c::codegen::lir::trim_lir_arg_text(legacy_type_text);
+      const c4c::StructNameId legacy_struct_name_id =
+          context_.lir_module.struct_names.find(legacy_struct_type);
+      if (legacy_struct_name_id != c4c::kInvalidStructName &&
+          legacy_struct_name_id != type_ref.struct_name_id()) {
+        return std::nullopt;
+      }
+      const std::string_view structured_name =
+          context_.lir_module.struct_names.spelling(type_ref.struct_name_id());
+      if (structured_name.empty()) {
+        return std::nullopt;
+      }
+      const auto layout_it = structured_layouts_.find(std::string(structured_name));
+      if (layout_it == structured_layouts_.end()) {
+        return std::nullopt;
+      }
+      const auto& layout = layout_it->second.structured_layout;
+      if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
+           layout.kind != AggregateTypeLayout::Kind::Array) ||
+          layout.size_bytes == 0 || layout.align_bytes == 0) {
+        return std::nullopt;
+      }
+      return layout;
+    }
     if (call.arg_type_refs.empty()) {
       // Legacy hand-built LIR compatibility: without structured argument
       // mirrors, rendered byval text is still the only available authority.
