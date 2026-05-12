@@ -3,64 +3,54 @@
 Status: Active
 Source Idea Path: ideas/open/171_identity_authority_migration_closure_gate.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconcile Closure Inputs
+Current Step ID: 2
+Current Step Title: Verify Guard Usability
 
 ## Just Finished
 
-Step 1: Reconcile Closure Inputs checkpoint completed for idea 171.
+Step 2: Verify Guard Usability checkpoint completed for idea 171.
 
-Closed dependency evidence inspected:
-- `ideas/closed/167_whole_codebase_string_authority_final_audit.md`: final
-  whole-codebase string-authority inventory closed, with remaining work split
-  into idea 168 compatibility bridges, idea 169 route-local cleanup, and idea
-  170 regression guard hardening. The audit explicitly distinguished source,
-  semantic-domain, link-visible, route-local, display, diagnostic, and false
-  positive string uses.
-- `ideas/closed/168_compatibility_bridge_retirement.md`: parser, sema,
-  consteval, HIR, LIR/HIR-to-LIR, BIR, and backend rendered/raw-symbol
-  fallback surfaces from the idea 167 inventory were retired or fenced.
-  Retained paths are documented compatibility, no-metadata, raw-import,
-  invalid-id, diagnostic, display, or parity boundaries. Closure proof
-  recorded matching 3135/3135 CTest logs and monotonic guard PASS.
-- `ideas/closed/169_route_local_identity_domain_cleanup.md`: route-local
-  strings were separated from source/link identity. BIR local-slot authority
-  moved to typed `SlotNameId` for slots, local load/store references,
-  local-slot memory-address bases, and sret storage while preserving rendered
-  spelling. Broader backend checkpoint passed 110/110 runnable tests; AArch64
-  direct LIR emitter and larger prealloc/out-of-SSA raw-name helpers remain
-  follow-up candidates only if deeper typed-id migration is required.
-- `ideas/closed/170_string_authority_regression_guard.md`: declaration-level
-  guard is closed and implemented by `scripts/string_authority_guard.py`,
-  `scripts/string_authority_classifications.json`,
-  `scripts/test_string_authority_guard.py`, and CTest entries in
-  `tests/CMakeLists.txt`. The guard requires exact path plus symbol
-  classifications for accepted hits; ordinary `.find(name)` call-site
-  scanning is explicitly out of scope. Closure proof passed 112/112 runnable
-  tests and monotonic regression guard reported no new failures.
+Developer-facing guard commands identified from
+`scripts/string_authority_guard.py --help` and `tests/CMakeLists.txt`:
+- Direct guard: `python3 scripts/string_authority_guard.py`
+- Focused self-test: `python3 scripts/test_string_authority_guard.py`
+- CTest workflow proof:
+  `ctest --test-dir build -R string_authority_guard --output-on-failure`
+- CMake workflow target also exists as `string_authority_guard`, running the
+  direct guard followed by the focused self-test from the source tree.
 
-Accepted post-170 baseline evidence:
-- Supervisor/plan accepted post-170 full-suite baseline: `3137/3137` with a
-  passing monotonic regression guard.
-- Local full-suite baseline artifact is present in `test_baseline.log` and
-  `log/baseline_82dbddc61acc6dcdf9004c752c04f0dfae3f215e.log`; both identify
-  commit `82dbddc61acc6dcdf9004c752c04f0dfae3f215e`, baseline regex
-  `<full-suite>`, and `100% tests passed, 0 tests failed out of 3137`.
-- Root `test_before.log` is the idea 170 focused guard/backend baseline log;
-  after this packet, root `test_after.log` is the delegated Step 1 diff-check
-  proof log, not a 3137 full-suite baseline artifact.
+Classification behavior verified:
+- `scripts/string_authority_guard.py` requires each retained classification to
+  provide `path`, `symbol`, `pattern`, `owner`, `domain`, `category`,
+  `reason`, `removal_condition`, and `evidence`.
+- Accepted hits are keyed by exact path plus symbol in
+  `scripts/string_authority_classifications.json`; unclassified hits report
+  the source location and ask for classification of that exact path+symbol or
+  replacement with structured authority.
+- Current classification categories present are `abi-spelling`,
+  `compatibility-bridge`, `diagnostic-debug`, `display-output`,
+  `generated-temporary-name`, `route-local-identity`, and
+  `structured-authority`.
+- The guard is declaration-level: it scans configured source roots for
+  string-keyed declarations, suspicious by-name/raw-symbol/rendered/legacy
+  declaration surfaces, and lookup helper declarations. Ordinary `.find(name)`
+  call-site scanning is explicitly out of scope in the help guidance and idea
+  170 closure notes.
+- `scripts/test_string_authority_guard.py` verifies unclassified semantic and
+  generic string maps fail, classified exact path+symbol entries pass, and
+  accepted entries can carry the expected category metadata.
 
-Lifecycle link check:
-- `plan.md` has `Source Idea: ideas/open/171_identity_authority_migration_closure_gate.md`.
-- `todo.md` has `Source Idea Path: ideas/open/171_identity_authority_migration_closure_gate.md`.
-- No active lifecycle mismatch found for this packet; both active artifacts
-  link only to idea 171.
+Blocker status:
+- No missing usability artifact found for Step 2. The guard has a direct CLI
+  command, a focused self-test, CTest registration, required classification
+  metadata, exact path+symbol acceptance behavior, and documented out-of-scope
+  limits.
 
 ## Suggested Next
 
-Proceed to Step 2 by verifying the idea 170 guard usability evidence: identify
-the developer-facing guard command, confirm classification fields and behavior,
-and record the supervisor-selected proof result.
+Proceed to Step 3 by reconciling the remaining identity inventory against the
+idea 167 audit, idea 168 compatibility bridge notes, idea 169 route-local
+cleanup notes, and idea 170 guard classifications.
 
 ## Watchouts
 
@@ -70,14 +60,20 @@ and record the supervisor-selected proof result.
 - Do not claim closure if any semantic string-authority item remains
   unclassified or lacks a follow-up decision.
 - Do not weaken tests or downgrade expectations to make the closure gate pass.
-- No Step 1 closure blocker found. The artifact distinction to preserve is
-  that the accepted 3137/3137 full-suite baseline lives in `test_baseline.log`
-  and `log/baseline_82dbddc61acc6dcdf9004c752c04f0dfae3f215e.log`; root
-  `test_after.log` is reserved for the latest executor proof log.
+- No Step 2 guard-usability blocker found. Keep Step 3 evidence-only unless an
+  unclassified semantic string-authority item requires a separate follow-up
+  idea.
 
 ## Proof
 
-Delegated proof for this checkpoint:
+Supervisor-selected guard proof:
+- `python3 scripts/string_authority_guard.py > test_after.log 2>&1`
+  - Result: passed.
+  - Proof log path: `test_after.log`
+  - Log summary: `string authority guard passed: 235 classified declaration-level hits`
+- `python3 scripts/test_string_authority_guard.py`
+  - Result: passed, `Ran 3 tests`, `OK`.
+- `ctest --test-dir build -R string_authority_guard --output-on-failure`
+  - Result: passed, `100% tests passed, 0 tests failed out of 2`.
 - `git diff --check -- todo.md`
-- Result: passed.
-- Proof log path: `test_after.log`
+  - Result: passed.
