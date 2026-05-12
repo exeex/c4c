@@ -8,50 +8,46 @@ Current Step Title: Closure Decision
 
 ## Just Finished
 
-Step 4 - Closure Decision is complete for idea 188.
+Plan-owner close review for Step 4 rejected closure for idea 188.
 
-Decision: `backend restart clear`.
+Decision: `close rejected`.
 
 Evidence:
 
-- Step 2 ledger found no in-scope generated metadata-rich path still appears to
-  use rendered text as semantic authority.
-- Retained strings are classified as output/display, diagnostics, route-local
-  naming, ABI/final spelling, or explicit no-metadata compatibility.
-- Step 3 milestone validation is recorded green with no baseline difference:
-  before `3137/3137`, after `3137/3137`, regression guard `PASS`.
-- Idea 189, the direct-call no-prototype/variadic signature blocker discovered
-  during milestone validation, is closed.
-
-No missing authority path currently blocks the closure gate. No backend restart
-implementation was started inside this gate.
+- Close-time regression guard passed against the existing canonical full-suite
+  logs: before `3137/3137`, after `3137/3137`, no new failures.
+- The source idea now lists open dependencies
+  `ideas/open/190_lir_call_argument_structured_payload_boundary.md`,
+  `ideas/open/191_bir_function_signature_byval_metadata_text_retirement.md`,
+  and `ideas/open/194_bir_global_memory_provenance_linknameid_expansion.md`.
+- The source idea's in-scope text says the gate must review completed ideas
+  183-187, 189-191, and 194, but 190/191/194 are still open and describe
+  remaining pre-backend-restart string-authority work.
+- The existing `backend restart clear` recommendation therefore proves only
+  the older runbook scope, not the current source-idea completion criteria.
 
 ## Suggested Next
 
-Supervisor should call plan-owner to close idea 188.
+Supervisor should route lifecycle repair or execution for the updated closure
+scope before trying to close idea 188 again. The exact blocker is the source
+idea ambiguity between `backend restart clear` and the open 190/191/194
+pre-backend-restart blockers.
 
 ## Watchouts
 
-- This packet records a closure decision only; plan-owner owns the lifecycle
-  close.
-- The closure recommendation relies on the recorded Step 2 ledger and Step 3
-  full-suite validation. No new blocker idea is required by the current
-  evidence.
-- If later review finds an unclassified generated-path string-authority issue,
-  capture that as a separate open blocker before backend restart implementation.
+- `plan.md` still reflects the older 183-187/189 closure route; the source idea
+  is broader and should be treated as authoritative.
+- Do not move idea 188 to `ideas/closed/` while 190/191/194 remain open unless
+  the supervisor explicitly narrows the source idea or records why those open
+  blockers no longer gate backend restart.
 
 ## Proof
 
-Decision-only packet. No new build/test proof was required, and no proof logs
-were created or modified.
+Plan-owner close review did not create or modify proof logs.
 
-This closure decision relies on the recorded Step 3 proof:
-
-`cmake --preset default && cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log`
-
-Regression guard comparison:
+Close-time regression guard command:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
 Recorded result: `PASS`; before `3137/3137`, after `3137/3137`, no new
-failures, no baseline difference, and no expectation downgrade.
+failures. Regression status is not the blocker; source-idea completion is.
