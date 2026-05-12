@@ -610,6 +610,11 @@ bool Lowerer::resolve_struct_member_typedef_type(
 }
 
 bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
+  if (!ts) return false;
+  if (ts->base != TB_TYPEDEF && ts->base != TB_STRUCT && ts->base != TB_UNION) {
+    return false;
+  }
+
   auto owner_key_from_type = [](const TypeSpec& owner)
       -> std::optional<HirRecordOwnerKey> {
     const TextId owner_text_id =
@@ -678,7 +683,6 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     return std::nullopt;
   };
   auto owner_tag_from_metadata = [&]() -> std::optional<std::string> {
-    if (!ts) return std::nullopt;
     if (std::optional<std::string> tag = owner_tag_from_type_metadata(*ts)) {
       return tag;
     }
@@ -708,7 +712,7 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   const std::optional<HirRecordOwnerKey> structured_owner_key =
       ts ? owner_key_from_type(*ts) : std::nullopt;
   const std::optional<std::string> owner_tag = owner_tag_from_metadata();
-  if (!ts || !ts->deferred_member_type_name ||
+  if (!ts->deferred_member_type_name ||
       (!has_record_def && !structured_owner_key && !owner_tag && !has_origin)) {
     return false;
   }
