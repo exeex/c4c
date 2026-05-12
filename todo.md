@@ -9,31 +9,44 @@ Current Step Title: Fence Type And Aggregate Layout Compatibility
 ## Just Finished
 
 Step 4 - Fence Type And Aggregate Layout Compatibility reviewed and fenced the
-adjacent memory aggregate-layout callers in `memory/addressing.cpp` and
-`memory/local_gep.cpp`.
+remaining non-memory aggregate layout raw-text wrappers/callers in
+`global_initializers.cpp`, `globals.cpp`, and `call_abi.cpp`.
 
-The remaining direct aggregate-layout lookups in `addressing.cpp` now route
-through the existing Step 4 fenced `lookup_addressing_layout()` wrapper instead
-of calling `lookup_backend_aggregate_type_layout()` directly from local,
-global, dynamic aggregate, and pointer-value GEP/address tracking paths. The
-owner is shared memory/addressing projection and GEP state; the limitation is
-that these carriers still pass rendered aggregate type text rather than
-`LirTypeRef` / `StructNameId` metadata. The removal condition is those
-addressing helpers and address carriers accepting structured type identity.
+`lookup_global_initializer_layout_result()` now has an explicit Step 4 no-id
+compatibility fence for aggregate zero-fill, recursive field descent, and raw
+GEP initializer offsets. The owner is global initializer lowering; the
+limitation is that recursive initializer carriers still pass rendered type text
+from the LIR initializer and computed layout fields rather than `LirTypeRef` /
+`StructNameId` per subobject. The removal condition is aggregate initializer
+recursion threading structured type identity through array, field, and GEP
+initializer paths.
 
-`local_gep.cpp` was reviewed and already routed all aggregate-layout lookups
-through its Step 4 fenced `lookup_local_gep_layout()` wrapper, including its
-existing fail-closed structured-layout mismatch guard. No test edits were
-needed because behavior did not change. The owned memory files no longer
-contain a direct `lookup_backend_aggregate_type_layout()` call.
+`lookup_global_layout_result()` now has an explicit Step 4 no-id compatibility
+fence for legacy aggregate globals whose `LirGlobal` records do not carry
+`llvm_type_ref` metadata. Metadata-bearing globals stay on
+`lookup_structured_global_layout_result()` and fail closed on `StructNameId`,
+parity, or spelling mismatch. The removal condition is aggregate `LirGlobal`
+records always carrying structured type identity.
+
+`call_abi.cpp` now explicitly fences the raw signature aggregate layout branch
+and the legacy byval parameter call sites. The owner is call ABI lowering for
+legacy aggregate returns and byval parameters; the limitation is normalized
+rendered signature text, including byval pointee text parsed from final LIR
+spelling, when no `LirTypeRef` / `StructNameId` carrier is available or the
+target ABI does not yet enforce structured aggregate signature identity. The
+removal condition is all call-signature aggregate ABI paths threading
+structured type refs and no longer depending on raw parsed signature text.
+
+No test expectations were changed; the slice is comment-only and
+behavior-preserving.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing the next remaining direct aggregate-layout raw-text
-callers outside `memory/addressing.cpp`, `memory/local_gep.cpp`,
-`memory/local_slots.cpp`, and `memory/provenance.cpp`. Convert them to an
-existing Step 4 fenced wrapper or fail closed where structured carriers already
-exist.
+Continue Step 4 by reviewing any remaining aggregate-layout compatibility
+bridges outside the memory files and the just-fenced global/call ABI paths.
+Prefer converting to structured lookup where carriers already have
+`LirTypeRef` / `StructNameId`; otherwise leave an explicit no-id fence with
+owner, limitation, and removal condition.
 
 ## Watchouts
 
@@ -103,6 +116,12 @@ exist.
 - `local_gep.cpp` needed no code change in this packet; its wrapper already
   owns the Step 4 no-id compatibility bridge and structured-layout mismatch
   guard.
+- The global initializer/global layout/call ABI fences are comment-only and
+  deliberately preserve current compatibility behavior. Structured global
+  layout and enforced AArch64 signature aggregate layout paths still fail
+  closed when `LirTypeRef` / `StructNameId` metadata is missing or mismatched.
+- `tests/backend/backend_lir_to_bir_notes_test.cpp` was reviewed only through
+  the delegated backend proof; no expectation changes were needed or made.
 
 ## Proof
 
@@ -110,5 +129,5 @@ Delegated proof run:
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
 
 Result: passed. `test_after.log` contains the build and backend CTest output;
-CTest reported 100% tests passed, 0 failed out of 109 run, with 12 disabled
-backend CLI trace/focus tests not run.
+CTest reported 100% tests passed, 0 tests failed out of 109 run, with 12
+disabled backend CLI trace/focus tests not run.

@@ -104,6 +104,13 @@ BackendAggregateLayoutLookup lookup_global_layout_result(
     std::string_view type_text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
+  // Step 4 no-id compatibility bridge: global storage lowering owns legacy
+  // aggregate globals whose LIR record does not carry llvm_type_ref metadata.
+  // The limitation is that this path can only compare rendered aggregate type
+  // text against the structured layout table; metadata-bearing globals must use
+  // lookup_structured_global_layout_result() and fail closed on StructNameId,
+  // parity, or spelling mismatches. Remove this bridge when aggregate
+  // LirGlobal records always carry structured type identity.
   if (structured_layouts != nullptr) {
     return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
   }
