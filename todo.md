@@ -3,63 +3,42 @@
 Status: Active
 Source Idea Path: ideas/open/182_type_identity_migration_closure_gate.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Build the Type-Domain Closure Ledger
+Current Step ID: 3
+Current Step Title: Validate Broad Closure State
 
 ## Just Finished
 
-Step 2 built the type-domain closure ledger for
+Step 3 recorded broad closure validation status for
 `ideas/open/182_type_identity_migration_closure_gate.md`.
 
-Ledger by domain:
+Accepted validation evidence:
 
-- Syntax payload: parser/AST `TypeSpec`, rendered LIR type text, rendered
-  signature suffixes, final output spelling, dumps, and diagnostics remain
-  allowed as syntax/display payloads. They are not accepted as semantic
-  authority for the migrated metadata-rich paths.
-- Resolved type identity: structured facts are authoritative where closed
-  ideas selected a path: HIR aggregate direct assignment uses structured owner
-  identity instead of rendered `TypeSpec`; `LirTypeRef::operator==` uses
-  structured `StructNameId` when both sides carry ids; template record owner
-  identity uses structured `SpecializationKey` facts for equality, hashing,
-  and completeness; indirect function-pointer calls carry structured
-  `LirCallOp::callee_signature` facts through LIR/BIR.
-- Layout identity: selected local aggregate GEP, generated global aggregate
-  initializer/layout, and incoming byval materialization routes use structured
-  record/layout/type-ref facts. Metadata-rich stale, mismatched, missing,
-  opaque, invalid, zero-sized, or zero-aligned layout metadata fails closed
-  rather than being repaired by rendered struct/type spelling.
-- ABI facts: selected fixed aggregate byval call-argument classification and
-  selected AArch64 direct-LIR aggregate return/byval signature routes prefer
-  structured `LirTypeRef` / `StructNameId` / layout facts. Rendered LLVM ABI
-  spelling remains output/ABI spelling, not the preferred classification
-  authority for metadata-rich aggregate inputs.
-- Display spelling: rendered canonical template text, `%struct...` names,
-  LIR/BIR printer text, diagnostics, final emitted syntax, and call signature
-  suffix text are retained as display, diagnostic, ABI spelling, or route-local
-  rendering surfaces.
-- Compatibility bridges: retained bridges are explicitly legacy/no-metadata or
-  mirrorless/no-id boundaries: no-metadata local/global layout fallback,
-  mirrorless byval ABI compatibility, no-id `LirTypeRef` compatibility,
-  legacy byval copy inputs, and no-signature/no-id AArch64/direct-LIR
-  compatibility. Closed notes classify these as fenced compatibility, not
-  structured metadata mismatch recovery.
+- `test_baseline.log` records the accepted full-suite baseline at commit
+  `47de3a1a6cdbc99549eed0e11db5de781d702e95`
+  (`Cover structured function pointer call signature identity`).
+- Baseline scope is `<full-suite>`.
+- Baseline result is 100% passing: 3137 passed, 0 failed.
+- Commits after that baseline in this run are lifecycle/docs-only:
+  `ideas/open/181_function_pointer_signature_type_identity.md` was renamed to
+  `ideas/closed/181_function_pointer_signature_type_identity.md`, and
+  `plan.md` / `todo.md` lifecycle state changed.
+- The prior focused six-test guard for the last code slice passed before the
+  baseline was accepted, so this closure packet does not require a fresh broad
+  validation run under the supervisor policy provided for Step 3.
 
-Unresolved or ambiguous authority:
+Disabled/skipped tests visible in the baseline:
 
-- No high-risk rendered-string authority was found unclassified in the closed
-  idea evidence for the selected migration paths.
-- Out-of-scope surfaces remain follow-up candidates only if they become active
-  migration targets: broader sema canonical type equality replacement,
-  parser-only `TypeSpec::is_fn_ptr` comparisons, direct-call signature
-  metadata, final formatting/output syntax, post-BIR backend ABI decisions,
-  and complete retirement of all legacy no-metadata bridges.
+- The baseline log lists 12 disabled MIR CLI trace/dump/focus tests as not
+  run: `backend_cli_dump_mir_is_nonfatal_trace_shell`,
+  `backend_cli_trace_mir_reports_lane_detail`, and ten
+  `backend_cli_*_focus_*_00204` dump/trace variants.
+- These are reported as disabled in the accepted full-suite baseline, not as
+  failures or unexplained skips.
 
 ## Suggested Next
 
-Proceed to Step 3: validate broad closure state by citing the accepted
-`test_baseline.log` full-suite baseline or running the supervisor-selected
-fresh broad validation command.
+Proceed to Step 4: review the ledger for any remaining blockers and convert
+true unresolved type-authority gaps into explicit follow-up idea requests.
 
 ## Watchouts
 
@@ -69,19 +48,24 @@ fresh broad validation command.
 - Do not accept rendered type spelling as semantic authority unless it is
   classified as output, diagnostics, ABI spelling, or an explicit
   compatibility bridge.
-- The ledger is closure evidence only. If plan-owner review wants any
-  out-of-scope surface promoted from follow-up candidate to blocker, route it
-  through a new narrow idea instead of expanding this closure gate.
-- Retained rendered surfaces are acceptable only in the classified roles above;
-  a metadata-rich path silently falling back to text remains a blocker pattern.
+- This packet accepts the existing broad baseline because the supervisor
+  explicitly classified post-baseline changes as lifecycle/docs-only. If a
+  later packet adds implementation or test changes, broad validation must be
+  reconsidered.
+- Disabled MIR CLI tests are part of the accepted baseline state. Treat new
+  failures, new unexplained skips, or changed baseline scope as validation
+  blockers.
 
 ## Proof
 
-No build required for this closure ledger packet. Read-only checks used:
+No new build required. Read-only checks used:
 
-- `sed -n '1,180p' todo.md`
-- `sed -n '1,180p' plan.md`
-- `rg -n 'syntax payload|resolved type identity|layout identity|ABI class|ABI facts|display spelling|compatibility bridge|rendered|structured|legacy|fallback|authority|Closed after|Completion|Closure' ideas/closed/17{2,3,4,5,6,7,8,9}_*.md ideas/closed/180_*.md ideas/closed/181_*.md`
+- `tail -n 80 test_baseline.log`
+- `git diff --stat 47de3a1a6..HEAD`
+- `git diff --name-status 47de3a1a6..HEAD`
+- `git status --short`
+- `sed -n '1,170p' todo.md`
 
-Result: ledger recorded. No unclassified high-risk rendered-string authority
-was identified from closed idea evidence for the selected migration paths.
+Result: accepted validation evidence is present and not suspicious for this
+closure packet. No fresh broad validation is required under the delegated
+supervisor policy.
