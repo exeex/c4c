@@ -8,33 +8,29 @@ Current Step Title: Convert Link-Visible Symbol Identity
 
 ## Just Finished
 
-Step 3 - Convert Link-Visible Symbol Identity reviewed and fenced the local
-pointer-store LIR-to-BIR bridge in
-`src/backend/bir/lir_to_bir/memory/local_slots.cpp`.
+Step 3 - Convert Link-Visible Symbol Identity reviewed and fenced the
+call-pointer argument bridge in
+`src/backend/bir/lir_to_bir/memory/provenance.cpp`.
 
-The direct pointer-store path still accepts raw global operands such as
-`@semantic_function_arg` and uses `FunctionSymbolSet::find_raw_symbol_link_name_id`
-to keep no-id imported pointer stores working. That raw lookup is now explicitly
-fenced as a Step 3 no-id compatibility bridge: its owner is the local
-pointer-store bridge, its limitation is that `FunctionSymbolSet` is populated
-only after `LinkNameId` declarations resolve at the module boundary, and its
-removal condition is LIR pointer operands carrying `LinkNameId` metadata
-directly.
+`lower_call_pointer_arg_value()` still accepts raw global operands such as
+`@semantic_callee` and uses `FunctionSymbolSet::find_raw_symbol_link_name_id`
+to keep no-id imported function pointer arguments working. That raw lookup is
+now explicitly fenced as a Step 3 no-id compatibility bridge: its owner is the
+call-pointer argument bridge, its limitation is that `FunctionSymbolSet` is
+populated only after `LinkNameId` declarations resolve at the module boundary,
+and its removal condition is LIR pointer operands carrying `LinkNameId`
+metadata directly.
 
-`tests/backend/backend_lir_to_bir_notes_test.cpp` now extends
-`expect_pointer_value_symbol_identity_carrier()` with missing-spelling coverage:
-detaching the link-name text table from the metadata-rich pointer-store fixture
-fails at the module boundary with the existing
-`LinkNameId-bearing LIR extern declaration must resolve through the link-name table`
-note. This proves metadata-rich pointer-store identity cannot recover through
-the raw pointer operand spelling when the required `LinkNameId` spelling is
-unavailable.
+No focused test was added because this packet only documents/fences existing
+behavior. The existing metadata-rich direct-call and extern/global
+`LinkNameId` boundary tests continue to prove that missing or stale ids fail
+before raw symbol lookup can recover them.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing one remaining pointer-to-symbol bridge in
-`memory/provenance.cpp`, especially `lower_call_pointer_arg_value()` or
-`resolve_local_aggregate_pointer_value_alias()`, and either fence its raw/no-id
+Continue Step 3 by reviewing the remaining raw pointer-to-function bridge in
+`memory/provenance.cpp`, especially
+`resolve_local_aggregate_pointer_value_alias()`, and either fence its no-id
 compatibility lookup or document why an existing `LinkNameId` boundary already
 blocks metadata-rich fallback.
 
@@ -66,6 +62,9 @@ blocks metadata-rich fallback.
   failing closed for metadata-bearing functions or extern declarations whose
   `LinkNameId` spelling cannot be resolved; do not bypass that module-boundary
   check in a later pointer bridge.
+- The call-pointer argument fence has the same boundary assumption: it is only
+  for no-id imported function pointer arguments, not a way to recover corrupted
+  metadata-rich function identity.
 
 ## Proof
 

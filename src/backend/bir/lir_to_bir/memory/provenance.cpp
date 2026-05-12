@@ -247,6 +247,11 @@ std::optional<bir::Value> BirFunctionLowerer::lower_call_pointer_arg_value(
   }
 
   const std::string symbol_name = operand.str().substr(1);
+  // Step 3 fence: this raw lookup is the call-pointer argument compatibility
+  // bridge for no-id imported function operands. FunctionSymbolSet is populated
+  // only after LinkNameId declarations resolve at the module boundary, so
+  // metadata-rich missing ids cannot recover through this path; remove this
+  // when LIR pointer operands carry LinkNameId metadata directly.
   const auto function_link_name_id = function_symbols.find_raw_symbol_link_name_id(symbol_name);
   if (function_link_name_id.has_value()) {
     return bir::Value::named_symbol_pointer("@" + symbol_name, *function_link_name_id);
