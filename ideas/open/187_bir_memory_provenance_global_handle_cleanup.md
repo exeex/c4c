@@ -4,8 +4,8 @@ Status: Open
 Created: 2026-05-12
 
 Depends On:
-- `ideas/open/185_lir_to_bir_global_typedecl_compatibility_fence.md`
-- `ideas/open/186_bir_direct_symbol_identity_validation_closure.md`
+- `ideas/closed/185_lir_to_bir_global_typedecl_compatibility_fence.md`
+- `ideas/closed/186_bir_direct_symbol_identity_validation_closure.md`
 
 ## Goal
 
