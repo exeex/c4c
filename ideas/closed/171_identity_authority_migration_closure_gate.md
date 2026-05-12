@@ -1,7 +1,8 @@
 # Identity Authority Migration Closure Gate
 
-Status: Open
+Status: Closed
 Created: 2026-05-11
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/170_string_authority_regression_guard.md`
@@ -76,6 +77,55 @@ theme. This gate decides whether the migration is actually done.
   decision.
 - The identity-domain closure ledger is written into the lifecycle artifacts or
   closure note.
+
+## Closure Notes
+
+Closed after Step 5. The closure gate accepted the post-170 full-suite
+baseline supplied by the supervisor: `3137/3137`, with the monotonic
+regression guard passed and accepted. Guard usability was also proven by direct
+guard execution, the guard self-test, and the CTest guard subset; the guard
+reported 235 classified declaration-level hits.
+
+Identity-domain closure ledger:
+- `TextId` owns source-facing syntax spelling and source-origin text where
+  semantic equality should not be reconstructed from rendered strings.
+- Structured semantic keys own declaration, constant, slot, record, global,
+  and route-state lookup equality in sema, HIR, LIR, BIR, and backend domains.
+- `QualifiedNameKey` owns qualified semantic declaration identity when module
+  or namespace path matters.
+- Owner-aware template keys own template binding and canonical-symbol identity
+  where rendered template shape must be paired with the owning context.
+- `LinkNameId` owns final link-visible function/global symbol identity and
+  separates source spelling from emitted link identity.
+- Route-local ids own local slots, temporaries, blocks, memory bases, phi
+  labels, string-pool names, prealloc/regalloc state, and out-of-SSA
+  synchronization inside one lowering route.
+- Display/output text owns diagnostics, debug dumps, printers, parity labels,
+  final assembly text, LLVM text, and ABI spellings as output, not semantic
+  lookup authority.
+
+Remaining bridge status:
+- No unclassified declaration-level semantic string-authority entries remain
+  in the current inventory or idea 170 guard classification set.
+- Retained bridges are classified by owner, domain, category, and reason, and
+  are limited to parser/source spelling, structured semantic boundary gaps,
+  qualified-name compatibility, owner-aware template compatibility,
+  link-name/raw import compatibility, route-local synchronization, or
+  output-only text.
+- Bridge removal is gated on producers passing the corresponding typed
+  syntax, semantic, qualified, owner-aware, link, or route-local id/key to the
+  consumer. Output-only text only becomes a blocker if a future production
+  lookup feeds it back into semantic identity.
+
+Non-blocking follow-up candidates:
+- AArch64 direct LIR emitter string-keyed lowering.
+- The larger prealloc/out-of-SSA raw-name helper set.
+
+These are not closure blockers. They are candidates only if a future route
+chooses to migrate deeper backend-local helper state to typed route-local ids.
+
+Result: close accepted. No new identity-authority follow-up idea is required to
+close the string identity-authority migration.
 
 ## Reviewer Reject Signals
 
