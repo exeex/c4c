@@ -30,6 +30,8 @@ struct Query {
 
 [[nodiscard]] inline Query make_query(const c4c::backend::prepare::PreparedBirModule& module,
                                       std::string_view function_name) {
+  // Public x86 entry points still accept rendered focus/entry names. Convert
+  // them to the prepared name table before touching prepared route state.
   return Query{
       .module = &module,
       .function_name =
@@ -44,6 +46,7 @@ struct FastPath {
 };
 
 struct Operand {
+  // Final x86 operand spelling only; this text is not a BIR value identity.
   std::string text;
   bool materialize = false;
 };

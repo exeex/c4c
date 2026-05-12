@@ -21,8 +21,12 @@ namespace c4c::backend::x86::lowering {
 [[nodiscard]] std::string_view float_summary();
 [[nodiscard]] std::string_view ret_summary();
 [[nodiscard]] std::string_view scalar_summary();
+// Debug/status text only. The function spelling is rendered observation text
+// after prepared lookup, not a fallback for link-visible identity.
 [[nodiscard]] std::string frame_comment(std::string_view function_name);
 [[nodiscard]] std::optional<std::string_view> memory_size(c4c::backend::bir::TypeKind type);
+// Final x86 addressing syntax only. `size_name` is an assembler operand-size
+// spelling, and `byte_offset` must already come from the prepared frame plan.
 [[nodiscard]] std::string stack_mem(std::size_t byte_offset, std::string_view size_name);
 
 }  // namespace c4c::backend::x86::lowering

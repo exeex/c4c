@@ -10,6 +10,8 @@ FastPath classify_module_fast_path(const c4c::backend::prepare::PreparedBirModul
     if (function.is_declaration) {
       continue;
     }
+    // `focus_function` is a public debug/entry selector over rendered text;
+    // the dispatch lane remains a route-local summary, not symbol authority.
     if (focus_function.has_value() && function.name != *focus_function) {
       continue;
     }

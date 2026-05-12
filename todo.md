@@ -8,32 +8,33 @@ Current Step Title: Audit Backend-Prepared Route-Local Names
 
 ## Just Finished
 
-Step 5 - Audit Backend-Prepared Route-Local Names continued with a
-target-local x86 route summary/trace packet.
+Step 5 - Audit Backend-Prepared Route-Local Names continued with the remaining
+owned x86 prepared/route-local lowering helper audit.
 
 Audit result:
-- `src/backend/mir/x86/debug/debug.cpp` now classifies grouped route summaries
-  and traces as debug display over prepared/prealloc authority. Target register
-  spellings remain target-physical names, prepared value names remain
-  interned-id display, and focus strings remain public dump filters over
-  rendered text.
-- `src/backend/mir/x86/module/module.cpp` now classifies x86 function-local
-  labels as final assembly spellings derived after prepared block-label
-  validation, narrow register spellings as target-physical assembly names, and
-  grouped authority comments as diagnostics only.
-- The `module.cpp` BIR block-label raw-text fallback is documented as legacy
-  no-id compatibility only; metadata-bearing blocks still match through the
-  structured BIR label id spelling.
-- `tests/backend/backend_prepare_frame_stack_call_contract_test.cpp` and
-  `tests/backend/backend_x86_route_debug_test.cpp` were audited as expectation
-  coverage for those x86 route/debug surfaces. No behavior or expectation
-  change was needed or made.
+- `src/backend/mir/x86/prepared/prepared.hpp` now fences public rendered
+  focus/entry names at `make_query()` as inputs that must be resolved through
+  the prepared name table before prepared route state is consumed.
+- `prepared::Operand::text` and `render_immediate_operand()` are classified as
+  final x86 operand spelling derived from structured BIR values, not prepared
+  or BIR value identity.
+- `src/backend/mir/x86/prepared/dispatch.cpp` now documents that
+  `focus_function` is a public debug/entry selector over rendered text and that
+  the fast-path lane is route-local summary state, not symbol authority.
+- `src/backend/mir/x86/lowering/lowering.hpp` now fences `frame_comment()` as
+  debug/status display text after prepared lookup, and `stack_mem()` as final
+  x86 addressing syntax whose offset must already come from the prepared frame
+  plan.
+- The remaining owned x86 lowering summary helpers and prepared immediate/
+  dispatch helpers were audited as route-local, debug/status, or final
+  assembler spelling surfaces. No behavior, supported-path contract, or test
+  expectation change was needed or made.
 
 ## Suggested Next
 
-Continue Step 5 with the next backend-prepared naming packet: audit any
-remaining backend-prepared route-local names outside the already covered
-prealloc, prepared-printer, backend focus, and x86 summary/trace surfaces.
+Supervisor should decide whether Step 5 is ready for reviewer/plan-owner
+acceptance or whether another explicitly named backend-prepared naming surface
+needs a final narrow audit packet.
 
 ## Watchouts
 
@@ -146,6 +147,13 @@ prealloc, prepared-printer, backend focus, and x86 summary/trace surfaces.
   display, or route-local debug filtering.
 - The x86 `module.cpp` block-label fallback remains no-id compatibility only.
   Do not use it to recover stale or mismatched metadata-bearing block identity.
+- The x86 prepared dispatch/query fences added here are comment-only. Public
+  rendered focus/entry names must keep resolving through the prepared name table
+  before consumers touch prepared route state.
+- The x86 lowering helper fences added here are comment-only. `frame_comment()`
+  is display text, and `stack_mem()` renders final assembler syntax from an
+  already-prepared frame offset; neither helper owns semantic identity or frame
+  policy.
 
 ## Proof
 
