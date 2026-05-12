@@ -10,9 +10,9 @@ Depends On:
 - `ideas/closed/186_bir_direct_symbol_identity_validation_closure.md`
 - `ideas/closed/187_bir_memory_provenance_global_handle_cleanup.md`
 - `ideas/closed/189_direct_call_no_prototype_variadic_signature_mismatch.md`
-- `ideas/open/190_lir_call_argument_structured_payload_boundary.md`
-- `ideas/open/191_bir_function_signature_byval_metadata_text_retirement.md`
-- `ideas/open/194_bir_global_memory_provenance_linknameid_expansion.md`
+- `ideas/closed/190_lir_call_argument_structured_payload_boundary.md`
+- `ideas/closed/191_bir_function_signature_byval_metadata_text_retirement.md`
+- `ideas/closed/194_bir_global_memory_provenance_linknameid_expansion.md`
 
 ## Goal
 
@@ -76,6 +76,8 @@ from starting while freeze blockers are still implicit.
   `ideas/open/190_lir_call_argument_structured_payload_boundary.md` first
   because idea 191 depends on 190. Reactivate this gate only after the open
   dependencies are closed or the source scope is explicitly narrowed.
+- 2026-05-12: Dependencies 190, 191, and 194 are closed; dependency paths were
+  repaired to the closed archive before reactivating this gate.
 
 ## Reviewer Reject Signals
 
