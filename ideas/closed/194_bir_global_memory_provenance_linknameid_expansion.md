@@ -1,7 +1,8 @@
 # BIR Global Memory Provenance LinkNameId Expansion
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/187_bir_memory_provenance_global_handle_cleanup.md`
@@ -47,6 +48,20 @@ metadata-rich global path should be closed before backend restart.
 - Route-local string maps are explicitly distinguished from semantic global
   identity.
 - Validation includes focused BIR memory/provenance or LIR-to-BIR tests.
+
+## Closure Notes
+
+Accepted via the dynamic global scalar-array materialization route. Structured
+`LinkNameId` provenance is carried through the selected dynamic global
+aggregate/scalar array access path and into `bir::LoadGlobalInst::global_name_id`.
+Raw spelling lookup remains only at the explicit `kInvalidLinkName`
+compatibility boundary.
+
+Focused LIR-to-BIR coverage records structured success under display-spelling
+drift, fail-closed behavior when the carried id cannot resolve to link-name
+text, and no-id compatibility. Close-time regression guard passed against the
+canonical full-suite logs with before `3137/3137`, after `3137/3137`, and no
+new failures.
 
 ## Reviewer Reject Signals
 
