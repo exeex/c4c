@@ -3,168 +3,209 @@
 Status: Active
 Source Idea Path: ideas/open/172_type_identity_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Inventory HIR Type And Record Authority
+Current Step ID: 3
+Current Step Title: Inventory LIR/BIR Type And Layout Authority
 
 ## Just Finished
 
-Step 2 - Inventory HIR Type And Record Authority completed as a code-reading
-audit.
+Step 3 - Inventory LIR/BIR Type And Layout Authority completed as a
+code-reading audit.
 
 Files inspected:
-- `src/frontend/hir/hir.hpp`: public HIR facade and `ResolvedTypeTable`
-  handoff into `build_hir`.
-- `src/frontend/hir/hir_ir.hpp`: HIR type carriers, declaration lookup keys,
-  template parameter binding keys, specialization keys, record owner keys,
-  struct/member/method lookup keys, module indexes, and rendered compatibility
-  lookup bridges.
-- `src/frontend/hir/compile_time_engine.hpp`: template seed/instance keys,
-  `PendingTemplateTypeKey`, pending work queues, structured vs legacy
-  specialization construction, and display-only pending-key rendering.
-- `src/frontend/hir/hir_build.cpp`: AST-to-HIR collection, template seed
-  recording, struct owner collection, out-of-class method lookup, ref-overload
-  owner matching, deferred template type instantiation, and initial lowering
-  orchestration.
-- `src/frontend/hir/hir_types.cpp`: typedef-to-record resolution, HIR
-  `TypeSpec`/`QualType` construction, layout lookup helpers, struct/member
-  owner lookup registration and query paths, static member lookup, field
-  lowering, record layout population, and method pending work.
-- `src/frontend/hir/hir_lowering_core.cpp`: `compute_struct_layout` and the
-  final layout computation handoff for `HirStructDef`.
-- `src/frontend/hir/impl/lowerer.hpp`: `Lowerer` state and map inventory for
-  local/function type refs, pending methods, struct owner mirrors, template
-  bindings, and deferred template type helpers.
-- `src/frontend/hir/impl/templates/templates.cpp`: template struct primary
-  registration, owner-aware primary lookup, pending-template seeding, and
-  rendered-origin recovery.
-- `src/frontend/hir/impl/templates/member_typedef.cpp`: deferred member
-  typedef owner resolution and structured fail-closed behavior.
-- `src/frontend/hir/impl/templates/struct_instantiation.cpp`: template struct
-  instance owner-key creation, instantiated field/method/static-member
-  registration, layout computation, and instance dedup.
-- `src/frontend/hir/impl/templates/value_args.cpp` and
-  `src/frontend/hir/impl/templates/deferred_nttp.cpp` were searched for
-  owner-key static-member/value routes and rendered compatibility call sites.
-- `src/frontend/sema/consteval.hpp` and `src/frontend/sema/consteval.cpp` were
-  rechecked for the HIR layout handoff boundary:
-  `struct_defs` plus `struct_def_owner_index`.
+- `src/codegen/lir/types.hpp`: `LirTypeRef`, `LirTypeKind`,
+  `StructNameId`-backed struct refs, integer bit-width extraction, and
+  text-based equality.
+- `src/codegen/lir/ir.hpp`: LIR instruction/function/global type carriers,
+  `TypeSpec` preservation, structured signature mirrors, `LinkNameId`
+  handoffs, `LirStructDecl`, `LirStructuredLayoutObservation`,
+  `type_decls`, and extern-decl dedup.
+- `src/codegen/lir/hir_to_lir/types.cpp`: HIR-to-LIR field-chain layout
+  lookup, `StructuredLayoutLookup`, `StructNameId` propagation, base/anonymous
+  aggregate fallback, and `MemberSymbolId` field lookup.
+- `src/codegen/lir/lir_printer.cpp`: final LLVM rendering for structured type
+  refs, link-name replacement, call targets, and instruction type spellings.
+- `src/backend/bir/bir.hpp`: BIR scalar `TypeKind`, ABI metadata structs,
+  link/block/slot id carriers, structured type spelling context, aggregate
+  call spelling fields, memory-address metadata, and display/compatibility
+  names.
+- `src/backend/bir/lir_to_bir/lowering.hpp`: lowering context authority
+  tables, `GlobalTypes`, `TypeDeclMap`, `FunctionSymbolSet`,
+  `BackendStructuredLayoutTable`, `AggregateTypeLayout`, function-local
+  route maps, and aggregate parameter metadata.
+- `src/backend/bir/lir_to_bir/types.cpp`: structured vs legacy layout table
+  construction, type-decl parsing, aggregate layout computation, parity notes,
+  scalar lowering, array parsing, and structured-first layout lookup.
+- `src/backend/bir/lir_to_bir/call_abi.cpp`: scalar ABI classification,
+  structured signature parameter path, signature-text fallback, sret/byval
+  metadata, aggregate return lowering, and target-profile ABI decisions.
+- `src/backend/bir/lir_to_bir/aggregate.cpp`: byval type normalization,
+  aggregate parameter collection, local aggregate slot materialization,
+  structured layout selection, leaf-slot traversal, and aggregate copy paths.
+- `src/backend/bir/lir_to_bir/module.cpp` and
+  `src/backend/bir/lir_to_bir/globals.cpp`: module-level type/layout table
+  setup, global/function link-name identity, pointer-initializer resolution,
+  global layout lowering, and raw-symbol fallback boundaries.
+- `src/backend/bir/bir_printer.cpp` and `src/backend/bir/bir_validate.cpp`:
+  BIR dump spelling, structured type rendering, link-name validation, and
+  id-aware fallback checks.
+- `src/backend/prealloc/legalize.cpp`,
+  `src/backend/prealloc/stack_layout/stack_layout.hpp`,
+  `src/backend/prealloc/stack_layout/coordinator.cpp`,
+  `src/backend/prealloc/stack_layout/analysis.cpp`,
+  `src/backend/prealloc/liveness.cpp`, and
+  `src/backend/prealloc/regalloc.cpp`: post-BIR type legalization, ABI
+  legalization, stack-object layout, prepared value identity, and register
+  allocation use of BIR type/size/align metadata.
+- `src/backend/mir/aarch64/codegen/emit.cpp`,
+  `src/backend/mir/riscv/codegen/emit.cpp`, and live x86 backend/prepared
+  files were searched for downstream spelling consumers and target route
+  layout decisions.
 
 Authority classifications found:
-- HIR type identity: `QualType` and `HirStructField::elem_type` still embed
-  `TypeSpec`; HIR mostly preserves sema/parser type payload rather than owning
-  one canonical type table. `Lowerer::fn_ptr_sig_from_decl_node` and struct
-  field lowering use `ResolvedTypeTable`/`CanonicalType` when available for
-  callable function-pointer signatures, but most ordinary HIR type refs remain
-  `TypeSpec`-based.
-- Template type identity: `HirTemplateParameterBindingKey` is the owner-aware
-  identity for template type/NTTP bindings. `SpecializationKey` equality and
-  hashing use structured owner plus ordered `SpecializationArgumentIdentity`
-  values; `SpecializationKey::canonical` is retained as display/compatibility.
-- Pending-work authority: `PendingTemplateTypeKey` is the dedup/progress key
-  for deferred template type work. It combines kind, `specialization_type_*`
-  identity for the pending `TypeSpec`, owner identity, type/NTTP binding
-  identities, context, and span. `PendingTemplateTypeWorkItem::display_key`,
-  `format_pending_type_ref_for_display`, and `encode_pending_type_ref` are
-  diagnostic/display only.
-- Template seed/instance authority: `InstantiationRegistry` uses
-  `FunctionTemplateInstanceKey{primary_def, SpecializationKey}` when a
-  primary owner exists. Legacy mangled-name dedup is explicitly limited to
-  ownerless fallback. Template struct instances use
-  `TemplateStructInstanceKey{primary_def, SpecializationKey}`.
-- Record/layout identity: `HirRecordOwnerKey` is the structured HIR record
-  owner key. `Module::struct_def_owner_index` maps owner keys to rendered
-  tags, while `Module::struct_defs` and `struct_def_order` remain rendered-tag
-  bridges for codegen, dumps, and no-owner compatibility. `compute_struct_layout`
-  computes concrete layout on `HirStructDef`; base lookup prefers
-  owner/text-id metadata but still stores `base_tags` as rendered strings.
-- Member/method/static-member identity: `HirStructMethodLookupKey` and
-  `HirStructMemberLookupKey` combine record owner key with member/method
-  `TextId`; owner-key maps such as `struct_methods_by_owner_`,
-  `struct_static_member_decls_by_owner_`,
-  `struct_static_member_const_values_by_owner_`, and
-  `struct_member_symbol_ids_by_owner_` are the structured authority when
-  metadata is complete. Rendered tag/member maps are retained for no-owner
-  compatibility and parity observation.
-- Display spelling and route-local rendering: HIR still renders mangled
-  template names, `format_type_for_specialization_display_key`,
-  `nominal_type_suffix_for_mangling`, `type_suffix_for_mangling`,
-  `build_template_mangled_name`, member-symbol strings like `tag::member`,
-  and debug labels. These are output, ABI/mangling, diagnostic, or route-local
-  bookkeeping unless used as explicit compatibility fallback.
-- Compatibility bridges: structured misses commonly fail closed when complete
-  owner metadata exists, then rendered fallback is only allowed for no-owner or
-  explicitly self-consistent compatibility paths. Examples include declaration
-  lookup in `Module`, record layout lookup in consteval, `resolve_typedef_to_struct`,
-  static member lookup, member-symbol lookup, base layout lookup, and rendered
-  template-origin recovery.
+- LIR structured type/layout authority: `LirTypeRef` carries `LirTypeKind`,
+  integer bit width, and optional `StructNameId`. `LirStructDecl` plus
+  `LirModule::struct_decls`/`struct_decl_index` is the structured declaration
+  mirror for backend layout. `LirFunction::signature_return_type_ref`,
+  `signature_param_type_refs`, `signature_params`, and
+  `signature_is_variadic` are the structured signature mirrors; `LinkNameId`
+  is semantic function/global identity where populated.
+- LIR semantic type-string authority: `LirTypeRef::operator==` still compares
+  only rendered text, and many LIR operations (`type_str`, `return_type`,
+  `args_str`, `LirRet::type_str`, `LirGepOp::element_type`, aggregate
+  insert/extract types, global `llvm_type`) carry final LLVM spellings that
+  lowering reads as type input. `TypeSpec` remains preserved on older LIR
+  structs, function params, stack objects, and globals, but backend-facing
+  aggregate layout generally flows through LIR type text plus structured
+  mirrors, not through sema canonical type identity.
+- LIR ABI/output spelling: `signature_text`, `return_type_str`,
+  `llvm_type`, `init_text`, instruction render types, mangled/spec-entry
+  strings, and printer replacements are final LLVM/output spelling. They are
+  acceptable output surfaces when structured mirrors are present, but become
+  compatibility authority when a producer omits the mirror.
+- LIR compatibility bridges: `type_decls` is explicitly a legacy textual type
+  declaration shadow. `extern_decl_name_map` and raw-name extern dedup are
+  fallbacks when no `LinkNameId` exists. HIR-to-LIR field-chain logic still
+  recovers nested/base aggregates through rendered tags when `StructNameId`
+  metadata is incomplete.
+- BIR structured scalar/ABI authority: BIR lowers scalar type identity into
+  `bir::TypeKind`; ABI decisions are represented by `CallArgAbiInfo`,
+  `CallResultAbiInfo`, `AbiValueClass`, `size_bytes`, `align_bytes`,
+  `is_byval`, `is_sret`, and `returned_in_memory`. `legalize.cpp`,
+  prealloc stack layout, liveness, and regalloc mostly consume these
+  structured fields rather than type strings.
+- BIR semantic name authority: `LinkNameId`, `BlockLabelId`, and `SlotNameId`
+  are semantic ids when valid. BIR validation rejects mismatched link ids for
+  declared functions/globals, and module lowering fails closed when a present
+  initializer function id is unknown instead of falling back through raw text.
+- BIR structured aggregate layout authority: `BackendStructuredLayoutTable`
+  computes layout from `LirStructDecl` entries and `StructNameTable` spelling,
+  records structured/legacy parity, and `lookup_backend_aggregate_type_layout`
+  prefers structured layout for `%` type names before legacy type-decl parsing.
+  Once BIR aggregate params/calls are lowered, downstream code carries
+  size/align/ABI flags and scalar slot types.
+- BIR semantic type-string authority: aggregate layout lookup is still keyed
+  by final type spelling. `BackendStructuredLayoutTable` itself is keyed by
+  type-name string, `TypeDeclMap` is string-to-body, and
+  `AggregateTypeLayout::element_type_text`/`AggregateField::type_text` recurse
+  through text. These strings currently decide aggregate size, alignment,
+  byval/sret classification, aggregate slot decomposition, global storage
+  size, and initializer lowering when structured layout is absent or when a
+  type is inline text.
+- BIR display/output spelling: `StructuredTypeSpellingContext`,
+  `StructuredTypeDeclSpelling`, `CallInst::structured_return_type_name`,
+  `CallInst::return_type_name`, `Value::name`, block labels, slot names,
+  call target text, inline asm payloads, and BIR printer output are display or
+  final-dump spelling when paired with ids/structured fields.
+- Route-local rendering: LIR SSA names, BIR `ValueMap`, local slot names,
+  aggregate leaf slot suffixes, `%ret.sret`, temporary copy names, phi/copy
+  plans, block lookup strings, and prealloc prepared value names are
+  route-local handles. They are not module semantic type identity, but some
+  prepared stack-slot recovery parses aggregate leaf-slot spelling suffixes.
+- Target-route legacy spelling authority: the active AArch64 LIR route still
+  has many direct decisions over `LirTypeRef::str()`/`type_decls`:
+  `gen_type_layout`, `gen_resolve_type_decl_body`,
+  `gen_is_direct_gp_aggregate_type`, `gen_try_parse_hfa_type`,
+  `gen_type_is_sret_aggregate_type`, `gen_type_is_memory_value`, and multiple
+  scalar checks such as `type_str == "i32"`. These are semantic ABI/layout
+  authority on that route, not mere output spelling.
 
-Highest-risk HIR gaps:
-- HIR type refs remain `TypeSpec`-first. Aside from callable fn-ptr signatures,
-  HIR does not consistently carry sema `CanonicalType` through ordinary
-  `QualType`, field, local, global, parameter, and initializer paths. Any
-  future fix must avoid treating raw `TypeSpec` spelling as equivalent to
-  canonical identity.
-- Template record owner keys still embed
-  `HirRecordOwnerTemplateIdentity::specialization_key` as the serialized
-  `SpecializationKey::canonical` compatibility string. This makes template
-  record/layout ownership partially rendered even though `SpecializationKey`
-  itself has structured owner/argument identity.
-- Layout base identity is mixed. `HirStructDef::base_tags` is rendered, and
-  `base_tag_text_ids` plus owner lookup recover structure when possible.
-  `find_base_struct_def_for_layout` and related inheritance/static-member
-  routes can still traverse rendered base tags after structured metadata is
-  incomplete.
-- Pending template work has a structured key, but the non-structured overloads
-  of `record_pending_template_type` and `seed_pending_template_type` can still
-  produce legacy binding identities when structured mirrors are incomplete.
-  Structured seeding is used only when static context and binding counts prove
-  parity.
-- Template primary recovery still has rendered-origin bridges:
-  `canonical_template_struct_primary`, `realize_template_struct`, and value-arg
-  helpers can search by `tpl_struct_origin`, family-name suffixes, or rendered
-  tag spelling when structured origin metadata is absent.
-- Member/static-member lookup is mostly fail-closed for complete owner keys,
-  but base traversal and template trait paths may re-enter rendered tag/member
-  overloads. That is compatibility today, but it is a high-risk ambiguity for
-  inherited members and instantiated static constexpr values.
-- Ref-overload detection compares `TypeSpec` record identity by owner key when
-  possible, then by `record_def`/`tag_text_id`, and finally returns true for
-  no-structured-metadata record carriers. That no-metadata compatibility path
-  can merge unrelated record parameter types if both sides lack owner data.
-- Function pointer identity in HIR is split: callable signatures can carry
-  `FnPtrSig::canonical_sig`, but many HIR maps and parity helpers still compare
-  `TypeSpec` fields and `is_fn_ptr` flags. This mirrors the Step 1 fn-ptr risk.
+Highest-risk LIR/BIR/backend gaps:
+- Aggregate layout identity is still spelling-keyed at the BIR boundary.
+  Structured `LirStructDecl` is preferred, but the lookup key is final
+  `%struct...` spelling and field recursion stores type text. Two spellings
+  for the same structured type, or one stale `type_decls` shadow, can change
+  size/align, byval/sret lowering, and aggregate slot decomposition.
+- BIR aggregate ABI classification depends on lowered layout from type text
+  before it becomes stable structured metadata. `lower_return_info_from_type`,
+  `lower_function_params_with_layouts`, `collect_aggregate_params`, and
+  global lowering all use text-normalized aggregate names as decision input.
+- The AArch64 backend remains a major spelling-authority island. It parses
+  `module.type_decls`, `LirRet::type_str`, `LirCallOp::return_type`,
+  `LirCallOp::args_str`/arg text, signature parameter type strings, and
+  alloca/load/store type strings to decide ABI class, HFA handling,
+  direct-GP aggregate handling, sret, memory-value lowering, stack slot size,
+  global initialization, and GEP/struct sizes.
+- Structured signature metadata is present but not universal. When
+  `signature_return_type_ref` or structured params are missing,
+  `signature_text` parsing becomes compatibility authority for return and
+  parameter ABI/layout. That is acceptable for hand-built legacy fixtures, but
+  unsafe as a generated-LIR producer boundary.
+- `LirTypeRef` has structured payload but equality ignores it. A struct type
+  with a valid `StructNameId` compares equal to a raw text-only type with the
+  same spelling, so ids cannot yet guard all dedup/comparison sites.
+- `TypeSpec` still crosses into LIR as preserved C type info for functions,
+  globals, stack objects, and older instruction structs. Backend lowering does
+  not consistently use sema canonical type identity, so `TypeSpec` fields and
+  final LLVM type text can diverge without one authoritative key.
+- `type_decls` remains a broad compatibility bridge. BIR uses it as fallback;
+  AArch64 uses it directly as layout/ABI authority. Until target routes
+  consume structured declarations or BIR-prepared metadata, `type_decls` is
+  still a priority spelling-based risk.
+- Prepared stack layout and regalloc are mostly structured after BIR, but they
+  still inherit earlier aggregate size/align decisions and parse some
+  route-local slot-name suffixes for aggregate slices. Bugs in upstream
+  aggregate spelling/layout classification become durable prepared metadata.
+- Function/global names are mostly id-backed, but raw-name maps remain for
+  no-id extern declarations, pointer initializers, and compatibility imports.
+  Present ids often fail closed, which is good; missing ids still leave raw
+  spelling as semantic bridge.
 
 ## Suggested Next
 
-Proceed to Step 3 by auditing LIR/BIR/backend type and layout authority,
-especially where HIR `TypeSpec`, rendered struct tags, `HirRecordOwnerKey`,
-layout metadata, and ABI/mangled spellings are converted into backend-facing
-type/layout decisions.
+Proceed to Step 4 by building the cross-domain risk map from the Step 1 sema,
+Step 2 HIR, and Step 3 LIR/BIR/backend findings. Prioritize gaps where
+rendered type spelling still controls equality, layout, ABI class, or route
+selection after structured identity exists upstream.
 
 ## Watchouts
 
-- Do not collapse all rendered HIR strings into one bug class. Some are
-  display/mangling outputs, some are no-owner compatibility bridges, and a
-  smaller set still participates in dedup/layout/lookup authority.
-- `struct_def_owner_index` is the key record/layout bridge to track into
-  later stages. If backend code consumes only rendered `struct_defs` tags,
-  classify whether that is output spelling or semantic layout identity.
-- Template record ownership is the clearest HIR ambiguity: structured
-  specialization identity exists, but HIR record owner keys currently store
-  the canonical display string for template instance identity.
-- Owner-key fail-closed behavior is intentional. Avoid proposing fixes that
-  re-open rendered fallback after complete owner metadata misses.
-- The next audit should watch for places where `MemberSymbolId`, `LinkNameId`,
-  or ABI names become backend authority instead of output identifiers.
+- Do not classify all backend strings as bugs. Printer output, BIR dumps,
+  LLVM type spelling, inline asm text, SSA names, block labels, and local slot
+  names are often display/final-output or route-local rendering.
+- The priority distinction is whether the string feeds equality, lookup,
+  layout, ABI class, storage size, or target route selection. Those are
+  semantic authority even when the string is also valid LLVM spelling.
+- `BackendStructuredLayoutTable` is a bridge, not a complete identity fix: it
+  prefers structured declarations but is still keyed/correlated by final type
+  spelling.
+- AArch64 direct LIR emission should be treated separately from BIR/prealloc
+  preparation. BIR/prealloc is more structured; AArch64 still has extensive
+  direct type-string layout authority.
+- Follow-up implementation ideas should avoid testcase-shaped fixes such as
+  adding one more spelling parser branch. The durable direction is structured
+  aggregate/type identity through the backend boundary.
 
 ## Proof
 
-- No tests executed; packet proof was the required read-only audit evidence in
-  `todo.md`.
+- No tests executed; the delegated packet explicitly required code-reading
+  audit evidence in `todo.md` and did not require test execution.
 - AST-backed inventory used:
-  `c4c-clang-tool function-signatures` on
-  `src/frontend/hir/impl/lowerer.hpp`; it returned partial local signatures
-  and then reported a missing `source_profile.hpp` include path, so the audit
-  proceeded with targeted direct reads and `rg` evidence instead of relying on
-  the incomplete AST output.
+  `c4c-clang-tool-ccdb list-symbols` on
+  `src/backend/bir/lir_to_bir/types.cpp`,
+  `src/backend/bir/lir_to_bir/aggregate.cpp`, and
+  `src/backend/bir/lir_to_bir/call_abi.cpp`.
+- Direct-read/search evidence used:
+  targeted `sed` reads of the files listed above plus `rg` searches for
+  `TypeSpec`, `LirTypeRef`, `TypeKind`, `type_decls`, `layout`, `ABI`,
+  `byval`, `sret`, `LinkNameId`, `MemberSymbolId`, `gen_type_layout`, and
+  target-route type-string consumers.
