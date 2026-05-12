@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/199_sema_legacy_compatibility_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Fence Consteval Function And Local Const Lookup
+Current Step ID: 5
+Current Step Title: Audit Struct-Def And Layout Handoff Compatibility
 
 # Current Packet
 
@@ -18,8 +18,11 @@ the rendered compatibility bridge.
 
 ## Suggested Next
 
-Hand Step 4 to reviewer scrutiny, or have the plan owner advance/close this
-step if the current function/local-const proof set is considered complete.
+Execute Step 5: audit rendered `ConstEvalEnv::struct_defs` and any
+Sema-facing layout or struct-def compatibility helpers discovered during
+inventory. Prefer structured record/layout identity for metadata-rich callers,
+fence any retained rendered struct-def lookup as legacy/no-metadata handoff
+compatibility, and add focused stale rendered layout or struct-def proof.
 
 ## Watchouts
 
@@ -28,8 +31,12 @@ step if the current function/local-const proof set is considered complete.
 - Type-binding and NTTP rendered names may remain as display/source payload or
   explicit no-metadata compatibility; they must not act as semantic authority
   after a complete structured miss.
-- Step 4 should stay Sema-owned. Do not broaden into parser, HIR lowerer, BIR,
+- Step 5 should stay Sema-owned. Do not broaden into parser, HIR lowerer, BIR,
   LIR, or backend cleanup unless the supervisor assigns that scope.
+- Retained rendered struct-def/layout handoff must have nearby legacy or
+  deprecated owner, limitation, and removal-condition notes.
+- A metadata-rich layout miss must not recover through rendered
+  `ConstEvalEnv::struct_defs` compatibility.
 - Retained local-const rendered lookup now has the requested nearby
   legacy/deprecated notes; future edits should preserve the invariant that a
   local TextId/key metadata miss sets `skip_local` and cannot fall through to
