@@ -8,22 +8,23 @@ Current Step Title: Convert Link-Visible Symbol Identity
 
 ## Just Finished
 
-Step 3 - Convert Link-Visible Symbol Identity reviewed the remaining raw
-function-symbol lookup around
-`src/backend/bir/lir_to_bir/memory/provenance.cpp:163` in
-`BirFunctionLowerer::resolve_pointer_store_address()`.
+Step 3 - Convert Link-Visible Symbol Identity reviewed the raw function-symbol
+uses in `src/backend/bir/lir_to_bir/globals.cpp` across
+`is_known_raw_function_symbol()`, `is_known_function_global_address()`,
+`resolve_known_global_address()`, and `resolve_pointer_initializer_offsets()`.
 
-That lookup is now explicitly fenced as a Step 3 no-id compatibility bridge:
-its owner is the pointer-store address resolver in `provenance.cpp`, its
-limitation is that `FunctionSymbolSet` is populated only after module-boundary
-`LinkNameId` resolution so metadata-rich missing ids cannot recover through raw
-operand spelling here, and its removal condition is LIR pointer-store addresses
-carrying resolvable `LinkNameId` metadata.
+The globals pointer-initializer/global-address raw lookup is now explicitly
+fenced as a Step 3 no-id compatibility bridge. Its owner is the globals
+pointer-initializer/global-address resolver in `globals.cpp`, its limitation is
+that `FunctionSymbolSet` is populated only after module-boundary `LinkNameId`
+resolution so metadata-rich missing ids cannot recover through raw initializer
+spelling here, and its removal condition is LIR pointer initializers and
+aggregate pointer fields carrying resolvable `LinkNameId` metadata.
 
 No focused test was added because this packet only documents/fences existing
-behavior. The existing metadata-rich pointer-store identity coverage continues
-to prove that missing `LinkNameId` spelling fails at the module boundary instead
-of recovering through raw operand spelling.
+behavior. Existing pointer-initializer tests already cover raw/no-id
+compatibility and metadata-rich missing-id fail-closed behavior for scalar and
+aggregate pointer initializers.
 
 ## Suggested Next
 
@@ -31,7 +32,8 @@ Continue Step 3 by searching for any remaining semantic
 `find_raw_symbol_link_name_id` or raw link-visible symbol fallback outside the
 already fenced pointer-store address resolver, local-slot pointer-store
 value/address, call-pointer argument, local-aggregate pointer-value alias,
-declaration identity, and direct-call paths.
+declaration identity, direct-call, and globals pointer-initializer/global-address
+paths.
 
 ## Watchouts
 
@@ -68,6 +70,10 @@ declaration identity, and direct-call paths.
 - The `resolve_pointer_store_address()` fence has the same boundary assumption
   for pointer-store address operands: it is no-id compatibility only and must
   not become a raw-spelling recovery path for corrupted metadata-rich identity.
+- The `globals.cpp` pointer-initializer/global-address fence has the same
+  boundary assumption: scalar and aggregate pointer initializers with present
+  function `LinkNameId` metadata must pass `FunctionSymbolSet` membership and
+  must not recover through raw initializer spelling.
 
 ## Proof
 

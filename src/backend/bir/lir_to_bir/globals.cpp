@@ -142,6 +142,12 @@ bool is_known_function_link_name_id(LinkNameId link_name_id,
 
 bool is_known_raw_function_symbol(std::string_view raw_symbol_name,
                                   const FunctionSymbolSet& function_symbols) {
+  // Step 3 fence: this raw lookup is the globals pointer-initializer/global-address
+  // no-id compatibility bridge for imported function symbols. FunctionSymbolSet is
+  // populated only after module-boundary LinkNameId resolution, so metadata-rich
+  // function identity with a missing id cannot recover through raw initializer
+  // spelling here. Remove this bridge when LIR pointer initializers and aggregate
+  // pointer fields carry resolvable LinkNameId metadata.
   return function_symbols.find_raw_symbol_link_name_id(raw_symbol_name).has_value();
 }
 
@@ -173,6 +179,9 @@ std::optional<GlobalAddress> resolve_known_global_address(std::string_view globa
       info.initializer_function_link_name_id != kInvalidLinkName
           ? is_known_function_link_name_id(info.initializer_function_link_name_id, function_symbols)
           : is_known_raw_function_symbol(info.initializer_symbol_name, function_symbols);
+  // initializer_function_link_name_id is authoritative when present. The raw
+  // branch above is only the fenced no-id compatibility path documented in
+  // is_known_raw_function_symbol().
   if (initializer_names_known_function) {
     if (info.initializer_offset_type != bir::TypeKind::Void || info.initializer_byte_offset != 0) {
       return std::nullopt;
@@ -263,6 +272,10 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
           return false;
         }
         if (address.link_name_id == kInvalidLinkName) {
+          // Step 3 fence: fill the BIR pointer-initializer carrier from the same
+          // no-id imported-function bridge accepted by is_known_raw_function_symbol().
+          // Metadata-rich addresses must already have passed LinkNameId membership
+          // above, so this must not become raw spelling recovery for bad ids.
           const auto link_name_id =
               function_symbols.find_raw_symbol_link_name_id(address.global_name);
           if (link_name_id.has_value()) {
