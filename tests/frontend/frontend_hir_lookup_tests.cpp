@@ -2815,6 +2815,106 @@ void test_scalar_static_member_uses_member_text_after_structured_owner() {
               "scalar static-member lowering should use member TextId only after structured owner authority exists");
 }
 
+void test_scalar_generated_static_member_structured_miss_rejects_rendered_const_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  const c4c::TextId owner_text = module.link_name_texts->intern("RealOwner");
+  const c4c::TextId member_text = module.link_name_texts->intern("value");
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 92;
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+  module.index_struct_def_owner(owner_key, "StaleRenderedOwner", true);
+  lowerer.struct_static_member_const_values_["StaleRenderedOwner"]["value"] =
+      77;
+
+  const char* qualifier_segments[] = {"RealOwner"};
+  c4c::TextId qualifier_text_ids[] = {owner_text};
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "StaleRenderedOwner::value";
+  ref.qualifier_segments = qualifier_segments;
+  ref.qualifier_text_ids = qualifier_text_ids;
+  ref.n_qualifier_segments = 1;
+  ref.namespace_context_id = owner_ns.context_id;
+  ref.unqualified_text_id = member_text;
+  ref.type = int_ts;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(nullptr, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* literal =
+      expr ? std::get_if<c4c::hir::IntLiteral>(&expr->payload) : nullptr;
+  expect_true(!(literal && literal->value == 77),
+              "generated static-member structured miss must not use rendered const map fallback");
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref != nullptr,
+              "generated static-member structured miss should fall through as a normal reference");
+}
+
+void test_scalar_generated_static_member_structured_miss_rejects_rendered_decl_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  int_ts.array_size = -1;
+  int_ts.inner_rank = -1;
+
+  c4c::Node init{};
+  init.kind = c4c::NK_INT_LIT;
+  init.ival = 88;
+  init.type = int_ts;
+
+  c4c::Node rendered_decl{};
+  rendered_decl.kind = c4c::NK_DECL;
+  rendered_decl.name = "value";
+  rendered_decl.unqualified_name = "value";
+  rendered_decl.unqualified_text_id = module.link_name_texts->intern("value");
+  rendered_decl.type = int_ts;
+  rendered_decl.init = &init;
+
+  const c4c::TextId owner_text = module.link_name_texts->intern("RealOwner");
+  c4c::hir::NamespaceQualifier owner_ns;
+  owner_ns.context_id = 93;
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(owner_ns, owner_text);
+  module.index_struct_def_owner(owner_key, "StaleRenderedOwner", true);
+  lowerer.struct_static_member_decls_["StaleRenderedOwner"]["value"] =
+      &rendered_decl;
+
+  const char* qualifier_segments[] = {"RealOwner"};
+  c4c::TextId qualifier_text_ids[] = {owner_text};
+  c4c::Node ref{};
+  ref.kind = c4c::NK_VAR;
+  ref.name = "StaleRenderedOwner::value";
+  ref.qualifier_segments = qualifier_segments;
+  ref.qualifier_text_ids = qualifier_text_ids;
+  ref.n_qualifier_segments = 1;
+  ref.namespace_context_id = owner_ns.context_id;
+  ref.unqualified_text_id = rendered_decl.unqualified_text_id;
+  ref.type = int_ts;
+
+  const c4c::hir::ExprId expr_id = lowerer.lower_var_expr(nullptr, &ref);
+  const c4c::hir::Expr* expr = module.find_expr(expr_id);
+  const auto* literal =
+      expr ? std::get_if<c4c::hir::IntLiteral>(&expr->payload) : nullptr;
+  expect_true(!(literal && literal->value == 88),
+              "generated static-member structured miss must not use rendered decl map fallback");
+  const auto* decl_ref =
+      expr ? std::get_if<c4c::hir::DeclRef>(&expr->payload) : nullptr;
+  expect_true(decl_ref != nullptr,
+              "generated static-member decl miss should fall through as a normal reference");
+}
+
 void test_scalar_static_member_non_template_uses_owner_key_without_tag() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6622,6 +6722,8 @@ int main() {
   test_template_value_arg_static_member_uses_structured_owner_key();
   test_scalar_static_member_rejects_rendered_owner_split();
   test_scalar_static_member_uses_member_text_after_structured_owner();
+  test_scalar_generated_static_member_structured_miss_rejects_rendered_const_fallback();
+  test_scalar_generated_static_member_structured_miss_rejects_rendered_decl_fallback();
   test_scalar_static_member_non_template_uses_owner_key_without_tag();
   test_consteval_record_layout_prefers_hir_owner_key_over_stale_tag();
   test_layout_type_lookup_prefers_structured_owner_over_stale_tag();

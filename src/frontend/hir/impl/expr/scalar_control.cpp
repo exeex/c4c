@@ -451,11 +451,13 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
               realized_owner_tag ? *realized_owner_tag
                                  : (owner_tag ? *owner_tag : owner_name);
           for (const MemberCandidate& candidate : member_candidates) {
+            bool has_structured_candidate = false;
             if (candidate.text_id != kInvalidText) {
               for (const HirRecordOwnerKey& lookup_key : owner_lookup_keys) {
                 if (const std::optional<HirStructMemberLookupKey> key =
                         make_struct_member_lookup_key(lookup_key,
                                                       candidate.text_id)) {
+                  has_structured_candidate = true;
                   if (const Node* decl =
                           find_struct_static_member_decl(*key, nullptr, nullptr)) {
                     return decl;
@@ -463,7 +465,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
                 }
               }
             }
-            if (!lookup_owner.empty()) {
+            if (!has_structured_candidate && !lookup_owner.empty()) {
               if (const Node* decl = find_struct_static_member_decl(
                       lookup_owner, candidate.name)) {
                 return decl;
@@ -477,11 +479,13 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
               realized_owner_tag ? *realized_owner_tag
                                  : (owner_tag ? *owner_tag : owner_name);
           for (const MemberCandidate& candidate : member_candidates) {
+            bool has_structured_candidate = false;
             if (candidate.text_id != kInvalidText) {
               for (const HirRecordOwnerKey& lookup_key : owner_lookup_keys) {
                 if (const std::optional<HirStructMemberLookupKey> key =
                         make_struct_member_lookup_key(lookup_key,
                                                       candidate.text_id)) {
+                  has_structured_candidate = true;
                   if (auto value = find_struct_static_member_const_value(
                           *key, nullptr, nullptr)) {
                     return value;
@@ -489,7 +493,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
                 }
               }
             }
-            if (!lookup_owner.empty()) {
+            if (!has_structured_candidate && !lookup_owner.empty()) {
               if (auto value = find_struct_static_member_const_value(
                       lookup_owner, candidate.name)) {
                 return value;
