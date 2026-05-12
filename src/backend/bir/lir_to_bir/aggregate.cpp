@@ -6,6 +6,7 @@ namespace c4c::backend {
 
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
+using lir_to_bir_detail::lookup_backend_aggregate_type_ref_layout_result;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::type_size_bytes;
 
@@ -91,6 +92,38 @@ BirFunctionLowerer::AggregateTypeLayout selected_aggregate_type_layout(
       .layout;
 }
 
+std::optional<BirFunctionLowerer::AggregateTypeLayout> selected_aggregate_type_ref_layout(
+    const c4c::codegen::lir::LirTypeRef& type_ref,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
+  const auto normalized_type = normalize_aggregate_param_type(type_ref.str());
+  auto normalized_ref =
+      type_ref.has_struct_name_id()
+          ? c4c::codegen::lir::LirTypeRef::struct_type(normalized_type,
+                                                       type_ref.struct_name_id())
+          : c4c::codegen::lir::LirTypeRef(normalized_type);
+  const auto lookup =
+      lookup_backend_aggregate_type_ref_layout_result(normalized_ref,
+                                                      type_decls,
+                                                      structured_layouts);
+  const auto& layout = lookup.layout;
+  if (!lookup.used_structured_layout ||
+      (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
+       layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
+      layout.size_bytes == 0 || layout.align_bytes == 0) {
+    return std::nullopt;
+  }
+  return layout;
+}
+
+bool has_structured_layout_fact(
+    std::string_view type_text,
+    const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
+  return !trimmed.empty() &&
+         structured_layouts.find(std::string(trimmed)) != structured_layouts.end();
+}
+
 }  // namespace
 
 std::string BirFunctionLowerer::aggregate_param_slot_base(std::string_view param_name) {
@@ -167,6 +200,9 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
   if (!parsed_params.has_value()) {
     return aggregate_params;
   }
+  const auto signature_text_params =
+      structured_params_available ? parse_function_signature_params(function_.signature_text)
+                                  : std::nullopt;
 
   const bool use_declared_names =
       !structured_params_available && !function_.params.empty() &&
@@ -181,12 +217,6 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
     if (lower_integer_type(normalized_type).has_value()) {
       continue;
     }
-    const auto layout =
-        lower_byval_aggregate_layout(normalized_type, type_decls_, &structured_layouts_);
-    if (!layout.has_value()) {
-      return {};
-    }
-
     std::string name =
         use_declared_names ? function_.params[index].first : std::string(parsed_param.operand);
     if (name.empty()) {
@@ -195,6 +225,32 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
     if (name.empty()) {
       return {};
     }
+    const bool is_explicit_byval_param =
+        structured_params_available && signature_text_params.has_value() &&
+        index < signature_text_params->size() &&
+        parse_byval_pointee_type((*signature_text_params)[index].type).has_value();
+    const bool use_structured_byval_layout =
+        is_explicit_byval_param &&
+        has_structured_layout_fact(normalized_type, structured_layouts_) &&
+        function_.signature_param_type_refs[index].has_struct_name_id();
+    const auto layout =
+        structured_params_available && use_structured_byval_layout
+            ? selected_aggregate_type_ref_layout(function_.signature_param_type_refs[index],
+                                                type_decls_,
+                                                structured_layouts_)
+            : lower_byval_aggregate_layout(normalized_type, type_decls_, &structured_layouts_);
+    if (!layout.has_value()) {
+      if (structured_params_available && use_structured_byval_layout) {
+        aggregate_params.emplace(std::move(name),
+                                 AggregateParamInfo{
+                                     .type_text = normalized_type,
+                                     .layout = AggregateTypeLayout{},
+                                 });
+        return aggregate_params;
+      }
+      return {};
+    }
+
     aggregate_params.emplace(std::move(name),
                              AggregateParamInfo{
                                  .type_text = normalized_type,
@@ -376,6 +432,11 @@ bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
 
 bool BirFunctionLowerer::materialize_aggregate_param_aliases(std::vector<bir::Inst>* lowered_insts) {
   for (const auto& [param_name, info] : aggregate_params_) {
+    if ((info.layout.kind != AggregateTypeLayout::Kind::Struct &&
+         info.layout.kind != AggregateTypeLayout::Kind::Array) ||
+        info.layout.size_bytes == 0 || info.layout.align_bytes == 0) {
+      return false;
+    }
     const auto slot_base = aggregate_param_slot_base(param_name);
     if (!declare_local_aggregate_slots(info.type_text, slot_base, info.layout.align_bytes)) {
       return false;

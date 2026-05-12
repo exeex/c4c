@@ -76,6 +76,8 @@ int expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
 int expect_legacy_byval_call_arg_without_type_refs_still_lowers();
 int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed();
 int expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
+int expect_structured_incoming_byval_param_materializes_from_type_ref();
+int expect_incoming_byval_param_without_struct_id_uses_legacy_layout();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -2072,6 +2074,103 @@ int expect_metadata_rich_byval_call_arg_mismatch_fails_closed() {
   return 0;
 }
 
+LirModule make_incoming_byval_param_boundary_module(lir::LirTypeRef signature_param_type_ref) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.Payload = type { i32, i32 }");
+
+  const c4c::StructNameId payload_id = module.struct_names.intern("%struct.Payload");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = payload_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+
+  LirFunction function;
+  function.name = "incoming_byval_param_boundary";
+  function.signature_text =
+      "define void @incoming_byval_param_boundary(ptr byval(%struct.Payload) %payload)";
+  c4c::TypeSpec payload_param_type{.base = c4c::TB_STRUCT};
+  payload_param_type.tag_text_id = module.link_name_texts->intern("Payload");
+  function.params.push_back({"%payload", payload_param_type});
+  function.signature_params.push_back(
+      lir::LirSignatureParam{.name = "%payload", .type = payload_param_type});
+  function.signature_param_type_refs.push_back(std::move(signature_param_type_ref));
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_structured_incoming_byval_param_materializes_from_type_ref() {
+  LirModule module = make_incoming_byval_param_boundary_module(lir::LirTypeRef(""));
+  const c4c::StructNameId payload_id = module.struct_names.find("%struct.Payload");
+  module.functions.front().signature_param_type_refs.front() =
+      lir::LirTypeRef::struct_type("ptr byval(%struct.Payload) align 8", payload_id);
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("metadata-rich incoming byval parameter should lower through StructNameId");
+  }
+  if (result.module->functions.size() != 1) {
+    return fail("incoming byval parameter fixture should lower one function");
+  }
+
+  const auto& function = result.module->functions.front();
+  if (function.params.size() != 1 || !function.params.front().is_byval ||
+      function.params.front().size_bytes != 8 || function.params.front().align_bytes != 4) {
+    return fail("incoming byval parameter ABI metadata did not use structured layout");
+  }
+
+  bool saw_offset_zero = false;
+  bool saw_offset_four = false;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+      if (load == nullptr || !load->address.has_value() ||
+          load->address->base_kind !=
+              c4c::backend::bir::MemoryAddress::BaseKind::PointerValue ||
+          load->address->base_value.name != "%payload") {
+        continue;
+      }
+      if (load->address->byte_offset == 0 && load->address->size_bytes == 4) {
+        saw_offset_zero = true;
+      }
+      if (load->address->byte_offset == 4 && load->address->size_bytes == 4) {
+        saw_offset_four = true;
+      }
+    }
+  }
+  if (!saw_offset_zero || !saw_offset_four) {
+    return fail("incoming byval parameter materialization did not copy structured leaf slots");
+  }
+  return 0;
+}
+
+int expect_incoming_byval_param_without_struct_id_uses_legacy_layout() {
+  auto result = try_lower_to_bir_with_options(
+      make_incoming_byval_param_boundary_module(
+          lir::LirTypeRef("ptr byval(%struct.Payload) align 8")),
+      BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("incoming byval parameter without StructNameId should preserve legacy text layout");
+  }
+  if (result.module->functions.empty() || result.module->functions.front().params.empty() ||
+      !result.module->functions.front().params.front().is_byval ||
+      result.module->functions.front().params.front().size_bytes != 8) {
+    return fail("incoming byval parameter without StructNameId did not lower through legacy layout");
+  }
+  return 0;
+}
+
 LirModule make_bad_indirect_call_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -3875,6 +3974,18 @@ int main() {
           expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
       mismatched_byval_metadata_status != 0) {
     return mismatched_byval_metadata_status;
+  }
+
+  if (const int structured_incoming_byval_status =
+          expect_structured_incoming_byval_param_materializes_from_type_ref();
+      structured_incoming_byval_status != 0) {
+    return structured_incoming_byval_status;
+  }
+
+  if (const int missing_incoming_byval_metadata_status =
+          expect_incoming_byval_param_without_struct_id_uses_legacy_layout();
+      missing_incoming_byval_metadata_status != 0) {
+    return missing_incoming_byval_metadata_status;
   }
 
   if (const int indirect_call_status = expect_failure_notes(
