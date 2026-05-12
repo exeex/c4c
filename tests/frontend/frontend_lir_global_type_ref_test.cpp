@@ -127,6 +127,27 @@ void expect_global_type_ref(
             "global StructNameId should resolve to the rendered aggregate type");
 }
 
+void expect_type_ref_structured_equality_uses_name_id(
+    const c4c::codegen::lir::LirModule& module) {
+  const c4c::StructNameId pair_id = module.struct_names.find("%struct.Pair");
+  const c4c::StructNameId slot_id = module.struct_names.find("%struct.Slot");
+  expect_true(pair_id != c4c::kInvalidStructName,
+              "fixture should declare Pair for equality collision checks");
+  expect_true(slot_id != c4c::kInvalidStructName && slot_id != pair_id,
+              "fixture should declare Slot for equality collision checks");
+
+  const c4c::codegen::lir::LirTypeRef pair_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.Pair", pair_id);
+  const c4c::codegen::lir::LirTypeRef collision_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.Pair", slot_id);
+  expect_true(pair_ref != collision_ref,
+              "global type-ref equality should reject same text with different StructNameId");
+
+  expect_true(c4c::codegen::lir::LirTypeRef("%struct.Pair") ==
+                  c4c::codegen::lir::LirTypeRef("%struct.Pair"),
+              "global legacy no-id type refs should still compare by rendered text");
+}
+
 void test_lookup_structured_layout_rejects_stale_rendered_compatibility() {
   c4c::hir::Module hir_module;
   c4c::codegen::lir::LirModule lir_module;
@@ -341,6 +362,7 @@ union Slot slot_global = {.int_value = 3};
 )c");
   const c4c::codegen::lir::LirModule lir_module =
       c4c::codegen::lir::lower(hir_module);
+  expect_type_ref_structured_equality_uses_name_id(lir_module);
 
   const auto& pair_global = require_global(lir_module, "pair_global");
   expect_global_type_ref(lir_module, pair_global, "%struct.Pair");

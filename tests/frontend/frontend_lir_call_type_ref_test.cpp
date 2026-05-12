@@ -117,6 +117,27 @@ void expect_struct_type_ref(
             msg + " StructNameId should resolve to mirrored text");
 }
 
+void expect_type_ref_structured_equality_uses_name_id(
+    const c4c::codegen::lir::LirModule& module) {
+  const c4c::StructNameId pair_id = module.struct_names.find("%struct.Pair");
+  const c4c::StructNameId slot_id = module.struct_names.find("%struct.Slot");
+  expect_true(pair_id != c4c::kInvalidStructName,
+              "fixture should declare Pair for equality collision checks");
+  expect_true(slot_id != c4c::kInvalidStructName && slot_id != pair_id,
+              "fixture should declare Slot for equality collision checks");
+
+  const c4c::codegen::lir::LirTypeRef pair_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.Pair", pair_id);
+  const c4c::codegen::lir::LirTypeRef collision_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.Pair", slot_id);
+  expect_true(pair_ref != collision_ref,
+              "call type-ref equality should reject same text with different StructNameId");
+
+  expect_true(c4c::codegen::lir::LirTypeRef("%struct.Pair") ==
+                  c4c::codegen::lir::LirTypeRef("%struct.Pair"),
+              "call legacy no-id type refs should still compare by rendered text");
+}
+
 c4c::Node make_record_owner(std::string_view name, c4c::TextId text_id,
                             int namespace_context_id) {
   c4c::Node owner{};
@@ -310,6 +331,7 @@ int call_variadic(struct Pair tail) {
       c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+  expect_type_ref_structured_equality_uses_name_id(lir_module);
   c4c::codegen::lir::LirFunction& call_pair = require_function(lir_module, "call_pair");
   c4c::codegen::lir::LirCallOp& direct_call = require_call_to(call_pair, "@make_pair");
 

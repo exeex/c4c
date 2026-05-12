@@ -73,12 +73,34 @@ void expect_link_name_id_preempts_legacy_raw_map() {
               "LinkNameId extern declaration should retain structured return metadata");
 }
 
+void expect_type_ref_structured_equality_uses_name_id(
+    c4c::codegen::lir::LirModule& module) {
+  const c4c::StructNameId pair_id = module.struct_names.find("%struct.Pair");
+  const c4c::StructNameId slot_id = module.struct_names.intern("%struct.Slot");
+  expect_true(pair_id != c4c::kInvalidStructName,
+              "fixture should declare Pair for equality collision checks");
+  expect_true(slot_id != c4c::kInvalidStructName && slot_id != pair_id,
+              "fixture should carry a distinct Slot id for equality collision checks");
+
+  const c4c::codegen::lir::LirTypeRef pair_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.Pair", pair_id);
+  const c4c::codegen::lir::LirTypeRef collision_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.Pair", slot_id);
+  expect_true(pair_ref != collision_ref,
+              "extern type-ref equality should reject same text with different StructNameId");
+
+  expect_true(c4c::codegen::lir::LirTypeRef("%struct.Pair") ==
+                  c4c::codegen::lir::LirTypeRef("%struct.Pair"),
+              "extern legacy no-id type refs should still compare by rendered text");
+}
+
 }  // namespace
 
 int main() {
   expect_link_name_id_preempts_legacy_raw_map();
 
   c4c::codegen::lir::LirModule module = make_struct_module();
+  expect_type_ref_structured_equality_uses_name_id(module);
 
   module.record_extern_decl("extern_pair", "%struct.Pair");
   push_recorded_extern_decl(module, "extern_pair");

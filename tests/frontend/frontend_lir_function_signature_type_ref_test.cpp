@@ -114,6 +114,27 @@ void expect_struct_type_ref(
             msg + " StructNameId should resolve to the mirrored signature text");
 }
 
+void expect_type_ref_structured_equality_uses_name_id(
+    const c4c::codegen::lir::LirModule& module) {
+  const c4c::StructNameId pair_id = module.struct_names.find("%struct.Pair");
+  const c4c::StructNameId big_id = module.struct_names.find("%struct.Big");
+  expect_true(pair_id != c4c::kInvalidStructName,
+              "fixture should declare Pair for equality collision checks");
+  expect_true(big_id != c4c::kInvalidStructName && big_id != pair_id,
+              "fixture should declare Big for equality collision checks");
+
+  const c4c::codegen::lir::LirTypeRef pair_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.Pair", pair_id);
+  const c4c::codegen::lir::LirTypeRef collision_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.Pair", big_id);
+  expect_true(pair_ref != collision_ref,
+              "signature type-ref equality should reject same text with different StructNameId");
+
+  expect_true(c4c::codegen::lir::LirTypeRef("%struct.Pair") ==
+                  c4c::codegen::lir::LirTypeRef("%struct.Pair"),
+              "signature legacy no-id type refs should still compare by rendered text");
+}
+
 void expect_struct_signature_refs(
     const c4c::codegen::lir::LirModule& module,
     const c4c::codegen::lir::LirFunction& fn) {
@@ -301,6 +322,7 @@ int defined_void_params(void) {
       c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
   const c4c::codegen::lir::LirModule lir_module =
       c4c::codegen::lir::lower(hir_module);
+  expect_type_ref_structured_equality_uses_name_id(lir_module);
 
   const auto& declared_pair = require_function(lir_module, "declared_pair", true);
   expect_struct_signature_refs(lir_module, declared_pair);

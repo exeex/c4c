@@ -89,6 +89,9 @@ class LirTypeRef {
 
   [[nodiscard]] friend bool operator==(const LirTypeRef& lhs,
                                        const LirTypeRef& rhs) {
+    if (lhs.has_struct_name_id() && rhs.has_struct_name_id()) {
+      return lhs.struct_name_id_ == rhs.struct_name_id_;
+    }
     return lhs.text_ == rhs.text_;
   }
 
