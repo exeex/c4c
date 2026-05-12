@@ -3,26 +3,28 @@ Source Idea Path: ideas/open/198_parser_legacy_compatibility_retirement.md
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Convert Parser Qualified-Name And Owner Recovery
+你該做test baseline review了
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 started at `src/frontend/parser/impl/types/base.cpp:3141`.
-Qualified template member-typedef owner recovery now builds a structured
-template-instantiation key and `tpl_struct_args` carrier for the owner, consumes
-the structured instantiated record when present, and no longer recovers the
-owner through the rendered `struct_tag_def_map.find(mangled)` fallback in this
-block.
+Step 3 post-commit regression from `e7b807a28` is fixed for
+`cpp_parser_debug_qualified_type_spelling_stack`.
 
-Added lookup-authority coverage proving `Owner<int>::type` does not recover a
-member typedef through a stale rendered mangled owner map entry.
+Updated the parser-debug diagnostic expectation to the new qualified-owner
+route: the stack now records the outer `try_parse_cpp_scoped_base_type` /
+`try_parse_qualified_base_type` frames before entering the nested template
+argument path. This keeps the compatibility proof meaningful because it
+asserts the stronger structured qualified-owner route that replaced rendered
+`struct_tag_def_map` owner recovery, while preserving the final committed
+`parse_top_level_parameter_list` failure and nested template-argument frames.
 
 ## Suggested Next
 
-Continue Step 3 with the next parser qualified-name/owner recovery surface in
-`src/frontend/parser/impl/types/base.cpp`; prefer another narrow stale-rendered
-proof before widening beyond parser-owned lookup authority.
+Continue Step 3 with the next parser qualified-name/owner recovery surface, or
+hand this regression slice back to the supervisor for commit after review of
+the hook-added baseline reminder.
 
 ## Watchouts
 
@@ -49,12 +51,15 @@ proof before widening beyond parser-owned lookup authority.
 - `qualified_template_member_typedef_base` still passes a local `mangled`
   buffer because `ensure_template_struct_instantiated_from_args` requires it;
   this block no longer uses that rendered string for owner recovery.
+- The diagnostic expectation change is not a weakened parser compatibility
+  proof: it requires additional structured qualified-owner frames introduced by
+  the new route instead of accepting a shorter rendered-spelling stack.
 
 ## Proof
 
 Passed:
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_lookup_authority_tests|frontend_parser_tests)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_lookup_authority_tests|frontend_parser_tests|cpp_parser_debug_qualified_type_spelling_stack)$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.
 
