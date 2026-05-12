@@ -115,8 +115,10 @@ LirCallSignature lir_call_signature_from_function(const c4c::hir::Module& mod,
   out.return_type_ref = lir_call_type_ref(
       llvm_return_ty(mod, fn.return_type.spec), lir_module, mod, fn.return_type.spec);
   out.is_variadic = fn.attrs.variadic;
+  out.has_unspecified_params = fn.attrs.unspecified_params;
   out.has_void_param_list = function_has_void_param_list(fn);
   if (out.has_void_param_list) return out;
+  if (out.has_unspecified_params) return out;
 
   out.fixed_param_types.reserve(fn.params.size());
   out.fixed_param_type_refs.reserve(fn.params.size());

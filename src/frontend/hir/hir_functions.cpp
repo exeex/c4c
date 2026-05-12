@@ -586,6 +586,9 @@ void Lowerer::lower_function(const Node* fn_node,
                 static_cast<Visibility>(fn_node->visibility)};
   fn.execution_domain = fn_node->execution_domain;
   fn.attrs.variadic = fn_node->variadic;
+  fn.attrs.unspecified_params =
+      fn_node->source_language == SourceLanguage::C &&
+      fn_node->n_params == 0 && !fn_node->variadic;
   fn.attrs.no_inline = fn_node->type.is_noinline;
   fn.attrs.always_inline = fn_node->type.is_always_inline;
   if (fn_node->type.align_bytes > 0) {

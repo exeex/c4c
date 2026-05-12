@@ -502,6 +502,7 @@ struct QualType {
 
 struct FnAttr {
   bool variadic = false;
+  bool unspecified_params = false;
   bool no_return = false;
   bool no_inline = false;
   bool always_inline = false;

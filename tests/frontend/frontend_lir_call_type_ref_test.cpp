@@ -368,6 +368,18 @@ int call_variadic(struct Pair tail) {
   return sink(1, tail);
 }
 
+int no_proto();
+
+int call_no_proto(struct Pair value) {
+  return no_proto(value);
+}
+
+int no_args(void);
+
+int call_no_args(void) {
+  return no_args();
+}
+
 int call_int_indirect(int (*fp)(int), int value) {
   return fp(value);
 }
@@ -501,6 +513,34 @@ int call_unspecified_indirect(int (*fp)()) {
   expect_eq(std::to_string(variadic_call.arg_type_refs.size()), "0",
             "variadic aggregate call should not carry argument mirrors when "
             "the call signature cannot parse against emitted ABI arguments");
+
+  c4c::codegen::lir::LirFunction& call_no_proto =
+      require_function(lir_module, "call_no_proto");
+  c4c::codegen::lir::LirCallOp& no_proto_call =
+      require_call_to(call_no_proto, "@no_proto");
+  expect_true(no_proto_call.callee_signature.has_value(),
+              "metadata-rich direct no-prototype call should carry callee signature");
+  expect_true(no_proto_call.callee_signature->has_unspecified_params,
+              "direct no-prototype call should carry unspecified-parameter-list state");
+  expect_true(!no_proto_call.callee_signature->has_void_param_list,
+              "direct no-prototype call should not be modeled as a void parameter list");
+  expect_true(!no_proto_call.callee_signature->is_variadic,
+              "direct no-prototype call should not be modeled as variadic");
+  expect_true(no_proto_call.callee_signature->fixed_param_types.empty(),
+              "direct no-prototype call should not invent fixed parameter mirrors");
+
+  c4c::codegen::lir::LirFunction& call_no_args =
+      require_function(lir_module, "call_no_args");
+  c4c::codegen::lir::LirCallOp& no_args_call =
+      require_call_to(call_no_args, "@no_args");
+  expect_true(no_args_call.callee_signature.has_value(),
+              "metadata-rich direct void-parameter call should carry callee signature");
+  expect_true(no_args_call.callee_signature->has_void_param_list,
+              "direct void-parameter call should keep void parameter list state");
+  expect_true(!no_args_call.callee_signature->has_unspecified_params,
+              "direct void-parameter call should not be modeled as unspecified");
+  expect_true(no_args_call.callee_signature->fixed_param_types.empty(),
+              "direct void-parameter call should not carry fixed parameter mirrors");
 
   c4c::codegen::lir::LirFunction& call_int_indirect =
       require_function(lir_module, "call_int_indirect");
