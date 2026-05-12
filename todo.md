@@ -1,44 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/174_aggregate_abi_classification_structured_facts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Route Metadata-Rich Inputs Through Structured Facts
+Current Step ID: 3
+Current Step Title: Make Legacy and Mismatch Behavior Explicit
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: routed BIR aggregate byval call-argument ABI classification
-through structured facts at the selected `BirFunctionLowerer::lower_call_inst`
-boundary.
+Completed Step 3: made the BIR aggregate byval call-argument boundary explicit
+about legacy/no-metadata compatibility and metadata-rich fail-closed behavior
+next to the Step 2 classifier.
 
 Implementation notes:
-- Added a local `lower_byval_call_arg_layout` path in
-  `src/backend/bir/lir_to_bir/calling.cpp` that treats nonempty
-  `LirCallOp::arg_type_refs` as authoritative for byval aggregate layout
-  classification.
-- Metadata-rich call arguments now resolve `StructNameId` through
-  `context_.lir_module.struct_names`, then use the corresponding
-  `structured_layouts_` entry to populate `CallArgAbiInfo` size, alignment,
-  memory class, and `byval_copy`.
-- The rendered parsed type spelling remains the explicit legacy compatibility
-  path only when `call.arg_type_refs` is empty.
-- Direct and indirect call byval aggregate branches both use the same structured
-  lookup helper; scalar and public pointer call-argument paths are unchanged.
+- Named the empty-`arg_type_refs` path as legacy hand-built LIR compatibility in
+  `src/backend/bir/lir_to_bir/calling.cpp`; rendered byval text remains
+  authoritative only for that no-metadata case.
+- Kept nonempty `arg_type_refs` on the structured route and made a known
+  rendered byval struct name that disagrees with the `StructNameId` fail closed
+  instead of falling back to rendered type parsing.
+- Added focused `backend_lir_to_bir_notes_test` coverage for legacy/no-metadata
+  byval lowering success, missing `StructNameId` failure, and mismatched
+  `StructNameId` failure.
 
 ## Suggested Next
 
-Exercise the next coherent packet against producer coverage: either extend or
-inspect the LIR call-argument mirror producer for fixed byval aggregate
-arguments, then prove metadata-rich byval calls actually arrive with usable
-`StructNameId` mirrors instead of only the legacy empty-`arg_type_refs` route.
+Exercise the next coherent packet against producer coverage: inspect or extend
+the LIR call-argument mirror producer for fixed byval aggregate arguments, then
+prove metadata-rich byval calls arrive with usable `StructNameId` mirrors on
+real frontend-produced LIR.
 
 ## Watchouts
 
 - Nonempty `arg_type_refs` now fail the direct or indirect call family if an
-  aggregate byval argument lacks a usable `StructNameId` or structured layout.
-  That is intentional: missing metadata should not silently fall back to
-  rendered type parsing.
+  aggregate byval argument lacks a usable `StructNameId`, names a known
+  different rendered byval struct, or lacks a structured layout. That is
+  intentional: metadata-rich calls should not silently fall back to rendered
+  type parsing.
 - Existing generated fixed byval aggregate calls may still need producer work if
   their `OwnedLirTypedCallArg::type_ref` is empty; this packet only implemented
   the selected BIR boundary route.

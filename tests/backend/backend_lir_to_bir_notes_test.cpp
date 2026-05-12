@@ -73,6 +73,9 @@ int expect_pointer_value_symbol_identity_carrier();
 int expect_bir_verifier_rejects_known_link_name_mismatches();
 int expect_bir_verifier_rejects_local_slot_id_mismatches();
 int expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
+int expect_legacy_byval_call_arg_without_type_refs_still_lowers();
+int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed();
+int expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -1950,6 +1953,125 @@ LirModule make_bad_direct_call_module() {
   return module;
 }
 
+LirModule make_byval_call_arg_boundary_module(
+    std::vector<lir::LirTypeRef> arg_type_refs) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.Payload = type { i32 }");
+  module.type_decls.push_back("%struct.OtherPayload = type { i32 }");
+
+  const c4c::StructNameId payload_id = module.struct_names.intern("%struct.Payload");
+  const c4c::StructNameId other_payload_id =
+      module.struct_names.intern("%struct.OtherPayload");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = payload_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = other_payload_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+
+  LirGlobal payload;
+  payload.name = "payload";
+  payload.llvm_type = "%struct.Payload";
+  payload.init_text = "{ i32 7 }";
+  payload.align_bytes = 4;
+  module.globals.push_back(std::move(payload));
+
+  LirFunction function;
+  function.name = "byval_call_arg_boundary";
+  function.signature_text = "define void @byval_call_arg_boundary()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@sink"),
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr byval(%struct.Payload) @payload",
+      .arg_type_refs = std::move(arg_type_refs),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_legacy_byval_call_arg_without_type_refs_still_lowers() {
+  auto result = try_lower_to_bir_with_options(make_byval_call_arg_boundary_module({}),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("legacy byval call-argument fixture without arg_type_refs should still lower");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.name != "byval_call_arg_boundary" || function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) {
+        continue;
+      }
+      if (call->arg_abi.size() == 1 && call->arg_abi.front().byval_copy &&
+          call->arg_abi.front().size_bytes == 4 && call->arg_abi.front().align_bytes == 4) {
+        return 0;
+      }
+    }
+  }
+  return fail("legacy byval call-argument lowering should preserve byval ABI metadata");
+}
+
+int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed() {
+  auto result = try_lower_to_bir_with_options(
+      make_byval_call_arg_boundary_module({lir::LirTypeRef("ptr byval(%struct.Payload)")}),
+      BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("metadata-rich byval call argument without StructNameId should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'direct-call semantic family'")) {
+    return fail("missing direct-call family failure for byval call argument without StructNameId");
+  }
+  return 0;
+}
+
+int expect_metadata_rich_byval_call_arg_mismatch_fails_closed() {
+  LirModule module = make_byval_call_arg_boundary_module({});
+  const c4c::StructNameId other_payload_id =
+      module.struct_names.find("%struct.OtherPayload");
+  module.functions.front().blocks.front().insts.front() = LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@sink"),
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr byval(%struct.Payload) @payload",
+      .arg_type_refs = {
+          lir::LirTypeRef::struct_type("ptr byval(%struct.Payload)", other_payload_id)},
+  };
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("metadata-rich byval call argument with mismatched StructNameId should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'direct-call semantic family'")) {
+    return fail("missing direct-call family failure for mismatched byval call argument StructNameId");
+  }
+  return 0;
+}
+
 LirModule make_bad_indirect_call_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -3735,6 +3857,24 @@ int main() {
                     "function",
                     "corrupted_bad_direct_call")) {
     return fail("backend failure notes should not trust a corrupted raw function name when LinkNameId is available");
+  }
+
+  if (const int legacy_byval_status =
+          expect_legacy_byval_call_arg_without_type_refs_still_lowers();
+      legacy_byval_status != 0) {
+    return legacy_byval_status;
+  }
+
+  if (const int missing_byval_metadata_status =
+          expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed();
+      missing_byval_metadata_status != 0) {
+    return missing_byval_metadata_status;
+  }
+
+  if (const int mismatched_byval_metadata_status =
+          expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
+      mismatched_byval_metadata_status != 0) {
+    return mismatched_byval_metadata_status;
   }
 
   if (const int indirect_call_status = expect_failure_notes(

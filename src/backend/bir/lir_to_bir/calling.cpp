@@ -563,6 +563,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       [&](std::size_t index, std::string_view legacy_type_text)
           -> std::optional<AggregateTypeLayout> {
     if (call.arg_type_refs.empty()) {
+      // Legacy hand-built LIR compatibility: without structured argument
+      // mirrors, rendered byval text is still the only available authority.
       return lower_byval_aggregate_layout(legacy_type_text, type_decls, &structured_layouts_);
     }
     if (index >= call.arg_type_refs.size()) {
@@ -570,6 +572,17 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     }
     const auto& type_ref = call.arg_type_refs[index];
     if (!type_ref.has_struct_name_id()) {
+      return std::nullopt;
+    }
+    const auto legacy_byval_type = parse_byval_pointee_type(legacy_type_text);
+    const std::string_view legacy_struct_type =
+        legacy_byval_type.has_value()
+            ? std::string_view(*legacy_byval_type)
+            : c4c::codegen::lir::trim_lir_arg_text(legacy_type_text);
+    const c4c::StructNameId legacy_struct_name_id =
+        context_.lir_module.struct_names.find(legacy_struct_type);
+    if (legacy_struct_name_id != c4c::kInvalidStructName &&
+        legacy_struct_name_id != type_ref.struct_name_id()) {
       return std::nullopt;
     }
     const std::string_view structured_name =
