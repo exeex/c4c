@@ -1,7 +1,8 @@
 # HIR Pending Consteval Structured Identity
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/192_hir_compile_time_rendered_registry_api_retirement_audit.md`
@@ -72,3 +73,23 @@ available or should have been carried.
 - The implementation weakens diagnostics, removes supported consteval behavior,
   or marks supported paths unsupported to claim closure.
 - The route expands into broad template-engine or backend-restart work.
+
+## Closure Notes
+
+Closed after routing `PendingConstevalExpr` replay through structured
+`ConstevalCalleeIdentity` when complete metadata is present. Complete
+structured misses now fail closed on the covered pending replay route instead
+of recovering through stale rendered consteval registry entries.
+
+Focused HIR lookup proof used matching canonical logs:
+`ctest --test-dir build -j --output-on-failure -R
+'^frontend_hir_lookup_tests$'`. Both `test_before.log` and `test_after.log`
+reported `1/1` passing, and the close-time regression guard passed with no new
+failures. Broader HIR validation also passed with
+`ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`.
+
+The remaining rendered-name surface was recorded as display text,
+no-metadata compatibility, or out-of-scope diagnostic paths. No remaining
+pending or recursive metadata-rich consteval lookup surface blocks closure of
+this idea. Backend-facing compatibility string retirement was split into
+`ideas/open/197_bir_backend_compatibility_string_retirement.md`.
