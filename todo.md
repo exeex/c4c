@@ -1,46 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/178_global_aggregate_layout_structured_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Thread Structured Layout Identity To The Global Consumer
+Current Step ID: 3
+Current Step Title: Fail Closed On Stale Or Mismatched Global Metadata
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by threading metadata-rich global aggregate type
-identity into the BIR global layout and initializer consumer.
+Completed `plan.md` Step 3 by making metadata-rich global aggregate layout and
+initializer lowering fail closed when structured identity is stale, missing,
+opaque, or mismatched.
 
 Concrete work completed:
 
-- `BackendStructuredLayoutEntry` now retains the producing `StructNameId`, and
-  structured layout lookup has a dedicated `LirTypeRef` route that resolves
-  metadata-rich aggregate globals by id instead of by rendered
-  `global.llvm_type` text.
-- `lower_minimal_global_impl` uses `LirGlobal::llvm_type_ref` when present for
-  aggregate global size/alignment and root initializer lowering; the existing
-  text-only overloads remain the explicit compatibility fallback for no-metadata
-  globals.
-- Aggregate initializer lowering now has a structured-root entry point,
-  `lower_aggregate_initializer_for_type_ref`, while recursive field and
-  no-metadata paths retain the existing text-based compatibility behavior.
-- Focused backend coverage now uses a stale rendered global type spelling with
-  a valid `StructNameId` mirror, proving the selected metadata-rich route does
-  not choose layout authority solely through `global.llvm_type`.
+- `lookup_backend_aggregate_type_ref_layout_result` no longer falls back to
+  rendered aggregate text when a `LirTypeRef` lacks a live `StructNameId`, has
+  stale mirror text, has no structured table entry, or hits a structured/legacy
+  parity mismatch.
+- `lower_aggregate_initializer_for_type_ref` now uses the same fail-closed
+  identity checks before choosing a root structured layout name.
+- The legacy text-only aggregate layout and initializer APIs remain the explicit
+  no-metadata compatibility fallback.
+- Focused backend coverage now includes stale, missing, opaque, and parity
+  mismatched metadata-rich type-ref cases, plus a stale global metadata case
+  whose rendered text has a legacy type declaration that text authority would
+  have accepted.
 
 ## Suggested Next
 
-Proceed to the next plan step for this route: exercise the structured global
-layout identity through the downstream backend consumer that prepares or emits
-the lowered BIR global storage, using the stale-rendered-text case as the guard.
+Proceed to the next supervisor-selected packet for the active global aggregate
+layout route, likely a review or downstream consumer check that confirms the
+new fail-closed behavior is the intended route boundary.
 
 ## Watchouts
 
-- The structured-root initializer entry point intentionally fails closed if a
-  present `StructNameId` has no structured layout table entry; it does not fall
-  back to `global.llvm_type`.
-- Keep legacy no-metadata compatibility explicit and isolated; the text-only
-  overloads are still used for no-metadata globals.
+- Text-only lookup by rendered `%struct.Name` still preserves the route-local
+  legacy fallback and can report parity mismatch while returning a layout; the
+  stricter fail-closed rule is limited to metadata-rich `LirTypeRef` paths.
+- `global.llvm_type` may be stale for a metadata-rich global as long as
+  `llvm_type_ref` carries the live structured spelling and id; stale
+  `llvm_type_ref` text now fails.
 - Do not broaden into byval copy, AArch64 direct-LIR bridge retirement,
   function-pointer signature identity, or the closure gate.
 - Do not weaken tests or mark supported global aggregate cases unsupported as

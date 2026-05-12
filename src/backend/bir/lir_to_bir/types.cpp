@@ -563,29 +563,35 @@ BackendAggregateLayoutLookup lookup_backend_aggregate_type_ref_layout_result(
     const c4c::codegen::lir::LirTypeRef& type_ref,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts) {
-  if (type_ref.has_struct_name_id()) {
-    for (const auto& [type_name, entry] : structured_layouts) {
-      (void)type_name;
-      if (entry.name_id != type_ref.struct_name_id()) {
-        continue;
-      }
-      const bool mismatch = (entry.parity_checked && !entry.parity_matches) ||
-                            c4c::codegen::lir::trim_lir_arg_text(type_ref.str()) !=
-                                entry.type_name;
-      if (entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid) {
-        return BackendAggregateLayoutLookup{
-            .layout = entry.structured_layout,
-            .used_structured_layout = true,
-            .used_legacy_fallback = false,
-            .structured_text_mismatch = mismatch,
-        };
-      }
-      return BackendAggregateLayoutLookup{};
-    }
+  (void)type_decls;
+  if (!type_ref.has_struct_name_id()) {
     return BackendAggregateLayoutLookup{};
   }
 
-  return lookup_backend_aggregate_type_layout_result(type_ref.str(), type_decls, structured_layouts);
+  for (const auto& [type_name, entry] : structured_layouts) {
+    (void)type_name;
+    if (entry.name_id != type_ref.struct_name_id()) {
+      continue;
+    }
+    const bool mismatch = (entry.parity_checked && !entry.parity_matches) ||
+                          c4c::codegen::lir::trim_lir_arg_text(type_ref.str()) !=
+                              entry.type_name;
+    if (mismatch) {
+      return BackendAggregateLayoutLookup{
+          .structured_text_mismatch = true,
+      };
+    }
+    if (entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid) {
+      return BackendAggregateLayoutLookup{
+          .layout = entry.structured_layout,
+          .used_structured_layout = true,
+          .used_legacy_fallback = false,
+          .structured_text_mismatch = false,
+      };
+    }
+    return BackendAggregateLayoutLookup{};
+  }
+  return BackendAggregateLayoutLookup{};
 }
 
 AggregateTypeLayout lookup_backend_aggregate_type_layout(

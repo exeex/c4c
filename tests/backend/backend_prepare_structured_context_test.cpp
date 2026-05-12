@@ -338,6 +338,7 @@ int check_backend_layout_lookup_prefers_structured_table() {
   using c4c::backend::lir_to_bir_detail::build_type_decl_map;
   using c4c::backend::lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
   using c4c::backend::lir_to_bir_detail::lookup_backend_aggregate_type_layout;
+  using c4c::backend::lir_to_bir_detail::lookup_backend_aggregate_type_ref_layout_result;
 
   lir::LirModule module;
   module.link_name_texts = std::make_shared<c4c::TextTable>();
@@ -374,6 +375,40 @@ int check_backend_layout_lookup_prefers_structured_table() {
     return fail("structured-present matching layout lookup did not use the structured layout");
   }
 
+  const auto matching_ref_lookup = lookup_backend_aggregate_type_ref_layout_result(
+      lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      matching_legacy_decls,
+      matching_table);
+  if (!matching_ref_lookup.used_structured_layout ||
+      matching_ref_lookup.used_legacy_fallback ||
+      matching_ref_lookup.structured_text_mismatch ||
+      matching_ref_lookup.layout.kind != AggregateTypeLayout::Kind::Struct ||
+      matching_ref_lookup.layout.size_bytes != 8) {
+    return fail("structured type-ref layout lookup did not use matching metadata");
+  }
+
+  const auto stale_ref_lookup = lookup_backend_aggregate_type_ref_layout_result(
+      lir::LirTypeRef::struct_type("%struct.StalePairText", pair_id),
+      matching_legacy_decls,
+      matching_table);
+  if (stale_ref_lookup.used_structured_layout ||
+      stale_ref_lookup.used_legacy_fallback ||
+      !stale_ref_lookup.structured_text_mismatch ||
+      stale_ref_lookup.layout.kind != AggregateTypeLayout::Kind::Invalid) {
+    return fail("stale structured type-ref layout lookup did not fail closed");
+  }
+
+  const auto opaque_ref_lookup = lookup_backend_aggregate_type_ref_layout_result(
+      lir::LirTypeRef("%struct.Pair"),
+      matching_legacy_decls,
+      matching_table);
+  if (opaque_ref_lookup.used_structured_layout ||
+      opaque_ref_lookup.used_legacy_fallback ||
+      opaque_ref_lookup.structured_text_mismatch ||
+      opaque_ref_lookup.layout.kind != AggregateTypeLayout::Kind::Invalid) {
+    return fail("opaque structured type-ref layout lookup did not fail closed");
+  }
+
   const auto mismatched_legacy_decls =
       build_type_decl_map({"%struct.Pair = type { i64, i64 }"});
   const auto mismatched_table = build_backend_structured_layout_table(
@@ -396,6 +431,17 @@ int check_backend_layout_lookup_prefers_structured_table() {
       mismatched_layout.size_bytes != 8 || mismatched_layout.align_bytes != 4 ||
       mismatched_layout.fields.size() != 2 || mismatched_layout.fields[1].byte_offset != 4) {
     return fail("structured-present mismatched legacy shadow should keep structured layout authority");
+  }
+
+  const auto mismatched_ref_lookup = lookup_backend_aggregate_type_ref_layout_result(
+      lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      mismatched_legacy_decls,
+      mismatched_table);
+  if (mismatched_ref_lookup.used_structured_layout ||
+      mismatched_ref_lookup.used_legacy_fallback ||
+      !mismatched_ref_lookup.structured_text_mismatch ||
+      mismatched_ref_lookup.layout.kind != AggregateTypeLayout::Kind::Invalid) {
+    return fail("mismatched structured type-ref layout lookup did not fail closed");
   }
 
   const c4c::backend::lir_to_bir_detail::BackendStructuredLayoutTable empty_structured_table;
@@ -548,22 +594,25 @@ int check_aggregate_initializer_prefers_structured_layout_table() {
   module.struct_names.attach_text_table(module.link_name_texts.get());
 
   const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
+  const c4c::StructNameId missing_id = module.struct_names.intern("%struct.MissingPair");
   module.record_struct_decl(lir::LirStructDecl{
       .name_id = pair_id,
       .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
                  lir::LirStructField{lir::LirTypeRef("i32")}},
   });
 
-  const auto mismatched_legacy_decls =
-      build_type_decl_map({"%struct.Pair = type { i64, i64 }"});
+  const auto matching_legacy_decls =
+      build_type_decl_map({"%struct.Pair = type { i32, i32 }",
+                           "%struct.StalePairText = type { i32, i32 }",
+                           "%struct.MissingPair = type { i32, i32 }"});
   const auto structured_table = build_backend_structured_layout_table(
-      module.struct_decls, module.struct_names, mismatched_legacy_decls);
+      module.struct_decls, module.struct_names, matching_legacy_decls);
 
   std::unordered_map<std::size_t, GlobalAddress> structured_pointer_offsets;
   const auto structured_initializer = lower_aggregate_initializer_for_type_ref(
       "{ i32 1, i32 2 }",
-      lir::LirTypeRef::struct_type("%struct.StalePairText", pair_id),
-      mismatched_legacy_decls,
+      lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      matching_legacy_decls,
       structured_table,
       &structured_pointer_offsets);
   if (!structured_initializer.has_value() || structured_initializer->size() != 2 ||
@@ -571,6 +620,54 @@ int check_aggregate_initializer_prefers_structured_layout_table() {
       (*structured_initializer)[1] != bir::Value::immediate_i32(2) ||
       !structured_pointer_offsets.empty()) {
     return fail("structured-present aggregate initializer did not use structured layout authority");
+  }
+
+  std::unordered_map<std::size_t, GlobalAddress> stale_pointer_offsets;
+  const auto stale_initializer = lower_aggregate_initializer_for_type_ref(
+      "{ i32 1, i32 2 }",
+      lir::LirTypeRef::struct_type("%struct.StalePairText", pair_id),
+      matching_legacy_decls,
+      structured_table,
+      &stale_pointer_offsets);
+  if (stale_initializer.has_value() || !stale_pointer_offsets.empty()) {
+    return fail("stale structured aggregate initializer metadata did not fail closed");
+  }
+
+  std::unordered_map<std::size_t, GlobalAddress> missing_pointer_offsets;
+  const auto missing_initializer = lower_aggregate_initializer_for_type_ref(
+      "{ i32 1, i32 2 }",
+      lir::LirTypeRef::struct_type("%struct.MissingPair", missing_id),
+      matching_legacy_decls,
+      structured_table,
+      &missing_pointer_offsets);
+  if (missing_initializer.has_value() || !missing_pointer_offsets.empty()) {
+    return fail("missing structured aggregate initializer metadata did not fail closed");
+  }
+
+  std::unordered_map<std::size_t, GlobalAddress> opaque_pointer_offsets;
+  const auto opaque_initializer = lower_aggregate_initializer_for_type_ref(
+      "{ i32 1, i32 2 }",
+      lir::LirTypeRef("%struct.StalePairText"),
+      matching_legacy_decls,
+      structured_table,
+      &opaque_pointer_offsets);
+  if (opaque_initializer.has_value() || !opaque_pointer_offsets.empty()) {
+    return fail("opaque structured aggregate initializer metadata did not fail closed");
+  }
+
+  const auto mismatched_legacy_decls =
+      build_type_decl_map({"%struct.Pair = type { i64, i64 }"});
+  const auto mismatched_structured_table = build_backend_structured_layout_table(
+      module.struct_decls, module.struct_names, mismatched_legacy_decls);
+  std::unordered_map<std::size_t, GlobalAddress> mismatched_pointer_offsets;
+  const auto mismatched_initializer = lower_aggregate_initializer_for_type_ref(
+      "{ i32 1, i32 2 }",
+      lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      mismatched_legacy_decls,
+      mismatched_structured_table,
+      &mismatched_pointer_offsets);
+  if (mismatched_initializer.has_value() || !mismatched_pointer_offsets.empty()) {
+    return fail("mismatched structured aggregate initializer layout did not fail closed");
   }
 
   const BackendStructuredLayoutTable empty_structured_table;
@@ -592,13 +689,20 @@ int check_aggregate_initializer_prefers_structured_layout_table() {
 }
 
 int check_global_initializer_lowering_prefers_structured_layout_table() {
-  auto make_module = [](bool include_structured_decl) {
+  enum class GlobalFixture {
+    Structured,
+    StaleMetadata,
+    LegacyFallback,
+  };
+
+  auto make_module = [](GlobalFixture fixture) {
     lir::LirModule module;
     module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
     module.link_name_texts = std::make_shared<c4c::TextTable>();
     module.link_names.attach_text_table(module.link_name_texts.get());
     module.struct_names.attach_text_table(module.link_name_texts.get());
 
+    const bool include_structured_decl = fixture != GlobalFixture::LegacyFallback;
     if (include_structured_decl) {
       const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
       module.record_struct_decl(lir::LirStructDecl{
@@ -608,33 +712,35 @@ int check_global_initializer_lowering_prefers_structured_layout_table() {
       });
     }
 
-    module.type_decls.push_back("%struct.Pair = type { i64, i64 }");
+    module.type_decls.push_back("%struct.Pair = type { i32, i32 }");
+    module.type_decls.push_back("%struct.StalePairText = type { i32, i32 }");
 
     lir::LirGlobal global;
-    global.name = include_structured_decl ? "pair_structured" : "pair_fallback";
-    global.llvm_type = include_structured_decl ? "%struct.StalePairText" : "%struct.Pair";
-    if (include_structured_decl) {
+    if (fixture == GlobalFixture::Structured) {
+      global.name = "pair_structured";
+      global.llvm_type = "%struct.StalePairText";
+      global.llvm_type_ref =
+          lir::LirTypeRef::struct_type("%struct.Pair", module.struct_names.find("%struct.Pair"));
+    } else if (fixture == GlobalFixture::StaleMetadata) {
+      global.name = "pair_stale_metadata";
+      global.llvm_type = "%struct.StalePairText";
       global.llvm_type_ref =
           lir::LirTypeRef::struct_type("%struct.StalePairText",
                                        module.struct_names.find("%struct.Pair"));
+    } else {
+      global.name = "pair_fallback";
+      global.llvm_type = "%struct.StalePairText";
     }
-    global.init_text = include_structured_decl ? "{ i32 1, i32 2 }" : "{ i64 1, i64 2 }";
+    global.init_text = "{ i32 1, i32 2 }";
     module.globals.push_back(std::move(global));
     return module;
   };
 
   const auto structured_result =
-      c4c::backend::try_lower_to_bir_with_options(make_module(true),
+      c4c::backend::try_lower_to_bir_with_options(make_module(GlobalFixture::Structured),
                                                   c4c::backend::BirLoweringOptions{});
   if (!structured_result.module.has_value()) {
     return fail("structured-present global initializer fixture did not lower to BIR");
-  }
-  if (!contains_note(structured_result.notes,
-                     "module",
-                     "structured backend layout parity mismatch for %struct.Pair") ||
-      !contains_note(structured_result.notes, "module", "legacy size 16") ||
-      !contains_note(structured_result.notes, "module", "structured size 8")) {
-    return fail("structured-present global initializer mismatch did not remain visible in notes");
   }
   const auto& structured_global = structured_result.module->globals.front();
   if (structured_global.name != "pair_structured" ||
@@ -646,8 +752,15 @@ int check_global_initializer_lowering_prefers_structured_layout_table() {
     return fail("structured-present global initializer did not use structured layout authority");
   }
 
+  const auto stale_result =
+      c4c::backend::try_lower_to_bir_with_options(make_module(GlobalFixture::StaleMetadata),
+                                                  c4c::backend::BirLoweringOptions{});
+  if (stale_result.module.has_value()) {
+    return fail("stale structured global initializer metadata did not fail closed");
+  }
+
   const auto fallback_result =
-      c4c::backend::try_lower_to_bir_with_options(make_module(false),
+      c4c::backend::try_lower_to_bir_with_options(make_module(GlobalFixture::LegacyFallback),
                                                   c4c::backend::BirLoweringOptions{});
   if (!fallback_result.module.has_value()) {
     return fail("structured-missing global initializer fixture did not lower to BIR");
@@ -655,10 +768,10 @@ int check_global_initializer_lowering_prefers_structured_layout_table() {
   const auto& fallback_global = fallback_result.module->globals.front();
   if (fallback_global.name != "pair_fallback" ||
       fallback_global.type != bir::TypeKind::I8 ||
-      fallback_global.size_bytes != 16 ||
+      fallback_global.size_bytes != 8 ||
       fallback_global.initializer_elements.size() != 2 ||
-      fallback_global.initializer_elements[0] != bir::Value::immediate_i64(1) ||
-      fallback_global.initializer_elements[1] != bir::Value::immediate_i64(2)) {
+      fallback_global.initializer_elements[0] != bir::Value::immediate_i32(1) ||
+      fallback_global.initializer_elements[1] != bir::Value::immediate_i32(2)) {
     return fail("structured-missing global initializer did not preserve legacy fallback");
   }
 

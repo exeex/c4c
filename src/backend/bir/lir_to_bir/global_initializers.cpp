@@ -563,14 +563,20 @@ std::optional<std::string_view> structured_type_name_for_ref(
     const c4c::codegen::lir::LirTypeRef& type_ref,
     const BackendStructuredLayoutTable& structured_layouts) {
   if (!type_ref.has_struct_name_id()) {
-    return c4c::codegen::lir::trim_lir_arg_text(type_ref.str());
+    return std::nullopt;
   }
   for (const auto& [type_name, entry] : structured_layouts) {
     (void)type_name;
-    if (entry.name_id == type_ref.struct_name_id() &&
-        entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid) {
+    if (entry.name_id != type_ref.struct_name_id()) {
+      continue;
+    }
+    const bool mismatch = (entry.parity_checked && !entry.parity_matches) ||
+                          c4c::codegen::lir::trim_lir_arg_text(type_ref.str()) !=
+                              entry.type_name;
+    if (!mismatch && entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid) {
       return entry.type_name;
     }
+    return std::nullopt;
   }
   return std::nullopt;
 }
