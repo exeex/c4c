@@ -1,16 +1,16 @@
 Status: Active
 Source Idea Path: ideas/open/200_hir_legacy_compatibility_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Fence Metadata-Rich Module And Owner Lookups
+Current Step ID: 3
+Current Step Title: Fence Consteval Replay And Pending Identity Names
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 remaining HIR template value-arg owner-recovery
-slice. `resolve_member_lookup_owner_tag` now rejects complete tag owner-key
-misses before rendered `tag_text_id`/legacy `struct_defs` recovery when no
+Completed `plan.md` Step 2. The final HIR template value-arg owner-recovery
+slice fenced `resolve_member_lookup_owner_tag` so complete tag owner-key misses
+are rejected before rendered `tag_text_id`/legacy `struct_defs` recovery when no
 template-origin metadata can legitimately realize a new owner, and template
 static-member value-arg evaluation now stops before rendered primary recovery
 for complete qualified owner-key misses.
@@ -21,8 +21,12 @@ static-member value args still use rendered primary lookup.
 
 ## Suggested Next
 
-Treat `plan.md` Step 2 as complete and have the supervisor or plan owner choose
-the next lifecycle action, likely advancing to the next runbook step.
+Execute `plan.md` Step 3: fence consteval replay and pending expression identity
+so rendered names cannot act as semantic fallback when structured identity is
+complete. Start by inventorying the remaining rendered consteval lookup surfaces
+after idea 196, including `PendingConstevalExpr::fn_name` or any successor
+display/no-metadata state, then pick a focused stale-name replay or pending
+consteval proof case.
 
 ## Watchouts
 
