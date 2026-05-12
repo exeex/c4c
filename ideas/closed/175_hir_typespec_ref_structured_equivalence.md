@@ -1,7 +1,8 @@
 # HIR TypeSpec Ref Structured Equivalence
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/172_type_identity_authority_audit.md`
@@ -58,6 +59,21 @@ lookup, or dedup.
   function pointers, arrays, typedefs, records, or template-origin records.
 - The proof includes a fresh build or compile check plus targeted frontend/HIR
   CTest coverage.
+
+## Completion Notes
+
+Closed after the focused HIR aggregate direct-assignment slice selected one
+ordinary HIR type-ref family and moved the metadata-rich owner comparison away
+from rendered `TypeSpec` spelling.  The accepted route requires structured
+aggregate owner identity for compound-literal direct assignment while retaining
+`TypeSpec` as syntax/display payload.
+
+Proof used the focused `frontend_hir_lookup_tests` command, adjacent
+`frontend_hir` validation, and the accepted full-suite baseline at `b13b6d431`
+with 3137/3137 passing.  Close-gate regression guard compared canonical
+`test_before.log` and `test_after.log` for `frontend_hir_lookup_tests`; the
+only log diff was total runtime, and non-decreasing regression comparison
+passed with 1/1 tests passing before and after.
 
 ## Reviewer Reject Signals
 
