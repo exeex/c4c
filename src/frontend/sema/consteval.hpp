@@ -227,14 +227,21 @@ struct ConstEvalEnv {
       auto it = enum_consts->find(name);
       if (it != enum_consts->end()) return it->second;
     }
-    // 3. Scoped local constants (innermost first).
+    // 3. Scoped local constants (innermost first). Owner:
+    // legacy/deprecated local-const handoff for callers without TextId/key
+    // metadata. Limitation: Node-based lookup must gate metadata-rich calls
+    // through local_const*_by_text/key first. Removal condition: all local
+    // const producers and interpreter callers carry local TextId/key metadata.
     if (local_const_scopes) {
       for (auto it = local_const_scopes->rbegin(); it != local_const_scopes->rend(); ++it) {
         auto sit = it->find(name);
         if (sit != it->end()) return sit->second;
       }
     }
-    // 4. Flat local constants.
+    // 4. Flat local constants. Owner: legacy/deprecated flat local-const
+    // handoff for no-metadata compatibility. Limitation: this rendered map is
+    // not lookup authority after a complete local TextId/key miss. Removal
+    // condition: all flat local-const handoff provides metadata maps.
     if (local_consts) {
       auto it = local_consts->find(name);
       if (it != local_consts->end()) return it->second;
@@ -444,6 +451,11 @@ struct ConstEvalEnv {
       }
     }
     if (!skip_local) {
+      // Owner: legacy/deprecated rendered local-const compatibility after
+      // other metadata domains have missed. Limitation: callers set
+      // skip_local after a complete local TextId/key miss, so stale rendered
+      // local names cannot recover. Removal condition: all local-const
+      // producers and interpreter bindings provide TextId/key metadata.
       if (local_const_scopes) {
         for (auto it = local_const_scopes->rbegin();
              it != local_const_scopes->rend(); ++it) {

@@ -1114,11 +1114,12 @@ struct InterpreterBindingSnapshot {
 };
 
 struct InterpreterBindings {
-  // Owner: consteval interpreter local environment. Limitation: `by_name` is a
-  // compatibility mirror exposed through ConstEvalEnv for no-metadata local
-  // lookups; `by_text` and `by_key` carry interpreter-local authority whenever
-  // the AST node provides TextId/key metadata. Removal condition: interpreter
-  // local declarations always carry TextId/key metadata through evaluation.
+  // Owner: consteval interpreter legacy/deprecated local environment.
+  // Limitation: `by_name` is a compatibility mirror exposed through
+  // ConstEvalEnv for no-metadata local lookups; `by_text` and `by_key` carry
+  // interpreter-local authority whenever the AST node provides TextId/key
+  // metadata. Removal condition: interpreter local declarations always carry
+  // TextId/key metadata through evaluation.
   ConstMap by_name;
   ConstTextMap by_text;
   ConstStructuredMap by_key;

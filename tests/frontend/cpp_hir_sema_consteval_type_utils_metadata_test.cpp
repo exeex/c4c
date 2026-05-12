@@ -701,6 +701,63 @@ void test_consteval_env_scoped_enum_metadata_beats_stale_rendered_mirror() {
               "complete scoped enum metadata miss must not recover through stale rendered mirror");
 }
 
+void test_consteval_env_local_const_metadata_fences_rendered_mirror() {
+  c4c::TextTable texts;
+  const c4c::TextId actual_text = texts.intern("ActualLocal");
+  const c4c::TextId text_only_text = texts.intern("TextOnlyLocal");
+  const c4c::TextId missing_text = texts.intern("MissingLocal");
+
+  c4c::hir::ConstMap rendered_locals;
+  rendered_locals.emplace("stale_local", 1);
+  rendered_locals.emplace("stale_text_only", 2);
+  rendered_locals.emplace("stale_missing", 3);
+  rendered_locals.emplace("legacy_local", 4);
+
+  c4c::hir::ConstTextMap locals_by_text;
+  locals_by_text.emplace(actual_text, 20);
+  locals_by_text.emplace(text_only_text, 21);
+
+  c4c::hir::ConstEvalStructuredNameKey actual_key;
+  actual_key.base_text_id = actual_text;
+  c4c::hir::ConstStructuredMap locals_by_key;
+  locals_by_key.emplace(actual_key, 30);
+
+  c4c::hir::ConstEvalEnv env{};
+  env.local_consts = &rendered_locals;
+  env.local_consts_by_text = &locals_by_text;
+  env.local_consts_by_key = &locals_by_key;
+
+  c4c::Node structured_ref = var_ref("stale_local", "ActualLocal",
+                                     actual_text, -1);
+  const std::optional<long long> structured_value = env.lookup(&structured_ref);
+  expect_true(structured_value.has_value(),
+              "local-const structured metadata lookup should produce a value");
+  expect_eq_int(static_cast<int>(*structured_value), 30,
+                "local-const key metadata must beat stale rendered local names");
+
+  c4c::Node text_ref = var_ref("stale_text_only", "TextOnlyLocal",
+                               text_only_text, -1);
+  const std::optional<long long> text_value = env.lookup(&text_ref);
+  expect_true(text_value.has_value(),
+              "local-const TextId metadata lookup should produce a value");
+  expect_eq_int(static_cast<int>(*text_value), 21,
+                "local-const TextId metadata must beat stale rendered local names");
+
+  c4c::Node missing_ref = var_ref("stale_missing", "MissingLocal",
+                                  missing_text, -1);
+  const std::optional<long long> missing_value = env.lookup(&missing_ref);
+  expect_true(!missing_value.has_value(),
+              "complete local-const metadata miss must not recover through rendered locals");
+
+  c4c::Node legacy_ref = var_ref("legacy_local", "legacy_local",
+                                 c4c::kInvalidText, -1);
+  const std::optional<long long> legacy_value = env.lookup(&legacy_ref);
+  expect_true(legacy_value.has_value(),
+              "no-metadata local-const lookup should retain rendered compatibility");
+  expect_eq_int(static_cast<int>(*legacy_value), 4,
+                "rendered local-const compatibility should remain fenced to no-metadata callers");
+}
+
 }  // namespace
 
 int main() {
@@ -719,6 +776,7 @@ int main() {
   test_static_eval_int_keeps_same_spelled_enum_domains_distinct();
   test_static_eval_int_named_rendered_enum_compatibility_requires_opt_in();
   test_consteval_env_scoped_enum_metadata_beats_stale_rendered_mirror();
+  test_consteval_env_local_const_metadata_fences_rendered_mirror();
   std::cout << "PASS: cpp_hir_sema_consteval_type_utils_metadata_test\n";
   return 0;
 }
