@@ -766,12 +766,26 @@ struct SizeofTypeExpr {
   QualType type{};
 };
 
+struct PendingConstevalCalleeIdentity {
+  int namespace_context_id = -1;
+  bool is_global_qualified = false;
+  std::vector<TextId> qualifier_text_ids;
+  TextId base_text_id = kInvalidText;
+  bool metadata_complete = false;
+
+  [[nodiscard]] bool complete() const {
+    return metadata_complete && namespace_context_id >= 0 &&
+           base_text_id != kInvalidText;
+  }
+};
+
 /// A consteval call that has not yet been evaluated.
 /// Initial HIR construction records these nodes and leaves evaluation to the
 /// compile-time engine. Some are present from the start; others are unlocked
 /// later by deferred template instantiation.
 struct PendingConstevalExpr {
   SymbolName fn_name;                                            // consteval function to call
+  PendingConstevalCalleeIdentity callee_identity;                // semantic identity when parser metadata is complete
   std::vector<long long> const_args;                             // evaluated constant argument values
   std::unordered_map<std::string, TypeSpec> tpl_bindings;        // template param → concrete type
   std::unordered_map<std::string, long long> nttp_bindings;      // NTTP param → constant value

@@ -118,6 +118,28 @@ ConstEvalEnv make_engine_consteval_env(
   return env;
 }
 
+std::optional<ConstEvalStructuredNameKey> pending_consteval_key(
+    const PendingConstevalExpr& pce) {
+  if (!pce.callee_identity.complete()) return std::nullopt;
+  ConstEvalStructuredNameKey key;
+  key.namespace_context_id = pce.callee_identity.namespace_context_id;
+  key.is_global_qualified = pce.callee_identity.is_global_qualified;
+  key.qualifier_text_ids = pce.callee_identity.qualifier_text_ids;
+  key.base_text_id = pce.callee_identity.base_text_id;
+  return key.valid() ? std::optional<ConstEvalStructuredNameKey>(key)
+                     : std::nullopt;
+}
+
+const Node* find_pending_consteval_def(const CompileTimeState& ct_state,
+                                       const PendingConstevalExpr& pce) {
+  if (auto key = pending_consteval_key(pce)) {
+    const auto& defs = ct_state.consteval_fn_defs_by_key();
+    auto it = defs.find(*key);
+    return it == defs.end() ? nullptr : it->second;
+  }
+  return ct_state.find_consteval_def(pce.fn_name);
+}
+
 struct PendingTemplateTypeStep {
   CompileTimeState* ct_state = nullptr;
   DeferredInstantiateTypeFn instantiate_type_fn;
@@ -182,7 +204,7 @@ ConstEvalResult evaluate_pending_consteval(
     const Module& module,
     const CompileTimeState& ct_state,
     const PendingConstevalExpr& pce) {
-  const Node* ce_fn_def = ct_state.find_consteval_def(pce.fn_name);
+  const Node* ce_fn_def = find_pending_consteval_def(ct_state, pce);
   if (!ce_fn_def) {
     return ConstEvalResult::failure(
         "no consteval definition registered for '" + pce.fn_name + "'");
@@ -450,7 +472,7 @@ struct PendingConstevalEvalStep {
       if (!pce) continue;
 
       // Pre-check: does the compile-time state know about this consteval fn?
-      if (!ct_state->has_consteval_def(pce->fn_name)) {
+      if (!find_pending_consteval_def(*ct_state, *pce)) {
         ++pending;
         pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnreducedConsteval,
             "pending consteval: " + pce->fn_name +

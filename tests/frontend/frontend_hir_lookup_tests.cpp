@@ -2305,6 +2305,10 @@ int use_consteval_nttp() { return plus_one<41>(); }
   }
   expect_true(pending != nullptr,
               "initial HIR should retain a pending consteval call before reduction");
+  expect_true(pending->callee_identity.complete(),
+              "pending consteval should carry complete structured callee identity");
+  expect_true(pending->callee_identity.base_text_id != c4c::kInvalidText,
+              "pending consteval structured callee identity should preserve the callee TextId");
   expect_true(pending->nttp_bindings.size() == 1 &&
                   pending->nttp_bindings.at("N") == 41,
               "pending consteval should retain rendered NTTP compatibility bindings");
@@ -2421,6 +2425,68 @@ int use_stale_consteval() { return stale_consteval(); }
     expect_true(!pending || pending->fn_name != "stale_consteval",
                 "direct consteval call lowering should not recover through stale rendered registry names after a complete metadata miss");
   }
+}
+
+void test_pending_consteval_replay_rejects_stale_rendered_registry_after_metadata_miss() {
+  constexpr std::string_view source = R"cpp(
+consteval int stale_consteval() { return 7; }
+
+int use_stale_consteval() { return stale_consteval(); }
+)cpp";
+
+  c4c::Lexer lexer(std::string(source),
+                   c4c::lex_profile_from(c4c::SourceProfile::CppSubset));
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset,
+                     "frontend_hir_lookup_tests.cpp");
+  c4c::Node* root = parser.parse();
+  auto sema_result = c4c::sema::analyze_program(
+      root, c4c::sema_profile_from(c4c::SourceProfile::CppSubset));
+  expect_true(sema_result.validation.ok,
+              "pending stale consteval fixture should validate before metadata corruption");
+
+  auto initial = c4c::hir::build_initial_hir(
+      root, &sema_result.canonical.resolved_types);
+  expect_true(initial.ct_state->find_consteval_def("stale_consteval") != nullptr,
+              "fixture should keep the rendered consteval registry entry available");
+
+  c4c::hir::PendingConstevalExpr* pending = nullptr;
+  for (auto& expr : initial.module->expr_pool) {
+    if (auto* candidate =
+            std::get_if<c4c::hir::PendingConstevalExpr>(&expr.payload)) {
+      pending = candidate;
+      break;
+    }
+  }
+  expect_true(pending != nullptr,
+              "initial HIR should retain a pending stale consteval call before reduction");
+  expect_true(pending->fn_name == "stale_consteval",
+              "pending consteval should keep rendered name for diagnostics and compatibility");
+  expect_true(pending->callee_identity.complete(),
+              "pending consteval should carry complete structured callee identity");
+
+  pending->callee_identity.base_text_id =
+      lexer.text_table().intern("missing_consteval");
+  expect_true(pending->callee_identity.complete(),
+              "corrupted pending callee metadata should remain complete enough to fail closed");
+
+  c4c::hir::run_compile_time_engine(
+      *initial.module, initial.ct_state, initial.deferred_instantiate,
+      initial.deferred_instantiate_type);
+
+  bool saw_unreduced_stale_pending = false;
+  for (const auto& expr : initial.module->expr_pool) {
+    const auto* candidate =
+        std::get_if<c4c::hir::PendingConstevalExpr>(&expr.payload);
+    if (candidate && candidate->fn_name == "stale_consteval") {
+      saw_unreduced_stale_pending = true;
+      break;
+    }
+  }
+  expect_true(saw_unreduced_stale_pending,
+              "pending consteval replay should not recover through stale rendered registry names after a complete metadata miss");
 }
 
 void test_template_call_nttp_handoff_carries_text_id_bindings() {
@@ -6548,6 +6614,7 @@ int main() {
   test_pending_consteval_nttp_handoff_carries_text_id_bindings();
   test_pending_consteval_nested_call_uses_compile_time_function_metadata();
   test_consteval_call_lowering_rejects_stale_rendered_registry_after_metadata_miss();
+  test_pending_consteval_replay_rejects_stale_rendered_registry_after_metadata_miss();
   test_template_call_nttp_handoff_carries_text_id_bindings();
   test_template_global_nttp_init_uses_text_id_function_ctx_binding();
   test_static_member_nttp_const_eval_prefers_text_id_binding();

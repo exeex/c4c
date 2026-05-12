@@ -941,6 +941,25 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
 
   PendingConstevalExpr pce;
   pce.fn_name = n->left->name;
+  pce.callee_identity.namespace_context_id = n->left->namespace_context_id;
+  pce.callee_identity.is_global_qualified = n->left->is_global_qualified;
+  pce.callee_identity.base_text_id = n->left->unqualified_text_id;
+  pce.callee_identity.metadata_complete =
+      n->left->namespace_context_id >= 0 &&
+      n->left->unqualified_text_id != kInvalidText &&
+      n->left->n_qualifier_segments >= 0 &&
+      (n->left->n_qualifier_segments == 0 || n->left->qualifier_text_ids);
+  if (n->left->qualifier_text_ids && n->left->n_qualifier_segments > 0) {
+    pce.callee_identity.qualifier_text_ids.assign(
+        n->left->qualifier_text_ids,
+        n->left->qualifier_text_ids + n->left->n_qualifier_segments);
+    for (TextId segment : pce.callee_identity.qualifier_text_ids) {
+      if (segment == kInvalidText) {
+        pce.callee_identity.metadata_complete = false;
+        break;
+      }
+    }
+  }
   for (const auto& cv : args) pce.const_args.push_back(cv.as_int());
   pce.tpl_bindings = tpl_bindings;
   pce.nttp_bindings = ce_nttp_bindings;
