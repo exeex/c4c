@@ -158,6 +158,21 @@ void expect_indirect_int_signature(
               "indirect int call should not model a void parameter list");
 }
 
+void expect_structured_call_arg_matches_rendered(
+    const c4c::codegen::lir::LirCallOp& call,
+    std::size_t index,
+    const std::string& msg) {
+  const auto parsed_args = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
+  expect_true(parsed_args.has_value(), msg + " rendered args should parse");
+  expect_true(index < parsed_args->size(), msg + " rendered arg index should exist");
+  expect_true(index < call.structured_args.size(),
+              msg + " structured arg index should exist");
+  expect_eq(call.structured_args[index].type, (*parsed_args)[index].type,
+            msg + " structured type should match rendered argument type");
+  expect_eq(call.structured_args[index].operand.str(), (*parsed_args)[index].operand,
+            msg + " structured operand should match rendered argument operand");
+}
+
 void expect_type_ref_structured_equality_uses_name_id(
     const c4c::codegen::lir::LirModule& module) {
   const c4c::StructNameId pair_id = module.struct_names.find("%struct.Pair");
@@ -416,6 +431,11 @@ int call_unspecified_indirect(int (*fp)()) {
             "direct call should carry one argument mirror");
   expect_struct_type_ref(lir_module, direct_call.arg_type_refs[0], "%struct.Pair",
                          "call argument mirror");
+  expect_eq(std::to_string(direct_call.structured_args.size()), "1",
+            "direct call should carry one structured argument");
+  expect_structured_call_arg_matches_rendered(direct_call, 0, "direct call arg");
+  expect_struct_type_ref(lir_module, direct_call.structured_args[0].type_ref,
+                         "%struct.Pair", "direct call structured argument type ref");
 
   const std::string formatted =
       c4c::codegen::lir::format_lir_call_site(direct_call);
@@ -435,6 +455,11 @@ int call_unspecified_indirect(int (*fp)()) {
             "fixed byval aggregate call should keep the emitted ABI fragment");
   expect_struct_type_ref(lir_module, byval_call.arg_type_refs[0], "%struct.Big",
                          "fixed byval call argument mirror");
+  expect_eq(std::to_string(byval_call.structured_args.size()), "1",
+            "fixed byval aggregate call should carry one structured argument");
+  expect_structured_call_arg_matches_rendered(byval_call, 0, "fixed byval call arg");
+  expect_struct_type_ref(lir_module, byval_call.structured_args[0].type_ref,
+                         "%struct.Big", "fixed byval structured argument type ref");
 
   c4c::codegen::lir::verify_module(lir_module);
   const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
@@ -513,6 +538,10 @@ int call_unspecified_indirect(int (*fp)()) {
   expect_eq(std::to_string(variadic_call.arg_type_refs.size()), "0",
             "variadic aggregate call should not carry argument mirrors when "
             "the call signature cannot parse against emitted ABI arguments");
+  expect_eq(std::to_string(variadic_call.structured_args.size()), "2",
+            "variadic aggregate call should still carry structured owned arguments");
+  expect_structured_call_arg_matches_rendered(variadic_call, 1,
+                                             "variadic aggregate tail arg");
 
   c4c::codegen::lir::LirFunction& call_no_proto =
       require_function(lir_module, "call_no_proto");
@@ -528,6 +557,12 @@ int call_unspecified_indirect(int (*fp)()) {
               "direct no-prototype call should not be modeled as variadic");
   expect_true(no_proto_call.callee_signature->fixed_param_types.empty(),
               "direct no-prototype call should not invent fixed parameter mirrors");
+  expect_eq(std::to_string(no_proto_call.structured_args.size()), "1",
+            "direct no-prototype call should carry structured argument facts");
+  expect_structured_call_arg_matches_rendered(no_proto_call, 0, "no-prototype call arg");
+  expect_struct_type_ref(lir_module, no_proto_call.structured_args[0].type_ref,
+                         "%struct.Pair",
+                         "no-prototype structured argument type ref");
 
   c4c::codegen::lir::LirFunction& call_no_args =
       require_function(lir_module, "call_no_args");
@@ -547,6 +582,10 @@ int call_unspecified_indirect(int (*fp)()) {
   c4c::codegen::lir::LirCallOp& indirect_int_call =
       require_indirect_call(call_int_indirect);
   expect_indirect_int_signature(indirect_int_call);
+  expect_eq(std::to_string(indirect_int_call.structured_args.size()), "1",
+            "metadata-rich indirect int call should carry one structured argument");
+  expect_structured_call_arg_matches_rendered(indirect_int_call, 0,
+                                             "indirect int call arg");
   c4c::codegen::lir::verify_module(lir_module);
 
   const std::string indirect_formatted =
@@ -606,6 +645,17 @@ int call_unspecified_indirect(int (*fp)()) {
               "indirect unspecified call should not be modeled as variadic");
   expect_true(indirect_unspecified_call.callee_signature->fixed_param_types.empty(),
               "indirect unspecified call should not invent fixed params");
+  expect_true(!indirect_unspecified_call.structured_args.empty(),
+              "indirect unspecified call should carry structured argument facts");
+
+  c4c::codegen::lir::LirCallOp raw_compat_call{};
+  raw_compat_call.result = "%raw";
+  raw_compat_call.return_type = c4c::codegen::lir::LirTypeRef("i32");
+  raw_compat_call.callee = "@raw";
+  raw_compat_call.callee_type_suffix = "(i32)";
+  raw_compat_call.args_str = "i32 %x";
+  expect_true(raw_compat_call.structured_args.empty(),
+              "raw direct LirCallOp construction should remain no-carrier compatibility");
 
   c4c::codegen::lir::LirModule missing_return_name = lir_module;
   c4c::codegen::lir::LirCallOp& missing_return_call =

@@ -283,6 +283,12 @@ struct LirCallSignature {
   bool has_void_param_list = false;
 };
 
+struct LirCallArg {
+  std::string type;
+  LirOperand operand;
+  LirTypeRef type_ref;
+};
+
 // Typed call instruction.
 // Covers both direct calls, indirect calls, and intrinsic calls.
 struct LirCallOp {
@@ -294,6 +300,7 @@ struct LirCallOp {
   std::string args_str;            // pre-formatted argument string (e.g. "i32 %t1, i32 %t2")
   std::vector<LirTypeRef> arg_type_refs;  // Mirrors argument type fragments when available
   std::optional<LirCallSignature> callee_signature;  // Structured callee signature when available.
+  std::vector<LirCallArg> structured_args;  // Generated argument facts; empty for raw compatibility.
 };
 
 // Typed binary arithmetic/bitwise/unary operation.

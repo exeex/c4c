@@ -61,6 +61,19 @@ inline std::vector<LirTypeRef> lir_call_arg_type_refs(
   return refs;
 }
 
+inline std::vector<LirCallArg> lir_call_structured_args(
+    const std::vector<OwnedLirTypedCallArg>& args) {
+  std::vector<LirCallArg> structured_args;
+  structured_args.reserve(args.size());
+  for (const auto& arg : args) {
+    structured_args.push_back(
+        {std::string(trim_lir_arg_text(arg.type)),
+         LirOperand(std::string(trim_lir_arg_text(arg.operand))),
+         arg.type_ref});
+  }
+  return structured_args;
+}
+
 inline LirCallOp make_lir_call_op_with_return_type_ref(
     std::string result,
     LirTypeRef return_type,
@@ -77,7 +90,8 @@ inline LirCallOp make_lir_call_op_with_return_type_ref(
                    formatted.callee_type_suffix,
                    formatted.args_str,
                    lir_call_arg_type_refs(formatted, args),
-                   std::move(callee_signature)};
+                   std::move(callee_signature),
+                   lir_call_structured_args(args)};
 }
 
 inline LirCallOp make_lir_call_op(std::string result,
