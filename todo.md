@@ -1,55 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/199_sema_legacy_compatibility_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Audit Struct-Def And Layout Handoff Compatibility
+Current Step ID: 6
+Current Step Title: Closure Ledger And Broader Sema Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 struct-def/layout handoff fencing is complete for this packet.
-`lookup_record_layout` now keeps the retained bare rendered
-`ConstEvalEnv::struct_defs` lookup fenced to legacy/no-metadata handoff: if a
-record TypeSpec carries complete owner metadata, a layout miss cannot recover
-through rendered `struct_defs`, even when no `struct_def_owner_index` was
-provided. The focused consteval metadata test now covers stale rendered
-`sizeof`/`alignof` recovery with no owner index, and the existing parser/HIR
-layout proofs remain green.
+Step 6 closure ledger is recorded for the Sema legacy compatibility retirement
+runbook.
+
+- Deleted routes: no production Sema compatibility route was fully deleted in
+  this runbook because each rendered bridge still had an explicit no-metadata,
+  diagnostic/display, source-payload, final-spelling, or HIR-boundary caller.
+- Converted authority: metadata-rich static-eval enum, consteval type-binding,
+  NTTP, consteval function, interpreter local-const, and struct-def/layout
+  handoff lookups now use structured key/TextId/owner metadata as semantic
+  authority. Complete structured misses fail closed before rendered maps can
+  recover stale names.
+- Fenced compatibility: retained rendered enum lookup, rendered
+  `same_rendered_type_name_compatibility`, rendered `TypeBindings` fallback,
+  forwarded/default NTTP rendered mirrors, rendered `consteval_fns`, rendered
+  local-const lookup, interpreter `by_name`, and rendered
+  `ConstEvalEnv::struct_defs` handoff are documented as legacy or deprecated
+  no-metadata compatibility with owner, limitation, and removal-condition
+  notes.
+- Intentionally retained routes: rendered names remain valid as display text,
+  diagnostics, source payload, ABI/final output spelling, direct no-metadata
+  opt-in bridges, and HIR/static-member boundary compatibility where upstream
+  callers do not yet provide complete structured metadata.
+- Proof coverage: focused packets covered structured success,
+  stale-rendered fail-closed behavior, and retained no-metadata compatibility
+  for enum, type-binding, NTTP, consteval function, local const, and
+  struct-def/layout routes.
+- Residual follow-up scope: parser syntax-carrier cleanup, broad HIR registry
+  or lowerer map cleanup, BIR, LIR, backend compatibility, and final output
+  spelling work remain separate initiatives and were not hidden inside this
+  Sema-owned runbook.
 
 ## Suggested Next
 
-Return to the supervisor for Step 5 acceptance review and the next lifecycle
-decision. No further executor packet is required for this Step 5 slice unless
-review asks for broader validation or an additional stale-layout harness.
+Return to the supervisor for Step 6 acceptance review and lifecycle decision.
+No further executor packet is required unless the broader proof fails or review
+finds a missing ledger item.
 
 ## Watchouts
 
-- The rendered enum bridge remains intentionally retained because HIR/static-
-  member no-metadata callers still opt in through the named compatibility API.
-- Type-binding and NTTP rendered names may remain as display/source payload or
-  explicit no-metadata compatibility; they must not act as semantic authority
-  after a complete structured miss.
-- Step 5 should stay Sema-owned. Do not broaden into parser, HIR lowerer, BIR,
-  LIR, or backend cleanup unless the supervisor assigns that scope.
-- Retained rendered struct-def/layout handoff must have nearby legacy or
-  deprecated owner, limitation, and removal-condition notes.
-- A metadata-rich layout miss must not recover through rendered
-  `ConstEvalEnv::struct_defs` compatibility, including the no-owner-index
-  handoff edge.
-- Retained local-const rendered lookup now has the requested nearby
-  legacy/deprecated notes; future edits should preserve the invariant that a
-  local TextId/key metadata miss sets `skip_local` and cannot fall through to
-  `local_consts` or interpreter `by_name`.
-- The retained `consteval_fns` rendered fallback is intentionally no-metadata
-  only; a metadata-rich miss must not fall through to it.
-- In this frontend TypeSpec shape there is no legacy `tag` field, so the new
-  consteval unit proof focuses on rejecting metadata-rich stale rendered layout
-  recovery rather than fabricating a positive rendered-tag layout carrier.
+- The ledger is intentionally Sema-owned. Parser, HIR, BIR, LIR, backend, and
+  final-spelling cleanup should be planned separately if needed.
+- Retained rendered bridges must stay no-metadata/display/source/final-spelling
+  only. Future metadata-rich misses must keep failing closed before rendered
+  recovery.
+- In this frontend TypeSpec shape there is no legacy `tag` field, so existing
+  proofs use key/TextId/owner metadata rather than fabricated rendered-tag
+  carriers.
 
 ## Proof
 
 Passed delegated proof:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_tests|cpp_hir_sema_consteval_type_utils_structured_metadata|cpp_hir_builtin_layout_query_(sizeof_type|alignof_type|alignof_expr))$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_tests|cpp_hir_.*structured_metadata|cpp_positive_sema_)"' > test_after.log 2>&1`
 
-Result: passed, 5/5 focused tests green. Proof log: `test_after.log`.
+Result: passed, 923/923 tests green. Proof log: `test_after.log`.
