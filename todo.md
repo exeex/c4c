@@ -1,61 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/189_direct_call_no_prototype_variadic_signature_mismatch.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Repair No-Prototype And Variadic Semantics
+Current Step ID: Step 3
+Current Step Title: Prove The Blocker Fix
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired direct-function structured callee signature metadata for C
-old-style/no-prototype declarations. `hir::FnAttr` now carries
-`unspecified_params` for C `f()` declarations, `Lowerer::lower_function`
-populates it without marking true `(void)` or variadic declarations, and
-`lir_call_signature_from_function` maps it to
-`LirCallSignature::has_unspecified_params` without inventing fixed parameter
-mirrors. The verifier remains strict for prototype and variadic fixed
-parameters.
+Step 3 proved the committed idea 189 direct-call blocker fix from Step 2 with
+the delegated full-suite command. The build was up to date and the enabled
+CTest suite passed completely.
 
-`tests/frontend/frontend_lir_call_type_ref_test.cpp` now covers a direct
-`int no_proto(); no_proto(value)` call that must carry
-`has_unspecified_params=true`, plus a direct `int no_args(void); no_args()`
-call that must keep `has_void_param_list=true` and must not be modeled as
-unspecified. Existing direct and indirect variadic checks remain intact.
+The earlier Step 2 blocker subset also passed: `100% tests passed, 10/10 tests
+passed` for
+`frontend_lir_call_type_ref`,
+`clang_c_external_C_drs_dr206_c`,
+`llvm_gcc_c_torture_src_20010605_2_c`,
+`llvm_gcc_c_torture_src_20051012_1_c`,
+`llvm_gcc_c_torture_src_920501_1_c`,
+`llvm_gcc_c_torture_src_921202_1_c`,
+`llvm_gcc_c_torture_src_921208_2_c`,
+`llvm_gcc_c_torture_src_pr28289_c`,
+`llvm_gcc_c_torture_src_pr34982_c`, and
+`llvm_gcc_c_torture_src_va_arg_2_c`.
 
 ## Suggested Next
 
-Supervisor should decide whether Step 2 is commit-ready or whether the next
-packet should extend this repair to any remaining known no-prototype external
-C failures from the parked milestone list.
+Supervisor should decide whether this Step 3 proof completes the active
+runbook slice and whether to route lifecycle closure/deactivation through the
+plan owner.
 
 ## Watchouts
 
 - Idea 188 is parked, not closed. Return to its milestone gate after this
   blocker is fixed.
-- The 9 known failing tests are:
-  `clang_c_external_C_drs_dr206_c`,
-  `llvm_gcc_c_torture_src_20010605_2_c`,
-  `llvm_gcc_c_torture_src_20051012_1_c`,
-  `llvm_gcc_c_torture_src_920501_1_c`,
-  `llvm_gcc_c_torture_src_921202_1_c`,
-  `llvm_gcc_c_torture_src_921208_2_c`,
-  `llvm_gcc_c_torture_src_pr28289_c`,
-  `llvm_gcc_c_torture_src_pr34982_c`, and
-  `llvm_gcc_c_torture_src_va_arg_2_c`.
 - Do not downgrade expectations, suppress signature verification broadly, or
   replace structured metadata with rendered callee text.
-- The delegated proof shows `va-arg-2.c` now passes after repairing the
-  preceding no-prototype `strlen(format)` direct-call metadata.
-- This slice did not add a broad verifier relaxation and did not rewrite
-  expectation labels.
+- Remaining risk: this packet only recorded validation and did not inspect new
+  implementation behavior beyond the delegated full-suite proof.
 
 ## Proof
 
 Ran exactly:
 
-`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(frontend_lir_call_type_ref|clang_c_external_C_drs_dr206_c|llvm_gcc_c_torture_src_20010605_2_c|llvm_gcc_c_torture_src_20051012_1_c|llvm_gcc_c_torture_src_920501_1_c|llvm_gcc_c_torture_src_921202_1_c|llvm_gcc_c_torture_src_921208_2_c|llvm_gcc_c_torture_src_pr28289_c|llvm_gcc_c_torture_src_pr34982_c|llvm_gcc_c_torture_src_va_arg_2_c)$' | tee test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure | tee test_after.log`
 
-Result: passed, 100% tests passed, 10/10 tests passed.
+Result: passed, `ninja: no work to do`, then `100% tests passed, 0 tests
+failed out of 3137`.
 
 Proof log: `test_after.log`.
