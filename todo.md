@@ -8,39 +8,27 @@ Current Step Title: Convert Type-Binding And NTTP Bridges
 
 ## Just Finished
 
-Step 2 fenced the static-eval enum compatibility route in
-`StaticEvalIntEnumLookupInput` and `static_eval_lookup_enum`.
+Step 3 fenced the first type-binding bridge slice without broad HIR cleanup.
 
-Rendered enum lookup is now documented as legacy/no-metadata compatibility
-owned by Sema static-eval enum evaluation for older HIR/static-member callers.
-The comments record the limitation and removal condition: complete structured
-key or TextId misses fail closed before rendered lookup, and the rendered
-bridge can be removed once every static-eval enum caller passes structured enum
-metadata. The focused metadata test also proves direct named opt-in through
-`StaticEvalIntEnumLookupInput::with_rendered_enum_compatibility` remains
-available for no-metadata callers.
+`same_rendered_type_name_compatibility` is now explicitly documented as
+legacy/no-metadata compatibility owned by Sema type-binding equivalence, with
+its limitation and removal condition recorded. The final consteval rendered
+`TypeBindings` fallback in `resolve_type` now has matching owner, limitation,
+and removal-condition notes: complete key/TextId misses and name-mirror misses
+fail closed before the rendered map can be consulted.
 
-Commit `515cedaed` completed the Step 2 static-eval enum compatibility fence.
+Focused stale-rendered coverage already existed in
+`cpp_hir_sema_consteval_type_utils_structured_metadata` for complete
+structured-key and TextId type-binding misses, name mirrors not acting as
+ordinary lookup authority, and direct metadata authority winning over rendered
+maps, so this packet did not add testcase-shaped coverage.
 
 ## Suggested Next
 
-Execute Step 3: convert or hard-fence Sema type-binding and NTTP compatibility
-bridges so metadata-rich callers cannot recover semantic identity through
-rendered-name maps after complete structured misses.
-
-First bounded packet:
-- Inspect `same_rendered_type_name_compatibility`, rendered consteval
-  type-binding substitution bridges, rendered NTTP output mirrors,
-  `nttp_bindings`, `type_binding_text_ids_by_name`, and
-  `type_binding_keys_by_name`.
-- Pick one narrow Sema-owned route where structured binding keys, domain-scoped
-  `TextId` carriers, or owner-aware template metadata are already available.
-- Convert the metadata-rich path to structured authority or fence retained
-  rendered lookup as explicit legacy/no-metadata compatibility with owner,
-  limitation, and removal condition.
-- Add stale-rendered type-binding or NTTP proof for the converted/fenced route.
-- Do not expand into broad HIR lowerer cleanup; record HIR-only residuals as
-  follow-up scope.
+Continue Step 3 with the next bounded Sema-owned type-binding or NTTP bridge:
+audit `record_type_binding_mirrors`, `record_nttp_binding_mirrors`, and
+`bind_consteval_call_env` output mirrors for any remaining rendered-map
+authority after complete metadata misses, without broad HIR lowerer cleanup.
 
 ## Watchouts
 
@@ -49,12 +37,16 @@ First bounded packet:
 - Type-binding and NTTP rendered names may remain as display/source payload or
   explicit no-metadata compatibility; they must not act as semantic authority
   after a complete structured miss.
+- `TypeSpec` in this build has no legacy `tag` field, so tests cannot
+  manufacture a rendered typedef display tag through
+  `set_legacy_tag_if_present`; rely on existing key/TextId stale-rendered
+  coverage for this ABI and avoid adding impossible rendered-tag assertions.
 - Do not broaden Step 3 into HIR lowerer cleanup unless the supervisor assigns
   that scope; the current plan is Sema-owned compatibility retirement.
 
 ## Proof
 
 Passed delegated proof:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^cpp_hir_sema_consteval_type_utils_structured_metadata$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(cpp_hir_sema_consteval_type_utils_structured_metadata|frontend_parser_tests)$"' > test_after.log 2>&1`
 
-Result: passed, 1/1 focused test green. Proof log: `test_after.log`.
+Result: passed, 2/2 focused tests green. Proof log: `test_after.log`.

@@ -344,8 +344,11 @@ TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
 
   if (has_type_binding_metadata_channel(env)) return ts;
 
-  // Final no-metadata fallback for legacy typedef TypeSpecs. Once any binding
-  // metadata channel exists, rendered strings above are not reopened.
+  // Owner: consteval type-substitution compatibility for legacy no-metadata
+  // typedef TypeSpecs. Limitation: this rendered map is consulted only when no
+  // binding metadata channel exists; complete key/TextId misses and name-mirror
+  // misses above fail closed. Removal condition: all typedef substitutions
+  // carry TextId/key metadata and the rendered TypeBindings map can be deleted.
   if (!compatibility_tag || !compatibility_tag[0] || !env.type_bindings) return ts;
   const std::string name = compatibility_tag;
   auto it = env.type_bindings->find(name);

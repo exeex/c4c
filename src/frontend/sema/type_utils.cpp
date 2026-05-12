@@ -621,8 +621,11 @@ bool same_available_text_name_metadata(const TypeSpec& lhs,
 
 bool same_rendered_type_name_compatibility(const TypeSpec& lhs,
                                            const TypeSpec& rhs) {
-  // Rendered-name equality is the last compatibility path for carriers without
-  // structured metadata. It must not be treated as semantic record identity.
+  // Owner: Sema type-binding equivalence for legacy no-metadata TypeSpec
+  // carriers. Limitation: rendered-name equality is the last compatibility
+  // path only when both sides lack structured/TextId identity; it must not be
+  // treated as semantic record identity. Removal condition: all type-binding
+  // comparison callers carry template-param, record-def, or TextId metadata.
   if (has_any_text_name_metadata(lhs) || has_any_text_name_metadata(rhs)) {
     return false;
   }
