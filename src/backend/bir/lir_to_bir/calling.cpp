@@ -559,6 +559,36 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
                                         type_decls,
                                         &structured_layouts_);
   };
+  const auto lower_byval_call_arg_layout =
+      [&](std::size_t index, std::string_view legacy_type_text)
+          -> std::optional<AggregateTypeLayout> {
+    if (call.arg_type_refs.empty()) {
+      return lower_byval_aggregate_layout(legacy_type_text, type_decls, &structured_layouts_);
+    }
+    if (index >= call.arg_type_refs.size()) {
+      return std::nullopt;
+    }
+    const auto& type_ref = call.arg_type_refs[index];
+    if (!type_ref.has_struct_name_id()) {
+      return std::nullopt;
+    }
+    const std::string_view structured_name =
+        context_.lir_module.struct_names.spelling(type_ref.struct_name_id());
+    if (structured_name.empty()) {
+      return std::nullopt;
+    }
+    const auto layout_it = structured_layouts_.find(std::string(structured_name));
+    if (layout_it == structured_layouts_.end()) {
+      return std::nullopt;
+    }
+    const auto& layout = layout_it->second.structured_layout;
+    if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
+         layout.kind != AggregateTypeLayout::Kind::Array) ||
+        layout.size_bytes == 0 || layout.align_bytes == 0) {
+      return std::nullopt;
+    }
+    return layout;
+  };
 
   const auto maybe_resolve_direct_calloc_pointer_address =
       [&](std::string_view symbol_name,
@@ -686,9 +716,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             lower_scalar_or_function_pointer_type(parsed_call->typed_call.param_types[index]);
         if (!arg_type.has_value()) {
           const auto aggregate_layout =
-              lower_byval_aggregate_layout(parsed_call->typed_call.param_types[index],
-                                           type_decls,
-                                           &structured_layouts_);
+              lower_byval_call_arg_layout(index, parsed_call->typed_call.param_types[index]);
           if (!aggregate_layout.has_value()) {
             return fail_call_family(call_family);
           }
@@ -777,9 +805,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           lower_scalar_or_function_pointer_type(parsed_call->param_types[index]);
       if (!arg_type.has_value()) {
         const auto aggregate_layout =
-            lower_byval_aggregate_layout(parsed_call->param_types[index],
-                                         type_decls,
-                                         &structured_layouts_);
+            lower_byval_call_arg_layout(index, parsed_call->param_types[index]);
         if (!aggregate_layout.has_value()) {
           return fail_call_family(call_family);
         }
