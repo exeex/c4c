@@ -1317,6 +1317,77 @@ void test_hir_template_seed_and_retry_reject_rendered_fallback_after_decl_miss()
               "deferred retry should not recover through rendered spelling after a structured declaration miss");
 }
 
+void test_hir_generated_call_lowering_rejects_rendered_fallback_after_decl_miss() {
+  c4c::TextTable texts;
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node rendered_template = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "stale_template", texts.intern("stale_template"));
+  static const char* rendered_template_params[] = {"T"};
+  rendered_template.n_template_params = 1;
+  rendered_template.template_param_names = rendered_template_params;
+  lowerer.ct_state_->register_template_def("stale_template", &rendered_template);
+
+  c4c::Node missing_primary = make_compile_time_state_registry_node(
+      c4c::NK_FUNCTION, "missing_primary", texts.intern("missing_primary"));
+  missing_primary.n_template_params = 1;
+  lowerer.function_decl_nodes_.emplace("stale_template", &missing_primary);
+
+  c4c::TypeSpec int_type;
+  int_type.base = c4c::TB_INT;
+
+  c4c::Node explicit_ref{};
+  explicit_ref.kind = c4c::NK_VAR;
+  explicit_ref.name = "stale_template";
+  explicit_ref.unqualified_name = "stale_template";
+  explicit_ref.n_template_args = 1;
+  explicit_ref.has_template_args = true;
+  explicit_ref.template_arg_types = &int_type;
+  explicit_ref.type = int_type;
+
+  c4c::Node explicit_call{};
+  explicit_call.kind = c4c::NK_CALL;
+  explicit_call.left = &explicit_ref;
+  explicit_call.type = int_type;
+
+  bool explicit_rejected = false;
+  try {
+    (void)lowerer.lower_call_expr(nullptr, &explicit_call);
+  } catch (const std::runtime_error&) {
+    explicit_rejected = true;
+  }
+  expect_true(explicit_rejected,
+              "explicit generated-call lowering should fail closed after a structured declaration miss");
+
+  c4c::Node deduced_ref{};
+  deduced_ref.kind = c4c::NK_VAR;
+  deduced_ref.name = "stale_template";
+  deduced_ref.unqualified_name = "stale_template";
+  deduced_ref.type = int_type;
+
+  c4c::Node deduced_call{};
+  deduced_call.kind = c4c::NK_CALL;
+  deduced_call.left = &deduced_ref;
+  deduced_call.type = int_type;
+
+  c4c::hir::Lowerer::DeducedTemplateCall deduced;
+  deduced.mangled_name = "stale_template_i";
+  deduced.bindings["T"] = int_type;
+  lowerer.deduced_template_calls_.emplace(&deduced_call, std::move(deduced));
+
+  bool deduced_rejected = false;
+  try {
+    (void)lowerer.lower_call_expr(nullptr, &deduced_call);
+  } catch (const std::runtime_error&) {
+    deduced_rejected = true;
+  }
+  expect_true(deduced_rejected,
+              "deduced generated-call lowering should fail closed after a structured declaration miss");
+}
+
 void test_hir_consteval_call_metadata_preserves_text_ids_for_function_names() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 consteval int fold(int value, int scale) { return value * scale; }
@@ -7322,6 +7393,7 @@ int main() {
   test_hir_template_calls_preserve_text_ids_for_source_template_names();
   test_hir_template_call_replay_rejects_rendered_fallback_after_primary_miss();
   test_hir_template_seed_and_retry_reject_rendered_fallback_after_decl_miss();
+  test_hir_generated_call_lowering_rejects_rendered_fallback_after_decl_miss();
   test_hir_consteval_call_metadata_preserves_text_ids_for_function_names();
   test_hir_member_exprs_preserve_text_ids_for_field_names();
   test_hir_global_init_designators_preserve_text_ids_for_field_names();

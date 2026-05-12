@@ -10,44 +10,42 @@ Current Step Title: Fence Deduction, Collection, Seed, And Retry Paths
 
 Step 3: Fence Deduction, Collection, Seed, And Retry Paths.
 
-Status note: this packet fixed the `frontend_hir_lookup_tests` segfault
-introduced during the structured template registry slices without weakening
-the rendered-fallback fences. Step 3 remains open because rendered
-generated-call authority in `src/frontend/hir/impl/expr/call.cpp` still needs
-the focused fence recorded below before Step 4 closure evidence.
+Status note: this packet finished the remaining generated-call lowering fence
+in `src/frontend/hir/impl/expr/call.cpp`. Step 3 is closure-complete for the
+known hot files; Step 4 can now record final closure evidence for idea 195's
+HIR template-registry blocker.
 
 Changed files:
 
-- `src/frontend/hir/impl/compile_time/engine.cpp`
+- `src/frontend/hir/impl/expr/call.cpp`
+- `tests/frontend/frontend_hir_tests.cpp`
 
 Completed work:
 
-- Copied `TemplateCallInfo` and the target callee name out of `module.expr_pool`
-  before invoking deferred instantiation in `TemplateInstantiationStep`.
-- Removed the dangling-reference path where deferred instantiation could append
-  HIR expressions, reallocate `module.expr_pool`, and then reuse invalid
-  template-call metadata while recording the deferred instance.
-- Preserved the structured-primary precheck and complete-miss behavior; no
-  rendered fallback fence was reopened.
+- Added a local `TemplateDefLookup` path for generated-call lowering that
+  consults `function_decl_nodes_` first and calls structured
+  `find_template_def(declaration, rendered_name)` whenever a declaration
+  carrier exists.
+- Replaced the explicit-template branch's rendered
+  `has_template_def(n->left->name)` / `find_template_def(n->left->name)`
+  authority with the structured lookup result. A complete structured miss now
+  throws the existing no-viable-template diagnostic instead of falling through
+  to rendered spelling.
+- Replaced the deduced-template branch's rendered
+  `find_template_def(n->left->name)` authority with the same structured lookup
+  and fail-closed behavior.
+- Preserved rendered lookup only for no-declaration compatibility, including
+  the existing builtin `"forward"` bridge.
+- Added focused HIR coverage for explicit and deduced generated-call lowering
+  with stale rendered spelling plus a missing structured declaration carrier.
 
 ## Suggested Next
 
-Continue Step 3 with a focused generated-call lowering fence in
-`src/frontend/hir/impl/expr/call.cpp` before any Step 4 closure evidence.
-
-The remaining rendered authority sites are:
-
-- `ct_state_->has_template_def(n->left->name)`
-- `ct_state_->find_template_def(n->left->name)` in the explicit
-  template-call branch
-- `ct_state_->find_template_def(n->left->name)` in the deduced-template
-  branch
+Proceed to Step 4 closure evidence for
+`ideas/open/201_hir_template_registry_structured_generated_paths.md`.
 
 ## Watchouts
 
-- The regression was a metadata lifetime bug, not a lookup-policy failure:
-  `TemplateInstantiationStep` must not hold references into `module.expr_pool`
-  across `instantiate_fn(...)` because the callback can append expressions.
 - Retained compatibility: `src/frontend/hir/hir_build.cpp` still permits
   rendered `find_template_def(name)` only when `function_decl_nodes_` has no
   declaration carrier for the template name. Owner: HIR build collection/seed
@@ -69,9 +67,9 @@ The remaining rendered authority sites are:
 - Retained compatibility from Step 2: the builtin `"forward"` helper remains a
   rendered no-metadata bridge until that generated helper has a structured
   declaration carrier.
-- Closure is not ready while `src/frontend/hir/impl/expr/call.cpp` can still
-  use rendered generated-call lookup as semantic authority after structured
-  identity is available.
+- No known metadata-rich generated template-registry path in the inventoried
+  hot files still recovers semantic authority through rendered
+  `find_template_def(name)` after structured identity is available and missed.
 
 ## Proof
 

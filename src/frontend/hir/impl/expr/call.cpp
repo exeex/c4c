@@ -32,6 +32,40 @@ TypeSpec direct_call_callee_type(const Module& mod, const DeclRef& dr,
   return fallback;
 }
 
+struct TemplateDefLookup {
+  const Node* declaration = nullptr;
+  const Node* def = nullptr;
+  bool has_structured_declaration = false;
+};
+
+TemplateDefLookup find_template_def_for_call_var(
+    const CompileTimeState* ct_state,
+    const std::unordered_map<std::string, const Node*>& function_decl_nodes,
+    const Node* call_var) {
+  TemplateDefLookup result;
+  if (!ct_state || !call_var || !call_var->name) return result;
+  auto decl_it = function_decl_nodes.find(call_var->name);
+  if (decl_it != function_decl_nodes.end() && decl_it->second) {
+    result.declaration = decl_it->second;
+    result.has_structured_declaration = true;
+    result.def = ct_state->find_template_def(result.declaration, call_var->name);
+    return result;
+  }
+  result.def = ct_state->find_template_def(call_var->name);
+  return result;
+}
+
+bool has_consteval_template_for_call_var(
+    const CompileTimeState* ct_state,
+    const TemplateDefLookup& template_lookup,
+    const Node* call_var) {
+  if (!ct_state || !call_var || !call_var->name) return false;
+  if (template_lookup.has_structured_declaration) {
+    return ct_state->has_consteval_def(template_lookup.declaration, call_var->name);
+  }
+  return ct_state->has_consteval_def(call_var->name);
+}
+
 void record_nttp_text_binding(const Node* fn_def,
                               int param_index,
                               long long value,
@@ -592,10 +626,29 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
   }
 
   std::string resolved_callee_name;
-  if (n->left && n->left->kind == NK_VAR && n->left->name &&
-      (n->left->n_template_args > 0 || n->left->has_template_args) &&
-      ct_state_->has_template_def(n->left->name) &&
-      !ct_state_->has_consteval_def(n->left->name)) {
+  const bool has_template_call_syntax =
+      n->left && n->left->kind == NK_VAR && n->left->name &&
+      (n->left->n_template_args > 0 || n->left->has_template_args);
+  const TemplateDefLookup explicit_template_lookup =
+      has_template_call_syntax
+          ? find_template_def_for_call_var(
+                ct_state_.get(), function_decl_nodes_, n->left)
+          : TemplateDefLookup{};
+  const bool explicit_consteval_template =
+      has_template_call_syntax
+          ? has_consteval_template_for_call_var(
+                ct_state_.get(), explicit_template_lookup, n->left)
+          : false;
+  if (has_template_call_syntax &&
+      explicit_template_lookup.has_structured_declaration &&
+      !explicit_template_lookup.def && !explicit_consteval_template) {
+    std::string diag = "error: no viable template instantiation for call to '";
+    diag += n->left->name;
+    diag += "'";
+    throw std::runtime_error(diag);
+  }
+  if (has_template_call_syntax && explicit_template_lookup.def &&
+      !explicit_consteval_template) {
     const TypeBindings* enc = (ctx && !ctx->tpl_bindings.empty())
                                   ? &ctx->tpl_bindings : nullptr;
     const NttpBindings* enc_nttp = (ctx && !ctx->nttp_bindings.empty())
@@ -604,7 +657,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
         (ctx && !ctx->nttp_bindings_by_text.empty())
             ? &ctx->nttp_bindings_by_text
             : nullptr;
-    const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
+    const Node* tpl_fn = explicit_template_lookup.def;
     TypeBindings bindings;
     NttpBindings nttp_bindings;
     HirTemplateTypeBindings structured_bindings;
@@ -671,13 +724,23 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
   } else if (auto ded_it = deduced_template_calls_.find(n);
              ded_it != deduced_template_calls_.end()) {
     resolved_callee_name = ded_it->second.mangled_name;
+    const TemplateDefLookup deduced_template_lookup =
+        find_template_def_for_call_var(
+            ct_state_.get(), function_decl_nodes_, n->left);
+    if (deduced_template_lookup.has_structured_declaration &&
+        !deduced_template_lookup.def) {
+      std::string diag = "error: no viable template instantiation for call to '";
+      diag += n->left->name;
+      diag += "'";
+      throw std::runtime_error(diag);
+    }
     DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
     c.callee = append_expr(n->left, dr, direct_call_callee_type(*module_, dr, n->left->type));
     TemplateCallInfo tci;
     tci.source_template = n->left->name;
     tci.source_template_text_id =
         make_text_id(tci.source_template, module_ ? module_->link_name_texts.get() : nullptr);
-    const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
+    const Node* tpl_fn = deduced_template_lookup.def;
     tci.primary_template_decl = tpl_fn;
     if (tpl_fn) {
       for (const auto& pname : get_template_param_order(
