@@ -80,7 +80,12 @@ int expect_structured_incoming_byval_param_materializes_from_type_ref();
 int expect_incoming_byval_param_with_missing_struct_layout_fails_closed();
 int expect_incoming_byval_param_with_mismatched_struct_id_fails_closed();
 int expect_incoming_byval_param_with_opaque_struct_layout_fails_closed();
-int expect_incoming_byval_param_without_struct_id_uses_legacy_layout();
+int expect_metadata_rich_incoming_byval_param_without_struct_id_fails_closed();
+int expect_non_aarch64_metadata_rich_incoming_byval_param_without_struct_id_uses_legacy_layout();
+int expect_legacy_incoming_byval_param_without_signature_type_ref_uses_legacy_layout();
+int expect_structured_signature_return_materializes_sret_from_type_ref();
+int expect_metadata_rich_signature_return_without_struct_id_fails_closed();
+int expect_signature_return_with_mismatched_struct_id_fails_closed();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -2077,9 +2082,11 @@ int expect_metadata_rich_byval_call_arg_mismatch_fails_closed() {
   return 0;
 }
 
-LirModule make_incoming_byval_param_boundary_module(lir::LirTypeRef signature_param_type_ref) {
+LirModule make_incoming_byval_param_boundary_module(
+    lir::LirTypeRef signature_param_type_ref,
+    std::string_view target_triple = "aarch64-unknown-linux-gnu") {
   LirModule module;
-  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.target_profile = c4c::target_profile_from_triple(target_triple);
   module.link_name_texts = std::make_shared<c4c::TextTable>();
   module.link_names.attach_text_table(module.link_name_texts.get());
   module.struct_names.attach_text_table(module.link_name_texts.get());
@@ -2111,6 +2118,13 @@ LirModule make_incoming_byval_param_boundary_module(lir::LirTypeRef signature_pa
   };
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_legacy_incoming_byval_param_boundary_module() {
+  LirModule module = make_incoming_byval_param_boundary_module(lir::LirTypeRef(""));
+  module.functions.front().signature_params.clear();
+  module.functions.front().signature_param_type_refs.clear();
   return module;
 }
 
@@ -2172,8 +2186,8 @@ int expect_incoming_byval_param_with_missing_struct_layout_fails_closed() {
   }
   if (!contains_note(result.notes,
                      "function",
-                     "failed in local-memory semantic family")) {
-    return fail("missing local-memory failure for incoming byval parameter without structured layout");
+                     "failed in function-signature semantic family")) {
+    return fail("missing function-signature failure for incoming byval parameter without structured layout");
   }
   return 0;
 }
@@ -2197,8 +2211,8 @@ int expect_incoming_byval_param_with_mismatched_struct_id_fails_closed() {
   }
   if (!contains_note(result.notes,
                      "function",
-                     "failed in local-memory semantic family")) {
-    return fail("missing local-memory failure for incoming byval parameter with mismatched StructNameId");
+                     "failed in function-signature semantic family")) {
+    return fail("missing function-signature failure for incoming byval parameter with mismatched StructNameId");
   }
   return 0;
 }
@@ -2219,26 +2233,144 @@ int expect_incoming_byval_param_with_opaque_struct_layout_fails_closed() {
   }
   if (!contains_note(result.notes,
                      "function",
-                     "failed in local-memory semantic family")) {
-    return fail("missing local-memory failure for incoming byval parameter with opaque structured layout");
+                     "failed in function-signature semantic family")) {
+    return fail("missing function-signature failure for incoming byval parameter with opaque structured layout");
   }
   return 0;
 }
 
-int expect_incoming_byval_param_without_struct_id_uses_legacy_layout() {
-  // Legacy no-ID compatibility remains fenced for hand-built/generated routes
-  // that carry rendered byval text but no structured identity metadata.
+int expect_metadata_rich_incoming_byval_param_without_struct_id_fails_closed() {
   auto result = try_lower_to_bir_with_options(
-      make_incoming_byval_param_boundary_module(
-          lir::LirTypeRef("ptr byval(%struct.Payload) align 8")),
+      make_incoming_byval_param_boundary_module(lir::LirTypeRef("ptr byval(%struct.Payload)")),
+      BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("metadata-rich incoming byval parameter without StructNameId should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in function-signature semantic family")) {
+    return fail("missing function-signature failure for incoming byval parameter without StructNameId");
+  }
+  return 0;
+}
+
+int expect_non_aarch64_metadata_rich_incoming_byval_param_without_struct_id_uses_legacy_layout() {
+  auto result = try_lower_to_bir_with_options(
+      make_incoming_byval_param_boundary_module(lir::LirTypeRef("ptr byval(%struct.Payload)"),
+                                                "x86_64-unknown-linux-gnu"),
       BirLoweringOptions{});
   if (!result.module.has_value()) {
-    return fail("incoming byval parameter without StructNameId should preserve legacy text layout");
+    return fail("non-AArch64 incoming byval parameter without StructNameId should keep legacy layout compatibility");
   }
   if (result.module->functions.empty() || result.module->functions.front().params.empty() ||
       !result.module->functions.front().params.front().is_byval ||
       result.module->functions.front().params.front().size_bytes != 8) {
-    return fail("incoming byval parameter without StructNameId did not lower through legacy layout");
+    return fail("non-AArch64 metadata-rich incoming byval parameter did not use legacy layout");
+  }
+  return 0;
+}
+
+int expect_legacy_incoming_byval_param_without_signature_type_ref_uses_legacy_layout() {
+  auto result = try_lower_to_bir_with_options(make_legacy_incoming_byval_param_boundary_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("legacy incoming byval parameter without signature refs should use legacy text layout");
+  }
+  if (result.module->functions.empty() || result.module->functions.front().params.empty() ||
+      !result.module->functions.front().params.front().is_byval ||
+      result.module->functions.front().params.front().size_bytes != 8) {
+    return fail("legacy incoming byval parameter did not lower through legacy layout");
+  }
+  return 0;
+}
+
+LirModule make_signature_return_boundary_module(lir::LirTypeRef signature_return_type_ref) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.Payload = type { i32, i32 }");
+
+  const c4c::StructNameId payload_id = module.struct_names.intern("%struct.Payload");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = payload_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+
+  LirFunction function;
+  function.name = "signature_return_boundary";
+  function.signature_text = "define %struct.Payload @signature_return_boundary()";
+  function.signature_return_type_ref = std::move(signature_return_type_ref);
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "%struct.Payload",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_structured_signature_return_materializes_sret_from_type_ref() {
+  LirModule module = make_signature_return_boundary_module(lir::LirTypeRef(""));
+  const c4c::StructNameId payload_id = module.struct_names.find("%struct.Payload");
+  module.functions.front().signature_return_type_ref =
+      lir::LirTypeRef::struct_type("%struct.Payload", payload_id);
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("metadata-rich aggregate return should lower through StructNameId");
+  }
+  if (result.module->functions.empty() || result.module->functions.front().params.empty()) {
+    return fail("aggregate return lowering did not materialize an sret parameter");
+  }
+  const auto& function = result.module->functions.front();
+  if (function.return_type != TypeKind::Void || !function.params.front().is_sret ||
+      function.params.front().size_bytes != 8 || function.params.front().align_bytes != 4) {
+    return fail("aggregate return ABI metadata did not use structured layout");
+  }
+  return 0;
+}
+
+int expect_metadata_rich_signature_return_without_struct_id_fails_closed() {
+  auto result = try_lower_to_bir_with_options(
+      make_signature_return_boundary_module(lir::LirTypeRef("%struct.Payload")),
+      BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("metadata-rich aggregate return without StructNameId should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in function-signature semantic family")) {
+    return fail("missing function-signature failure for aggregate return without StructNameId");
+  }
+  return 0;
+}
+
+int expect_signature_return_with_mismatched_struct_id_fails_closed() {
+  LirModule module = make_signature_return_boundary_module(lir::LirTypeRef(""));
+  module.type_decls.push_back("%struct.OtherPayload = type { i32, i32 }");
+  const c4c::StructNameId other_payload_id = module.struct_names.intern("%struct.OtherPayload");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = other_payload_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+  module.functions.front().signature_return_type_ref =
+      lir::LirTypeRef::struct_type("%struct.Payload", other_payload_id);
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("aggregate return with mismatched StructNameId should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in function-signature semantic family")) {
+    return fail("missing function-signature failure for aggregate return with mismatched StructNameId");
   }
   return 0;
 }
@@ -4072,10 +4204,40 @@ int main() {
     return opaque_structured_incoming_byval_status;
   }
 
-  if (const int missing_incoming_byval_metadata_status =
-          expect_incoming_byval_param_without_struct_id_uses_legacy_layout();
-      missing_incoming_byval_metadata_status != 0) {
-    return missing_incoming_byval_metadata_status;
+  if (const int missing_incoming_byval_id_status =
+          expect_metadata_rich_incoming_byval_param_without_struct_id_fails_closed();
+      missing_incoming_byval_id_status != 0) {
+    return missing_incoming_byval_id_status;
+  }
+
+  if (const int non_aarch64_missing_incoming_byval_id_status =
+          expect_non_aarch64_metadata_rich_incoming_byval_param_without_struct_id_uses_legacy_layout();
+      non_aarch64_missing_incoming_byval_id_status != 0) {
+    return non_aarch64_missing_incoming_byval_id_status;
+  }
+
+  if (const int legacy_incoming_byval_status =
+          expect_legacy_incoming_byval_param_without_signature_type_ref_uses_legacy_layout();
+      legacy_incoming_byval_status != 0) {
+    return legacy_incoming_byval_status;
+  }
+
+  if (const int structured_signature_return_status =
+          expect_structured_signature_return_materializes_sret_from_type_ref();
+      structured_signature_return_status != 0) {
+    return structured_signature_return_status;
+  }
+
+  if (const int missing_signature_return_id_status =
+          expect_metadata_rich_signature_return_without_struct_id_fails_closed();
+      missing_signature_return_id_status != 0) {
+    return missing_signature_return_id_status;
+  }
+
+  if (const int mismatched_signature_return_id_status =
+          expect_signature_return_with_mismatched_struct_id_fails_closed();
+      mismatched_signature_return_id_status != 0) {
+    return mismatched_signature_return_id_status;
   }
 
   if (const int indirect_call_status = expect_failure_notes(

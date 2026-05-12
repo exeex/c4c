@@ -561,7 +561,8 @@ class BirFunctionLowerer {
       std::string_view type_text,
       const TypeDeclMap& type_decls,
       const c4c::TargetProfile& target_profile,
-      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
+      const c4c::codegen::lir::LirTypeRef* type_ref = nullptr);
   std::optional<LoweredReturnInfo> infer_function_return_info() const;
   static std::optional<LoweredReturnInfo> lower_signature_return_info(
       const c4c::codegen::lir::LirFunction& function,

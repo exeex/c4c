@@ -18,6 +18,14 @@ std::string read_emit_source() {
   return out.str();
 }
 
+std::string read_call_abi_source() {
+  std::ifstream input(std::string(C4C_SOURCE_DIR) +
+                      "/src/backend/bir/lir_to_bir/call_abi.cpp");
+  std::ostringstream out;
+  out << input.rdbuf();
+  return out.str();
+}
+
 bool contains(const std::string& text, const std::string& needle) {
   return text.find(needle) != std::string::npos;
 }
@@ -58,6 +66,22 @@ int check_structured_helpers_cover_signature_authorities() {
   return 0;
 }
 
+int check_signature_abi_uses_structured_aggregate_refs() {
+  const std::string source = read_call_abi_source();
+  if (source.empty()) {
+    return fail("could not read call_abi.cpp");
+  }
+
+  if (!contains(source, "lookup_backend_aggregate_type_ref_layout_result") ||
+      !contains(source, "type_ref->has_struct_name_id()") ||
+      !contains(source, "TargetArch::Aarch64") ||
+      !contains(source, "&*function.signature_return_type_ref") ||
+      !contains(source, "function.signature_param_type_refs[index]")) {
+    return fail("signature ABI lowering does not require structured aggregate type refs");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -65,6 +89,9 @@ int main() {
     return status;
   }
   if (const int status = check_structured_helpers_cover_signature_authorities(); status != 0) {
+    return status;
+  }
+  if (const int status = check_signature_abi_uses_structured_aggregate_refs(); status != 0) {
     return status;
   }
   return 0;
