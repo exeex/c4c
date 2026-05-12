@@ -1,52 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/188_lir_bir_freeze_closure_gate.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Build The Freeze Ledger
+Current Step ID: Step 2
+Current Step Title: Audit For Remaining High-Risk Generated-Path Text Authority
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 by building the LIR/BIR freeze ledger from closed ideas 183, 184, 185, 186, 187, 189, 190, 191, and 194.
+Completed `plan.md` Step 2 by auditing the freeze ledger's uncertain generated-path string-authority surfaces against current code. No high-risk generated-path string authority remains unclassified, and no narrow blocker idea is needed before milestone validation.
 
-Freeze ledger:
+Audit classifications:
 
-- Idea 183, backend freeze authority audit: classified the relevant LIR/BIR identity domains before backend restart. Covered direct-call signatures, direct symbol identity, global/type declaration compatibility tables, aggregate layout facts, memory provenance global handles, and prealloc route-local names. Retained strings were classified as display/output, diagnostics, route-local handles, raw/no-metadata compatibility, or semantic authority requiring follow-up.
-- Idea 184, direct-call signature metadata: repaired the generated direct-call signature domain. Metadata-rich direct calls now use structured callee/function signature facts for return type, parameter types, variadic state, byval, sret, and aggregate layout. Rendered signature text remains acceptable only as compatibility/display spelling for explicit no-metadata paths.
-- Idea 185, global/type declaration compatibility fence: repaired/fenced the selected generated aggregate-global type/layout domain. Structured layout identity, `LirTypeRef`, and `StructNameId` own the selected generated path; string-keyed `GlobalTypes`, `TypeDeclMap`, and layout compatibility tables remain acceptable as raw/no-id compatibility bridges and final/display spelling boundaries. Pointer initializer paths carrying `initializer_function_link_name_ids` were called out as adjacent follow-up territory, not part of this selected fence.
-- Idea 186, direct symbol identity validation: repaired the BIR direct symbol identity domain for direct calls, globals, and pointer initializers. Metadata-rich direct symbol references validate through `LinkNameId`; raw callee/global strings remain acceptable for display, diagnostics, runtime/intrinsic placeholder calls, and explicit raw/no-id compatibility.
-- Idea 187, memory provenance global handles: repaired the addressed-global pointer provenance domain. `AddressedGlobalPointerSlots` and `AddressedGlobalPointerValueSlots` are keyed by `LinkNameId`; local slot, local SSA, temporary, and route-local memory names remain acceptable string handles because they are not global symbol authority. Raw-import compatibility string paths remain fenced.
-- Idea 189, no-prototype/variadic direct-call compatibility: repaired the structured direct-call signature compatibility domain for old-style, no-prototype, and variadic C calls. No-prototype flexibility and variadic fixed/tail argument handling are represented intentionally in structured metadata; rendered function names or printed signatures are not semantic authority for generated calls.
-- Idea 190, call argument structured payload: repaired the LIR call argument domain. Generated metadata-rich `LirCallOp` sites carry structured argument facts for operand, type text mirror, byval type-ref facts, and related call argument metadata. `callee_type_suffix` and `args_str` remain acceptable only as final spelling and raw/no-metadata compatibility payloads.
-- Idea 191, function signature byval metadata: repaired the BIR function-signature byval domain. `LirSignatureParam::is_byval` is the structured explicit-byval marker for generated signatures, and BIR aggregate parameter collection consumes structured metadata instead of parsing `signature_text`. `signature_text` remains acceptable as final header spelling and legacy no-metadata fixture compatibility.
-- Idea 194, global memory provenance `LinkNameId` expansion: repaired an additional global memory/provenance route through dynamic global scalar-array materialization. Structured `LinkNameId` provenance is carried through dynamic global aggregate/scalar array access into `bir::LoadGlobalInst::global_name_id`; raw spelling lookup remains acceptable only at the explicit `kInvalidLinkName` compatibility boundary.
+- Pointer initializer address/global resolution is classified as structured authority for metadata-rich generated paths plus raw/no-id compatibility for imported fixtures. `resolve_initializer_symbol_link_name_id(...)`, `resolve_known_global_address(...)`, and `resolve_pointer_initializer_offsets(...)` keep present `initializer_function_link_name_ids` authoritative and fail closed when the id is unknown instead of falling back to raw spelling. Global pointer initializer fields resolve through canonical `global_types` entries that were populated from `global_name_for_identity(...)`; aggregate pointer initializer elements are rewritten to `bir::Value::named_symbol_pointer(..., LinkNameId)` when a resolved target id exists. Existing backend coverage exercises drift success, missing-id fail-closed behavior, aggregate function/global pointer initializers, and raw/no-id compatibility.
+- Remaining memory/provenance `global_types.find(global_name)` and `GlobalAddress` flows are classified as route-local/no-id compatibility or structured handoff surfaces, not unclassified semantic text authority. Direct LIR global operands still use raw spelling to enter the route, but `GlobalAddress` carries `link_name_id`, `make_global_pointer_slot_key(...)` includes `LinkNameId`, `LoadGlobalInst`/`StoreGlobalInst` outputs carry `global_name_id`, addressed-global pointer slots are keyed by structured identity from idea 187, and dynamic global scalar arrays are LinkNameId-checked from idea 194. Remaining dynamic pointer/aggregate array and ptrtoint/inttoptr maps use SSA result strings or global spelling as local map handles while materialized symbol values and BIR global instructions carry the available structured id; absent ids remain explicit raw/no-id compatibility.
+- Prealloc route-local names are classified as route-local handles, structured-id lookups, or presentation/final spelling. `PreparedNameTables` interns function, value, slot, block, and link names into prepared ids; prealloc call, frame, liveness, regalloc, addressing, and prepared-printer surfaces carry those prepared ids internally. Raw function/value/slot names are used to locate BIR-local values, match BIR blocks, or render prepared diagnostics/output. Symbol pointers and global loads are guarded by `pointer_symbol_link_name_id`, `callee_link_name_id`, `global_name_id`, and prepared link-name refs where semantic cross-function/global identity matters.
 
-Retained string boundaries accepted by this ledger:
-
-- Printer, dump, diagnostic, ABI, object/output, and final spelling strings are retained as presentation or emitted-spelling boundaries, not semantic metadata authority.
-- Raw hand-authored LIR/BIR and no-metadata fixture compatibility remains retained where paths are explicitly fenced by absent or invalid structured ids.
-- Route-local names for local SSA values, slots, temporaries, block labels, and prealloc bookkeeping remain retained because they are local handles rather than global/function/type identity.
-- Runtime/intrinsic placeholder calls remain invalid-id compatibility paths rather than user/extern symbol identity.
-- Generated metadata-rich direct-call, call-argument, byval-signature, direct-symbol, selected global/type/layout, addressed-global pointer, and dynamic global scalar-array routes are now structured-id/fact authoritative and fail closed on stale or missing metadata according to their closed idea notes.
-
-Uncertain generated-path string-authority surfaces for Step 2 audit:
-
-- Pointer initializer address/global resolution remains the main named adjacent surface. Idea 185 explicitly left pointer initializer paths carrying `initializer_function_link_name_ids` as follow-up territory, while idea 186 reports pointer initializer structured symbol references have fail-closed coverage. Step 2 should verify the current pointer-initializer generated path is still `LinkNameId`-authoritative and does not reintroduce spelling-first `global_types.find(global_name)` or `GlobalAddress` semantics.
-- Remaining memory/provenance `global_types.find(global_name)` and `GlobalAddress` spelling flows outside the idea 187 addressed-global pointer path and the idea 194 dynamic global scalar-array route should be audited as route-local/no-id compatibility or named as a narrow follow-up if any metadata-rich path is still spelling-first.
-- Prealloc route-local names were classified by idea 183 but not converted by the dependency wave. Step 2 should verify they are only route-local handles and not a generated-path semantic function/global/type authority.
+Conclusion: the three Step 2 uncertain surfaces are classified. No remaining high-risk metadata-rich generated path was found that still treats rendered text as semantic function/global/type authority.
 
 ## Suggested Next
 
-Execute Step 2 by auditing the ledger's uncertain generated-path surfaces against current code, especially pointer initializer global resolution, remaining memory/provenance global-name lookup flows, and prealloc route-local names.
+Execute Step 3 by running the supervisor-selected milestone validation command, normally a full build plus full CTest suite with canonical regression logs if requested.
 
 ## Watchouts
 
 - Do not start backend restart work inside this gate.
-- Do not patch implementation as part of ledger collection.
-- Do not treat printer/output, diagnostics, raw/no-id fixtures, route-local SSA/slot/block labels, or ABI/final spelling as defects unless they are used as metadata-rich semantic authority.
-- If a remaining generated-path string-authority blocker is found during Step 2, record it precisely for a narrow follow-up idea instead of broadening the freeze gate.
+- This audit did not patch implementation or tests.
+- Milestone validation should be broad; the audit-only result depends on the supervisor selecting the proof scope.
+- Retained raw strings remain acceptable only as presentation/output, diagnostics, route-local handles, ABI/final spelling, or explicit no-id compatibility.
 
 ## Proof
 
-Ledger-only packet; no command was required or run beyond read-only inspection of the closed dependency idea files. Existing `test_after.log` was left untouched.
+Audit-only packet; no build or test command was required or run. Read-only inspection used `rg`, targeted file reads, and `c4c-clang-tool-ccdb function-signatures` for `globals.cpp`, `memory/provenance.cpp`, and `prealloc/regalloc.cpp`. Existing `test_after.log` was left untouched.
