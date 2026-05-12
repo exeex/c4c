@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-05-11
 
 Depends On:
-- `ideas/open/170_string_authority_regression_guard.md`
+- `ideas/closed/170_string_authority_regression_guard.md`
 
 Parent Ideas:
 - `ideas/closed/158_sema_validate_string_authority_audit.md`
@@ -14,8 +14,8 @@ Parent Ideas:
 - `ideas/closed/162_link_name_id_backend_symbol_authority.md`
 - `ideas/closed/167_whole_codebase_string_authority_final_audit.md`
 - `ideas/closed/168_compatibility_bridge_retirement.md`
-- `ideas/open/169_route_local_identity_domain_cleanup.md`
-- `ideas/open/170_string_authority_regression_guard.md`
+- `ideas/closed/169_route_local_identity_domain_cleanup.md`
+- `ideas/closed/170_string_authority_regression_guard.md`
 
 ## Goal
 
