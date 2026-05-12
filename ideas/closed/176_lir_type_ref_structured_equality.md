@@ -1,7 +1,8 @@
 # LIR Type Ref Structured Equality
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/172_type_identity_authority_audit.md`
@@ -52,6 +53,16 @@ the migration expects structured identity to be protective.
   with a focused collision test.
 - The proof includes a fresh build or compile check plus targeted frontend LIR
   or backend CTest coverage.
+
+## Completion Notes
+
+Closed after the focused `LirTypeRef::operator==` slice made structured
+`StructNameId` payloads participate in equality when both sides carry ids,
+while preserving the intentional legacy/no-id compatibility path. Focused
+frontend LIR type-ref coverage passed 4/4, the broader `frontend_lir`/`backend_`
+subset passed 113 executed tests, and the full-suite baseline at `dec9914bf`
+was accepted with 3137/3137 passing. The close gate used matching canonical
+focused logs with 4/4 before and 4/4 after and no new failures.
 
 ## Reviewer Reject Signals
 
