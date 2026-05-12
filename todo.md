@@ -1,34 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/198_parser_legacy_compatibility_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Audit Template Instantiated Record Lookup
+Current Step ID: 6
+Current Step Title: Closure Ledger And Broader Parser Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 fixed the direct template-emission existing-instantiation regression
-from commit `12589ce3e` in `src/frontend/parser/impl/types/base.cpp`.
+Step 5 completed the parser-owned template instantiated record lookup audit.
 
-The parser now distinguishes a complete structured direct-emission
-instantiation key from a key that has already been marked. Rendered
+The route now materializes pending base records through structured template
+instantiation keys and parsed argument metadata instead of starting from
+rendered `base_mangled` tag-map lookup. Direct template-emission reuse now
+distinguishes a complete structured direct-emission instantiation key from a
+key that has merely been marked, so stale rendered
 `definition_state_.struct_tag_def_map[mangled]` reuse is permitted only when
-there is no complete structured instantiation key. If a complete key exists
-but has not yet been marked, the route scans structured records and then emits
-a fresh concrete record instead of recovering through rendered tag spelling.
+there is no complete structured instantiation key.
 
-The direct-emission parser test now clears the mark, removes the structured
-record, poisons the rendered tag map, and verifies that an unmarked complete
-structured key does not reuse the stale rendered record.
+Reviewer report `review/step5_template_instantiation_lookup_review.md` found
+no blocking issues, no testcase-overfit, and recommended advancing to Step 6.
+The accepted full-suite baseline for commit `a654583f2` was green: 3137
+passed, 0 failed, with the existing 12 disabled backend CLI tests.
 
 ## Suggested Next
 
-Continue Step 5 with the remaining parser-owned template instantiated record
-lookup surfaces in `src/frontend/parser/impl/types/base.cpp`. Classify each
-retained rendered map lookup as structured-key authority, legacy/no-carrier
-compatibility, or closure-ledger debt, then consider a Step 5 route review once
-the remaining rendered `struct_tag_def_map` reads are accounted for.
+Execute Step 6 by writing a reviewer-auditable closure ledger in `todo.md` for
+parser legacy compatibility retirement.
+
+The ledger must explicitly classify parser compatibility routes as deleted,
+converted, fenced, or intentionally retained. It must cover parser record,
+layout, qualified-name, owner, const-int, and template instantiated record
+routes, and it must include the reviewer watch items:
+
+- retained no-carrier rendered map fallbacks around base materialization and
+  direct-emission reuse
+- retained member typedef owner fallback gated by
+  `parse_base_type_legacy_tag_if_no_metadata(ts)`
+- any retained no-metadata/template-instantiation fallbacks from the Step 3
+  owner-recovery review
+
+State follow-up work outside the parser domain as a separate open-idea
+candidate rather than expanding this parser-owned runbook. After the ledger is
+complete, run the supervisor-selected broader parser/frontend validation for
+the final compatibility retirement slice.
 
 ## Watchouts
 
@@ -42,20 +57,20 @@ the remaining rendered `struct_tag_def_map` reads are accounted for.
   scopes.
 - Newly retained parser bridges need `legacy` or `deprecated` comments with
   owner, limitation, and removal condition.
-- Step 5 owns template instantiated record lookup only. Do not drift back into
-  record layout, owner recovery, named-const identity, or backend consteval
-  work unless a separate lifecycle packet says so.
+- Step 6 is a closure-ledger and proof step. Do not perform implementation
+  cleanup unless the supervisor delegates a separate executor packet for a
+  specific blocker found while building the ledger.
+- The ledger must not hide retained parser bridges. Each retained compatibility
+  path needs owner, limitation, and removal condition.
 - Existing HIR/Sema template callers may still lack parser structured carriers.
-  Preserve those as explicit legacy/no-metadata boundaries unless the packet
-  proves parser-owned metadata is complete.
-- Do not treat `template_origin_name` or rendered candidate keys as semantic
-  authority when structured instantiated-record metadata is available.
-- The retained rendered `base_mangled` lookups around base materialization and
-  direct-emission reuse are intended only for no-carrier compatibility. Do not
-  move them back into metadata-rich paths.
-- Step 3 reviewer watch item: retained no-metadata/template-instantiation
-  fallbacks in `base.cpp` should be accounted for in Step 5 and the Step 6
-  closure ledger.
+  Preserve those as explicit legacy/no-metadata boundaries unless parser-owned
+  metadata is proven complete.
+- Do not treat `template_origin_name`, rendered candidate keys, parser
+  diagnostics, AST display strings, source spelling, or final output text as
+  semantic authority.
+- Do not create backend, HIR, LIR, BIR, or Sema cleanup inside this plan. If the
+  closure ledger finds non-parser residual work, record it as a separate
+  follow-up idea candidate.
 
 ## Proof
 
@@ -64,3 +79,9 @@ Step 5 focused proof passed:
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_parser_tests|frontend_parser_lookup_authority_tests)$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.
+
+Step 5 review: `review/step5_template_instantiation_lookup_review.md`, no
+blockers.
+
+Accepted full-suite baseline for commit `a654583f2`: 3137 passed, 0 failed,
+existing 12 disabled backend CLI tests.
