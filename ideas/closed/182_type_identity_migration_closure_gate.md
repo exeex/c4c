@@ -1,7 +1,8 @@
 # Type Identity Migration Closure Gate
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/open/178_global_aggregate_layout_structured_boundary.md`
@@ -60,6 +61,33 @@ deciding whether the migration has reached a stable boundary.
   identity, layout identity, ABI facts, display spelling, and compatibility.
 - No high-risk spelling-based type authority remains unclassified.
 - Any remaining blockers are converted into explicit follow-up ideas.
+
+## Closure Summary
+
+Closed after the active closure gate classified the post-audit type-identity
+wave across closed ideas 172-181. The closure ledger records syntax payload,
+resolved type identity, layout identity, ABI facts, display spelling, and
+compatibility boundaries for the selected aggregate layout, aggregate ABI, HIR
+type-ref, LIR type-ref, template record owner, global aggregate, byval copy,
+AArch64/direct-LIR, and function-pointer signature paths.
+
+Structured facts are the authority for metadata-rich migrated paths. Retained
+rendered type strings and signature spellings are classified as syntax,
+display, diagnostic text, ABI spelling, or explicit no-metadata compatibility
+bridges. No high-risk spelling-based type authority remains unclassified in
+the selected migration paths.
+
+Closure validation used the accepted full-suite baseline from
+`test_baseline.log` at commit `47de3a1a6cdbc99549eed0e11db5de781d702e95`
+with 3137/3137 passing. The close-time full-suite `test_after.log` also passed
+3137/3137, and the regression guard passed against the baseline in
+non-decreasing mode.
+
+No required follow-up idea was created. Broader sema canonical type equality,
+parser-only function-pointer syntax checks, direct-call signature metadata,
+final formatting, post-BIR backend ABI decisions, and full retirement of
+legacy compatibility bridges remain conditional future scope, not blockers for
+this milestone.
 
 ## Reviewer Reject Signals
 
