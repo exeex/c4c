@@ -1,85 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/188_lir_bir_freeze_closure_gate.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Run Milestone Validation
+Current Step ID: Step 4
+Current Step Title: Closure Decision
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Run Milestone Validation is complete for idea 188 using the existing
-green full-suite proof from the idea 189 plan-owner close gate.
+Step 4 - Closure Decision is complete for idea 188.
 
-Idea 189 was accepted and closed. Lifecycle control returned to idea 188 after
-the direct-call no-prototype/variadic signature blocker was resolved.
+Decision: `backend restart clear`.
 
-Freeze closure ledger:
+Evidence:
 
-| Target | Generated metadata-rich path | Structured authority | Retained string boundary | Closure classification |
-| --- | --- | --- | --- | --- |
-| Direct-call signature metadata | `LirCallOp.direct_callee_link_name_id` plus `LirCallOp.callee_signature`; `LirFunction.signature_return_type_ref`, `signature_params`, `signature_param_type_refs`, `signature_is_variadic`, and `signature_has_void_param_list`; BIR call ABI lowering via structured signature params/return refs | `LinkNameId` for direct callee identity; `LirCallSignature`, `LirSignatureParam`, `LirTypeRef`, `StructNameId`, target ABI facts, and `BackendStructuredLayoutTable` for return, param, byval, sret, variadic, and aggregate layout facts | `signature_text`, rendered call argument fragments, and parsed signature helpers are final LLVM/output spelling or explicit raw/no-metadata compatibility; BIR `return_type_name`, `structured_return_type_name`, and printer byval/sret suffixes are display/output | Closed for generated paths: structured metadata is validated and stale/missing aggregate metadata fails closed where the selected target requires it. No generated metadata-rich direct-call path is classified as using rendered signature text as semantic authority. |
-| Generated direct-call symbol path | LIR direct call target lowering through `direct_callee_link_name_id`; BIR `CallInst.callee_link_name_id`; validator `find_function_by_link_name_id` and mismatch checks | `LinkNameId` and the module link-name table own user/extern function identity | `CallInst.callee` remains printed callee spelling, diagnostics context, raw/no-id compatibility, and runtime/intrinsic placeholder token when `callee_link_name_id` is intentionally invalid | Closed for generated user/extern calls: a stale visible callee name cannot override `LinkNameId`. Runtime/intrinsic placeholders are classified compatibility/display, not ordinary symbol identity. |
-| Global and type declaration tables | Generated aggregate-global `llvm_type_ref` and initializer lowering through `LirTypeRef`/`StructNameId`; `build_backend_structured_layout_table`; `lookup_backend_aggregate_type_ref_layout_result`; `lower_aggregate_initializer_for_type_ref` | `StructNameId`, `LirTypeRef`, structured LIR declarations, and `BackendStructuredLayoutTable` own aggregate layout identity; `LinkNameId` owns global symbol identity where available | `TypeDeclMap`, `GlobalTypes`, final type spelling, and textual initializers remain raw/no-id compatibility or final/display spelling; structured declaration spellings bridge ids to legacy layouts but are not the semantic owner | Closed for the selected generated aggregate-global/type path: stale text-vs-id or missing `StructNameId` rejects instead of silently choosing final spelling. Legacy tables remain classified compatibility. |
-| Direct symbol identity validation surfaces | BIR `Global.link_name_id`, `Function.link_name_id`, `LoadGlobalInst.global_name_id`, `StoreGlobalInst.global_name_id`, `Global.initializer_symbol_name_id`, `Value.pointer_symbol_link_name_id`, and pointer initializer structured symbol references | `LinkNameId` plus module validation (`validate_link_name_id`, `find_global`, `find_function`, initializer symbol validation, named pointer validation) own direct global/function identity | Visible `global_name`, function/global `name`, initializer symbol spelling, and value `name` remain display/diagnostic/raw compatibility carriers; string-pool constants intentionally have no `LinkNameId` and are explicit no-metadata compatibility | Closed for generated direct symbols: mismatched ids/names and missing structured ids fail closed for covered generated user/extern symbol paths. Explicit invalid-id compatibility remains classified. |
-| Memory provenance global handles | Addressed-global pointer provenance through `AddressedGlobalPointerSlots`, `AddressedGlobalPointerValueSlots`, `Value.pointer_symbol_link_name_id`, lowering `lir_to_bir_detail::GlobalAddress::link_name_id`, BIR `Address::base_link_name_id`, and BIR memory provenance resolution | `LinkNameId` keys the selected addressed-global provenance path; structured global refs carry `pointer_symbol_link_name_id`, lowering `GlobalAddress::link_name_id`, or BIR address `base_link_name_id` and validate against declared global/function ids | Local slot names, SSA names, temporary names, pointer alias labels, dynamic-array locals, and raw-import global spellings are route-local handles or no-metadata compatibility, not semantic global authority | Closed for the selected global-provenance path: addressed-global provenance no longer treats final global spelling as ordinary semantic identity when id metadata exists. Route-local strings remain explicitly retained. |
-| Backend prealloc route-local naming | Prealloc prepared forms (`PreparedNameTables`, `PreparedValueId`, `PreparedStackObject`, `PreparedAddress`, call plans, liveness/regalloc/storage/frame plans); direct symbol-backed addresses use BIR `LinkNameId` when present | Prepared ids and structured prepared records own route-local analysis identity; global-symbol addresses resolve through link-name ids and reject stale raw/id pairings | Prepared printer strings, value names, block labels, stack object source names, register names, `direct_callee_name`, and same-module render-contract names are display/output or route-local handles. Fallback raw names exist only when no structured id is available | Classified as retained route-local/output boundary. No evidence that prealloc route-local names are acting as cross-module semantic symbol authority on generated metadata-rich paths. |
+- Step 2 ledger found no in-scope generated metadata-rich path still appears to
+  use rendered text as semantic authority.
+- Retained strings are classified as output/display, diagnostics, route-local
+  naming, ABI/final spelling, or explicit no-metadata compatibility.
+- Step 3 milestone validation is recorded green with no baseline difference:
+  before `3137/3137`, after `3137/3137`, regression guard `PASS`.
+- Idea 189, the direct-call no-prototype/variadic signature blocker discovered
+  during milestone validation, is closed.
 
-Retained string boundary summary:
-
-- Compatibility: raw/no-id LIR/BIR imports, no-metadata direct-call signature
-  parsing, legacy `TypeDeclMap`/`GlobalTypes` lookup, string-pool names,
-  runtime/intrinsic placeholder calls, and unresolved initializer/string
-  constants with invalid ids.
-- Diagnostics: validator contexts and mismatch messages use visible names to
-  explain failed id/name pairings.
-- Display/output: LIR `signature_text`, BIR printers, prepared printers, final
-  type spelling, function/global visible names, byval/sret suffix text, and
-  emitted symbol spelling.
-- ABI/final spelling: LLVM function headers, call argument fragments, aggregate
-  byval/sret textual fragments, and object/assembler-facing names remain final
-  spelling carriers, not structured identity owners.
-- Route-local handles: local slots, SSA values, temporaries, block labels,
-  stack objects, pointer aliases, prepared value/block/register names, sret
-  storage names, and prealloc render-contract carrier names.
-- Explicit no-metadata boundaries: invalid `LinkNameId`/`StructNameId`/slot-id
-  paths are allowed only for legacy/raw imports, placeholders, or compatibility
-  inputs that lack the structured producer carrier.
-
-High-risk generated-path assessment:
-
-- No current in-scope generated metadata-rich path still appears to use
-  rendered text as semantic authority.
-- Remaining rendered text is classified as output/display, diagnostics,
-  route-local naming, ABI/final spelling, or explicit no-metadata
-  compatibility.
-- The earlier 185 pointer-initializer follow-up territory is covered for this
-  gate by 186/187 surfaces: `initializer_function_link_name_ids`,
-  `initializer_symbol_name_id`, and `Value.pointer_symbol_link_name_id` now
-  provide structured symbol validation, while unresolved initializer spelling
-  remains explicit compatibility.
+No missing authority path currently blocks the closure gate. No backend restart
+implementation was started inside this gate.
 
 ## Suggested Next
 
-Supervisor should delegate Step 4 - Closure Decision to decide whether the
-ledger plus milestone validation clear backend restart, or whether a new narrow
-blocker idea is required first.
+Supervisor should call plan-owner to close idea 188.
 
 ## Watchouts
 
-- Idea 188 is active again; do not start backend restart work inside this gate.
-- Step 3 used milestone-level full-suite validation, not a narrow-only proof.
-- No baseline difference is present: before and after both report `3137/3137`.
-- No expectation downgrade was made or needed for this validation record.
-- If milestone validation reveals a new blocker, capture it as a separate open
-  idea before backend restart.
+- This packet records a closure decision only; plan-owner owns the lifecycle
+  close.
+- The closure recommendation relies on the recorded Step 2 ledger and Step 3
+  full-suite validation. No new blocker idea is required by the current
+  evidence.
+- If later review finds an unclassified generated-path string-authority issue,
+  capture that as a separate open blocker before backend restart implementation.
 
 ## Proof
 
-No new validation was run for this todo-only packet. No proof logs were created
-or modified.
+Decision-only packet. No new build/test proof was required, and no proof logs
+were created or modified.
 
-Plan-owner close gate for idea 189 reran:
+This closure decision relies on the recorded Step 3 proof:
 
 `cmake --preset default && cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log`
 
@@ -87,5 +53,5 @@ Regression guard comparison:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
-Result: `PASS`; before `3137/3137`, after `3137/3137`, no new failures, no
-baseline difference, and no expectation downgrade.
+Recorded result: `PASS`; before `3137/3137`, after `3137/3137`, no new
+failures, no baseline difference, and no expectation downgrade.
