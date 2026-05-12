@@ -5,7 +5,7 @@ Created: 2026-05-12
 
 Depends On:
 - `ideas/closed/180_aarch64_direct_lir_aggregate_type_bridge_retirement.md`
-- `ideas/open/183_lir_bir_backend_freeze_authority_audit.md`
+- `ideas/closed/183_lir_bir_backend_freeze_authority_audit.md`
 
 ## Goal
 
