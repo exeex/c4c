@@ -6119,6 +6119,202 @@ void test_lower_struct_def_base_owner_miss_rejects_stale_rendered_base_tag() {
               "complete base owner-key misses must not recover a base through a stale rendered struct_defs tag");
 }
 
+void test_direct_struct_constructor_uses_structured_owner_key() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId real_ns_text =
+      module.link_name_texts->intern("RealCtorNs");
+  const c4c::TextId real_owner_text =
+      module.link_name_texts->intern("RealCtorOwner");
+  const c4c::TextId stale_ns_text =
+      module.link_name_texts->intern("StaleCtorNs");
+  const c4c::TextId stale_owner_text =
+      module.link_name_texts->intern("RenderedCtorOwner");
+
+  c4c::hir::NamespaceQualifier real_ns;
+  real_ns.context_id = 71;
+  real_ns.segment_text_ids.push_back(real_ns_text);
+  const c4c::hir::HirRecordOwnerKey real_key =
+      c4c::hir::make_hir_record_owner_key(real_ns, real_owner_text);
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealCtorNs::RealCtorOwner";
+  real_def.tag_text_id = real_owner_text;
+  real_def.ns_qual = real_ns;
+  module.index_struct_def_owner(real_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::NamespaceQualifier stale_ns;
+  stale_ns.context_id = 71;
+  stale_ns.segment_text_ids.push_back(stale_ns_text);
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleCtorNs::RenderedCtorOwner";
+  stale_def.tag_text_id = stale_owner_text;
+  stale_def.ns_qual = stale_ns;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node real_ctor{};
+  real_ctor.kind = c4c::NK_FUNCTION;
+  real_ctor.name = "RealCtorOwner";
+  real_ctor.unqualified_name = "RealCtorOwner";
+  real_ctor.unqualified_text_id = real_owner_text;
+  real_ctor.is_constructor = true;
+  real_ctor.n_params = 0;
+  c4c::hir::Lowerer::CtorOverload real_overload;
+  real_overload.mangled_name = "RealCtorNs_RealCtorOwner__RealCtorOwner";
+  real_overload.method_node = &real_ctor;
+  real_overload.owner_key = real_key;
+  lowerer.struct_constructors_[real_def.tag].push_back(real_overload);
+
+  c4c::Node stale_ctor{};
+  stale_ctor.kind = c4c::NK_FUNCTION;
+  stale_ctor.name = "RenderedCtorOwner";
+  stale_ctor.unqualified_name = "RenderedCtorOwner";
+  stale_ctor.unqualified_text_id = stale_owner_text;
+  stale_ctor.is_constructor = true;
+  stale_ctor.n_params = 0;
+  c4c::hir::Lowerer::CtorOverload stale_overload;
+  stale_overload.mangled_name = "StaleCtorNs_RenderedCtorOwner__RenderedCtorOwner";
+  stale_overload.method_node = &stale_ctor;
+  lowerer.struct_constructors_[stale_def.tag].push_back(stale_overload);
+
+  c4c::hir::Function already_lowered_ctor;
+  already_lowered_ctor.name = real_overload.mangled_name;
+  module.functions.push_back(already_lowered_ctor);
+
+  c4c::TextId qualifier_text_ids[] = {real_ns_text};
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "StaleCtorNs::RenderedCtorOwner";
+  callee.unqualified_name = "RealCtorOwner";
+  callee.unqualified_text_id = real_owner_text;
+  callee.type.array_size = -1;
+  callee.type.inner_rank = -1;
+  callee.type.base = c4c::TB_STRUCT;
+  callee.type.tag_text_id = real_owner_text;
+  callee.type.namespace_context_id = 71;
+  callee.type.qualifier_text_ids = qualifier_text_ids;
+  callee.type.n_qualifier_segments = 1;
+  set_legacy_tag_if_present(
+      callee.type, arena.strdup("StaleCtorNs::RenderedCtorOwner"), 0);
+
+  c4c::Node call{};
+  call.kind = c4c::NK_CALL;
+  call.left = &callee;
+  call.n_children = 0;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  const std::optional<c4c::hir::ExprId> result =
+      lowerer.try_lower_direct_struct_constructor_call(&ctx, &call);
+  expect_true(result.has_value(),
+              "direct constructor call should resolve through complete structured owner metadata");
+
+  bool called_real_ctor = false;
+  bool called_stale_ctor = false;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    const auto* ctor_call = std::get_if<c4c::hir::CallExpr>(&expr.payload);
+    if (!ctor_call) continue;
+    const c4c::hir::Expr* callee_expr =
+        module.find_expr(ctor_call->callee);
+    const auto* ref =
+        callee_expr ? std::get_if<c4c::hir::DeclRef>(&callee_expr->payload)
+                    : nullptr;
+    if (!ref) continue;
+    called_real_ctor =
+        called_real_ctor || ref->name == real_overload.mangled_name;
+    called_stale_ctor =
+        called_stale_ctor || ref->name == stale_overload.mangled_name;
+  }
+  expect_true(called_real_ctor,
+              "direct constructor lowering should call the structured owner constructor");
+  expect_true(!called_stale_ctor,
+              "direct constructor lowering must not use the stale rendered owner constructor");
+}
+
+void test_direct_struct_constructor_owner_miss_rejects_stale_rendered_fallback() {
+  c4c::Arena arena;
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId missing_ns_text =
+      module.link_name_texts->intern("MissingCtorNs");
+  const c4c::TextId missing_owner_text =
+      module.link_name_texts->intern("MissingCtorOwner");
+  const c4c::TextId stale_ns_text =
+      module.link_name_texts->intern("StaleCtorNs");
+  const c4c::TextId stale_owner_text =
+      module.link_name_texts->intern("RenderedCtorOwner");
+
+  c4c::hir::NamespaceQualifier missing_ns;
+  missing_ns.context_id = 72;
+  missing_ns.segment_text_ids.push_back(missing_ns_text);
+  const c4c::hir::HirRecordOwnerKey missing_key =
+      c4c::hir::make_hir_record_owner_key(missing_ns, missing_owner_text);
+  expect_true(module.find_struct_def_tag_by_owner(missing_key) == nullptr,
+              "fixture should start with a complete structured owner miss");
+
+  c4c::hir::NamespaceQualifier stale_ns;
+  stale_ns.context_id = 72;
+  stale_ns.segment_text_ids.push_back(stale_ns_text);
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleCtorNs::RenderedCtorOwner";
+  stale_def.tag_text_id = stale_owner_text;
+  stale_def.ns_qual = stale_ns;
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node stale_ctor{};
+  stale_ctor.kind = c4c::NK_FUNCTION;
+  stale_ctor.name = "RenderedCtorOwner";
+  stale_ctor.unqualified_name = "RenderedCtorOwner";
+  stale_ctor.unqualified_text_id = stale_owner_text;
+  stale_ctor.is_constructor = true;
+  stale_ctor.n_params = 0;
+  c4c::hir::Lowerer::CtorOverload stale_overload;
+  stale_overload.mangled_name = "StaleCtorNs_RenderedCtorOwner__RenderedCtorOwner";
+  stale_overload.method_node = &stale_ctor;
+  lowerer.struct_constructors_[stale_def.tag].push_back(stale_overload);
+
+  c4c::TextId qualifier_text_ids[] = {missing_ns_text};
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "StaleCtorNs::RenderedCtorOwner";
+  callee.unqualified_name = "MissingCtorOwner";
+  callee.unqualified_text_id = missing_owner_text;
+  callee.type.array_size = -1;
+  callee.type.inner_rank = -1;
+  callee.type.base = c4c::TB_STRUCT;
+  callee.type.tag_text_id = missing_owner_text;
+  callee.type.namespace_context_id = 72;
+  callee.type.qualifier_text_ids = qualifier_text_ids;
+  callee.type.n_qualifier_segments = 1;
+  set_legacy_tag_if_present(
+      callee.type, arena.strdup("StaleCtorNs::RenderedCtorOwner"), 0);
+
+  c4c::Node call{};
+  call.kind = c4c::NK_CALL;
+  call.left = &callee;
+  call.n_children = 0;
+
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+  const std::optional<c4c::hir::ExprId> result =
+      lowerer.try_lower_direct_struct_constructor_call(&ctx, &call);
+
+  expect_true(!result.has_value(),
+              "complete direct-constructor owner misses must reject stale rendered fallback");
+  expect_true(module.expr_pool.empty(),
+              "stale rendered constructor fallback must not append constructor expressions after a complete structured miss");
+}
+
 void test_out_of_class_nested_method_attach_uses_structured_owner_key() {
   c4c::hir::Module module;
   c4c::hir::Lowerer lowerer;
@@ -6429,6 +6625,8 @@ int main() {
   test_struct_def_owner_key_interns_first_use_spelling_carriers();
   test_lower_struct_def_owner_miss_rejects_stale_rendered_existing_def();
   test_lower_struct_def_base_owner_miss_rejects_stale_rendered_base_tag();
+  test_direct_struct_constructor_uses_structured_owner_key();
+  test_direct_struct_constructor_owner_miss_rejects_stale_rendered_fallback();
   test_out_of_class_nested_method_attach_uses_structured_owner_key();
   test_out_of_class_method_attach_rejects_rendered_name_without_structured_key();
   test_lower_non_method_complete_structured_method_miss_rejects_rendered_fallback();
