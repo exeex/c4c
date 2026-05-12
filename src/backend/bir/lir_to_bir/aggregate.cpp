@@ -146,6 +146,13 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower
     const TypeDeclMap& type_decls,
     const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts) {
   const std::string normalized_type = normalize_aggregate_param_type(text);
+  // Step 4 no-id compatibility bridge: this helper is the shared rendered-text
+  // byval/aggregate layout entrypoint for callers that do not yet carry
+  // LirTypeRef/StructNameId metadata. Structured-layout callers still resolve
+  // through selected_aggregate_type_layout(), while metadata-bearing byval
+  // params must use selected_aggregate_type_ref_layout() and fail closed there.
+  // Remove this raw-text entrypoint once all aggregate/byval lowering sites
+  // thread structured type identity or an explicit no-id legacy marker.
   auto layout = structured_layouts != nullptr
                     ? selected_aggregate_type_layout(normalized_type,
                                                      type_decls,
@@ -240,7 +247,18 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
             ? selected_aggregate_type_ref_layout(function_.signature_param_type_refs[index],
                                                 type_decls_,
                                                 structured_layouts_)
-            : lower_byval_aggregate_layout(normalized_type, type_decls_, &structured_layouts_);
+            : [&]() -> std::optional<AggregateTypeLayout> {
+                // Step 4 no-id compatibility bridge: aggregate parameter
+                // collection owns legacy byval params whose parsed signature
+                // position has no StructNameId-bearing LirTypeRef. The
+                // limitation is that layout is still selected from rendered
+                // normalized type text. Remove this once every byval parameter
+                // path carries structured signature type refs or an explicit
+                // no-id legacy marker.
+                return lower_byval_aggregate_layout(normalized_type,
+                                                    type_decls_,
+                                                    &structured_layouts_);
+              }();
     if (!layout.has_value()) {
       if (structured_params_available && use_structured_byval_layout) {
         aggregate_params.emplace(std::move(name),
@@ -358,6 +376,12 @@ bool BirFunctionLowerer::append_local_aggregate_copy_from_slots(
     const LocalAggregateSlots& target_slots,
     std::string_view temp_prefix,
     std::vector<bir::Inst>* lowered_insts) const {
+  // Step 4 no-id compatibility bridge: local aggregate copy lowering owns
+  // source/target LocalAggregateSlots that retain rendered type text only. The
+  // limitation is that copy-size validation cannot compare original
+  // LirTypeRef/StructNameId metadata for either aggregate value. Remove this
+  // once LocalAggregateSlots carry structured type identity through aggregate
+  // copy planning.
   const auto source_layout =
       lower_byval_aggregate_layout(source_slots.type_text, type_decls_, &structured_layouts_);
   const auto target_layout =

@@ -348,6 +348,12 @@ bool BirFunctionLowerer::lower_memory_store_inst(
 
   const auto value_type = lower_scalar_or_function_pointer_type(store.type_str.str());
   if (!value_type.has_value()) {
+    // Step 4 no-id compatibility bridge: local aggregate store lowering owns
+    // LirStoreOp::type_str rendered text for aggregate stores. The limitation
+    // is that the store instruction does not expose a StructNameId-bearing
+    // LirTypeRef at this boundary, so layout selection delegates to the shared
+    // aggregate.cpp no-id fence. Remove this once aggregate memory store ops
+    // carry structured type identity.
     const auto aggregate_layout =
         lower_byval_aggregate_layout(store.type_str.str(), type_decls_, &structured_layouts_);
     if (!aggregate_layout.has_value() ||
@@ -544,6 +550,12 @@ bool BirFunctionLowerer::lower_memory_load_inst(
 
   const auto value_type = lower_scalar_or_function_pointer_type(load.type_str.str());
   if (!value_type.has_value()) {
+    // Step 4 no-id compatibility bridge: local/global aggregate load lowering
+    // owns LirLoadOp::type_str rendered text for aggregate loads. The
+    // limitation is that the load instruction does not expose a
+    // StructNameId-bearing LirTypeRef at this boundary, so layout selection
+    // delegates to the shared aggregate.cpp no-id fence. Remove this once
+    // aggregate memory load ops carry structured type identity.
     const auto aggregate_layout =
         lower_byval_aggregate_layout(load.type_str.str(), type_decls_, &structured_layouts_);
     if (!aggregate_layout.has_value()) {

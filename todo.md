@@ -8,29 +8,36 @@ Current Step Title: Fence Type And Aggregate Layout Compatibility
 
 ## Just Finished
 
-Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the remaining
-`lower_byval_aggregate_layout()` call sites in `calling.cpp` and `cfg.cpp`.
+Step 4 - Fence Type And Aggregate Layout Compatibility reviewed and classified
+the remaining owned aggregate/byval layout call sites in `aggregate.cpp` and
+`memory/local_slots.cpp`.
 
-`calling.cpp` now explicitly classifies the retained no-id compatibility bridges
-for aggregate-value alias layout from local aggregate slots, structured call
-arguments whose positional mirror lacks a `LirTypeRef`, hand-built LIR calls
-without structured argument mirrors, and aggregate `va_arg` runtime lowering.
-Existing metadata-bearing byval call-argument paths still fail closed on missing
-or mismatched `StructNameId`.
+`aggregate.cpp` now explicitly fences the shared rendered-text
+`lower_byval_aggregate_layout()` entrypoint, the legacy byval parameter
+collection branch that lacks `StructNameId` metadata, and local aggregate
+copy-size validation from `LocalAggregateSlots` rendered type text. The existing
+metadata-bearing byval parameter branch still uses the `LirTypeRef` /
+`StructNameId` lookup path and fails closed there.
 
-`cfg.cpp` now explicitly classifies aggregate PHI planning from
-`LirPhiOp::type_str` as a no-id compatibility bridge until PHI aggregate plans
-retain structured type identity.
+`memory/local_slots.cpp` now explicitly fences aggregate store and aggregate
+load lowering from `LirStoreOp::type_str` / `LirLoadOp::type_str`. Both paths
+remain compatibility bridges until aggregate memory ops carry structured type
+identity.
 
-No test expectations were changed; the slice is comment-only and
-behavior-preserving.
+Final Step 4 inventory for the owned files:
+`rg -n "lower_byval_aggregate_layout\\(|lookup_backend_aggregate_type_layout|Step 4 no-id compatibility bridge" src/backend/bir/lir_to_bir/aggregate.cpp src/backend/bir/lir_to_bir/memory/local_slots.cpp`
+shows each remaining raw-text aggregate/byval layout call in these files is
+either behind a Step 4 no-id compatibility fence or on the existing structured
+`LirTypeRef` / `StructNameId` fail-closed path.
+
+No test expectations were changed; `tests/backend/backend_lir_to_bir_notes_test.cpp`
+was not modified.
 
 ## Suggested Next
 
-Continue Step 4 by doing a final repo-wide inventory of
-`lower_byval_aggregate_layout()` and direct aggregate-layout callers to confirm
-each retained raw-text bridge is either behind a Step 4 fence or has a
-metadata-bearing fail-closed path.
+Ask the plan owner or reviewer to decide whether Step 4 is complete enough to
+advance to the next plan step, using the existing Step 4 review artifact plus
+this final owned-file inventory.
 
 ## Watchouts
 
@@ -114,6 +121,10 @@ metadata-bearing fail-closed path.
 - The `cfg.cpp` aggregate PHI fence is comment-only. `LirPhiOp::type_str` is a
   `LirTypeRef`, but `PhiLoweringPlan` currently records only rendered text; do
   not treat aggregate PHI layout as structured until the plan carries the ID.
+- The `aggregate.cpp` and `memory/local_slots.cpp` fences are comment-only and
+  behavior-preserving. They classify existing no-id compatibility bridges; they
+  do not add structured type authority to local aggregate slots or aggregate
+  memory load/store ops.
 - `tests/backend/backend_lir_to_bir_notes_test.cpp` was reviewed only through
   the delegated backend proof; no expectation changes were needed or made.
 
