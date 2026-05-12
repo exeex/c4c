@@ -1,32 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/202_hir_generated_member_payload_structured_miss.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Enforce Structured-Miss Fail-Closed Behavior
+Current Step ID: Step 3
+Current Step Title: Add Focused Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Enforce Structured-Miss Fail-Closed Behavior completed. In
-`src/frontend/hir/impl/expr/scalar_control.cpp`, the static-member decl and
-const-value lambdas now track whether a candidate produced a structured
-`HirStructMemberLookupKey`; once it did, a miss no longer falls through to the
-rendered `find_struct_static_member_decl(lookup_owner, candidate.name)` or
-`find_struct_static_member_const_value(lookup_owner, candidate.name)` overloads.
-Rendered fallback remains fenced to candidates that did not produce structured
-member metadata.
+Step 3 - Add Focused Coverage completed by recording the focused coverage
+status for the generated static-member structured-miss behavior. The preceding
+Step 2 slice already added the needed focused tests for rendered const-value
+fallback and rendered decl/init fallback on metadata-rich generated static
+members.
 
-`tests/frontend/frontend_hir_lookup_tests.cpp` now covers metadata-rich
-generated static-member misses for both rendered const-value fallback and
-rendered decl/init fallback. In both cases, complete structured owner/member
-metadata misses fall through as ordinary references instead of recovering stale
-rendered static-member authority.
+Those tests prove that stale rendered owner/member spelling cannot repair a
+structured generated-member miss: once complete owner/member metadata produces
+a structured lookup key, a structured miss falls through as an ordinary
+reference instead of recovering authority through rendered fallback spelling.
+No duplicate Step 3 tests are needed from this packet.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 2 slice, then choose the next
-packet from the active runbook.
+Supervisor should treat Step 3 as complete, review the combined Step 2/Step 3
+slice, and choose whether to commit or route lifecycle closure/review.
 
 ## Watchouts
 
@@ -49,4 +46,8 @@ packet from the active runbook.
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$' > test_after.log 2>&1`
 
-Result: passed. Focused proof log preserved at `test_after.log`.
+Result: already passed in the preceding Step 2 slice and preserved at
+`test_after.log`. Supervisor regression guard passed against `test_before.log`
+with `--allow-non-decreasing-passed`; the accepted hook full-suite baseline
+candidate at commit `4bbc48abc` passed 3137/3137. This proof is sufficient for
+Step 3 focused coverage recording; no blocker or missing proof remains.
