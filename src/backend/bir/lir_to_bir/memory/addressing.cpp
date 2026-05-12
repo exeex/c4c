@@ -1042,9 +1042,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         aggregate_it->second);
     if (resolved_target.has_value()) {
       const auto target_layout =
-          lookup_backend_aggregate_type_layout(resolved_target->type_text,
-                                               type_decls,
-                                               structured_layouts_);
+          lookup_addressing_layout(resolved_target->type_text, type_decls, &structured_layouts_);
       if (resolved_target->byte_offset >= 0 &&
           (target_layout.kind == AggregateTypeLayout::Kind::Struct ||
            target_layout.kind == AggregateTypeLayout::Kind::Array)) {
@@ -1145,9 +1143,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           aggregate_it->second.type_text, type_decls, structured_layouts_, aggregate_it->second);
       if (resolved_target.has_value()) {
         const auto target_layout =
-            lookup_backend_aggregate_type_layout(resolved_target->type_text,
-                                                 type_decls,
-                                                 structured_layouts_);
+            lookup_addressing_layout(resolved_target->type_text, type_decls, &structured_layouts_);
         const auto slot_type_it = local_slot_types.find(*resolved_slot);
         if (target_layout.kind == AggregateTypeLayout::Kind::Scalar &&
             slot_type_it != local_slot_types.end() &&
@@ -1164,13 +1160,11 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         }
         if (scalar_array_slots.has_value() && !scalar_array_slots->empty()) {
           const auto array_layout =
-              lookup_backend_aggregate_type_layout(aggregate_it->second.type_text,
-                                                   type_decls,
-                                                   structured_layouts_);
+              lookup_addressing_layout(
+                  aggregate_it->second.type_text, type_decls, &structured_layouts_);
           const auto element_layout =
-              lookup_backend_aggregate_type_layout(array_layout.element_type_text,
-                                                   type_decls,
-                                                   structured_layouts_);
+              lookup_addressing_layout(
+                  array_layout.element_type_text, type_decls, &structured_layouts_);
           const auto relative_byte_offset =
               resolved_target->byte_offset -
               static_cast<std::int64_t>(aggregate_it->second.base_byte_offset);
@@ -1218,9 +1212,9 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       return fail_gep();
     }
     const auto element_layout =
-        lookup_backend_aggregate_type_layout(dynamic_aggregate->element_type_text,
-                                             type_decls,
-                                             structured_layouts_);
+        lookup_addressing_layout(dynamic_aggregate->element_type_text,
+                                 type_decls,
+                                 &structured_layouts_);
     if (element_layout.kind == AggregateTypeLayout::Kind::Struct ||
         element_layout.kind == AggregateTypeLayout::Kind::Array) {
       std::vector<bir::Value> element_values;
@@ -1370,9 +1364,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
             &structured_layouts_);
         aggregate_target.has_value() && aggregate_target->byte_offset >= 0) {
       const auto target_layout =
-          lookup_backend_aggregate_type_layout(aggregate_target->type_text,
-                                               type_decls,
-                                               structured_layouts_);
+          lookup_addressing_layout(aggregate_target->type_text, type_decls, &structured_layouts_);
       if (target_layout.kind == AggregateTypeLayout::Kind::Struct ||
           target_layout.kind == AggregateTypeLayout::Kind::Array) {
         dynamic_global_aggregate_arrays[gep.result.str()] = DynamicGlobalAggregateArrayAccess{
@@ -1569,9 +1561,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
             &structured_layouts_);
         if (resolved_target.has_value() && resolved_target->byte_offset >= 0) {
           const auto leaf_layout =
-              lookup_backend_aggregate_type_layout(resolved_target->type_text,
-                                                   type_decls,
-                                                   structured_layouts_);
+              lookup_addressing_layout(
+                  resolved_target->type_text, type_decls, &structured_layouts_);
           auto storage_type_text =
               addressed_ptr_it != pointer_value_addresses.end() &&
                       !addressed_ptr_it->second.storage_type_text.empty()
@@ -1639,11 +1630,11 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                 };
                 return true;
               }
-              const auto element_layout = lookup_backend_aggregate_type_layout(
-                  addressed_ptr_it->second.type_text, type_decls, structured_layouts_);
+              const auto element_layout = lookup_addressing_layout(
+                  addressed_ptr_it->second.type_text, type_decls, &structured_layouts_);
               if (element_layout.kind == AggregateTypeLayout::Kind::Array) {
-                const auto array_element_layout = lookup_backend_aggregate_type_layout(
-                    element_layout.element_type_text, type_decls, structured_layouts_);
+                const auto array_element_layout = lookup_addressing_layout(
+                    element_layout.element_type_text, type_decls, &structured_layouts_);
                 if (array_element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
                     array_element_layout.scalar_type != bir::TypeKind::Void &&
                     array_element_layout.size_bytes != 0) {

@@ -8,36 +8,32 @@ Current Step Title: Fence Type And Aggregate Layout Compatibility
 
 ## Just Finished
 
-Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the remaining
-owned memory direct aggregate-layout raw-text callers, with focus on local
-pointer-store address materialization.
+Step 4 - Fence Type And Aggregate Layout Compatibility reviewed and fenced the
+adjacent memory aggregate-layout callers in `memory/addressing.cpp` and
+`memory/local_gep.cpp`.
 
-The local aggregate pointer-store materialization branch in `local_slots.cpp`
-now routes through the Step 4 fenced local scalar byte-offset layout wrapper
-instead of calling `lookup_backend_aggregate_type_layout()` directly with
-rendered local aggregate type text. The retained raw rendered-type-text owner
-is the local-slot scalar byte-offset helper family; its limitation remains that
-local aggregate and dynamic aggregate array state carry rendered type spelling
-but not `LirTypeRef` / `StructNameId` metadata. The removal condition is those
-memory address/aggregate carriers holding structured type refs.
+The remaining direct aggregate-layout lookups in `addressing.cpp` now route
+through the existing Step 4 fenced `lookup_addressing_layout()` wrapper instead
+of calling `lookup_backend_aggregate_type_layout()` directly from local,
+global, dynamic aggregate, and pointer-value GEP/address tracking paths. The
+owner is shared memory/addressing projection and GEP state; the limitation is
+that these carriers still pass rendered aggregate type text rather than
+`LirTypeRef` / `StructNameId` metadata. The removal condition is those
+addressing helpers and address carriers accepting structured type identity.
 
-The provenance scalar-subobject checker is also fenced as a Step 4 no-id
-compatibility bridge. Its owner is provenance addressability validation for
-`GlobalInfo`, `LocalSlotAddress`, and `PointerAddress` state; its limitation is
-that those address carriers only pass rendered aggregate type text into scalar
-layout fact lookup. The removal condition is provenance address state carrying
-structured type refs alongside route-local spelling.
-
-No test edits were needed because behavior did not change. The owned memory
-files no longer contain a direct `lookup_backend_aggregate_type_layout()` call.
+`local_gep.cpp` was reviewed and already routed all aggregate-layout lookups
+through its Step 4 fenced `lookup_local_gep_layout()` wrapper, including its
+existing fail-closed structured-layout mismatch guard. No test edits were
+needed because behavior did not change. The owned memory files no longer
+contain a direct `lookup_backend_aggregate_type_layout()` call.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing adjacent non-owned memory aggregate layout callers
-in `memory/addressing.cpp` and `memory/local_gep.cpp`. Convert callers to an
-existing fenced local wrapper where the carrier still lacks structured type
-metadata, or fail closed if a `LirTypeRef` / `StructNameId` carrier is already
-available there.
+Continue Step 4 by reviewing the next remaining direct aggregate-layout raw-text
+callers outside `memory/addressing.cpp`, `memory/local_gep.cpp`,
+`memory/local_slots.cpp`, and `memory/provenance.cpp`. Convert them to an
+existing Step 4 fenced wrapper or fail closed where structured carriers already
+exist.
 
 ## Watchouts
 
@@ -100,6 +96,13 @@ available there.
 - The provenance scalar-subobject fence is comment-only. It does not add
   structured layout authority because the current address carriers still lack
   `LirTypeRef` / `StructNameId` metadata.
+- The `addressing.cpp` conversion is behavior-preserving: the direct GEP and
+  pointer-value layout lookups now enter the same fenced helper used by the
+  projection helpers, but the underlying public raw-text helpers are not
+  tightened until their signatures carry structured type identity.
+- `local_gep.cpp` needed no code change in this packet; its wrapper already
+  owns the Step 4 no-id compatibility bridge and structured-layout mismatch
+  guard.
 
 ## Proof
 
