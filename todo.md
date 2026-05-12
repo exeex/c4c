@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/191_bir_function_signature_byval_metadata_text_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Route Aggregate Param Collection Through Structured Facts
+Current Step ID: Step 4
+Current Step Title: Prove Stale Signature Text Cannot Override Metadata
 
 # Current Packet
 
