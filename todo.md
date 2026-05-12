@@ -8,15 +8,12 @@ Current Step Title: Fence Record Type And Layout Tag Map Compatibility
 
 ## Just Finished
 
-Step 2 - Fence Record Type And Layout Tag Map Compatibility started.
-
-Fenced the `parse_base_type` static-member base traversal in
-`src/frontend/parser/impl/types/base.cpp`. The duplicated base traversal now
-uses `parse_base_type_static_member_base_record_definition`, which accepts a
-complete direct `record_def`, searches complete `struct_defs` by structured
-record metadata, and fails closed when that metadata misses. The retained
-`struct_tag_def_map` compatibility tail is explicitly limited to TextId-less,
-context-less legacy carriers.
+Fenced the remaining template static-member owner-resolution callers in
+`src/frontend/parser/impl/types/base.cpp`. Both metadata-rich owner
+instantiation paths now use
+`parse_base_type_static_member_base_record_definition`, so complete structured
+misses do not re-enter `struct_tag_def_map`; the old unconditional
+`owner_mangled` rendered-map retry was removed.
 
 No test expectations were changed. Existing focused stale-rendered coverage in
 `tests/frontend/frontend_parser_lookup_authority_tests.cpp` was preserved by
@@ -24,10 +21,10 @@ the delegated proof.
 
 ## Suggested Next
 
-Continue Step 2 by fencing the remaining metadata-rich
-`resolve_record_type_spec_with_parser_tag_map_compatibility` owner-resolution
-callers in `src/frontend/parser/impl/types/base.cpp`, preserving any
-TextId-less legacy rendered compatibility as an explicit tail.
+Review Step 2 for completeness against the source idea. The only remaining
+`resolve_record_type_spec_with_parser_tag_map_compatibility` call in
+`src/frontend/parser/impl/types/base.cpp` is the helper-local TextId-less,
+context-less legacy compatibility tail.
 
 ## Watchouts
 
@@ -47,9 +44,10 @@ TextId-less legacy rendered compatibility as an explicit tail.
   `record_def` plus TextId-less legacy carriers.
 - Do not start with `eval_const_int_with_rendered_named_const_compatibility`;
   that route belongs to Step 4 and is a separate named-const surface.
-- The new `parse_base_type_static_member_base_record_definition` helper mirrors
-  the existing `template.cpp` base-record fence; consider consolidating only if
-  a later packet owns the shared helper boundary.
+- `owner_mangled` strings are still passed to
+  `ensure_template_struct_instantiated_from_args` because that API requires an
+  output buffer; they are no longer used for base.cpp owner-definition lookup
+  fallback.
 
 ## Proof
 

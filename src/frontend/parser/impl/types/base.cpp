@@ -5444,20 +5444,8 @@ TypeSpec Parser::parse_base_type() {
                                     return false;
                                 }
                                 const Node* owner_def =
-                                    resolve_record_type_spec_with_parser_tag_map_compatibility(
-                                        owner_ts,
-                                        &definition_state_
-                                             .struct_tag_def_map);
-                                if (!owner_def) {
-                                    auto it =
-                                        definition_state_.struct_tag_def_map
-                                            .find(owner_mangled);
-                                    if (it !=
-                                        definition_state_.struct_tag_def_map
-                                            .end()) {
-                                        owner_def = it->second;
-                                    }
-                                }
+                                    parse_base_type_static_member_base_record_definition(
+                                        *this, owner_ts);
                                 if (!owner_def) return false;
                                 const std::string member_name(
                                     parser_text(ref->unqualified_text_id, {}));
@@ -6919,10 +6907,8 @@ TypeSpec Parser::parse_base_type() {
                                             return false;
                                         }
                                         const Node* owner_def =
-                                            resolve_record_type_spec_with_parser_tag_map_compatibility(
-                                                owner_ts,
-                                                &definition_state_
-                                                     .struct_tag_def_map);
+                                            parse_base_type_static_member_base_record_definition(
+                                                *this, owner_ts);
                                         if (!owner_def) return false;
                                         const std::string member_name(
                                             parser_text(
