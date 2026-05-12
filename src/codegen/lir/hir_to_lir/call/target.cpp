@@ -101,10 +101,43 @@ LirCallSignature lir_call_signature_from_fn_ptr_sig(const c4c::hir::Module& mod,
   return out;
 }
 
+bool function_has_void_param_list(const Function& fn) {
+  return fn.params.size() == 1 &&
+         fn.params[0].type.spec.base == TB_VOID &&
+         fn.params[0].type.spec.ptr_level == 0 &&
+         fn.params[0].type.spec.array_rank == 0;
+}
+
+LirCallSignature lir_call_signature_from_function(const c4c::hir::Module& mod,
+                                                  LirModule* lir_module,
+                                                  const Function& fn) {
+  LirCallSignature out;
+  out.return_type_ref = lir_call_type_ref(
+      llvm_return_ty(mod, fn.return_type.spec), lir_module, mod, fn.return_type.spec);
+  out.is_variadic = fn.attrs.variadic;
+  out.has_void_param_list = function_has_void_param_list(fn);
+  if (out.has_void_param_list) return out;
+
+  out.fixed_param_types.reserve(fn.params.size());
+  out.fixed_param_type_refs.reserve(fn.params.size());
+  for (const auto& param : fn.params) {
+    const TypeSpec& param_ts = param.type.spec;
+    const std::string rendered_type =
+        rendered_call_signature_param_type(mod, lir_module, param_ts);
+    out.fixed_param_types.push_back(rendered_type);
+    out.fixed_param_type_refs.push_back(
+        lir_call_type_ref(rendered_type, lir_module, mod, param_ts));
+  }
+  return out;
+}
+
 std::optional<LirCallSignature> structured_callee_signature(
     const c4c::hir::Module& mod,
     LirModule* lir_module,
     const CallTargetInfo& call_target) {
+  if (call_target.target_fn) {
+    return lir_call_signature_from_function(mod, lir_module, *call_target.target_fn);
+  }
   if (!call_target.callee_fn_ptr_sig) return std::nullopt;
   return lir_call_signature_from_fn_ptr_sig(
       mod, lir_module, *call_target.callee_fn_ptr_sig);

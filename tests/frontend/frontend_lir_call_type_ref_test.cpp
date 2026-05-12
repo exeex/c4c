@@ -390,6 +390,16 @@ int call_unspecified_indirect(int (*fp)()) {
 
   expect_struct_type_ref(lir_module, direct_call.return_type, "%struct.Pair",
                          "call return mirror");
+  expect_true(direct_call.callee_signature.has_value(),
+              "metadata-rich direct call should carry structured callee signature");
+  expect_true(direct_call.callee_signature->return_type_ref.has_value(),
+              "direct call signature should carry structured return metadata");
+  expect_struct_type_ref(lir_module, *direct_call.callee_signature->return_type_ref,
+                         "%struct.Pair", "direct call signature return mirror");
+  expect_eq(std::to_string(direct_call.callee_signature->fixed_param_types.size()), "1",
+            "direct call signature should carry one fixed parameter");
+  expect_struct_type_ref(lir_module, direct_call.callee_signature->fixed_param_type_refs[0],
+                         "%struct.Pair", "direct call signature parameter mirror");
   expect_eq(std::to_string(direct_call.arg_type_refs.size()), "1",
             "direct call should carry one argument mirror");
   expect_struct_type_ref(lir_module, direct_call.arg_type_refs[0], "%struct.Pair",
@@ -482,6 +492,12 @@ int call_unspecified_indirect(int (*fp)()) {
       require_function(lir_module, "call_variadic");
   c4c::codegen::lir::LirCallOp& variadic_call =
       require_call_to(call_variadic, "@sink");
+  expect_true(variadic_call.callee_signature.has_value(),
+              "metadata-rich direct variadic call should carry callee signature");
+  expect_true(variadic_call.callee_signature->is_variadic,
+              "direct variadic call should carry variadic state");
+  expect_eq(std::to_string(variadic_call.callee_signature->fixed_param_types.size()), "1",
+            "direct variadic call should carry one fixed parameter");
   expect_eq(std::to_string(variadic_call.arg_type_refs.size()), "0",
             "variadic aggregate call should not carry argument mirrors when "
             "the call signature cannot parse against emitted ABI arguments");
@@ -503,6 +519,12 @@ int call_unspecified_indirect(int (*fp)()) {
       require_indirect_call(require_function(stale_indirect_suffix, "call_int_indirect"));
   stale_indirect_call.callee_type_suffix = "(ptr)";
   c4c::codegen::lir::verify_module(stale_indirect_suffix);
+
+  c4c::codegen::lir::LirModule stale_direct_suffix = lir_module;
+  c4c::codegen::lir::LirCallOp& stale_direct_call =
+      require_call_to(require_function(stale_direct_suffix, "call_pair"), "@make_pair");
+  stale_direct_call.callee_type_suffix = "(ptr)";
+  c4c::codegen::lir::verify_module(stale_direct_suffix);
 
   c4c::codegen::lir::LirModule mismatched_indirect_sig = lir_module;
   c4c::codegen::lir::LirCallOp& mismatched_indirect_call =

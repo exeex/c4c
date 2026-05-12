@@ -293,7 +293,7 @@ struct LirCallOp {
   std::string callee_type_suffix;  // optional fn ptr type suffix (empty for direct calls)
   std::string args_str;            // pre-formatted argument string (e.g. "i32 %t1, i32 %t2")
   std::vector<LirTypeRef> arg_type_refs;  // Mirrors argument type fragments when available
-  std::optional<LirCallSignature> callee_signature;  // Structured fn-ptr callee signature.
+  std::optional<LirCallSignature> callee_signature;  // Structured callee signature when available.
 };
 
 // Typed binary arithmetic/bitwise/unary operation.

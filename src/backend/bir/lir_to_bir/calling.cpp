@@ -251,6 +251,24 @@ BirFunctionLowerer::parse_direct_global_typed_call(const c4c::codegen::lir::LirC
     return std::nullopt;
   }
 
+  if (call.callee_signature.has_value()) {
+    const auto parsed = parse_typed_call(call);
+    if (!parsed.has_value()) {
+      return std::nullopt;
+    }
+    ParsedDirectGlobalTypedCall lowered;
+    lowered.symbol_name = *symbol_name;
+    lowered.typed_call.owned_param_types = std::move(parsed->owned_param_types);
+    lowered.typed_call.param_types.reserve(lowered.typed_call.owned_param_types.size());
+    for (const std::string& type : lowered.typed_call.owned_param_types) {
+      lowered.typed_call.param_types.push_back(type);
+    }
+    lowered.typed_call.args = parsed->args;
+    lowered.typed_call.is_variadic = parsed->is_variadic;
+    lowered.is_variadic = parsed->is_variadic;
+    return lowered;
+  }
+
   bool signature_is_variadic = false;
   if (const auto param_types =
           c4c::codegen::lir::parse_lir_call_param_types(call.callee_type_suffix);
@@ -473,12 +491,23 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     note_semantic_call_family_failure(family);
     return false;
   };
+  const bool is_direct_global_call =
+      c4c::codegen::lir::parse_lir_direct_global_callee(call.callee).has_value();
+  const bool metadata_rich_direct_call =
+      is_direct_global_call &&
+      (call.direct_callee_link_name_id != c4c::kInvalidLinkName ||
+       call.callee_signature.has_value());
+  const c4c::codegen::lir::LirTypeRef* call_return_type_ref =
+      (metadata_rich_direct_call || call.return_type.has_struct_name_id())
+          ? &call.return_type
+          : nullptr;
 
   auto return_info =
       lower_return_info_from_type(call.return_type.str(),
                                   type_decls,
                                   context_.target_profile,
-                                  &structured_layouts_);
+                                  &structured_layouts_,
+                                  call_return_type_ref);
   if (!return_info.has_value()) {
     return fail_call_family(kCallReturnFamily);
   }
@@ -693,6 +722,10 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       }
       return std::string(fallback_name);
     };
+    if (metadata_rich_direct_call && !call.callee_signature.has_value()) {
+      return fail_call_family(call_family);
+    }
+
     if (const auto inferred_call = parse_typed_call(call); inferred_call.has_value()) {
       const std::string semantic_direct_callee =
           resolved_direct_callee_name(*direct_callee);
