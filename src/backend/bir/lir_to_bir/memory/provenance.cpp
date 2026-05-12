@@ -54,6 +54,13 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
     return true;
   }
 
+  // Step 4 no-id compatibility bridge: provenance scalar-subobject checks
+  // still receive only rendered aggregate type text from GlobalInfo,
+  // LocalSlotAddress, and PointerAddress state. This path may validate byte
+  // offsets through legacy type declarations, but it cannot recover a
+  // metadata-rich structured layout miss because no LirTypeRef/StructNameId
+  // carrier reaches this helper. Remove this bridge once provenance address
+  // state carries structured type refs alongside its route-local spelling.
   const auto scalar_facts = resolve_scalar_layout_facts_at_byte_offset(
       type_text, static_cast<std::size_t>(byte_offset), type_decls);
   if (!scalar_facts.has_value() || scalar_facts->object_size_bytes == 0 ||

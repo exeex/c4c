@@ -8,32 +8,36 @@ Current Step Title: Fence Type And Aggregate Layout Compatibility
 
 ## Just Finished
 
-Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the
-`aggregate.cpp` byval/local aggregate layout helper that passes rendered type
-text into aggregate layout lookup.
+Step 4 - Fence Type And Aggregate Layout Compatibility reviewed the remaining
+owned memory direct aggregate-layout raw-text callers, with focus on local
+pointer-store address materialization.
 
-The retained raw rendered-type-text path in `selected_aggregate_type_layout()`
-is now fenced as a Step 4 no-id compatibility bridge. Its owner is
-`aggregate.cpp` local aggregate slot declaration, leaf discovery, and byval
-copy helpers; its limitation is that those paths still thread rendered type
-spelling while local aggregate slot and byval copy state lack `LirTypeRef` /
-`StructNameId` carriers. Metadata-bearing byval params must continue to use
-the `selected_aggregate_type_ref_layout()` path and fail closed on stale or
-mismatched structured text. The removal condition is local aggregate slot state
-and byval copy state carrying structured type refs instead of rendered
-spelling.
+The local aggregate pointer-store materialization branch in `local_slots.cpp`
+now routes through the Step 4 fenced local scalar byte-offset layout wrapper
+instead of calling `lookup_backend_aggregate_type_layout()` directly with
+rendered local aggregate type text. The retained raw rendered-type-text owner
+is the local-slot scalar byte-offset helper family; its limitation remains that
+local aggregate and dynamic aggregate array state carry rendered type spelling
+but not `LirTypeRef` / `StructNameId` metadata. The removal condition is those
+memory address/aggregate carriers holding structured type refs.
 
-No test edits were needed because behavior did not change. Existing structured
-layout lookup tests continue to cover structured-table authority, no-id legacy
-fallback, and metadata-rich type-ref fail-closed behavior.
+The provenance scalar-subobject checker is also fenced as a Step 4 no-id
+compatibility bridge. Its owner is provenance addressability validation for
+`GlobalInfo`, `LocalSlotAddress`, and `PointerAddress` state; its limitation is
+that those address carriers only pass rendered aggregate type text into scalar
+layout fact lookup. The removal condition is provenance address state carrying
+structured type refs alongside route-local spelling.
+
+No test edits were needed because behavior did not change. The owned memory
+files no longer contain a direct `lookup_backend_aggregate_type_layout()` call.
 
 ## Suggested Next
 
-Continue Step 4 by reviewing the remaining local-slot aggregate layout call
-sites that bypass the local scalar byte-offset wrapper, such as direct
-`lookup_backend_aggregate_type_layout()` use in pointer-store address
-materialization. Fence the retained no-id path or add focused fail-closed proof
-if a structured carrier is already available there.
+Continue Step 4 by reviewing adjacent non-owned memory aggregate layout callers
+in `memory/addressing.cpp` and `memory/local_gep.cpp`. Convert callers to an
+existing fenced local wrapper where the carrier still lacks structured type
+metadata, or fail closed if a `LirTypeRef` / `StructNameId` carrier is already
+available there.
 
 ## Watchouts
 
@@ -89,6 +93,13 @@ if a structured carrier is already available there.
   not change local aggregate slot declaration, leaf discovery, or byval copy
   behavior; metadata-bearing byval params already use the `LirTypeRef` lookup
   path and should keep failing closed there.
+- The local pointer-store materialization conversion is behavior-preserving:
+  it still uses the same structured layout table when available, but the direct
+  raw aggregate layout call is now behind the local scalar byte-offset wrapper
+  fence.
+- The provenance scalar-subobject fence is comment-only. It does not add
+  structured layout authority because the current address carriers still lack
+  `LirTypeRef` / `StructNameId` metadata.
 
 ## Proof
 

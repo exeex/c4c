@@ -1072,9 +1072,9 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         }
         local_pointer_slot_addresses->erase(ptr_it->second);
         const auto target_layout =
-            lookup_backend_aggregate_type_layout(local_aggregate_it->second.type_text,
-                                                 type_decls,
-                                                 structured_layouts_);
+            lookup_scalar_byte_offset_layout(local_aggregate_it->second.type_text,
+                                             type_decls,
+                                             &structured_layouts_);
         auto stored_address = LocalSlotAddress{
             .slot_name = leaf_it->second,
             .value_type = target_layout.kind == AggregateTypeLayout::Kind::Scalar
