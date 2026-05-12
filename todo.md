@@ -1,38 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/184_direct_call_signature_metadata_structured_boundary.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Add focused direct-call tests
+Current Step ID: Step 4
+Current Step Title: Validate and prepare handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 coverage completed: reviewed the Step 2 frontend/backend direct-call
-tests and added the missing backend semantic coverage for aggregate-sensitive
-generated direct calls.
+Step 4 validation completed for idea 184: rebuilt the default preset and reran
+the supervisor-selected focused frontend/backend coverage after the direct-call
+signature metadata implementation and tests.
 
-Backend notes coverage now proves:
-
-- structured direct calls still ignore stale rendered suffixes;
-- metadata-rich direct calls reject missing structured callee signatures;
-- structured direct byval aggregate calls materialize BIR byval ABI facts from
-  `arg_type_refs` instead of treating the argument as a plain pointer;
-- mismatched structured aggregate metadata on that direct byval path fails
-  closed in the direct-call semantic family;
-- the existing raw/no-metadata byval fixture without structured mirrors still
-  lowers through the explicit compatibility path.
-
-The new aggregate-sensitive test exposed a small Step 2 direct-call lowering
-bug: generated-style `ptr` signatures with `ptr byval(...)` arguments were
-taking the plain-pointer path before consulting structured aggregate mirrors.
-The direct-call branch now handles explicit byval arguments before the pointer
-fast path.
+The validation result supports handoff for lifecycle close/switch review:
+metadata-rich generated direct calls now require structured callee signature
+facts, aggregate-sensitive byval direct-call lowering is covered, stale or
+missing structured metadata fails closed on the generated path, and the raw
+no-metadata compatibility path remains explicitly covered.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: validate and prepare the idea 184 handoff,
-including any supervisor-selected broader proof or lifecycle-close review.
+Supervisor should review and, if accepted, hand idea 184 to the plan owner for
+lifecycle close/switch handling. Backend freeze closure remains out of scope for
+this idea and should continue through the later freeze-gate idea.
 
 ## Watchouts
 
@@ -44,6 +34,10 @@ including any supervisor-selected broader proof or lifecycle-close review.
 - `lower_extern_decl` still prefers `return_type_str` before `return_type`; this
   is adjacent compatibility behavior, not necessarily the direct-call Step 2
   repair point.
+- Existing full-suite candidate `test_baseline.new.log` is not a usable
+  acceptance baseline for this slice because it records 9 failures out of 3137
+  tests. The accepted proof for this packet is the supervisor-selected
+  frontend/backend subset in `test_after.log`.
 - Backend freeze closure remains owned by idea 188.
 
 ## Proof
@@ -52,3 +46,6 @@ Supervisor-selected proof passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|backend_)' > test_after.log 2>&1`
 
 Proof log: `test_after.log`
+
+Result: 100% tests passed, 0 failed out of 110. Disabled backend CLI trace
+tests remained disabled and were not part of the selected subset.
