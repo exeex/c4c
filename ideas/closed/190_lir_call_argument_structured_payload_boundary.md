@@ -1,7 +1,8 @@
 # LIR Call Argument Structured Payload Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/184_direct_call_signature_metadata_structured_boundary.md`
@@ -57,6 +58,20 @@ printer/verifier compatibility path.
   ABI facts when structured metadata is present.
 - Raw/no-metadata compatibility remains explicit.
 - Validation includes focused LIR-to-BIR direct and indirect call coverage.
+
+## Completion Notes
+
+- `LirCallOp` now carries structured argument facts populated from generated
+  `OwnedLirTypedCallArg` values.
+- LIR-to-BIR call lowering uses non-empty structured argument payloads as the
+  metadata-rich authority for operand, type text, and byval type-ref facts.
+- Empty structured payloads remain the explicit raw/no-metadata compatibility
+  path through legacy rendered-text parsing.
+- Focused coverage proves stale rendered call text does not override structured
+  metadata for direct scalar, direct byval, indirect, and no-signature
+  structured calls.
+- Close-time full-suite regression guard passed with `3137/3137` runnable tests
+  green before and after.
 
 ## Reviewer Reject Signals
 
