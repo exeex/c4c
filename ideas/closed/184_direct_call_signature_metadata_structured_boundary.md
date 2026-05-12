@@ -1,7 +1,8 @@
 # Direct Call Signature Metadata Structured Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/181_function_pointer_signature_type_identity.md`
@@ -57,6 +58,17 @@ spelling.
 - Tests cover at least one aggregate-sensitive direct-call case and one stale
   or missing structured-metadata rejection.
 - Validation includes focused frontend/LIR/BIR/backend call-signature coverage.
+
+## Closure Notes
+
+- Metadata-rich direct calls now require structured callee signature facts on
+  the generated direct-callee path.
+- Raw/no-metadata direct-call compatibility remains fenced by leaving direct
+  callee metadata absent.
+- Focused coverage includes structured aggregate/byval success and stale or
+  missing structured metadata rejection.
+- Close-time regression guard passed with the canonical focused
+  frontend/backend subset logs: 110 passed before and 110 passed after.
 
 ## Reviewer Reject Signals
 

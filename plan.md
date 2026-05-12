@@ -1,155 +1,161 @@
-# Direct Call Signature Metadata Structured Boundary Runbook
+# LIR-to-BIR Global/TypeDecl Compatibility Fence Runbook
 
 Status: Active
-Source Idea: ideas/open/184_direct_call_signature_metadata_structured_boundary.md
+Source Idea: ideas/open/185_lir_to_bir_global_typedecl_compatibility_fence.md
 
 ## Purpose
 
-Bring direct-call signature lowering up to the structured-metadata boundary
-already established for bounded indirect calls.
+Fence the remaining LIR-to-BIR global, type declaration, and structured layout
+compatibility tables so generated metadata-rich lowering cannot treat producer
+final spellings as semantic authority.
 
 ## Goal
 
-Ensure metadata-rich generated LIR direct calls use structured call/function
-signature facts for semantic lowering, while rendered signature text remains
-only an explicit compatibility or display surface.
+Ensure selected metadata-rich generated LIR-to-BIR global/type/layout paths use
+`LinkNameId`, `LirTypeRef`, `StructNameId`, and structured layout facts for
+semantic lookup, while string-keyed tables remain explicit compatibility or
+display surfaces.
 
 ## Core Rule
 
-Generated metadata-rich direct calls must not silently fall back to parsing
-rendered function signature text. Preserve no-metadata compatibility as a
-fenced path, not as normal generated-path authority.
+Generated metadata-rich lowering must not silently fall back from missing or
+stale structured identity metadata to final spelling as semantic authority.
+Preserve raw/no-id compatibility as a fenced path.
 
 ## Read First
 
-- `ideas/open/184_direct_call_signature_metadata_structured_boundary.md`
-- `ideas/closed/181_function_pointer_signature_type_identity.md`
+- `ideas/open/185_lir_to_bir_global_typedecl_compatibility_fence.md`
+- `ideas/closed/180_aarch64_direct_lir_aggregate_type_bridge_retirement.md`
 - `ideas/closed/183_lir_bir_backend_freeze_authority_audit.md`
 - `src/codegen/lir`
 - `src/backend/bir/lir_to_bir`
 
 ## Current Scope
 
-- Inventory the direct-call signature lowering route from generated LIR into
-  BIR.
-- Identify where return type, parameter types, variadic state, byval, sret, and
-  aggregate layout facts are currently derived.
-- Select the generated metadata-rich direct-call path and require structured
-  signature data there.
-- Preserve rendered-signature parsing only for explicit no-metadata
-  compatibility fixtures.
-- Add focused tests for structured success and stale or missing metadata
-  rejection.
+- Audit `GlobalTypes`, `TypeDeclMap`, and `BackendStructuredLayoutTable`
+  construction and consumers.
+- Classify string-keyed lookup as raw/no-id compatibility, display, or
+  generated-path semantic authority.
+- Select one or more generated metadata-rich global/type/layout paths and
+  require structured identity metadata there.
+- Preserve printer/final spelling and raw imported LIR compatibility.
+- Add focused tests for structured success, stale or missing metadata
+  rejection, and retained raw compatibility where appropriate.
 
 ## Non-Goals
 
-- Do not rewrite every call ABI path in one slice.
-- Do not change printer syntax or final emitted call spelling for cosmetic
-  reasons.
-- Do not remove raw direct-LIR compatibility fixtures.
-- Do not reopen parser or sema function-pointer work unless direct-call
-  metadata exposes a concrete missing fact.
+- Do not remove all legacy type declaration parsing in one pass.
+- Do not rewrite aggregate layout algorithms unrelated to the selected
+  boundary.
+- Do not change emitted object symbol spelling.
+- Do not treat final display names as unavailable; they may still be rendered
+  from ids for output.
 - Do not claim backend freeze closure; that remains owned by idea 188.
 
 ## Working Model
 
-- Idea 181 closed the indirect function-pointer signature path and left
-  direct-call signature metadata as future work.
-- Direct-call lowering may keep legacy rendered-signature parsing for raw or
-  no-metadata imports.
-- Generated metadata-rich direct calls should fail closed when structured
-  signature metadata is stale or missing.
-- Aggregate-sensitive facts include aggregate return, byval parameters, sret,
-  variadic state, and ordinary scalar parameters/returns.
+- `GlobalTypes`, `TypeDeclMap`, and structured layout tables may be valid
+  compatibility bridges for raw imported LIR or no-id paths.
+- Generated LIR paths should carry enough structured identity to avoid using
+  producer final spelling as the semantic key.
+- `LinkNameId` should own global identity where available.
+- `LirTypeRef`, `StructNameId`, and structured layout entries should own type
+  and aggregate layout identity where available.
+- Missing or stale metadata on a selected generated path should fail closed
+  instead of falling back to a string-keyed semantic table.
 
 ## Execution Rules
 
-- Keep implementation changes scoped to direct-call signature lowering and its
-  direct tests.
-- Treat new rendered-signature parser branches as route drift.
-- Separate generated metadata-rich behavior from raw/no-metadata compatibility
-  in code and tests.
-- Prefer focused tests that prove semantic lowering behavior, not only printed
-  LIR/BIR text.
-- For code-changing steps, run build proof plus focused call-signature
-  frontend/LIR/BIR/backend coverage selected by the supervisor.
+- Keep implementation changes scoped to the selected global/type/layout
+  boundary and its direct tests.
+- Treat map renames without authority changes as insufficient.
+- Separate generated metadata-rich lookup from raw/no-id compatibility in code
+  and tests.
+- Prefer tests that exercise semantic lowering or validation behavior, not only
+  printed names.
+- For code-changing steps, run build proof plus focused LIR-to-BIR
+  global/type/layout coverage selected by the supervisor.
 
 ## Ordered Steps
 
-### Step 1: Inventory direct-call signature lowering
+### Step 1: Inventory global/type/layout lookup surfaces
 
-Goal: Identify the exact direct-call route and current authority sources.
+Goal: Identify the exact construction and consumer paths for the compatibility
+tables named by the source idea.
 
 Primary targets:
 - `src/codegen/lir`
 - `src/backend/bir/lir_to_bir`
 
 Actions:
-- Inspect generated direct-call LIR construction and LIR-to-BIR direct-call
-  lowering.
-- Locate helpers that parse or trust rendered signature text.
-- Locate any structured signature, function type, parameter, return, byval,
-  sret, variadic, and aggregate layout facts already available.
-- Record the generated metadata-rich route versus raw/no-metadata compatibility
-  route in `todo.md`.
+- Inspect `GlobalTypes`, `TypeDeclMap`, and `BackendStructuredLayoutTable`
+  construction.
+- Locate all consumers that use string keys or producer final spelling for
+  global, type declaration, or aggregate layout decisions.
+- Locate structured facts already available at those use sites, including
+  `LinkNameId`, `LirTypeRef`, `StructNameId`, and structured layout entries.
+- Record generated metadata-rich routes versus raw/no-id compatibility routes
+  in `todo.md`.
 
 Completion check:
-- `todo.md` names the direct-call lowering functions, existing structured fact
-  sources, and rendered-signature fallback points.
+- `todo.md` names the relevant table builders, consumers, existing structured
+  fact sources, and fallback lookup points.
 
-### Step 2: Fence generated metadata-rich direct calls
+### Step 2: Select and fence a generated metadata-rich path
 
-Goal: Require structured signature metadata on the selected generated direct-
-call path.
+Goal: Require structured metadata on one or more selected generated
+global/type/layout paths while preserving raw compatibility.
 
 Primary targets:
-- Direct-call signature lowering in `src/backend/bir/lir_to_bir`.
-- Structured call/function signature facts from generated LIR.
+- LIR-to-BIR global/type/layout lookup in `src/backend/bir/lir_to_bir`.
+- Structured identity facts from generated LIR.
 
 Actions:
-- Add or reuse a route distinction that tells generated metadata-rich direct
-  calls apart from raw/no-metadata compatibility imports.
-- Make metadata-rich direct calls consume structured return, parameter,
-  variadic, byval, sret, and aggregate layout facts where available.
+- Add or reuse a route distinction that tells generated metadata-rich lookup
+  apart from raw/no-id compatibility lookup.
+- Make the selected generated path prefer structured identity and layout facts
+  over final spelling.
 - Make stale or missing structured metadata fail closed on the selected path.
-- Keep rendered-signature parsing reachable only through the explicit
-  compatibility path.
+- Keep string-keyed tables reachable only through explicit compatibility,
+  display, or raw/no-id paths.
 
 Completion check:
-- Generated metadata-rich direct calls no longer use rendered signature parsing
-  as normal semantic authority for the selected path.
+- The selected generated path no longer uses final spelling as normal semantic
+  authority.
 
-### Step 3: Add focused direct-call tests
+### Step 3: Add focused global/type/layout tests
 
 Goal: Prove structured success, fail-closed rejection, and retained
 compatibility behavior.
 
 Primary targets:
-- Existing call-signature, LIR-to-BIR, and backend tests.
+- Existing LIR-to-BIR, backend validation, and focused backend route tests.
 
 Actions:
-- Add at least one aggregate-sensitive direct-call success case.
+- Add at least one structured success case for the selected global/type/layout
+  path.
 - Add at least one stale or missing structured-metadata rejection case.
-- Preserve or add a raw/no-metadata compatibility case where rendered
-  signature parsing remains intentionally allowed.
-- Avoid tests that only prove pretty-printed text without exercising semantic
-  lowering behavior.
+- Preserve or add a raw/no-id compatibility case where string-keyed lookup
+  remains intentionally allowed.
+- Avoid tests that only prove pretty-printed names without exercising semantic
+  lookup or validation behavior.
 
 Completion check:
 - Focused tests fail without the structured boundary and pass with it.
 
 ### Step 4: Validate and prepare handoff
 
-Goal: Produce acceptance-grade proof for idea 184 without broadening into the
+Goal: Produce acceptance-grade proof for idea 185 without broadening into the
 later freeze gate.
 
 Actions:
-- Run build proof and the supervisor-selected focused call-signature coverage.
+- Run build proof and the supervisor-selected focused LIR-to-BIR
+  global/type/layout coverage.
 - Escalate to a broader backend or compiler subset if the implementation
   crosses shared lowering or ABI behavior beyond the selected path.
 - Update `todo.md` with proof results, residual risks, and the recommended
   lifecycle close/switch decision.
 
 Completion check:
-- Idea 184 acceptance criteria are satisfied, and the supervisor has enough
+- Idea 185 acceptance criteria are satisfied, and the supervisor has enough
   proof to review and commit the slice.
