@@ -1,166 +1,155 @@
-# LIR/BIR Backend Freeze Authority Audit Runbook
+# Direct Call Signature Metadata Structured Boundary Runbook
 
 Status: Active
-Source Idea: ideas/open/183_lir_bir_backend_freeze_authority_audit.md
+Source Idea: ideas/open/184_direct_call_signature_metadata_structured_boundary.md
 
 ## Purpose
 
-Audit the LIR/BIR/backend-prealloc identity boundary before backend restart and
-produce a freeze ledger for remaining identity-authority surfaces.
+Bring direct-call signature lowering up to the structured-metadata boundary
+already established for bounded indirect calls.
 
 ## Goal
 
-Classify the remaining backend-facing identity surfaces so follow-up backend
-work does not accidentally treat compatibility or display strings as semantic
-authority on generated metadata-rich paths.
+Ensure metadata-rich generated LIR direct calls use structured call/function
+signature facts for semantic lowering, while rendered signature text remains
+only an explicit compatibility or display surface.
 
 ## Core Rule
 
-This is an audit and lifecycle-classification runbook. Do not implement backend
-fixes here; convert required repairs into concrete follow-up ideas or confirm
-that existing open ideas already cover them.
+Generated metadata-rich direct calls must not silently fall back to parsing
+rendered function signature text. Preserve no-metadata compatibility as a
+fenced path, not as normal generated-path authority.
 
 ## Read First
 
-- `ideas/open/183_lir_bir_backend_freeze_authority_audit.md`
 - `ideas/open/184_direct_call_signature_metadata_structured_boundary.md`
-- `ideas/open/185_lir_to_bir_global_typedecl_compatibility_fence.md`
-- `ideas/open/186_bir_direct_symbol_identity_validation_closure.md`
-- `ideas/open/187_bir_memory_provenance_global_handle_cleanup.md`
-- `ideas/open/188_lir_bir_freeze_closure_gate.md`
+- `ideas/closed/181_function_pointer_signature_type_identity.md`
+- `ideas/closed/183_lir_bir_backend_freeze_authority_audit.md`
 - `src/codegen/lir`
-- `src/backend/bir`
-- `src/backend/prealloc`
+- `src/backend/bir/lir_to_bir`
 
 ## Current Scope
 
-- Inventory LIR/BIR/backend-prealloc identity surfaces relevant to backend
-  restart.
-- Classify retained strings as display/output, diagnostics, route-local
-  handles, no-metadata compatibility, ABI/final spelling, or semantic
-  authority that needs replacement.
-- Explicitly cover direct-call signatures, direct callee identity,
-  global/type declaration compatibility tables, aggregate layout facts, memory
-  provenance global handles, and prealloc route-local names.
-- Confirm whether open ideas 184-188 cover all required freeze blockers.
+- Inventory the direct-call signature lowering route from generated LIR into
+  BIR.
+- Identify where return type, parameter types, variadic state, byval, sret, and
+  aggregate layout facts are currently derived.
+- Select the generated metadata-rich direct-call path and require structured
+  signature data there.
+- Preserve rendered-signature parsing only for explicit no-metadata
+  compatibility fixtures.
+- Add focused tests for structured success and stale or missing metadata
+  rejection.
 
 ## Non-Goals
 
-- Do not restart x86, AArch64, or target backend implementation.
-- Do not rewrite LIR/BIR lowering, prealloc, assemblers, linkers, or object
-  emission inside this audit.
-- Do not remove printer, diagnostic, output, or route-local strings just
-  because they are strings.
-- Do not downgrade tests, weaken supported-path contracts, or treat expectation
-  rewrites as freeze progress.
+- Do not rewrite every call ABI path in one slice.
+- Do not change printer syntax or final emitted call spelling for cosmetic
+  reasons.
+- Do not remove raw direct-LIR compatibility fixtures.
+- Do not reopen parser or sema function-pointer work unless direct-call
+  metadata exposes a concrete missing fact.
+- Do not claim backend freeze closure; that remains owned by idea 188.
 
 ## Working Model
 
-- `LinkNameId`, `LirTypeRef`, `StructNameId`, and structured layout facts are
-  candidate semantic authorities for metadata-rich generated paths.
-- Final rendered names and signature strings may remain for display, emitted
-  spelling, diagnostics, compatibility fixtures, or route-local bookkeeping.
-- Raw or no-metadata LIR/BIR imports may keep compatibility behavior, but that
-  compatibility must be distinguishable from normal generated-path semantics.
-- Audit findings should first live in `todo.md`. Durable follow-up ideas belong
-  under `ideas/open/` through a plan-owner lifecycle handoff.
+- Idea 181 closed the indirect function-pointer signature path and left
+  direct-call signature metadata as future work.
+- Direct-call lowering may keep legacy rendered-signature parsing for raw or
+  no-metadata imports.
+- Generated metadata-rich direct calls should fail closed when structured
+  signature metadata is stale or missing.
+- Aggregate-sensitive facts include aggregate return, byval parameters, sret,
+  variadic state, and ordinary scalar parameters/returns.
 
 ## Execution Rules
 
-- Keep evidence tied to concrete files, data structures, and lowering routes.
-- Separate display/output strings from semantic identity instead of marking all
-  strings as defects.
-- When a generated metadata-rich path can fall back to rendered text, record it
-  as a blocker unless an existing open idea already owns it.
-- If a missing blocker idea is discovered, stop implementation-style work and
-  route it through lifecycle state rather than expanding this audit into a fix.
-- Validation for this audit is source-level proof: commands may include fast
-  compile or targeted tests only if the audit changes lifecycle/docs artifacts.
+- Keep implementation changes scoped to direct-call signature lowering and its
+  direct tests.
+- Treat new rendered-signature parser branches as route drift.
+- Separate generated metadata-rich behavior from raw/no-metadata compatibility
+  in code and tests.
+- Prefer focused tests that prove semantic lowering behavior, not only printed
+  LIR/BIR text.
+- For code-changing steps, run build proof plus focused call-signature
+  frontend/LIR/BIR/backend coverage selected by the supervisor.
 
 ## Ordered Steps
 
-### Step 1: Inventory LIR/BIR identity surfaces
+### Step 1: Inventory direct-call signature lowering
 
-Goal: Build the first freeze-ledger inventory from source inspection.
+Goal: Identify the exact direct-call route and current authority sources.
 
 Primary targets:
 - `src/codegen/lir`
-- `src/backend/bir`
-- `src/backend/prealloc`
+- `src/backend/bir/lir_to_bir`
 
 Actions:
-- Inspect identity-bearing structures, maps, validators, and lowering helpers.
-- List surfaces for signatures, symbols, globals, type/layout facts, memory
-  provenance, and prealloc route-local names.
-- For each surface, record the file/function, stored spelling or id fields,
-  and whether it is used by generated metadata-rich paths, raw/no-id
-  compatibility, display/output, diagnostics, or route-local bookkeeping.
-- Update `todo.md` with the inventory summary and any uncertain surfaces.
+- Inspect generated direct-call LIR construction and LIR-to-BIR direct-call
+  lowering.
+- Locate helpers that parse or trust rendered signature text.
+- Locate any structured signature, function type, parameter, return, byval,
+  sret, variadic, and aggregate layout facts already available.
+- Record the generated metadata-rich route versus raw/no-metadata compatibility
+  route in `todo.md`.
 
 Completion check:
-- `todo.md` contains an inventory that another agent can use without repeating
-  broad source discovery.
+- `todo.md` names the direct-call lowering functions, existing structured fact
+  sources, and rendered-signature fallback points.
 
-### Step 2: Classify authority and compatibility boundaries
+### Step 2: Fence generated metadata-rich direct calls
 
-Goal: Decide which retained strings are acceptable and which are freeze
-blockers.
+Goal: Require structured signature metadata on the selected generated direct-
+call path.
 
 Primary targets:
-- Direct-call signature lowering.
-- Direct call/global/pointer-initializer symbol identity.
-- `GlobalTypes`, `TypeDeclMap`, and structured layout tables.
-- Memory/provenance global-handle maps.
-- Prealloc route-local names.
+- Direct-call signature lowering in `src/backend/bir/lir_to_bir`.
+- Structured call/function signature facts from generated LIR.
 
 Actions:
-- Classify each inspected surface as display/output, diagnostics, route-local,
-  no-metadata compatibility, ABI/final spelling, or semantic authority.
-- Identify generated metadata-rich paths that still parse or trust rendered
-  signature, symbol, global, type, or layout spelling.
-- Distinguish valid compatibility fallbacks from unowned semantic authority.
-- Update `todo.md` with a freeze-ledger classification table or equivalent
-  structured summary.
+- Add or reuse a route distinction that tells generated metadata-rich direct
+  calls apart from raw/no-metadata compatibility imports.
+- Make metadata-rich direct calls consume structured return, parameter,
+  variadic, byval, sret, and aggregate layout facts where available.
+- Make stale or missing structured metadata fail closed on the selected path.
+- Keep rendered-signature parsing reachable only through the explicit
+  compatibility path.
 
 Completion check:
-- Every source-idea identity domain is classified, and each high-risk
-  generated-path fallback has an owner or blocker note.
+- Generated metadata-rich direct calls no longer use rendered signature parsing
+  as normal semantic authority for the selected path.
 
-### Step 3: Map blockers to follow-up ideas
+### Step 3: Add focused direct-call tests
 
-Goal: Ensure every required freeze blocker is captured as durable follow-up
-  work.
+Goal: Prove structured success, fail-closed rejection, and retained
+compatibility behavior.
 
 Primary targets:
-- `ideas/open/184_direct_call_signature_metadata_structured_boundary.md`
-- `ideas/open/185_lir_to_bir_global_typedecl_compatibility_fence.md`
-- `ideas/open/186_bir_direct_symbol_identity_validation_closure.md`
-- `ideas/open/187_bir_memory_provenance_global_handle_cleanup.md`
-- `ideas/open/188_lir_bir_freeze_closure_gate.md`
+- Existing call-signature, LIR-to-BIR, and backend tests.
 
 Actions:
-- Match each classified blocker to an existing open idea when the scope lines
-  up.
-- Record any uncovered blocker in `todo.md` with concrete reject signals and a
-  suggested new idea title.
-- Do not create or edit source ideas directly from routine audit notes; route
-  missing durable follow-up ideas through the supervisor and plan owner.
+- Add at least one aggregate-sensitive direct-call success case.
+- Add at least one stale or missing structured-metadata rejection case.
+- Preserve or add a raw/no-metadata compatibility case where rendered
+  signature parsing remains intentionally allowed.
+- Avoid tests that only prove pretty-printed text without exercising semantic
+  lowering behavior.
 
 Completion check:
-- `todo.md` states either that ideas 184-188 cover the freeze blockers, or
-  names the exact additional idea needed before backend restart.
+- Focused tests fail without the structured boundary and pass with it.
 
-### Step 4: Prepare audit closeout
+### Step 4: Validate and prepare handoff
 
-Goal: Hand back a lifecycle-ready audit result without claiming backend freeze
-  closure prematurely.
+Goal: Produce acceptance-grade proof for idea 184 without broadening into the
+later freeze gate.
 
 Actions:
-- Summarize the freeze ledger in `todo.md`.
-- State whether idea 183 can close, whether plan rewrite is needed, or whether
-  a separate follow-up idea must be created first.
-- Recommend the next lifecycle action for the supervisor.
+- Run build proof and the supervisor-selected focused call-signature coverage.
+- Escalate to a broader backend or compiler subset if the implementation
+  crosses shared lowering or ABI behavior beyond the selected path.
+- Update `todo.md` with proof results, residual risks, and the recommended
+  lifecycle close/switch decision.
 
 Completion check:
-- The supervisor can decide whether to close this audit idea, activate one of
-  ideas 184-188, or route a missing blocker through plan-owner creation.
+- Idea 184 acceptance criteria are satisfied, and the supervisor has enough
+  proof to review and commit the slice.

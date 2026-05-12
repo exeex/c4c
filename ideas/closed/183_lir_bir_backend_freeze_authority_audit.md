@@ -1,7 +1,8 @@
 # LIR/BIR Backend Freeze Authority Audit
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/182_type_identity_migration_closure_gate.md`
@@ -59,6 +60,15 @@ into concrete follow-up work.
   route-local names are explicitly addressed.
 - The audit does not create an active `plan.md`/`todo.md` unless this idea is
   activated through the normal lifecycle.
+
+## Closure Notes
+
+- The audit ledger classified direct-call signatures, global/type declaration
+  compatibility tables, direct symbol identity, memory provenance global
+  handles, prealloc route-local names, and the final freeze gate.
+- Required freeze blockers are covered by open follow-up ideas 184-188.
+- This closure is audit completion only; backend freeze remains open until
+  `ideas/open/188_lir_bir_freeze_closure_gate.md` closes after ideas 184-187.
 
 ## Reviewer Reject Signals
 
