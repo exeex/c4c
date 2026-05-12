@@ -4,11 +4,15 @@ Status: Open
 Created: 2026-05-12
 
 Depends On:
-- `ideas/open/183_lir_bir_backend_freeze_authority_audit.md`
-- `ideas/open/184_direct_call_signature_metadata_structured_boundary.md`
-- `ideas/open/185_lir_to_bir_global_typedecl_compatibility_fence.md`
-- `ideas/open/186_bir_direct_symbol_identity_validation_closure.md`
-- `ideas/open/187_bir_memory_provenance_global_handle_cleanup.md`
+- `ideas/closed/183_lir_bir_backend_freeze_authority_audit.md`
+- `ideas/closed/184_direct_call_signature_metadata_structured_boundary.md`
+- `ideas/closed/185_lir_to_bir_global_typedecl_compatibility_fence.md`
+- `ideas/closed/186_bir_direct_symbol_identity_validation_closure.md`
+- `ideas/closed/187_bir_memory_provenance_global_handle_cleanup.md`
+- `ideas/closed/189_direct_call_no_prototype_variadic_signature_mismatch.md`
+- `ideas/open/190_lir_call_argument_structured_payload_boundary.md`
+- `ideas/open/191_bir_function_signature_byval_metadata_text_retirement.md`
+- `ideas/open/194_bir_global_memory_provenance_linknameid_expansion.md`
 
 ## Goal
 
@@ -22,13 +26,16 @@ same string-authority migration.
 ## Why This Idea Exists
 
 The project is intentionally delaying backend restart until parser, sema, HIR,
-LIR, and BIR identity surfaces converge. Ideas 183-187 are the proposed final
-LIR/BIR convergence batch. A closure gate prevents the next backend plan from
-starting while freeze blockers are still implicit.
+LIR, and BIR identity surfaces converge. Ideas 183-187 formed the first LIR/BIR
+convergence batch, 189 fixed a direct-call blocker found during validation, and
+190/191/194 cover the remaining LIR/BIR string-lookup surfaces found by the
+second frontend-to-BIR audit. A closure gate prevents the next backend plan
+from starting while freeze blockers are still implicit.
 
 ## In Scope
 
-- Review completed ideas 183-187 and produce a LIR/BIR freeze ledger.
+- Review completed ideas 183-187, 189-191, and 194, then produce a LIR/BIR
+  freeze ledger.
 - Confirm direct-call signatures, global/type declaration tables, direct
   symbol identity, memory provenance global handles, and prealloc route-local
   names are classified.
