@@ -937,6 +937,7 @@ BirFunctionLowerer::resolve_global_dynamic_aggregate_array_access(
 
   return DynamicGlobalAggregateArrayAccess{
       .global_name = base_address.global_name,
+      .link_name_id = base_address.link_name_id,
       .element_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(base_type_text)),
       .byte_offset = base_address.byte_offset,
       .element_count = extent->element_count,
@@ -1370,6 +1371,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           target_layout.kind == AggregateTypeLayout::Kind::Array) {
         dynamic_global_aggregate_arrays[gep.result.str()] = DynamicGlobalAggregateArrayAccess{
             .global_name = global_aggregate_it->second.global_name,
+            .link_name_id = global_aggregate_it->second.link_name_id,
             .element_type_text = std::move(aggregate_target->type_text),
             .byte_offset =
                 global_aggregate_it->second.byte_offset +
@@ -1401,6 +1403,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         }
         dynamic_global_scalar_arrays[gep.result.str()] = DynamicGlobalScalarArrayAccess{
             .global_name = global_aggregate_it->second.global_name,
+            .link_name_id = global_aggregate_it->second.link_name_id,
             .element_type = target_layout.scalar_type,
             .byte_offset =
                 global_aggregate_it->second.byte_offset +
@@ -1468,6 +1471,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       }
       dynamic_global_scalar_arrays[gep.result.str()] = DynamicGlobalScalarArrayAccess{
           .global_name = global_scalar_it->second.global_name,
+          .link_name_id = global_scalar_it->second.link_name_id,
           .element_type = global_scalar_it->second.element_type,
           .byte_offset =
               global_scalar_it->second.byte_offset +
@@ -1489,6 +1493,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     }
     dynamic_global_scalar_arrays[gep.result.str()] = DynamicGlobalScalarArrayAccess{
         .global_name = global_scalar_it->second.global_name,
+        .link_name_id = global_scalar_it->second.link_name_id,
         .element_type = global_scalar_it->second.element_type,
         .byte_offset = global_scalar_it->second.byte_offset,
         .outer_element_count = global_scalar_it->second.outer_element_count,

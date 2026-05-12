@@ -13,9 +13,17 @@ using lir_to_bir_detail::type_size_bytes;
 
 namespace {
 
-LinkNameId link_name_id_for_dynamic_global(
+std::optional<LinkNameId> link_name_id_for_dynamic_global(
     const BirFunctionLowerer::GlobalTypes& global_types,
-    std::string_view global_name) {
+    const BirFunctionLowerer::DynamicGlobalScalarArrayAccess& access) {
+  if (access.link_name_id != kInvalidLinkName) {
+    const auto it = global_types.find(access.global_name);
+    if (it == global_types.end() || it->second.link_name_id != access.link_name_id) {
+      return std::nullopt;
+    }
+    return access.link_name_id;
+  }
+  const std::string_view global_name = access.global_name;
   const auto it = global_types.find(std::string(global_name));
   return it == global_types.end() ? kInvalidLinkName : it->second.link_name_id;
 }
@@ -178,6 +186,14 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_global_scalar_array_v
   if (slot_size == 0) {
     return std::nullopt;
   }
+  const auto global_name_id = link_name_id_for_dynamic_global(global_types_, access);
+  if (!global_name_id.has_value()) {
+    return std::nullopt;
+  }
+  if (*global_name_id != kInvalidLinkName &&
+      context_.lir_module.link_names.spelling(*global_name_id).empty()) {
+    return std::nullopt;
+  }
 
   std::vector<bir::Value> outer_values;
   outer_values.reserve(access.outer_element_count);
@@ -191,7 +207,7 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_global_scalar_array_v
       lowered_insts->push_back(bir::LoadGlobalInst{
           .result = bir::Value::named(value_type, element_name),
           .global_name = access.global_name,
-          .global_name_id = link_name_id_for_dynamic_global(global_types_, access.global_name),
+          .global_name_id = *global_name_id,
           .byte_offset = access.byte_offset + outer_index * access.outer_element_stride_bytes +
                          element_index * access.element_stride_bytes,
           .align_bytes = slot_size,

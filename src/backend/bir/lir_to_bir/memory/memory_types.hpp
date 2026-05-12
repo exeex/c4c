@@ -99,6 +99,7 @@ struct DynamicGlobalPointerArrayAccess {
 struct DynamicGlobalAggregateArrayAccess {
   // Final global spelling plus compatibility element type text used for layout.
   std::string global_name;
+  LinkNameId link_name_id = kInvalidLinkName;
   std::string element_type_text;
   std::size_t byte_offset = 0;
   std::size_t element_count = 0;
@@ -109,6 +110,7 @@ struct DynamicGlobalAggregateArrayAccess {
 struct DynamicGlobalScalarArrayAccess {
   // Final spelling for a LinkNameId-backed global already resolved upstream.
   std::string global_name;
+  LinkNameId link_name_id = kInvalidLinkName;
   bir::TypeKind element_type = bir::TypeKind::Void;
   std::size_t byte_offset = 0;
   std::size_t outer_element_count = 0;
