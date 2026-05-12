@@ -409,6 +409,10 @@ bool BirFunctionLowerer::lower_memory_store_inst(
   if (*value_type == bir::TypeKind::Ptr &&
       store.val.kind() == c4c::codegen::lir::LirOperandKind::Global) {
     const std::string global_name = store.val.str().substr(1);
+    // Step 3 fence: this raw lookup is a no-id import compatibility bridge for
+    // pointer stores only. FunctionSymbolSet is populated after LinkNameId
+    // declarations resolve at the module boundary, so metadata-rich missing ids
+    // cannot recover here; remove this when LIR pointer operands carry ids.
     if (const auto link_name_id = function_symbols_.find_raw_symbol_link_name_id(global_name);
         link_name_id.has_value()) {
       value = bir::Value::named_symbol_pointer("@" + global_name, *link_name_id);

@@ -8,32 +8,35 @@ Current Step Title: Convert Link-Visible Symbol Identity
 
 ## Just Finished
 
-Step 3 - Convert Link-Visible Symbol Identity reviewed the LIR-to-BIR
-direct-call bridge and found it already fenced by the earlier function-symbol
-module-boundary conversion.
+Step 3 - Convert Link-Visible Symbol Identity reviewed and fenced the local
+pointer-store LIR-to-BIR bridge in
+`src/backend/bir/lir_to_bir/memory/local_slots.cpp`.
 
-`src/backend/bir/lir_to_bir/calling.cpp` marks direct calls metadata-rich when
-they carry `direct_callee_link_name_id` or a structured callee signature, then
-fails the direct-call semantic family unless metadata-rich calls carry a
-signature and the direct callee `LinkNameId` is present in
-`FunctionSymbolSet::link_name_ids`. Only after those checks does the bridge
-derive the semantic callee spelling used for lowering. Because the raw
-function-symbol map is not consulted on this direct-call path, a present stale
-or unknown `LinkNameId` cannot recover through identical raw callee spelling.
+The direct pointer-store path still accepts raw global operands such as
+`@semantic_function_arg` and uses `FunctionSymbolSet::find_raw_symbol_link_name_id`
+to keep no-id imported pointer stores working. That raw lookup is now explicitly
+fenced as a Step 3 no-id compatibility bridge: its owner is the local
+pointer-store bridge, its limitation is that `FunctionSymbolSet` is populated
+only after `LinkNameId` declarations resolve at the module boundary, and its
+removal condition is LIR pointer operands carrying `LinkNameId` metadata
+directly.
 
-`tests/backend/backend_lir_to_bir_notes_test.cpp` already contains focused
-coverage for the reviewed bridge:
-`expect_metadata_rich_direct_call_without_link_name_id_fails_closed`,
-`expect_metadata_rich_direct_call_with_unknown_link_name_id_fails_closed`, and
-`expect_metadata_rich_direct_call_without_signature_fails_closed`.
+`tests/backend/backend_lir_to_bir_notes_test.cpp` now extends
+`expect_pointer_value_symbol_identity_carrier()` with missing-spelling coverage:
+detaching the link-name text table from the metadata-rich pointer-store fixture
+fails at the module boundary with the existing
+`LinkNameId-bearing LIR extern declaration must resolve through the link-name table`
+note. This proves metadata-rich pointer-store identity cannot recover through
+the raw pointer operand spelling when the required `LinkNameId` spelling is
+unavailable.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing one pointer-to-symbol bridge in
-`memory/provenance.cpp` or `memory/local_slots.cpp` that still uses
-`find_raw_symbol_link_name_id` for no-id compatibility. Keep the packet focused
-on one bridge and either add a stale-id proof or record why the module-boundary
-function-symbol fence already blocks metadata-rich fallback.
+Continue Step 3 by reviewing one remaining pointer-to-symbol bridge in
+`memory/provenance.cpp`, especially `lower_call_pointer_arg_value()` or
+`resolve_local_aggregate_pointer_value_alias()`, and either fence its raw/no-id
+compatibility lookup or document why an existing `LinkNameId` boundary already
+blocks metadata-rich fallback.
 
 ## Watchouts
 
@@ -56,9 +59,13 @@ function-symbol fence already blocks metadata-rich fallback.
   boundary, but `calling.cpp` still has local display/identity helpers that
   return raw spelling. They are currently guarded by the module-boundary check;
   review them before claiming Step 3 broadly complete.
-- The direct-call bridge review is now complete; remaining Step 3 risk is in
-  pointer-value and provenance paths that accept raw `@symbol` operands without
-  per-operand `LinkNameId` carriers.
+- The direct-call bridge review is complete, and the local direct pointer-store
+  bridge is now fenced. Remaining Step 3 risk is in provenance paths that
+  accept raw `@symbol` operands without per-operand `LinkNameId` carriers.
+- The local pointer-store fence relies on `FunctionSymbolSet` construction
+  failing closed for metadata-bearing functions or extern declarations whose
+  `LinkNameId` spelling cannot be resolved; do not bypass that module-boundary
+  check in a later pointer bridge.
 
 ## Proof
 

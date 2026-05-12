@@ -1171,6 +1171,22 @@ int expect_pointer_value_symbol_identity_carrier() {
     return fail("symbol pointer values should not compare equal to raw display-only values");
   }
 
+  LirModule missing_spelling_module = module;
+  missing_spelling_module.link_names.attach_text_table(nullptr);
+  auto missing_spelling_result =
+      try_lower_to_bir_with_options(missing_spelling_module, BirLoweringOptions{});
+  if (missing_spelling_result.module.has_value()) {
+    return fail(
+        "metadata-rich pointer store operands must not recover through raw symbol spelling when "
+        "LinkNameId spelling is missing");
+  }
+  if (!contains_note(missing_spelling_result.notes,
+                     "module",
+                     "LinkNameId-bearing LIR extern declaration must resolve through the "
+                     "link-name table before raw-name compatibility is allowed")) {
+    return fail("missing pointer-value LinkNameId spelling should fail at the module boundary");
+  }
+
   return 0;
 }
 
