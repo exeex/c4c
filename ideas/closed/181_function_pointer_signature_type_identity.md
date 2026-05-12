@@ -1,7 +1,8 @@
 # Function Pointer Signature Type Identity
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-12
 
 Depends On:
 - `ideas/closed/175_hir_typespec_ref_structured_equivalence.md`
@@ -56,6 +57,28 @@ call inference, LIR calls, BIR indirect calls, and backend ABI lowering.
 - Focused tests cover a collision-prone function-pointer signature case.
 - Validation includes targeted frontend/HIR/LIR/backend coverage for the
   selected path.
+
+## Closure Summary
+
+Closed after completing the bounded indirect-call LIR/BIR function-pointer
+signature path. Metadata-rich indirect calls now carry structured callee
+signature facts through LIR call construction and BIR lowering while preserving
+rendered call spelling as display/compatibility text. Verification covers
+result type, fixed parameter mirrors, call arguments, variadic state,
+unspecified parameter lists, stale suffix compatibility, and fail-closed
+behavior for mismatched structured metadata.
+
+Remaining parser-only `TypeSpec::is_fn_ptr` comparisons, broad sema canonical
+type equality replacement, direct-call signature metadata, final emitted syntax
+formatting, and post-BIR backend ABI decisions are outside this idea. Nominal
+aggregate function-pointer parameter identity should be treated as follow-up
+scope only if frontend lowering later carries aggregate signature refs end to
+end.
+
+Closure proof used the focused six-test frontend/LIR/backend guard recorded in
+`todo.md`; the close-time regression guard passed with matching 6/6 before and
+after results using non-decreasing pass-count mode against the rolled-forward
+baseline.
 
 ## Reviewer Reject Signals
 
