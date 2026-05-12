@@ -1,146 +1,145 @@
-# Frontend-to-BIR Legacy String Lookup Closure Gate Runbook
+# HIR Generated Member Payload Structured Miss Runbook
 
 Status: Active
-Source Idea: ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md
+Source Idea: ideas/open/202_hir_generated_member_payload_structured_miss.md
+Activated from: blocked active gate `ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
 
 ## Purpose
 
-Close the second frontend-to-BIR legacy string lookup audit as the final
-pre-backend-restart authority gate.
+Clear the generated-member HIR blocker that prevents idea 195 from closing.
 
-Goal: produce a milestone closure decision showing whether backend restart may
-proceed after parser, sema, HIR, LIR, and BIR retained strings are classified.
+Goal: ensure metadata-rich generated-member lookup cannot recover semantic
+identity through rendered owner/member spelling after a complete structured
+miss.
 
 ## Core Rule
 
-This is a closure gate, not backend restart work. Do not implement new backend
-routes or accept expectation downgrades, unsupported markings, or
-testcase-shaped shortcuts as progress.
+Fix the generated-member authority boundary, not the testcase surface. Do not
+downgrade supported generated-member behavior, weaken expectations, or hide the
+fallback behind renamed rendered-string helpers.
 
 ## Read First
 
+- `ideas/open/202_hir_generated_member_payload_structured_miss.md`
 - `ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
-- `ideas/closed/188_lir_bir_freeze_closure_gate.md`
-- `ideas/closed/190_lir_call_argument_structured_payload_boundary.md`
-- `ideas/closed/191_bir_function_signature_byval_metadata_text_retirement.md`
-- `ideas/closed/192_hir_compile_time_rendered_registry_api_retirement_audit.md`
-- `ideas/closed/193_hir_constructor_member_owner_structured_lookup_closure.md`
-- `ideas/closed/194_bir_global_memory_provenance_linknameid_expansion.md`
+- `src/frontend/hir/impl/expr/scalar_control.cpp`
 
 ## Current Scope
 
-- Review completed ideas 188 and 190-194.
-- Build a frontend-to-BIR closure ledger covering parser token spelling, sema
-  consteval/type utilities, HIR compile-time state, HIR object/member owner
-  lookup, HIR-to-LIR call/type metadata, LIR call payload, and BIR lowering.
-- Confirm no high-risk metadata-rich path recovers semantic identity through
-  rendered strings after a complete structured miss.
-- Confirm retained raw/no-id compatibility has an explicit owner and removal
-  condition.
-- Run milestone-appropriate broad validation before closure.
+- Audit the generated-member route in `scalar_control.cpp`.
+- Identify where structured `HirStructMemberLookupKey` lookup succeeds, misses,
+  and falls through to rendered owner/member lookup.
+- Prevent metadata-rich generated-member paths from using rendered
+  owner/member spelling as semantic authority after complete structured misses.
+- Preserve rendered names only for diagnostics, final spelling, display text,
+  or explicit no-metadata compatibility.
+- Add focused stale rendered spelling coverage for the generated-member path.
+- Record any retained compatibility fallback with owner, limitation, and
+  removal condition.
 
 ## Non-Goals
 
-- Do not start backend restart implementation.
-- Do not remove strings required by printers, assemblers, diagnostics, or
-  route-local SSA/slot/block handles.
-- Do not rewrite parser, sema, or HIR type systems.
-- Do not weaken supported behavior or change tests to hide compatibility gaps.
+- Do not rewrite the full HIR member lookup model.
+- Do not remove diagnostic, final-output, or display-only member spelling.
+- Do not touch parser, sema, LIR, BIR, or backend restart work.
+- Do not mark supported generated-member cases unsupported or change expected
+  output only to avoid the fallback.
 
 ## Working Model
 
-Retained strings are acceptable only when they are structured-authority
-mirrors, display/output text, diagnostics, route-local handles, ABI/final
-spelling, or explicit no-metadata compatibility. Metadata-rich generated paths
-must not recover semantic identity from rendered spelling after a complete
-structured miss.
+The generated-member path currently starts from structured owner evidence, then
+derives member candidates from rendered qualified spelling and can fall through
+to rendered `find_struct_static_member_decl` or
+`find_struct_static_member_const_value`. A metadata-rich path must resolve by
+structured owner/member authority or fail closed; rendered fallback is allowed
+only when it is explicitly no-metadata compatibility or non-semantic text.
 
 ## Execution Rules
 
-- Keep this runbook focused on audit, ledger, closure proof, and any narrow
-  blocker split required before backend restart.
-- If a real blocker remains, create or request a separate `ideas/open/*.md`
-  initiative instead of silently expanding this gate.
-- Prefer evidence from source inspection, closed idea notes, and matching
-  validation logs over expectation rewrites.
-- Treat testcase-overfit changes as route failure, not closure progress.
+- Keep implementation changes narrowly scoped to the generated-member route and
+  directly supporting helpers/tests.
+- Prefer a semantic guard or structured lookup contract over named-case checks.
+- Make retained rendered lookup sites visibly fenced with owner, limitation,
+  and removal condition.
+- Treat testcase-shaped shortcuts and expectation downgrades as route failure.
+- After this blocker is proven, report whether idea 195's generated-member
+  payload blocker is cleared; do not close idea 195 from this runbook.
 
 ## Ordered Steps
 
-### Step 1: Reconstruct Closure Inputs
+### Step 1: Trace Generated-Member Authority
 
-Goal: establish the completed dependency evidence and the frontend-to-BIR
-surfaces this gate must classify.
-
-Actions:
-
-- Read the linked closed ideas and extract their closure facts, retained
-  compatibility boundaries, and validation notes.
-- Inspect the relevant parser, sema, HIR, LIR, and BIR lookup surfaces named by
-  the source idea.
-- Identify any remaining raw or no-id compatibility paths that still need owner
-  and removal-condition classification.
-
-Completion check:
-
-- `todo.md` records the dependency evidence reviewed, the inspected surface
-  list, and any candidate blockers requiring deeper audit.
-
-### Step 2: Produce the Closure Ledger
-
-Goal: classify retained frontend-to-BIR string surfaces without changing source
-intent or starting backend work.
+Goal: establish the exact structured and rendered lookup paths before editing.
 
 Actions:
 
-- Write a ledger that classifies each retained string surface as
-  structured-authority mirror, display/output text, diagnostic text,
-  route-local handle, ABI/final spelling, or explicit no-metadata
-  compatibility.
-- For every explicit compatibility path, name the owner and removal condition.
-- Mark any unclassified high-risk metadata-rich path as a blocker instead of
-  treating it as closed.
+- Inspect the generated-member branch in
+  `src/frontend/hir/impl/expr/scalar_control.cpp`.
+- Trace `structured_owner_key_from_qualified_ref`, generated member candidate
+  extraction, structured `HirStructMemberLookupKey` lookup, and rendered
+  `find_struct_static_member_decl` / `find_struct_static_member_const_value`
+  fallback.
+- Identify whether any rendered fallback is truly no-metadata compatibility or
+  display/final/diagnostic spelling.
 
 Completion check:
 
-- The active execution notes contain a ledger sufficient for reviewer scrutiny,
-  and every retained compatibility path has an owner and removal condition or a
-  blocker record.
+- `todo.md` records the traced authority path and names the exact fallback that
+  must be removed, guarded, or fenced before implementation proceeds.
 
-### Step 3: Audit High-Risk Generated Paths
+### Step 2: Enforce Structured-Miss Fail-Closed Behavior
 
-Goal: prove metadata-rich generated paths fail closed or are already under
-structured authority.
+Goal: prevent metadata-rich generated-member lookup from recovering through
+rendered owner/member spelling after complete structured misses.
 
 Actions:
 
-- Check HIR rendered registry and constructor/member owner fallback paths
-  called out by the source idea.
-- Check HIR-to-LIR call/type metadata, LIR call payload, and BIR lowering paths
-  for stale rendered-string recovery after complete structured misses.
-- Add only narrow follow-up ideas for uncovered blockers; do not broaden this
-  gate into unrelated implementation.
+- Adjust the generated-member route so structured owner/member metadata either
+  resolves through structured authority or fails closed on complete miss.
+- Keep rendered owner/member lookup only where the path is explicitly
+  no-metadata compatibility or non-semantic text.
+- Avoid broad HIR member model rewrites and unrelated lookup behavior changes.
 
 Completion check:
 
-- No known high-risk metadata-rich path remains unclassified; any remaining
-  blocker has a separate open idea before this gate proceeds to closure.
+- The metadata-rich generated-member path no longer reaches rendered semantic
+  lookup after a complete structured miss, and any retained rendered fallback is
+  explicitly fenced.
 
-### Step 4: Run Milestone Validation and Decide Restart Readiness
+### Step 3: Add Focused Coverage
 
-Goal: finish the closure gate with broad proof and an explicit backend restart
-decision.
+Goal: prove stale rendered owner/member spelling cannot repair the structured
+generated-member miss.
 
 Actions:
 
-- Run milestone-appropriate broad validation, normally the full suite unless
-  the supervisor chooses a different regression-guard scope.
-- Compare canonical regression logs under the repo policy when baseline changes
-  exist.
-- State whether backend restart is allowed next or blocked by a new narrow
-  open idea.
+- Add or update the smallest focused test that exercises stale rendered
+  owner/member spelling on the generated-member path.
+- Confirm the test fails before the authority fix if practical and passes after
+  the fix.
+- Keep expectations behavioral; do not rely on dump text or diagnostic spelling
+  as the proof.
 
 Completion check:
 
-- Validation proof is recorded, the restart-readiness decision is explicit,
-  and the source idea is ready for close review if no blockers remain.
+- Focused test coverage proves the structured generated-member path fails
+  closed or resolves by structured identity rather than rendered fallback.
+
+### Step 4: Validate and Report Blocker Status
+
+Goal: produce executor proof and state whether this blocker is cleared for
+idea 195.
+
+Actions:
+
+- Run the supervisor-delegated build and focused test subset.
+- Escalate validation if the implementation touches shared HIR lookup behavior
+  beyond `scalar_control.cpp`.
+- Record any retained compatibility owner, limitation, and removal condition.
+- State whether idea 195's generated-member payload blocker is cleared.
+
+Completion check:
+
+- Build/test proof is recorded in `todo.md`, no testcase-overfit signals
+  remain, and the handoff clearly says whether idea 195 may treat this blocker
+  as resolved.

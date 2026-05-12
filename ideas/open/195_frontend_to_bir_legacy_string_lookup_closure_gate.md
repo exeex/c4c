@@ -1,6 +1,6 @@
 # Frontend-to-BIR Legacy String Lookup Closure Gate
 
-Status: Open
+Status: Open (Blocked)
 Created: 2026-05-12
 
 Depends On:
@@ -31,6 +31,17 @@ additional BIR global memory provenance routes.
 
 Backend restart should wait until those surfaces are closed or consciously
 fenced.
+
+## Blocked State
+
+This gate is inactive while its Step 3 HIR blockers are being resolved:
+
+- `ideas/open/201_hir_template_registry_structured_generated_paths.md`
+- `ideas/open/202_hir_generated_member_payload_structured_miss.md`
+
+Do not advance this idea to milestone validation, closure, or backend restart
+readiness until both blockers are either completed or explicitly fenced by a
+supervisor-approved lifecycle decision.
 
 ## In Scope
 
