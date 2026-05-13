@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/211_aarch64_machine_instruction_node_contract.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Align Implemented Record Surfaces
+Current Step ID: Step 4
+Current Step Title: Align AArch64 Markdown Roadmap Artifacts
 
 # Current Packet
 
