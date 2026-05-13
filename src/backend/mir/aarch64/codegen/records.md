@@ -82,11 +82,15 @@ Deferred behavior guardrails:
   only. They do not select `ldr`, `str`, register width, addressing mode,
   writeback form, scratch registers, assembly text, object encoding,
   relocation records, calls, or returns.
-- Call records carry callee, argument, result, and calling convention metadata;
-  AAPCS64 argument assignment, call sequence emission, and variadic policy are
-  deferred.
-- Return records carry optional return values only; epilogue construction and
-  return instruction emission are deferred.
+- Call records carry callee, argument, result, memory-return, preserved-value,
+  clobber, and calling convention metadata. AAPCS64 call-boundary authority is
+  `../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`; final call sequence emission,
+  relocation/object behavior, and deferred carriers such as total outgoing
+  call-area or direct variadic-count fields remain later work.
+- Return records carry optional return values only. Before-return movement,
+  ABI-binding facts, link-register treatment, and epilogue boundaries are
+  governed by `../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`; final return
+  instruction emission and a dedicated return-boundary record are deferred.
 - Assembler records are placeholders for operands and side-effect flags only;
   assembly text, inline-asm parsing, and textual emission are deferred.
 - Object records carry symbol, frame-slot, value, and type facts only; object

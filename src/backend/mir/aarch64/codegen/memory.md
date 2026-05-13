@@ -25,6 +25,12 @@ register, `x10` as the memcpy source-address register, `x11` as the memcpy
 byte count, `x12` as the memcpy byte payload register, and `x17` as the
 large-immediate scratch register.
 
+Those scratch choices are archived behavior. Current memory consumers must use
+allocation-result and reserved MIR scratch records. Dynamic stack, frame-slot,
+memory-return, call-time stack, and frame-pointer-sensitive behavior must also
+respect `../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md` when the memory operation
+crosses call/return/frame boundaries.
+
 ## Entry Points
 
 - `emit_store_impl(val, ptr, ty)`: routed F128 stores to the softfloat helper
@@ -294,8 +300,10 @@ Pointer homes, loaded/stored value homes, spill-slot materialization, and
 address-computation scratch must consume the shared allocation result and
 reserved MIR scratch policy in `../ALLOCATION_CONTRACT.md`, plus
 `module::SpillReloadRecord` when the memory operation is a prepared spill or
-reload pseudo. General memory lowering must not create spill/reload operations
-or scratch ownership locally.
+reload pseudo. Frame-relative and dynamic-stack consumers must also obey
+`../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`. General memory lowering must not
+create spill/reload operations, outgoing call-area layout, frame layout, or
+scratch ownership locally.
 
 1. Keep direct stack-slot, indirect pointer-slot, and over-aligned alloca
    addressing as distinct paths.
@@ -304,8 +312,8 @@ or scratch ownership locally.
 3. Make typed load/store width, sign-extension, and zero-extension decisions
    visible at the instruction-selection boundary.
 4. Keep address computation scratch-register ownership explicit through the
-   reserved MIR scratch policy, especially `x9`, `x10`, `x17`, and
-   source-preserving use of `x1`.
+   reserved MIR scratch policy; legacy `x1`, `x9`, `x10`, and `x17` conventions
+   are examples only.
 5. Treat large signed offsets and alignment masks as materialized-register
    cases rather than assuming immediate encodability.
 6. Prove direct, indirect, over-aligned, GEP, dynamic stack, F128, and memcpy

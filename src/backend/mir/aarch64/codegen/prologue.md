@@ -18,6 +18,12 @@ formatting for stack-relative loads and stores, frame adjustment, alloca-slot
 tracking, and physical register naming. This file supplied the sequencing and
 ABI policy that made those helpers cooperate at function entry and exit.
 
+That sequencing is historical reference material. Current frame, callee-save,
+dynamic-stack, frame-pointer, parameter ABI, variadic save-area, prologue, and
+epilogue ownership is defined by
+`../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md` over prepared frame/call records and
+allocation-result facts.
+
 ## Entry Points
 
 - `calculate_stack_space_impl(func)`: pre-scans inline assembly clobbers,
@@ -56,7 +62,8 @@ base callee-saved pool and no caller-saved pool. Any detected `F128` operation
 also cleared the caller-saved pool, presumably to avoid fragile temporary reuse
 around software or multi-register lowering.
 
-Variadic functions reserved ABI save areas after common stack layout:
+Variadic functions historically reserved ABI save areas after common stack
+layout:
 
 - the GP register save area was 8-byte aligned, recorded as
   `va_gp_save_offset`, and reserved 64 bytes;
@@ -71,6 +78,9 @@ Variadic functions reserved ABI save areas after common stack layout:
 
 Used callee-saved registers were placed after the variadic areas, with the
 callee-save area aligned to 8 bytes and recorded as `callee_save_offset`.
+Current prologue/frame work must not rebuild those layouts from this text. Full
+variadic function-entry save-area metadata and total outgoing-area policy are
+deferred carriers unless prepared facts expose them directly.
 
 ## Prologue And Epilogue Behavior
 
@@ -220,17 +230,20 @@ encoding details after those nodes exist.
 Frame/prologue work must consume `module::FrameRecord`,
 `module::FrameSlotRecord`, `module::CalleeSaveRecord`, allocation-result
 call-preservation facts, structured spill-slot ids, and reserved scratch
-policy from `../ALLOCATION_CONTRACT.md`. It must not run a local allocator,
-recompute prepared frame placement, or create new spill slots while building
-the frame.
+policy from `../ALLOCATION_CONTRACT.md`, following
+`../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`. It must not run a local allocator,
+recompute prepared frame placement, choose save/restore instructions, assign
+`x29`/`x30` roles, invent variadic save areas, or create new spill slots while
+building the frame.
 
 1. Consume the prepared frame/module records for common locals, variadic save
-   areas, and callee-saved spills.
-2. Rebuild allocation-result consumption with explicit inline-asm clobber
-   handling and F128 temporary-register policy.
-3. Rebuild prologue/epilogue save and restore around the finalized
-   `used_callee_saved` set.
-4. Rebuild parameter storage from ABI classes, including variadic saves and the
-   callee-saved pre-store optimization.
-5. Rebuild `ParamRef` materialization with sret, FP width, alloca-slot, and
-   stack-passed-argument cases covered by targeted tests.
+   areas when carriers exist, and callee-saved obligations.
+2. Rebuild allocation-result consumption with explicit clobber and reserved
+   scratch records, not local scratch pools.
+3. Rebuild prologue/epilogue save and restore as machine-node work over
+   `FrameRecord::callee_saves`; final `stp`/`str`/`ldp`/`ldr` spelling is
+   downstream.
+4. Rebuild parameter storage from prepared call/ABI-binding records, including
+   sret `x8` behavior and stack arguments named by the AAPCS64 contract.
+5. Split a carrier-gap idea before implementing full variadic function-entry
+   `va_list` or register-save-area layout.

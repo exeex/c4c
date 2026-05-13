@@ -20,6 +20,13 @@ large-immediate and indirect-call scratch registers, and `x9`/`x10` as volatile
 scratch registers that were preserved around the F128 extension helper when
 needed.
 
+Those registers and stack shapes are archived behavior only. Current call,
+indirect-call, memory-return, argument, result, preserved-value, clobber, and
+variadic ownership is defined by
+`../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md` over prepared call plans,
+`module::CallRecord`, `module::MoveRecord`, `module::AbiBindingRecord`, and
+allocation-result records.
+
 ## Entry Points
 
 - `call_abi_config_impl()`: returned the AArch64 call ABI configuration used by
@@ -44,7 +51,7 @@ needed.
 
 ## ABI Configuration
 
-The legacy AArch64 call configuration carried these policy facts:
+The legacy AArch64 call configuration carried these historical policy facts:
 
 - Up to eight integer argument registers and eight floating-point argument
   registers.
@@ -58,8 +65,11 @@ The legacy AArch64 call configuration carried these policy facts:
 - Struct register pairs are not specially aligned.
 - Structure return uses a dedicated register.
 
-Stack-space sizing was intentionally shared with the common call ABI helper by
-calling `compute_stack_arg_space(arg_classes)`.
+Current target-MIR consumers must not reselect these policy bits from this
+file. They must consume prepared call plans and the AAPCS64 contract. If a
+later machine-node slice needs HFA, F128, i128, aggregate-splitting, outgoing
+area, or call-time alignment facts that are not present in structured carriers,
+that is a carrier-gap candidate, not permission for local classification.
 
 ## Stack Argument Lowering
 
@@ -105,8 +115,11 @@ Ordinary stack arguments used an assigned callee-saved register, alloca
 address, stack-slot load, constant conversion, or zero fallback to populate
 `x0`, then stored `x0` to the outgoing stack slot and advanced by eight bytes.
 
-The stack-argument helper returned the total call-time stack adjustment:
-`stack_arg_space + fptr_spill`.
+The stack-argument helper returned the legacy total call-time stack adjustment:
+`stack_arg_space + fptr_spill`. Current consumers must preserve per-argument
+destination stack snapshots from prepared call plans and must fail closed if a
+total outgoing area, indirect-callee spill area, or call-time stack-alignment
+proof is required but absent from structured carriers.
 
 ## Register Argument Lowering
 
@@ -232,20 +245,20 @@ Call lowering should publish target MIR call records and machine instruction
 nodes carrying callee identity, argument/result placement, preserved values,
 and clobbers. `bl`/`blr` spelling, relocation syntax, and final call sequence
 text belong to printer or encoding/object consumers.
-Argument/result homes, ABI-binding movement, indirect-call scratch,
-function-pointer spill identity, and live-across-call preservation must be
-sourced from `module::CallRecord`, `module::AbiBindingRecord`,
-`module::MoveRecord`, allocation-result records, and
-`../ALLOCATION_CONTRACT.md`, not patched by the call slice.
+Argument/result homes, ABI-binding movement, memory-return `x8` ownership,
+indirect-call `x16`/`x17` roles, live-across-call preservation, call clobbers,
+and variadic call metadata must be sourced from `module::CallRecord`,
+`module::AbiBindingRecord`, `module::MoveRecord`, allocation-result records,
+`../ALLOCATION_CONTRACT.md`, and
+`../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`, not patched by the call slice.
 
-1. Keep ABI classification separate from physical emission, but preserve the
-   exact AArch64 policy bits listed above.
-2. Model outgoing stack layout explicitly, including 16-byte alignment for wide
-   scalar classes and the allocation-result spill slot for indirect-call
-   function pointers.
-3. Preserve the distinction between exact F128 source recovery and fallback
-   double-to-F128 conversion.
-4. Keep register-argument staging ordered so source values survive moves into
-   final ABI registers.
-5. Treat F128 return handling as two observable products until the replacement
-   backend has a single structured result-carrier contract.
+1. Keep ABI classification separate from physical emission and consume the
+   prepared call-plan classification as the authority.
+2. Preserve outgoing stack-argument snapshots as prepared facts; add a carrier
+   before relying on total outgoing-area or call-time alignment policy.
+3. Keep indirect-callee materialization and `x16`/`x17` use tied to explicit
+   call, veneer, PLT, or linker-sensitive carriers.
+4. Keep register-argument staging ordered through `BeforeCall` move and
+   ABI-binding records so source values survive movement into ABI resources.
+5. Treat F128 and runtime-helper call resources as deferred carrier work unless
+   structured prepared facts and the AAPCS64 contract already expose them.

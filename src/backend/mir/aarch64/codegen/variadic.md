@@ -18,6 +18,14 @@ results were returned through `x0`, aggregate results were copied into a
 destination pointer loaded into `x4`, and helpers finally stored through the
 backend's destination model.
 
+That scratch and layout policy is historical. Current accepted variadic
+call-boundary behavior is the minimum contract in
+`../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`: preserve
+`PreparedCallPlan::wrapper_kind == DirectExternVariadic` and
+`PreparedCallPlan::variadic_fpr_arg_register_count`. Full variadic
+function-entry, `va_list`, register-save-area, and `va_arg` carriers remain
+deferred unless structured prepared facts are added.
+
 ## AAPCS64 `va_list` Layout
 
 The old surface treated `va_list` as a 32-byte record:
@@ -51,8 +59,8 @@ stack overflow area.
 
 ## `va_start` Initialization
 
-`va_start` resolved the destination `va_list` pointer into `x0`, then filled
-the AAPCS64 fields:
+`va_start` historically resolved the destination `va_list` pointer into `x0`,
+then filled the AAPCS64 fields:
 
 - `__stack` was set to `x29 + current_frame_size + va_named_stack_bytes`.
   Large offsets were materialized through `load_large_imm` before adding to
@@ -197,18 +205,19 @@ nodes. Any assembly text for saves, loads, or runtime-helper calls is printer
 output after those facts are selected.
 The register-save area, stack fallback, helper-call resources, and long-lived
 homes must route through `../ALLOCATION_CONTRACT.md` and target ABI records;
-variadic lowering must not patch call resources or spill slots locally.
+variadic lowering must follow `../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md` and
+must not patch call resources, spill slots, save areas, or scratch registers
+locally.
 
-1. Preserve the 32-byte AAPCS64 `va_list` record shape and signed offset
-   semantics.
-2. Keep GP and FP/SIMD register-save paths separate, with 8-byte and 16-byte
-   slot advances respectively.
-3. Model stack fallback as a first-class path, including F128 16-byte alignment
-   and aggregate 8-byte alignment.
-4. Keep aggregate `va_arg` whole-source selection: all from GP save area or all
-   from stack.
-5. Treat `__trunctfdf2` as an explicit runtime helper dependency for the legacy
-   F128 path until the replacement backend defines its final long-double ABI
-   behavior.
-6. Prove `va_start`, scalar `va_arg`, aggregate `va_arg`, `va_copy`, register
-   exhaustion, stack fallback, and F128 helper behavior independently.
+1. Preserve variadic call-boundary facts from `PreparedCallPlan` and
+   `module::CallRecord` before selecting any call sequence.
+2. Add explicit prepared carriers before implementing `va_list` layout,
+   GP/FP/SIMD register-save areas, signed offsets, named argument counts, or
+   stack overflow-area policy.
+3. Keep GP and FP/SIMD variadic save paths separate only after those carriers
+   exist; do not reconstruct them from prologue text.
+4. Model stack fallback, F128 alignment, aggregate whole-source selection, and
+   helper-call resources as structured facts before machine-node lowering.
+5. Prove variadic calls separately from full variadic function-entry and
+   `va_arg` behavior, because the current contract accepts only the call
+   boundary minimum.

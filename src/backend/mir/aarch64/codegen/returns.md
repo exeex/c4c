@@ -18,6 +18,12 @@ target-specific responsibilities were moving floating-point bit patterns from
 integer temporaries into AArch64 FP/SIMD return registers and preserving the
 second return component for aggregate-like floating-point results.
 
+The register behavior below is historical. Current return payload placement,
+return-control ownership, `x30` link-register treatment, and epilogue boundary
+behavior are defined by `../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md` over
+`BeforeReturn` moves, ABI-binding records, return block terminators, frame
+records, and allocation-result facts.
+
 ## Entry Points
 
 - `emit_return_impl(val, frame_size)`: checks the current function return type;
@@ -51,9 +57,9 @@ second return component for aggregate-like floating-point results.
 
 ## Return Register Behavior
 
-Integer and `i128` returns assumed prior lowering had already placed the return
-payload in AAPCS64 registers: `x0` for scalar integer returns and `x0:x1` for
-`i128`. Those hooks intentionally emitted no instructions.
+Integer and `i128` returns historically assumed prior lowering had already
+placed the return payload in AAPCS64 registers: `x0` for scalar integer returns
+and `x0:x1` for `i128`. Those hooks intentionally emitted no instructions.
 
 Floating-point scalar return hooks treated `x0`/`w0` as the canonical temporary
 register that held the raw bit pattern before the final ABI move:
@@ -144,16 +150,20 @@ consumers.
 Return value homes, before-return moves, ABI-binding facts, helper-call
 resources, and control-transfer clobbers must come from `module::MoveRecord`,
 `module::AbiBindingRecord`, allocation-result records, and
-`../ALLOCATION_CONTRACT.md`; return lowering must not assign ABI registers
-locally.
+`../ALLOCATION_CONTRACT.md`, following
+`../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`; return lowering must not assign ABI
+registers, link-register effects, return-control side effects, or epilogue
+behavior locally.
 
-1. Keep scalar integer, `i128`, scalar floating-point, and binary128 return
-   register rules separate.
-2. Preserve the distinction between raw-bit moves into FP/SIMD registers and
-   soft-float helper calls.
-3. Keep second return component helpers explicit for `F32`, `F64`, and `F128`
-   widths instead of routing all cases through one generic integer path.
-4. Ensure function-entry state initializes the current return type before any
-   return emission consults it.
-5. Add proof that ordinary returns, `F128` returns, and second FP return
-   components all land in the expected AAPCS64 registers.
+1. Consume `BeforeReturn` movement and ABI-binding records before selecting
+   any return-value machine nodes.
+2. Keep a dedicated return-boundary record as a deferred candidate when `x30`,
+   return side effects, or return-control provenance must be machine
+   verifiable.
+3. Treat scalar integer, `i128`, scalar floating-point, binary128, and second
+   component behavior as structured ABI-resource facts, not local register
+   choices.
+4. Preserve helper-call resources only when a structured carrier names them;
+   otherwise split a carrier-gap idea.
+5. Prove ordinary returns, F128 returns, and second FP return components against
+   target-MIR records before final instruction spelling is selected.
