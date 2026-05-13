@@ -1387,6 +1387,19 @@ std::vector<MachineSideEffectKind> memory_side_effects(
   return side_effects;
 }
 
+std::vector<MachineSideEffectKind> spill_reload_side_effects(
+    const SpillReloadInstructionRecord& instruction) {
+  switch (instruction.pseudo_kind) {
+    case MachinePseudoKind::SpillToSlot:
+      return {MachineSideEffectKind::MemoryWrite};
+    case MachinePseudoKind::ReloadFromSlot:
+      return {MachineSideEffectKind::MemoryRead};
+    case MachinePseudoKind::None:
+      break;
+  }
+  return {};
+}
+
 MachineNodeStatusRecord branch_selection_status(const BranchInstructionRecord& instruction,
                                                 const std::vector<OperandRecord>& operands) {
   if (!instruction.conditional) {
@@ -1452,6 +1465,66 @@ MachineNodeStatusRecord scalar_selection_status(const ScalarInstructionRecord& i
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
                                  .diagnostic = "scalar node is missing scalar ALU or cast record"};
+}
+
+bool is_supported_memory_base(MemoryBaseKind base_kind) {
+  switch (base_kind) {
+    case MemoryBaseKind::FrameSlot:
+    case MemoryBaseKind::PointerValue:
+      return true;
+    case MemoryBaseKind::Symbol:
+    case MemoryBaseKind::StringConstant:
+    case MemoryBaseKind::None:
+    case MemoryBaseKind::Register:
+      return false;
+  }
+  return false;
+}
+
+MachineNodeStatusRecord memory_selection_status(const MemoryInstructionRecord& instruction) {
+  if (instruction.address.support != MemoryOperandSupportKind::Prepared ||
+      !is_supported_memory_base(instruction.address.base_kind)) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
+                                   .diagnostic =
+                                       "memory operand is outside the selected subset"};
+  }
+  if (instruction.memory_kind == MemoryInstructionKind::Load) {
+    if (!instruction.result_value_id.has_value() ||
+        instruction.result_value_name == c4c::kInvalidValueName ||
+        !instruction.address.result_value_id.has_value() ||
+        !instruction.address.result_value_name.has_value()) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                     .diagnostic =
+                                         "load node is missing prepared result identity"};
+    }
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (!instruction.value.has_value() || !instruction.address.stored_value_id.has_value() ||
+      !instruction.address.stored_value_name.has_value()) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                   .diagnostic =
+                                       "store node is missing prepared stored value identity"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord spill_reload_selection_status(
+    const SpillReloadInstructionRecord& instruction) {
+  if (instruction.pseudo_kind == MachinePseudoKind::None ||
+      instruction.op_kind == c4c::backend::prepare::PreparedSpillReloadOpKind::Rematerialize) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
+                                   .diagnostic =
+                                       "spill/reload op is outside the selected subset"};
+  }
+  if (!instruction.source_spill_reload || !instruction.slot_id.has_value() ||
+      !instruction.stack_offset_bytes.has_value() || !instruction.scratch.has_value() ||
+      instruction.occupied_scratch_registers.empty() ||
+      !instruction.scratch_register_authority.has_value()) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                   .diagnostic =
+                                       "spill/reload node is missing slot or scratch facts"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
 
 }  // namespace
@@ -1551,11 +1624,12 @@ InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
   if (instruction.memory_kind == MemoryInstructionKind::Load) {
     defs.push_back(prepared_value_def(instruction.result_value_id, instruction.result_value_name));
   }
+  const auto selection = memory_selection_status(instruction);
   return InstructionRecord{
       .family = InstructionFamily::Memory,
       .surface = RecordSurfaceKind::MachineInstructionNode,
       .opcode = machine_opcode_from_memory_instruction(instruction),
-      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .selection = selection,
       .function_name = instruction.address.function_name,
       .block_label = instruction.address.block_label,
       .instruction_index = instruction.address.instruction_index,
@@ -1563,6 +1637,39 @@ InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
       .defs = defs,
       .uses = uses,
       .side_effects = memory_side_effects(instruction),
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_spill_reload_instruction(SpillReloadInstructionRecord instruction) {
+  std::vector<OperandRecord> operands = {make_memory_operand(instruction.slot)};
+  if (instruction.scratch.has_value()) {
+    operands.push_back(make_register_operand(*instruction.scratch));
+  }
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses = effects_from_operands(operands);
+  if (instruction.pseudo_kind == MachinePseudoKind::ReloadFromSlot &&
+      instruction.scratch.has_value()) {
+    defs.push_back(effect_from_operand(make_register_operand(*instruction.scratch)));
+  }
+  const auto selection = spill_reload_selection_status(instruction);
+  return InstructionRecord{
+      .family = InstructionFamily::Memory,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = instruction.pseudo_kind == MachinePseudoKind::SpillToSlot
+                    ? MachineOpcode::SpillToSlot
+                    : instruction.pseudo_kind == MachinePseudoKind::ReloadFromSlot
+                          ? MachineOpcode::ReloadFromSlot
+                          : MachineOpcode::Unspecified,
+      .pseudo = instruction.pseudo_kind,
+      .selection = selection,
+      .function_name = instruction.slot.function_name,
+      .block_label = instruction.slot.block_label,
+      .instruction_index = instruction.slot.instruction_index,
+      .operands = operands,
+      .defs = defs,
+      .uses = uses,
+      .side_effects = spill_reload_side_effects(instruction),
       .payload = instruction,
   };
 }

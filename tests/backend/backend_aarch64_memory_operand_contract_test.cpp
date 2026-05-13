@@ -150,6 +150,8 @@ int memory_instruction_records_do_not_select_or_emit() {
                   .function_name = c4c::FunctionNameId{11},
                   .block_label = c4c::BlockLabelId{21},
                   .instruction_index = 5,
+                  .result_value_id = prepare::PreparedValueId{34},
+                  .result_value_name = c4c::ValueNameId{44},
                   .base_kind = aarch64_codegen::MemoryBaseKind::PointerValue,
                   .pointer_value_name = c4c::ValueNameId{43},
                   .pointer_value_id = prepare::PreparedValueId{33},
@@ -194,6 +196,90 @@ int memory_instruction_records_do_not_select_or_emit() {
   return 0;
 }
 
+int memory_and_spill_nodes_fail_closed_when_required_facts_are_missing() {
+  const auto unsupported_memory = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Load,
+          .address =
+              aarch64_codegen::MemoryOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .support = aarch64_codegen::MemoryOperandSupportKind::DeferredUnsupported,
+                  .function_name = c4c::FunctionNameId{12},
+                  .block_label = c4c::BlockLabelId{22},
+                  .instruction_index = 6,
+                  .base_kind = aarch64_codegen::MemoryBaseKind::None,
+              },
+          .result_value_id = prepare::PreparedValueId{35},
+          .result_value_name = c4c::ValueNameId{45},
+          .value_type = bir::TypeKind::I32,
+      });
+  if (unsupported_memory.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
+      unsupported_memory.opcode != aarch64_codegen::MachineOpcode::Load ||
+      unsupported_memory.selection.diagnostic !=
+          "memory operand is outside the selected subset") {
+    return fail("expected unsupported memory operands to fail closed without guessing");
+  }
+  const auto global_memory = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Load,
+          .address =
+              aarch64_codegen::MemoryOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+                  .function_name = c4c::FunctionNameId{12},
+                  .block_label = c4c::BlockLabelId{22},
+                  .instruction_index = 8,
+                  .result_value_id = prepare::PreparedValueId{35},
+                  .result_value_name = c4c::ValueNameId{45},
+                  .base_kind = aarch64_codegen::MemoryBaseKind::Symbol,
+                  .symbol_name = c4c::LinkNameId{55},
+              },
+          .result_value_id = prepare::PreparedValueId{35},
+          .result_value_name = c4c::ValueNameId{45},
+          .value_type = bir::TypeKind::I32,
+      });
+  if (global_memory.selection.status !=
+      aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported) {
+    return fail("expected global/linker memory forms to remain fail-closed in this slice");
+  }
+
+  const auto incomplete_spill = aarch64_codegen::make_spill_reload_instruction(
+      aarch64_codegen::SpillReloadInstructionRecord{
+          .value_id = prepare::PreparedValueId{36},
+          .value_name = c4c::ValueNameId{46},
+          .value_type = bir::TypeKind::I64,
+          .op_kind = prepare::PreparedSpillReloadOpKind::Spill,
+          .pseudo_kind = aarch64_codegen::MachinePseudoKind::SpillToSlot,
+          .slot =
+              aarch64_codegen::MemoryOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+                  .function_name = c4c::FunctionNameId{12},
+                  .block_label = c4c::BlockLabelId{22},
+                  .instruction_index = 7,
+                  .stored_value_id = prepare::PreparedValueId{36},
+                  .stored_value_name = c4c::ValueNameId{46},
+                  .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
+                  .frame_slot_id = prepare::PreparedFrameSlotId{56},
+                  .byte_offset = 40,
+                  .byte_offset_is_prepared_snapshot = true,
+              },
+          .slot_id = prepare::PreparedFrameSlotId{56},
+          .stack_offset_bytes = std::size_t{40},
+          .stack_offset_is_prepared_snapshot = true,
+      });
+  if (incomplete_spill.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::MissingRequiredFacts ||
+      incomplete_spill.opcode != aarch64_codegen::MachineOpcode::SpillToSlot ||
+      incomplete_spill.pseudo != aarch64_codegen::MachinePseudoKind::SpillToSlot ||
+      incomplete_spill.selection.diagnostic !=
+          "spill/reload node is missing slot or scratch facts") {
+    return fail("expected incomplete spill pseudo nodes to fail closed structurally");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -204,6 +290,10 @@ int main() {
     return status;
   }
   if (const int status = memory_instruction_records_do_not_select_or_emit(); status != 0) {
+    return status;
+  }
+  if (const int status = memory_and_spill_nodes_fail_closed_when_required_facts_are_missing();
+      status != 0) {
     return status;
   }
   return 0;

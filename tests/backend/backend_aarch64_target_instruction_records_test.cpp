@@ -99,6 +99,12 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
           .address =
               aarch64_codegen::MemoryOperand{
                   .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+                  .function_name = c4c::FunctionNameId{2},
+                  .block_label = c4c::BlockLabelId{7},
+                  .instruction_index = 9,
+                  .result_value_id = prepare::PreparedValueId{15},
+                  .result_value_name = c4c::ValueNameId{7},
                   .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
                   .frame_slot_id = prepare::PreparedFrameSlotId{9},
                   .pointer_value_id = prepare::PreparedValueId{14},
@@ -156,6 +162,7 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
       memory_payload->address.pointer_value_id != prepare::PreparedValueId{14} ||
       memory_payload->result_value_id != prepare::PreparedValueId{15} ||
       memory.opcode != aarch64_codegen::MachineOpcode::Load ||
+      memory.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       memory.operands.size() != 1 || memory.uses.size() != 1 || memory.defs.size() != 1 ||
       memory.side_effects.size() != 1 ||
       memory.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryRead) {

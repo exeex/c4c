@@ -11,10 +11,12 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 
 namespace {
 
 namespace aarch64_api = c4c::backend::aarch64::api;
+namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -618,6 +620,69 @@ int records_preserve_frame_control_call_and_move_identity() {
       spill_scratch.occupied_registers.front() != "x20" ||
       reload_scratch.physical_register != "x20") {
     return fail("expected spill/reload scratch authority to remain structured target-MIR facts");
+  }
+
+  if (function.machine_nodes.size() != 2) {
+    return fail("expected spill/reload records to select representative machine nodes");
+  }
+  const auto* spill_node =
+      std::get_if<aarch64_codegen::SpillReloadInstructionRecord>(
+          &function.machine_nodes.front().payload);
+  const auto* reload_node =
+      std::get_if<aarch64_codegen::SpillReloadInstructionRecord>(
+          &function.machine_nodes.back().payload);
+  if (spill_node == nullptr || reload_node == nullptr) {
+    return fail("expected spill/reload machine nodes to carry spill/reload payloads");
+  }
+  if (function.machine_nodes.front().family != aarch64_codegen::InstructionFamily::Memory ||
+      function.machine_nodes.front().surface !=
+          aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      function.machine_nodes.front().opcode != aarch64_codegen::MachineOpcode::SpillToSlot ||
+      function.machine_nodes.front().pseudo != aarch64_codegen::MachinePseudoKind::SpillToSlot ||
+      function.machine_nodes.front().selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      function.machine_nodes.front().operands.size() != 2 ||
+      function.machine_nodes.front().uses.size() != 2 ||
+      !function.machine_nodes.front().defs.empty() ||
+      function.machine_nodes.front().side_effects.front() !=
+          aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
+    return fail("expected spill machine node to select store pseudo metadata");
+  }
+  if (function.machine_nodes.back().opcode != aarch64_codegen::MachineOpcode::ReloadFromSlot ||
+      function.machine_nodes.back().pseudo != aarch64_codegen::MachinePseudoKind::ReloadFromSlot ||
+      function.machine_nodes.back().selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      function.machine_nodes.back().defs.size() != 1 ||
+      function.machine_nodes.back().side_effects.front() !=
+          aarch64_codegen::MachineSideEffectKind::MemoryRead) {
+    return fail("expected reload machine node to select reload pseudo metadata");
+  }
+  if (spill_node->value_id != prepare::PreparedValueId{21} ||
+      spill_node->value_name != source_name ||
+      spill_node->value_type != bir::TypeKind::I64 ||
+      spill_node->slot.frame_slot_id != prepare::PreparedFrameSlotId{11} ||
+      spill_node->slot.stored_value_id != prepare::PreparedValueId{21} ||
+      spill_node->slot.byte_offset != 32 ||
+      !spill_node->slot.byte_offset_is_prepared_snapshot ||
+      !spill_node->scratch.has_value() ||
+      spill_node->scratch->role != aarch64_codegen::RegisterOperandRole::SpillAuthority ||
+      spill_node->scratch->value_id != prepare::PreparedValueId{21} ||
+      spill_node->scratch->value_name != source_name ||
+      spill_node->scratch->occupied_registers.size() != 1 ||
+      spill_node->scratch->occupied_registers.front() != "x20" ||
+      spill_node->scratch_register_authority !=
+          function.spill_reloads.front().scratch_register_authority ||
+      spill_node->source_spill_reload != function.spill_reloads.front().source_spill_reload) {
+    return fail("expected spill machine node to preserve value, scratch, slot, and provenance facts");
+  }
+  if (reload_node->slot.result_value_id != prepare::PreparedValueId{21} ||
+      reload_node->slot.frame_slot_id != prepare::PreparedFrameSlotId{11} ||
+      reload_node->stack_offset_bytes != std::size_t{32} ||
+      !reload_node->stack_offset_is_prepared_snapshot ||
+      reload_node->occupied_scratch_registers.size() != 1 ||
+      reload_node->occupied_scratch_registers.front() != "x20" ||
+      reload_node->source_spill_reload != function.spill_reloads.back().source_spill_reload) {
+    return fail("expected reload machine node to preserve scratch, slot, and provenance facts");
   }
 
   return 0;

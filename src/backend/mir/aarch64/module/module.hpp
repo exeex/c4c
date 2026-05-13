@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../abi/abi.hpp"
+#include "../codegen/records.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -466,6 +467,7 @@ struct FunctionRecord {
   std::vector<ParallelCopyRecord> parallel_copies;
   std::vector<OperandRecord> operands;
   std::vector<TargetRegisterRecord> target_registers;
+  std::vector<c4c::backend::aarch64::codegen::InstructionRecord> machine_nodes;
   std::vector<BlockRecord> blocks;
 };
 

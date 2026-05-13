@@ -861,6 +861,113 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
   return records;
 }
 
+[[nodiscard]] c4c::BlockLabelId block_label_at(
+    const c4c::backend::prepare::PreparedControlFlowFunction& function,
+    std::size_t block_index) {
+  if (block_index >= function.blocks.size()) {
+    return c4c::kInvalidBlockLabel;
+  }
+  return function.blocks[block_index].block_label;
+}
+
+[[nodiscard]] c4c::backend::aarch64::codegen::MachinePseudoKind codegen_spill_reload_pseudo(
+    SpillReloadPseudoKind pseudo) {
+  using c4c::backend::aarch64::codegen::MachinePseudoKind;
+  switch (pseudo) {
+    case SpillReloadPseudoKind::StoreFromRegisterToSlot:
+      return MachinePseudoKind::SpillToSlot;
+    case SpillReloadPseudoKind::ReloadFromSlotToScratch:
+      return MachinePseudoKind::ReloadFromSlot;
+    case SpillReloadPseudoKind::RematerializeToScratch:
+      return MachinePseudoKind::None;
+  }
+  return MachinePseudoKind::None;
+}
+
+[[nodiscard]] std::vector<c4c::backend::aarch64::codegen::InstructionRecord>
+build_spill_reload_machine_nodes(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedControlFlowFunction& function,
+    const c4c::backend::prepare::PreparedRegallocFunction* regalloc,
+    const std::vector<SpillReloadRecord>& records) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+
+  std::vector<codegen::InstructionRecord> nodes;
+  nodes.reserve(records.size());
+  for (const auto& record : records) {
+    const auto* value = regalloc != nullptr ? find_regalloc_value(*regalloc, record.value_id)
+                                            : nullptr;
+    const auto value_name = value != nullptr ? value->value_name : c4c::kInvalidValueName;
+    const auto value_type =
+        value != nullptr ? value->type : c4c::backend::bir::TypeKind::Void;
+    const auto block_label = block_label_at(function, record.block_index);
+    const auto* frame_slot =
+        record.slot_id.has_value() ? find_frame_slot_by_id(prepared.stack_layout, *record.slot_id)
+                                   : nullptr;
+    codegen::MemoryOperand slot{
+        .surface = codegen::RecordSurfaceKind::RecordOnly,
+        .support = record.slot_id.has_value()
+                       ? codegen::MemoryOperandSupportKind::Prepared
+                       : codegen::MemoryOperandSupportKind::DeferredUnsupported,
+        .function_name = function.function_name,
+        .block_label = block_label,
+        .instruction_index = record.instruction_index,
+        .base_kind = record.slot_id.has_value() ? codegen::MemoryBaseKind::FrameSlot
+                                                : codegen::MemoryBaseKind::None,
+        .frame_slot_id = record.slot_id,
+        .byte_offset = record.stack_offset_bytes.has_value()
+                           ? static_cast<std::int64_t>(*record.stack_offset_bytes)
+                           : 0,
+        .byte_offset_is_prepared_snapshot = record.stack_offset_is_prepared_snapshot,
+        .size_bytes = frame_slot != nullptr ? frame_slot->size_bytes : 0,
+        .align_bytes = frame_slot != nullptr ? frame_slot->align_bytes : 0,
+        .address_space = c4c::backend::bir::AddressSpace::Default,
+        .can_use_base_plus_offset = record.stack_offset_bytes.has_value(),
+    };
+    if (record.op_kind == c4c::backend::prepare::PreparedSpillReloadOpKind::Spill) {
+      slot.stored_value_id = record.value_id;
+      slot.stored_value_name = value_name;
+    } else if (record.op_kind == c4c::backend::prepare::PreparedSpillReloadOpKind::Reload) {
+      slot.result_value_id = record.value_id;
+      slot.result_value_name = value_name;
+    }
+
+    std::optional<codegen::RegisterOperand> scratch;
+    if (!record.register_name.empty()) {
+      const auto parsed =
+          c4c::backend::aarch64::abi::parse_aarch64_register_name(record.register_name);
+      scratch = codegen::RegisterOperand{
+          .reg = parsed.value_or(c4c::backend::aarch64::abi::RegisterReference{}),
+          .role = codegen::RegisterOperandRole::SpillAuthority,
+          .value_id = record.value_id,
+          .value_name = value_name,
+          .prepared_class = record.register_class,
+          .prepared_bank = record.register_bank,
+          .contiguous_width = record.contiguous_width,
+          .occupied_registers = record.occupied_registers,
+      };
+    }
+
+    nodes.push_back(codegen::make_spill_reload_instruction(
+        codegen::SpillReloadInstructionRecord{
+            .value_id = record.value_id,
+            .value_name = value_name,
+            .value_type = value_type,
+            .op_kind = record.op_kind,
+            .pseudo_kind = codegen_spill_reload_pseudo(record.pseudo_kind),
+            .slot = slot,
+            .scratch = scratch,
+            .occupied_scratch_registers = record.occupied_registers,
+            .scratch_register_authority = record.scratch_register_authority,
+            .slot_id = record.slot_id,
+            .stack_offset_bytes = record.stack_offset_bytes,
+            .stack_offset_is_prepared_snapshot = record.stack_offset_is_prepared_snapshot,
+            .source_spill_reload = record.source_spill_reload,
+        }));
+  }
+  return nodes;
+}
+
 [[nodiscard]] ParallelCopyMoveRecord build_parallel_copy_move_record(
     const c4c::backend::prepare::PreparedParallelCopyMove& move) {
   return ParallelCopyMoveRecord{
@@ -1029,6 +1136,10 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
     }
   }
   record.spill_reloads = build_spill_reload_records(regalloc, record.target_registers);
+  record.machine_nodes = build_spill_reload_machine_nodes(prepared,
+                                                          function,
+                                                          regalloc,
+                                                          record.spill_reloads);
   record.parallel_copies =
       build_parallel_copy_records(prepared, function, source_function, locations);
   record.operands = build_operands(prepared, function.function_name, record.target_registers);

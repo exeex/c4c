@@ -1,54 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/215_aarch64_first_machine_node_selection_slice.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Select Scalar And Branch Nodes
+Current Step ID: Step 4
+Current Step Title: Select Spill Reload And Memory Operand Nodes
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3: Select Scalar And Branch Nodes.
+Completed `plan.md` Step 4: Select Spill Reload And Memory Operand Nodes.
 
-`records.cpp` now tightens scalar and branch machine-node selection over the
-accepted target-MIR record subset:
+`records.cpp` now selects the accepted memory load/store subset only when
+prepared memory operands publish supported bases and required value identities,
+and unsupported or missing-fact forms fail closed with explicit
+`MachineNodeStatusRecord` diagnostics. It also adds structured spill/reload
+pseudo-node records that preserve prepared value id/name/type, scratch
+register authority, occupied scratch registers, spill slot id, prepared offset
+snapshot, memory operand facts, source spill/reload provenance, opcode/pseudo
+identity, def/use resources, and memory side effects.
 
-- supported integer scalar ALU and simple cast records stay selected with
-  concrete `MachineOpcode` values, typed operands, prepared value provenance,
-  and def/use metadata
-- unsupported scalar ALU and cast records now fail closed as
-  `DeferredUnsupported` machine nodes with explicit diagnostics instead of
-  looking selected with an unspecified opcode
-- materialized-bool conditional branches now surface the condition value as a
-  structured node operand when no physical condition operand is already present
-- fused integer compare branches now surface condition plus compare operands as
-  structured node operands, preserve predicates and compare widths in the
-  payload, and fail closed when required compare facts or fusable-candidate
-  authority are missing
-
-Focused backend tests now inspect structured scalar, materialized-bool branch,
-and fused compare-branch machine-node fields directly, including operand order,
-prepared value ids, register uses, opcode identity, selection status, and
-unsupported-case diagnostics without relying on assembly text.
+`module.cpp` now derives selected spill/reload machine nodes from existing
+prepared spill/reload target-MIR records while retaining the original
+`SpillReloadRecord` surface. Focused backend tests inspect selected memory and
+spill/reload node fields directly and cover fail-closed memory and incomplete
+spill pseudo forms without assembly text.
 
 ## Suggested Next
 
-Implement Step 4 by selecting the narrow spill/reload and memory operand subset
-into structured machine-node fields, preserving prepared slot/scratch/memory
-facts and keeping unsupported forms fail-closed.
+Implement Step 5 by updating the AArch64 markdown consumers to document that
+selected machine nodes are structured internal output layered after target-MIR
+records, not assembly text or encoder/object output.
 
 ## Watchouts
 
 - Do not emit or parse assembly text under this plan.
-- Select only from accepted target-MIR records; do not bypass through rendered
-  BIR, old examples, or fixture names.
-- Branch compare records still preserve predicate and compare width in the
-  payload; there is no condition-code spelling or final compare instruction
-  encoding in this slice.
-- Step 4 should keep call/return/prologue/variadic/global/linker behavior out
-  of scope even though placeholder record variants and statuses exist.
-- The spill/reload pseudo vocabulary is present, but the module spill/reload
-  bridge still belongs to the later spill/reload selection packet.
+- Selected spill/reload nodes are derived only from prepared spill/reload
+  target-MIR records; rematerialize remains outside the selected subset.
+- Memory selection still requires prepared memory access facts and supported
+  base identities; register-base, global/string, or missing prepared forms
+  remain fail-closed.
+- Call/return/prologue/variadic/global/linker selection remains out of scope
+  even though placeholder record variants and statuses exist.
 
 ## Proof
 
@@ -60,6 +52,3 @@ Result: passed. The enabled `^backend_` subset reported 100% passing for 131
 enabled backend tests.
 
 Log path: `test_after.log`.
-
-Also ran `git diff --check`: passed. `clang-format` is not installed in this
-environment.

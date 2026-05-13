@@ -243,6 +243,7 @@ struct RegisterOperand {
       c4c::backend::prepare::PreparedRegisterBank::None;
   std::optional<c4c::backend::aarch64::abi::RegisterView> expected_view;
   std::size_t contiguous_width = 1;
+  std::vector<std::string_view> occupied_registers;
 };
 
 struct ImmediateOperand {
@@ -490,6 +491,23 @@ struct MemoryInstructionRecord {
   c4c::backend::bir::TypeKind value_type = c4c::backend::bir::TypeKind::Void;
 };
 
+struct SpillReloadInstructionRecord {
+  c4c::backend::prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  c4c::backend::bir::TypeKind value_type = c4c::backend::bir::TypeKind::Void;
+  c4c::backend::prepare::PreparedSpillReloadOpKind op_kind =
+      c4c::backend::prepare::PreparedSpillReloadOpKind::Spill;
+  MachinePseudoKind pseudo_kind = MachinePseudoKind::SpillToSlot;
+  MemoryOperand slot;
+  std::optional<RegisterOperand> scratch;
+  std::vector<std::string_view> occupied_scratch_registers;
+  std::optional<std::size_t> scratch_register_authority;
+  std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  bool stack_offset_is_prepared_snapshot = false;
+  const c4c::backend::prepare::PreparedSpillReloadOp* source_spill_reload = nullptr;
+};
+
 struct CallInstructionRecord {
   std::optional<SymbolOperand> direct_callee;
   std::optional<OperandRecord> indirect_callee;
@@ -522,6 +540,7 @@ struct ObjectInstructionRecord {
 using InstructionPayload = std::variant<BranchInstructionRecord,
                                         ScalarInstructionRecord,
                                         MemoryInstructionRecord,
+                                        SpillReloadInstructionRecord,
                                         CallInstructionRecord,
                                         ReturnInstructionRecord,
                                         AssemblerInstructionRecord,
@@ -594,6 +613,8 @@ struct InstructionRecord {
 [[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu);
 [[nodiscard]] ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cast);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_spill_reload_instruction(
+    SpillReloadInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_call_instruction(CallInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_return_instruction(ReturnInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruction);

@@ -239,6 +239,7 @@ int memory_instruction_records_do_not_select_or_emit_load_store_behavior() {
                   .block_label = c4c::BlockLabelId{25},
                   .instruction_index = 8,
                   .stored_value_id = prepare::PreparedValueId{34},
+                  .stored_value_name = c4c::ValueNameId{45},
                   .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
                   .frame_slot_id = prepare::PreparedFrameSlotId{54},
                   .size_bytes = 4,
