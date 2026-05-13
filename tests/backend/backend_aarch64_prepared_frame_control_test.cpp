@@ -622,38 +622,38 @@ int records_preserve_frame_control_call_and_move_identity() {
     return fail("expected spill/reload scratch authority to remain structured target-MIR facts");
   }
 
-  if (function.machine_nodes.size() != 2) {
+  if (function.machine_nodes.size() < 2) {
     return fail("expected spill/reload records to select representative machine nodes");
   }
   const auto* spill_node =
       std::get_if<aarch64_codegen::SpillReloadInstructionRecord>(
-          &function.machine_nodes.front().payload);
+          &function.machine_nodes[0].payload);
   const auto* reload_node =
       std::get_if<aarch64_codegen::SpillReloadInstructionRecord>(
-          &function.machine_nodes.back().payload);
+          &function.machine_nodes[1].payload);
   if (spill_node == nullptr || reload_node == nullptr) {
     return fail("expected spill/reload machine nodes to carry spill/reload payloads");
   }
-  if (function.machine_nodes.front().family != aarch64_codegen::InstructionFamily::Memory ||
-      function.machine_nodes.front().surface !=
+  if (function.machine_nodes[0].family != aarch64_codegen::InstructionFamily::Memory ||
+      function.machine_nodes[0].surface !=
           aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
-      function.machine_nodes.front().opcode != aarch64_codegen::MachineOpcode::SpillToSlot ||
-      function.machine_nodes.front().pseudo != aarch64_codegen::MachinePseudoKind::SpillToSlot ||
-      function.machine_nodes.front().selection.status !=
+      function.machine_nodes[0].opcode != aarch64_codegen::MachineOpcode::SpillToSlot ||
+      function.machine_nodes[0].pseudo != aarch64_codegen::MachinePseudoKind::SpillToSlot ||
+      function.machine_nodes[0].selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::Selected ||
-      function.machine_nodes.front().operands.size() != 2 ||
-      function.machine_nodes.front().uses.size() != 2 ||
-      !function.machine_nodes.front().defs.empty() ||
-      function.machine_nodes.front().side_effects.front() !=
+      function.machine_nodes[0].operands.size() != 2 ||
+      function.machine_nodes[0].uses.size() != 2 ||
+      !function.machine_nodes[0].defs.empty() ||
+      function.machine_nodes[0].side_effects.front() !=
           aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
     return fail("expected spill machine node to select store pseudo metadata");
   }
-  if (function.machine_nodes.back().opcode != aarch64_codegen::MachineOpcode::ReloadFromSlot ||
-      function.machine_nodes.back().pseudo != aarch64_codegen::MachinePseudoKind::ReloadFromSlot ||
-      function.machine_nodes.back().selection.status !=
+  if (function.machine_nodes[1].opcode != aarch64_codegen::MachineOpcode::ReloadFromSlot ||
+      function.machine_nodes[1].pseudo != aarch64_codegen::MachinePseudoKind::ReloadFromSlot ||
+      function.machine_nodes[1].selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::Selected ||
-      function.machine_nodes.back().defs.size() != 1 ||
-      function.machine_nodes.back().side_effects.front() !=
+      function.machine_nodes[1].defs.size() != 1 ||
+      function.machine_nodes[1].side_effects.front() !=
           aarch64_codegen::MachineSideEffectKind::MemoryRead) {
     return fail("expected reload machine node to select reload pseudo metadata");
   }

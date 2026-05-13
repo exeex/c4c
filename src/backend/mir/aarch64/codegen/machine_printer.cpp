@@ -172,6 +172,42 @@ MachineAssemblyPrintResult print_scalar(const InstructionRecord& instruction) {
                      "scalar node is missing a structured destination register operand");
 }
 
+MachineAssemblyPrintResult print_return(const InstructionRecord& instruction,
+                                        const ReturnInstructionRecord& ret) {
+  std::ostringstream out;
+  if (ret.value.has_value()) {
+    const auto* immediate = std::get_if<ImmediateOperand>(&ret.value->payload);
+    if (ret.value->kind != OperandKind::Immediate || immediate == nullptr) {
+      return unsupported(bad_header(instruction) +
+                         "return value is not a printable immediate operand");
+    }
+    if (immediate->kind != ImmediateKind::SignedInteger ||
+        immediate->signed_value < 0 || immediate->signed_value > 65535) {
+      return unsupported(bad_header(instruction) +
+                         "return immediate is outside the selected printable subset");
+    }
+
+    const char* result_register = nullptr;
+    switch (ret.value_type) {
+      case c4c::backend::bir::TypeKind::I1:
+      case c4c::backend::bir::TypeKind::I8:
+      case c4c::backend::bir::TypeKind::I16:
+      case c4c::backend::bir::TypeKind::I32:
+        result_register = "w0";
+        break;
+      case c4c::backend::bir::TypeKind::I64:
+        result_register = "x0";
+        break;
+      default:
+        return unsupported(bad_header(instruction) +
+                           "return type is outside the selected printable subset");
+    }
+    out << "    mov " << result_register << ", #" << immediate->signed_value << "\n";
+  }
+  out << "    ret\n";
+  return printed(out.str());
+}
+
 }  // namespace
 
 MachineAssemblyPrintResult print_machine_instruction_node(const InstructionRecord& instruction) {
@@ -191,6 +227,9 @@ MachineAssemblyPrintResult print_machine_instruction_node(const InstructionRecor
   }
   if (std::get_if<ScalarInstructionRecord>(&instruction.payload) != nullptr) {
     return print_scalar(instruction);
+  }
+  if (const auto* ret = std::get_if<ReturnInstructionRecord>(&instruction.payload)) {
+    return print_return(instruction, *ret);
   }
   return unsupported(bad_header(instruction) + "instruction family is not in the printable subset");
 }

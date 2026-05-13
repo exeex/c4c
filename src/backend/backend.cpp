@@ -167,25 +167,34 @@ std::string print_aarch64_prepared_machine_nodes(
     throw std::invalid_argument(message);
   }
 
-  std::vector<c4c::backend::aarch64::codegen::InstructionRecord> machine_nodes;
+  std::ostringstream assembly;
+  assembly << "    .text\n";
+  std::size_t machine_node_count = 0;
   for (const auto& function : built.module->functions) {
-    machine_nodes.insert(machine_nodes.end(),
-                         function.machine_nodes.begin(),
-                         function.machine_nodes.end());
+    if (function.machine_nodes.empty()) {
+      continue;
+    }
+    ++machine_node_count;
+    assembly << "    .globl " << function.label << "\n"
+             << "    .type " << function.label << ", %function\n"
+             << function.label << ":\n";
+    const auto printed =
+        c4c::backend::aarch64::codegen::print_machine_instruction_nodes(
+            function.machine_nodes);
+    if (!printed.ok) {
+      throw std::invalid_argument("AArch64 backend assembly route reached the machine-node printer, "
+                                  "but printing failed: " +
+                                  printed.diagnostic);
+    }
+    assembly << printed.assembly
+             << "    .size " << function.label << ", .-" << function.label << "\n";
   }
-  if (machine_nodes.empty()) {
+  if (machine_node_count == 0) {
     throw std::invalid_argument(
         "AArch64 backend assembly route reached the machine-node printer, but no selected printable machine nodes are available for this source input");
   }
-
-  const auto printed =
-      c4c::backend::aarch64::codegen::print_machine_instruction_nodes(machine_nodes);
-  if (!printed.ok) {
-    throw std::invalid_argument("AArch64 backend assembly route reached the machine-node printer, "
-                                "but printing failed: " +
-                                printed.diagnostic);
-  }
-  return printed.assembly;
+  assembly << "    .section .note.GNU-stack,\"\",@progbits\n";
+  return assembly.str();
 }
 
 // Step 5 fence: route-debug focus options are public dump filters over rendered

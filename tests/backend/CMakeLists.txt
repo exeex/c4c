@@ -1,6 +1,7 @@
 set(BACKEND_TEST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(BACKEND_TEST_CMAKE_ROOT "${BACKEND_TEST_ROOT}/cmake")
 set(BACKEND_CASE_ROOT "${BACKEND_TEST_ROOT}/case")
+find_program(AARCH64_AS_EXECUTABLE NAMES aarch64-linux-gnu-as)
 
 option(C4C_ENABLE_X86_BACKEND_TESTS
        "Enable x86 emitter and x86 handoff boundary backend tests"
@@ -1042,6 +1043,29 @@ add_test(
 set_tests_properties(backend_cli_aarch64_asm_no_machine_nodes_fails PROPERTIES
   LABELS "backend;internal;cli;aarch64"
 )
+
+if(CLANG_EXECUTABLE AND AARCH64_AS_EXECUTABLE)
+  add_test(
+    NAME backend_cli_aarch64_asm_external_return_zero_smoke
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DAS=${AARCH64_AS_EXECUTABLE}
+            -DTARGET_TRIPLE=aarch64-linux-gnu
+            -DSRC=${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c
+            -DOUT_ASM=${CMAKE_CURRENT_BINARY_DIR}/aarch64_return_zero_smoke.s
+            -DOUT_OBJ=${CMAKE_CURRENT_BINARY_DIR}/aarch64_return_zero_smoke.o
+            -DOUT_BIN=${CMAKE_CURRENT_BINARY_DIR}/aarch64_return_zero_smoke.bin
+            -DHOST_PROCESSOR=${CMAKE_HOST_SYSTEM_PROCESSOR}
+            -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_aarch64_external_smoke.cmake"
+  )
+  set_tests_properties(backend_cli_aarch64_asm_external_return_zero_smoke PROPERTIES
+    LABELS "backend;internal;cli;aarch64;external_toolchain"
+  )
+else()
+  message(WARNING
+    "clang or AArch64 assembler not found: backend_cli_aarch64_asm_external_return_zero_smoke will be skipped")
+endif()
 
 add_test(
   NAME backend_cli_dump_bir_00204_stdarg_semantic_handoff

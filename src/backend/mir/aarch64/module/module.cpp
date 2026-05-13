@@ -1,6 +1,7 @@
 #include "module.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -870,6 +871,17 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
   return function.blocks[block_index].block_label;
 }
 
+[[nodiscard]] c4c::backend::aarch64::codegen::OperandRecord immediate_return_operand(
+    const c4c::backend::bir::Value& value) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+  return codegen::make_immediate_operand(codegen::ImmediateOperand{
+      .kind = codegen::ImmediateKind::SignedInteger,
+      .type = value.type,
+      .signed_value = value.immediate,
+      .unsigned_value = value.immediate_bits,
+  });
+}
+
 [[nodiscard]] c4c::backend::aarch64::codegen::MachinePseudoKind codegen_spill_reload_pseudo(
     SpillReloadPseudoKind pseudo) {
   using c4c::backend::aarch64::codegen::MachinePseudoKind;
@@ -964,6 +976,51 @@ build_spill_reload_machine_nodes(
             .stack_offset_is_prepared_snapshot = record.stack_offset_is_prepared_snapshot,
             .source_spill_reload = record.source_spill_reload,
         }));
+  }
+  return nodes;
+}
+
+[[nodiscard]] std::vector<c4c::backend::aarch64::codegen::InstructionRecord>
+build_return_machine_nodes(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::Function* source_function,
+    const c4c::backend::prepare::PreparedControlFlowFunction& function) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+
+  std::vector<codegen::InstructionRecord> nodes;
+  nodes.reserve(function.blocks.size());
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    const auto* source_block =
+        find_source_block(prepared, source_function, block.block_label);
+    if (block.terminator_kind != c4c::backend::bir::TerminatorKind::Return ||
+        source_block == nullptr ||
+        source_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return) {
+      continue;
+    }
+
+    codegen::ReturnInstructionRecord ret{
+        .value_type = source_block->terminator.value.has_value()
+                          ? source_block->terminator.value->type
+                          : c4c::backend::bir::TypeKind::Void,
+    };
+    if (source_block->terminator.value.has_value()) {
+      const auto& value = *source_block->terminator.value;
+      if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+        ret.value = immediate_return_operand(value);
+      } else {
+        ret.value = codegen::make_prepared_value_operand(codegen::PreparedValueOperand{
+            .function_name = function.function_name,
+            .type = value.type,
+        });
+      }
+    }
+
+    auto node = codegen::make_return_instruction(ret);
+    node.function_name = function.function_name;
+    node.block_label = block.block_label;
+    node.block_index = block_index;
+    nodes.push_back(std::move(node));
   }
   return nodes;
 }
@@ -1140,6 +1197,10 @@ build_spill_reload_machine_nodes(
                                                           function,
                                                           regalloc,
                                                           record.spill_reloads);
+  auto return_nodes = build_return_machine_nodes(prepared, source_function, function);
+  record.machine_nodes.insert(record.machine_nodes.end(),
+                              std::make_move_iterator(return_nodes.begin()),
+                              std::make_move_iterator(return_nodes.end()));
   record.parallel_copies =
       build_parallel_copy_records(prepared, function, source_function, locations);
   record.operands = build_operands(prepared, function.function_name, record.target_registers);

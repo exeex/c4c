@@ -152,6 +152,27 @@ int selected_branch_and_store_nodes_print_without_semantic_roundtrip() {
   return 0;
 }
 
+int selected_immediate_return_node_prints_callable_epilogue() {
+  const auto ret = aarch64_codegen::make_return_instruction(
+      aarch64_codegen::ReturnInstructionRecord{
+          .value = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 0,
+              }),
+          .value_type = bir::TypeKind::I32,
+      });
+
+  const auto result = aarch64_codegen::print_machine_instruction_nodes({ret});
+  const std::string expected = "    mov w0, #0\n    ret\n";
+  if (!result.ok || result.assembly != expected) {
+    return fail("expected selected immediate return node to print AArch64 return text: " +
+                result.diagnostic);
+  }
+  return 0;
+}
+
 int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
   const auto assembler = aarch64_codegen::make_assembler_instruction(
       aarch64_codegen::AssemblerInstructionRecord{});
@@ -204,6 +225,10 @@ int main() {
     return result;
   }
   if (const int result = selected_branch_and_store_nodes_print_without_semantic_roundtrip();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_immediate_return_node_prints_callable_epilogue();
       result != 0) {
     return result;
   }

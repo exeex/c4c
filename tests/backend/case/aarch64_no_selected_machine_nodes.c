@@ -1,3 +1,1 @@
-int main(void) {
-  return 0;
-}
+int aarch64_no_selected_machine_nodes_global;
