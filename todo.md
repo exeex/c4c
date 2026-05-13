@@ -1,61 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.5
-Current Step Title: Extract top-level `mod.cpp` To Markdown Artifact
+Current Step ID: Step 3
+Current Step Title: Build The Markdown Classification Index
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.5: Extract top-level `mod.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/mod.cpp` into
-`src/backend/mir/aarch64/mod.md` and removed the old `.cpp` from the live
-tree.
+Step 3: Build The Markdown Classification Index created
+`src/backend/mir/aarch64/CLASSIFICATION_INDEX.md` as the discoverable AArch64
+markdown review index.
 
-The markdown artifact records the old top-level AArch64 backend module index,
-including the `codegen`, `assembler`, and `linker` submodules, the historical
-`codegen::emit::ArmCodegen` re-export, the `gcc_assembler` and `gcc_linker`
-feature-gate assumptions, cross-surface dependencies, hidden assumptions, and
-rebuild risks.
-
-Step 2 is now complete: all pre-existing old `.cpp` files under
-`src/backend/mir/aarch64` have been removed from the live tree and preserved as
-markdown review artifacts.
+The index lists every extracted or inspected AArch64 markdown artifact under
+`src/backend/mir/aarch64/`, classifies each artifact, records legacy or
+deprecated owner/limitation/removal-condition notes, and calls out the stale
+routes that must not influence the new BIR / prepared-backend contract.
 
 ## Suggested Next
 
-Next coherent packet: start Step 3 by creating the AArch64 markdown
-classification index under `src/backend/mir/aarch64/` or another
-supervisor-chosen adjacent docs path.
+Next coherent packet: start Step 4 by defining the AArch64 backend entry
+contract against current structured BIR / `PreparedBirModule` facts.
 
-The index should list every extracted or inspected AArch64 artifact, classify
-each as salvageable design note, obsolete route, binary-utils candidate,
-target-ABI candidate, assembler/linker candidate, or delete/defer, and mark
-which artifacts should not influence the new BIR/prepared backend contract.
+The Step 4 contract should decide whether the new route consumes
+`PreparedBirModule`, raw `bir::Module`, or a staged subset; specify how
+semantic identity is carried through structured ids; identify the target-local
+MIR/asm facts needed before lowering resumes; and explicitly reject rendered
+name recovery or assembly-string fallback routes.
 
 ## Watchouts
 
-- Step 2 extraction is descriptive only. Do not treat any AArch64 markdown
-  artifact as proof that the live C++ backend implements that behavior.
-- `mod.md` records the old target-family grouping and the historical
-  `ArmCodegen` export spelling. Preserve that as source evidence; do not infer
-  a new naming or driver contract from it.
-- The extracted assembler and linker artifacts document old built-in toolchain
-  paths gated by reference Rust features. The Step 3 index should distinguish
-  those routes from current live compiler behavior.
-- `mod.hpp`, `parser.hpp`, encoder headers, linker headers, and other headers
-  remain in the tree; header deletion or replacement is outside this packet.
-- The retargeted signature metadata test remains artifact coverage only; do
-  not count it as live AArch64 codegen, assembler, or linker behavior proof.
+- Use `CLASSIFICATION_INDEX.md` as a triage guide, not as proof of current live
+  AArch64 capability.
+- The index excludes legacy rendered assembly recovery, `ArmCodegen`, parser
+  operand recovery, built-in linker orchestration, and old feature-gated
+  assembler/linker routes from the Step 4 contract.
+- Target-ABI and binary-utils candidates in the index are hypotheses to verify
+  against current code, not accepted backend requirements.
+- Headers under `src/backend/mir/aarch64/` remain outside this docs-only packet.
 
 ## Proof
 
-Command:
+Commands:
 
 ```bash
-bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1
+find src/backend/mir/aarch64 -type f -name '*.md' | sort
+bash -lc 'missing=0; for f in $(find src/backend/mir/aarch64 -type f -name "*.md" | sort); do rel=${f#src/backend/mir/aarch64/}; if ! rg -Fq -- "$rel" src/backend/mir/aarch64/CLASSIFICATION_INDEX.md; then echo "missing $rel"; missing=1; fi; done; test -f src/backend/mir/aarch64/CLASSIFICATION_INDEX.md && test "$missing" -eq 0'
 ```
 
-Result: passed. The build completed and the backend CTest subset reported
-`100% tests passed, 0 tests failed out of 109`. Log path: `test_after.log`.
+Result: passed. The first command listed the AArch64 markdown artifacts,
+including `CLASSIFICATION_INDEX.md`. The second command confirmed the index
+exists and mentions every listed AArch64 markdown artifact. Docs-only packet;
+no build required and no proof log produced.
