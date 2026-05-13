@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.1
-Current Step Title: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifacts
+Current Step ID: Step 2.1a
+Current Step Title: Extract `cast_ops.cpp` To Markdown Artifact
 
 # Current Packet
 
@@ -21,13 +21,14 @@ risks.
 
 ## Suggested Next
 
-Current execution lane: Step 2.1, remaining codegen `.cpp` extraction.
+Current execution packet: Step 2.1a, extract
+`src/backend/mir/aarch64/codegen/cast_ops.cpp` to a markdown artifact and
+remove that old `.cpp` from the live tree.
 
-Extract the remaining old codegen surfaces under
-`src/backend/mir/aarch64/codegen/` before moving into assembler, encoder,
-linker, or module-entry files:
+Stay within Step 2.1, the remaining codegen extraction lane. After
+`cast_ops.cpp`, continue the lane through these old codegen surfaces before
+moving into assembler, encoder, linker, or module-entry files:
 
-- `cast_ops.cpp`
 - `atomics.cpp`
 - `intrinsics.cpp`
 - `i128_ops.cpp`
@@ -75,6 +76,9 @@ After Step 2.1, continue Step 2 through these bounded lanes:
   instead of expanding Step 2.
 - The retargeted signature metadata test is artifact coverage only; do not
   count it as live AArch64 backend behavior proof.
+- Keep each remaining Step 2.1 codegen shard as a bounded descriptive
+  extraction packet unless the supervisor explicitly delegates a grouped
+  packet.
 
 ## Proof
 
