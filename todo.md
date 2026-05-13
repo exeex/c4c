@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/213_aarch64_allocation_to_target_mir_move_spill_reload_records.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Tighten Allocation Location And Register Records
+Current Step ID: Step 3
+Current Step Title: Tighten Move, Parallel-Copy, And ABI-Binding Records
 
 # Current Packet
 
