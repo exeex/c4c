@@ -10,9 +10,9 @@ int fail(const char* message) {
   return 1;
 }
 
-std::string read_emit_source() {
+std::string read_emit_artifact() {
   std::ifstream input(std::string(C4C_SOURCE_DIR) +
-                      "/src/backend/mir/aarch64/codegen/emit.cpp");
+                      "/src/backend/mir/aarch64/codegen/emit.md");
   std::ostringstream out;
   out << input.rdbuf();
   return out.str();
@@ -31,9 +31,9 @@ bool contains(const std::string& text, const std::string& needle) {
 }
 
 int check_fast_paths_no_longer_parse_signature_text() {
-  const std::string source = read_emit_source();
+  const std::string source = read_emit_artifact();
   if (source.empty()) {
-    return fail("could not read aarch64 emit.cpp");
+    return fail("could not read aarch64 emit.md");
   }
 
   if (contains(source, "function.signature_text") ||
@@ -54,7 +54,7 @@ int check_fast_paths_no_longer_parse_signature_text() {
 }
 
 int check_structured_helpers_cover_signature_authorities() {
-  const std::string source = read_emit_source();
+  const std::string source = read_emit_artifact();
   if (!contains(source, "function.signature_return_type_ref.has_value()") ||
       !contains(source, "function.signature_params.size() == expected_count") ||
       !contains(source, "function.signature_param_type_refs.size() ==") ||
