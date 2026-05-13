@@ -9,31 +9,31 @@ Current Step Title: Extract Old `.cpp` Surfaces To Markdown Artifacts
 ## Just Finished
 
 Step 2: Extract Old `.cpp` Surfaces To Markdown Artifacts extracted
-`src/backend/mir/aarch64/codegen/returns.cpp` into
-`src/backend/mir/aarch64/codegen/returns.md` and removed the old `.cpp`
+`src/backend/mir/aarch64/codegen/float_ops.cpp` into
+`src/backend/mir/aarch64/codegen/float_ops.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old return-lowering role, entry points,
-scalar and binary128 return-register behavior, second floating-point return
-component helpers, dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old floating-point operation role, entry
+points, scalar `F32`/`F64` register-file transitions, `F128` soft-float
+delegation, dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
 Continue Step 2 with another old AArch64 backend `.cpp` extraction target,
-preferably `float_ops.cpp` because it is small enough to archive cleanly while
-preserving useful floating-point operation and `F128` delegation context for
-the later rebuild.
+preferably `globals.cpp` because it is small and can preserve global symbol
+addressing behavior before moving on to larger surfaces such as `cast_ops.cpp`
+or `atomics.cpp`.
 
 ## Watchouts
 
-- `returns.cpp` was a fully commented translation surface rather than live
+- `float_ops.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived surface has several rebuild hazards: scalar float returns must
-  move raw bits from integer temporaries into FP/SIMD ABI registers, `i128`
-  returns intentionally leave `x0:x1` untouched, direct `F128` returns and
-  `__extenddftf2` widening are separate contracts, and the `F128` second-return
-  read path updates backend tracking state after storing `q1`.
+- The archived surface has several rebuild hazards: scalar `F32`/`F64` binary
+  ops bridge raw bits through `x0`, preserve the left operand in `x1` before
+  evaluating the right operand, move through `s`/`d` FP registers for native
+  arithmetic, explicitly zero-extend `F32` results with `mov w0, w0`, and keep
+  `F128` binary ops plus negation delegated to shared binary128 helpers.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 
