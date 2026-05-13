@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-05-13
 
 Depends On:
-- `ideas/open/215_aarch64_first_machine_node_selection_slice.md`
+- `ideas/closed/215_aarch64_first_machine_node_selection_slice.md`
 
 ## Goal
 
