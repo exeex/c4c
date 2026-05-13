@@ -1,35 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.1d
-Current Step Title: Extract `i128_ops.cpp` To Markdown Artifact
+Current Step ID: Step 2.1e
+Current Step Title: Extract `f128.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.1d: Extract `i128_ops.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/codegen/i128_ops.cpp` into
-`src/backend/mir/aarch64/codegen/i128_ops.md` and removed the old `.cpp`
+Step 2.1e: Extract `f128.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/codegen/f128.cpp` into
+`src/backend/mir/aarch64/codegen/f128.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old i128 lowering contract, including
-low/high pair layout, accumulator and binary-operation register conventions,
-pair transport helpers, inline arithmetic and bitwise operations, variable and
-constant shift cases, runtime helper call boundaries, float conversion
-bridging, comparison lowering, dependencies, hidden assumptions, and rebuild
-risks.
+The markdown artifact records the old binary128 soft-float contract, including
+Q-register ABI assumptions, 16-byte stack and memory transport, `x17` address
+carrier behavior, `x16` saved-address scratch use, soft-float helper call
+boundaries, F32/F64 raw-bit bridges, full-source tracking, dependencies, hidden
+assumptions, and rebuild risks.
 
 ## Suggested Next
 
 Next coherent packet: stay within Step 2.1 and extract
-`src/backend/mir/aarch64/codegen/f128.cpp` to a markdown artifact, then remove
+`src/backend/mir/aarch64/codegen/peephole.cpp` to a markdown artifact, then remove
 that old `.cpp` from the live tree.
 
 Continue the remaining codegen extraction lane through these old codegen
 surfaces before moving into assembler, encoder, linker, or module-entry files:
 
-- `f128.cpp`
 - `peephole.cpp`
 - `mod.cpp`
 
@@ -54,16 +52,17 @@ After Step 2.1, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- `i128_ops.cpp` was a fully commented translation surface rather than live
+- `f128.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived i128 surface has several rebuild hazards: low/high half order is
-  fixed across registers and stack slots, `prep_i128_binop` must produce
-  `x2`/`x3` and `x4`/`x5`, shift amounts are masked with `127`, signed ordered
-  compares depend on high-word signed conditions, and conversion helpers need
-  raw-bit `fmov` bridging plus register-cache invalidation.
+- The archived F128 surface has several rebuild hazards: full binary128 values
+  must remain 16-byte `q0`/`q1` payloads, `x17` is the shared address carrier,
+  `x16` is used as saved-address scratch, helper calls can clobber cached
+  operands, and `f128_store_result_and_truncate` must not overwrite the full
+  destination slot with the truncated F64 approximation.
 - Runtime helper names and ABI assumptions are preserved as legacy contract,
-  not as proof that the rebuilt backend has complete compiler-rt integration.
+  not as proof that the rebuilt backend has complete compiler-rt or libgcc
+  binary128 integration.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
