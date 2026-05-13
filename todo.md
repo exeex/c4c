@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/204_aarch64_prepared_module_mir_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Add Data/Object Side-Table Skeletons
+Current Step ID: 7
+Current Step Title: Consolidate Boundary Proof
 
 ## Just Finished
 
