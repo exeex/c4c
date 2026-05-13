@@ -110,6 +110,24 @@ std::string_view memory_instruction_kind_name(MemoryInstructionKind kind) {
   return "unknown";
 }
 
+std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind) {
+  switch (kind) {
+    case ScalarAluOperationKind::Add:
+      return "add";
+    case ScalarAluOperationKind::Sub:
+      return "sub";
+    case ScalarAluOperationKind::And:
+      return "and";
+    case ScalarAluOperationKind::Or:
+      return "or";
+    case ScalarAluOperationKind::Xor:
+      return "xor";
+    case ScalarAluOperationKind::Deferred:
+      return "deferred";
+  }
+  return "unknown";
+}
+
 std::string_view branch_condition_form_name(BranchConditionForm form) {
   switch (form) {
     case BranchConditionForm::Unconditional:
@@ -195,6 +213,73 @@ bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode) {
       return false;
   }
   return false;
+}
+
+bool is_scalar_alu_integer_opcode(c4c::backend::bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Add:
+    case c4c::backend::bir::BinaryOpcode::Sub:
+    case c4c::backend::bir::BinaryOpcode::And:
+    case c4c::backend::bir::BinaryOpcode::Or:
+    case c4c::backend::bir::BinaryOpcode::Xor:
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Mul:
+    case c4c::backend::bir::BinaryOpcode::Shl:
+    case c4c::backend::bir::BinaryOpcode::LShr:
+    case c4c::backend::bir::BinaryOpcode::AShr:
+    case c4c::backend::bir::BinaryOpcode::SDiv:
+    case c4c::backend::bir::BinaryOpcode::UDiv:
+    case c4c::backend::bir::BinaryOpcode::SRem:
+    case c4c::backend::bir::BinaryOpcode::URem:
+    case c4c::backend::bir::BinaryOpcode::Eq:
+    case c4c::backend::bir::BinaryOpcode::Ne:
+    case c4c::backend::bir::BinaryOpcode::Slt:
+    case c4c::backend::bir::BinaryOpcode::Sle:
+    case c4c::backend::bir::BinaryOpcode::Sgt:
+    case c4c::backend::bir::BinaryOpcode::Sge:
+    case c4c::backend::bir::BinaryOpcode::Ult:
+    case c4c::backend::bir::BinaryOpcode::Ule:
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+    case c4c::backend::bir::BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
+ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
+    c4c::backend::bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Add:
+      return ScalarAluOperationKind::Add;
+    case c4c::backend::bir::BinaryOpcode::Sub:
+      return ScalarAluOperationKind::Sub;
+    case c4c::backend::bir::BinaryOpcode::And:
+      return ScalarAluOperationKind::And;
+    case c4c::backend::bir::BinaryOpcode::Or:
+      return ScalarAluOperationKind::Or;
+    case c4c::backend::bir::BinaryOpcode::Xor:
+      return ScalarAluOperationKind::Xor;
+    case c4c::backend::bir::BinaryOpcode::Mul:
+    case c4c::backend::bir::BinaryOpcode::Shl:
+    case c4c::backend::bir::BinaryOpcode::LShr:
+    case c4c::backend::bir::BinaryOpcode::AShr:
+    case c4c::backend::bir::BinaryOpcode::SDiv:
+    case c4c::backend::bir::BinaryOpcode::UDiv:
+    case c4c::backend::bir::BinaryOpcode::SRem:
+    case c4c::backend::bir::BinaryOpcode::URem:
+    case c4c::backend::bir::BinaryOpcode::Eq:
+    case c4c::backend::bir::BinaryOpcode::Ne:
+    case c4c::backend::bir::BinaryOpcode::Slt:
+    case c4c::backend::bir::BinaryOpcode::Sle:
+    case c4c::backend::bir::BinaryOpcode::Sgt:
+    case c4c::backend::bir::BinaryOpcode::Sge:
+    case c4c::backend::bir::BinaryOpcode::Ult:
+    case c4c::backend::bir::BinaryOpcode::Ule:
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+    case c4c::backend::bir::BinaryOpcode::Uge:
+      return ScalarAluOperationKind::Deferred;
+  }
+  return ScalarAluOperationKind::Deferred;
 }
 
 namespace {
@@ -297,6 +382,17 @@ InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
       .family = InstructionFamily::Scalar,
       .surface = RecordSurfaceKind::RecordOnly,
       .payload = instruction,
+  };
+}
+
+ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu) {
+  return ScalarInstructionRecord{
+      .result_value_id = alu.result_value_id,
+      .result_value_name = alu.result_value_name,
+      .result_type = alu.result_type,
+      .inputs = {alu.lhs, alu.rhs},
+      .source_binary_opcode = alu.source_binary_opcode,
+      .scalar_alu = alu,
   };
 }
 
