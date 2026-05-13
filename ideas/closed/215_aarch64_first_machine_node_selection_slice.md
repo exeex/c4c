@@ -1,6 +1,6 @@
 # AArch64 First Machine Node Selection Slice
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
 
 Depends On:
@@ -77,6 +77,22 @@ the architecture without trying to complete the backend.
 - The selected subset is proven by focused tests or compile proof without
   assembly text as an internal semantic handoff.
 - Unsupported records fail closed with clear diagnostics or deferred status.
+
+## Closure Evidence
+
+Closed: 2026-05-13
+
+- Active runbook Step 6 completed focused structured-node proof for the first
+  AArch64 machine-node selection subset.
+- Backend proof command passed:
+  `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_')`
+- CTest reported `100% tests passed, 0 tests failed out of 131`; 12 backend
+  CLI trace/focus tests were disabled by CTest and did not run.
+- Regression guard passed against canonical `test_before.log` and
+  `test_after.log` with no new failures and no passed-count decrease.
+- Remaining call/return/prologue/variadic/global/linker, assembly printer,
+  encoder, object writer, and linker work remains outside this completed
+  source idea.
 
 ## Reviewer Reject Signals
 
