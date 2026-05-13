@@ -1,28 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4f
-Current Step Title: Extract linker `link.cpp` To Markdown Artifact
+Current Step ID: Step 2.4g
+Current Step Title: Extract linker `plt_got.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.4f: Extract linker `link.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/linker/link.cpp` into
-`src/backend/mir/aarch64/linker/link.md` and removed the old `.cpp`
+Step 2.4g: Extract linker `plt_got.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/linker/plt_got.cpp` into
+`src/backend/mir/aarch64/linker/plt_got.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old first static link orchestration surface,
-including the inspection and executable-link entry points, `.text` merging,
-symbol-provider and unresolved-symbol handling, relocation delegation, fixed
-minimal static image address assumptions, omitted complete-linker behaviors,
-and rebuild risks.
+The markdown artifact records the old PLT/GOT classification surface,
+including the `create_plt_got` entry point, relocation families that selected
+PLT entries, GOT-only entries, and copy relocations, copy-reloc alias marking,
+reserved GOT slot layout, global-symbol side effects, dependencies,
+assumptions, omitted complete-linker behavior, and rebuild risks.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 2.4 by extracting
-`src/backend/mir/aarch64/linker/plt_got.cpp` to markdown and removing that old
+`src/backend/mir/aarch64/linker/reloc.cpp` to markdown and removing that old
 `.cpp` from the live tree.
 
 Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
@@ -33,8 +33,8 @@ Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
 `assembler/encoder/system.cpp`, and `assembler/encoder/mod.cpp`.
 
 After Step 2.3, continue Step 2 through these bounded lanes:
-- Step 2.4: remaining linker surfaces: `linker/plt_got.cpp`,
-  `linker/reloc.cpp`, `linker/types.cpp`, and `linker/mod.cpp`.
+- Step 2.4: remaining linker surfaces: `linker/reloc.cpp`,
+  `linker/types.cpp`, and `linker/mod.cpp`.
 - Step 2.5: top-level module entry surface: `mod.cpp`.
 
 ## Watchouts
@@ -43,8 +43,9 @@ After Step 2.3, continue Step 2 through these bounded lanes:
   shared-library emission, first static executable image, input-loading, and
   first static link orchestration artifacts; do not
   revisit the removed `linker/elf.cpp`, `linker/emit_dynamic.cpp`,
-  `linker/emit_shared.cpp`, `linker/emit_static.cpp`, or `linker/input.cpp`
-  or `linker/link.cpp` unless the supervisor opens a new packet.
+  `linker/emit_shared.cpp`, `linker/emit_static.cpp`, `linker/input.cpp`,
+  `linker/link.cpp`, or `linker/plt_got.cpp` unless the supervisor opens a
+  new packet.
 - `linker/emit_dynamic.md` documents the old dynamic executable emitter,
   including PLT/GOT, `.dynamic`, `.gnu.hash`, dynamic relocations, copy
   relocations, and TLS layout. Treat it as rebuild guidance, not as proof that
@@ -70,6 +71,11 @@ After Step 2.3, continue Step 2 through these bounded lanes:
   the fixed minimal static executable address model. Treat it as rebuild
   guidance, not as proof that the live C++ backend has a complete AArch64
   static linker.
+- `linker/plt_got.md` documents the old PLT/GOT classifier, including dynamic
+  relocation scanning, PLT and GOT-only list construction, copy-reloc alias
+  marking, reserved GOT slot layout, and `GlobalSymbol` index side effects.
+  Treat it as rebuild guidance, not as proof that the live C++ backend can emit
+  AArch64 dynamic executables or shared objects.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
