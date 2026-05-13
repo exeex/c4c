@@ -9,29 +9,30 @@ Current Step Title: Extract Old `.cpp` Surfaces To Markdown Artifacts
 ## Just Finished
 
 Step 2: Extract Old `.cpp` Surfaces To Markdown Artifacts extracted
-`src/backend/mir/aarch64/codegen/asm_emitter.cpp` into
-`src/backend/mir/aarch64/codegen/asm_emitter.md` and removed the old `.cpp`
+`src/backend/mir/aarch64/codegen/prologue.cpp` into
+`src/backend/mir/aarch64/codegen/prologue.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old inline-asm emitter role, entry points,
-constraint behavior, scratch register policy, operand movement rules, memory
-operand conventions, dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old prologue/epilogue role, entry points,
+stack layout behavior, variadic save-area accounting, callee-saved register
+save policy, parameter storage and `ParamRef` behavior, dependencies, hidden
+assumptions, and rebuild risks.
 
 ## Suggested Next
 
 Continue Step 2 with another old AArch64 backend `.cpp` extraction target,
-preferably a remaining codegen surface that depends on the archived `emit.md`
-and `asm_emitter.md` context.
+preferably a remaining codegen surface that depends on the archived `emit.md`,
+`asm_emitter.md`, and `prologue.md` context.
 
 ## Watchouts
 
-- `asm_emitter.cpp` was a fully commented translation surface rather than live
+- `prologue.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived surface has several rebuild hazards: incomplete condition-code
-  outputs, fixed `x9` bridge use, subtle logical-immediate validation, SP
-  special cases, pointer-slot memory operands, and callee-saved scratch
-  bookkeeping.
+- The archived surface has several rebuild hazards: sret/variadic GP register
+  accounting, callee-saved pre-store lifetime extension, F128 caller-saved pool
+  suppression, stack-passed parameter addressing via `frame_size + offset`, and
+  signed narrow load selection.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 
