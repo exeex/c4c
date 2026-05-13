@@ -42,6 +42,9 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
       type.array_rank > 0 || !lir_module) {
     return LirTypeRef(rendered_text);
   }
+  if (typespec_aggregate_complete_owner_key_missed(type, mod)) {
+    return LirTypeRef(rendered_text);
+  }
 
   StructNameId name_id =
       call_target_aggregate_structured_name_id(mod, lir_module, rendered_text, type);
@@ -54,7 +57,9 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
   }
   if (name_id == kInvalidStructName &&
       !typespec_legacy_tag_if_present(type, 0).empty()) {
-    // Legacy compatibility for aggregate carriers that still only have a rendered tag.
+    // Legacy no-owner compatibility for aggregate carriers that still only have a
+    // rendered tag. Complete owner-key misses return above so this cannot become
+    // secondary structured authority.
     name_id = normalize_lir_aggregate_struct_name_id(
         lir_module, rendered_text, lir_module->struct_names.find(rendered_text), true);
   }

@@ -8,32 +8,34 @@ Current Step Title: Audit HIR-To-LIR Handoff Compatibility Tags
 
 ## Just Finished
 
-Step 4 is complete. Lowerer local, param, static/global, generated-local,
-local-const, label, local-prototype, and function-pointer signature mirrors now
-either require structured identity or explicit rendered compatibility. Retained
-name-only compatibility is limited to no-metadata/generated bridge cases, and
-labels remain route-local block bookkeeping rather than a rendered compatibility
-fallback.
+Step 5 call handoff packet is complete. HIR-to-LIR call return, callee
+signature, and call argument aggregate type-ref construction now stops before
+rendered compatibility recovery when complete owner metadata is present but
+misses. Call targets retain raw rendered text after the miss, argument mirrors
+fail closed, and no-owner compatibility still produces structured
+`StructNameId` mirrors.
 
 ## Suggested Next
 
-Begin Step 5 by auditing HIR-to-LIR owner, type, and layout compatibility tags.
-Inspect handoff callers that consume rendered compatibility metadata, then
-remove or hard-fence any rendered fallback that can still override complete
-structured metadata. Leave final link/output spelling intact when it is output
-spelling only.
+Continue Step 5 by auditing the remaining HIR-to-LIR aggregate handoff paths
+outside call return/signature/argument construction, especially va_arg,
+const-init, lvalue/indexed-GEP, and field-chain helpers that still name
+`legacy-compat` layout sites.
 
 ## Watchouts
 
-- Do not weaken or rewrite expectations as HIR-to-LIR progress; Step 5 should
-  preserve final output spelling while preventing rendered tags from becoming a
-  second semantic authority.
-- Keep retained compatibility comments concrete: owner, limitation, and removal
-  condition.
-- If the handoff audit finds no semantic fallback to fence, record the exact
-  evidence in `todo.md` rather than adding unnecessary code churn.
+- `typespec_aggregate_complete_owner_key_missed` is intentionally stricter
+  than the cross-table compatibility owner helper. Use it only where complete
+  owner misses must block rendered fallback.
+- Call return mirrors may keep raw rendered text after a complete miss; call
+  argument mirrors use an empty `LirTypeRef` so `arg_type_refs` is omitted while
+  structured argument text remains available.
+- Do not broaden this packet into verifier policy changes; the focused tests
+  assert handoff construction behavior directly.
 
 ## Proof
 
-Step 5 has not run validation yet. Step 4 proof was recorded before this
-lifecycle handoff.
+Passed the delegated proof command:
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^frontend_lir_(global_type_ref|function_signature_type_ref|extern_decl_type_ref|call_type_ref)$"' > test_after.log 2>&1`
+
+Proof log: `test_after.log`

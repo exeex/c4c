@@ -101,6 +101,19 @@ c4c::hir::Expr& require_member_expr(c4c::hir::Module& module,
   fail("fixture should contain member expression for field " + std::string(field));
 }
 
+c4c::hir::Function& require_hir_function(c4c::hir::Module& module,
+                                         std::string_view name,
+                                         bool is_declaration) {
+  const auto it = std::find_if(module.functions.begin(), module.functions.end(),
+                               [&](const c4c::hir::Function& fn) {
+                                 return fn.name == name &&
+                                        fn.blocks.empty() == is_declaration;
+                               });
+  expect_true(it != module.functions.end(),
+              "fixture function should exist in HIR: " + std::string(name));
+  return *it;
+}
+
 c4c::hir::Expr& require_expr(c4c::hir::Module& module, c4c::hir::ExprId id,
                              const std::string& msg) {
   c4c::hir::Expr* expr = module.find_expr(id);
@@ -340,6 +353,125 @@ int read_actual(struct RealMemberOwner value) {
   const c4c::codegen::lir::LirGepOp& gep = require_first_gep(fn);
   expect_eq(gep.element_type.str(), "%struct.StaleMemberOwner",
             "no-owner member metadata should preserve rendered compatibility");
+}
+
+void test_call_type_ref_rejects_stale_rendered_owner_miss() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct StaleCallCompat {
+  int value;
+};
+
+struct StaleCallCompat make_stale(struct StaleCallCompat input) {
+  return input;
+}
+
+struct StaleCallCompat call_stale(struct StaleCallCompat value) {
+  return make_stale(value);
+}
+)c");
+
+  c4c::Node missing_owner =
+      make_record_owner("StaleCallCompat",
+                        hir_module.link_name_texts->intern("MissingCallOwner"),
+                        808);
+  auto make_missing_owner_type = [&]() {
+    c4c::TypeSpec ts{};
+    ts.base = c4c::TB_STRUCT;
+    ts.tag_text_id = missing_owner.unqualified_text_id;
+    ts.namespace_context_id = missing_owner.namespace_context_id;
+    ts.record_def = &missing_owner;
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    return ts;
+  };
+
+  c4c::hir::Function& make_stale =
+      require_hir_function(hir_module, "make_stale", false);
+  make_stale.return_type.spec = make_missing_owner_type();
+  make_stale.params[0].type.spec = make_missing_owner_type();
+
+  c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
+  c4c::codegen::lir::LirCallOp& call =
+      require_call_to(require_function(lir_module, "call_stale"), "@make_stale");
+
+  expect_eq(call.return_type.str(), "%struct.StaleCallCompat",
+            "owner-key miss should keep rendered call return text");
+  expect_true(!call.return_type.has_struct_name_id(),
+              "complete owner-key miss must not produce a stale return StructNameId");
+  expect_true(call.callee_signature.has_value(),
+              "metadata-rich direct call should still carry callee signature facts");
+  expect_true(call.callee_signature->return_type_ref.has_value(),
+              "callee signature should keep raw return type text after owner miss");
+  expect_true(!call.callee_signature->return_type_ref->has_struct_name_id(),
+              "complete owner-key miss must not produce a stale callee return StructNameId");
+  expect_eq(std::to_string(call.callee_signature->fixed_param_type_refs.size()), "1",
+            "callee signature should keep one fixed parameter type ref");
+  expect_true(!call.callee_signature->fixed_param_type_refs[0].has_struct_name_id(),
+              "complete owner-key miss must not produce a stale parameter StructNameId");
+  expect_true(call.arg_type_refs.empty(),
+              "call argument mirrors should fail closed after a complete owner-key miss");
+  expect_eq(std::to_string(call.structured_args.size()), "1",
+            "call should retain raw structured argument facts");
+  expect_eq(call.structured_args[0].type, "%struct.StaleCallCompat",
+            "call argument should keep rendered text after owner miss");
+  expect_true(!call.structured_args[0].type_ref.has_struct_name_id(),
+              "complete owner-key miss must not produce a stale argument StructNameId");
+}
+
+void test_call_type_ref_preserves_no_owner_compatibility_name_id() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct StaleNoOwnerCallCompat {
+  int value;
+};
+
+struct StaleNoOwnerCallCompat no_owner_make(struct StaleNoOwnerCallCompat input) {
+  return input;
+}
+
+struct StaleNoOwnerCallCompat call_no_owner(struct StaleNoOwnerCallCompat value) {
+  return no_owner_make(value);
+}
+)c");
+
+  c4c::TypeSpec no_owner_type{};
+  no_owner_type.base = c4c::TB_STRUCT;
+  no_owner_type.tag_text_id =
+      hir_module.link_name_texts->intern("StaleNoOwnerCallCompat");
+  no_owner_type.namespace_context_id = -1;
+  c4c::TextId incomplete_qualifier[] = {c4c::kInvalidText};
+  no_owner_type.qualifier_text_ids = incomplete_qualifier;
+  no_owner_type.n_qualifier_segments = 1;
+  no_owner_type.array_size = -1;
+  no_owner_type.inner_rank = -1;
+
+  c4c::hir::Function& no_owner_make =
+      require_hir_function(hir_module, "no_owner_make", false);
+  no_owner_make.return_type.spec = no_owner_type;
+  no_owner_make.params[0].type.spec = no_owner_type;
+
+  c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
+  c4c::codegen::lir::LirCallOp& call =
+      require_call_to(require_function(lir_module, "call_no_owner"), "@no_owner_make");
+
+  expect_struct_type_ref(lir_module, call.return_type,
+                         "%struct.StaleNoOwnerCallCompat",
+                         "no-owner call return compatibility mirror");
+  expect_true(call.callee_signature.has_value(),
+              "no-owner direct call should carry callee signature facts");
+  expect_struct_type_ref(lir_module, *call.callee_signature->return_type_ref,
+                         "%struct.StaleNoOwnerCallCompat",
+                         "no-owner callee return compatibility mirror");
+  expect_struct_type_ref(lir_module,
+                         call.callee_signature->fixed_param_type_refs[0],
+                         "%struct.StaleNoOwnerCallCompat",
+                         "no-owner callee parameter compatibility mirror");
+  expect_eq(std::to_string(call.arg_type_refs.size()), "1",
+            "no-owner call should keep one argument mirror");
+  expect_struct_type_ref(lir_module, call.arg_type_refs[0],
+                         "%struct.StaleNoOwnerCallCompat",
+                         "no-owner call argument compatibility mirror");
 }
 
 }  // namespace
@@ -680,6 +812,8 @@ int call_unspecified_indirect(int (*fp)()) {
   test_member_access_owner_tag_recovery_uses_structured_owner_key();
   test_member_access_owner_tag_recovery_rejects_stale_rendered_miss();
   test_member_access_owner_tag_recovery_preserves_no_owner_compatibility();
+  test_call_type_ref_rejects_stale_rendered_owner_miss();
+  test_call_type_ref_preserves_no_owner_compatibility_name_id();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

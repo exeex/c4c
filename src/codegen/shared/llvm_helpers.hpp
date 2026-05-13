@@ -518,6 +518,19 @@ inline std::optional<HirRecordOwnerKey> typespec_record_def_owner_key(
   return std::nullopt;
 }
 
+inline bool typespec_aggregate_complete_owner_key_missed(const TypeSpec& ts,
+                                                         const Module& mod) {
+  if (const std::optional<HirRecordOwnerKey> record_def_owner_key =
+          typespec_record_def_owner_key(ts, mod)) {
+    return mod.find_struct_def_tag_by_owner(*record_def_owner_key) == nullptr;
+  }
+  if (const std::optional<HirRecordOwnerKey> owner_key =
+          typespec_aggregate_owner_key(ts)) {
+    return mod.find_struct_def_tag_by_owner(*owner_key) == nullptr;
+  }
+  return false;
+}
+
 // Cross-table-aware variant of typespec_aggregate_owner_key.
 //
 // `ts.tag_text_id` may have been interned in a TextTable other than
