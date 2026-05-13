@@ -1,7 +1,8 @@
 # AArch64 Prepared-Module MIR Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/open/203_aarch64_markdown_first_backend_reconstruction.md`
@@ -97,6 +98,28 @@ them.
 - Any deferred fields are explicitly documented as later target MIR,
   target-ABI, instruction-selection, assembler/object, or shared-preparation
   work.
+
+## Completion Notes
+
+Closed after the active runbook completed Step 7 and the route review reported
+no blockers. The implementation added the prepared-module AArch64 handoff gate,
+structured-id keyed target-local module/function/block records, operand and
+register identity records, descriptive frame/control/call/move records, and
+data/object side-table records without instruction selection, assembly text
+emission, assembler/object output, linker integration, or rendered-name
+recovery.
+
+Final proof used the focused AArch64 prepared-boundary tests plus the relevant
+backend prepare tests:
+
+```sh
+cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_(handoff_gate|module_identity|operand_identity|frame_control|data_identity)|backend_prepare_)' >> test_after.log 2>&1
+```
+
+Deferred work remains future-scope only: richer target MIR instruction records,
+deeper AAPCS64 ABI ownership, instruction selection, assembler/object/linker
+work, and shared-preparation carriers for facts such as memory
+volatility/address-space and register-bank identity.
 
 ## Reviewer Reject Signals
 
