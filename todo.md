@@ -1,91 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/217_c4cll_debug_flags_document_aarch64_asm_output.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Confirm the Landed CLI Contract
+Current Step ID: 2
+Current Step Title: Update the Debug-Flags Skill Recipes
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 confirmed the landed AArch64 ASM CLI contract before skill edits.
+Step 2 updated `.codex/skills/c4cll-debug-flags/SKILL.md` with the landed
+AArch64 `.s` output route.
 
-Exact command shape:
+Documented recipe coverage:
 
-```bash
-build/c4cll --codegen asm --target aarch64-linux-gnu <input.c> -o <out.s>
-```
-
-Target triple handling:
-
-- `--target <triple>` overrides the default host target profile.
-- The landed AArch64 tests use `aarch64-linux-gnu`.
-- `--codegen asm` selects the backend-native machine-node printer route, not
-  LLVM text assembly generation.
-- `--backend-bir-stage prepared|semantic` is valid only with `--codegen asm`;
-  prepared is the default, while semantic is for bounded observation before
-  prepare.
-
-Output-path convention:
-
-- Use `-o <path>` for file output.
-- For AArch64 ASM proof, use a `.s` output path.
-- If `--codegen asm` is asked to write stdout or a `.s`/`.S` file and the
-  backend returns LLVM IR or no asm, the CLI exits with an error instead of
-  falling back to LLVM-generated assembly.
-
-External toolchain workflow and helpers:
-
-- CMake registers `backend_cli_aarch64_asm_no_machine_nodes_fails` through
-  `tests/backend/cmake/run_backend_codegen_failure_case.cmake`.
-- CMake conditionally registers
-  `backend_cli_aarch64_asm_external_return_zero_smoke` when both `clang` and
-  `aarch64-linux-gnu-as` are found.
-- The external smoke helper is
-  `tests/backend/cmake/run_backend_aarch64_external_smoke.cmake`.
-- The helper runs `c4cll --codegen asm --target "${TARGET_TRIPLE}" "${SRC}" -o
-  "${OUT_ASM}"`, checks snippets including `.globl main`, `main:`,
-  `mov w0, #0`, and `ret`, assembles with `${AS}`, links with `${CLANG}`, and
-  only executes the produced binary when the host processor is `aarch64` or
-  `arm64`.
-
-Environment and scope limits:
-
-- AArch64 ASM output is printer output from selected machine nodes.
-- `c4cll` does not parse the `.s` text back, encode objects, or link
-  executables.
-- External object/link proof depends on local `clang` and `aarch64-linux-gnu-as`
-  availability; the CTest smoke is skipped at configure time if either is
-  missing.
+- exact implemented command shape:
+  `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s`
+- repo-local build form using `./build/c4cll`
+- external assembler/link smoke using `aarch64-linux-gnu-as` and `clang
+  --target=aarch64-linux-gnu`, aligned with the CMake helper split
+- the distinction between semantic BIR, prepared BIR, MIR route visibility,
+  backend-native machine-node `.s` printer output, and LLVM-route output
+- the explicit boundary that `.s` output is not an internal assembler, object
+  encoder, linker, or bridge that parses assembly back into backend semantics
 
 ## Suggested Next
 
-Edit `.codex/skills/c4cll-debug-flags/SKILL.md` to document the confirmed
-AArch64 ASM command shape and external proof boundary.
+Supervisor should review and commit this documentation-only Step 2 slice, then
+decide whether the active lifecycle state is complete.
 
 ## Watchouts
 
-- Do not imply assembly text is parsed back into backend semantics.
-- Keep the external proof distinction clear: `c4cll` emits `.s`; the CMake
-  helper owns assembler/link/run checks.
-- Leave `review/aarch64_allocation_record_step2_review.md` untouched.
+- External execution still depends on local cross-toolchain availability; the
+  skill documents the recipe but does not require this packet to run the
+  external smoke.
+- `review/aarch64_allocation_record_step2_review.md` remains untouched.
 
 ## Proof
 
-No build required for this inspection packet.
+No build required for this documentation-only packet.
 
 Ran:
 
 ```bash
-build/c4cll --help
-ctest --test-dir build -N -R 'backend_cli_aarch64_asm'
+git diff --check -- .codex/skills/c4cll-debug-flags/SKILL.md todo.md
+rg -n -- 'c4cll --codegen asm --target aarch64-linux-gnu input\.c -o out\.s' .codex/skills/c4cll-debug-flags/SKILL.md todo.md
+rg -n -- 'tests/backend/case/aarch64_return_zero_smoke\.c' .codex/skills/c4cll-debug-flags/SKILL.md
+rg -n -- 'not an internal assembler|not .*semantic bridge|parses? .*\.s .*back|\.s output is not' .codex/skills/c4cll-debug-flags/SKILL.md todo.md
 ```
 
-Results:
+Results are written to `test_after.log`.
 
-- `build/c4cll --help` exited 0 and documents
-  `--codegen asm --target aarch64-linux-gnu test.c -o out.s`.
-- CTest discovery listed `backend_cli_aarch64_asm_no_machine_nodes_fails` and
-  `backend_cli_aarch64_asm_external_return_zero_smoke`.
-- No `test_after.log` was written because this packet was an inspection-only
-  no-build proof and `todo.md` was the only owned file.
+The checks passed: diff whitespace validation succeeded, the documented command
+shape is present, the example path uses
+`tests/backend/case/aarch64_return_zero_smoke.c`, and the route-boundary text
+states `.s` output is not parsed back into backend semantics.

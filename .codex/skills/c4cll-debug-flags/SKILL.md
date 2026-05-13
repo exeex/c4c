@@ -155,6 +155,8 @@ Known parser-debug negative testcase:
   - use `--dump-mir`, then `--trace-mir`
 - Final native output is wrong:
   - use `--codegen asm`
+  - for the landed AArch64 `.s` route, use
+    `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s`
   - compare with `--codegen llvm` only to separate LLVM-path output from
     backend-native output
 
@@ -187,6 +189,30 @@ Backend route versus LLVM route:
 ./build/c4cll --codegen llvm --target <triple> <file> -o /tmp/llvm.ll
 ```
 
+AArch64 backend-native assembly output:
+
+```bash
+c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s
+```
+
+Repo-local build form:
+
+```bash
+./build/c4cll --codegen asm --target aarch64-linux-gnu tests/backend/case/aarch64_return_zero_smoke.c -o /tmp/return_zero.s
+```
+
+External AArch64 assembler/link smoke, matching the CMake helper boundary:
+
+```bash
+./build/c4cll --codegen asm --target aarch64-linux-gnu tests/backend/case/aarch64_return_zero_smoke.c -o /tmp/return_zero.s
+aarch64-linux-gnu-as /tmp/return_zero.s -o /tmp/return_zero.o
+clang --target=aarch64-linux-gnu /tmp/return_zero.o -o /tmp/return_zero
+```
+
+The CMake smoke helper performs the same split: `c4cll` emits `.s`, then the
+external assembler and `clang` link path prove object/link validity. It only
+runs the linked binary when the host architecture can execute AArch64 output.
+
 Force semantic BIR through the asm route:
 
 ```bash
@@ -201,7 +227,9 @@ Force semantic BIR through the asm route:
 3. Use `--dump-prepared-bir` to verify backend-facing authority next.
 4. Use `--dump-mir` or `--trace-mir` only after prepared BIR no longer answers
    the ownership or route question.
-5. Use `--codegen llvm` only as the comparison surface, not as proof that the
+5. Use `--codegen asm` when the question is final backend-native `.s` text from
+   the machine-node printer, not internal IR ownership.
+6. Use `--codegen llvm` only as the comparison surface, not as proof that the
    backend route is healthy.
 
 ### Prepared BIR contract sections
@@ -246,6 +274,16 @@ Reading rule:
   `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`, or `--trace-mir`.
 - `--dump-mir` and `--trace-mir` are route-level MIR visibility, not a full
   printed target-local MIR graph.
+- `--dump-bir` shows semantic backend IR; `--dump-prepared-bir` shows
+  backend-facing ownership and preparation; `--dump-mir` and `--trace-mir`
+  show machine-lowering route visibility. None of those are the emitted `.s`
+  text contract.
+- `--codegen asm --target aarch64-linux-gnu input.c -o out.s` emits
+  backend-native assembly text from selected machine nodes. It is printer
+  output, not an internal assembler, object encoder, linker, or semantic bridge
+  that parses `.s` back into BIR, prepared BIR, MIR, or backend semantics.
+- `--codegen llvm` is LLVM-route IR output and should not be described as the
+  source of AArch64 backend-native `.s` output.
 
 ### Examples for current repo
 
@@ -266,4 +304,12 @@ Backend route compare on the same testcase:
 ```bash
 ./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu tests/c/internal/backend_case/call_helper.c -o /tmp/call_helper_backend.s
 ./build/c4cll --codegen llvm --target riscv64-unknown-linux-gnu tests/c/internal/backend_case/call_helper.c -o /tmp/call_helper_llvm.ll
+```
+
+AArch64 `.s` emission and external smoke:
+
+```bash
+./build/c4cll --codegen asm --target aarch64-linux-gnu tests/backend/case/aarch64_return_zero_smoke.c -o /tmp/return_zero.s
+aarch64-linux-gnu-as /tmp/return_zero.s -o /tmp/return_zero.o
+clang --target=aarch64-linux-gnu /tmp/return_zero.o -o /tmp/return_zero
 ```
