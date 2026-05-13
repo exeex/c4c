@@ -1,7 +1,8 @@
 # HIR Legacy Compatibility Retirement
 
-Status: Open
+Status: Closed
 Created: 2026-05-12
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/open/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
@@ -73,6 +74,28 @@ deliberate display/diagnostic/final-output spelling.
   identity in at least one registry/owner route and one replay/lowerer route.
 - The final ledger states whether HIR-to-LIR and frontend-to-BIR handoff may
   proceed without adding new rendered-name recovery fallbacks.
+
+## Closure Note
+
+Closed after Step 6 final ledger completion in `89531c7fd`. The active runbook
+evidence records that metadata-rich HIR module, owner, consteval replay,
+lowerer, and HIR-to-LIR handoff routes now fail closed after complete
+structured misses instead of recovering through rendered spelling.
+
+Remaining rendered-name state is limited to display/order, diagnostics,
+generated route-local bookkeeping, final output spelling, or explicit
+no-metadata compatibility. Newly discovered retained bridges were fenced or
+documented as legacy/deprecated compatibility with concrete removal conditions
+where the route must remain available for no-metadata callers.
+
+Focused stale-name coverage exists for registry/owner routes and
+replay/lowerer routes. The final ledger states that HIR-to-LIR may proceed
+without adding new rendered-name recovery fallbacks and frontend-to-BIR handoff
+does not require new HIR rendered-name recovery fallbacks from this idea.
+
+Close-time regression guard used the accepted full-suite checkpoint:
+`test_baseline.log` versus `test_before.log`, both full-suite 3137/3137,
+passed with no new failures.
 
 ## Reviewer Reject Signals
 
