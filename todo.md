@@ -1,108 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4j
-Current Step Title: Extract linker `mod.cpp` To Markdown Artifact
+Current Step ID: Step 2.5
+Current Step Title: Extract top-level `mod.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.4j: Extract linker `mod.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/linker/mod.cpp` into
-`src/backend/mir/aarch64/linker/mod.md` and removed the old `.cpp` from the
-live tree.
+Step 2.5: Extract top-level `mod.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/mod.cpp` into
+`src/backend/mir/aarch64/mod.md` and removed the old `.cpp` from the live
+tree.
 
-The markdown artifact records the old linker module index, including the
-AArch64 linker role, submodule list, `link_builtin`/`link_shared` re-export
-surface, `linker_common` ownership assumptions, cross-surface dependencies,
-hidden assumptions, and rebuild risks.
+The markdown artifact records the old top-level AArch64 backend module index,
+including the `codegen`, `assembler`, and `linker` submodules, the historical
+`codegen::emit::ArmCodegen` re-export, the `gcc_assembler` and `gcc_linker`
+feature-gate assumptions, cross-surface dependencies, hidden assumptions, and
+rebuild risks.
+
+Step 2 is now complete: all pre-existing old `.cpp` files under
+`src/backend/mir/aarch64` have been removed from the live tree and preserved as
+markdown review artifacts.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 2 by extracting
-`src/backend/mir/aarch64/mod.cpp` to markdown and removing that old `.cpp`
-from the live tree.
+Next coherent packet: start Step 3 by creating the AArch64 markdown
+classification index under `src/backend/mir/aarch64/` or another
+supervisor-chosen adjacent docs path.
 
-Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
-`assembler/encoder/compare_branch.cpp`,
-`assembler/encoder/data_processing.cpp`,
-`assembler/encoder/fp_scalar.cpp`,
-`assembler/encoder/load_store.cpp`, `assembler/encoder/neon.cpp`,
-`assembler/encoder/system.cpp`, and `assembler/encoder/mod.cpp`.
-
-After Step 2.3, continue Step 2 through this bounded lane:
-- Step 2.5: top-level module entry surface: `mod.cpp`.
+The index should list every extracted or inspected AArch64 artifact, classify
+each as salvageable design note, obsolete route, binary-utils candidate,
+target-ABI candidate, assembler/linker candidate, or delete/defer, and mark
+which artifacts should not influence the new BIR/prepared backend contract.
 
 ## Watchouts
 
-- Step 2.4 now has the linker module index, ELF facade, dynamic executable
-  emission, shared-library emission, first static executable image,
-  input-loading, and first static link orchestration artifacts; do not
-  revisit the removed `linker/elf.cpp`, `linker/emit_dynamic.cpp`,
-  `linker/emit_shared.cpp`, `linker/emit_static.cpp`, `linker/input.cpp`,
-  `linker/link.cpp`, `linker/plt_got.cpp`, `linker/reloc.cpp`, or
-  `linker/mod.cpp` unless the supervisor opens a new packet.
-- `linker/emit_dynamic.md` documents the old dynamic executable emitter,
-  including PLT/GOT, `.dynamic`, `.gnu.hash`, dynamic relocations, copy
-  relocations, and TLS layout. Treat it as rebuild guidance, not as proof that
-  the live C++ backend can emit AArch64 dynamic executables.
-- `linker/emit_shared.md` documents the old shared-object emitter, including
-  `ET_DYN` output, exported/imported dynsym ordering, `.gnu.hash`, PLT/GOT,
-  `.rela.dyn`, `.rela.plt`, SONAME/NEEDED tags, init/fini arrays, TLS, and
-  section headers. Treat it as rebuild guidance, not as proof that the live
-  C++ backend can emit AArch64 shared libraries.
-- `linker/emit_static.md` documents the old first static executable image
-  writer, including the minimal `ET_EXEC` header, single `PT_LOAD`, fixed text
-  offset, text-only entry validation, and lack of section/dynamic/data
-  segments. Treat it as rebuild guidance, not as proof that the live C++
-  backend has a complete AArch64 static linker.
-- `linker/input.md` documents the old first static input loader, including
-  explicit object loading, one-pass archive member selection for currently
-  unresolved strong symbols, and omissions versus the reference Rust linker
-  input module. Treat it as rebuild guidance, not as proof that the live C++
-  backend has a complete AArch64 linker front door.
-- `linker/link.md` documents the old first static linker facade, including
-  `inspect_first_static_link_slice`, `link_first_static_executable`, text-only
-  section merging, first-provider symbol behavior, relocation delegation, and
-  the fixed minimal static executable address model. Treat it as rebuild
-  guidance, not as proof that the live C++ backend has a complete AArch64
-  static linker.
-- `linker/plt_got.md` documents the old PLT/GOT classifier, including dynamic
-  relocation scanning, PLT and GOT-only list construction, copy-reloc alias
-  marking, reserved GOT slot layout, and `GlobalSymbol` index side effects.
-  Treat it as rebuild guidance, not as proof that the live C++ backend can emit
-  AArch64 dynamic executables or shared objects.
-- `linker/reloc.md` documents the old first static text relocation patcher,
-  including the `apply_first_static_text_relocations` entry point, supported
-  branch/address/low-12 relocation encodings, local byte-patching helpers, the
-  historical `279` alias hazard, and address-model risks. Treat it as rebuild
-  guidance, not as proof that the live C++ backend has a complete AArch64
-  relocation engine.
-- `linker/types.md` documents the old linker type surface, including
-  `GlobalSymbol`, AArch64 interpreter/base/page constants, dynamic symbol
-  state, PLT/GOT and copy-relocation bookkeeping fields, the common/BSS
-  sentinel, and the dynamic-symbol replacement policy. Treat it as rebuild
-  guidance, not as proof that the live C++ backend has a complete AArch64
-  linker symbol model.
-- `linker/mod.md` documents the old linker module index, including the
-  AArch64 linker shard list, default-linker feature assumption,
-  `link_builtin`/`link_shared` re-export surface, and `linker_common`
-  responsibility boundary. Treat it as rebuild guidance, not as proof that the
-  live C++ backend has a complete AArch64 linker integration.
-- Continue keeping Step 2 descriptive. Do not patch or expand remaining old
-  AArch64 `.cpp` files while extracting them to markdown.
-- Treat the Step 2 lane labels above as execution-state substeps, not durable
-  source-idea changes. If a lane exposes a missing BIR/prepared carrier or a
-  separate implementation initiative, record that as a separate lifecycle item
-  instead of expanding Step 2.
-- The retargeted signature metadata test is artifact coverage only; do not
-  count it as live AArch64 backend behavior proof.
-- `mod.hpp`, `parser.hpp`, and other headers remain in the tree; deleting or
-  replacing headers is outside this packet.
-- Step 2.4 linker extraction should stay descriptive. Do not repair linker,
-  relocation, dynamic emission, or ELF parsing behavior during the markdown
-  extraction packets.
+- Step 2 extraction is descriptive only. Do not treat any AArch64 markdown
+  artifact as proof that the live C++ backend implements that behavior.
+- `mod.md` records the old target-family grouping and the historical
+  `ArmCodegen` export spelling. Preserve that as source evidence; do not infer
+  a new naming or driver contract from it.
+- The extracted assembler and linker artifacts document old built-in toolchain
+  paths gated by reference Rust features. The Step 3 index should distinguish
+  those routes from current live compiler behavior.
+- `mod.hpp`, `parser.hpp`, encoder headers, linker headers, and other headers
+  remain in the tree; header deletion or replacement is outside this packet.
+- The retargeted signature metadata test remains artifact coverage only; do
+  not count it as live AArch64 codegen, assembler, or linker behavior proof.
 
 ## Proof
 
