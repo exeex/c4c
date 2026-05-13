@@ -3,33 +3,31 @@
 Status: Active
 Source Idea Path: ideas/open/204_aarch64_prepared_module_mir_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Frame, Branch, Call, And Move Skeletons
+Current Step ID: 6
+Current Step Title: Add Data/Object Side-Table Skeletons
 
 ## Just Finished
 
-Step 5 added descriptive AArch64 frame, branch, call, move, ABI-binding,
-spill/reload, and parallel-copy skeleton records for `plan.md` Step 5.
-`module::FunctionRecord` now preserves representative prepared frame-slot,
-stack-object, dynamic-stack, callee-save, compare-branch, call-plan,
-value-location move, regalloc move, spill/reload, ABI-binding, and parallel-copy
-carrier identities without selecting target instructions or emitting assembly.
+Step 6 added descriptive AArch64 data/object side-table skeleton records for
+`plan.md` Step 6. `module::Module` now preserves representative prepared
+globals, string constants, symbol visibility/declaration status, TLS,
+constantness, scalar and aggregate initializers, and future relocation needs as
+structured records without emitting assembly, object sections, relocations, or
+binary output.
 
 ## Suggested Next
 
-Implement Step 6 by adding data/object side-table skeleton records from
-prepared module-level data facts without starting assembly, object, relocation,
-or binary emission.
+Implement Step 7 by consolidating boundary proof and preparing the completed
+AArch64 prepared-module MIR boundary for reviewer scrutiny.
 Recommended next owned files:
 
-- `src/backend/mir/aarch64/module/module.hpp`
-- `src/backend/mir/aarch64/module/module.cpp`
-- `tests/backend/backend_aarch64_prepared_data_identity_test.cpp`
-- `tests/backend/CMakeLists.txt`
+- `todo.md`
+- `test_after.log`
 
-The next packet should preserve representative prepared globals, strings,
-symbol visibility, TLS, constants, initializers, and future relocation identity
-as descriptive MIR side-table records only.
+The next packet should run a fresh focused boundary proof across the AArch64
+prepared-module tests and any relevant backend prepare tests, then record the
+green commands plus deferred-field notes for later target MIR, target ABI,
+instruction-selection, assembler/object, or shared-preparation scope.
 
 ## Watchouts
 
@@ -58,14 +56,16 @@ as descriptive MIR side-table records only.
 - Step 5 records are descriptive only: route-local block/instruction indexes,
   physical register names, and parallel-copy step indexes remain prepared-route
   coordinates, not semantic identity or selected AArch64 instructions.
+- Step 6 records are side tables only: relocation needs describe future object
+  work but do not emit relocations, sections, assembly text, or bytes.
 - Preserve unrelated dirty files and transient `review/` artifacts.
 
 ## Proof
 
-Delegated Step 5 proof command:
+Delegated Step 6 proof command:
 
 ```sh
-cmake --build --preset default --target backend_aarch64_prepared_frame_control_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_frame_control$' --output-on-failure >> test_after.log 2>&1
+cmake --build --preset default --target backend_aarch64_prepared_data_identity_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_data_identity$' --output-on-failure >> test_after.log 2>&1
 ```
 
 Proof log: `test_after.log`.

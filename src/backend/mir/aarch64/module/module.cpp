@@ -760,6 +760,182 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
   return functions;
 }
 
+[[nodiscard]] std::string_view link_label(
+    const c4c::backend::bir::NameTables& names,
+    c4c::LinkNameId id,
+    std::string_view fallback) {
+  if (id != c4c::kInvalidLinkName) {
+    const std::string_view label = names.link_names.spelling(id);
+    if (!label.empty()) {
+      return label;
+    }
+  }
+  return fallback;
+}
+
+[[nodiscard]] std::string_view text_label(
+    const c4c::backend::bir::NameTables& names,
+    c4c::TextId id,
+    std::string_view fallback) {
+  if (id != c4c::kInvalidText) {
+    const std::string_view label = names.texts.lookup(id);
+    if (!label.empty()) {
+      return label;
+    }
+  }
+  return fallback;
+}
+
+[[nodiscard]] SymbolVisibilityRecordKind visibility_for_global(
+    const c4c::backend::bir::Global& global) {
+  return global.is_extern ? SymbolVisibilityRecordKind::ExternalDeclaration
+                          : SymbolVisibilityRecordKind::LinkVisibleDefinition;
+}
+
+[[nodiscard]] std::optional<DataRelocationNeedRecord> relocation_need_for_value(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::Global& owner,
+    std::size_t global_index,
+    DataRelocationNeedKind kind,
+    const c4c::backend::bir::Value& value,
+    std::optional<std::size_t> initializer_element_index) {
+  if (value.pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
+    return std::nullopt;
+  }
+  return DataRelocationNeedRecord{
+      .kind = kind,
+      .global_index = global_index,
+      .owner_link_name = owner.link_name_id,
+      .owner_label = link_label(prepared.module.names, owner.link_name_id, owner.name),
+      .target_link_name = value.pointer_symbol_link_name_id,
+      .target_label = link_label(prepared.module.names, value.pointer_symbol_link_name_id,
+                                 value.name),
+      .initializer_element_index = initializer_element_index,
+      .initializer_element = value,
+      .source_global = &owner,
+  };
+}
+
+[[nodiscard]] DataRelocationNeedRecord relocation_need_for_initializer_symbol(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::Global& owner,
+    std::size_t global_index) {
+  const std::string_view fallback =
+      owner.initializer_symbol_name.has_value() ? std::string_view{*owner.initializer_symbol_name}
+                                                : std::string_view{};
+  return DataRelocationNeedRecord{
+      .kind = DataRelocationNeedKind::InitializerSymbol,
+      .global_index = global_index,
+      .owner_link_name = owner.link_name_id,
+      .owner_label = link_label(prepared.module.names, owner.link_name_id, owner.name),
+      .target_link_name = owner.initializer_symbol_name_id,
+      .target_label = link_label(prepared.module.names, owner.initializer_symbol_name_id, fallback),
+      .initializer_element_index = std::nullopt,
+      .initializer_element = std::nullopt,
+      .source_global = &owner,
+  };
+}
+
+[[nodiscard]] GlobalDataRecord build_global_data_record(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::Global& global,
+    std::size_t global_index) {
+  GlobalDataRecord record{
+      .global_index = global_index,
+      .label = link_label(prepared.module.names, global.link_name_id, global.name),
+      .link_name = global.link_name_id,
+      .type = global.type,
+      .visibility = visibility_for_global(global),
+      .is_extern = global.is_extern,
+      .is_thread_local = global.is_thread_local,
+      .is_constant = global.is_constant,
+      .size_bytes = global.size_bytes,
+      .align_bytes = global.align_bytes,
+      .initializer = global.initializer,
+      .initializer_symbol_label =
+          global.initializer_symbol_name.has_value()
+              ? std::optional<std::string_view>{
+                    link_label(prepared.module.names,
+                               global.initializer_symbol_name_id,
+                               *global.initializer_symbol_name)}
+              : std::nullopt,
+      .initializer_symbol_name_id = global.initializer_symbol_name_id,
+      .initializer_elements = global.initializer_elements,
+      .source_global = &global,
+  };
+
+  if (global.initializer_symbol_name.has_value() ||
+      global.initializer_symbol_name_id != c4c::kInvalidLinkName) {
+    record.relocation_needs.push_back(
+        relocation_need_for_initializer_symbol(prepared, global, global_index));
+  }
+  if (global.initializer.has_value()) {
+    if (auto need = relocation_need_for_value(prepared,
+                                              global,
+                                              global_index,
+                                              DataRelocationNeedKind::InitializerSymbol,
+                                              *global.initializer,
+                                              std::nullopt)) {
+      record.relocation_needs.push_back(*need);
+    }
+  }
+  for (std::size_t index = 0; index < global.initializer_elements.size(); ++index) {
+    if (auto need = relocation_need_for_value(prepared,
+                                              global,
+                                              global_index,
+                                              DataRelocationNeedKind::InitializerElementSymbol,
+                                              global.initializer_elements[index],
+                                              index)) {
+      record.relocation_needs.push_back(*need);
+    }
+  }
+  return record;
+}
+
+[[nodiscard]] std::vector<GlobalDataRecord> build_global_data_records(
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  std::vector<GlobalDataRecord> globals;
+  globals.reserve(prepared.module.globals.size());
+  for (std::size_t index = 0; index < prepared.module.globals.size(); ++index) {
+    globals.push_back(build_global_data_record(prepared, prepared.module.globals[index], index));
+  }
+  return globals;
+}
+
+[[nodiscard]] StringDataRecord build_string_data_record(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::StringConstant& string,
+    std::size_t string_index) {
+  return StringDataRecord{
+      .string_index = string_index,
+      .label = text_label(prepared.module.names, string.name_id, string.name),
+      .name_id = string.name_id,
+      .bytes = string.bytes,
+      .align_bytes = string.align_bytes,
+      .source_string = &string,
+  };
+}
+
+[[nodiscard]] std::vector<StringDataRecord> build_string_data_records(
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  std::vector<StringDataRecord> strings;
+  strings.reserve(prepared.module.string_constants.size());
+  for (std::size_t index = 0; index < prepared.module.string_constants.size(); ++index) {
+    strings.push_back(
+        build_string_data_record(prepared, prepared.module.string_constants[index], index));
+  }
+  return strings;
+}
+
+[[nodiscard]] std::vector<DataRelocationNeedRecord> collect_relocation_needs(
+    const std::vector<GlobalDataRecord>& globals) {
+  std::vector<DataRelocationNeedRecord> needs;
+  for (const auto& global : globals) {
+    needs.insert(needs.end(), global.relocation_needs.begin(), global.relocation_needs.end());
+  }
+  return needs;
+}
+
 }  // namespace
 
 BuildResult build(const c4c::backend::prepare::PreparedBirModule& prepared) {
@@ -768,8 +944,14 @@ BuildResult build(const c4c::backend::prepare::PreparedBirModule& prepared) {
   if (auto error = c4c::backend::aarch64::abi::validate_prepared_module_handoff(prepared)) {
     return BuildResult{.module = std::nullopt, .error = std::move(error)};
   }
+  auto globals = build_global_data_records(prepared);
+  auto strings = build_string_data_records(prepared);
+  auto relocation_needs = collect_relocation_needs(globals);
   return BuildResult{.module = Module{.prepared = &prepared,
                                       .target_profile = target_profile,
+                                      .globals = std::move(globals),
+                                      .strings = std::move(strings),
+                                      .relocation_needs = std::move(relocation_needs),
                                       .functions = build_function_records(prepared)},
                      .error = std::nullopt};
 }

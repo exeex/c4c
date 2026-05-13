@@ -284,6 +284,56 @@ struct ParallelCopyRecord {
   const c4c::backend::prepare::PreparedParallelCopyBundle* source_bundle = nullptr;
 };
 
+enum class SymbolVisibilityRecordKind {
+  ExternalDeclaration,
+  LinkVisibleDefinition,
+};
+
+enum class DataRelocationNeedKind {
+  InitializerSymbol,
+  InitializerElementSymbol,
+};
+
+struct DataRelocationNeedRecord {
+  DataRelocationNeedKind kind = DataRelocationNeedKind::InitializerSymbol;
+  std::size_t global_index = 0;
+  c4c::LinkNameId owner_link_name = c4c::kInvalidLinkName;
+  std::string_view owner_label;
+  c4c::LinkNameId target_link_name = c4c::kInvalidLinkName;
+  std::string_view target_label;
+  std::optional<std::size_t> initializer_element_index;
+  std::optional<c4c::backend::bir::Value> initializer_element;
+  const c4c::backend::bir::Global* source_global = nullptr;
+};
+
+struct GlobalDataRecord {
+  std::size_t global_index = 0;
+  std::string_view label;
+  c4c::LinkNameId link_name = c4c::kInvalidLinkName;
+  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  SymbolVisibilityRecordKind visibility = SymbolVisibilityRecordKind::LinkVisibleDefinition;
+  bool is_extern = false;
+  bool is_thread_local = false;
+  bool is_constant = false;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+  std::optional<c4c::backend::bir::Value> initializer;
+  std::optional<std::string_view> initializer_symbol_label;
+  c4c::LinkNameId initializer_symbol_name_id = c4c::kInvalidLinkName;
+  std::vector<c4c::backend::bir::Value> initializer_elements;
+  std::vector<DataRelocationNeedRecord> relocation_needs;
+  const c4c::backend::bir::Global* source_global = nullptr;
+};
+
+struct StringDataRecord {
+  std::size_t string_index = 0;
+  std::string_view label;
+  c4c::TextId name_id = c4c::kInvalidText;
+  std::string_view bytes;
+  std::size_t align_bytes = 1;
+  const c4c::backend::bir::StringConstant* source_string = nullptr;
+};
+
 struct BlockRecord {
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::string_view label;
@@ -315,6 +365,9 @@ struct FunctionRecord {
 struct Module {
   const c4c::backend::prepare::PreparedBirModule* prepared = nullptr;
   c4c::TargetProfile target_profile{};
+  std::vector<GlobalDataRecord> globals;
+  std::vector<StringDataRecord> strings;
+  std::vector<DataRelocationNeedRecord> relocation_needs;
   std::vector<FunctionRecord> functions;
 };
 
