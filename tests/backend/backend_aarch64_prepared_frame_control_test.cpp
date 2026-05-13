@@ -336,6 +336,29 @@ prepare::PreparedBirModule prepared_frame_control_module() {
 
   prepared.regalloc.functions.push_back(prepare::PreparedRegallocFunction{
       .function_name = function_name,
+      .values =
+          {
+              prepare::PreparedRegallocValue{
+                  .value_id = 21,
+                  .function_name = function_name,
+                  .value_name = source_name,
+                  .type = bir::TypeKind::I64,
+                  .register_class = prepare::PreparedRegisterClass::General,
+                  .allocation_status = prepare::PreparedAllocationStatus::AssignedStackSlot,
+                  .assigned_stack_slot =
+                      prepare::PreparedStackSlotAssignment{
+                          .slot_id = 11,
+                          .offset_bytes = 32,
+                      },
+                  .spill_register_authority =
+                      prepare::PreparedPhysicalRegisterAssignment{
+                          .reg_class = prepare::PreparedRegisterClass::General,
+                          .register_name = "x20",
+                          .contiguous_width = 1,
+                          .occupied_register_names = {"x20"},
+                      },
+              },
+          },
       .move_resolution =
           {
               prepare::PreparedMoveResolution{
@@ -446,6 +469,7 @@ prepare::PreparedBirModule prepared_frame_control_module() {
 
 int records_preserve_frame_control_call_and_move_identity() {
   auto prepared = prepared_frame_control_module();
+  const auto source_name = prepared.names.value_names.intern("source.value");
 
   const auto result = aarch64_api::build_prepared_module(prepared);
   if (result.error.has_value() || !result.module.has_value()) {
@@ -559,13 +583,41 @@ int records_preserve_frame_control_call_and_move_identity() {
     return fail("expected ABI binding record to preserve stack destination");
   }
   if (function.spill_reloads.front().op_kind != prepare::PreparedSpillReloadOpKind::Spill ||
+      function.spill_reloads.front().pseudo_kind !=
+          aarch64_module::SpillReloadPseudoKind::StoreFromRegisterToSlot ||
       function.spill_reloads.back().op_kind != prepare::PreparedSpillReloadOpKind::Reload ||
+      function.spill_reloads.back().pseudo_kind !=
+          aarch64_module::SpillReloadPseudoKind::ReloadFromSlotToScratch ||
       function.spill_reloads.front().slot_id != 11 ||
+      function.spill_reloads.back().slot_id != 11 ||
+      function.spill_reloads.front().register_class != prepare::PreparedRegisterClass::General ||
+      function.spill_reloads.front().register_bank != prepare::PreparedRegisterBank::Gpr ||
       function.spill_reloads.front().contiguous_width != 1 ||
       function.spill_reloads.front().occupied_registers.size() != 1 ||
       function.spill_reloads.front().occupied_registers.front() != "x20" ||
-      !function.spill_reloads.front().stack_offset_is_prepared_snapshot) {
-    return fail("expected spill/reload records to preserve frame-slot identity");
+      !function.spill_reloads.front().scratch_register_authority.has_value() ||
+      !function.spill_reloads.back().scratch_register_authority.has_value() ||
+      !function.spill_reloads.front().stack_offset_is_prepared_snapshot ||
+      !function.spill_reloads.back().stack_offset_is_prepared_snapshot) {
+    return fail("expected spill/reload records to preserve frame-slot and scratch identity");
+  }
+  const auto& spill_scratch =
+      function.target_registers[*function.spill_reloads.front().scratch_register_authority];
+  const auto& reload_scratch =
+      function.target_registers[*function.spill_reloads.back().scratch_register_authority];
+  if (spill_scratch.reference_kind != aarch64_module::TargetRegisterReferenceKind::SpillAuthority ||
+      spill_scratch.allocation_snapshot !=
+          aarch64_module::AllocationSnapshotKind::SpillReloadScratch ||
+      spill_scratch.allocation_authority !=
+          aarch64_module::AllocationAuthorityKind::SpillAuthority ||
+      spill_scratch.register_class != prepare::PreparedRegisterClass::General ||
+      spill_scratch.register_bank != prepare::PreparedRegisterBank::Gpr ||
+      spill_scratch.value_name != source_name ||
+      spill_scratch.physical_register != "x20" ||
+      spill_scratch.occupied_registers.size() != 1 ||
+      spill_scratch.occupied_registers.front() != "x20" ||
+      reload_scratch.physical_register != "x20") {
+    return fail("expected spill/reload scratch authority to remain structured target-MIR facts");
   }
 
   return 0;

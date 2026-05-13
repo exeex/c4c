@@ -41,6 +41,12 @@ enum class AllocationAuthorityKind {
   DeferredPlaceholder,
 };
 
+enum class SpillReloadPseudoKind {
+  StoreFromRegisterToSlot,
+  ReloadFromSlotToScratch,
+  RematerializeToScratch,
+};
+
 struct TargetRegisterRecord {
   TargetRegisterReferenceKind reference_kind = TargetRegisterReferenceKind::ValueHome;
   AllocationSnapshotKind allocation_snapshot = AllocationSnapshotKind::PreparedSnapshot;
@@ -317,13 +323,17 @@ struct SpillReloadRecord {
   c4c::backend::prepare::PreparedValueId value_id = 0;
   c4c::backend::prepare::PreparedSpillReloadOpKind op_kind =
       c4c::backend::prepare::PreparedSpillReloadOpKind::Spill;
+  SpillReloadPseudoKind pseudo_kind = SpillReloadPseudoKind::StoreFromRegisterToSlot;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
+  c4c::backend::prepare::PreparedRegisterClass register_class =
+      c4c::backend::prepare::PreparedRegisterClass::None;
   c4c::backend::prepare::PreparedRegisterBank register_bank =
       c4c::backend::prepare::PreparedRegisterBank::None;
   std::string_view register_name;
   std::size_t contiguous_width = 1;
   std::vector<std::string_view> occupied_registers;
+  std::optional<std::size_t> scratch_register_authority;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
   bool stack_offset_is_prepared_snapshot = false;

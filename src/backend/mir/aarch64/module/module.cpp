@@ -179,6 +179,31 @@ find_destination_slot_id(const c4c::backend::prepare::PreparedBirModule& prepare
   return AllocationAuthorityKind::None;
 }
 
+[[nodiscard]] constexpr SpillReloadPseudoKind spill_reload_pseudo_kind(
+    c4c::backend::prepare::PreparedSpillReloadOpKind op_kind) {
+  using c4c::backend::prepare::PreparedSpillReloadOpKind;
+  switch (op_kind) {
+    case PreparedSpillReloadOpKind::Spill:
+      return SpillReloadPseudoKind::StoreFromRegisterToSlot;
+    case PreparedSpillReloadOpKind::Reload:
+      return SpillReloadPseudoKind::ReloadFromSlotToScratch;
+    case PreparedSpillReloadOpKind::Rematerialize:
+      return SpillReloadPseudoKind::RematerializeToScratch;
+  }
+  return SpillReloadPseudoKind::StoreFromRegisterToSlot;
+}
+
+[[nodiscard]] const c4c::backend::prepare::PreparedRegallocValue* find_regalloc_value(
+    const c4c::backend::prepare::PreparedRegallocFunction& regalloc,
+    c4c::backend::prepare::PreparedValueId value_id) {
+  for (const auto& value : regalloc.values) {
+    if (value.value_id == value_id) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
 void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& prepared,
                                 c4c::backend::prepare::PreparedFrameSlotId slot_id,
                                 OperandRecord& operand) {
@@ -790,23 +815,43 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
 }
 
 [[nodiscard]] std::vector<SpillReloadRecord> build_spill_reload_records(
-    const c4c::backend::prepare::PreparedRegallocFunction* regalloc) {
+    const c4c::backend::prepare::PreparedRegallocFunction* regalloc,
+    std::vector<TargetRegisterRecord>& registers) {
   std::vector<SpillReloadRecord> records;
   if (regalloc == nullptr) {
     return records;
   }
   records.reserve(regalloc->spill_reload_ops.size());
   for (const auto& op : regalloc->spill_reload_ops) {
+    const auto* value = find_regalloc_value(*regalloc, op.value_id);
+    const auto register_class = register_class_from_bank(op.register_bank);
+    std::optional<std::size_t> scratch_register_authority;
+    if (op.register_name.has_value()) {
+      scratch_register_authority =
+          append_register_record(registers,
+                                 TargetRegisterReferenceKind::SpillAuthority,
+                                 AllocationSnapshotKind::SpillReloadScratch,
+                                 op.value_id,
+                                 value != nullptr ? value->value_name : c4c::kInvalidValueName,
+                                 register_class,
+                                 op.register_bank,
+                                 *op.register_name,
+                                 op.contiguous_width,
+                                 register_name_views(op.occupied_register_names));
+    }
     records.push_back(SpillReloadRecord{
         .value_id = op.value_id,
         .op_kind = op.op_kind,
+        .pseudo_kind = spill_reload_pseudo_kind(op.op_kind),
         .block_index = op.block_index,
         .instruction_index = op.instruction_index,
+        .register_class = register_class,
         .register_bank = op.register_bank,
         .register_name = op.register_name.has_value() ? std::string_view{*op.register_name}
                                                        : std::string_view{},
         .contiguous_width = op.contiguous_width,
         .occupied_registers = register_name_views(op.occupied_register_names),
+        .scratch_register_authority = scratch_register_authority,
         .slot_id = op.slot_id,
         .stack_offset_bytes = op.stack_offset_bytes,
         .stack_offset_is_prepared_snapshot = op.stack_offset_bytes.has_value(),
@@ -983,7 +1028,7 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
       });
     }
   }
-  record.spill_reloads = build_spill_reload_records(regalloc);
+  record.spill_reloads = build_spill_reload_records(regalloc, record.target_registers);
   record.parallel_copies =
       build_parallel_copy_records(prepared, function, source_function, locations);
   record.operands = build_operands(prepared, function.function_name, record.target_registers);
