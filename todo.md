@@ -8,46 +8,39 @@ Current Step Title: Document Scalar Record Contract And Close Readiness
 
 ## Just Finished
 
-Completed Step 5 from `plan.md`: added prepared/BIR-to-target scalar cast
-record conversion for simple integer `SExt`, `ZExt`, and `Trunc` forms.
+Completed Step 6 from `plan.md`: documented the scalar ALU/cast target-record
+contract and added close-readiness contract proof.
 
 Concrete work completed:
-- Added `PreparedScalarCastRecordError`,
-  `PreparedScalarCastRecordResult`, and
-  `PreparedScalarCastInstructionRecordResult` record-only result surfaces.
-- Added `make_prepared_scalar_cast_record(...)` and
-  `make_prepared_scalar_cast_instruction_record(...)` using structured
-  `bir::CastInst`, prepared value homes, and storage-plan facts.
-- Reused the existing prepared scalar operand conversion shape for source
-  operands, preserving `PreparedValueId`, `ValueNameId`, source/result types,
-  source `bir::CastOpcode`, and typed `OperandRecord` payloads.
-- Fail closed for unsupported cast opcodes, unsupported scalar types such as
-  `i128`, missing result/source homes or storage facts, unsupported storage
-  encodings, and prepared register conversion failures.
-- Added `backend_aarch64_prepared_scalar_cast_records` coverage for successful
-  `SExt`, `ZExt`, and `Trunc` conversion plus guard behavior.
+- Extended `src/backend/mir/aarch64/codegen/records.md` with scalar-specific
+  guardrails for supported ALU `Add`/`Sub`/`And`/`Or`/`Xor` records and
+  supported cast `SExt`/`ZExt`/`Trunc` records.
+- Documented deferred and fail-closed scalar boundaries for unsupported ALU
+  opcodes, compare predicates, floating/pointer/broad cast forms, `i128`,
+  `f128`, and incomplete prepared facts.
+- Added `backend_aarch64_scalar_record_contract` proving scalar records stay
+  `RecordOnly`, preserve prepared/BIR ids/types/opcodes, expose explicit
+  supported/deferred vocabulary, and do not own memory/call/return/assembler/
+  object payload behavior.
 
 ## Suggested Next
 
-Execute Step 6 from `plan.md`: document the scalar ALU/cast target-record
-contract and add or update close-readiness proof that the slice remains
-record-only.
+Route to the plan owner for lifecycle close decision on
+`ideas/open/209_aarch64_scalar_alu_cast_first_instruction_slice.md`.
 
 ## Watchouts
 
-- Keep Step 6 record-only; do not add assembly emission, encoding, object
-  output, memory lowering, calls, returns, or concrete opcode selection.
-- Step 5 preserves source/result types as BIR facts but does not introduce
-  concrete opcode selection or result-register records.
-- Unsupported scalar ALU/cast forms are explicit closed/deferred record
-  boundaries; contract documentation should keep that distinction visible.
+- The source idea appears ready for close review: scalar ALU and cast record
+  vocabulary, prepared conversions, documentation, and contract proof are in
+  place.
+- No assembler, object, memory, call, return, `module.cpp`, or `emit.hpp`
+  ownership was added by this step.
 
 ## Proof
 
 Proof passed:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log`
 
-Result: backend subset passed with
-`backend_aarch64_prepared_scalar_cast_records` included and green: 127 tests
-passed, 0 failed; 12 disabled MIR trace tests were not run. Proof log path:
-`test_after.log`.
+Result: backend subset passed with `backend_aarch64_scalar_record_contract`
+included and green: 128 tests passed, 0 failed; 12 disabled MIR trace tests
+were not run. Proof log path: `test_after.log`.

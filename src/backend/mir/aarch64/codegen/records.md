@@ -19,6 +19,27 @@ Deferred behavior guardrails:
   outside this layer.
 - Scalar records may keep source BIR opcode metadata; concrete AArch64 opcode
   selection and flag behavior are deferred.
+- Scalar ALU records currently support only integer `Add`, `Sub`, `And`, `Or`,
+  and `Xor` as explicit `ScalarAluOperationKind` values. They preserve the
+  source BIR binary opcode, operand type, result type, result `PreparedValueId`,
+  result `ValueNameId`, and structured `OperandRecord` inputs.
+- Scalar cast records currently support only simple integer `SExt`, `ZExt`,
+  and `Trunc` as explicit `ScalarCastOperationKind` values. They preserve the
+  source BIR cast opcode, source type, result type, result `PreparedValueId`,
+  result `ValueNameId`, and structured source `OperandRecord`.
+- Unsupported scalar ALU opcodes such as multiply, shifts, division/remainder,
+  and compare predicates map to explicit `Deferred` vocabulary or fail closed
+  during prepared conversion. Unsupported scalar casts such as floating-point
+  casts, pointer/integer casts, bitcasts, `i128`, `f128`, and broad floating
+  forms likewise defer or fail closed instead of becoming generic placeholder
+  instructions.
+- Prepared scalar ALU/cast conversion consumes structured BIR instructions plus
+  prepared value-location and storage-plan facts. It must not recover operands
+  from rendered value names or text dumps, and missing or inconsistent prepared
+  homes/storage facts are errors rather than fallback selection.
+- Scalar records do not own concrete AArch64 mnemonics, condition-code spelling,
+  flag-setting behavior, immediate encoding legality, register allocation,
+  assembly text, object encoding, memory lowering, calls, or returns.
 - Memory records carry prepared address facts and base/offset shape hints only;
   load/store instruction choice, addressing legality, and spill code are
   deferred.
