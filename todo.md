@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/208_aarch64_branch_compare_target_mir_records.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Branch Target And Predicate Vocabulary
+Current Step ID: 3
+Current Step Title: Consume Prepared Branch Target Facts
 
 # Current Packet
 
