@@ -1,12 +1,23 @@
 # AArch64 Markdown-First Backend Reconstruction
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/closed/195_frontend_to_bir_legacy_string_lookup_closure_gate.md`
 - `ideas/closed/197_bir_backend_compatibility_string_retirement.md`
 - `ideas/closed/200_hir_legacy_compatibility_retirement.md`
+
+## Completion Note
+
+The old AArch64 `.cpp` implementation surface under
+`src/backend/mir/aarch64` was extracted into markdown review artifacts and
+removed from the live implementation tree. The resulting classification index,
+backend entry contract, and BIR/prepared gap ledger define the next route
+against `PreparedBirModule` without rendered-name recovery. The selected
+follow-up implementation source idea is
+`ideas/open/204_aarch64_prepared_module_mir_boundary.md`.
 
 ## Goal
 
