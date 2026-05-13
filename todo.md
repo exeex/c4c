@@ -1,34 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.1e
-Current Step Title: Extract `f128.cpp` To Markdown Artifact
+Current Step ID: Step 2.1f
+Current Step Title: Extract `peephole.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.1e: Extract `f128.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/codegen/f128.cpp` into
-`src/backend/mir/aarch64/codegen/f128.md` and removed the old `.cpp`
+Step 2.1f: Extract `peephole.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/codegen/peephole.cpp` into
+`src/backend/mir/aarch64/codegen/peephole.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old binary128 soft-float contract, including
-Q-register ABI assumptions, 16-byte stack and memory transport, `x17` address
-carrier behavior, `x16` saved-address scratch use, soft-float helper call
-boundaries, F32/F64 raw-bit bridges, full-source tracking, dependencies, hidden
-assumptions, and rebuild risks.
+The markdown artifact records the old text-first AArch64 peephole contract,
+including line classification, tombstone rendering, iterative local pass
+ordering, copy propagation, dead stack-store elimination, the disabled global
+store-forwarding note, shared string-helper dependencies, hidden assumptions,
+tests preserved in the old surface, and rebuild risks.
 
 ## Suggested Next
 
 Next coherent packet: stay within Step 2.1 and extract
-`src/backend/mir/aarch64/codegen/peephole.cpp` to a markdown artifact, then remove
+`src/backend/mir/aarch64/codegen/mod.cpp` to a markdown artifact, then remove
 that old `.cpp` from the live tree.
 
 Continue the remaining codegen extraction lane through these old codegen
 surfaces before moving into assembler, encoder, linker, or module-entry files:
 
-- `peephole.cpp`
 - `mod.cpp`
 
 After Step 2.1, continue Step 2 through these bounded lanes:
@@ -52,17 +51,14 @@ After Step 2.1, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- `f128.cpp` was a fully commented translation surface rather than live
+- `peephole.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived F128 surface has several rebuild hazards: full binary128 values
-  must remain 16-byte `q0`/`q1` payloads, `x17` is the shared address carrier,
-  `x16` is used as saved-address scratch, helper calls can clobber cached
-  operands, and `f128_store_result_and_truncate` must not overwrite the full
-  destination slot with the truncated F64 approximation.
-- Runtime helper names and ABI assumptions are preserved as legacy contract,
-  not as proof that the rebuilt backend has complete compiler-rt or libgcc
-  binary128 integration.
+- The archived peephole surface has several rebuild hazards: disabled global
+  store forwarding was tied to a known complex float-array correctness bug,
+  `mov wN, wN` must not be treated as a no-op, copy propagation needs
+  whole-word register replacement, and dead-store elimination must bail out
+  when the stack address escapes.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
