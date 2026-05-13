@@ -1,28 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.3h
-Current Step Title: Extract encoder `mod.cpp` To Markdown Artifact
+Current Step ID: Step 2.4a
+Current Step Title: Extract linker `elf.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.3h: Extract encoder `mod.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/assembler/encoder/mod.cpp` into
-`src/backend/mir/aarch64/assembler/encoder/mod.md` and removed the old `.cpp`
-from the live tree.
+Step 2.4a: Extract linker `elf.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/linker/elf.cpp` into
+`src/backend/mir/aarch64/linker/elf.md` and removed the old `.cpp` from the
+live tree.
 
-The markdown artifact records the old AArch64 encoder module/dispatch surface,
-including exported helper contracts, placeholder register/condition/operand
-extractors, decimal immediate parsing, the narrow `ret` and `mov wN, #imm16`
-dispatch cases, dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old AArch64 ELF linker facade, including the
+shared ELF re-export surface, AArch64 relocation constants, shared ELF64 type
+aliases, the `parse_object` entry point, dependencies, assumptions, and rebuild
+risks.
 
 ## Suggested Next
 
-Next coherent packet: start Step 2.4 by extracting
-`src/backend/mir/aarch64/linker/elf.cpp` to markdown and removing that old
-`.cpp` from the live tree.
+Next coherent packet: continue Step 2.4 by extracting
+`src/backend/mir/aarch64/linker/emit_dynamic.cpp` to markdown and removing that
+old `.cpp` from the live tree.
 
 Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
 `assembler/encoder/compare_branch.cpp`,
@@ -33,7 +33,7 @@ Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
 
 After Step 2.3, continue Step 2 through these bounded lanes:
 - Step 2.4: remaining linker surfaces:
-  `linker/elf.cpp`, `linker/emit_dynamic.cpp`, `linker/emit_shared.cpp`,
+  `linker/emit_dynamic.cpp`, `linker/emit_shared.cpp`,
   `linker/emit_static.cpp`, `linker/input.cpp`, `linker/link.cpp`,
   `linker/plt_got.cpp`, `linker/reloc.cpp`, `linker/types.cpp`, and
   `linker/mod.cpp`.
@@ -41,13 +41,11 @@ After Step 2.3, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- Step 2.3 now has the bitfield, compare/branch, data-processing, scalar FP,
-  load/store, NEON, system, and module/dispatch encoder artifacts; do not
-  revisit those removed `.cpp` files unless the supervisor opens a new packet.
-- `encoder/mod.md` documents the old compiled dispatch stub only. Treat its
-  register classifiers, condition encoder, operand extraction helpers, and
-  narrow `ret`/`mov wN, #imm16` encoding as rebuild guidance, not as proof that
-  the built-in AArch64 assembler path is production-ready.
+- Step 2.4 now has the linker ELF facade artifact; do not revisit the removed
+  `linker/elf.cpp` unless the supervisor opens a new packet.
+- `linker/elf.md` documents a facade over shared ELF64 parsing and AArch64
+  relocation constants only. Treat it as rebuild guidance, not as proof that
+  the live C++ backend has an implemented AArch64 ELF parser.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
@@ -58,11 +56,9 @@ After Step 2.3, continue Step 2 through these bounded lanes:
   count it as live AArch64 backend behavior proof.
 - `mod.hpp`, `parser.hpp`, and other headers remain in the tree; deleting or
   replacing headers is outside this packet.
-- Step 2.3 encoder extraction should stay descriptive. Do not repair encoder
-  coverage, relocation behavior, or instruction semantics during the markdown
+- Step 2.4 linker extraction should stay descriptive. Do not repair linker,
+  relocation, dynamic emission, or ELF parsing behavior during the markdown
   extraction packets.
-- Step 2.4 should move into the linker family and keep the same markdown-first
-  extraction discipline.
 
 ## Proof
 
