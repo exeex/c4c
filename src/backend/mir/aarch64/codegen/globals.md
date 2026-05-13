@@ -118,8 +118,9 @@ allocation result and reserved MIR scratch policy in
    cases.
 2. Preserve the GOT decision as target relocation policy, not as a string
    naming convention.
-3. Keep `x0` as the visible materialized-address result until the replacement
-   backend defines a different target-local MIR value convention.
+3. Keep address-result carriers explicit in target MIR records; any legacy
+   `x0` convention is only archived behavior unless allocation-result records
+   select it.
 4. Prove direct global and label paths emit both `ADRP` and low-12-bit `ADD`.
 5. Prove the TLS path reads `tpidr_el0` and applies thread-pointer-relative
    relocations before storing the result.

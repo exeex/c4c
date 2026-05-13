@@ -292,7 +292,10 @@ or encoder consumers, but parsed mnemonic text must not become semantic
 authority.
 Pointer homes, loaded/stored value homes, spill-slot materialization, and
 address-computation scratch must consume the shared allocation result and
-reserved MIR scratch policy in `../ALLOCATION_CONTRACT.md`.
+reserved MIR scratch policy in `../ALLOCATION_CONTRACT.md`, plus
+`module::SpillReloadRecord` when the memory operation is a prepared spill or
+reload pseudo. General memory lowering must not create spill/reload operations
+or scratch ownership locally.
 
 1. Keep direct stack-slot, indirect pointer-slot, and over-aligned alloca
    addressing as distinct paths.

@@ -227,11 +227,11 @@ typed aggregate refs instead of recreating rendered-signature parsing.
 ## Rebuild ownership suggestion
 
 A replacement should keep the legacy entry surface thin and route into reviewed
-target seams. Recommended extraction targets after this file are the smaller
-codegen shards, starting with `src/backend/mir/aarch64/codegen/asm_emitter.cpp`
-or `src/backend/mir/aarch64/codegen/prologue.cpp`, because they should help
-separate raw assembly text conventions and function-frame policy before any
-new AArch64 lowering is rebuilt. New lowering should enter structured target
-MIR and machine instruction nodes first; this entry surface may later call a
-`.s` printer, but it must not restore direct text emission or parsed text as
-the semantic backend route.
+target seams. The accepted entry path is the prepared-module target record
+layer: `build_prepared_module(const PreparedBirModule&)`, `module::Module`
+records, and later `codegen::records` machine-node inputs. Smaller codegen
+shards may be rebuilt only as consumers of those records and
+`../ALLOCATION_CONTRACT.md`; they must not become new local allocation,
+spill-slot invention, or assembly-text recovery authorities. This entry
+surface may later call a `.s` printer, but it must not restore direct text
+emission or parsed text as the semantic backend route.

@@ -96,6 +96,11 @@ was materialized as a double in `d0`, `x9` and `x10` were saved with
 `stp`, `__extenddftf2` was called, `x9` and `x10` were restored with `ldp`,
 and `q0` was stored to the outgoing stack slot.
 
+The recovery language above describes legacy behavior only. Rebuilt call
+lowering must treat absent F128 carrier details as a missing prepared-carrier
+or ABI-record issue; it must not recover the value from assembly text,
+rendered names, or an AArch64-local spill convention.
+
 Ordinary stack arguments used an assigned callee-saved register, alloca
 address, stack-slot load, constant conversion, or zero fallback to populate
 `x0`, then stored `x0` to the outgoing stack slot and advanced by eight bytes.
@@ -227,9 +232,11 @@ Call lowering should publish target MIR call records and machine instruction
 nodes carrying callee identity, argument/result placement, preserved values,
 and clobbers. `bl`/`blr` spelling, relocation syntax, and final call sequence
 text belong to printer or encoding/object consumers.
-Argument/result homes, indirect-call scratch, function-pointer spill identity,
-and live-across-call preservation must be sourced from the shared allocation
-result in `../ALLOCATION_CONTRACT.md`, not patched by the call slice.
+Argument/result homes, ABI-binding movement, indirect-call scratch,
+function-pointer spill identity, and live-across-call preservation must be
+sourced from `module::CallRecord`, `module::AbiBindingRecord`,
+`module::MoveRecord`, allocation-result records, and
+`../ALLOCATION_CONTRACT.md`, not patched by the call slice.
 
 1. Keep ABI classification separate from physical emission, but preserve the
    exact AArch64 policy bits listed above.

@@ -217,13 +217,15 @@ Frame setup and teardown should be represented as structured target MIR facts
 and machine instruction nodes for saves, restores, stack adjustment, and
 parameter homes. Pseudo-mnemonics and load/store spellings are printer or
 encoding details after those nodes exist.
-Frame/prologue work must consume allocation-result call-preservation facts,
-callee-save obligations, structured spill-slot ids, and reserved scratch policy
-from `../ALLOCATION_CONTRACT.md`. It must not run a local allocator or create
-new spill slots while building the frame.
+Frame/prologue work must consume `module::FrameRecord`,
+`module::FrameSlotRecord`, `module::CalleeSaveRecord`, allocation-result
+call-preservation facts, structured spill-slot ids, and reserved scratch
+policy from `../ALLOCATION_CONTRACT.md`. It must not run a local allocator,
+recompute prepared frame placement, or create new spill slots while building
+the frame.
 
-1. Establish stack-layout ownership for common locals, variadic save areas, and
-   callee-saved spills.
+1. Consume the prepared frame/module records for common locals, variadic save
+   areas, and callee-saved spills.
 2. Rebuild allocation-result consumption with explicit inline-asm clobber
    handling and F128 temporary-register policy.
 3. Rebuild prologue/epilogue save and restore around the finalized

@@ -46,6 +46,13 @@ Deferred behavior guardrails:
   branch, memory, call, return, vector, inline-asm, and prologue records may
   consume that data, but must not recover it from rendered register names or
   create local allocation policy.
+- Move, ABI-binding, parallel-copy, spill, and reload consumers should use
+  `module::MoveRecord`, `module::AbiBindingRecord`,
+  `module::ParallelCopyRecord`, and `module::SpillReloadRecord` as their
+  allocation-sensitive authority. Missing prepared provenance, destination
+  slot identity, or carrier details are separate prepared-carrier idea
+  candidates, not permission for codegen records to infer from raw BIR,
+  rendered names, or assembly text.
 - Memory records carry prepared address facts and base/offset shape hints only;
   load/store instruction choice, addressing legality, and spill code are
   deferred.

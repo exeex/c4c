@@ -141,9 +141,11 @@ Return lowering should publish structured target MIR return facts and machine
 instruction nodes for value movement and control transfer. Final `ret`,
 register-spelling, and helper-call text belongs to printer or encoding/object
 consumers.
-Return value homes, helper-call resources, and control-transfer clobbers must
-come from the shared allocation result in `../ALLOCATION_CONTRACT.md`; return
-lowering must not assign ABI registers locally.
+Return value homes, before-return moves, ABI-binding facts, helper-call
+resources, and control-transfer clobbers must come from `module::MoveRecord`,
+`module::AbiBindingRecord`, allocation-result records, and
+`../ALLOCATION_CONTRACT.md`; return lowering must not assign ABI registers
+locally.
 
 1. Keep scalar integer, `i128`, scalar floating-point, and binary128 return
    register rules separate.
