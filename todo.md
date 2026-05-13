@@ -3,36 +3,36 @@
 Status: Active
 Source Idea Path: ideas/open/204_aarch64_prepared_module_mir_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Define Target-Local MIR Module, Function, And Block Records
+Current Step ID: 4
+Current Step Title: Add Operand And Register Skeletons
 
 ## Just Finished
 
-Step 3 defined the first AArch64 target-local MIR module, function, and block
-records for `plan.md` Step 3. `module::Module` now carries function records
-keyed by prepared `FunctionNameId`, and each function carries block records
-keyed by prepared `BlockLabelId`, with display labels kept as labels and source
-prepared BIR/control-flow pointers preserved for inspection. The builder
-populates records from `PreparedBirModule::control_flow` after the existing
-handoff gate succeeds and uses structured BIR block ids when associating source
-blocks. This refinement also makes structured BIR `link_name_id` authoritative
-for source-function association when present, with rendered function names kept
-as fallback/debug text only.
+Step 4 added the first AArch64 operand and target-register skeleton records for
+`plan.md` Step 4. `module::FunctionRecord` now carries semantic
+`OperandRecord`s keyed by prepared `PreparedValueId` plus prepared function and
+value-name IDs, with value names, BIR types, value kinds, frame-slot IDs,
+symbol/link-name IDs, pointer-base IDs, and carrier pointers preserved where
+already published by prepared value-location, regalloc, and storage-plan facts.
+Physical register spellings are represented as separate indexed
+`TargetRegisterRecord`s, so home, assigned, spill-authority, and storage-plan
+register references do not replace semantic value identity.
 
 ## Suggested Next
 
-Implement Step 4 by adding the first AArch64 operand and register skeleton
-records keyed by prepared value identities and target register references.
+Implement Step 5 by adding frame, branch, call, and move skeleton records from
+prepared frame/control/call/value-location/regalloc/storage-plan facts without
+lowering them to target instructions.
 Recommended next owned files:
 
 - `src/backend/mir/aarch64/module/module.hpp`
 - `src/backend/mir/aarch64/module/module.cpp`
-- `tests/backend/backend_aarch64_prepared_operand_identity_test.cpp`
+- `tests/backend/backend_aarch64_prepared_frame_control_test.cpp`
 - `tests/backend/CMakeLists.txt`
 
-The next packet should populate representative operand records from prepared
-value names/ids and introduce target register-reference records without
-conflating semantic value identity with physical registers.
+The next packet should preserve representative prepared frame slots, branch
+labels, call plan records, and move/spill/reload identities as descriptive MIR
+skeleton records only.
 
 ## Watchouts
 
@@ -52,14 +52,20 @@ conflating semantic value identity with physical registers.
 - Step 3 records deliberately stop at module/function/block identity. Do not
   add instruction selection or assembly emission when extending them with
   operands/registers.
+- Step 4 records intentionally keep physical register names in
+  `TargetRegisterRecord` and semantic identities in `OperandRecord`; do not
+  collapse those surfaces in the next packet.
+- Regalloc physical assignments currently expose register class but no
+  register-bank carrier; Step 4 preserves the class and leaves bank as `None`
+  for those records.
 - Preserve unrelated dirty files and transient `review/` artifacts.
 
 ## Proof
 
-Delegated Step 3 proof command:
+Delegated Step 4 proof command:
 
 ```sh
-cmake --build --preset default --target backend_aarch64_prepared_module_identity_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_module_identity$' --output-on-failure >> test_after.log 2>&1
+cmake --build --preset default --target backend_aarch64_prepared_operand_identity_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_operand_identity$' --output-on-failure >> test_after.log 2>&1
 ```
 
 Proof log: `test_after.log`.
