@@ -9,16 +9,15 @@ Current Step Title: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifa
 ## Just Finished
 
 Step 2.1: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifacts
-extracted `src/backend/mir/aarch64/codegen/memory.cpp` into
-`src/backend/mir/aarch64/codegen/memory.md` and removed the old `.cpp`
+extracted `src/backend/mir/aarch64/codegen/calls.cpp` into
+`src/backend/mir/aarch64/codegen/calls.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old memory lowering contract, including
-F128 load/store dispatch, constant-offset load/store paths, direct stack-slot,
-indirect pointer-slot, and over-aligned alloca addressing, GEP helpers,
-dynamic stack-pointer helpers, memcpy address setup and bytewise copy lowering,
-typed width/sign-extension boundaries, dependencies, hidden assumptions, and
-rebuild risks.
+The markdown artifact records the old call-lowering contract, including AArch64
+ABI configuration, stack argument staging, register argument helper sequencing,
+direct and indirect call emission, stack cleanup, I128 and F128 result storage,
+softfloat helper interactions, dependencies, hidden assumptions, and rebuild
+risks.
 
 ## Suggested Next
 
@@ -28,7 +27,6 @@ Extract the remaining old codegen surfaces under
 `src/backend/mir/aarch64/codegen/` before moving into assembler, encoder,
 linker, or module-entry files:
 
-- `calls.cpp`
 - `cast_ops.cpp`
 - `atomics.cpp`
 - `intrinsics.cpp`
@@ -58,16 +56,17 @@ After Step 2.1, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- `memory.cpp` was a fully commented translation surface rather than live
+- `calls.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived memory surface has several rebuild hazards: F128 loads/stores
-  must stay helper-routed, indirect and over-aligned stores must preserve the
-  source value in `x1` while computing `x9`, direct stack slots and indirect
-  pointer slots are different address families, large signed offsets need the
-  register-scratch path, typed load sign/zero-extension lives in selected
-  load mnemonics, and aligned-address emission invalidates accumulator cache
-  when it writes `x0`.
+- The archived calls surface has several rebuild hazards: the AArch64 ABI
+  config must preserve eight GP and eight FP argument registers, F128-in-FP
+  policy, I128 pair alignment, large-struct-by-reference behavior, and
+  dedicated sret policy; source stack-slot loads need outgoing-stack adjustment
+  when dynamic alloca is absent; I128 and F128 stack arguments require 16-byte
+  alignment; indirect calls load a spilled function pointer from the outgoing
+  stack area; and F128 result handling must preserve both full `q0` storage and
+  the `__trunctfdf2` accumulator update.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
