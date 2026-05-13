@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/204_aarch64_prepared_module_mir_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Prepared-Module Handoff Gate
+Current Step ID: none
+Current Step Title: none
 
 ## Just Finished
 
