@@ -7,8 +7,8 @@ Depends On:
 - `ideas/closed/209_aarch64_scalar_alu_cast_first_instruction_slice.md`
 - `ideas/closed/210_aarch64_memory_operand_model_from_prepared_facts.md`
 - `ideas/closed/211_aarch64_machine_instruction_node_contract.md`
-- `ideas/open/213_aarch64_allocation_to_target_mir_move_spill_reload_records.md`
-- `ideas/open/214_aarch64_aapcs64_call_return_frame_mir_contract.md`
+- `ideas/closed/213_aarch64_allocation_to_target_mir_move_spill_reload_records.md`
+- `ideas/closed/214_aarch64_aapcs64_call_return_frame_mir_contract.md`
 
 ## Goal
 
