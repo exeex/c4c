@@ -1,46 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/212_bir_mir_allocation_contract.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Align AArch64 Markdown Roadmap Artifacts
+Current Step ID: Step 5
+Current Step Title: Capture Shared Carrier Gaps
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 of `plan.md` aligned AArch64 markdown roadmap artifacts with
-`src/backend/mir/aarch64/ALLOCATION_CONTRACT.md`.
+Step 5 of `plan.md` reviewed the allocation audit, implemented-surface
+alignment, and roadmap updates for missing shared BIR/prepared allocation
+input or output carriers.
 
-`BACKEND_ENTRY_CONTRACT.md`, `BIR_PREPARED_GAP_LEDGER.md`, and
-`CLASSIFICATION_INDEX.md` now name the allocation contract as the authority for
-allocation-result shape, long-lived homes, structured spill-slot ids, reserved
-MIR scratch policy, call-preservation resources, and future virtual-register
-placeholders.
+No separate shared-carrier gap blocks this allocation contract. The live
+`PreparedBirModule` surface already carries the allocation-sensitive shared
+facts this plan needs: value homes, regalloc assignments, storage plans,
+spill/reload operations, frame and stack facts, liveness, register-class
+overrides, call plans, move bundles, control-flow facts, and memory volatility
+plus address-space facts.
 
-The codegen roadmap artifacts now route future scalar ALU, comparison/branch,
-cast, float, global address, i128/f128, intrinsic/vector, memory, call, return,
-variadic, inline-asm, asm-emitter, prologue, atomics, and record work through
-the shared allocation result instead of letting each slice allocate registers,
-invent spills, or patch calling-convention resources locally.
+The remaining non-present items are target-local AArch64 MIR records or later
+target ABI policy: typed AArch64 register references, target MIR memory
+operands, branch/call/return/move/spill/reload/data records, and complete
+AAPCS64 call/return/variadic lowering policy. Those are not shared
+BIR/prepared carrier gaps, so no new `ideas/open/` gap idea was created.
 
 ## Suggested Next
 
-Execute Step 5: review the Step 1 audit notes, implemented-surface alignment,
-and markdown roadmap updates for missing shared BIR/prepared allocation input
-or output carriers. If a required shared carrier is missing, create a separate
-`ideas/open/` gap idea; otherwise record that no separate gap blocks the
-allocation contract.
+Execute Step 6: add focused proof for the allocation contract and
+implemented-surface alignment without expanding backend capability scope.
 
 ## Watchouts
 
-- Historical fixed-register and stack-slot inventories remain in the markdown
-  as descriptive evidence; future-direction guidance now points allocation
-  authority back to `ALLOCATION_CONTRACT.md`.
-- This packet did not edit `ALLOCATION_CONTRACT.md`, implementation files, or
-  tests.
-- Step 5 should distinguish missing shared BIR/prepared carriers from missing
-  target-local AArch64 MIR records. Target-local records are expected later
-  work, not automatically shared-carrier gaps.
+- Missing target-local AArch64 MIR records remain real follow-up work, but they
+  should not be misclassified as shared BIR/prepared carrier gaps.
+- AAPCS64 call/return/variadic completeness is an ABI-policy ambiguity for
+  later target work, not a reason to patch around prepared facts locally.
+- Any future route that needs a fact not carried by `PreparedBirModule` should
+  stop and open a separate shared-carrier idea instead of recovering data from
+  rendered names, legacy examples, or assembly text.
 
 ## Proof
 
