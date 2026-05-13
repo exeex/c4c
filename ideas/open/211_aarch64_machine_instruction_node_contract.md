@@ -7,7 +7,7 @@ Depends On:
 - `ideas/closed/207_aarch64_target_register_and_instruction_record_core.md`
 - `ideas/closed/208_aarch64_branch_compare_target_mir_records.md`
 - `ideas/closed/209_aarch64_scalar_alu_cast_first_instruction_slice.md`
-- `ideas/open/210_aarch64_memory_operand_model_from_prepared_facts.md`
+- `ideas/closed/210_aarch64_memory_operand_model_from_prepared_facts.md`
 
 ## Goal
 
