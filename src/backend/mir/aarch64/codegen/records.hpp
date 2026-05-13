@@ -107,6 +107,22 @@ enum class PreparedBranchRecordError {
   MissingCompareValueHome,
 };
 
+enum class PreparedScalarAluRecordError {
+  None,
+  InvalidFunction,
+  UnsupportedOpcode,
+  UnsupportedResultValue,
+  MissingResultValueHome,
+  MissingResultStorage,
+  UnsupportedResultStorage,
+  UnsupportedOperandValue,
+  MissingOperandValueHome,
+  MissingOperandStorage,
+  UnsupportedOperandStorage,
+  UnsupportedOperandType,
+  RegisterConversionFailed,
+};
+
 struct RegisterOperand {
   c4c::backend::aarch64::abi::RegisterReference reg{};
   RegisterOperandRole role = RegisterOperandRole::Physical;
@@ -291,6 +307,16 @@ struct ScalarInstructionRecord {
   std::optional<ScalarAluRecord> scalar_alu;
 };
 
+struct PreparedScalarAluRecordResult {
+  std::optional<ScalarAluRecord> record;
+  PreparedScalarAluRecordError error = PreparedScalarAluRecordError::None;
+};
+
+struct PreparedScalarInstructionRecordResult {
+  std::optional<ScalarInstructionRecord> record;
+  PreparedScalarAluRecordError error = PreparedScalarAluRecordError::None;
+};
+
 struct MemoryInstructionRecord {
   MemoryInstructionKind memory_kind = MemoryInstructionKind::Load;
   MemoryOperand address;
@@ -359,6 +385,8 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view branch_compare_candidate_kind_name(
     BranchCompareCandidateKind kind);
 [[nodiscard]] std::string_view prepared_branch_record_error_name(PreparedBranchRecordError error);
+[[nodiscard]] std::string_view prepared_scalar_alu_record_error_name(
+    PreparedScalarAluRecordError error);
 [[nodiscard]] bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_integer_opcode(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
@@ -388,5 +416,15 @@ struct InstructionRecord {
     const c4c::backend::prepare::PreparedControlFlowBlock& block,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const c4c::backend::bir::Terminator& terminator);
+[[nodiscard]] PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
+    const c4c::backend::bir::BinaryInst& binary);
+[[nodiscard]] PreparedScalarInstructionRecordResult make_prepared_scalar_alu_instruction_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
+    const c4c::backend::bir::BinaryInst& binary);
 
 }  // namespace c4c::backend::aarch64::codegen
