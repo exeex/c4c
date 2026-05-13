@@ -1,7 +1,8 @@
 # AArch64 Target Register And Instruction Record Core
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/closed/205_aarch64_arm_reference_layout_contract.md`
@@ -89,6 +90,15 @@ register/role guide, not as a text-emitter route.
   least representative prepared-register preservation.
 - No assembly text, instruction selection, object emission, or linker behavior
   is added.
+
+## Closure Notes
+
+Completed by the active runbook covering typed AArch64 register vocabulary,
+prepared register conversion, target operand records, target instruction
+record containers, focused tests, and local record-layer documentation.
+
+Close-time backend regression guard passed with 119 passed, 0 failed, using
+the existing accepted `test_before.log` and a fresh matching `test_after.log`.
 
 ## Reviewer Reject Signals
 
