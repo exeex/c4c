@@ -1,57 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Define The Backend Entry Contract
+Current Step ID: Step 5
+Current Step Title: Produce The BIR/Prepared Gap Ledger
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Define The Backend Entry Contract created
-`src/backend/mir/aarch64/BACKEND_ENTRY_CONTRACT.md` as the discoverable AArch64
-backend entry contract.
+Step 5: Produce The BIR/Prepared Gap Ledger created
+`src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md` as the discoverable
+AArch64 BIR / prepared gap ledger against
+`src/backend/mir/aarch64/BACKEND_ENTRY_CONTRACT.md`.
 
-The contract accepts `PreparedBirModule` as the target-local AArch64 entry
-type, rejects raw `bir::Module` as a lowering boundary except as upstream
-staging into preparation, records required prepared facts and structured-id
-identity rules, defines the target-local MIR/asm facts needed before lowering
-resumes, and explicitly rejects rendered-name recovery and string fallback
-routes.
+The ledger records present, missing, ambiguous, and deferred statuses for each
+required prepared fact and target-local MIR / assembly structure. It identifies
+gap ownership across shared preparation, AArch64 MIR design, target ABI work,
+assembler/object work, and separate ideas. Its decision is that backend
+implementation must not proceed directly to instruction selection or assembly
+text emission; Step 6 may proceed to AArch64 prepared-module MIR-boundary idea
+selection, while the missing memory volatility/address-space prepared facts
+should split a shared-preparation carrier extension first if memory lowering is
+selected as the first implementation slice.
 
 ## Suggested Next
 
-Next coherent packet: start Step 5 by building the gap ledger against
-`BACKEND_ENTRY_CONTRACT.md`.
+Next coherent packet: start Step 6 idea-selection work.
 
-The Step 5 ledger should compare each required prepared fact and target-local
-MIR/asm structure against current BIR / `PreparedBirModule` availability,
-record missing or ambiguous facts, and identify whether each gap belongs in
-shared preparation, AArch64 MIR design, target ABI work, assembler/object
-work, or a separate idea.
+Use `src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md` to choose whether the
+next source idea should define the AArch64 prepared-module MIR boundary first,
+or split the shared-preparation memory volatility/address-space carrier gap
+first if memory lowering is the intended first implementation slice.
 
 ## Watchouts
 
-- `BACKEND_ENTRY_CONTRACT.md` is a contract, not implementation proof; it does
-  not establish live AArch64 lowering, assembly, object emission, or linking.
-- The contract intentionally accepts `PreparedBirModule`; Step 5 should treat
-  any needed narrower subset as a future typed prepared subset, not as raw BIR.
-- Use `CLASSIFICATION_INDEX.md` only to triage legacy markdown candidates while
-  building the gap ledger.
-- Do not fill Step 5 gaps by rendered-name recovery, printed-BIR parsing,
-  assembly-string parsing, or legacy shape recognizers.
+- `BIR_PREPARED_GAP_LEDGER.md` is a gap ledger, not implementation proof; it
+  does not establish live AArch64 lowering, assembly, object emission, or
+  linking.
+- Most required prepared facts are present on `PreparedBirModule`; the
+  blocking gap is target-local AArch64 MIR design, with memory
+  volatility/address-space preservation as the one visible shared-preparation
+  carrier gap.
+- Do not fill Step 6 gaps by rendered-name recovery, printed-BIR parsing,
+  assembly-string parsing, parser operand recovery, or legacy shape
+  recognizers.
 
 ## Proof
 
 Commands:
 
 ```bash
-test -f src/backend/mir/aarch64/BACKEND_ENTRY_CONTRACT.md
-rg -n "PreparedBirModule|bir::Module|structured ids|semantic identity|target-local MIR|assembly generation|rendered-name recovery|string fallback|CLASSIFICATION_INDEX.md" src/backend/mir/aarch64/BACKEND_ENTRY_CONTRACT.md
+test -f src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md
+rg -n "present|missing|ambiguous|deferred|PreparedBirModule|BACKEND_ENTRY_CONTRACT.md|Proceed Versus Split Decision" src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md
 ```
 
-Result: passed. The contract exists and explicitly mentions/decides
-`PreparedBirModule`, raw `bir::Module`, structured ids and semantic identity,
-target-local MIR and assembly generation needs, rejection of rendered-name
-recovery and string fallback routes, and `CLASSIFICATION_INDEX.md`.
+Result: passed. The ledger exists and explicitly records present, missing,
+ambiguous, and deferred statuses; references `PreparedBirModule` and
+`BACKEND_ENTRY_CONTRACT.md`; and includes a proceed-versus-split decision.
 Docs-only packet; no build required and no proof log produced.
