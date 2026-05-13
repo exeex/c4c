@@ -8,31 +8,24 @@ Current Step Title: Add Focused Proof
 
 ## Just Finished
 
-Step 4 of `plan.md` aligned the AArch64 markdown roadmap artifacts with
-`MACHINE_INSTRUCTION_NODE_CONTRACT.md`.
+Step 5 of `plan.md` added fresh focused proof for the AArch64
+machine-instruction-node contract and implemented record surfaces.
 
-The roadmap docs now route internal backend semantics through structured target
-MIR records and AArch64 machine instruction nodes. `.s` output is documented
-as printer output, parser surfaces are documented as external assembly input,
-and encoder/object/linker surfaces are documented as downstream consumers of
-machine nodes or lower structured encoding/object records.
+The delegated backend proof rebuilt the default preset and ran the full
+`^backend_` CTest subset. It covered the AArch64 record/contract bucket,
+including the target-instruction, target-record, prepared-scalar,
+compare/branch, scalar, memory-operand, module-identity, operand-identity,
+signature-metadata, frame-control, and data-identity tests.
 
-The update preserved historical inventories while changing future-direction
-language that could otherwise imply `codegen -> assembly text -> parse_asm ->
-encoder/object writer` as an accepted internal route.
-
-A follow-up tightening pass also aligned the remaining `codegen/*.md` rebuild
-guidance blocks for ALU, comparison, memory, calls, casts, FP, prologue,
-returns, variadic, atomics, intrinsics, i128, f128, globals, inline asm,
-asm-emitter, and emit surfaces so future work routes through structured target
-MIR and machine instruction nodes before `.s` printing or encoding/object
-consumers.
+No implementation files, test expectations, markdown roadmap files, `plan.md`,
+or source idea files were changed in this proof-only packet.
 
 ## Suggested Next
 
-Execute Step 5: add or run focused proof for the contract and implemented
-records. Prefer the supervisor-selected narrow backend proof; add tests only if
-there is an appropriate local pattern and no expectation downgrade is needed.
+Execute Step 6: Final Consistency Review. Compare the accepted diff against
+`ideas/open/211_aarch64_machine_instruction_node_contract.md` and verify the
+route does not preserve a `codegen -> asm text -> assembler parser` semantic
+handoff.
 
 ## Watchouts
 
@@ -40,16 +33,14 @@ there is an appropriate local pattern and no expectation downgrade is needed.
   spelling for target MIR/pre-node records; new tests should prefer
   `TargetMirRecord`, `MachineInstructionNode`, `EncoderInput`, or
   `ExternalAssemblerInput`.
-- This slice did not edit implementation `.cpp/.hpp` files or
-  `MACHINE_INSTRUCTION_NODE_CONTRACT.md`.
-- `BINARY_UTILS_CONTRACT.md` still records the current compatibility
-  text-first path as existing behavior, but now marks it as compatibility only,
-  not the accepted AArch64 MIR rebuild route.
-- Historical inventory sections still describe removed direct emission,
-  mnemonic selection, and parser behavior as history; the tightened text is in
-  future/rebuild guidance.
+- `test_after.log` is now the canonical proof log for Step 5 and contains the
+  exact build plus backend CTest output.
+- Disabled MIR trace tests remain reported as disabled by CTest; the backend
+  subset itself passed all run tests.
 - Module display labels remain display/diagnostic fields, not lookup authority.
 
 ## Proof
 
-`git diff --check` passed. Proof log: `test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+passed. CTest reported `100% tests passed, 0 tests failed out of 131`; proof
+log: `test_after.log`.
