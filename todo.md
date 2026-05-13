@@ -1,29 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.2a
-Current Step Title: Extract assembler `parser.cpp` To Markdown Artifact
+Current Step ID: Step 2.2b
+Current Step Title: Extract assembler `elf_writer.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.2a: Extract assembler `parser.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/assembler/parser.cpp` into
-`src/backend/mir/aarch64/assembler/parser.md` and removed the old `.cpp` from
-the live tree.
+Step 2.2b: Extract assembler `elf_writer.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/assembler/elf_writer.cpp` into
+`src/backend/mir/aarch64/assembler/elf_writer.md` and removed the old `.cpp`
+from the live tree.
 
-The markdown artifact records the old AArch64 assembler parser surface,
-including the `parse_asm` and `trim_asm` entry points, statement
-classification rules, operand splitting behavior, unused directive/data shape
-types, dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old AArch64 assembler ELF writer surface,
+including the private `write_elf_object` entry point, section/symbol/relocation
+staging records, recognized directive semantics, encoder relocation mapping,
+ELF64 object layout behavior, dependencies, hidden assumptions, and rebuild
+risks.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 2.2 by extracting
-`src/backend/mir/aarch64/assembler/elf_writer.cpp` to markdown and removing
-that old `.cpp` from the live tree, unless the supervisor chooses to extract
-the assembler module surface first.
+`src/backend/mir/aarch64/assembler/mod.cpp` to markdown and removing that old
+`.cpp` from the live tree.
 
 Step 2.2 covers these assembler parser/writer surfaces:
 `assembler/parser.cpp`, `assembler/elf_writer.cpp`, and
@@ -46,11 +46,12 @@ After Step 2.2, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- Step 2.2 has started with the assembler parser surface; continue within the
-  parser/writer lane rather than widening into encoder, linker, or top-level
-  module-entry files.
-- `parser.md` documents a line-oriented legacy parser. Treat it as a historical
-  contract for statement normalization, not as a complete AArch64 grammar.
+- Step 2.2 now has parser and ELF-writer artifacts; finish the assembler module
+  surface before widening into encoder, linker, or top-level module-entry
+  files.
+- `elf_writer.md` documents a best-effort relocatable ELF writer. Treat it as
+  historical staging behavior, not as proof that the built-in AArch64 assembler
+  path is production-ready.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
@@ -61,6 +62,9 @@ After Step 2.2, continue Step 2 through these bounded lanes:
   count it as live AArch64 backend behavior proof.
 - `parser.hpp` remains in the tree and still declares the historical parser
   entry points; deleting or replacing headers is outside this packet.
+- `assembler/mod.cpp` still carried the private declaration and call for
+  `write_elf_object` before this extraction lane; confirm its current staged
+  behavior when extracting it next.
 
 ## Proof
 
