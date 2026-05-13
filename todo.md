@@ -1,28 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4d
-Current Step Title: Extract linker `emit_static.cpp` To Markdown Artifact
+Current Step ID: Step 2.4e
+Current Step Title: Extract linker `input.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.4d: Extract linker `emit_static.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/linker/emit_static.cpp` into
-`src/backend/mir/aarch64/linker/emit_static.md` and removed the old `.cpp`
+Step 2.4e: Extract linker `input.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/linker/input.cpp` into
+`src/backend/mir/aarch64/linker/input.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old first static executable image surface,
-including the `emit_first_static_executable_image` entry point, minimal ELF64
-`ET_EXEC` layout, one read/execute `PT_LOAD` segment, fixed `.text` placement,
-validation behavior, dependencies on the first static link slice, assumptions,
+The markdown artifact records the old first static input-loading surface,
+including the `load_first_static_input_objects` entry point, binary file
+reading, AArch64 ELF object parsing, first-slice archive member selection,
+unresolved-symbol collection, omitted reference-linker behaviors, assumptions,
 and rebuild risks.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 2.4 by extracting
-`src/backend/mir/aarch64/linker/input.cpp` to markdown and removing that old
+`src/backend/mir/aarch64/linker/link.cpp` to markdown and removing that old
 `.cpp` from the live tree.
 
 Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
@@ -33,7 +33,7 @@ Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
 `assembler/encoder/system.cpp`, and `assembler/encoder/mod.cpp`.
 
 After Step 2.3, continue Step 2 through these bounded lanes:
-- Step 2.4: remaining linker surfaces: `linker/input.cpp`, `linker/link.cpp`,
+- Step 2.4: remaining linker surfaces: `linker/link.cpp`,
   `linker/plt_got.cpp`, `linker/reloc.cpp`, `linker/types.cpp`, and
   `linker/mod.cpp`.
 - Step 2.5: top-level module entry surface: `mod.cpp`.
@@ -41,10 +41,11 @@ After Step 2.3, continue Step 2 through these bounded lanes:
 ## Watchouts
 
 - Step 2.4 now has the linker ELF facade, dynamic executable emission,
-  shared-library emission, and first static executable image artifacts; do not
+  shared-library emission, first static executable image, and input-loading
+  artifacts; do not
   revisit the removed `linker/elf.cpp`, `linker/emit_dynamic.cpp`,
-  `linker/emit_shared.cpp`, or `linker/emit_static.cpp` unless the supervisor
-  opens a new packet.
+  `linker/emit_shared.cpp`, `linker/emit_static.cpp`, or `linker/input.cpp`
+  unless the supervisor opens a new packet.
 - `linker/emit_dynamic.md` documents the old dynamic executable emitter,
   including PLT/GOT, `.dynamic`, `.gnu.hash`, dynamic relocations, copy
   relocations, and TLS layout. Treat it as rebuild guidance, not as proof that
@@ -59,6 +60,11 @@ After Step 2.3, continue Step 2 through these bounded lanes:
   offset, text-only entry validation, and lack of section/dynamic/data
   segments. Treat it as rebuild guidance, not as proof that the live C++
   backend has a complete AArch64 static linker.
+- `linker/input.md` documents the old first static input loader, including
+  explicit object loading, one-pass archive member selection for currently
+  unresolved strong symbols, and omissions versus the reference Rust linker
+  input module. Treat it as rebuild guidance, not as proof that the live C++
+  backend has a complete AArch64 linker front door.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
