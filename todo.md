@@ -1,29 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.1g
-Current Step Title: Extract codegen `mod.cpp` To Markdown Artifact
+Current Step ID: Step 2.2a
+Current Step Title: Extract assembler `parser.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.1g: Extract codegen `mod.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/codegen/mod.cpp` into
-`src/backend/mir/aarch64/codegen/mod.md` and removed the old `.cpp` from the
-live tree.
+Step 2.2a: Extract assembler `parser.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/assembler/parser.cpp` into
+`src/backend/mir/aarch64/assembler/parser.md` and removed the old `.cpp` from
+the live tree.
 
-The markdown artifact records the old commented AArch64 codegen module surface,
-including its reference-module role, shard list, historical visibility notes,
-namespace-only dependency shape, hidden assumptions, and rebuild risks.
+The markdown artifact records the old AArch64 assembler parser surface,
+including the `parse_asm` and `trim_asm` entry points, statement
+classification rules, operand splitting behavior, unused directive/data shape
+types, dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
-Next coherent packet: start Step 2.2 by extracting the assembler parser/writer
-lane. A bounded first packet would archive
-`src/backend/mir/aarch64/assembler/parser.cpp` to markdown and remove that old
-`.cpp` from the live tree, unless the supervisor chooses a grouped
-parser/writer packet.
+Next coherent packet: continue Step 2.2 by extracting
+`src/backend/mir/aarch64/assembler/elf_writer.cpp` to markdown and removing
+that old `.cpp` from the live tree, unless the supervisor chooses to extract
+the assembler module surface first.
 
 Step 2.2 covers these assembler parser/writer surfaces:
 `assembler/parser.cpp`, `assembler/elf_writer.cpp`, and
@@ -46,11 +46,11 @@ After Step 2.2, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- Step 2.1's codegen extraction lane is now complete through the delegated
-  shard list; continue with assembler parser/writer extraction rather than
-  widening into encoder, linker, or top-level module-entry files.
-- `codegen/mod.cpp` was only a commented module index and namespace stub. Treat
-  `mod.md` as a shard map, not as a complete dependency graph or pass schedule.
+- Step 2.2 has started with the assembler parser surface; continue within the
+  parser/writer lane rather than widening into encoder, linker, or top-level
+  module-entry files.
+- `parser.md` documents a line-oriented legacy parser. Treat it as a historical
+  contract for statement normalization, not as a complete AArch64 grammar.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
@@ -59,9 +59,8 @@ After Step 2.2, continue Step 2 through these bounded lanes:
   instead of expanding Step 2.
 - The retargeted signature metadata test is artifact coverage only; do not
   count it as live AArch64 backend behavior proof.
-- Keep each remaining Step 2.1 codegen shard as a bounded descriptive
-  extraction packet unless the supervisor explicitly delegates a grouped
-  packet.
+- `parser.hpp` remains in the tree and still declares the historical parser
+  entry points; deleting or replacing headers is outside this packet.
 
 ## Proof
 
