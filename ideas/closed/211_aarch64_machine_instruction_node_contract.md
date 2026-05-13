@@ -1,7 +1,8 @@
 # AArch64 Machine Instruction Node Contract
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/closed/207_aarch64_target_register_and_instruction_record_core.md`
@@ -107,6 +108,14 @@ Assembly text is output, not the backend's internal semantic representation.
   parse back into operands.
 - Focused tests or compile proof cover at least representative construction or
   ownership of machine instruction nodes from existing target records.
+
+## Closure Notes
+
+Final review accepted the source idea as complete. The AArch64 machine
+instruction node contract is committed, implemented record surfaces classify
+structured machine-node ownership, roadmap artifacts route future work through
+structured nodes, and backend proof passed with no new regression-guard
+failures.
 
 ## Reviewer Reject Signals
 
