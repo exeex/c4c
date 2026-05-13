@@ -1,33 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.1a
-Current Step Title: Extract `cast_ops.cpp` To Markdown Artifact
+Current Step ID: Step 2.1b
+Current Step Title: Extract `atomics.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.1a: Extract `cast_ops.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/codegen/cast_ops.cpp` into
-`src/backend/mir/aarch64/codegen/cast_ops.md` and removed the old `.cpp`
+Step 2.1b: Extract `atomics.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/codegen/atomics.cpp` into
+`src/backend/mir/aarch64/codegen/atomics.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old scalar cast-lowering contract, including
-the shared `CastKind` classification routes, integer accumulator convention,
-FP/SIMD register-file bridges, width normalization rules, F128 soft-float
-delegation, dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old atomic lowering contract, including
+exclusive-loop RMW and compare-exchange shapes, fixed temporary-register
+conventions, load/store ordering instruction selection, fence mappings,
+dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
 Next coherent packet: stay within Step 2.1 and extract
-`src/backend/mir/aarch64/codegen/atomics.cpp` to a markdown artifact, then
+`src/backend/mir/aarch64/codegen/intrinsics.cpp` to a markdown artifact, then
 remove that old `.cpp` from the live tree.
 
 Continue the remaining codegen extraction lane through these old codegen
 surfaces before moving into assembler, encoder, linker, or module-entry files:
 
-- `atomics.cpp`
 - `intrinsics.cpp`
 - `i128_ops.cpp`
 - `f128.cpp`
@@ -55,16 +54,16 @@ After Step 2.1, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- `cast_ops.cpp` was a fully commented translation surface rather than live
+- `atomics.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived cast surface has several rebuild hazards: scalar floating casts
-  require `fmov` bridges between the integer accumulator and FP/SIMD registers;
-  signed narrow and signed 32-bit results need explicit sign-extension;
-  unsigned narrow and unsigned 32-bit results need masking or `mov w0, w0`
-  normalization; signed-to-float must extend narrow signed sources before
-  conversion; and F128 casts must stay on the soft-float route rather than this
-  scalar instruction body.
+- The archived atomics surface has several rebuild hazards: RMW operations
+  return the old loaded value, not the computed replacement; compare-exchange
+  has separate boolean-result and old-value-result modes; exclusive load/store
+  mnemonics must stay aligned with scalar width and register prefix; failure
+  exits require `clrex`; and signed atomic loads need explicit sign-extension.
+- The old compare-exchange path ignored failure ordering. A rebuild should make
+  that semantic choice explicit instead of inheriting the gap silently.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
