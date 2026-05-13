@@ -22,6 +22,8 @@ enum class OperandKind {
 };
 
 enum class RecordSurfaceKind {
+  // The target record core is data-only. Later codegen ideas may consume these
+  // records, but this layer must not imply selection, emission, or encoding.
   RecordOnly,
 };
 
@@ -51,6 +53,9 @@ enum class MemoryBaseKind {
 };
 
 enum class InstructionFamily {
+  // Families are intentionally broad record owners for later branch, scalar,
+  // memory, call, return, assembler, and object slices. They do not name
+  // concrete AArch64 opcodes.
   Branch,
   Scalar,
   Memory,

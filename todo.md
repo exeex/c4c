@@ -8,28 +8,28 @@ Current Step Title: Add Focused Tests And Documentation Notes
 
 ## Just Finished
 
-Completed `plan.md` Step 5 by adding target-local AArch64 instruction record
-containers under `src/backend/mir/aarch64/codegen/records.hpp` and `.cpp`.
+Completed `plan.md` Step 6 by adding focused final proof and documentation
+guardrails for the AArch64 target register and instruction record core.
 
 Work completed:
-- Added explicit record-only instruction families for branch, scalar, memory,
-  call, return, assembler, and object placeholder slices.
-- Reused Step 4 typed operand records inside instruction payloads so prepared
-  value ids, value names, frame slots, link names, block labels, and BIR type
-  facts can flow into later lowering work without parsing display strings.
-- Preserved BIR source facts only as record metadata, such as scalar binary/cast
-  opcodes, memory load/store kind, and call calling convention; no concrete
-  AArch64 opcode, assembly spelling, object output, or linker behavior was
-  selected.
-- Added `backend_aarch64_target_instruction_records` coverage and wired it into
-  the backend test set.
+- Added `backend_aarch64_target_record_core_contract` coverage proving a
+  prepared physical register converts into a typed AArch64 register and keeps
+  its prepared value id, value name, class, bank, expected view, and width
+  through target register, operand, scalar instruction, and memory records.
+- Covered deferred branch, call, return, assembler, and object instruction
+  families as explicit `RecordSurfaceKind::RecordOnly` containers.
+- Added `src/backend/mir/aarch64/codegen/records.md` guardrails documenting
+  branch, scalar, memory, call, return, assembler, and object behavior as
+  deferred record-only surfaces.
+- Added short header comments clarifying that this layer does not select
+  concrete AArch64 opcodes, emit assembly, encode objects, or imply linker
+  behavior.
 
 ## Suggested Next
 
-Step 6 packet: begin the next target-record slice by consuming these record-only
-instruction containers at the target-record boundary selected by the supervisor,
-without widening into assembly emission, object/linker output, or concrete
-instruction selection unless that step explicitly owns it.
+Lifecycle close/review handoff: the Step 6 runbook slice is complete. Ask the
+plan owner to decide whether to close, deactivate, or replace the active plan
+for `ideas/open/207_aarch64_target_register_and_instruction_record_core.md`.
 
 ## Watchouts
 
@@ -54,6 +54,9 @@ instruction selection unless that step explicitly owns it.
 - Instruction records remain `RecordSurfaceKind::RecordOnly`; even when they
   carry BIR source opcodes or calling convention metadata, that does not imply
   selected AArch64 opcodes or valid assembly/object output.
+- Step 6 added final contract documentation and proof only; it did not consume
+  target records from `module.cpp`, `emit.hpp`, assembler, object, or linker
+  surfaces.
 
 ## Proof
 
@@ -63,7 +66,7 @@ Ran:
 (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log
 ```
 
-Result: passed. New `backend_aarch64_target_instruction_records` is included
-and green. The delegated backend subset reported 118 executed tests, 0 failed.
+Result: passed. New `backend_aarch64_target_record_core_contract` is included
+and green. The delegated backend subset reported 119 executed tests, 0 failed.
 
 Proof log: `test_after.log`.

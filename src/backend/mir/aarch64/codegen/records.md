@@ -1,0 +1,28 @@
+# AArch64 Target Record Core
+
+The AArch64 target record core is a typed data surface. It preserves prepared
+register, value, frame, symbol, block, and source BIR facts for later lowering
+without choosing concrete AArch64 instructions or formatting output.
+
+Deferred behavior guardrails:
+
+- Branch records carry block labels and optional condition operands only; branch
+  lowering, layout decisions, and relocation choices are deferred.
+- Scalar records may keep source BIR opcode metadata; concrete AArch64 opcode
+  selection and flag behavior are deferred.
+- Memory records carry prepared address facts and base/offset shape hints only;
+  load/store instruction choice, addressing legality, and spill code are
+  deferred.
+- Call records carry callee, argument, result, and calling convention metadata;
+  AAPCS64 argument assignment, call sequence emission, and variadic policy are
+  deferred.
+- Return records carry optional return values only; epilogue construction and
+  return instruction emission are deferred.
+- Assembler records are placeholders for operands and side-effect flags only;
+  assembly text, inline-asm parsing, and textual emission are deferred.
+- Object records carry symbol, frame-slot, value, and type facts only; object
+  encoding, relocation writing, and linker behavior are deferred.
+
+`RecordSurfaceKind::RecordOnly` is the contract for this layer. New fields here
+should keep prepared identities structured and typed instead of parsing rendered
+names or growing `module/module.cpp`.
