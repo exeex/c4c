@@ -73,10 +73,10 @@ int sign_and_zero_extend_records_preserve_source_and_result_facts() {
       std::get_if<aarch64_codegen::ScalarInstructionRecord>(&sext_instruction.payload);
   if (scalar == nullptr ||
       sext_instruction.family != aarch64_codegen::InstructionFamily::Scalar ||
-      sext_instruction.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
+      sext_instruction.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
       scalar->source_cast_opcode != bir::CastOpcode::SExt || scalar->source_binary_opcode ||
       !scalar->scalar_cast.has_value() || scalar->scalar_alu.has_value()) {
-    return fail("expected sign extension to be a scalar record-only cast instruction");
+    return fail("expected sign extension to be a scalar machine-node cast instruction");
   }
 
   const auto& cast = *scalar->scalar_cast;

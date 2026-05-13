@@ -73,7 +73,7 @@ aarch64_codegen::ScalarCastRecord cast_record(bir::CastOpcode opcode,
   };
 }
 
-int scalar_records_are_record_only_and_preserve_bir_prepared_identity() {
+int scalar_records_preserve_bir_prepared_identity_and_make_machine_nodes() {
   const auto scalar_alu = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(alu_record(bir::BinaryOpcode::Add)));
   const auto scalar_cast = aarch64_codegen::make_scalar_instruction(
@@ -86,10 +86,10 @@ int scalar_records_are_record_only_and_preserve_bir_prepared_identity() {
       std::get_if<aarch64_codegen::ScalarInstructionRecord>(&scalar_cast.payload);
   if (scalar_alu.family != aarch64_codegen::InstructionFamily::Scalar ||
       scalar_cast.family != aarch64_codegen::InstructionFamily::Scalar ||
-      scalar_alu.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
-      scalar_cast.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
+      scalar_alu.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      scalar_cast.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
       alu_payload == nullptr || cast_payload == nullptr) {
-    return fail("expected scalar ALU and cast instructions to remain record-only scalar payloads");
+    return fail("expected scalar ALU and cast instructions to be machine-node wrappers");
   }
 
   if (!alu_payload->scalar_alu.has_value() || alu_payload->scalar_cast.has_value() ||
@@ -213,10 +213,11 @@ int scalar_records_do_not_own_other_instruction_families() {
     return fail("expected scalar records not to own memory, call, return, assembler, or object payloads");
   }
   if (aarch64_codegen::instruction_family_name(scalar_alu.family) != "scalar" ||
-      aarch64_codegen::record_surface_kind_name(scalar_alu.surface) != "record_only" ||
+      aarch64_codegen::record_surface_kind_name(scalar_alu.surface) != "machine_instruction_node" ||
       aarch64_codegen::instruction_family_name(scalar_cast.family) != "scalar" ||
-      aarch64_codegen::record_surface_kind_name(scalar_cast.surface) != "record_only") {
-    return fail("expected scalar records to expose only generic scalar record diagnostics");
+      aarch64_codegen::record_surface_kind_name(scalar_cast.surface) !=
+          "machine_instruction_node") {
+    return fail("expected scalar wrappers to expose machine-node diagnostics");
   }
 
   return 0;
@@ -225,7 +226,7 @@ int scalar_records_do_not_own_other_instruction_families() {
 }  // namespace
 
 int main() {
-  if (const int status = scalar_records_are_record_only_and_preserve_bir_prepared_identity();
+  if (const int status = scalar_records_preserve_bir_prepared_identity_and_make_machine_nodes();
       status != 0) {
     return status;
   }

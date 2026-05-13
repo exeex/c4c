@@ -96,11 +96,12 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
 
   if (branch.family != aarch64_codegen::InstructionFamily::Branch ||
       aarch64_codegen::instruction_family_name(branch.family) != "branch" ||
-      branch.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
+      branch.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      !aarch64_codegen::is_structured_downstream_surface(branch.surface) ||
       branch_payload == nullptr || !branch_payload->conditional ||
       branch_payload->target.block_label != c4c::BlockLabelId{7} ||
       branch_payload->target.condition_value_id != prepare::PreparedValueId{10}) {
-    return fail("expected branch instruction to remain a typed record-only target");
+    return fail("expected branch instruction to be a typed machine-node handoff");
   }
 
   if (scalar_payload == nullptr || scalar_payload->result_value_id != prepare::PreparedValueId{11} ||
@@ -172,7 +173,7 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
 
   if (call_payload == nullptr ||
       aarch64_codegen::instruction_family_name(call.family) != "call" ||
-      call.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
+      call.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
       !call_payload->direct_callee.has_value() ||
       call_payload->direct_callee->link_name != c4c::LinkNameId{4} ||
       call_payload->arguments.size() != 1 || !call_payload->result.has_value()) {
@@ -181,16 +182,20 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   if (return_payload == nullptr ||
       aarch64_codegen::instruction_family_name(ret.family) != "return" ||
       !return_payload->value.has_value() || return_payload->value_type != bir::TypeKind::I64) {
-    return fail("expected return family to be an explicit record-only placeholder");
+    return fail("expected return family to be an explicit machine-node placeholder");
   }
   if (assembler_payload == nullptr ||
       aarch64_codegen::instruction_family_name(assembler.family) != "assembler" ||
+      assembler.surface != aarch64_codegen::RecordSurfaceKind::ExternalAssemblerInput ||
+      !aarch64_codegen::is_text_first_external_input_surface(assembler.surface) ||
       assembler_payload->operands.size() != 1 || !assembler_payload->has_inline_asm_payload ||
       !assembler_payload->side_effects) {
-    return fail("expected assembler family to be explicit without assembly text selection");
+    return fail("expected assembler family to stay external-input, not a semantic handoff");
   }
   if (object_payload == nullptr ||
       aarch64_codegen::instruction_family_name(object.family) != "object" ||
+      object.surface != aarch64_codegen::RecordSurfaceKind::EncoderInput ||
+      !aarch64_codegen::is_structured_downstream_surface(object.surface) ||
       !object_payload->symbol.has_value() ||
       object_payload->symbol->link_name != c4c::LinkNameId{5} ||
       !object_payload->value.has_value()) {

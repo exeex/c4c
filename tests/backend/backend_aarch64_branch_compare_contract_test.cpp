@@ -30,7 +30,7 @@ aarch64_codegen::BranchTargetOperand target(c4c::FunctionNameId function_name,
   };
 }
 
-int branch_compare_records_remain_record_only() {
+int branch_compare_records_remain_target_mir_record() {
   const auto target_pair = aarch64_codegen::BranchTargetPairRecord{
       .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
       .true_target = target(c4c::FunctionNameId{3},
@@ -98,10 +98,10 @@ int branch_compare_records_remain_record_only() {
   const auto* branch_payload =
       std::get_if<aarch64_codegen::BranchInstructionRecord>(&branch.payload);
   if (branch.family != aarch64_codegen::InstructionFamily::Branch ||
-      branch.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
+      branch.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
       branch_payload == nullptr || !branch_payload->target_pair.has_value() ||
       !branch_payload->condition_record.has_value()) {
-    return fail("expected branch compare instruction to remain a record-only branch payload");
+    return fail("expected branch compare instruction to be a machine-node branch payload");
   }
 
   const auto& recorded_condition = *branch_payload->condition_record;
@@ -110,7 +110,7 @@ int branch_compare_records_remain_record_only() {
       !recorded_condition.predicate.has_value() ||
       !recorded_condition.compare_operands.has_value() ||
       !recorded_condition.compare_branch_candidate.has_value()) {
-    return fail("expected fused compare condition to keep structured record-only metadata");
+    return fail("expected fused compare condition to keep structured target MIR metadata");
   }
 
   const auto& recorded_candidate = *recorded_condition.compare_branch_candidate;
@@ -145,8 +145,8 @@ int branch_compare_records_remain_record_only() {
 
 int diagnostic_names_do_not_claim_lowering_ownership() {
   if (aarch64_codegen::record_surface_kind_name(aarch64_codegen::RecordSurfaceKind::RecordOnly) !=
-      std::string_view{"record_only"}) {
-    return fail("expected branch compare surfaces to advertise record-only ownership");
+      std::string_view{"target_mir_record"}) {
+    return fail("expected branch compare surfaces to advertise target MIR ownership");
   }
   if (aarch64_codegen::instruction_family_name(aarch64_codegen::InstructionFamily::Branch) !=
       std::string_view{"branch"}) {
@@ -174,7 +174,7 @@ int diagnostic_names_do_not_claim_lowering_ownership() {
 }  // namespace
 
 int main() {
-  if (const int status = branch_compare_records_remain_record_only(); status != 0) {
+  if (const int status = branch_compare_records_remain_target_mir_record(); status != 0) {
     return status;
   }
   if (const int status = diagnostic_names_do_not_claim_lowering_ownership(); status != 0) {

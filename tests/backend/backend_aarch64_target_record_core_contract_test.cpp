@@ -100,7 +100,7 @@ int prepared_register_identity_survives_target_record_layers() {
   return 0;
 }
 
-int deferred_family_records_remain_record_only_surfaces() {
+int instruction_families_advertise_structured_downstream_surfaces() {
   const auto reg_operand =
       aarch64_codegen::make_register_operand(converted_prepared_register_operand());
   const auto branch = aarch64_codegen::make_branch_instruction(
@@ -144,12 +144,19 @@ int deferred_family_records_remain_record_only_surfaces() {
           .object_type = bir::TypeKind::I64,
       });
 
-  if (branch.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
-      call.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
-      ret.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
-      assembler.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
-      object.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly) {
-    return fail("expected all deferred instruction families to stay record-only");
+  if (branch.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      call.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      ret.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      assembler.surface != aarch64_codegen::RecordSurfaceKind::ExternalAssemblerInput ||
+      object.surface != aarch64_codegen::RecordSurfaceKind::EncoderInput) {
+    return fail("expected instruction surfaces to identify their downstream contract");
+  }
+  if (!aarch64_codegen::is_structured_downstream_surface(branch.surface) ||
+      !aarch64_codegen::is_structured_downstream_surface(call.surface) ||
+      !aarch64_codegen::is_structured_downstream_surface(ret.surface) ||
+      !aarch64_codegen::is_text_first_external_input_surface(assembler.surface) ||
+      !aarch64_codegen::is_structured_downstream_surface(object.surface)) {
+    return fail("expected instruction surfaces to separate machine nodes from text input");
   }
   if (aarch64_codegen::instruction_family_name(branch.family) != "branch" ||
       aarch64_codegen::instruction_family_name(call.family) != "call" ||
@@ -168,7 +175,7 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = deferred_family_records_remain_record_only_surfaces(); status != 0) {
+  if (const int status = instruction_families_advertise_structured_downstream_surfaces(); status != 0) {
     return status;
   }
   return 0;

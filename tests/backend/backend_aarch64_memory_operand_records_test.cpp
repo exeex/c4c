@@ -120,7 +120,7 @@ int symbol_and_string_memory_records_keep_structured_identity() {
   return 0;
 }
 
-int pointer_and_deferred_memory_records_are_explicit_record_only_data() {
+int pointer_and_deferred_memory_records_are_explicit_target_mir_record_data() {
   const auto pointer = aarch64_codegen::make_memory_operand(
       aarch64_codegen::MemoryOperand{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
@@ -258,13 +258,13 @@ int memory_instruction_records_do_not_select_or_emit_load_store_behavior() {
   const auto* memory =
       std::get_if<aarch64_codegen::MemoryInstructionRecord>(&instruction.payload);
   if (instruction.family != aarch64_codegen::InstructionFamily::Memory ||
-      instruction.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
+      instruction.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
       memory == nullptr ||
       aarch64_codegen::memory_instruction_kind_name(memory->memory_kind) != "store" ||
       memory->address.function_name != c4c::FunctionNameId{15} ||
       memory->address.stored_value_id != prepare::PreparedValueId{34} ||
       !memory->value.has_value()) {
-    return fail("expected memory instruction record to preserve record-only store metadata");
+    return fail("expected memory instruction node to preserve target MIR store metadata");
   }
   if (std::holds_alternative<aarch64_codegen::CallInstructionRecord>(instruction.payload) ||
       std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(instruction.payload) ||
@@ -286,7 +286,7 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = pointer_and_deferred_memory_records_are_explicit_record_only_data();
+  if (const int status = pointer_and_deferred_memory_records_are_explicit_target_mir_record_data();
       status != 0) {
     return status;
   }

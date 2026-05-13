@@ -1,56 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/211_aarch64_machine_instruction_node_contract.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Commit The Machine Instruction Node Contract
+Current Step ID: Step 3
+Current Step Title: Align Implemented Record Surfaces
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` added
-`src/backend/mir/aarch64/MACHINE_INSTRUCTION_NODE_CONTRACT.md` as the
-canonical structured AArch64 machine-instruction-node boundary.
+Step 3 of `plan.md` aligned the implemented AArch64 codegen record surface
+with `MACHINE_INSTRUCTION_NODE_CONTRACT.md`.
 
-The contract defines:
+`RecordSurfaceKind` now distinguishes target MIR records, structured machine
+instruction nodes, printer output, structured encoder input, and external
+assembler input. Existing `RecordOnly` initializers remain as a compatibility
+alias for target MIR/pre-node records.
 
-- opcode or instruction-family identity, with mnemonic strings explicitly not
-  serving as semantic node identity
-- typed operand categories for registers, immediates, memory, symbols, branch
-  targets, conditions/predicates, prepared values, frame slots, and data
-  references
-- source metadata that ties nodes back to BIR ids, prepared facts, function
-  and block identity, instruction indexes, and family-specific source records
-- def/use/clobber/side-effect metadata needed by later validation, scheduling,
-  structured peepholes, printers, encoders, and object paths
-- the separation between target MIR records, machine instruction nodes, `.s`
-  printer output, structured encoder/object input, and external assembler
-  parser input
+The instruction record factories now mark branch, scalar, memory, call, and
+return wrappers as structured downstream machine-instruction-node records.
+Assembler wrappers are marked as external assembler input, and object wrappers
+are marked as structured encoder input. Payload records still preserve prepared
+ids, BIR opcodes, typed operands, branch targets, memory facts, call facts, and
+data/symbol identity without adding selection, printing, encoding, object
+writing, linking, or text parsing.
 
-It cites the implemented audited surfaces from Step 1:
-`BACKEND_ENTRY_CONTRACT.md`, `module/module.hpp`, `abi/abi.hpp`,
-`codegen/records.hpp`, and the text-first compatibility/legacy surfaces in
-`codegen/emit.hpp`, `assembler/mod.hpp`, `assembler/parser.hpp`,
-`assembler/types.hpp`, and `assembler/encoder/mod.hpp`.
+Focused backend record tests were updated to cover the new surface spellings
+and helper predicates.
 
 ## Suggested Next
 
-Execute Step 3: align implemented AArch64 record surfaces with the new
-machine-instruction-node contract. Focus on `codegen/records.hpp`,
-`codegen/records.cpp`, `abi/`, and `module/` without adding instruction
-selection, assembly printing, encoding, object writing, or linker behavior.
+Execute Step 4: align AArch64 markdown roadmap artifacts with the structured
+machine-node pipeline. Keep `.s` printing and external assembler parsing as
+consumers or external-input paths, not internal semantic handoff routes.
 
 ## Watchouts
 
-- Step 3 should treat the new contract as documentation authority and keep
-  implementation edits narrow.
-- Preserve existing prepared ids, target records, and typed register operands;
-  the main issue is clarifying whether each record is target MIR, machine node,
-  printer output, or encoder input.
-- Do not convert display spellings in `module/` into lookup authority.
-- Do not let `codegen -> asm text -> parse_asm -> encoder` survive as an
-  internal semantic path.
+- `RecordSurfaceKind::RecordOnly` remains available only as a compatibility
+  spelling for target MIR/pre-node records; new tests should prefer
+  `TargetMirRecord`, `MachineInstructionNode`, `EncoderInput`, or
+  `ExternalAssemblerInput`.
+- This slice did not edit the text-first assembler/parser/encoder
+  implementation surfaces; Step 4 should handle roadmap markdown language for
+  those paths.
+- Module display labels remain display/diagnostic fields and were not promoted
+  as lookup authority.
 
 ## Proof
 
-`git diff --check` passed. Proof log: `test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+passed. Proof log: `test_after.log`.

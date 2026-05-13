@@ -24,10 +24,31 @@ std::string_view operand_kind_name(OperandKind kind) {
 
 std::string_view record_surface_kind_name(RecordSurfaceKind kind) {
   switch (kind) {
-    case RecordSurfaceKind::RecordOnly:
-      return "record_only";
+    case RecordSurfaceKind::TargetMirRecord:
+      return "target_mir_record";
+    case RecordSurfaceKind::MachineInstructionNode:
+      return "machine_instruction_node";
+    case RecordSurfaceKind::PrinterOutput:
+      return "printer_output";
+    case RecordSurfaceKind::EncoderInput:
+      return "encoder_input";
+    case RecordSurfaceKind::ExternalAssemblerInput:
+      return "external_assembler_input";
   }
   return "unknown";
+}
+
+bool is_target_mir_record_surface(RecordSurfaceKind kind) {
+  return kind == RecordSurfaceKind::TargetMirRecord;
+}
+
+bool is_structured_downstream_surface(RecordSurfaceKind kind) {
+  return kind == RecordSurfaceKind::MachineInstructionNode ||
+         kind == RecordSurfaceKind::EncoderInput;
+}
+
+bool is_text_first_external_input_surface(RecordSurfaceKind kind) {
+  return kind == RecordSurfaceKind::ExternalAssemblerInput;
 }
 
 std::string_view register_operand_role_name(RegisterOperandRole role) {
@@ -1050,7 +1071,7 @@ OperandRecord make_memory_operand(MemoryOperand operand) {
 InstructionRecord make_branch_instruction(BranchInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Branch,
-      .surface = RecordSurfaceKind::RecordOnly,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
       .payload = instruction,
   };
 }
@@ -1058,7 +1079,7 @@ InstructionRecord make_branch_instruction(BranchInstructionRecord instruction) {
 InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Scalar,
-      .surface = RecordSurfaceKind::RecordOnly,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
       .payload = instruction,
   };
 }
@@ -1088,7 +1109,7 @@ ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cas
 InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Memory,
-      .surface = RecordSurfaceKind::RecordOnly,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
       .payload = instruction,
   };
 }
@@ -1096,7 +1117,7 @@ InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
 InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Call,
-      .surface = RecordSurfaceKind::RecordOnly,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
       .payload = instruction,
   };
 }
@@ -1104,7 +1125,7 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
 InstructionRecord make_return_instruction(ReturnInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Return,
-      .surface = RecordSurfaceKind::RecordOnly,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
       .payload = instruction,
   };
 }
@@ -1112,7 +1133,7 @@ InstructionRecord make_return_instruction(ReturnInstructionRecord instruction) {
 InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Assembler,
-      .surface = RecordSurfaceKind::RecordOnly,
+      .surface = RecordSurfaceKind::ExternalAssemblerInput,
       .payload = instruction,
   };
 }
@@ -1120,7 +1141,7 @@ InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruct
 InstructionRecord make_object_instruction(ObjectInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Object,
-      .surface = RecordSurfaceKind::RecordOnly,
+      .surface = RecordSurfaceKind::EncoderInput,
       .payload = instruction,
   };
 }

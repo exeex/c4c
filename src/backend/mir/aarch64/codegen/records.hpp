@@ -22,9 +22,18 @@ enum class OperandKind {
 };
 
 enum class RecordSurfaceKind {
-  // The target record core is data-only. Later codegen ideas may consume these
-  // records, but this layer must not imply selection, emission, or encoding.
-  RecordOnly,
+  // Target MIR records snapshot prepared facts before instruction selection.
+  TargetMirRecord,
+  // Structured downstream instruction records; not assembly text.
+  MachineInstructionNode,
+  // Human/debug printer output records.
+  PrinterOutput,
+  // Structured records suitable for a future encoder/object consumer.
+  EncoderInput,
+  // User/tool-provided assembly input; not an internal codegen handoff.
+  ExternalAssemblerInput,
+  // Compatibility spelling for older record-only target MIR initializers.
+  RecordOnly = TargetMirRecord,
 };
 
 enum class RegisterOperandRole {
@@ -458,6 +467,9 @@ struct InstructionRecord {
 
 [[nodiscard]] std::string_view operand_kind_name(OperandKind kind);
 [[nodiscard]] std::string_view record_surface_kind_name(RecordSurfaceKind kind);
+[[nodiscard]] bool is_target_mir_record_surface(RecordSurfaceKind kind);
+[[nodiscard]] bool is_structured_downstream_surface(RecordSurfaceKind kind);
+[[nodiscard]] bool is_text_first_external_input_surface(RecordSurfaceKind kind);
 [[nodiscard]] std::string_view register_operand_role_name(RegisterOperandRole role);
 [[nodiscard]] std::string_view immediate_kind_name(ImmediateKind kind);
 [[nodiscard]] std::string_view memory_base_kind_name(MemoryBaseKind kind);

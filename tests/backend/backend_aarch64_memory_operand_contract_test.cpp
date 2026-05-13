@@ -167,7 +167,7 @@ int memory_instruction_records_do_not_select_or_emit() {
   const auto* payload =
       std::get_if<aarch64_codegen::MemoryInstructionRecord>(&memory_instruction.payload);
   if (memory_instruction.family != aarch64_codegen::InstructionFamily::Memory ||
-      memory_instruction.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
+      memory_instruction.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
       payload == nullptr ||
       aarch64_codegen::memory_instruction_kind_name(payload->memory_kind) != "load" ||
       payload->address.pointer_value_id != prepare::PreparedValueId{33} ||

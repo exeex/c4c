@@ -77,9 +77,9 @@ int add_and_sub_records_preserve_bir_and_prepared_value_facts() {
   const auto* scalar =
       std::get_if<aarch64_codegen::ScalarInstructionRecord>(&add_instruction.payload);
   if (scalar == nullptr || add_instruction.family != aarch64_codegen::InstructionFamily::Scalar ||
-      add_instruction.surface != aarch64_codegen::RecordSurfaceKind::RecordOnly ||
+      add_instruction.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
       scalar->source_binary_opcode != bir::BinaryOpcode::Add || !scalar->scalar_alu.has_value()) {
-    return fail("expected add to be a scalar record-only instruction with ALU payload");
+    return fail("expected add to be a scalar machine-node instruction with ALU payload");
   }
 
   const auto& alu = *scalar->scalar_alu;

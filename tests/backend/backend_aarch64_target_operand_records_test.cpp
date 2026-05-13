@@ -115,7 +115,7 @@ int prepared_value_immediate_frame_and_symbol_operands_are_structured() {
   return 0;
 }
 
-int branch_and_memory_operands_are_record_only_surfaces() {
+int branch_and_memory_operands_are_target_mir_record_surfaces() {
   const auto branch = aarch64_codegen::make_branch_target_operand(
       aarch64_codegen::BranchTargetOperand{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
@@ -147,14 +147,14 @@ int branch_and_memory_operands_are_record_only_surfaces() {
   const auto* target = std::get_if<aarch64_codegen::BranchTargetOperand>(&branch.payload);
   const auto* mem = std::get_if<aarch64_codegen::MemoryOperand>(&memory.payload);
   if (target == nullptr ||
-      aarch64_codegen::record_surface_kind_name(target->surface) != "record_only" ||
+      aarch64_codegen::record_surface_kind_name(target->surface) != "target_mir_record" ||
       target->block_label != c4c::BlockLabelId{11} ||
       target->condition_value_id != prepare::PreparedValueId{25}) {
-    return fail("expected branch target operand to be a structured record-only surface");
+    return fail("expected branch target operand to be a structured target MIR surface");
   }
   if (mem == nullptr || aarch64_codegen::memory_base_kind_name(mem->base_kind) != "frame_slot" ||
       aarch64_codegen::memory_operand_support_kind_name(mem->support) != "prepared" ||
-      aarch64_codegen::record_surface_kind_name(mem->surface) != "record_only" ||
+      aarch64_codegen::record_surface_kind_name(mem->surface) != "target_mir_record" ||
       mem->function_name != c4c::FunctionNameId{3} ||
       mem->block_label != c4c::BlockLabelId{13} || mem->instruction_index != 4 ||
       mem->stored_value_id != prepare::PreparedValueId{24} ||
@@ -162,7 +162,7 @@ int branch_and_memory_operands_are_record_only_surfaces() {
       mem->frame_slot_id != prepare::PreparedFrameSlotId{5} ||
       mem->pointer_value_id != prepare::PreparedValueId{26} || !mem->is_volatile ||
       !mem->can_use_base_plus_offset) {
-    return fail("expected memory operand to retain prepared address fields as record-only data");
+    return fail("expected memory operand to retain prepared address fields as target MIR data");
   }
   return 0;
 }
@@ -177,7 +177,7 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = branch_and_memory_operands_are_record_only_surfaces(); status != 0) {
+  if (const int status = branch_and_memory_operands_are_target_mir_record_surfaces(); status != 0) {
     return status;
   }
   return 0;
