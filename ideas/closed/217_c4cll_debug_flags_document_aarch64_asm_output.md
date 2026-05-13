@@ -1,7 +1,8 @@
 # c4cll Debug Flags Document AArch64 ASM Output
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/closed/216_aarch64_machine_node_asm_printer_external_smoke.md`
@@ -69,6 +70,18 @@ output-file convention, and smoke-test workflow.
   semantic bridge into an internal assembler or encoder.
 - Existing HIR/LIR/BIR/MIR debug guidance remains intact except where it must
   be clarified to place the new `.s` route.
+
+## Closure Evidence
+
+- `.codex/skills/c4cll-debug-flags/SKILL.md` documents
+  `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s`.
+- The examples use
+  `tests/backend/case/aarch64_return_zero_smoke.c` and the external
+  `aarch64-linux-gnu-as` plus `clang --target=aarch64-linux-gnu` workflow.
+- Focused route proof
+  `ctest --test-dir build -j --output-on-failure -R 'backend_cli_aarch64_asm'`
+  passed 2/2.
+- Diff whitespace proof passed for the debug-flags skill and `todo.md`.
 
 ## Reviewer Reject Signals
 
