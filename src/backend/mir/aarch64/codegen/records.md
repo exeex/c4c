@@ -8,6 +8,15 @@ Deferred behavior guardrails:
 
 - Branch records carry block labels and optional condition operands only; branch
   lowering, layout decisions, and relocation choices are deferred.
+- Branch/compare records preserve `BlockLabelId`, `PreparedValueId`,
+  `ValueNameId`, BIR predicate, type, operand, and fusion-candidate metadata.
+  They distinguish materialized boolean conditions, fused compare-and-branch
+  candidates, and non-fusable compare facts without choosing `cmp`, `cset`,
+  `b.cond`, `cbz`, `cbnz`, `tbz`, `tbnz`, or any other concrete opcode.
+- Branch target pairs and compare candidates are structured ids plus source
+  facts only. Assembly mnemonics, condition-code spelling, branch relaxation,
+  encoding width, relocation records, object writing, and linker behavior are
+  outside this layer.
 - Scalar records may keep source BIR opcode metadata; concrete AArch64 opcode
   selection and flag behavior are deferred.
 - Memory records carry prepared address facts and base/offset shape hints only;

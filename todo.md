@@ -8,43 +8,34 @@ Current Step Title: Document Guardrails And Run Backend Proof
 
 ## Just Finished
 
-Completed Step 4 from `plan.md`: modeled compare-backed branch candidates as
-record-only metadata without selecting concrete AArch64 opcodes.
+Completed Step 5 from `plan.md`: documented branch/compare record-only
+guardrails and added contract proof for the deferred lowering boundary.
 
 Concrete work completed:
-- Added `BranchCompareCandidateKind` and `BranchCompareCandidateRecord` so
-  materialized-bool conditions, fused compare-and-branch candidates, and
-  non-fusable compare facts are distinguishable in the target record surface.
-- Extended prepared conditional branch conversion to populate candidate records
-  with condition `PreparedValueId` / `ValueNameId`, predicate/type facts,
-  compare operands, target pairs, and the `can_fuse_with_branch` decision.
-- Added focused `backend_aarch64_compare_branch_candidate_records` coverage for
-  materialized-bool, fused-compare, non-fusable-compare, immediate operand, and
-  unsupported-predicate cases.
-- Extended `backend_aarch64_prepared_branch_records` assertions to prove the
-  prepared conversion keeps the candidate metadata attached to condition
-  records.
+- Extended `src/backend/mir/aarch64/codegen/records.md` with branch/compare
+  guardrails for structured ids, predicates, operand facts, materialized bool
+  conditions, fused compare candidates, non-fusable compare facts, and deferred
+  opcode/assembly/encoding/object/linker boundaries.
+- Added `backend_aarch64_branch_compare_contract` to prove branch/compare
+  records stay `RecordOnly`, preserve structured `BlockLabelId`,
+  `PreparedValueId`, `ValueNameId`, BIR predicate/type/source operand facts,
+  and keep diagnostic names generic rather than concrete AArch64 mnemonics.
+- Confirmed no lowering, assembly text, concrete opcode selection, encoding,
+  object emission, linker behavior, or disallowed implementation files were
+  touched.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: document the branch/compare record-only
-guardrails and add or extend contract proof that these surfaces do not own
-assembly text, concrete opcode selection, encoding, object emission, or other
-lowering behavior.
+Hand off to the supervisor/plan owner for lifecycle review and close decision
+for `ideas/open/208_aarch64_branch_compare_target_mir_records.md`.
 
 ## Watchouts
 
-- Step 4 remains record-only. No `cmp`, `cset`, `b.cond`, `cbz`, `cbnz`,
-  `tbz`, `tbnz`, assembler text, object emission, or opcode selection was
-  introduced.
-- Named BIR compare operands now require matching prepared value homes to
-  preserve `PreparedValueId` / `ValueNameId`; immediate compare operands remain
-  valid without a prepared value id.
-- `BranchCompareCandidateKind::NonFusableCompare` intentionally preserves valid
-  compare facts when prepared analysis says they should not be fused with the
-  branch.
-- Unsupported/non-compare predicates still fail closed with
-  `PreparedBranchRecordError::UnsupportedComparePredicate`.
+- This completes the runbook steps, but plan exhaustion is separate from source
+  idea completion; the supervisor/plan owner owns the close decision.
+- The branch/compare surface is still record-only. Later opcode selection,
+  assembly emission, encoding, object emission, and linker work should consume
+  these records in a separate idea rather than expanding this plan.
 
 ## Proof
 
@@ -52,6 +43,6 @@ lowering behavior.
 (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log
 ```
 
-Result: passed. Backend subset reported 122 tests passed, 0 failed; new
-`backend_aarch64_compare_branch_candidate_records` is included and green.
+Result: passed. Backend subset reported 123 tests passed, 0 failed; new
+`backend_aarch64_branch_compare_contract` is included and green.
 Proof log: `test_after.log`.
