@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/207_aarch64_target_register_and_instruction_record_core.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Target Instruction Record Containers
+Current Step ID: 6
+Current Step Title: Add Focused Tests And Documentation Notes
 
 # Current Packet
 
