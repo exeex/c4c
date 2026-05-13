@@ -167,15 +167,31 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                                   prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot,
                               .storage_name = local_slot_name,
                           },
+                          prepare::PreparedParallelCopyMove{
+                              .join_transfer_index = 0,
+                              .edge_transfer_index = 2,
+                              .source_value =
+                                  bir::Value::named(bir::TypeKind::I32, "destination.value"),
+                              .destination_value =
+                                  bir::Value::named(bir::TypeKind::I32, "source.value"),
+                              .carrier_kind =
+                                  prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot,
+                              .storage_name = local_slot_name,
+                          },
                       },
                   .steps =
                       {
                           prepare::PreparedParallelCopyStep{
-                              .kind = prepare::PreparedParallelCopyStepKind::Move,
+                              .kind = prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp,
                               .move_index = 0,
                           },
+                          prepare::PreparedParallelCopyStep{
+                              .kind = prepare::PreparedParallelCopyStepKind::Move,
+                              .move_index = 1,
+                              .uses_cycle_temp_source = true,
+                          },
                       },
-                  .has_cycle = false,
+                  .has_cycle = true,
               },
           },
   });
@@ -220,6 +236,17 @@ prepare::PreparedBirModule prepared_frame_control_module() {
 
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 32,
+                  .function_name = function_name,
+                  .value_name = destination_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = 11,
+                  .offset_bytes = std::size_t{32},
+              },
+          },
       .move_bundles =
           {
               prepare::PreparedMoveBundle{
@@ -276,12 +303,31 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                               .block_index = 3,
                               .instruction_index = 0,
                               .source_parallel_copy_step_index = std::size_t{0},
-                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .op_kind =
+                                  prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp,
                               .authority_kind =
                                   prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
                               .source_parallel_copy_predecessor_label = left_label,
                               .source_parallel_copy_successor_label = join_label,
                               .reason = "out-of-ssa",
+                          },
+                          prepare::PreparedMoveResolution{
+                              .from_value_id = 32,
+                              .to_value_id = 31,
+                              .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::StackSlot,
+                              .destination_stack_offset_bytes = std::size_t{32},
+                              .block_index = 3,
+                              .instruction_index = 0,
+                              .uses_cycle_temp_source = true,
+                              .source_parallel_copy_step_index = std::size_t{1},
+                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .authority_kind =
+                                  prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                              .source_parallel_copy_predecessor_label = left_label,
+                              .source_parallel_copy_successor_label = join_label,
+                              .reason = "out-of-ssa cycle",
                           },
                       },
               },
@@ -459,7 +505,7 @@ int records_preserve_frame_control_call_and_move_identity() {
     return fail("expected call record to preserve structured call argument/result/preservation facts");
   }
 
-  if (function.moves.size() != 3 || function.abi_bindings.size() != 1 ||
+  if (function.moves.size() != 4 || function.abi_bindings.size() != 1 ||
       function.spill_reloads.size() != 2 || function.parallel_copies.size() != 1) {
     return fail("expected move, ABI-binding, spill/reload, and parallel-copy records");
   }
@@ -476,12 +522,38 @@ int records_preserve_frame_control_call_and_move_identity() {
   if (function.moves[1].authority_kind !=
           prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
       function.moves[1].source_parallel_copy_step_index != 0 ||
+      function.moves[1].destination_slot_id != 11 ||
+      function.moves[1].op_kind !=
+          prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp ||
+      !function.moves[2].uses_cycle_temp_source ||
+      function.moves[2].source_parallel_copy_step_index != 1 ||
       function.parallel_copies.front().execution_block_label !=
           prepared.names.block_labels.intern("join")) {
     return fail("expected parallel-copy move record to preserve out-of-SSA authority");
   }
+  const auto& parallel_copy = function.parallel_copies.front();
+  if (!parallel_copy.has_cycle || parallel_copy.moves.size() != 2 ||
+      parallel_copy.steps.size() != 2 ||
+      parallel_copy.moves.front().carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
+      parallel_copy.moves.front().storage_name !=
+          parallel_copy.source_bundle->moves.front().storage_name ||
+      parallel_copy.steps.front().kind !=
+          prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp ||
+      parallel_copy.steps.front().source_move != &parallel_copy.source_bundle->moves.front() ||
+      !parallel_copy.steps.front().has_target_move_record ||
+      parallel_copy.steps.front().target_move_authority_kind !=
+          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+      parallel_copy.steps.front().target_destination_slot_id != 11 ||
+      !parallel_copy.steps.back().uses_cycle_temp_source ||
+      parallel_copy.steps.back().source_move != &parallel_copy.source_bundle->moves.back() ||
+      !parallel_copy.steps.back().has_target_move_record ||
+      parallel_copy.steps.back().source_target_move != function.moves[2].source_move) {
+    return fail("expected parallel-copy record to expose per-move and per-step target facts");
+  }
   if (function.abi_bindings.front().destination_kind !=
           prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      function.abi_bindings.front().authority_kind != prepare::PreparedMoveAuthorityKind::None ||
       function.abi_bindings.front().destination_stack_offset_bytes != 16 ||
       !function.abi_bindings.front().destination_stack_offset_is_prepared_snapshot) {
     return fail("expected ABI binding record to preserve stack destination");

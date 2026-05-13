@@ -273,6 +273,7 @@ struct MoveRecord {
   std::string_view destination_register;
   std::size_t destination_contiguous_width = 1;
   std::vector<std::string_view> destination_occupied_registers;
+  std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
   bool destination_stack_offset_is_prepared_snapshot = false;
   std::size_t block_index = 0;
@@ -293,6 +294,8 @@ struct MoveRecord {
 struct AbiBindingRecord {
   c4c::backend::prepare::PreparedMovePhase phase =
       c4c::backend::prepare::PreparedMovePhase::BeforeInstruction;
+  c4c::backend::prepare::PreparedMoveAuthorityKind authority_kind =
+      c4c::backend::prepare::PreparedMoveAuthorityKind::None;
   c4c::backend::prepare::PreparedMoveDestinationKind destination_kind =
       c4c::backend::prepare::PreparedMoveDestinationKind::Value;
   c4c::backend::prepare::PreparedMoveStorageKind destination_storage_kind =
@@ -301,6 +304,7 @@ struct AbiBindingRecord {
   std::string_view destination_register;
   std::size_t destination_contiguous_width = 1;
   std::vector<std::string_view> destination_occupied_registers;
+  std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
   bool destination_stack_offset_is_prepared_snapshot = false;
   std::size_t block_index = 0;
@@ -326,6 +330,43 @@ struct SpillReloadRecord {
   const c4c::backend::prepare::PreparedSpillReloadOp* source_spill_reload = nullptr;
 };
 
+struct ParallelCopyMoveRecord {
+  std::size_t join_transfer_index = 0;
+  std::size_t edge_transfer_index = 0;
+  c4c::backend::bir::Value source_value;
+  c4c::backend::bir::Value destination_value;
+  c4c::backend::prepare::PreparedJoinTransferCarrierKind carrier_kind =
+      c4c::backend::prepare::PreparedJoinTransferCarrierKind::None;
+  std::optional<c4c::SlotNameId> storage_name;
+  const c4c::backend::prepare::PreparedParallelCopyMove* source_move = nullptr;
+};
+
+struct ParallelCopyStepRecord {
+  c4c::backend::prepare::PreparedParallelCopyStepKind kind =
+      c4c::backend::prepare::PreparedParallelCopyStepKind::Move;
+  std::size_t move_index = 0;
+  bool uses_cycle_temp_source = false;
+  c4c::backend::bir::Value source_value;
+  c4c::backend::bir::Value destination_value;
+  c4c::backend::prepare::PreparedJoinTransferCarrierKind carrier_kind =
+      c4c::backend::prepare::PreparedJoinTransferCarrierKind::None;
+  std::optional<c4c::SlotNameId> storage_name;
+  bool has_target_move_record = false;
+  c4c::backend::prepare::PreparedMoveAuthorityKind target_move_authority_kind =
+      c4c::backend::prepare::PreparedMoveAuthorityKind::None;
+  c4c::backend::prepare::PreparedMoveDestinationKind target_destination_kind =
+      c4c::backend::prepare::PreparedMoveDestinationKind::Value;
+  c4c::backend::prepare::PreparedMoveStorageKind target_destination_storage_kind =
+      c4c::backend::prepare::PreparedMoveStorageKind::None;
+  std::string_view target_destination_register;
+  std::optional<c4c::backend::prepare::PreparedFrameSlotId> target_destination_slot_id;
+  std::optional<std::size_t> target_destination_stack_offset_bytes;
+  bool target_destination_stack_offset_is_prepared_snapshot = false;
+  const c4c::backend::prepare::PreparedParallelCopyStep* source_step = nullptr;
+  const c4c::backend::prepare::PreparedParallelCopyMove* source_move = nullptr;
+  const c4c::backend::prepare::PreparedMoveResolution* source_target_move = nullptr;
+};
+
 struct ParallelCopyRecord {
   c4c::BlockLabelId predecessor_label = c4c::kInvalidBlockLabel;
   c4c::BlockLabelId successor_label = c4c::kInvalidBlockLabel;
@@ -335,6 +376,8 @@ struct ParallelCopyRecord {
   bool has_cycle = false;
   std::size_t move_count = 0;
   std::size_t step_count = 0;
+  std::vector<ParallelCopyMoveRecord> moves;
+  std::vector<ParallelCopyStepRecord> steps;
   const c4c::backend::prepare::PreparedParallelCopyBundle* source_bundle = nullptr;
 };
 

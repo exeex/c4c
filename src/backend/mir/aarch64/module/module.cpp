@@ -106,6 +106,42 @@ find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& r
   return nullptr;
 }
 
+[[nodiscard]] std::optional<c4c::backend::prepare::PreparedFrameSlotId>
+find_destination_slot_id(const c4c::backend::prepare::PreparedBirModule& prepared,
+                         c4c::FunctionNameId function_name,
+                         c4c::backend::prepare::PreparedValueId value_id) {
+  if (value_id == 0) {
+    return std::nullopt;
+  }
+  if (const auto* locations =
+          c4c::backend::prepare::find_prepared_value_location_function(prepared, function_name);
+      locations != nullptr) {
+    for (const auto& home : locations->value_homes) {
+      if (home.value_id == value_id && home.slot_id.has_value()) {
+        return home.slot_id;
+      }
+    }
+  }
+  if (const auto* regalloc = find_prepared_regalloc_function(prepared.regalloc, function_name);
+      regalloc != nullptr) {
+    for (const auto& value : regalloc->values) {
+      if (value.value_id == value_id && value.assigned_stack_slot.has_value()) {
+        return value.assigned_stack_slot->slot_id;
+      }
+    }
+  }
+  if (const auto* storage =
+          c4c::backend::prepare::find_prepared_storage_plan(prepared, function_name);
+      storage != nullptr) {
+    for (const auto& value : storage->values) {
+      if (value.value_id == value_id && value.slot_id.has_value()) {
+        return value.slot_id;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] const c4c::backend::prepare::PreparedStackObject* find_stack_object(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     c4c::backend::prepare::PreparedObjectId object_id) {
@@ -674,6 +710,7 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] MoveRecord build_move_record(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedMoveBundle& bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move) {
   return MoveRecord{
@@ -690,6 +727,8 @@ void merge_storage_operand(
       .destination_contiguous_width = move.destination_contiguous_width,
       .destination_occupied_registers =
           register_name_views(move.destination_occupied_register_names),
+      .destination_slot_id =
+          find_destination_slot_id(prepared, bundle.function_name, move.to_value_id),
       .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
       .destination_stack_offset_is_prepared_snapshot =
           move.destination_stack_offset_bytes.has_value(),
@@ -713,6 +752,7 @@ void merge_storage_operand(
     const c4c::backend::prepare::PreparedAbiBinding& binding) {
   return AbiBindingRecord{
       .phase = bundle.phase,
+      .authority_kind = bundle.authority_kind,
       .destination_kind = binding.destination_kind,
       .destination_storage_kind = binding.destination_storage_kind,
       .destination_abi_index = binding.destination_abi_index,
@@ -732,7 +772,8 @@ void merge_storage_operand(
   };
 }
 
-void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocationFunction* locations,
+void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule& prepared,
+                                 const c4c::backend::prepare::PreparedValueLocationFunction* locations,
                                  std::vector<MoveRecord>& moves,
                                  std::vector<AbiBindingRecord>& abi_bindings) {
   if (locations == nullptr) {
@@ -740,7 +781,7 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
   }
   for (const auto& bundle : locations->move_bundles) {
     for (const auto& move : bundle.moves) {
-      moves.push_back(build_move_record(bundle, move));
+      moves.push_back(build_move_record(prepared, bundle, move));
     }
     for (const auto& binding : bundle.abi_bindings) {
       abi_bindings.push_back(build_abi_binding_record(bundle, binding));
@@ -775,12 +816,64 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
   return records;
 }
 
+[[nodiscard]] ParallelCopyMoveRecord build_parallel_copy_move_record(
+    const c4c::backend::prepare::PreparedParallelCopyMove& move) {
+  return ParallelCopyMoveRecord{
+      .join_transfer_index = move.join_transfer_index,
+      .edge_transfer_index = move.edge_transfer_index,
+      .source_value = move.source_value,
+      .destination_value = move.destination_value,
+      .carrier_kind = move.carrier_kind,
+      .storage_name = move.storage_name,
+      .source_move = &move,
+  };
+}
+
+[[nodiscard]] ParallelCopyStepRecord build_parallel_copy_step_record(
+    const c4c::backend::prepare::PreparedParallelCopyBundle& bundle,
+    const c4c::backend::prepare::PreparedParallelCopyStep& step,
+    const c4c::backend::prepare::PreparedMoveResolution* target_move) {
+  ParallelCopyStepRecord record{
+      .kind = step.kind,
+      .move_index = step.move_index,
+      .uses_cycle_temp_source = step.uses_cycle_temp_source,
+      .source_step = &step,
+  };
+  if (const auto* move = c4c::backend::prepare::find_prepared_parallel_copy_move_for_step(
+          bundle, step);
+      move != nullptr) {
+    record.source_value = move->source_value;
+    record.destination_value = move->destination_value;
+    record.carrier_kind = move->carrier_kind;
+    record.storage_name = move->storage_name;
+    record.source_move = move;
+  }
+  if (target_move != nullptr) {
+    record.has_target_move_record = true;
+    record.target_move_authority_kind = target_move->authority_kind;
+    record.target_destination_kind = target_move->destination_kind;
+    record.target_destination_storage_kind = target_move->destination_storage_kind;
+    record.target_destination_register =
+        target_move->destination_register_name.has_value()
+            ? std::string_view{*target_move->destination_register_name}
+            : std::string_view{};
+    record.target_destination_stack_offset_bytes = target_move->destination_stack_offset_bytes;
+    record.target_destination_stack_offset_is_prepared_snapshot =
+        target_move->destination_stack_offset_bytes.has_value();
+    record.source_target_move = target_move;
+  }
+  return record;
+}
+
 [[nodiscard]] std::vector<ParallelCopyRecord> build_parallel_copy_records(
-    const c4c::backend::prepare::PreparedControlFlowFunction& function) {
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedControlFlowFunction& function,
+    const c4c::backend::bir::Function* source_function,
+    const c4c::backend::prepare::PreparedValueLocationFunction* locations) {
   std::vector<ParallelCopyRecord> records;
   records.reserve(function.parallel_copy_bundles.size());
   for (const auto& bundle : function.parallel_copy_bundles) {
-    records.push_back(ParallelCopyRecord{
+    ParallelCopyRecord record{
         .predecessor_label = bundle.predecessor_label,
         .successor_label = bundle.successor_label,
         .execution_site = bundle.execution_site,
@@ -789,7 +882,33 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
         .move_count = bundle.moves.size(),
         .step_count = bundle.steps.size(),
         .source_bundle = &bundle,
-    });
+    };
+    record.moves.reserve(bundle.moves.size());
+    for (const auto& move : bundle.moves) {
+      record.moves.push_back(build_parallel_copy_move_record(move));
+    }
+    const c4c::backend::prepare::PreparedMoveBundle* target_move_bundle = nullptr;
+    if (source_function != nullptr && locations != nullptr) {
+      target_move_bundle =
+          c4c::backend::prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+              prepared.names, *source_function, *locations, bundle);
+    }
+    record.steps.reserve(bundle.steps.size());
+    for (std::size_t step_index = 0; step_index < bundle.steps.size(); ++step_index) {
+      const auto& step = bundle.steps[step_index];
+      const c4c::backend::prepare::PreparedMoveResolution* target_move = nullptr;
+      if (target_move_bundle != nullptr) {
+        target_move = c4c::backend::prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(
+            *target_move_bundle, step_index);
+      }
+      auto step_record = build_parallel_copy_step_record(bundle, step, target_move);
+      if (target_move != nullptr) {
+        step_record.target_destination_slot_id =
+            find_destination_slot_id(prepared, function.function_name, target_move->to_value_id);
+      }
+      record.steps.push_back(std::move(step_record));
+    }
+    records.push_back(std::move(record));
   }
   return records;
 }
@@ -829,7 +948,7 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
   record.frame = build_frame_record(prepared, function.function_name);
   record.branches = build_branch_records(prepared, function);
   record.calls = build_call_records(prepared, function.function_name);
-  append_value_location_moves(locations, record.moves, record.abi_bindings);
+  append_value_location_moves(prepared, locations, record.moves, record.abi_bindings);
   if (regalloc != nullptr) {
     for (const auto& move : regalloc->move_resolution) {
       record.moves.push_back(MoveRecord{
@@ -842,6 +961,11 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
           .destination_register = move.destination_register_name.has_value()
                                       ? std::string_view{*move.destination_register_name}
                                       : std::string_view{},
+          .destination_contiguous_width = move.destination_contiguous_width,
+          .destination_occupied_registers =
+              register_name_views(move.destination_occupied_register_names),
+          .destination_slot_id =
+              find_destination_slot_id(prepared, function.function_name, move.to_value_id),
           .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
           .destination_stack_offset_is_prepared_snapshot =
               move.destination_stack_offset_bytes.has_value(),
@@ -860,7 +984,8 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
     }
   }
   record.spill_reloads = build_spill_reload_records(regalloc);
-  record.parallel_copies = build_parallel_copy_records(function);
+  record.parallel_copies =
+      build_parallel_copy_records(prepared, function, source_function, locations);
   record.operands = build_operands(prepared, function.function_name, record.target_registers);
   record.blocks.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {

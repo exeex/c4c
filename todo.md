@@ -8,36 +8,27 @@ Current Step Title: Tighten Move, Parallel-Copy, And ABI-Binding Records
 
 ## Just Finished
 
-Step 2 tightened AArch64 target-MIR value-home/register-location records in
-`module/module.hpp` and `module/module.cpp`.
+Step 3 tightened AArch64 target-MIR move, parallel-copy, and ABI-binding records
+in `module/module.hpp` and `module/module.cpp`.
 
 Completed work:
 
-- Added explicit `AllocationLocationKind` and `AllocationAuthorityKind` fields
-  to distinguish physical-register locations, structured spill slots,
-  non-register locations, future virtual-register placeholders, value-home
-  facts, regalloc assignments, spill authority, storage plans, and deferred
-  placeholders.
-- Added typed AArch64 `RegisterReference` storage, explicit
-  `is_reserved_mir_scratch`, and allocation-authority classification to
-  `TargetRegisterRecord`; reserved scratch registers now stay distinct from
-  long-lived-home eligibility.
-- Added structured spill-slot metadata on `OperandRecord` (`spill_slot_id`,
-  size, alignment, fixed-location flag) from prepared frame slots, keeping this
-  separate from prepared stack-offset snapshots.
-- Added local propagation of prepared contiguous-width and occupied-register
-  metadata into `MoveRecord`, `AbiBindingRecord`, and `SpillReloadRecord`
-  because it was trivial and did not select final instructions.
-- Updated focused backend tests to assert representative physical-register,
-  spill-slot, non-register/storage-plan, deferred future-virtual, and
-  reserved-scratch facts without assembly text.
+- Added destination slot snapshots to `MoveRecord` when prepared value-home,
+  regalloc, or storage-plan facts can prove the destination value's slot.
+- Added `authority_kind` to `AbiBindingRecord` so ABI bindings remain explicit
+  movement records without encoding call/return instruction-selection policy.
+- Added per-move and per-step `ParallelCopyRecord` details, including source
+  and destination BIR values, carrier kind, storage name, cycle-temp usage, and
+  matched target move facts for out-of-SSA parallel-copy steps.
+- Updated the focused AArch64 frame/control test to cover representative
+  prepared call moves, out-of-SSA parallel-copy moves, cycle-temp steps, target
+  move provenance, destination slot ids, and ABI bindings without assembly text.
 
 ## Suggested Next
 
-Proceed to Step 3 by tightening `MoveRecord`, `ParallelCopyRecord`, and
-`AbiBindingRecord` with direct movement-record authority and source/destination
-carrier facts, especially destination slot ids and per-step parallel-copy
-details that are still only reachable through source prepared pointers.
+Proceed to Step 4 by tightening spill/reload records and any remaining
+move-adjacent frame-slot facts needed before instruction selection consumes
+prepared allocation records.
 
 ## Watchouts
 
@@ -48,17 +39,18 @@ details that are still only reachable through source prepared pointers.
 - Keep `BIR_PREPARED_GAP_LEDGER.md` edits for Step 5 unless the supervisor
   explicitly wants a docs-only ledger correction earlier; Step 2 can rely on
   `todo.md` for the stale-ledger finding.
-- Typed AArch64 register references are now present on `TargetRegisterRecord`;
-  move/ABI-binding destination registers still carry string snapshots plus
-  width/occupied-register metadata and should be tightened in Step 3 before
-  instruction selection consumes them.
-- `ParallelCopyRecord` currently exposes only counts plus `source_bundle`.
-  Later movement work should decide whether direct per-step target records are
-  needed before instruction selection consumes it.
+- `PreparedAbiBinding` does not currently publish a destination value id or
+  destination slot id; Step 3 preserved only the destination carrier facts the
+  prepared ABI-binding record directly provides.
+- `ParallelCopyStepRecord::has_target_move_record` is false when the prepared
+  out-of-SSA move bundle cannot be uniquely matched; consumers should treat
+  that as missing prepared target-move authority, not as permission to recover
+  from raw BIR or printed text.
 
 ## Proof
 
 Command:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
-Result: passed. `test_after.log` is the proof log.
+Result: passed. `test_after.log` is the proof log. The `^backend_` subset
+reported 100% tests passed for the enabled backend tests.
