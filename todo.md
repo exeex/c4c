@@ -9,15 +9,15 @@ Current Step Title: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifa
 ## Just Finished
 
 Step 2.1: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifacts
-extracted `src/backend/mir/aarch64/codegen/inline_asm.cpp` into
-`src/backend/mir/aarch64/codegen/inline_asm.md` and removed the old `.cpp`
+extracted `src/backend/mir/aarch64/codegen/alu.cpp` into
+`src/backend/mir/aarch64/codegen/alu.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old inline assembly substitution contract,
-including positional and named operands, GCC-to-internal operand mapping,
-register modifiers, raw immediate formatting, `%a` memory-reference formatting,
-FP/SIMD register spelling, atomic exclusive helper notes, dependencies, hidden
-assumptions, and rebuild risks.
+The markdown artifact records the old ALU lowering contract, including
+integer and floating unary operations, CLZ/CTZ/byte-swap/popcount sequences,
+unsigned power-of-two division and remainder reductions, register-direct binary
+operation fast paths, accumulator fallback behavior, 32-bit sign/zero-extension
+rules, i128 copy behavior, dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
@@ -27,7 +27,6 @@ Extract the remaining old codegen surfaces under
 `src/backend/mir/aarch64/codegen/` before moving into assembler, encoder,
 linker, or module-entry files:
 
-- `alu.cpp`
 - `memory.cpp`
 - `calls.cpp`
 - `cast_ops.cpp`
@@ -59,13 +58,15 @@ After Step 2.1, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- `inline_asm.cpp` was a fully commented translation surface rather than live
+- `alu.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived surface has several rebuild hazards: GCC operand numbering
-  versus internal operand indexes, raw immediates without `#`, `%a` bracketed
-  memory references, `r0`-`r30` alias normalization, no-modifier FP/SIMD
-  `vN` spelling, and acquire/release exclusive mnemonic selection.
+- The archived surface has several rebuild hazards: signed 32-bit operations
+  need explicit `sxtw`, unsigned 32-bit operations rely on `w`-register
+  zero-extension, power-of-two reductions are unsigned-only, register-direct
+  ALU must avoid right-operand destination-register clobbering, 16-bit
+  byte-swap needs the post-`rev` shift, and i128 copy must preserve both
+  `x0` and `x1`.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
